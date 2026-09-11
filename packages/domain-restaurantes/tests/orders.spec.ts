@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createOrder, prepareCreateOrder } from "../src/orders.ts";
-import { OrderValidationError } from "../src/errors.ts";
+import { OrderConflictError, OrderValidationError } from "../src/errors.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 import type { CreateOrderInput } from "../src/types.ts";
 
@@ -84,6 +84,29 @@ describe("createOrder — memoria de cliente + idempotencia de dos niveles", () 
 
     const customer = await fixture.repo.findCustomerByPhone(fixture.organizationId, "9991234567");
     expect(customer?.orderCount).toBe(1);
+  });
+
+  // Port literal de "idempotency database conflicts are exposed as a typed order
+  // conflict" (restaurantes/supabase/functions/_shared/create-order-core.test.ts:395):
+  // reutilizar la misma idempotencyKey con un pedido de contenido MATERIALMENTE
+  // distinto (otra cantidad, aquí, pero aplica igual a otra dirección/productos/total)
+  // nunca debe devolver en silencio el pedido viejo — debe fallar como conflicto
+  // tipado (409), igual que insertError?.code === "PT409" en el origen.
+  it("una idempotencyKey reutilizada con contenido DISTINTO se expone como OrderConflictError, nunca devuelve el pedido viejo en silencio", async () => {
+    const fixture = buildRestaurantFixture();
+    const input = baseInput(fixture, { idempotencyKey: "intento-1" });
+    const first = await createOrder(fixture.repo, input);
+
+    const conflicting = baseInput(fixture, {
+      idempotencyKey: "intento-1",
+      items: [{ productId: fixture.products.cocaCola, requestedQuantity: 5 }],
+    });
+    await expect(createOrder(fixture.repo, conflicting)).rejects.toThrow(OrderConflictError);
+
+    // El pedido original nunca se sobreescribe ni se duplica silenciosamente.
+    const customer = await fixture.repo.findCustomerByPhone(fixture.organizationId, "9991234567");
+    expect(customer?.orderCount).toBe(1);
+    expect(first.total).toBe(90);
   });
 
   it("dos pedidos con contenido DISTINTO del mismo cliente SÍ crean dos filas (el dedupe nunca bloquea intención real distinta)", async () => {

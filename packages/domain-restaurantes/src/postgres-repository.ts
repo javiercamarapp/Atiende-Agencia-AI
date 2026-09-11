@@ -10,6 +10,7 @@
 // Supabase Auth de usuario, el "service role" original se traduce aquí a una sesión
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { OrderConflictError } from "./errors.ts";
 import type { Branch, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, Order, PersistedOrderItem } from "./types.ts";
 import type { ConversationMessage, NewOrderRecord, RestaurantesRepository, SearchableProduct } from "./repository.ts";
 
@@ -244,30 +245,43 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async createOrderIdempotent(order: NewOrderRecord, dedupeFingerprint: string, idempotencyKey: string | null): Promise<Order> {
-    const { rows } = await this.db.query<{ create_order_idempotent: OrderRow }>(
-      `select restaurantes.create_order_idempotent($1::jsonb, $2, $3) as create_order_idempotent;`,
-      [
-        JSON.stringify({
-          organization_id: order.organizationId,
-          property_id: order.propertyId,
-          customer_id: order.customerId,
-          customer_name: order.customerName,
-          customer_phone: order.customerPhone,
-          customer_address: order.customerAddress,
-          branch: order.branch,
-          total: order.total,
-          items: order.items,
-          source: order.source,
-          notes: order.notes,
-          payment_method: order.paymentMethod,
-          call_transcript: order.callTranscript,
-          call_recording_url: order.callRecordingUrl,
-        }),
-        dedupeFingerprint,
-        idempotencyKey,
-      ],
-    );
-    return mapOrder(rows[0]!.create_order_idempotent);
+    // restaurantes.create_order_idempotent (ver migrations/003) lanza sqlstate PT409
+    // cuando la misma idempotency_key se reutiliza con un dedupe_fingerprint distinto
+    // (pedido con contenido materialmente diferente) — port literal de
+    // `insertError?.code === "PT409"` en create-order-core.ts del origen: se traduce
+    // aquí, en el punto real donde llega el error crudo de Postgres, al
+    // OrderConflictError tipado que ya consume apps/api/src/routes/verticals/restaurantes/public.ts.
+    try {
+      const { rows } = await this.db.query<{ create_order_idempotent: OrderRow }>(
+        `select restaurantes.create_order_idempotent($1::jsonb, $2, $3) as create_order_idempotent;`,
+        [
+          JSON.stringify({
+            organization_id: order.organizationId,
+            property_id: order.propertyId,
+            customer_id: order.customerId,
+            customer_name: order.customerName,
+            customer_phone: order.customerPhone,
+            customer_address: order.customerAddress,
+            branch: order.branch,
+            total: order.total,
+            items: order.items,
+            source: order.source,
+            notes: order.notes,
+            payment_method: order.paymentMethod,
+            call_transcript: order.callTranscript,
+            call_recording_url: order.callRecordingUrl,
+          }),
+          dedupeFingerprint,
+          idempotencyKey,
+        ],
+      );
+      return mapOrder(rows[0]!.create_order_idempotent);
+    } catch (err) {
+      if (err && typeof err === "object" && "code" in err && (err as { code?: unknown }).code === "PT409") {
+        throw new OrderConflictError("Este intento de pedido ya fue procesado con datos diferentes. Revisa el pedido existente antes de crear otro.");
+      }
+      throw err;
+    }
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {

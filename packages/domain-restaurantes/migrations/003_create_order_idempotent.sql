@@ -1,9 +1,13 @@
--- Ported de restaurantes/supabase/migrations/20260904055000_order_idempotency.sql.
--- Cambia únicamente: `public.orders` -> `restaurantes.orders`, `restaurant_id` ->
--- `organization_id`, `branch_id` -> `property_id`. La protección real (dos niveles:
--- idempotency_key explícito + dedupe_fingerprint automático de 5 minutos, serializados
--- con pg_advisory_xact_lock) NO se rediseña — es la parte del origen que ya resolvió
--- correctamente la condición de carrera real de doble-pedido (auditoría 3-sep-2026).
+-- Ported de restaurantes/supabase/migrations/20260904055000_order_idempotency.sql +
+-- 20260904070000_order_idempotency_conflict.sql. Cambia únicamente:
+-- `public.orders` -> `restaurantes.orders`, `restaurant_id` -> `organization_id`,
+-- `branch_id` -> `property_id`. La protección real (dos niveles: idempotency_key
+-- explícito + dedupe_fingerprint automático de 5 minutos, serializados con
+-- pg_advisory_xact_lock, MÁS el rechazo con sqlstate PT409 cuando la misma
+-- idempotency_key se reutiliza con un dedupe_fingerprint distinto — o sea, un pedido
+-- con contenido materialmente diferente) NO se rediseña — es la parte del origen que
+-- ya resolvió correctamente la condición de carrera real de doble-pedido (auditoría
+-- 3-sep-2026) y el conflicto real de idempotency key reutilizada con otro contenido.
 create or replace function restaurantes.create_order_idempotent(
   p_order jsonb,
   p_dedupe_fingerprint text,
@@ -32,6 +36,9 @@ begin
     select * into v_order from restaurantes.orders
     where organization_id = v_organization_id and idempotency_key = p_idempotency_key
     limit 1;
+    if v_order.id is not null and v_order.dedupe_fingerprint is distinct from p_dedupe_fingerprint then
+      raise sqlstate 'PT409' using message = 'idempotency key was already used with a different order payload';
+    end if;
   else
     select * into v_order from restaurantes.orders
     where organization_id = v_organization_id

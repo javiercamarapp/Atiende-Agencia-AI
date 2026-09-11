@@ -6,6 +6,7 @@
 // fallback dev/CI sin Postgres real — mismo rol que InMemoryStateStore en
 // @atiende/core-conversation.
 import { randomUUID } from "node:crypto";
+import { OrderConflictError } from "./errors.ts";
 import type { Branch, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, Order, PersistedOrderItem } from "./types.ts";
 import type { ConversationMessage, NewOrderRecord, RestaurantesRepository, SearchableProduct } from "./repository.ts";
 
@@ -263,7 +264,16 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return this.orderLock.run(`${order.organizationId}:${idempotencyKey ?? dedupeFingerprint}`, async () => {
       if (idempotencyKey) {
         const existing = this.orders.find((o) => o.organizationId === order.organizationId && o.idempotencyKey === idempotencyKey);
-        if (existing) return existing;
+        if (existing) {
+          // Misma llave, contenido DISTINTO (fingerprint no coincide) -> no es un
+          // reintento real, es un pedido materialmente diferente reusando la llave:
+          // conflicto real, nunca se devuelve el pedido viejo en silencio (mismo
+          // comportamiento que 20260904070000_order_idempotency_conflict.sql, PT409).
+          if (existing.dedupeFingerprint !== dedupeFingerprint) {
+            throw new OrderConflictError("idempotency key was already used with a different order payload");
+          }
+          return existing;
+        }
       } else {
         const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
         const existing = this.orders.find(
