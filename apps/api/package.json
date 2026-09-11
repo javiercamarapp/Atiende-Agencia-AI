@@ -13,6 +13,7 @@
     "@atiende/db": "*",
     "@atiende/domain-restaurantes": "*",
     "@atiende/domain-hoteles": "*",
+    "@atiende/domain-licitaciones": "*",
     "hono": "4.13.7",
     "jose": "6.2.12"
   }

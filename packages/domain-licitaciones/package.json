@@ -1,0 +1,17 @@
+{
+  "name": "@atiende/domain-licitaciones",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@atiende/core-tenancy": "*",
+    "jszip": "^3.10.1"
+  }
+}

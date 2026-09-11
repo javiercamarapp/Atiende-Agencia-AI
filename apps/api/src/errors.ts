@@ -18,4 +18,6 @@ export const Errors = {
   idempotencyConflict: () => new ApiError(422, "idempotency_conflict", "El Idempotency-Key ya fue usado con un cuerpo de solicitud distinto."),
   impuestoNoCoincide: (calculado: number, recibido: number) =>
     new ApiError(422, "impuesto_no_coincide", `El impuesto calculado server-side (${calculado}) no coincide con el recibido (${recibido}).`),
+  // ---- licitaciones (checklist/propuesta económica, ver diseño Fase 1 §4.1/§4.2) ----
+  submissionDeadlineUnknown: (message: string) => new ApiError(422, "submission_deadline_unknown", message),
 };
