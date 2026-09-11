@@ -2,19 +2,27 @@ import type { CoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
+import type { RentasRepository } from "@atiende/domain-rentas";
 import type { ApiEnv } from "./env.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
- * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo` son los adaptadores en memoria
- * de @atiende/db/@atiende/domain-restaurantes/@atiende/domain-hoteles; en producción
- * (cuando packages/db tenga un motor de conexión real, ver packages/db/README.md)
- * serán los adaptadores de Postgres — las rutas no cambian ni una línea entre ambos.
+ * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
+ * adaptadores en memoria de @atiende/db/@atiende/domain-restaurantes/
+ * @atiende/domain-hoteles/@atiende/domain-rentas; en producción (cuando packages/db
+ * tenga un motor de conexión real, ver packages/db/README.md) serán los adaptadores
+ * de Postgres — las rutas no cambian ni una línea entre ambos.
  *
  * `engine` (@atiende/core-tenancy::TenancyEngine) es lo que `dbSession()` de
  * @atiende/core-auth usa para abrir la sesión de BD por request que
  * `requirePropertyMembership()` necesita para resolver membership en vivo contra
  * `core.membership` — genérico, compartido por cualquier vertical con rutas
- * autenticadas de staff (folios/pedidos-fnb/quotes de hoteles son las primeras). */
+ * autenticadas de staff (folios/pedidos-fnb/quotes de hoteles, reservas/cotizaciones/
+ * finanzas de rentas). Las rutas de rentas/reservas.ts pasan además ESTE MISMO
+ * `TenantDbSession` del request directo a `crearReservaConfirmada`/
+ * `modificarFechasReserva`/`cancelarOcupacion` de @atiende/domain-rentas (satisface
+ * `EjecutorTransaccional` por structural typing) — en tests, `engine` debe ser un
+ * `InMemoryRentasTenancyEngine` (no el `InMemoryTenancyEngine` genérico) para que esas
+ * queries crudas resuelvan (ver apps/api/tests/rentas-fixtures.ts). */
 export interface AppDeps {
   readonly env: ApiEnv;
   readonly coreRepo: CoreRepository;
@@ -23,4 +31,5 @@ export interface AppDeps {
   readonly turnHandler: WhatsAppTurnHandler;
   readonly hotelesRepo: HotelesRepository;
   readonly hotelesPaymentsPort: PaymentsPort;
+  readonly rentasRepo: RentasRepository;
 }
