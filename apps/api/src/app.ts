@@ -8,6 +8,7 @@ import { ApiError } from "@atiende/core-auth";
 import type { AppDeps } from "./deps.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
+import { restaurantesVoiceToolsRoutes } from "./routes/verticals/restaurantes/voice-tools.ts";
 import { restaurantesWhatsAppRoutes } from "./routes/verticals/restaurantes/whatsapp.ts";
 import { hotelesRoutes } from "./routes/verticals/hoteles/hoteles.ts";
 import { citasRoutes } from "./routes/verticals/citas/citas.ts";
@@ -30,6 +31,7 @@ export function buildApp(deps: AppDeps): Hono {
 
   app.route("/", authRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
+  app.route("/", restaurantesVoiceToolsRoutes(deps));
   app.route("/", restaurantesWhatsAppRoutes(deps));
   app.route("/", hotelesRoutes(deps));
   app.route("/", citasRoutes(deps));

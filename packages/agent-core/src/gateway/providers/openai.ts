@@ -5,6 +5,7 @@
 // constructor — no hay agregación upstream que la haga variar.
 
 import type { LlmCompletionRequest, LlmCompletionResult, LlmProvider } from '../types.js';
+import { fromOpenAiWireToolCalls, toOpenAiWireMessages, toOpenAiWireTools, type OpenAiWireToolCall } from './openai-wire.js';
 
 export interface OpenAiProviderOptions {
   apiKey: string;
@@ -17,7 +18,7 @@ export interface OpenAiProviderOptions {
 
 interface OpenAiChatResponse {
   model?: string;
-  choices?: { message?: { content?: string | null } }[];
+  choices?: { message?: { content?: string | null; tool_calls?: OpenAiWireToolCall[] } }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
@@ -47,9 +48,10 @@ export class OpenAiProvider implements LlmProvider {
       },
       body: JSON.stringify({
         model: this.opts.model,
-        messages: [{ role: 'system', content: request.system }, ...request.messages.filter((m) => m.role !== 'system')],
+        messages: toOpenAiWireMessages(request.system, request.messages),
         max_tokens: request.maxOutputTokens ?? 500,
         temperature: request.temperature ?? 0.4,
+        ...(toOpenAiWireTools(request.tools) ? { tools: toOpenAiWireTools(request.tools) } : {}),
       }),
     });
 
@@ -63,8 +65,10 @@ export class OpenAiProvider implements LlmProvider {
     const data = (await res.json()) as OpenAiChatResponse;
     const tokensIn = data.usage?.prompt_tokens ?? 0;
     const tokensOut = data.usage?.completion_tokens ?? 0;
+    const message = data.choices?.[0]?.message;
     return {
-      text: (data.choices?.[0]?.message?.content ?? '').trim(),
+      text: (message?.content ?? '').trim(),
+      toolCalls: fromOpenAiWireToolCalls(message?.tool_calls),
       model: data.model ?? this.opts.model,
       tokensIn,
       tokensOut,

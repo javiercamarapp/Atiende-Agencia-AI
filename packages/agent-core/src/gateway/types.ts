@@ -20,21 +20,55 @@ export type LlmLane = 'interactive' | 'batch' | 'background';
 
 export const LLM_LANES: readonly LlmLane[] = ['interactive', 'batch', 'background'] as const;
 
-export interface LlmMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+/**
+ * Una llamada a herramienta que el modelo decidió hacer — mismo shape que
+ * `tool_calls[i]` en la respuesta de OpenAI/OpenRouter (`id` +
+ * `function.name`/`function.arguments`, aplanado aquí a `name`/`argumentsJson`
+ * porque el gateway es agnóstico de vertical y no necesita el envoltorio
+ * `function`). `argumentsJson` es el JSON crudo tal como lo mandó el
+ * proveedor — el llamador (turn handler de cada vertical) lo parsea, nunca el
+ * gateway, para no imponer un schema de argumentos que el gateway no conoce.
+ */
+export interface LlmToolCall {
+  id: string;
+  name: string;
+  argumentsJson: string;
 }
+
+/** Definición de una herramienta ofrecida al modelo — mismo shape reducido
+ *  que `function` dentro de `tools[i]` en la Chat Completions API de
+ *  OpenAI/OpenRouter (sin el envoltorio `{type:'function', function:{...}}}`,
+ *  que los adaptadores arman internamente). `parameters` es un JSON Schema
+ *  tal cual — el gateway no lo valida, solo lo reenvía al proveedor. */
+export interface LlmToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+export type LlmMessage =
+  | { role: 'system' | 'user'; content: string }
+  | { role: 'assistant'; content: string; toolCalls?: LlmToolCall[] }
+  | { role: 'tool'; toolCallId: string; content: string };
 
 export interface LlmCompletionRequest {
   system: string;
   messages: LlmMessage[];
+  /** Herramientas ofrecidas al modelo en esta llamada — omitir cuando el rol
+   *  no usa tool-calling (comportamiento idéntico al de antes de este campo). */
+  tools?: LlmToolDefinition[];
   maxOutputTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
 }
 
 export interface LlmCompletionResult {
+  /** Puede venir vacío cuando el modelo respondió ÚNICAMENTE con tool_calls
+   *  (sin texto que decir todavía) — mismo contrato real de OpenAI/OpenRouter
+   *  que ya asumía `whatsapp-agent-core.ts` del origen (`msg.content ?? ""`). */
   text: string;
+  /** Herramientas que el modelo decidió invocar en esta respuesta, si las hay. */
+  toolCalls?: LlmToolCall[];
   /** Modelo concreto que respondió (puede diferir del solicitado si el
    *  proveedor hace su propio ruteo interno). */
   model: string;
