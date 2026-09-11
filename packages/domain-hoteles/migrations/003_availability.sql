@@ -88,8 +88,13 @@ begin
   end if;
 
   v_effective_capacity := v_row.total_rooms;
-  if v_row.total_rooms > 0
-     and (v_row.booked_rooms::numeric / v_row.total_rooms::numeric) * 100 >= v_threshold_pct then
+  -- Port exacto de hoteles/packages/db/migrations/0013_tarifas_avanzadas_y_politicas.sql:
+  -- con total_rooms=0 la ocupacion se trata como 100% (nunca como "sin datos"),
+  -- asi que SI puede activar sobreventa hasta max_overbook_rooms. Debe coincidir
+  -- con occupancyPct(0, x) = 100 en overbooking.ts (el "espejo exacto" documentado).
+  if (case when v_row.total_rooms > 0
+           then (v_row.booked_rooms::numeric / v_row.total_rooms::numeric) * 100
+           else 100 end) >= v_threshold_pct then
     v_effective_capacity := v_row.total_rooms + v_max_overbook;
   end if;
 
