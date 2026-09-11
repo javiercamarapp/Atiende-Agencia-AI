@@ -1,0 +1,368 @@
+{
+  "01_base_ingreso_diot": {
+    "ok": true,
+    "issues": [],
+    "warnings": [],
+    "checks": {
+      "pass": 16,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "1160.00",
+          "iva_acreditable": "160.00",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": [
+      "Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar."
+    ]
+  },
+  "02_retencion_isr_exacta_10pct": {
+    "ok": false,
+    "issues": [
+      {
+        "code": "total_incoherente",
+        "mensaje": "SubTotal + IVA − Descuento − Retenciones = 900.00 pero Total=890.00",
+        "ref": "Anexo 20 / Guia de llenado"
+      }
+    ],
+    "warnings": [
+      "IVA global 0 difiere de 16% del subtotal (160.00); puede haber tasas diferenciadas (frontera 8%) u operaciones exentas."
+    ],
+    "checks": {
+      "pass": 14,
+      "fail": 1
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "890.00",
+          "iva_acreditable": "0",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": []
+  },
+  "03_retencion_isr_desviacion_0_01": {
+    "ok": true,
+    "issues": [],
+    "warnings": [
+      "IVA global 0 difiere de 16% del subtotal (160.00); puede haber tasas diferenciadas (frontera 8%) u operaciones exentas."
+    ],
+    "checks": {
+      "pass": 15,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "899.99",
+          "iva_acreditable": "0",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": []
+  },
+  "04_retencion_isr_desviacion_1_01_fuera_tolerancia": {
+    "ok": true,
+    "issues": [],
+    "warnings": [
+      "IVA global 0 difiere de 16% del subtotal (160.00); puede haber tasas diferenciadas (frontera 8%) u operaciones exentas.",
+      "Retención ISR 101.01 no coincide con 10% referencial (100.00); revisar caso."
+    ],
+    "checks": {
+      "pass": 15,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "898.99",
+          "iva_acreditable": "0",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": []
+  },
+  "05_retencion_iva_exacta_2_3": {
+    "ok": true,
+    "issues": [],
+    "warnings": [],
+    "checks": {
+      "pass": 16,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "1053.35",
+          "iva_acreditable": "160.00",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": [
+      "Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar."
+    ]
+  },
+  "06_timbrado_71h59m": {
+    "ok": true,
+    "issues": [],
+    "warnings": [],
+    "checks": {
+      "pass": 16,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "1160.00",
+          "iva_acreditable": "160.00",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": [
+      "Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar."
+    ]
+  },
+  "07_timbrado_72h01m_no_dispara_por_truncamiento_dias": {
+    "ok": true,
+    "issues": [],
+    "warnings": [],
+    "checks": {
+      "pass": 16,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "1160.00",
+          "iva_acreditable": "160.00",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": [
+      "Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar."
+    ]
+  },
+  "08_timbrado_96h01m_dispara_warning": {
+    "ok": true,
+    "issues": [],
+    "warnings": [
+      "CFDI timbrado 4 días después de emisión (Regla 2.7.1.35 RMF: plazo de 72 horas)."
+    ],
+    "checks": {
+      "pass": 16,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "1160.00",
+          "iva_acreditable": "160.00",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": [
+      "Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar."
+    ]
+  },
+  "09_ieps_presente": {
+    "ok": true,
+    "issues": [],
+    "warnings": [
+      "CFDI contiene IEPS (50.00). El IEPS requiere declaración separada (Art. 2 Ley IEPS). La DIOT solo reporta IVA."
+    ],
+    "checks": {
+      "pass": 16,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "1160.00",
+          "iva_acreditable": "160.00",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": [
+      "Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar."
+    ]
+  },
+  "10_nomina_metodo_pago_no_pue": {
+    "ok": false,
+    "issues": [
+      {
+        "code": "nomina_metodo_pago",
+        "mensaje": "El CFDI de nómina debe usar MetodoPago PUE.",
+        "ref": "Complemento de Nomina 1.2"
+      }
+    ],
+    "warnings": [],
+    "checks": {
+      "pass": 16,
+      "fail": 1
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "1160.00",
+          "iva_acreditable": "160.00",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": [
+      "Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar."
+    ]
+  },
+  "11_nomina_sin_total_percepciones": {
+    "ok": true,
+    "issues": [],
+    "warnings": [],
+    "checks": {
+      "pass": 16,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [
+        {
+          "rfc_proveedor": "CON950820K12",
+          "nombre_proveedor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "total_operacion": "1160.00",
+          "iva_acreditable": "160.00",
+          "periodo": "2026-07"
+        }
+      ],
+      "reportable": true
+    },
+    "requires_human_review": true,
+    "reference_notes": [
+      "Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar."
+    ]
+  },
+  "12_nota_credito_sin_relacionados": {
+    "ok": false,
+    "issues": [
+      {
+        "code": "nota_credito_sin_relacion",
+        "mensaje": "Nota de crédito (tipo E) sin CfdiRelacionados. Debe referenciar al menos un UUID (Anexo 20).",
+        "ref": "Anexo 20"
+      }
+    ],
+    "warnings": [],
+    "checks": {
+      "pass": 16,
+      "fail": 1
+    },
+    "diot": {
+      "proveedores_reportables": [],
+      "reportable": false
+    },
+    "requires_human_review": true,
+    "reference_notes": []
+  },
+  "13_nota_credito_tiporelacion_01": {
+    "ok": true,
+    "issues": [],
+    "warnings": [],
+    "checks": {
+      "pass": 17,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [],
+      "reportable": false
+    },
+    "requires_human_review": true,
+    "reference_notes": []
+  },
+  "14_nota_credito_tiporelacion_04_otro_codigo": {
+    "ok": true,
+    "issues": [],
+    "warnings": [
+      "Nota de crédito con TipoRelacion='04' (esperado '01' — Nota de crédito)."
+    ],
+    "checks": {
+      "pass": 16,
+      "fail": 0
+    },
+    "diot": {
+      "proveedores_reportables": [],
+      "reportable": false
+    },
+    "requires_human_review": true,
+    "reference_notes": []
+  },
+  "15_nota_credito_sin_tiporelacion": {
+    "ok": false,
+    "issues": [
+      {
+        "code": "tipo_relacion_faltante",
+        "mensaje": "TipoRelacion es obligatorio para notas de crédito (tipo E).",
+        "ref": "Anexo 20"
+      }
+    ],
+    "warnings": [],
+    "checks": {
+      "pass": 16,
+      "fail": 1
+    },
+    "diot": {
+      "proveedores_reportables": [],
+      "reportable": false
+    },
+    "requires_human_review": true,
+    "reference_notes": []
+  }
+}

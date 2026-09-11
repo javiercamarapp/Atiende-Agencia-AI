@@ -1,0 +1,425 @@
+// InMemoryCitasRepository — implementación real (no un mock) de `CitasRepository`,
+// con las mismas restricciones de integridad e idempotencia que las migraciones SQL
+// de migrations/001-003 (EXCLUDE anti-traslape por provider+rango, UNIQUE de
+// idempotency_key, pg_advisory_xact_lock vía serialización por clave). Sirve como
+// fixture de seed para tests determinísticos y como fallback dev/CI sin Postgres
+// real — mismo rol que InMemoryRestaurantesRepository/InMemoryHotelesRepository.
+import { randomUUID } from "node:crypto";
+import type {
+  AppointmentActorChannel,
+  AppointmentRecord,
+  AvailabilityOverride,
+  AvailabilityRule,
+  BusyInterval,
+  CustomerRecord,
+  ProviderRecord,
+  ServiceRecord,
+} from "./types.ts";
+import type { CancelResult, CitasRepository, CreateAppointmentResult, NewAppointmentInput, RescheduleResult, ReminderCandidateRow, WaitlistCandidateRow } from "./repository.ts";
+
+/** Serializa operaciones por clave — equivalente en memoria de
+ * `pg_advisory_xact_lock`/row lock de Postgres: dos llamadas concurrentes con la
+ * MISMA clave se ejecutan una tras otra, nunca entrelazadas. */
+class KeyedMutex {
+  private readonly chains = new Map<string, Promise<unknown>>();
+
+  async run<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.chains.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    this.chains.set(key, previous.then(() => gate));
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+}
+
+interface StoredOrganization {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly isActive: boolean;
+  readonly defaultTimezone: string;
+}
+
+interface StoredWaitlistRow {
+  id: string;
+  organizationId: string;
+  customerPhone: string;
+  customerName: string | null;
+  providerId: string | null;
+  serviceId: string | null;
+  preferredDateFrom: string | null;
+  preferredDateTo: string | null;
+  preferredTimeWindow: "morning" | "afternoon" | "evening" | "any";
+  status: "active" | "notified" | "fulfilled" | "cancelled" | "expired";
+  notifiedCount: number;
+  expiresAt: string;
+  createdAt: string;
+}
+
+function overlapsRange(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+export class InMemoryCitasRepository implements CitasRepository {
+  private readonly organizations = new Map<string, StoredOrganization>();
+  private readonly organizationIdBySlug = new Map<string, string>();
+  private readonly propertyTimezones = new Map<string, string>();
+  private readonly providers = new Map<string, ProviderRecord>();
+  private readonly services = new Map<string, ServiceRecord>();
+  private readonly providerServices = new Set<string>(); // `${providerId}:${serviceId}`
+  private readonly availabilityRules = new Map<string, AvailabilityRule[]>(); // por providerId
+  private readonly availabilityOverrides = new Map<string, AvailabilityOverride>(); // `${providerId}:${date}`
+  private readonly customers = new Map<string, CustomerRecord>();
+  private readonly customerIdByOrgPhone = new Map<string, string>();
+  private readonly appointments = new Map<string, AppointmentRecord>();
+  private readonly appointmentIdByIdempotencyKey = new Map<string, string>(); // `${orgId}:${key}`
+  private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
+  private readonly whatsappPhoneNumberIdByOrg = new Map<string, string>();
+  private readonly outbox: { organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown }[] = [];
+  private readonly waitlist = new Map<string, StoredWaitlistRow>();
+
+  private readonly appointmentLock = new KeyedMutex();
+  private readonly customerLock = new KeyedMutex();
+
+  // ---- seeding (equivalente a INSERT manual contra las migraciones SQL) ----
+
+  seedOrganization(org: { id: string; slug: string; name: string; isActive?: boolean; defaultTimezone?: string }): void {
+    const stored: StoredOrganization = { id: org.id, slug: org.slug, name: org.name, isActive: org.isActive ?? true, defaultTimezone: org.defaultTimezone ?? "America/Mexico_City" };
+    this.organizations.set(org.id, stored);
+    this.organizationIdBySlug.set(org.slug, org.id);
+  }
+
+  seedPropertyTimezone(propertyId: string, timezone: string): void {
+    this.propertyTimezones.set(propertyId, timezone);
+  }
+
+  seedProvider(provider: ProviderRecord): void {
+    this.providers.set(provider.id, provider);
+  }
+
+  seedService(service: ServiceRecord): void {
+    this.services.set(service.id, service);
+  }
+
+  seedProviderService(providerId: string, serviceId: string): void {
+    this.providerServices.add(`${providerId}:${serviceId}`);
+  }
+
+  seedAvailabilityRule(rule: AvailabilityRule): void {
+    const list = this.availabilityRules.get(rule.providerId) ?? [];
+    list.push(rule);
+    this.availabilityRules.set(rule.providerId, list);
+  }
+
+  seedAvailabilityOverride(override: AvailabilityOverride): void {
+    this.availabilityOverrides.set(`${override.providerId}:${override.overrideDate}`, override);
+  }
+
+  seedWhatsAppConfig(organizationId: string, phoneNumberId: string): void {
+    this.whatsappPhoneNumberIdByOrg.set(organizationId, phoneNumberId);
+  }
+
+  seedWaitlistEntry(row: Omit<StoredWaitlistRow, "id" | "status" | "notifiedCount" | "createdAt" | "expiresAt"> & { id?: string; expiresAt?: string }): string {
+    const id = row.id ?? randomUUID();
+    this.waitlist.set(id, {
+      id,
+      organizationId: row.organizationId,
+      customerPhone: row.customerPhone,
+      customerName: row.customerName,
+      providerId: row.providerId,
+      serviceId: row.serviceId,
+      preferredDateFrom: row.preferredDateFrom,
+      preferredDateTo: row.preferredDateTo,
+      preferredTimeWindow: row.preferredTimeWindow,
+      status: "active",
+      notifiedCount: 0,
+      expiresAt: row.expiresAt ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+    return id;
+  }
+
+  /** Solo para tests: permite insertar una cita ya existente con un estado/horario
+   * concreto (ej. para probar cancelar/reagendar sin pasar por createAppointment). */
+  seedAppointment(appointment: AppointmentRecord): void {
+    this.appointments.set(appointment.id, appointment);
+    if (appointment.idempotencyKey) {
+      this.appointmentIdByIdempotencyKey.set(`${appointment.organizationId}:${appointment.idempotencyKey}`, appointment.id);
+    }
+  }
+
+  getOutbox(): readonly { organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown }[] {
+    return this.outbox;
+  }
+
+  getWaitlistEntry(id: string): StoredWaitlistRow | undefined {
+    return this.waitlist.get(id);
+  }
+
+  // ---- CitasRepository ----
+
+  async findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null> {
+    const id = this.organizationIdBySlug.get(slug);
+    if (!id) return null;
+    const org = this.organizations.get(id);
+    return org ? { id: org.id, name: org.name, slug: org.slug, isActive: org.isActive } : null;
+  }
+
+  async findPropertyTimezone(propertyId: string | null, organizationId: string): Promise<string> {
+    if (propertyId) {
+      const tz = this.propertyTimezones.get(propertyId);
+      if (tz) return tz;
+    }
+    return this.organizations.get(organizationId)?.defaultTimezone ?? "America/Mexico_City";
+  }
+
+  async findProvider(organizationId: string, providerId: string): Promise<ProviderRecord | null> {
+    const provider = this.providers.get(providerId);
+    if (!provider || provider.organizationId !== organizationId) return null;
+    return provider;
+  }
+
+  async findService(organizationId: string, serviceId: string): Promise<ServiceRecord | null> {
+    const service = this.services.get(serviceId);
+    if (!service || service.organizationId !== organizationId) return null;
+    return service;
+  }
+
+  async providerOffersService(providerId: string, serviceId: string): Promise<boolean> {
+    return this.providerServices.has(`${providerId}:${serviceId}`);
+  }
+
+  async loadAvailabilityRules(providerId: string): Promise<readonly AvailabilityRule[]> {
+    return this.availabilityRules.get(providerId) ?? [];
+  }
+
+  async loadAvailabilityOverride(providerId: string, dateStr: string): Promise<AvailabilityOverride | null> {
+    return this.availabilityOverrides.get(`${providerId}:${dateStr}`) ?? null;
+  }
+
+  async loadBusyIntervals(providerId: string, dayStartUtc: string, dayEndUtc: string, excludeAppointmentId?: string): Promise<readonly BusyInterval[]> {
+    const startMs = Date.parse(dayStartUtc);
+    const endMs = Date.parse(dayEndUtc);
+    const busy: BusyInterval[] = [];
+    for (const apt of this.appointments.values()) {
+      if (apt.providerId !== providerId) continue;
+      if (excludeAppointmentId && apt.id === excludeAppointmentId) continue;
+      if (!(["pending", "confirmed", "completed"] as const).includes(apt.status as "pending" | "confirmed" | "completed")) continue;
+      const aptStart = Date.parse(apt.startsAt);
+      const aptEnd = Date.parse(apt.endsAt);
+      if (aptStart < endMs && aptEnd > startMs) {
+        busy.push({ start: new Date(apt.startsAt), end: new Date(apt.endsAt) });
+      }
+    }
+    return busy;
+  }
+
+  async upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null): Promise<CustomerRecord> {
+    // Serializado por (organizationId, phone) — equivalente en memoria del UNIQUE
+    // real + recuperación de 23505 del origen.
+    return this.customerLock.run(`${organizationId}:${phone}`, async () => {
+      const key = `${organizationId}:${phone}`;
+      const existingId = this.customerIdByOrgPhone.get(key);
+      if (existingId) {
+        const existing = this.customers.get(existingId)!;
+        const updated: CustomerRecord = { ...existing, email: email ?? existing.email };
+        this.customers.set(existingId, updated);
+        return updated;
+      }
+      const created: CustomerRecord = { id: randomUUID(), organizationId, fullName: name, phone, email: email ?? null };
+      this.customers.set(created.id, created);
+      this.customerIdByOrgPhone.set(key, created.id);
+      return created;
+    });
+  }
+
+  async createAppointmentIdempotent(input: NewAppointmentInput, dedupeFingerprint: string, idempotencyKey: string | null): Promise<CreateAppointmentResult> {
+    return this.appointmentLock.run(`${input.organizationId}:${idempotencyKey ?? dedupeFingerprint}`, async () => {
+      if (idempotencyKey) {
+        const existingId = this.appointmentIdByIdempotencyKey.get(`${input.organizationId}:${idempotencyKey}`);
+        if (existingId) {
+          const existing = this.appointments.get(existingId)!;
+          // Misma llave, contenido DISTINTO -> conflicto real (mismo comportamiento
+          // que el sqlstate AT409/PT409 real).
+          if (existing.dedupeFingerprint !== dedupeFingerprint) {
+            return { outcome: "conflict_idempotency_reused" };
+          }
+          return { outcome: "existing", appointment: existing };
+        }
+      } else {
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+        const existing = [...this.appointments.values()].find(
+          (a) => a.organizationId === input.organizationId && a.dedupeFingerprint === dedupeFingerprint && (a.status === "pending" || a.status === "confirmed") && Date.parse(a.createdAt) >= fiveMinutesAgo,
+        );
+        if (existing) return { outcome: "existing", appointment: existing };
+      }
+
+      // EXCLUDE USING gist real: ningún proveedor puede tener dos citas activas que
+      // se traslapen en el tiempo — capa 1 de anti-doble-reserva (ver diseño §0.7).
+      const newStart = Date.parse(input.startsAt);
+      const newEnd = Date.parse(input.endsAt);
+      const conflict = [...this.appointments.values()].some(
+        (a) => a.providerId === input.providerId && (["pending", "confirmed", "completed"] as const).includes(a.status as "pending" | "confirmed" | "completed") && overlapsRange(Date.parse(a.startsAt), Date.parse(a.endsAt), newStart, newEnd),
+      );
+      if (conflict) return { outcome: "conflict_slot_taken" };
+
+      const created: AppointmentRecord = {
+        id: randomUUID(),
+        organizationId: input.organizationId,
+        propertyId: input.propertyId,
+        providerId: input.providerId,
+        serviceId: input.serviceId,
+        customerId: input.customerId,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        status: input.status,
+        source: input.source,
+        notes: input.notes,
+        dedupeFingerprint,
+        idempotencyKey,
+        reminder24hSentAt: null,
+        createdAt: new Date().toISOString(),
+      };
+      this.appointments.set(created.id, created);
+      if (idempotencyKey) this.appointmentIdByIdempotencyKey.set(`${input.organizationId}:${idempotencyKey}`, created.id);
+      return { outcome: "created", appointment: created };
+    });
+  }
+
+  async findAppointmentForOrganization(organizationId: string, appointmentId: string): Promise<AppointmentRecord | null> {
+    const appointment = this.appointments.get(appointmentId);
+    if (!appointment || appointment.organizationId !== organizationId) return null;
+    return appointment;
+  }
+
+  private cancelInternal(organizationId: string, appointmentId: string): CancelResult {
+    const appointment = this.appointments.get(appointmentId);
+    if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+
+    if (appointment.status === "cancelled") return { outcome: "already_cancelled", appointment };
+    if (appointment.status === "completed" || appointment.status === "no_show") {
+      return { outcome: "conflict_invalid_status", status: appointment.status };
+    }
+
+    const updated: AppointmentRecord = { ...appointment, status: "cancelled" };
+    this.appointments.set(appointmentId, updated);
+    return { outcome: "cancelled", appointment: updated };
+  }
+
+  async cancelAppointmentIdempotent(organizationId: string, appointmentId: string): Promise<CancelResult> {
+    return this.appointmentLock.run(`cancel:${organizationId}:${appointmentId}`, async () => this.cancelInternal(organizationId, appointmentId));
+  }
+
+  async cancelAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<CancelResult> {
+    return this.appointmentLock.run(`cancel:${organizationId}:${appointmentId}`, async () => this.cancelInternal(organizationId, appointmentId));
+  }
+
+  async rescheduleAppointmentIdempotent(organizationId: string, appointmentId: string, newStartsAt: string, newEndsAt: string, actorChannel: AppointmentActorChannel, _actorNote: string | null): Promise<RescheduleResult> {
+    return this.appointmentLock.run(`reschedule:${organizationId}:${appointmentId}`, async () => {
+      void actorChannel;
+      const appointment = this.appointments.get(appointmentId);
+      if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+      if (appointment.status !== "pending" && appointment.status !== "confirmed") {
+        return { outcome: "conflict_invalid_status", status: appointment.status };
+      }
+
+      // Reintento del mismo intento (mismo horario destino ya vigente): no-op
+      // idempotente real.
+      if (appointment.startsAt === newStartsAt && appointment.endsAt === newEndsAt) {
+        return { outcome: "noop_same_slot", appointment };
+      }
+
+      const newStart = Date.parse(newStartsAt);
+      const newEnd = Date.parse(newEndsAt);
+      const conflict = [...this.appointments.values()].some(
+        (a) =>
+          a.id !== appointmentId &&
+          a.providerId === appointment.providerId &&
+          (["pending", "confirmed", "completed"] as const).includes(a.status as "pending" | "confirmed" | "completed") &&
+          overlapsRange(Date.parse(a.startsAt), Date.parse(a.endsAt), newStart, newEnd),
+      );
+      if (conflict) return { outcome: "conflict_slot_taken" };
+
+      const updated: AppointmentRecord = { ...appointment, startsAt: newStartsAt, endsAt: newEndsAt, reminder24hSentAt: null };
+      this.appointments.set(appointmentId, updated);
+      return { outcome: "rescheduled", appointment: updated };
+    });
+  }
+
+  async listActiveOrganizations(): Promise<readonly { id: string; timezone: string }[]> {
+    return [...this.organizations.values()].filter((o) => o.isActive).map((o) => ({ id: o.id, timezone: o.defaultTimezone }));
+  }
+
+  async loadAppointmentsPendingReminder(organizationId: string, windowStartIso: string, windowEndIso: string): Promise<readonly ReminderCandidateRow[]> {
+    const startMs = Date.parse(windowStartIso);
+    const endMs = Date.parse(windowEndIso);
+    const rows: ReminderCandidateRow[] = [];
+    for (const apt of this.appointments.values()) {
+      if (apt.organizationId !== organizationId) continue;
+      if (apt.status !== "pending" && apt.status !== "confirmed") continue;
+      if (apt.reminder24hSentAt) continue;
+      const startsMs = Date.parse(apt.startsAt);
+      if (startsMs < startMs || startsMs > endMs) continue;
+      const customer = this.customers.get(apt.customerId);
+      rows.push({ appointmentId: apt.id, providerId: apt.providerId, startsAt: apt.startsAt, customerName: customer?.fullName ?? null, customerPhone: customer?.phone ?? "" });
+    }
+    return rows;
+  }
+
+  async markReminderSent(appointmentId: string, sentAtIso: string): Promise<void> {
+    const appointment = this.appointments.get(appointmentId);
+    if (!appointment) return;
+    this.appointments.set(appointmentId, { ...appointment, reminder24hSentAt: sentAtIso });
+  }
+
+  async resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null> {
+    return this.whatsappPhoneNumberIdByOrg.get(organizationId) ?? null;
+  }
+
+  async enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    if (this.outbox.some((o) => o.organizationId === organizationId && o.channel === channel && o.dedupeKey === dedupeKey)) return;
+    this.outbox.push({ organizationId, channel, eventType, dedupeKey, payload });
+  }
+
+  async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {
+    const now = Date.now();
+    return [...this.waitlist.values()]
+      .filter((row) => row.organizationId === organizationId && row.status === "active" && Date.parse(row.expiresAt) > now && row.notifiedCount < 3)
+      .map((row) => ({
+        id: row.id,
+        customerPhone: row.customerPhone,
+        customerName: row.customerName,
+        notifiedCount: row.notifiedCount,
+        providerId: row.providerId,
+        serviceId: row.serviceId,
+        preferredDateFrom: row.preferredDateFrom,
+        preferredDateTo: row.preferredDateTo,
+        preferredTimeWindow: row.preferredTimeWindow,
+        createdAt: row.createdAt,
+      }));
+  }
+
+  async claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean> {
+    const row = this.waitlist.get(waitlistId);
+    if (!row || row.status !== "active" || row.notifiedCount >= maxNotifications) return false;
+    row.notifiedCount += 1;
+    return true;
+  }
+
+  async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
+    const key = `${scope}:${actorHash}`;
+    const now = Date.now();
+    const existing = this.rateLimits.get(key);
+    if (!existing || now - existing.windowStartedAt >= windowSeconds * 1000) {
+      this.rateLimits.set(key, { windowStartedAt: now, requestCount: 1 });
+      return 1 <= maxRequests;
+    }
+    existing.requestCount += 1;
+    return existing.requestCount <= maxRequests;
+  }
+}

@@ -46,7 +46,7 @@ async function issueSession(deps: AppDeps, staffId: string, email: string) {
     {
       sub: staffId,
       org_id: first?.organizationId ?? "",
-      vertical: (first?.vertical as "hoteles" | "restaurantes" | "rentas" | "licitaciones" | "citas") ?? "restaurantes",
+      vertical: (first?.vertical as "hoteles" | "restaurantes" | "rentas" | "licitaciones" | "citas" | "despachos") ?? "restaurantes",
       property_ids: first?.propertyIds ? [...first.propertyIds] : null,
       email,
     },
@@ -122,7 +122,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       {
         sub: c.get("userId"),
         org_id: membership.organizationId,
-        vertical: membership.vertical as "hoteles" | "restaurantes" | "rentas" | "licitaciones" | "citas",
+        vertical: membership.vertical as "hoteles" | "restaurantes" | "rentas" | "licitaciones" | "citas" | "despachos",
         property_ids: membership.propertyIds ? [...membership.propertyIds] : null,
         email: c.get("userEmail"),
       },

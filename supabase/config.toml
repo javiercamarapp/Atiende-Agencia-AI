@@ -1,0 +1,47 @@
+# Config de Supabase CLI para desarrollo local del proyecto consolidado "atiende".
+#
+# `project_id` es un PLACEHOLDER — Javier debe reemplazarlo por el ref real (o el
+# nombre de proyecto que elija) al crear el proyecto en supabase.com y correr
+# `supabase link --project-ref <ref>`. Ver docs/DEPLOY.md paso 1-2.
+#
+# `schemas`/`extra_search_path` — actualizado respecto al intento anterior
+# (feat/fusion-deploy-config, que solo conocía `core`): con restaurantes-fase1 y
+# hoteles-fase1 ya mergeados a main, las migraciones reales de
+# packages/domain-restaurantes/migrations/ y packages/domain-hoteles/migrations/
+# crean los schemas `restaurantes`/`hoteles` (`create schema if not exists ...`,
+# verificado con grep sobre esos .sql, no adivinado). Ninguno de los tres está
+# consolidado todavía en supabase/migrations/ — ver docs/DEPLOY.md "Paso 0" para el
+# detalle exacto de qué falta copiar y en qué orden antes de que `supabase db push`
+# produzca un esquema completo.
+#
+# Este archivo cubre SOLO lo mínimo para `supabase start` (Postgres local) y
+# `supabase db push`/`db diff` contra el proyecto remoto una vez enlazado. No se
+# agregaron secciones (storage, edge functions, etc.) que el código de este
+# monorepo todavía no usa.
+
+project_id = "atiende-fusion-PENDIENTE-DE-REEMPLAZAR"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "core", "restaurantes", "hoteles"]
+extra_search_path = ["public", "core", "restaurantes", "hoteles"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+enable_signup = true
+
+[inbucket]
+enabled = false
