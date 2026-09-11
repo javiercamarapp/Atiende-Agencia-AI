@@ -1,0 +1,34 @@
+{
+  "name": "atiende",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "packages/mcp-servers/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.config.ts tests/integration --pool=forks --poolOptions.forks.singleFork",
+    "test:adversarial": "vitest run --config vitest.config.ts tests/adversarial --pool=forks --poolOptions.forks.singleFork",
+    "db:migrate": "node packages/db/src/cli.ts migrate",
+    "db:seed": "node packages/db/src/cli.ts seed",
+    "audit:deps": "npm audit --audit-level=high"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.36.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vitest": "^3.2.4"
+  }
+}
