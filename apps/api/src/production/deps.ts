@@ -1,8 +1,8 @@
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para por qué
 // `restaurantesRepo`/`hotelesRepo`/`turnHandler`/`hotelesPaymentsPort`/`citasRepo`/
-// `licitacionesRepo`/`despachosRepo`/`despachosAuditSink` NO son adaptadores de Postgres
-// todavía (gap de arquitectura real, documentado, no un
+// `licitacionesRepo`/`despachosRepo`/`despachosAuditSink`/`rentasRepo` NO son adaptadores
+// de Postgres todavía (gap de arquitectura real, documentado, no un
 // stub-por-pereza) mientras `coreRepo`/`engine` sí lo son (login end-to-end contra
 // Supabase real en cuanto `DATABASE_URL` apunte al proyecto consolidado).
 import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
@@ -11,6 +11,7 @@ import type { CitasRepository } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { AuditSink } from "@atiende/core-authz";
+import type { RentasRepository } from "@atiende/domain-rentas";
 import { openManagedPostgres } from "@atiende/db";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
@@ -55,6 +56,7 @@ export function buildProductionDeps(): AppDeps {
     licitacionesRepo: notProductionReady<LicitacionesRepository>("licitacionesRepo"),
     despachosRepo: notProductionReady<DespachosRepository>("despachosRepo"),
     despachosAuditSink: notProductionReady<AuditSink>("despachosAuditSink"),
+    rentasRepo: notProductionReady<RentasRepository>("rentasRepo"),
   };
   return cached;
 }

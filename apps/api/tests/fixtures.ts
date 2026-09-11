@@ -6,6 +6,7 @@ import { InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
+import { InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -77,6 +78,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
+    rentasRepo: new InMemoryRentasRepository(),
   };
 
   return { deps, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

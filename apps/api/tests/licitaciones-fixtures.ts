@@ -13,6 +13,7 @@ import type { LicitacionesRole } from "@atiende/domain-licitaciones";
 import { InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
+import { InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -83,6 +84,7 @@ export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options
     citasRepo: new InMemoryCitasRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
+    rentasRepo: new InMemoryRentasRepository(),
   };
 
   const app = buildApp(deps);

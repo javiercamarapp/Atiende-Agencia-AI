@@ -20,4 +20,8 @@ export const Errors = {
     new ApiError(422, "impuesto_no_coincide", `El impuesto calculado server-side (${calculado}) no coincide con el recibido (${recibido}).`),
   // ---- licitaciones (checklist/propuesta económica, ver diseño Fase 1 §4.1/§4.2) ----
   submissionDeadlineUnknown: (message: string) => new ApiError(422, "submission_deadline_unknown", message),
+  // ---- rentas (calendario/reservas, ver diseño Fase 1 rentas §4, Flujo 1) ----
+  rentasUnidadNoDisponible: (conflictoId: string) =>
+    new ApiError(409, "unidad_no_disponible", `La unidad no está disponible para el rango solicitado (conflicto registrado: ${conflictoId}).`),
+  rentasReservaNoDirecta: () => new ApiError(409, "reserva_no_directa", "Esta reserva proviene de un canal externo: nunca se modifica/cancela desde aquí, solo reservas directas."),
 };
