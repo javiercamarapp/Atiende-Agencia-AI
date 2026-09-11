@@ -11,7 +11,8 @@
   "rewrites": [
     { "source": "/health", "destination": "/api" },
     { "source": "/auth/:path*", "destination": "/api" },
-    { "source": "/v1/restaurantes/:path*", "destination": "/api" },
+    { "source": "/v1/:path*", "destination": "/api" },
+    { "source": "/internal/:path*", "destination": "/api" },
     { "source": "/hoteles/:path*", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

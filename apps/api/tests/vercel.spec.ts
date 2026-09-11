@@ -10,6 +10,7 @@ const REQUIRED_ENV = {
   VOICE_TOOL_SECRET: "test-voice-tool-secret",
   WHATSAPP_VERIFY_TOKEN: "test-verify-token",
   WHATSAPP_APP_SECRET: "test-whatsapp-app-secret",
+  INTERNAL_SECRET: "test-internal-secret",
   // Cadena sintácticamente válida pero que nunca se disca de verdad en este test —
   // ver comentario de arriba.
   DATABASE_URL: "postgres://user:pass@localhost:5432/postgres",
