@@ -30,6 +30,8 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     status: "active",
     phone: "+529991234567",
     address: "Calle 1 #100, Mérida",
+    lat: 21.0186,
+    lng: -89.6708,
   });
 
   const catTacos = randomUUID();
