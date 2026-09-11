@@ -26,6 +26,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import type { LlmCompletionRequest, LlmCompletionResult, LlmProvider } from '../types.js';
+import { fromOpenAiWireToolCalls, toOpenAiWireMessages, toOpenAiWireTools, type OpenAiWireToolCall } from './openai-wire.js';
 
 export interface OpenRouterProviderOptions {
   apiKey: string;
@@ -42,7 +43,7 @@ export interface OpenRouterProviderOptions {
 
 interface OpenRouterChatResponse {
   model?: string;
-  choices?: { message?: { content?: string | null } }[];
+  choices?: { message?: { content?: string | null; tool_calls?: OpenAiWireToolCall[] } }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
 }
 
@@ -70,11 +71,12 @@ export class OpenRouterProvider implements LlmProvider {
       },
       body: JSON.stringify({
         model: this.opts.model,
-        messages: [{ role: 'system', content: request.system }, ...request.messages.filter((m) => m.role !== 'system')],
+        messages: toOpenAiWireMessages(request.system, request.messages),
         max_tokens: request.maxOutputTokens ?? 500,
         temperature: request.temperature ?? 0.4,
         provider: { data_collection: 'deny' },
         usage: { include: true },
+        ...(toOpenAiWireTools(request.tools) ? { tools: toOpenAiWireTools(request.tools) } : {}),
       }),
     });
 
@@ -88,8 +90,13 @@ export class OpenRouterProvider implements LlmProvider {
     const data = (await res.json()) as OpenRouterChatResponse;
     const tokensIn = data.usage?.prompt_tokens ?? 0;
     const tokensOut = data.usage?.completion_tokens ?? 0;
+    const message = data.choices?.[0]?.message;
     return {
-      text: (data.choices?.[0]?.message?.content ?? '').trim(),
+      // Puede venir vacío cuando la respuesta es SOLO tool_calls — ver nota en
+      // types.ts::LlmCompletionResult.text, mismo contrato real que ya asumía
+      // whatsapp-agent-core.ts del origen.
+      text: (message?.content ?? '').trim(),
+      toolCalls: fromOpenAiWireToolCalls(message?.tool_calls),
       model: data.model ?? this.opts.model,
       tokensIn,
       tokensOut,
