@@ -65,6 +65,15 @@ export interface DatosCfdiDespachos extends DatosCfdi {
   readonly tipoRelacion?: string;
   readonly nomina?: NominaCfdi | null;
   readonly emisorNombre?: string;
+  /** Tasa de IVA de la factura (0.16 / 0.08 / 0 / etc.) — override explícito para el
+   * registro DIOT. Si se omite, se DERIVA de `iva / subtotal` cuando ambos son
+   * conocidos (ver Fase 2 §3.1: la agregación DIOT real necesita esta tasa porque
+   * decide `tipoOperacion` del renglón agregado — sin ella no se puede agregar). */
+  readonly tasaIva?: number | null;
+  /** Moneda del CFDI — default "MXN" (Fase 2 §3.1: dato que `agregarDiot` necesita). */
+  readonly moneda?: string;
+  /** Tipo de cambio a MXN — default 1 (Fase 2 §3.1). */
+  readonly tipoCambio?: number;
 }
 
 export interface ProveedorReportableDiot {
@@ -73,6 +82,21 @@ export interface ProveedorReportableDiot {
   readonly totalOperacion: string;
   readonly ivaAcreditable: string;
   readonly periodo: string;
+  // ---- Campos añadidos en Fase 2 (aditivo — ver diseño §3.1) ----
+  // Sin estos, `agregarDiot()` (declaraciones/diot-aggregate.ts) no puede agrupar: la
+  // Fase 1 solo emitía lo que su propio golden-set validaba (issues/warnings/reportable/
+  // proveedoresReportables básicos), no lo que la agregación DIOT real necesita por
+  // factura. Opcionales para no romper ningún consumidor existente de Fase 1 —
+  // `validarCfdiDespachos()` ya los rellena siempre que hay datos suficientes (ver
+  // abajo), así que en la práctica están presentes para todo invoice tipo "I".
+  /** Tasa de IVA de la factura — decide `tipoOperacion` en la agregación DIOT. */
+  readonly tasaIva?: number | null;
+  /** Moneda del CFDI (default "MXN" si no se especificó en `datos`). */
+  readonly moneda?: string;
+  /** Tipo de cambio a MXN (default 1 si no se especificó en `datos`). */
+  readonly tipoCambio?: number;
+  /** Fecha de emisión completa (ISO), a diferencia de `periodo` (truncado a "YYYY-MM"). */
+  readonly fecha?: string | null;
 }
 
 export interface DiotResult {
@@ -233,12 +257,19 @@ export function validarCfdiDespachos(datos: DatosCfdiDespachos): ResultadoValida
   let diotReportable = false;
   if (datos.tipo === "I" && datos.subtotal > 0) {
     diotReportable = true;
+    // tasaIva: override explícito si vino en `datos`, si no se DERIVA de iva/subtotal
+    // (ver Fase 2 §3.1) — sin esto `agregarDiot()` no puede decidir tipoOperacion.
+    const tasaIvaEfectiva = datos.tasaIva ?? (iva != null && datos.subtotal > 0 ? r2(iva / datos.subtotal) : null);
     proveedoresReportables.push({
       rfcProveedor: datos.rfcEmisor ?? "",
       nombreProveedor: datos.emisorNombre ?? "",
       totalOperacion: money(datos.total || datos.subtotal),
       ivaAcreditable: iva ? money(iva) : "0",
       periodo: fEmi !== null ? isoFromUtc(fEmi).slice(0, 7) : "",
+      tasaIva: tasaIvaEfectiva,
+      moneda: datos.moneda ?? "MXN",
+      tipoCambio: datos.tipoCambio ?? 1,
+      fecha: datos.fecha ?? null,
     });
     if (iva && iva > 0) {
       referenceNotes.push("Proveedor reportable en DIOT (art. 32 LISR, art. 31 LIVA). Requiere revisión humana antes de presentar.");
