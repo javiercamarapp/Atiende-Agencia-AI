@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
+import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
+import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -68,6 +70,8 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     turnHandler: acknowledgeOnlyTurnHandler(restaurantesRepo),
     hotelesRepo: new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
+    despachosRepo: new InMemoryDespachosRepository(),
+    despachosAuditSink: new InMemoryAuditSink(),
   };
 
   return { deps, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

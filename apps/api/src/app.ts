@@ -10,6 +10,7 @@ import { authRoutes } from "./routes/auth.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
 import { restaurantesWhatsAppRoutes } from "./routes/verticals/restaurantes/whatsapp.ts";
 import { hotelesRoutes } from "./routes/verticals/hoteles/hoteles.ts";
+import { despachosRoutes } from "./routes/verticals/despachos/despachos.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -28,6 +29,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", restaurantesPublicRoutes(deps));
   app.route("/", restaurantesWhatsAppRoutes(deps));
   app.route("/", hotelesRoutes(deps));
+  app.route("/", despachosRoutes(deps));
 
   return app;
 }

@@ -1,7 +1,9 @@
 import type { CoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
+import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
+import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { ApiEnv } from "./env.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
@@ -23,4 +25,10 @@ export interface AppDeps {
   readonly turnHandler: WhatsAppTurnHandler;
   readonly hotelesRepo: HotelesRepository;
   readonly hotelesPaymentsPort: PaymentsPort;
+  readonly despachosRepo: DespachosRepository;
+  /** Auditoría de decisiones de la cola de revisión humana (aprobar/rechazar un CFDI)
+   * — reutiliza `@atiende/core-authz::AuditSink` en vez de una tabla propia de
+   * despachos (ver diseño Fase 1 despachos §3, tabla de mapeo: "lo compartido vive
+   * en core, no se repite por vertical"). */
+  readonly despachosAuditSink: AuditSink;
 }
