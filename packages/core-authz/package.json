@@ -10,5 +10,10 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@atiende/core-auth": "*",
+    "@atiende/core-tenancy": "*",
+    "hono": "4.13.7"
   }
 }
