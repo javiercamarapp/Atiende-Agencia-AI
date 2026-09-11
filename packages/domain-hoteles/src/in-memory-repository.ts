@@ -7,16 +7,21 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
 import type {
+  ConversationMessage,
+  ContactoNoOperativoRecord,
   FnbOrderRecord,
   FolioRecord,
   GuestIdentity,
   NewChargeInput,
+  NewContactoNoOperativoInput,
   NewFnbOrderInput,
   NewPaymentInput,
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
   TaxConfigRecord,
+  VoiceAgentConfig,
+  WhatsAppPropertyRoute,
 } from "./types.ts";
 import { IdempotencyConflictError } from "./errors.ts";
 
@@ -73,6 +78,23 @@ interface StoredStaffMember {
   isAdmin: boolean;
 }
 
+interface StoredWhatsAppEvent {
+  status: "processing" | "processed" | "failed";
+  attempts: number;
+  claimedAt: number;
+}
+
+interface StoredLease {
+  ownerMessageId: string;
+  lockedUntil: number;
+}
+
+interface StoredConversation {
+  messages: ConversationMessage[];
+  status: "active" | "completed" | "abandoned";
+  fnbOrderId: string | null;
+}
+
 function hashBody(body: unknown): string {
   return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
 }
@@ -89,9 +111,32 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly nightlyRates = new Map<string, NightlyRateRecord[]>(); // key: propertyId:roomTypeId
   private readonly idempotencyKeys = new Map<string, StoredIdempotencyRow>(); // key: organizationId:scope:key
 
+  // ---- Fase 2 — voz/WhatsApp (§1-§3) ----
+  private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
+  private readonly voiceAgentConfigs = new Map<string, VoiceAgentConfig>(); // key: propertyId
+  private readonly phoneNumberIdToProperty = new Map<string, WhatsAppPropertyRoute>();
+  private readonly whatsappEvents = new Map<string, StoredWhatsAppEvent>();
+  private readonly whatsappLeases = new Map<string, StoredLease>();
+  private readonly whatsappConversations = new Map<string, StoredConversation>(); // key: propertyId:phone
+  private readonly contactosNoOperativos = new Map<string, ContactoNoOperativoRecord>();
+
   private readonly idempotencyLock = new KeyedMutex();
+  private readonly whatsappLock = new KeyedMutex();
 
   // ---- seeding (equivalente a INSERT manual contra las migraciones SQL) ----
+
+  /** Equivalente en memoria de `insert into hoteles.whatsapp_channel_config(...)`
+   *  — asocia el `phone_number_id` real de Meta Cloud API con la property
+   *  dueña del canal (diseño §2.1/§2.2: en hoteles, 1 número = 1 property, sin
+   *  necesidad de resolver sucursal como en restaurantes). */
+  seedWhatsAppChannel(propertyId: string, organizationId: string, phoneNumberId: string): void {
+    this.phoneNumberIdToProperty.set(phoneNumberId, { propertyId, organizationId });
+  }
+
+  /** Equivalente en memoria de `insert into hoteles.voice_agent_config(...)`. */
+  seedVoiceAgentConfig(config: VoiceAgentConfig): void {
+    this.voiceAgentConfigs.set(config.propertyId, config);
+  }
 
   seedFolio(folio: StoredFolio): void {
     this.folios.set(folio.id, folio);
@@ -363,5 +408,121 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       this.idempotencyKeys.set(key, { requestHash, response: result });
       return result;
     });
+  }
+
+  // ---- HotelesRepository: Fase 2 — voz/WhatsApp (§1-§3) ----
+
+  async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
+    const key = `${scope}:${actorHash}`;
+    const now = Date.now();
+    const existing = this.rateLimits.get(key);
+    if (!existing || now - existing.windowStartedAt >= windowSeconds * 1000) {
+      this.rateLimits.set(key, { windowStartedAt: now, requestCount: 1 });
+      return 1 <= maxRequests;
+    }
+    existing.requestCount += 1;
+    return existing.requestCount <= maxRequests;
+  }
+
+  async findVoiceAgentConfig(propertyId: string): Promise<VoiceAgentConfig | null> {
+    return this.voiceAgentConfigs.get(propertyId) ?? null;
+  }
+
+  async upsertVoiceAgentConfig(propertyId: string, organizationId: string, toolWebhookSecret: string, enabled: boolean): Promise<void> {
+    this.voiceAgentConfigs.set(propertyId, { propertyId, organizationId, toolWebhookSecret, enabled });
+  }
+
+  async resolvePropertyByPhoneNumberId(phoneNumberId: string): Promise<WhatsAppPropertyRoute | null> {
+    return this.phoneNumberIdToProperty.get(phoneNumberId) ?? null;
+  }
+
+  async claimWhatsAppMessage(propertyId: string, messageId: string, phoneHash: string): Promise<boolean> {
+    void propertyId;
+    return this.whatsappLock.run(`event:${messageId}`, async () => {
+      const existing = this.whatsappEvents.get(messageId);
+      const now = Date.now();
+      if (!existing) {
+        this.whatsappEvents.set(messageId, { status: "processing", attempts: 1, claimedAt: now });
+        return true;
+      }
+      // Mismo criterio que restaurantes: se puede reclamar de nuevo un evento
+      // fallido, o uno "processing" cuyo lease de proceso quedó huérfano (>5 min).
+      const staleProcessing = existing.status === "processing" && now - existing.claimedAt > 5 * 60 * 1000;
+      if (existing.status === "failed" || staleProcessing) {
+        existing.status = "processing";
+        existing.attempts += 1;
+        existing.claimedAt = now;
+        return true;
+      }
+      void phoneHash;
+      return false;
+    });
+  }
+
+  async claimWhatsAppConversation(propertyId: string, phoneHash: string, messageId: string, leaseSeconds: number): Promise<boolean> {
+    const key = `${propertyId}:${phoneHash}`;
+    return this.whatsappLock.run(`lease:${key}`, async () => {
+      const now = Date.now();
+      const existing = this.whatsappLeases.get(key);
+      if (existing && existing.lockedUntil >= now) return false;
+      this.whatsappLeases.set(key, { ownerMessageId: messageId, lockedUntil: now + leaseSeconds * 1000 });
+      return true;
+    });
+  }
+
+  async appendWhatsAppUserMessageOnce(propertyId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]> {
+    return this.whatsappAppendTurn(propertyId, phone, [message], null, null);
+  }
+
+  async whatsappAppendTurn(
+    propertyId: string,
+    phone: string,
+    newMessages: readonly ConversationMessage[],
+    status: "active" | "completed" | "abandoned" | null,
+    fnbOrderId: string | null,
+  ): Promise<readonly ConversationMessage[]> {
+    const key = `${propertyId}:${phone}`;
+    return this.whatsappLock.run(`conv:${key}`, async () => {
+      const existing = this.whatsappConversations.get(key) ?? { messages: [], status: "active" as const, fnbOrderId: null };
+      const updated: StoredConversation = {
+        messages: [...existing.messages, ...newMessages],
+        status: status ?? existing.status,
+        fnbOrderId: fnbOrderId ?? existing.fnbOrderId,
+      };
+      this.whatsappConversations.set(key, updated);
+      return updated.messages;
+    });
+  }
+
+  async finishWhatsAppMessage(propertyId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void> {
+    void errorClass;
+    const event = this.whatsappEvents.get(messageId);
+    if (event) event.status = status;
+    const leaseKey = `${propertyId}:${phoneHash}`;
+    const lease = this.whatsappLeases.get(leaseKey);
+    if (lease && lease.ownerMessageId === messageId) this.whatsappLeases.delete(leaseKey);
+  }
+
+  async markInboundEventFailed(propertyId: string, messageId: string, errorClass: string): Promise<void> {
+    void propertyId;
+    void errorClass;
+    const event = this.whatsappEvents.get(messageId);
+    if (event) event.status = "failed";
+  }
+
+  async insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord> {
+    const record: ContactoNoOperativoRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      guestPhone: input.guestPhone,
+      guestName: input.guestName,
+      reason: input.reason,
+      message: input.message,
+      source: input.source,
+      createdAt: new Date().toISOString(),
+    };
+    this.contactosNoOperativos.set(record.id, record);
+    return record;
   }
 }

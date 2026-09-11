@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
-import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
+import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { LicitacionesRole } from "@atiende/domain-licitaciones";
 import { InMemoryCitasRepository } from "@atiende/domain-citas";
@@ -80,6 +80,7 @@ export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
     hotelesRepo: new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
+    hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
     licitacionesRepo: repo,
     citasRepo: new InMemoryCitasRepository(),
     despachosRepo: new InMemoryDespachosRepository(),

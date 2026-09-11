@@ -8,17 +8,22 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { IdempotencyConflictError } from "./errors.ts";
 import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
 import type {
+  ConversationMessage,
+  ContactoNoOperativoRecord,
   FnbOrderItem,
   FnbOrderRecord,
   FolioRecord,
   GuestIdentity,
   NewChargeInput,
+  NewContactoNoOperativoInput,
   NewFnbOrderInput,
   NewPaymentInput,
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
   TaxConfigRecord,
+  VoiceAgentConfig,
+  WhatsAppPropertyRoute,
 } from "./types.ts";
 
 // Ventana de protección contra reintento de un Idempotency-Key — mismo criterio que
@@ -442,5 +447,143 @@ export class PostgresHotelesRepository implements HotelesRepository {
     ]);
 
     return result;
+  }
+
+  // ---- HotelesRepository: Fase 2 — voz/WhatsApp (§1-§3) ----
+
+  async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
+    const { rows } = await this.db.query<{ consume_api_rate_limit: boolean }>(
+      `select hoteles.consume_api_rate_limit($1, $2, $3, $4) as consume_api_rate_limit;`,
+      [scope, actorHash, maxRequests, windowSeconds],
+    );
+    return rows[0]?.consume_api_rate_limit === true;
+  }
+
+  async findVoiceAgentConfig(propertyId: string): Promise<VoiceAgentConfig | null> {
+    const { rows } = await this.db.query<{ property_id: string; organization_id: string; tool_webhook_secret: string; enabled: boolean }>(
+      `select property_id, organization_id, tool_webhook_secret, enabled from hoteles.voice_agent_config where property_id = $1;`,
+      [propertyId],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { propertyId: row.property_id, organizationId: row.organization_id, toolWebhookSecret: row.tool_webhook_secret, enabled: row.enabled };
+  }
+
+  async upsertVoiceAgentConfig(propertyId: string, organizationId: string, toolWebhookSecret: string, enabled: boolean): Promise<void> {
+    await this.db.query(
+      `insert into hoteles.voice_agent_config (property_id, organization_id, tool_webhook_secret, enabled)
+       values ($1, $2, $3, $4)
+       on conflict (property_id) do update
+         set tool_webhook_secret = excluded.tool_webhook_secret, enabled = excluded.enabled, updated_at = now();`,
+      [propertyId, organizationId, toolWebhookSecret, enabled],
+    );
+  }
+
+  async resolvePropertyByPhoneNumberId(phoneNumberId: string): Promise<WhatsAppPropertyRoute | null> {
+    const { rows } = await this.db.query<{ property_id: string; organization_id: string }>(
+      `select property_id, organization_id from hoteles.whatsapp_channel_config where phone_number_id = $1 and enabled;`,
+      [phoneNumberId],
+    );
+    const row = rows[0];
+    return row ? { propertyId: row.property_id, organizationId: row.organization_id } : null;
+  }
+
+  async claimWhatsAppMessage(propertyId: string, messageId: string, phoneHash: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ claim_whatsapp_message: boolean }>(
+      `select hoteles.claim_whatsapp_message($1, $2, $3) as claim_whatsapp_message;`,
+      [propertyId, messageId, phoneHash],
+    );
+    return rows[0]?.claim_whatsapp_message === true;
+  }
+
+  async claimWhatsAppConversation(propertyId: string, phoneHash: string, messageId: string, leaseSeconds: number): Promise<boolean> {
+    const { rows } = await this.db.query<{ claim_whatsapp_conversation: boolean }>(
+      `select hoteles.claim_whatsapp_conversation($1, $2, $3, $4) as claim_whatsapp_conversation;`,
+      [propertyId, phoneHash, messageId, leaseSeconds],
+    );
+    return rows[0]?.claim_whatsapp_conversation === true;
+  }
+
+  async appendWhatsAppUserMessageOnce(propertyId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]> {
+    const route = await this.resolvePropertyOrganization(propertyId);
+    const { rows } = await this.db.query<{ append_whatsapp_user_message_once: ConversationMessage[] }>(
+      `select hoteles.append_whatsapp_user_message_once($1, $2, $3, $4, $5::jsonb) as append_whatsapp_user_message_once;`,
+      [propertyId, route, `msg:${phone}:${Date.now()}`, phone, JSON.stringify(message)],
+    );
+    return rows[0]?.append_whatsapp_user_message_once ?? [message];
+  }
+
+  async whatsappAppendTurn(
+    propertyId: string,
+    phone: string,
+    newMessages: readonly ConversationMessage[],
+    status: "active" | "completed" | "abandoned" | null,
+    fnbOrderId: string | null,
+  ): Promise<readonly ConversationMessage[]> {
+    const route = await this.resolvePropertyOrganization(propertyId);
+    const { rows } = await this.db.query<{ whatsapp_append_turn: ConversationMessage[] }>(
+      `select hoteles.whatsapp_append_turn($1, $2, $3, $4::jsonb, $5, $6) as whatsapp_append_turn;`,
+      [propertyId, route, phone, JSON.stringify(newMessages), status, fnbOrderId],
+    );
+    return rows[0]?.whatsapp_append_turn ?? [];
+  }
+
+  async finishWhatsAppMessage(propertyId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void> {
+    await this.db.query(`select hoteles.finish_whatsapp_message($1, $2, $3, $4, $5);`, [propertyId, messageId, phoneHash, status, errorClass]);
+  }
+
+  async markInboundEventFailed(propertyId: string, messageId: string, errorClass: string): Promise<void> {
+    await this.db.query(
+      `update hoteles.whatsapp_inbound_events set status = 'failed', last_error_class = $3
+       where message_id = $2 and property_id = $1;`,
+      [propertyId, messageId, errorClass],
+    );
+  }
+
+  async insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord> {
+    const { rows } = await this.db.query<{
+      id: string;
+      organization_id: string;
+      property_id: string;
+      guest_phone: string | null;
+      guest_name: string | null;
+      reason: string;
+      message: string | null;
+      source: ContactoNoOperativoRecord["source"];
+      created_at: string;
+    }>(
+      `insert into hoteles.contacto_no_operativo (organization_id, property_id, guest_phone, guest_name, reason, message, source)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       returning id, organization_id, property_id, guest_phone, guest_name, reason, message, source, created_at::text as created_at;`,
+      [input.organizationId, input.propertyId, input.guestPhone, input.guestName, input.reason, input.message, input.source],
+    );
+    const row = rows[0]!;
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      propertyId: row.property_id,
+      guestPhone: row.guest_phone,
+      guestName: row.guest_name,
+      reason: row.reason,
+      message: row.message,
+      source: row.source,
+      createdAt: row.created_at,
+    };
+  }
+
+  /** `whatsapp_append_turn`/`append_whatsapp_user_message_once` de hoteles
+   *  necesitan `organization_id` además de `property_id` (a diferencia de
+   *  restaurantes, que solo particiona por `organization_id`) porque
+   *  `hoteles.whatsapp_conversations.organization_id` es `not null` — la
+   *  conversación ya viene resuelta desde `resolvePropertyByPhoneNumberId` en
+   *  el webhook, así que esto solo re-lee la fila de config canónica. */
+  private async resolvePropertyOrganization(propertyId: string): Promise<string> {
+    const { rows } = await this.db.query<{ organization_id: string }>(
+      `select organization_id from core.property where id = $1;`,
+      [propertyId],
+    );
+    const organizationId = rows[0]?.organization_id;
+    if (!organizationId) throw new Error(`Property "${propertyId}" no encontrada al resolver su organización para WhatsApp.`);
+    return organizationId;
   }
 }

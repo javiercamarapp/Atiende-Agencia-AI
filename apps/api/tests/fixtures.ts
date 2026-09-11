@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
-import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
+import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
@@ -68,14 +68,16 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
   coreRepo.addOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
   coreRepo.addMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
 
+  const hotelesRepo = new InMemoryHotelesRepository();
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
     engine: new InMemoryTenancyEngine(),
     restaurantesRepo,
     turnHandler: acknowledgeOnlyTurnHandler(restaurantesRepo),
-    hotelesRepo: new InMemoryHotelesRepository(),
+    hotelesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
+    hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(hotelesRepo),
     citasRepo: new InMemoryCitasRepository(),
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),

@@ -2,7 +2,7 @@ import type { CoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CitasRepository } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
@@ -35,6 +35,10 @@ export interface AppDeps {
   readonly turnHandler: WhatsAppTurnHandler;
   readonly hotelesRepo: HotelesRepository;
   readonly hotelesPaymentsPort: PaymentsPort;
+  /** Fase 2 hoteles §2/§3 — mismo patrón que `turnHandler` de restaurantes:
+   * `acknowledgeOnlyTurnHandler` (sin LLM) o `createLlmHotelesWhatsAppTurnHandler`
+   * (LLM real, ver production/deps.ts vs. tests). */
+  readonly hotelesTurnHandler: HotelesWhatsAppTurnHandler;
   readonly citasRepo: CitasRepository;
   readonly licitacionesRepo: LicitacionesRepository;
   readonly despachosRepo: DespachosRepository;
