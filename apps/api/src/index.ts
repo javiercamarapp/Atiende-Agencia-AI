@@ -1,20 +1,22 @@
-// Entrypoint de producción — DELIBERADAMENTE no arranca un servidor HTTP todavía.
+// Entrypoint de Node.js "puro" — DELIBERADAMENTE no arranca un servidor HTTP aquí.
 //
-// `packages/db` no tiene motor de conexión real (PGlite/embedded-postgres/Postgres
-// gestionado) — ver packages/db/README.md, mismo estado ya documentado en
-// docs/REQUISITOS.md §0 antes de esta fase. Sin una conexión real no hay con qué
-// construir un `PostgresCoreRepository`/`PostgresRestaurantesRepository` de verdad en
-// producción, así que este archivo se detiene aquí en vez de fingir un servidor que
-// no podría atender tráfico real.
-//
-// Lo que SÍ es real y queda listo para cuando esa pieza exista: `buildApp(deps)`
-// (apps/api/src/app.ts) ensambla la app Hono completa con las 3 rutas críticas de
-// restaurantes + login núcleo, usando únicamente el puerto `RestaurantesRepository`/
-// `CoreRepository` — conectar un motor real es tan simple como construir
-// `new PostgresRestaurantesRepository(session)`/`new PostgresCoreRepository(session)`
-// (ambos ya existen y typechecan, ver @atiende/domain-restaurantes y @atiende/db) y
-// pasarlos aquí. Los tests de este paquete (`apps/api/tests/`) ya ejercitan
-// `buildApp` de punta a punta contra los adaptadores en memoria.
+// ACTUALIZACIÓN (feat/fusion-vercel-deploy-config): el motor de conexión real a
+// Postgres gestionado SÍ existe ahora (`packages/db/src/managed-postgres-engine.ts`,
+// `openManagedPostgres`) y el deploy real de producción usa Vercel Serverless
+// Functions, no este archivo — ver `./vercel.ts` (adaptador `hono/vercel`) y
+// `./production/deps.ts` (`buildProductionDeps()`, que sí construye un
+// `ProductionCoreRepository`/`ManagedPostgresEngine` reales para login). Este archivo
+// sigue sin arrancar nada porque:
+//   1. No es el entrypoint que Vercel invoca (ver `./vercel.ts`/`api/index.ts` en la
+//      raíz del repo) — mantenerlo como placeholder documentado evita confundir a
+//      quien busque "dónde arranca el servidor" fuera de Vercel (ej. un futuro
+//      servidor Node standalone/Docker).
+//   2. Incluso con `deps.engine`/`deps.coreRepo` reales, `deps.restaurantesRepo`/
+//      `deps.hotelesRepo` siguen sin adaptador de producción seguro — ver
+//      `./production/not-ready.ts` para el gap de arquitectura exacto (sesión
+//      por-request vs. puerto singleton) y `docs/DEPLOY.md` §0.2 para el detalle
+//      completo. No inventamos ese wiring aquí para no fingir un servidor que
+//      filtraría datos entre tenants.
 import { loadApiEnv } from "./env.ts";
 
 export { buildApp } from "./app.ts";
@@ -23,8 +25,10 @@ export type { AppDeps } from "./deps.ts";
 function main(): never {
   loadApiEnv(); // valida que las variables de entorno requeridas estén presentes.
   throw new Error(
-    "apps/api todavía no tiene un motor de conexión real a Postgres (packages/db pendiente) — " +
-      "no hay servidor que arrancar en producción todavía. Ver el comentario de este archivo.",
+    "Este entrypoint (apps/api/src/index.ts) no arranca un servidor standalone — " +
+      "el deploy real es Vercel Serverless (ver ./vercel.ts). Y aun ahí, " +
+      "restaurantesRepo/hotelesRepo siguen sin adaptador de producción (ver " +
+      "./production/not-ready.ts y docs/DEPLOY.md §0.2). Ver el comentario de este archivo.",
   );
 }
 

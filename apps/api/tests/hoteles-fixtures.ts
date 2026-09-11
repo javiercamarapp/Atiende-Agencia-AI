@@ -7,6 +7,8 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
+import { InMemoryCitasRepository } from "@atiende/domain-citas";
+import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { buildApp } from "../src/app.ts";
@@ -106,6 +108,8 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
     hotelesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
+    citasRepo: new InMemoryCitasRepository(),
+    licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
   };
