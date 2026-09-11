@@ -1,0 +1,23 @@
+// Port literal de las clases de error de
+// citas-reservaciones/supabase/functions/_shared/appointments-core.ts — mismo
+// vocabulario, para que las rutas Hono de apps/api mapeen exactamente los mismos
+// códigos HTTP que el origen (400 validación, 404 no encontrada, 409 conflicto).
+export class AppointmentValidationError extends Error {}
+export class AppointmentConflictError extends AppointmentValidationError {}
+export class AppointmentNotFoundError extends AppointmentValidationError {}
+
+/**
+ * Un conflicto de horario (fuera de disponibilidad real, o el EXCLUDE USING gist
+ * real de la base de datos rechazó el UPDATE porque alguien más tomó ese hueco
+ * primero) que además trae alternativas REALES — calculadas con el mismo motor que
+ * disponibilidad, nunca inventadas por el LLM — para que reagendar pueda decirle al
+ * cliente "ese horario ya no, pero sí estos otros" en la misma respuesta.
+ */
+export class AppointmentAlternativesError extends AppointmentConflictError {
+  constructor(
+    message: string,
+    readonly alternativeSlots: readonly { readonly startsAt: string; readonly endsAt: string }[],
+  ) {
+    super(message);
+  }
+}

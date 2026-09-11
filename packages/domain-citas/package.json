@@ -1,5 +1,5 @@
 {
-  "name": "@atiende/db",
+  "name": "@atiende/domain-citas",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,10 +11,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@atiende/core-tenancy": "*",
-    "pg": "^8.23.0"
-  },
-  "devDependencies": {
-    "@types/pg": "^8.15.5"
+    "@atiende/core-tenancy": "*"
   }
 }
