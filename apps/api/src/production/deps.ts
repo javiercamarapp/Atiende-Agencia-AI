@@ -5,7 +5,7 @@
 // de Postgres todavía (gap de arquitectura real, documentado, no un
 // stub-por-pereza) mientras `coreRepo`/`engine` sí lo son (login end-to-end contra
 // Supabase real en cuanto `DATABASE_URL` apunte al proyecto consolidado).
-import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
+import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { CitasRepository } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -52,6 +52,7 @@ export function buildProductionDeps(): AppDeps {
     turnHandler: notProductionReady<WhatsAppTurnHandler>("turnHandler"),
     hotelesRepo: notProductionReady<HotelesRepository>("hotelesRepo"),
     hotelesPaymentsPort: notProductionReady<PaymentsPort>("hotelesPaymentsPort"),
+    hotelesTurnHandler: notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler"),
     citasRepo: notProductionReady<CitasRepository>("citasRepo"),
     licitacionesRepo: notProductionReady<LicitacionesRepository>("licitacionesRepo"),
     despachosRepo: notProductionReady<DespachosRepository>("despachosRepo"),

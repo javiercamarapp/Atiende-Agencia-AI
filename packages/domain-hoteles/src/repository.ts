@@ -3,7 +3,21 @@
 // en memoria (tests determinísticos) y un adaptador real de Postgres (sobre
 // TenantDbSession, contra las migraciones de migrations/001-003). Ninguna función de
 // negocio de las rutas de apps/api toca SQL directamente — todas pasan por aquí.
-import type { FnbOrderRecord, FolioRecord, GuestIdentity, NewChargeInput, NewFnbOrderInput, NewPaymentInput, NightlyRateRecord, TaxConfigRecord } from "./types.ts";
+import type {
+  ConversationMessage,
+  ContactoNoOperativoRecord,
+  FnbOrderRecord,
+  FolioRecord,
+  GuestIdentity,
+  NewChargeInput,
+  NewContactoNoOperativoInput,
+  NewFnbOrderInput,
+  NewPaymentInput,
+  NightlyRateRecord,
+  TaxConfigRecord,
+  VoiceAgentConfig,
+  WhatsAppPropertyRoute,
+} from "./types.ts";
 
 export interface IdempotencyParams {
   readonly organizationId: string;
@@ -55,6 +69,44 @@ export interface HotelesRepository {
 
   // ---- Idempotencia (transversal a folios y F&B) ----
   withIdempotency<T>(params: IdempotencyParams, run: () => Promise<IdempotentResult<T>>): Promise<IdempotentResult<T>>;
+
+  // ---- Fase 2 — Server Tools de voz + agente de WhatsApp con LLM (§1-§3) ----
+
+  /** Rate limiting genérico por scope+actorHash — mismo contrato que
+   *  `RestaurantesRepository.consumeRateLimit` (diseño §4: portado, no
+   *  reinventado; candidato futuro a promoción a paquete compartido). */
+  consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
+
+  /** Config del secreto dedicado de voz de ESTA property (diseño §1/§5.1,
+   *  aislamiento por tenant real, no secreto compartido de plataforma).
+   *  `null` si la property nunca configuró su agente de voz. */
+  findVoiceAgentConfig(propertyId: string): Promise<VoiceAgentConfig | null>;
+  /** Crea o rota el secreto de voz de una property — único punto de escritura,
+   *  usado por el endpoint de rotación autenticado (staff ADMIN_ROLES). */
+  upsertVoiceAgentConfig(propertyId: string, organizationId: string, toolWebhookSecret: string, enabled: boolean): Promise<void>;
+
+  /** Resuelve a qué property pertenece un `phone_number_id` de Meta Cloud API
+   *  — `null` cuando el número no está configurado en la plataforma (el
+   *  caller responde ack silencioso, nunca reintento). */
+  resolvePropertyByPhoneNumberId(phoneNumberId: string): Promise<WhatsAppPropertyRoute | null>;
+  claimWhatsAppMessage(propertyId: string, messageId: string, phoneHash: string): Promise<boolean>;
+  claimWhatsAppConversation(propertyId: string, phoneHash: string, messageId: string, leaseSeconds: number): Promise<boolean>;
+  appendWhatsAppUserMessageOnce(propertyId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]>;
+  whatsappAppendTurn(
+    propertyId: string,
+    phone: string,
+    newMessages: readonly ConversationMessage[],
+    status: "active" | "completed" | "abandoned" | null,
+    fnbOrderId: string | null,
+  ): Promise<readonly ConversationMessage[]>;
+  finishWhatsAppMessage(propertyId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void>;
+  markInboundEventFailed(propertyId: string, messageId: string, errorClass: string): Promise<void>;
+
+  /** `registrar_contacto_no_operativo` (voz y WhatsApp) — mismo rol que
+   *  `registerCallbackRequest` de domain-restaurantes: deriva a un humano
+   *  cualquier mensaje que NO sea una petición operativa de F&B (diseño §2.3). */
+  insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord>;
 }
 
 export type { FolioRecord, ChargeRecord, PaymentRecord, NewChargeInput, NewPaymentInput, FnbOrderRecord, NewFnbOrderInput, NightlyRateRecord, TaxConfigRecord, GuestIdentity } from "./types.ts";
+export type { ConversationMessage, ContactoNoOperativoRecord, NewContactoNoOperativoInput, VoiceAgentConfig, WhatsAppPropertyRoute } from "./types.ts";
