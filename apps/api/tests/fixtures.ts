@@ -4,6 +4,8 @@ import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@ati
 import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
 import { InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
+import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
+import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -73,6 +75,8 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     citasRepo: new InMemoryCitasRepository(),
     licitacionesRepo: new InMemoryLicitacionesRepository(),
+    despachosRepo: new InMemoryDespachosRepository(),
+    despachosAuditSink: new InMemoryAuditSink(),
   };
 
   return { deps, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

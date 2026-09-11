@@ -11,6 +11,8 @@ import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { LicitacionesRole } from "@atiende/domain-licitaciones";
 import { InMemoryCitasRepository } from "@atiende/domain-citas";
+import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
+import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -79,6 +81,8 @@ export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     licitacionesRepo: repo,
     citasRepo: new InMemoryCitasRepository(),
+    despachosRepo: new InMemoryDespachosRepository(),
+    despachosAuditSink: new InMemoryAuditSink(),
   };
 
   const app = buildApp(deps);

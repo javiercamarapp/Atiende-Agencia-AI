@@ -5,9 +5,12 @@
 // nuevo inventado desde cero: hoteles ya tenía exactamente esta jerarquía de dos
 // niveles, solo que con nombres propios de la vertical hotelera.
 
-/** Vertical soportada en ESTA fase. "despachos" queda excluida a propósito —
- * reescritura futura al mismo stack, fuera de alcance de este monorepo por ahora. */
-export type Vertical = "hoteles" | "restaurantes" | "rentas" | "licitaciones" | "citas";
+/** Vertical soportada. "despachos" (SaaS contable/fiscal mexicano — CFDI, DIOT,
+ * vencimientos SAT) se incorpora en su propia Fase 1 (ver packages/domain-despachos/)
+ * sobre el mismo prerequisito bloqueante que ya se ejerció para hoteles/restaurantes:
+ * primero el enum aquí, luego el check de `core.organization`/`core.property` en
+ * packages/db/migrations/0001_core_schema.sql, luego recién el paquete de dominio. */
+export type Vertical = "hoteles" | "restaurantes" | "rentas" | "licitaciones" | "citas" | "despachos";
 
 export const VERTICALS: readonly Vertical[] = [
   "hoteles",
@@ -15,6 +18,7 @@ export const VERTICALS: readonly Vertical[] = [
   "rentas",
   "licitaciones",
   "citas",
+  "despachos",
 ] as const;
 
 export function isVertical(value: string): value is Vertical {
@@ -42,6 +46,11 @@ export interface Organization {
  *                    licitación/expediente cuelgan de organizationId directo. Property
  *                    sigue existiendo por consistencia de modelo, pero
  *                    domain-licitaciones puede tratarla como singleton por org.
+ *   despachos     -> MISMO CASO ESPECIAL que licitaciones: un despacho contable/fiscal
+ *                    no tiene "propiedades" físicas relevantes al dominio (a diferencia
+ *                    de hoteles/restaurantes). Fase 1 crea UNA property implícita por
+ *                    organización al alta y domain-despachos la trata como singleton
+ *                    (mismo criterio ya documentado para licitaciones, no inventado).
  */
 export interface Property {
   readonly id: string;

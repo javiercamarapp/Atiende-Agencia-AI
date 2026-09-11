@@ -22,7 +22,7 @@ create schema if not exists core;
 
 create table core.organization (
   id uuid primary key default gen_random_uuid(),
-  vertical text not null check (vertical in ('hoteles','restaurantes','rentas','licitaciones','citas')),
+  vertical text not null check (vertical in ('hoteles','restaurantes','rentas','licitaciones','citas','despachos')),
   name text not null,
   -- Identificador público estable para rutas de checkout/webhook sin autenticar
   -- (ej. POST /v1/restaurantes/:orgSlug/orders) — no estaba en el contrato TS
@@ -42,7 +42,7 @@ create table core.property (
   -- Desnormalizado de organization.vertical, evita join en cada RLS check (ver
   -- comentario en core-tenancy/src/types.ts). Se mantiene en sync con un trigger,
   -- nunca se escribe directo desde domain-<vertical>.
-  vertical text not null check (vertical in ('hoteles','restaurantes','rentas','licitaciones','citas')),
+  vertical text not null check (vertical in ('hoteles','restaurantes','rentas','licitaciones','citas','despachos')),
   name text not null,
   status text not null default 'active' check (status in ('active','inactive'))
 );

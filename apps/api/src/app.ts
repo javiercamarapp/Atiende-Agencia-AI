@@ -12,6 +12,7 @@ import { restaurantesWhatsAppRoutes } from "./routes/verticals/restaurantes/what
 import { hotelesRoutes } from "./routes/verticals/hoteles/hoteles.ts";
 import { citasRoutes } from "./routes/verticals/citas/citas.ts";
 import { licitacionesRoutes } from "./routes/verticals/licitaciones/licitaciones.ts";
+import { despachosRoutes } from "./routes/verticals/despachos/despachos.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -32,6 +33,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", hotelesRoutes(deps));
   app.route("/", citasRoutes(deps));
   app.route("/", licitacionesRoutes(deps));
+  app.route("/", despachosRoutes(deps));
 
   return app;
 }

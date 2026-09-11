@@ -9,12 +9,14 @@
   },
   "dependencies": {
     "@atiende/core-auth": "*",
+    "@atiende/core-authz": "*",
     "@atiende/core-tenancy": "*",
     "@atiende/db": "*",
     "@atiende/domain-restaurantes": "*",
     "@atiende/domain-hoteles": "*",
     "@atiende/domain-citas": "*",
     "@atiende/domain-licitaciones": "*",
+    "@atiende/domain-despachos": "*",
     "hono": "4.13.7",
     "jose": "6.2.12"
   }
