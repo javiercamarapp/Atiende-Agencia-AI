@@ -19,6 +19,11 @@ import {
   type WhatsAppTurnHandler,
 } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
+import { InMemoryCitasRepository } from "@atiende/domain-citas";
+import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
+import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
+import { InMemoryAuditSink } from "@atiende/core-authz";
+import { InMemoryRentasRepository } from "@atiende/domain-rentas";
 import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
@@ -163,6 +168,11 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     turnHandler,
     hotelesRepo: new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
+    citasRepo: new InMemoryCitasRepository(),
+    licitacionesRepo: new InMemoryLicitacionesRepository(),
+    despachosRepo: new InMemoryDespachosRepository(),
+    despachosAuditSink: new InMemoryAuditSink(),
+    rentasRepo: new InMemoryRentasRepository(),
   };
   return { deps, organizationId, propertyId, tacosBistecId };
 }
@@ -324,6 +334,11 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       turnHandler,
       hotelesRepo: new InMemoryHotelesRepository(),
       hotelesPaymentsPort: new InMemoryPaymentsPort(),
+      citasRepo: new InMemoryCitasRepository(),
+      licitacionesRepo: new InMemoryLicitacionesRepository(),
+      despachosRepo: new InMemoryDespachosRepository(),
+      despachosAuditSink: new InMemoryAuditSink(),
+      rentasRepo: new InMemoryRentasRepository(),
     };
     const app = buildApp(deps);
 
