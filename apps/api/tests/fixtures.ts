@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
+import { InMemoryCitasRepository } from "@atiende/domain-citas";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -12,6 +13,7 @@ export const TEST_ENV: ApiEnv = {
   voiceToolSecret: "test-voice-tool-secret",
   whatsappVerifyToken: "test-verify-token",
   whatsappAppSecret: "test-whatsapp-app-secret",
+  internalSecret: "test-internal-secret",
   allowedOrigins: ["http://localhost:5173"],
 };
 
@@ -68,6 +70,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     turnHandler: acknowledgeOnlyTurnHandler(restaurantesRepo),
     hotelesRepo: new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
+    citasRepo: new InMemoryCitasRepository(),
   };
 
   return { deps, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

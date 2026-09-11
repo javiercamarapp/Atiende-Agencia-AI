@@ -10,6 +10,11 @@ export interface ApiEnv {
   readonly voiceToolSecret: string;
   readonly whatsappVerifyToken: string;
   readonly whatsappAppSecret: string;
+  /** Secreto compartido para rutas internas invocadas por un scheduler externo
+   * (header `x-atiende-internal-secret`, análogo a CRON_SECRET del origen) — ver
+   * diseño Fase 1 citas §0.4/§5.3: el recordatorio 24h de citas es el primer
+   * consumidor real. */
+  readonly internalSecret: string;
   readonly allowedOrigins: readonly string[];
 }
 
@@ -27,6 +32,7 @@ export function loadApiEnv(): ApiEnv {
     voiceToolSecret: requireEnv("VOICE_TOOL_SECRET"),
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
+    internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
   };
 }
