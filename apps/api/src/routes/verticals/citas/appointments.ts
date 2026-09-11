@@ -1,0 +1,105 @@
+// Flujo 1 — POST /v1/citas/:orgSlug/appointments (== crear-cita del origen). Ruta
+// pública/de sistema: checkout/widget de reservación público + Server Tool del
+// agente conversacional — por eso este grupo se monta SIN authMiddleware/
+// requirePropertyMembership, mismo criterio exacto que restaurantesPublicRoutes (ver
+// diseño Fase 1 citas §5.1).
+//
+// Protección real: originAllowed() (CORS) para source="web", x-atiende-tool-secret
+// para source="voice"|"whatsapp" (agente), rate-limit distinto por canal.
+import { Hono } from "hono";
+import { consumeRateLimit, createAppointment, AppointmentConflictError, AppointmentValidationError } from "@atiende/domain-citas";
+import type { CreateAppointmentPayload } from "@atiende/domain-citas";
+import { Errors } from "../../../errors.ts";
+import { originAllowed, readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
+import type { AppDeps } from "../../../deps.ts";
+
+interface CreateAppointmentBody {
+  readonly provider_id?: unknown;
+  readonly service_id?: unknown;
+  readonly property_id?: unknown;
+  readonly customer_name?: unknown;
+  readonly customer_phone?: unknown;
+  readonly customer_email?: unknown;
+  readonly starts_at?: unknown;
+  readonly notes?: unknown;
+  readonly source?: unknown;
+  readonly idempotency_key?: unknown;
+  readonly conversation_id?: unknown;
+}
+
+function mapCreateAppointmentBody(organizationId: string, body: CreateAppointmentBody, source: "web" | "voice" | "whatsapp"): CreateAppointmentPayload {
+  return {
+    organizationId,
+    providerId: typeof body.provider_id === "string" ? body.provider_id : "",
+    serviceId: typeof body.service_id === "string" ? body.service_id : "",
+    propertyId: typeof body.property_id === "string" ? body.property_id : undefined,
+    customerName: typeof body.customer_name === "string" ? body.customer_name : "",
+    customerPhone: typeof body.customer_phone === "string" ? body.customer_phone : "",
+    customerEmail: typeof body.customer_email === "string" ? body.customer_email : undefined,
+    startsAt: typeof body.starts_at === "string" ? body.starts_at : "",
+    notes: typeof body.notes === "string" ? body.notes : undefined,
+    source,
+    idempotencyKey: typeof body.idempotency_key === "string" ? body.idempotency_key : undefined,
+    conversationId: typeof body.conversation_id === "string" ? body.conversation_id : undefined,
+  };
+}
+
+function serializeAppointment(appointment: Awaited<ReturnType<typeof createAppointment>>) {
+  return {
+    id: appointment.id,
+    organization_id: appointment.organizationId,
+    property_id: appointment.propertyId,
+    provider_id: appointment.providerId,
+    service_id: appointment.serviceId,
+    customer_id: appointment.customerId,
+    starts_at: appointment.startsAt,
+    ends_at: appointment.endsAt,
+    status: appointment.status,
+    source: appointment.source,
+    notes: appointment.notes,
+    created_at: appointment.createdAt,
+  };
+}
+
+async function resolveOrganizationOrNotFound(deps: AppDeps, orgSlug: string) {
+  const org = await deps.citasRepo.findOrganizationBySlug(orgSlug);
+  if (!org || !org.isActive) throw Errors.notFound(`Negocio "${orgSlug}" no encontrado o inactivo.`);
+  return org;
+}
+
+export function citasAppointmentsRoutes(deps: AppDeps): Hono {
+  const app = new Hono();
+
+  app.post("/v1/citas/:orgSlug/appointments", async (c) => {
+    if (!originAllowed(c.req.header("origin") ?? null, deps.env.allowedOrigins)) throw Errors.forbidden("Origen no permitido");
+
+    const org = await resolveOrganizationOrNotFound(deps, c.req.param("orgSlug"));
+    const incoming = await readJsonCapped<CreateAppointmentBody>(c.req.raw, 16 * 1024);
+    const toolAuthorized = secretMatches(c.req.raw, "x-atiende-tool-secret", deps.env.voiceToolSecret);
+
+    const requestedSource = typeof incoming.source === "string" ? incoming.source : undefined;
+    if ((requestedSource === "voice" || requestedSource === "whatsapp") && !toolAuthorized) throw Errors.unauthorized();
+    if (!toolAuthorized && requestedSource && requestedSource !== "web") throw Errors.validation("source inválido");
+
+    const source = toolAuthorized && (requestedSource === "voice" || requestedSource === "whatsapp") ? requestedSource : "web";
+    const input = mapCreateAppointmentBody(org.id, incoming, source);
+
+    const limited = await consumeRateLimit(deps.citasRepo, "create-appointment", requestActor(c.req.raw, toolAuthorized ? input.customerPhone : ""), toolAuthorized ? 60 : 10, 60);
+    if (!limited.allowed) throw Errors.tooManyRequests();
+
+    try {
+      const appointment = await createAppointment(deps.citasRepo, input);
+      // Best-effort, nunca bloquea la respuesta si falla (ver diseño §5.1 paso 3).
+      deps.citasRepo
+        .enqueueMessagingOutbox(org.id, "email", "appointment.created", `appointment-created:${appointment.id}`, { appointment_id: appointment.id })
+        .catch((err) => console.error("citas: enqueueMessagingOutbox(appointment.created) best-effort falló:", err));
+      return c.json({ appointment: serializeAppointment(appointment) }, 201);
+    } catch (err) {
+      if (err instanceof AppointmentConflictError) throw Errors.conflict(err.message);
+      if (err instanceof AppointmentValidationError) throw Errors.validation(err.message);
+      throw err;
+    }
+  });
+
+  return app;
+}
