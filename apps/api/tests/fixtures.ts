@@ -3,6 +3,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@at
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
 import { InMemoryCitasRepository } from "@atiende/domain-citas";
+import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -71,6 +72,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     hotelesRepo: new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     citasRepo: new InMemoryCitasRepository(),
+    licitacionesRepo: new InMemoryLicitacionesRepository(),
   };
 
   return { deps, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

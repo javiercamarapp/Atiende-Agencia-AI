@@ -1,12 +1,13 @@
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para por qué
-// `restaurantesRepo`/`hotelesRepo`/`turnHandler`/`hotelesPaymentsPort`/`citasRepo` NO
-// son adaptadores de Postgres todavía (gap de arquitectura real, documentado, no un
+// `restaurantesRepo`/`hotelesRepo`/`turnHandler`/`hotelesPaymentsPort`/`citasRepo`/
+// `licitacionesRepo` NO son adaptadores de Postgres todavía (gap de arquitectura real, documentado, no un
 // stub-por-pereza) mientras `coreRepo`/`engine` sí lo son (login end-to-end contra
 // Supabase real en cuanto `DATABASE_URL` apunte al proyecto consolidado).
 import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { CitasRepository } from "@atiende/domain-citas";
+import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import { openManagedPostgres } from "@atiende/db";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
@@ -48,6 +49,7 @@ export function buildProductionDeps(): AppDeps {
     hotelesRepo: notProductionReady<HotelesRepository>("hotelesRepo"),
     hotelesPaymentsPort: notProductionReady<PaymentsPort>("hotelesPaymentsPort"),
     citasRepo: notProductionReady<CitasRepository>("citasRepo"),
+    licitacionesRepo: notProductionReady<LicitacionesRepository>("licitacionesRepo"),
   };
   return cached;
 }

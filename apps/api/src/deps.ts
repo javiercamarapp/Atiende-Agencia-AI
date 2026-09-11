@@ -3,6 +3,7 @@ import type { TenancyEngine } from "@atiende/core-tenancy";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CitasRepository } from "@atiende/domain-citas";
+import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { ApiEnv } from "./env.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
@@ -25,4 +26,5 @@ export interface AppDeps {
   readonly hotelesRepo: HotelesRepository;
   readonly hotelesPaymentsPort: PaymentsPort;
   readonly citasRepo: CitasRepository;
+  readonly licitacionesRepo: LicitacionesRepository;
 }

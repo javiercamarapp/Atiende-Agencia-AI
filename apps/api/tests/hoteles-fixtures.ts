@@ -8,6 +8,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@at
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
 import { InMemoryCitasRepository } from "@atiende/domain-citas";
+import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -106,6 +107,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     hotelesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     citasRepo: new InMemoryCitasRepository(),
+    licitacionesRepo: new InMemoryLicitacionesRepository(),
   };
 
   const app = buildApp(deps);
