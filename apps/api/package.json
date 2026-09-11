@@ -12,6 +12,7 @@
     "@atiende/core-tenancy": "*",
     "@atiende/db": "*",
     "@atiende/domain-restaurantes": "*",
+    "@atiende/domain-hoteles": "*",
     "hono": "4.13.7",
     "jose": "6.2.12"
   }
