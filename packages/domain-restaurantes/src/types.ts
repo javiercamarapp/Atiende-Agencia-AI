@@ -12,6 +12,31 @@ export interface Branch {
   readonly status: "active" | "inactive";
   readonly phone: string | null;
   readonly address: string | null;
+  /** Ya vivían en `branch_detail` desde Fase 1 (migrations/001) sin usar por
+   * ningún caso de negocio — Fase 2 los expone para buscar_sucursal_cercana
+   * (ver nearest-branch.ts). null si la sucursal nunca capturó coordenadas. */
+  readonly lat: number | null;
+  readonly lng: number | null;
+}
+
+/** Forma resumida de sucursal para el bloque dinámico "SUCURSALES REALES" del
+ * prompt del agente de WhatsApp (ver whatsapp/llm-turn-handler.ts) — nunca
+ * hardcodeado por organización, a diferencia del prompt mono-tenant del
+ * origen. */
+export interface BranchSummary {
+  readonly propertyId: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly address: string | null;
+}
+
+/** Resultado real de emparejar una colonia/zona contra `known_zone` y
+ * calcular distancia Haversine contra las sucursales activas con lat/lng de
+ * la organización — ver nearest-branch.ts. */
+export interface NearestBranchMatch {
+  readonly branch: Branch;
+  readonly distanceKm: number;
+  readonly recognizedZoneName: string;
 }
 
 export type TortillaChoice = "maiz" | "harina";

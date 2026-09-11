@@ -6,7 +6,7 @@
 // las migraciones de migrations/001-004). Ninguna función de negocio de
 // customers.ts/orders.ts/whatsapp/* toca SQL directamente — todas pasan por aquí,
 // así que el mismo código de negocio corre igual en tests y en producción.
-import type { Branch, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, Order, PersistedOrderItem } from "./types.ts";
+import type { Branch, BranchSummary, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, NearestBranchMatch, Order, PersistedOrderItem } from "./types.ts";
 
 export interface SearchableProduct {
   readonly id: string;
@@ -43,6 +43,17 @@ export interface ConversationMessage {
 export interface RestaurantesRepository {
   findOrganizationBySlug(slug: string): Promise<{ id: string; slug: string; name: string } | null>;
   findBranch(organizationId: string, selector: { slug?: string; name?: string }): Promise<Branch | null>;
+  /** Bloque dinámico "SUCURSALES REALES" del prompt de WhatsApp (Fase 2,
+   * generalización obligatoria por multi-tenancy — ver diseño §2.2): nombre,
+   * slug y dirección de cada sucursal activa, nunca hardcodeado en texto fijo. */
+  listBranchesForOrganization(organizationId: string): Promise<readonly BranchSummary[]>;
+  /** buscar_sucursal_cercana real (Fase 2, §1.1.1): empareja la colonia/zona
+   * contra `restaurantes.known_zone` de ESTA organización (normalizando
+   * acentos/espacios/puntuación de ambos lados, fix real del 4-sep-2026) y
+   * calcula distancia Haversine real contra las sucursales activas con
+   * lat/lng. null si ninguna zona conocida matchea — nunca se inventa/adivina
+   * una sucursal ante un cero-match. */
+  findNearestBranchByColonia(organizationId: string, colonia: string): Promise<NearestBranchMatch | null>;
   /** Catálogo disponible de la sucursal, con los campos necesarios tanto para
    * búsqueda de texto (searchProducts) como para resolución/cotización de renglones
    * de pedido (resolveOrderItemsAgainstProducts + buildOrderQuoteFromProducts). */

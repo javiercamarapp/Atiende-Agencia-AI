@@ -37,7 +37,16 @@ export async function searchProducts(repo: RestaurantesRepository, args: { reado
     .map(toProductoEncontrado);
 }
 
-async function resolveBranchOrderItems(
+/**
+ * Resuelve N renglones pedidos contra el catálogo real de la sucursal — guardia
+ * anti-alucinación de precio compartida por `prepareCreateOrder` y `quoteOrder`
+ * (Fase 2 §1.3): extraída aquí como función exportada porque `quoteOrder`
+ * necesita cotizar ANTES de tener los datos de cliente que exige
+ * `prepareCreateOrder` (nombre/teléfono/dirección) — la resolución de
+ * productos es exactamente la misma en ambos casos, solo cambia qué se hace
+ * después con el resultado.
+ */
+export async function resolveBranchOrderItems(
   repo: RestaurantesRepository,
   propertyId: string,
   items: readonly RequestedOrderItemInput[],
@@ -269,6 +278,34 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
     dedupeFingerprint,
     idempotencyKey,
   );
+}
+
+/**
+ * cotizar_pedido real (Fase 2 §1.3) — cotiza N renglones contra el catálogo
+ * real de la sucursal SIN persistir nada y sin exigir todavía nombre/teléfono
+ * de cliente (a diferencia de `prepareCreateOrder`, que sí los exige). El
+ * agente (voz o WhatsApp) la llama ANTES de decir cualquier total o preguntar
+ * la forma de pago — el cálculo de piezas->paquetes, tortilla obligatoria y
+ * confirmación de mayoría de edad vive completo en
+ * `buildOrderQuoteFromProducts` (order-quote.ts), sin tocar una línea: este
+ * wrapper solo resuelve la sucursal y los renglones, la lógica de cotización
+ * en sí no cambia.
+ */
+export async function quoteOrder(
+  repo: RestaurantesRepository,
+  args: {
+    readonly organizationId: string;
+    readonly branchSlug: string;
+    readonly items: readonly RequestedOrderItemInput[];
+    readonly adultConfirmed?: boolean;
+  },
+) {
+  const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
+  if (!branch || branch.status !== "active") {
+    throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
+  }
+  const resolved = await resolveBranchOrderItems(repo, branch.propertyId, args.items);
+  return buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed });
 }
 
 export { DEFAULT_COMPLEMENTS };

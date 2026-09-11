@@ -7,7 +7,8 @@
 // @atiende/core-conversation.
 import { randomUUID } from "node:crypto";
 import { OrderConflictError } from "./errors.ts";
-import type { Branch, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, Order, PersistedOrderItem } from "./types.ts";
+import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
+import type { Branch, BranchSummary, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, NearestBranchMatch, Order, PersistedOrderItem } from "./types.ts";
 import type { ConversationMessage, NewOrderRecord, RestaurantesRepository, SearchableProduct } from "./repository.ts";
 
 /** Serializa operaciones por clave — equivalente en memoria de
@@ -65,6 +66,13 @@ interface StoredBranchProduct {
 
 interface StoredOrder extends Order {}
 
+interface StoredKnownZone {
+  readonly organizationId: string;
+  readonly name: string;
+  readonly lat: number;
+  readonly lng: number;
+}
+
 interface StoredWhatsAppEvent {
   status: "processing" | "processed" | "failed";
   attempts: number;
@@ -94,6 +102,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly customerIdByOrgPhone = new Map<string, string>();
   private readonly addresses = new Map<string, CustomerAddress[]>();
   private readonly orders: StoredOrder[] = [];
+  private readonly knownZones: StoredKnownZone[] = [];
   private readonly callbackRequests: CallbackRequest[] = [];
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
@@ -132,6 +141,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
   }
 
+  /** Equivalente en memoria de `insert into restaurantes.known_zone(...)`
+   * (ver migrations/005) — una zona conocida (colonia/plaza/referencia) con
+   * sus coordenadas reales, sembrada por organización. */
+  seedKnownZone(zone: StoredKnownZone): void {
+    this.knownZones.push(zone);
+  }
+
   // ---- RestaurantesRepository ----
 
   async findOrganizationBySlug(slug: string): Promise<{ id: string; slug: string; name: string } | null> {
@@ -147,6 +163,47 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       if (selector.name !== undefined && branch.name === selector.name) return branch;
     }
     return null;
+  }
+
+  async listBranchesForOrganization(organizationId: string): Promise<readonly BranchSummary[]> {
+    const result: BranchSummary[] = [];
+    for (const branch of this.branches.values()) {
+      if (branch.organizationId !== organizationId || branch.status !== "active") continue;
+      result.push({ propertyId: branch.propertyId, name: branch.name, slug: branch.slug, address: branch.address });
+    }
+    return result.sort((a, b) => a.name.localeCompare(b.name, "es-MX"));
+  }
+
+  async findNearestBranchByColonia(organizationId: string, colonia: string): Promise<NearestBranchMatch | null> {
+    // Mismo criterio de desempate que la SQL del origen: `order by
+    // length(nombre) desc limit 1` — entre dos zonas conocidas que matchean,
+    // gana la de nombre más largo/específico (p.ej. "Plaza Las Américas"
+    // sobre "Américas" si ambas matchearan).
+    const inputNorm = normalizeZoneText(colonia);
+    let bestZone: StoredKnownZone | null = null;
+    for (const zone of this.knownZones) {
+      if (zone.organizationId !== organizationId) continue;
+      const zoneNorm = normalizeZoneText(zone.name);
+      if (!zoneNorm) continue;
+      if (inputNorm.includes(zoneNorm) || zoneNorm.includes(inputNorm)) {
+        if (!bestZone || zone.name.length > bestZone.name.length) bestZone = zone;
+      }
+    }
+    if (!bestZone) return null; // cero-match real: nunca se inventa una sucursal.
+
+    let nearestBranch: Branch | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const branch of this.branches.values()) {
+      if (branch.organizationId !== organizationId || branch.status !== "active") continue;
+      if (branch.lat === null || branch.lng === null) continue;
+      const distance = haversineKm(bestZone.lat, bestZone.lng, branch.lat, branch.lng);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestBranch = branch;
+      }
+    }
+    if (!nearestBranch) return null;
+    return { branch: nearestBranch, distanceKm: nearestDistance, recognizedZoneName: bestZone.name };
   }
 
   async listAvailableProductsForBranch(propertyId: string): Promise<readonly SearchableProduct[]> {

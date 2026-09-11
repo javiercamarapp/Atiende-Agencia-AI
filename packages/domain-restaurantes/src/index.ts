@@ -1,5 +1,6 @@
 export type {
   Branch,
+  BranchSummary,
   CallbackRequest,
   CallbackRequestInput,
   CreateOrderInput,
@@ -9,6 +10,7 @@ export type {
   CustomerLookupResult,
   CustomerTier,
   DefaultComplement,
+  NearestBranchMatch,
   Order,
   OrderHistoryItem,
   OrderQuote,
@@ -37,10 +39,13 @@ export { PostgresRestaurantesRepository } from "./postgres-repository.ts";
 
 export { lookupCustomer, vipNote } from "./customers.ts";
 
-export { searchProducts, prepareCreateOrder, createOrder, validateCreateOrderPayload } from "./orders.ts";
+export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
 export type { PreparedOrder } from "./orders.ts";
 
 export { registerCallbackRequest } from "./callback-requests.ts";
+
+export { findNearestBranch, normalizeZoneText, haversineKm, COLONIA_NO_RECONOCIDA_MENSAJE } from "./nearest-branch.ts";
+export type { NearestBranchResult } from "./nearest-branch.ts";
 
 export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 
@@ -51,3 +56,6 @@ export { redactSensitiveInfo, handleInboundWhatsAppMessage } from "./whatsapp/in
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
+
+export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, getAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
+export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions, WhatsAppToneStyle } from "./whatsapp/llm-turn-handler.ts";

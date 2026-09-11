@@ -11,7 +11,7 @@
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { OrderConflictError } from "./errors.ts";
-import type { Branch, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, Order, PersistedOrderItem } from "./types.ts";
+import type { Branch, BranchSummary, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, NearestBranchMatch, Order, PersistedOrderItem } from "./types.ts";
 import type { ConversationMessage, NewOrderRecord, RestaurantesRepository, SearchableProduct } from "./repository.ts";
 
 interface BranchRow {
@@ -22,6 +22,8 @@ interface BranchRow {
   readonly status: "active" | "inactive";
   readonly phone: string | null;
   readonly address: string | null;
+  readonly lat: string | number | null;
+  readonly lng: string | number | null;
 }
 
 function mapBranch(row: BranchRow): Branch {
@@ -33,7 +35,14 @@ function mapBranch(row: BranchRow): Branch {
     status: row.status,
     phone: row.phone,
     address: row.address,
+    lat: row.lat === null ? null : Number(row.lat),
+    lng: row.lng === null ? null : Number(row.lng),
   };
+}
+
+interface NearestBranchRow extends BranchRow {
+  readonly distance_km: string | number;
+  readonly recognized_zone_name: string;
 }
 
 interface ProductRow {
@@ -119,7 +128,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     const column = selector.slug !== undefined ? "bd.slug" : "p.name";
     const value = selector.slug !== undefined ? selector.slug : selector.name;
     const { rows } = await this.db.query<BranchRow>(
-      `select p.id as property_id, p.organization_id, p.name, bd.slug, p.status, bd.phone, bd.address
+      `select p.id as property_id, p.organization_id, p.name, bd.slug, p.status, bd.phone, bd.address, bd.lat, bd.lng
        from core.property p
        join restaurantes.branch_detail bd on bd.property_id = p.id
        where p.organization_id = $1 and ${column} = $2
@@ -127,6 +136,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       [organizationId, value],
     );
     return rows[0] ? mapBranch(rows[0]) : null;
+  }
+
+  async listBranchesForOrganization(organizationId: string): Promise<readonly BranchSummary[]> {
+    const { rows } = await this.db.query<{ property_id: string; name: string; slug: string; address: string | null }>(
+      `select p.id as property_id, p.name, bd.slug, bd.address
+       from core.property p
+       join restaurantes.branch_detail bd on bd.property_id = p.id
+       where p.organization_id = $1 and p.status = 'active'
+       order by bd.display_order asc, p.name asc;`,
+      [organizationId],
+    );
+    return rows.map((row) => ({ propertyId: row.property_id, name: row.name, slug: row.slug, address: row.address }));
+  }
+
+  async findNearestBranchByColonia(organizationId: string, colonia: string): Promise<NearestBranchMatch | null> {
+    // restaurantes.nearest_branch_by_colonia (ver migrations/005) — port de
+    // sucursal_mas_cercana() del origen, generalizado por organización: cero
+    // filas cuando la colonia no matchea ninguna zona conocida de ESTA
+    // organización — nunca se inventa/adivina una sucursal.
+    const { rows } = await this.db.query<NearestBranchRow>(`select * from restaurantes.nearest_branch_by_colonia($1, $2);`, [organizationId, colonia]);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      branch: mapBranch(row),
+      distanceKm: Number(row.distance_km),
+      recognizedZoneName: row.recognized_zone_name,
+    };
   }
 
   async listAvailableProductsForBranch(propertyId: string): Promise<readonly SearchableProduct[]> {
