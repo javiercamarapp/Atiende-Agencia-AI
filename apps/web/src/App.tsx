@@ -4,6 +4,7 @@
 import { useNavigate } from "react-router-dom";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { RestaurantesLoginPage } from "./verticals/restaurantes/pages/Login.tsx";
+import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -17,11 +18,22 @@ function RestaurantesLoginRoute() {
   );
 }
 
+function HotelesLoginRoute() {
+  const navigate = useNavigate();
+  return (
+    <HotelesLoginPage
+      apiBaseUrl={API_BASE_URL}
+      onLoggedIn={(_session, landingPath) => navigate(landingPath)}
+    />
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
+        <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>
