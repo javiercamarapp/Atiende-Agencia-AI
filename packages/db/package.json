@@ -11,6 +11,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@atiende/core-tenancy": "*"
+    "@atiende/core-tenancy": "*",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.5"
   }
 }
