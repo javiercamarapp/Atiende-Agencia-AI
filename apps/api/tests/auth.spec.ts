@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { buildApp } from "../src/app.ts";
+import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
+
+describe("POST /auth/login", () => {
+  it("200 con credenciales correctas, devuelve token+refreshToken+organizations", async () => {
+    const { deps, ownerEmail, ownerPassword, organizationId } = await buildTestDeps();
+    const app = buildApp(deps);
+    const res = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: ownerPassword }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string; refreshToken: string; organizations: Array<{ id: string; rol: string }> };
+    expect(body.token).toBeTruthy();
+    expect(body.refreshToken).toBeTruthy();
+    expect(body.organizations).toEqual([expect.objectContaining({ id: organizationId, rol: "owner" })]);
+  });
+
+  it("401 con contraseña incorrecta, mismo mensaje genérico que 'correo no existe' (no filtra cuál fue)", async () => {
+    const { deps, ownerEmail } = await buildTestDeps();
+    const app = buildApp(deps);
+    const wrongPassword = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: "incorrecta" }));
+    const noExiste = await app.request("/auth/login", jsonRequestInit({ email: "no-existe@x.mx", password: "lo-que-sea" }));
+    expect(wrongPassword.status).toBe(401);
+    expect(noExiste.status).toBe(401);
+    expect(await wrongPassword.json()).toEqual(await noExiste.json());
+  });
+
+  it("400 con email mal formado o password vacío", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+    expect((await app.request("/auth/login", jsonRequestInit({ email: "no-es-un-email", password: "x" }))).status).toBe(400);
+    expect((await app.request("/auth/login", jsonRequestInit({ email: "a@b.com", password: "" }))).status).toBe(400);
+  });
+});
+
+describe("POST /auth/refresh + GET /auth/me", () => {
+  it("un refreshToken válido reemite sesión; el token nuevo funciona en /auth/me", async () => {
+    const { deps, ownerEmail, ownerPassword } = await buildTestDeps();
+    const app = buildApp(deps);
+    const login = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: ownerPassword }));
+    const { refreshToken } = (await login.json()) as { refreshToken: string };
+
+    const refreshed = await app.request("/auth/refresh", jsonRequestInit({ refreshToken }));
+    expect(refreshed.status).toBe(200);
+    const { token } = (await refreshed.json()) as { token: string };
+
+    const me = await app.request("/auth/me", { headers: { authorization: `Bearer ${token}` } });
+    expect(me.status).toBe(200);
+    const meBody = (await me.json()) as { email: string };
+    expect(meBody.email).toBe(ownerEmail);
+  });
+
+  it("401 con un refreshToken inválido/con otro secreto", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+    const res = await app.request("/auth/refresh", jsonRequestInit({ refreshToken: "esto-no-es-un-jwt-real" }));
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /auth/me sin Authorization: 401", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+    const res = await app.request("/auth/me");
+    expect(res.status).toBe(401);
+  });
+});
