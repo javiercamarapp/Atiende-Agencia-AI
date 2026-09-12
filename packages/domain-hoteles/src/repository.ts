@@ -5,17 +5,25 @@
 // negocio de las rutas de apps/api toca SQL directamente — todas pasan por aquí.
 import type {
   CancellationPolicyRecord,
+  CfdiEmisionRecord,
   ConversationMessage,
   ContactoNoOperativoRecord,
+  DiscountChargeForFraudScan,
   FnbOrderRecord,
   FolioRecord,
+  FraudAlertRecord,
+  FraudAlertStatus,
   GuestIdentity,
+  HospedajeFiscalConfig,
+  NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
   NewFnbOrderInput,
+  NewFraudAlertInput,
   NewPaymentInput,
   NewReservationInput,
   NightlyRateRecord,
+  ReopenedFolioChargeForFraudScan,
   ReservationRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
@@ -187,8 +195,46 @@ export interface HotelesRepository {
    *  efectos secundarios (mismo patrón de "lee candidatas, reclama una por una" que el
    *  origen documenta para evitar que dos corridas compitan sobre la MISMA fila). */
   findDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly ReservationRecord[]>;
+
+  // ---- Fase 5 — H16-014/REQ-REC-014: fraude interno ----
+
+  /** Insumo de lectura del patrón 1 — TODOS los cargos `concept='descuento'` no
+   *  reversados de la property (la reconciliación es independiente del camino feliz
+   *  de folios.ts, ver fraude/deteccion.ts). */
+  listDiscountChargesForFraudScan(propertyId: string): Promise<readonly DiscountChargeForFraudScan[]>;
+
+  /** Insumo de lectura del patrón 2 — cargos cuyo `createdAt` es posterior al
+   *  `closedAt` del folio al que pertenecen. */
+  listReopenedFolioChargesForFraudScan(propertyId: string): Promise<readonly ReopenedFolioChargeForFraudScan[]>;
+
+  /** Idempotente por `(propertyId, dedupeKey)` — un re-escaneo del mismo hallazgo
+   *  NUNCA inserta una segunda fila; `isNew` distingue ambos casos para que el
+   *  llamador decida si además despacha una notificación nueva. */
+  recordFraudAlert(input: NewFraudAlertInput): Promise<{ record: FraudAlertRecord; isNew: boolean }>;
+  listFraudAlerts(propertyId: string, filter?: { readonly status?: FraudAlertStatus }): Promise<readonly FraudAlertRecord[]>;
+  findFraudAlert(propertyId: string, alertId: string): Promise<FraudAlertRecord | null>;
+  /** Lanza `FraudAlertAlreadyResolvedError` si `status` ya no es "pendiente". */
+  resolveFraudAlert(propertyId: string, alertId: string, resolvedBy: string, status: "confirmado" | "descartado", decisionNote: string | null): Promise<FraudAlertRecord>;
+
+  // ---- Fase 5 — H5/REQ-BO-001/002: CFDI de hospedaje ----
+
+  loadHospedajeFiscalConfig(propertyId: string): Promise<HospedajeFiscalConfig>;
+  /** Cargos facturables del folio (excluida propina — el filtro real vive en
+   *  `summarizeFacturableCharges()`, aquí solo se leen TODOS los cargos del folio,
+   *  igual que `findFolio` ya hace para folios.ts). */
+  listChargesForCfdi(folioId: string): Promise<readonly { concept: string; amount: number; taxAmount: number; stayDate: string | null; reversesChargeId: string | null }[]>;
+  /** `null` si este folio todavía no tiene CFDI de tipo 'hospedaje' — idempotencia a
+   *  nivel de aplicación (REQ-BO-002): a lo más UN CFDI de tipo 'hospedaje' por folio. */
+  findCfdiEmisionByFolio(propertyId: string, folioId: string, tipo: "hospedaje"): Promise<CfdiEmisionRecord | null>;
+  findCfdiEmisionByPayment(propertyId: string, paymentId: string): Promise<CfdiEmisionRecord | null>;
+  insertCfdiEmision(input: NewCfdiEmisionInput): Promise<CfdiEmisionRecord>;
+  findCfdiEmision(propertyId: string, cfdiId: string): Promise<CfdiEmisionRecord | null>;
+  listCfdiEmisiones(propertyId: string, filter?: { readonly folioId?: string }): Promise<readonly CfdiEmisionRecord[]>;
+  updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void>;
 }
 
 export type { FolioRecord, ChargeRecord, PaymentRecord, NewChargeInput, NewPaymentInput, FnbOrderRecord, NewFnbOrderInput, NightlyRateRecord, TaxConfigRecord, GuestIdentity } from "./types.ts";
 export type { ConversationMessage, ContactoNoOperativoRecord, NewContactoNoOperativoInput, VoiceAgentConfig, WhatsAppPropertyRoute } from "./types.ts";
 export type { ReservationRecord, NewReservationInput, CancellationPolicyRecord } from "./types.ts";
+export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
+export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";

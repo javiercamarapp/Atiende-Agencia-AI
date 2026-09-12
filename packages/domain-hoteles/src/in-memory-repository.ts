@@ -8,19 +8,27 @@ import { createHash, randomUUID } from "node:crypto";
 import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
 import type {
   CancellationPolicyRecord,
+  CfdiEmisionRecord,
   ConversationMessage,
   ContactoNoOperativoRecord,
+  DiscountChargeForFraudScan,
   FnbOrderRecord,
   FolioRecord,
+  FraudAlertRecord,
+  FraudAlertStatus,
   GuestIdentity,
+  HospedajeFiscalConfig,
+  NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
   NewFnbOrderInput,
+  NewFraudAlertInput,
   NewPaymentInput,
   NewReservationInput,
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
+  ReopenedFolioChargeForFraudScan,
   ReservationRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
@@ -29,7 +37,7 @@ import type {
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import { isCancellable } from "./reservationStateMachine.ts";
 import { occupancyPct } from "./overbooking.ts";
-import { IdempotencyConflictError } from "./errors.ts";
+import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 
 /** Serializa operaciones por clave — equivalente en memoria de
  *  `pg_advisory_xact_lock`/row lock de Postgres. */
@@ -160,8 +168,15 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly whatsappConversations = new Map<string, StoredConversation>(); // key: propertyId:phone
   private readonly contactosNoOperativos = new Map<string, ContactoNoOperativoRecord>();
 
+  // ---- Fase 5 — H16-014/REQ-REC-014 fraude interno + H5 CFDI de hospedaje ----
+  private readonly fraudAlerts = new Map<string, FraudAlertRecord>();
+  private readonly hospedajeFiscalConfigByProperty = new Map<string, HospedajeFiscalConfig>();
+  private readonly cfdiEmisiones = new Map<string, CfdiEmisionRecord>();
+
   private readonly idempotencyLock = new KeyedMutex();
   private readonly whatsappLock = new KeyedMutex();
+  private readonly fraudAlertLock = new KeyedMutex();
+  private readonly cfdiLock = new KeyedMutex();
 
   // ---- seeding (equivalente a INSERT manual contra las migraciones SQL) ----
 
@@ -192,6 +207,14 @@ export class InMemoryHotelesRepository implements HotelesRepository {
 
   seedTaxConfig(propertyId: string, config: TaxConfigRecord): void {
     this.taxConfigByProperty.set(propertyId, config);
+  }
+
+  /** Equivalente en memoria de `insert into hoteles.tax_config(...)` para las
+   *  columnas específicas de CFDI de hospedaje (Fase 5) — ver comentario de
+   *  `HospedajeFiscalConfig` en types.ts sobre por qué es un seed/tipo separado de
+   *  `seedTaxConfig`. */
+  seedHospedajeFiscalConfig(propertyId: string, config: HospedajeFiscalConfig): void {
+    this.hospedajeFiscalConfigByProperty.set(propertyId, config);
   }
 
   seedRoomType(
@@ -749,5 +772,156 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     };
     this.contactosNoOperativos.set(record.id, record);
     return record;
+  }
+
+  // ---- HotelesRepository: Fase 5 — H16-014/REQ-REC-014 fraude interno ----
+
+  async listDiscountChargesForFraudScan(propertyId: string): Promise<readonly DiscountChargeForFraudScan[]> {
+    return [...this.charges.values()]
+      .filter((c) => c.propertyId === propertyId && c.concept === "descuento" && c.reversedBy == null)
+      .map((c) => ({ chargeId: c.id, folioId: c.folioId, amount: c.amount, discountAuthorizedBy: c.discountAuthorizedBy }));
+  }
+
+  async listReopenedFolioChargesForFraudScan(propertyId: string): Promise<readonly ReopenedFolioChargeForFraudScan[]> {
+    const rows: ReopenedFolioChargeForFraudScan[] = [];
+    for (const folio of this.folios.values()) {
+      if (folio.propertyId !== propertyId || folio.closedAt == null) continue;
+      for (const charge of this.chargesByFolio(folio.id)) {
+        if (charge.createdAt > folio.closedAt) {
+          rows.push({ folioId: folio.id, folioClosedAt: folio.closedAt, chargeId: charge.id, chargeCreatedAt: charge.createdAt });
+        }
+      }
+    }
+    return rows;
+  }
+
+  async recordFraudAlert(input: NewFraudAlertInput): Promise<{ record: FraudAlertRecord; isNew: boolean }> {
+    return this.fraudAlertLock.run(`${input.propertyId}:${input.dedupeKey}`, async () => {
+      const existing = [...this.fraudAlerts.values()].find((a) => a.propertyId === input.propertyId && a.dedupeKey === input.dedupeKey);
+      if (existing) return { record: existing, isNew: false };
+      const record: FraudAlertRecord = {
+        id: randomUUID(),
+        organizationId: input.organizationId,
+        propertyId: input.propertyId,
+        pattern: input.pattern,
+        folioId: input.folioId,
+        chargeId: input.chargeId,
+        paymentId: input.paymentId,
+        reason: input.reason,
+        evidence: input.evidence,
+        recipientRoles: input.recipientRoles,
+        dedupeKey: input.dedupeKey,
+        status: "pendiente",
+        decisionNote: null,
+        resolvedBy: null,
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+      };
+      this.fraudAlerts.set(record.id, record);
+      return { record, isNew: true };
+    });
+  }
+
+  async listFraudAlerts(propertyId: string, filter?: { readonly status?: FraudAlertStatus }): Promise<readonly FraudAlertRecord[]> {
+    return [...this.fraudAlerts.values()]
+      .filter((a) => a.propertyId === propertyId && (filter?.status == null || a.status === filter.status))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async findFraudAlert(propertyId: string, alertId: string): Promise<FraudAlertRecord | null> {
+    const alert = this.fraudAlerts.get(alertId);
+    if (!alert || alert.propertyId !== propertyId) return null;
+    return alert;
+  }
+
+  async resolveFraudAlert(propertyId: string, alertId: string, resolvedBy: string, status: "confirmado" | "descartado", decisionNote: string | null): Promise<FraudAlertRecord> {
+    const alert = this.fraudAlerts.get(alertId);
+    if (!alert || alert.propertyId !== propertyId) throw new Error(`Alerta de fraude ${alertId} no encontrada.`);
+    if (alert.status !== "pendiente") throw new FraudAlertAlreadyResolvedError();
+    const updated: FraudAlertRecord = { ...alert, status, decisionNote, resolvedBy, resolvedAt: new Date().toISOString() };
+    this.fraudAlerts.set(alertId, updated);
+    return updated;
+  }
+
+  // ---- HotelesRepository: Fase 5 — H5/REQ-BO-001/002 CFDI de hospedaje ----
+
+  async loadHospedajeFiscalConfig(propertyId: string): Promise<HospedajeFiscalConfig> {
+    const config = this.hospedajeFiscalConfigByProperty.get(propertyId);
+    if (!config) throw new Error(`No hay configuración fiscal de hospedaje sembrada para property "${propertyId}"`);
+    return config;
+  }
+
+  async listChargesForCfdi(folioId: string): Promise<readonly { concept: string; amount: number; taxAmount: number; stayDate: string | null; reversesChargeId: string | null }[]> {
+    return this.chargesByFolio(folioId).map((c) => ({ concept: c.concept, amount: c.amount, taxAmount: c.taxAmount, stayDate: c.stayDate, reversesChargeId: c.reversesChargeId }));
+  }
+
+  async findCfdiEmisionByFolio(propertyId: string, folioId: string, tipo: "hospedaje"): Promise<CfdiEmisionRecord | null> {
+    return [...this.cfdiEmisiones.values()].find((c) => c.propertyId === propertyId && c.folioId === folioId && c.tipo === tipo) ?? null;
+  }
+
+  async findCfdiEmisionByPayment(propertyId: string, paymentId: string): Promise<CfdiEmisionRecord | null> {
+    return [...this.cfdiEmisiones.values()].find((c) => c.propertyId === propertyId && c.paymentId === paymentId && c.tipo === "pago") ?? null;
+  }
+
+  async insertCfdiEmision(input: NewCfdiEmisionInput): Promise<CfdiEmisionRecord> {
+    return this.cfdiLock.run(`${input.propertyId}:${input.folioId}:${input.tipo}:${input.paymentId ?? ""}`, async () => {
+      // Espejo de los índices únicos parciales de migrations/006_cfdi_hospedaje.sql
+      // (REQ-BO-002): a lo más UN CFDI 'hospedaje' por folio, a lo más UNO 'pago' por
+      // pago -- "on conflict ... do nothing" en Postgres, aquí devuelve el existente
+      // sin duplicar.
+      if (input.tipo === "hospedaje") {
+        const existing = await this.findCfdiEmisionByFolio(input.propertyId, input.folioId, "hospedaje");
+        if (existing) return existing;
+      } else if (input.paymentId) {
+        const existing = await this.findCfdiEmisionByPayment(input.propertyId, input.paymentId);
+        if (existing) return existing;
+      }
+      const record: CfdiEmisionRecord = {
+        id: randomUUID(),
+        organizationId: input.organizationId,
+        propertyId: input.propertyId,
+        folioId: input.folioId,
+        tipo: input.tipo,
+        uuidFiscal: input.uuidFiscal,
+        status: input.status,
+        pac: input.pac,
+        subtotal: input.subtotal,
+        iva: input.iva,
+        ishTasa: input.ishTasa,
+        ishMonto: input.ishMonto,
+        dsaMonto: input.dsaMonto,
+        total: input.total,
+        rfcReceptor: input.rfcReceptor,
+        usoCfdi: input.usoCfdi,
+        metodoPago: input.metodoPago,
+        esExtranjero: input.esExtranjero,
+        esGlobal: input.esGlobal,
+        esNoShow: input.esNoShow,
+        relatedCfdiId: input.relatedCfdiId,
+        paymentId: input.paymentId,
+        createdAt: new Date().toISOString(),
+        canceledAt: null,
+      };
+      this.cfdiEmisiones.set(record.id, record);
+      return record;
+    });
+  }
+
+  async findCfdiEmision(propertyId: string, cfdiId: string): Promise<CfdiEmisionRecord | null> {
+    const record = this.cfdiEmisiones.get(cfdiId);
+    if (!record || record.propertyId !== propertyId) return null;
+    return record;
+  }
+
+  async listCfdiEmisiones(propertyId: string, filter?: { readonly folioId?: string }): Promise<readonly CfdiEmisionRecord[]> {
+    return [...this.cfdiEmisiones.values()]
+      .filter((c) => c.propertyId === propertyId && (filter?.folioId == null || c.folioId === filter.folioId))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void> {
+    const record = this.cfdiEmisiones.get(cfdiId);
+    if (!record) throw new Error(`CFDI ${cfdiId} no encontrado.`);
+    this.cfdiEmisiones.set(cfdiId, { ...record, status, canceledAt: new Date().toISOString() });
   }
 }

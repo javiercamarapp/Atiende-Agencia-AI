@@ -1,5 +1,5 @@
 {
-  "name": "@atiende/domain-hoteles",
+  "name": "@atiende/mcp-cfdi",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,8 +10,5 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "dependencies": {
-    "@atiende/billing": "*",
-    "@atiende/core-tenancy": "*"
-  }
+  "dependencies": {}
 }
