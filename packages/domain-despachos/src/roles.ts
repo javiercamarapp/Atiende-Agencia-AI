@@ -36,6 +36,17 @@ export const DECLARACIONES_ROLES: readonly DespachosRole[] = ["admin", "contador
 /** Quién puede calcular nómina (Fase 4) — mismo criterio que DECLARACIONES_ROLES. */
 export const NOMINA_ROLES: readonly DespachosRole[] = ["admin", "contador"];
 
+/** Quién puede correr el motor de conciliación bancaria (Fase 5) — mismo criterio
+ * que DECLARACIONES_ROLES/NOMINA_ROLES. */
+export const CONCILIACION_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
+/** Quién puede clasificar/decidir mapeos de migración de catálogo contable (Fase
+ * 5) — a diferencia de conciliación, aquí `auditor` SÍ puede ver la clasificación
+ * (es lectura de un análisis, no una decisión), pero decidir (aprobar/rechazar/
+ * editar) queda reservado igual que RESOLVER_REVISION_ROLES. */
+export const MIGRACION_CATALOGO_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+export const DECIDIR_MAPEO_MIGRACION_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
 export const ADMIN_ROLES: readonly DespachosRole[] = ["admin"];
 
 /**
