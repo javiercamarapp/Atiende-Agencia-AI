@@ -31,40 +31,12 @@ import {
 import type { StatsPeriod } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
-import type { Context } from "hono";
-
-async function resolveEffectivePropertyIds(deps: AppDeps, c: Context<CoreAuthHonoEnv>, organizationId: string, branchId: string | null): Promise<readonly string[] | null> {
-  const memberships = await deps.coreRepo.findMembershipsByUserId(c.get("userId"));
-  const membership = memberships.find((m) => m.organizationId === organizationId);
-  // Fallback de defensa en profundidad: si por alguna razón la membership completa no
-  // aparece aquí (nunca debería, ver comentario de archivo — coreRepo/engine leen la
-  // MISMA tabla real en producción), nunca se ensancha el alcance más allá de la única
-  // property que `requirePropertyMembership` ya verificó para esta request.
-  const verifiedPropertyId = c.req.param("propertyId") ?? "";
-  const membershipScope: readonly string[] | null = membership ? membership.propertyIds : [verifiedPropertyId];
-
-  if (branchId === null) return membershipScope;
-
-  const branches = await deps.restaurantesRepo(c.get("db")).listBranchesForOrganization(organizationId);
-  if (!branches.some((b) => b.propertyId === branchId)) {
-    throw Errors.validation("branchId no pertenece a esta organización (o no está activo).");
-  }
-  if (membershipScope !== null && !membershipScope.includes(branchId)) {
-    throw Errors.forbidden("No tienes acceso a esta sucursal.");
-  }
-  return [branchId];
-}
+import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
 
 function parsePeriod(raw: string | undefined): StatsPeriod {
   if (!raw || !isStatsPeriod(raw)) {
     throw Errors.validation("period: se esperaba uno de today|7|30|90|180|365|historico.");
   }
-  return raw;
-}
-
-function parseBranchId(raw: string | undefined): string | null {
-  if (raw === undefined || raw === "") return null;
-  if (raw.length > 200) throw Errors.validation("branchId inválido.");
   return raw;
 }
 

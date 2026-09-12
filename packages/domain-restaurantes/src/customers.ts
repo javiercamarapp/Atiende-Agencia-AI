@@ -74,3 +74,47 @@ export async function lookupCustomer(repo: RestaurantesRepository, organizationI
     agentNotes,
   };
 }
+
+/**
+ * Fase 5 back-office CORE — misma memoria real que `lookupCustomer` (nombre,
+ * direcciones, "lo de siempre", tier, agentNotes), pero resuelta por id de cliente
+ * en vez de teléfono: la ficha de administración del panel navega desde un listado
+ * (`GET .../admin/customers`) que ya trae el id, nunca vuelve a pedirle el teléfono
+ * al staff. `null` cuando el id no existe o pertenece a otra organización — nunca
+ * se filtra el cliente de otro tenant devolviendo `{ isNew: true }` (eso implicaría
+ * "no existe", cuando en realidad SÍ existe, solo que no es tuyo).
+ */
+export async function getCustomerDetailById(repo: RestaurantesRepository, organizationId: string, customerId: string): Promise<CustomerLookupResult | null> {
+  const customer = await repo.findCustomerById(organizationId, customerId);
+  if (!customer) return null;
+
+  const [addresses, history, tier] = await Promise.all([
+    repo.listCustomerAddresses(customer.id),
+    repo.listEligibleOrderHistory(customer.id),
+    repo.calcCustomerTier(organizationId, customer.id),
+  ]);
+
+  const lastOrder = history[0] ?? null;
+  const frequentItems = countFrequentItems(history);
+
+  const agentNotes: string[] = [];
+  const nota = vipNote(tier);
+  if (nota) agentNotes.push(nota);
+  if (frequentItems.length > 0) {
+    const items = frequentItems.map((i) => i.name).join(", ");
+    agentNotes.push(
+      `Lo que más pide across todo su historial real (no solo su último pedido): ${items}. Puedes ofrecer "¿lo de siempre?" con confianza usando esto, incluso si su último pedido fue distinto.`,
+    );
+  }
+
+  return {
+    isNew: false,
+    name: customer.name,
+    orderCount: customer.orderCount,
+    addresses,
+    lastOrderItems: lastOrder ? lastOrder.items.map((i) => ({ name: i.name, quantity: i.quantity })) : null,
+    frequentItems,
+    tier,
+    agentNotes,
+  };
+}
