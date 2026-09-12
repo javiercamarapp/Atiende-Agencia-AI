@@ -398,3 +398,102 @@ export interface NewContactoNoOperativoInput {
   readonly message: string | null;
   readonly source: ContactoNoOperativoSource;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 6 — REQ-REV-013: night audit propio. `NightAuditRunRecord` es la fila cruda de
+// `hoteles.night_audit_run` (migrations/008) -- el resumen (`NightAuditSummary`) en sí
+// se arma en @atiende/domain-hoteles/night-audit/engine.ts (capa pura), esta interfaz
+// solo describe el registro de la CORRIDA (idempotencia por property+fecha).
+// ─────────────────────────────────────────────────────────────────────────
+export type NightAuditRunStatus = "en_progreso" | "completado";
+
+export interface NightAuditRunRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly businessDate: string;
+  readonly status: NightAuditRunStatus;
+  readonly summary: Readonly<Record<string, unknown>>;
+  readonly startedAt: string;
+  readonly completedAt: string | null;
+}
+
+/** Property de hoteles activa -- insumo de la ruta interna de barrido (mismo patrón
+ *  que `CitasRepository.listActiveOrganizations()`, ver
+ *  apps/api/src/routes/verticals/citas/reminders.ts). */
+export interface ActiveHotelProperty {
+  readonly organizationId: string;
+  readonly propertyId: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 6 — REQ-HK-011: tickets de mantenimiento correctivo (intake por staff/WhatsApp,
+// SOLO turnos LFT + tickets -- explícitamente FUERA de esta fase: asignación
+// automática de camaristas/CP-SAT e inspección por foto/OCR, ambas dependientes de
+// REQ-INT-001 (conector PMS real), que ninguna vertical de fusion tiene todavía).
+// ─────────────────────────────────────────────────────────────────────────
+export type MaintenanceTicketOrigin = "huesped" | "staff" | "agente" | "sensor";
+export type MaintenanceTicketSeverity = "alta" | "media" | "baja";
+export type MaintenanceTicketStatus = "abierto" | "en_progreso" | "cerrado" | "cancelado";
+
+export interface MaintenanceTicketRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly roomId: string | null;
+  readonly title: string;
+  readonly description: string;
+  readonly origin: MaintenanceTicketOrigin;
+  readonly severity: MaintenanceTicketSeverity;
+  readonly status: MaintenanceTicketStatus;
+  readonly assignedTo: string | null;
+  readonly estimatedCost: number;
+  readonly actualCost: number | null;
+  readonly resolutionNote: string | null;
+  readonly createdBy: string | null;
+  readonly closedAt: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface NewMaintenanceTicketInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly roomId: string | null;
+  readonly title: string;
+  readonly description: string;
+  readonly origin: MaintenanceTicketOrigin;
+  readonly severity: MaintenanceTicketSeverity;
+  readonly estimatedCost: number;
+  /** `null` cuando el ticket lo levanta un canal sin staff humano logueado (agente de
+   *  WhatsApp con LLM, `system:whatsapp` -- mismo criterio que
+   *  `NewFnbOrderInput.createdBy`). */
+  readonly createdBy: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 6 — REQ-HK-008: turnos de camaristas/lavandería. La plantilla se valida contra
+// la LFT (`@atiende/domain-hoteles/housekeeping/turnos-lft.ts`, función pura) ANTES de
+// publicarse -- solo lo YA válido llega a `hoteles.housekeeping_shift`
+// (migrations/009); un intento inválido nunca se persiste (ver
+// `assertTurnosLftPublishable`).
+// ─────────────────────────────────────────────────────────────────────────
+export interface HousekeepingShiftRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly staffId: string;
+  readonly workDate: string;
+  readonly startTime: string;
+  readonly endTime: string;
+  readonly createdAt: string;
+}
+
+export interface NewHousekeepingShiftInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly staffId: string;
+  readonly workDate: string;
+  readonly startTime: string;
+  readonly endTime: string;
+}

@@ -27,14 +27,13 @@ import {
   isCancellable,
   isReservationStatus,
   evaluateCancellation,
-  evaluateNoShowPenaltyBase,
-  computeNoShowPenaltyAmounts,
   roundCurrency,
   IdempotencyConflictError,
   type HotelRole,
   type ReservationStatus,
   type ReservationRecord,
 } from "@atiende/domain-hoteles";
+import { runNoShowSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -268,7 +267,10 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Job de no-show por HTTP — ADMIN_ROLES dispara el proceso, pero la transición
   // resultante se atribuye SIEMPRE al actor lógico "system" (diseño §1/§7-punto 3:
   // nunca al humano que llamó el endpoint) — reclamo atómico por reserva, una carrera
-  // perdida se salta sin reintento ni error.
+  // perdida se salta sin reintento ni error. Lógica real en
+  // `@atiende/worker::runNoShowSweep` (extraída en Fase 6/REQ-REV-013 para que
+  // `night-audit.ts` la reutilice sin reimplementarla) -- esta ruta solo valida el
+  // input HTTP y expone el mismo contrato de siempre.
   app.post("/hoteles/:propertyId/reservas/procesar-no-show", async (c) => {
     assertVerticalRole(c, ADMIN_ROLES);
     const propertyId = c.req.param("propertyId");
@@ -277,41 +279,7 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const asOfDate = typeof raw.asOfDate === "string" && DATE_RE.test(raw.asOfDate) ? raw.asOfDate : null;
 
     const repo = deps.hotelesRepo(c.get("db"));
-    const candidatas = await repo.findDueNoShowReservations(propertyId, asOfDate);
-    const procesadas: Array<{ reservationId: string; folioId: string; penalizacionNeta: number; penalizacionImpuesto: number }> = [];
-
-    for (const candidata of candidatas) {
-      const reclamada = await repo.transitionReservation(propertyId, candidata.id, ["confirmada"], "no_show", null);
-      if (!reclamada) continue; // otra corrida ya la reclamó, o cambió de estado entre la consulta y este punto -- nunca se reintenta.
-
-      const nights = nightsBetween(reclamada.checkInDate, reclamada.checkOutDate);
-      for (const night of nights) {
-        await repo.releaseAvailability(propertyId, reclamada.roomTypeId, night, 1);
-      }
-
-      // §3.4 resuelto: penalización con `computeNoShowPenaltyAmounts` (IVA sí, ISH no)
-      // — NUNCA `computeChargeAmounts({concept:'hospedaje'})`, que cobraría ISH de más.
-      const taxConfig = await repo.loadTaxConfig(propertyId);
-      const netAmount = evaluateNoShowPenaltyBase(reclamada);
-      const calc = computeNoShowPenaltyAmounts({ netAmount, taxConfig });
-
-      const folio = await repo.ensurePrimaryFolio(propertyId, organizationId, reclamada.id);
-      // Sin `stayDate` (diseño §1): evita chocar con el índice único parcial
-      // anti-doble-captura del night-audit (`charge_folio_stay_date_hospedaje_idx`),
-      // que solo protege cargos de hospedaje CON noche real posteada.
-      await repo.insertCharge({
-        organizationId,
-        propertyId,
-        folioId: folio.id,
-        description: "Penalización por no-show",
-        amount: calc.netAmount,
-        taxAmount: calc.taxAmount,
-        concept: "hospedaje",
-        stayDate: null,
-      });
-
-      procesadas.push({ reservationId: reclamada.id, folioId: folio.id, penalizacionNeta: calc.netAmount, penalizacionImpuesto: calc.taxAmount });
-    }
+    const procesadas = await runNoShowSweep(repo, { organizationId, propertyId, asOfDate });
 
     return c.json({ procesadas: procesadas.length, detalle: procesadas });
   });
