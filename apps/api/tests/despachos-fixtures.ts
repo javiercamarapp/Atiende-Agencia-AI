@@ -11,7 +11,7 @@ import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { DespachosRole } from "@atiende/domain-despachos";
-import { InMemoryCitasRepository } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { buildApp } from "../src/app.ts";
@@ -81,6 +81,8 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     despachosRepo,
     despachosAuditSink: new InMemoryAuditSink(),
     citasRepo: new InMemoryCitasRepository(),
+    citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
+    citasConversationGuard: createDefaultConversationGuard(),
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     rentasRepo: new InMemoryRentasRepository(),
   };

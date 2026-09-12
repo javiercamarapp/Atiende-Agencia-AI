@@ -7,7 +7,8 @@
 // Supabase real en cuanto `DATABASE_URL` apunte al proyecto consolidado).
 import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import type { CitasRepository } from "@atiende/domain-citas";
+import type { CitasRepository, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
+import { createDefaultConversationGuard } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { AuditSink } from "@atiende/core-authz";
@@ -53,6 +54,20 @@ export function buildProductionDeps(): AppDeps {
     hotelesRepo: notProductionReady<HotelesRepository>("hotelesRepo"),
     hotelesPaymentsPort: notProductionReady<PaymentsPort>("hotelesPaymentsPort"),
     citasRepo: notProductionReady<CitasRepository>("citasRepo"),
+    // El turn handler real (LLM real vía @atiende/agent-core::LlmGateway con
+    // roles/proveedores registrados) requiere la misma decisión de arquitectura
+    // pendiente que citasRepo — nunca se marca listo con un LlmGateway sin
+    // proveedores reales configurados. `citasConversationGuard` sí se construye
+    // real (en memoria): es infraestructura pura de lock/estado, no un adaptador
+    // de datos de negocio — su límite real (single-process, no distribuido entre
+    // instancias serverless) queda cubierto en profundidad por el EXCLUDE USING
+    // gist de Postgres (autoridad final anti-traslape, Fase 1 §0.7), así que no
+    // finge una garantía que no tiene: si algún día citasRepo se conecta a
+    // Postgres real, sustituir este guard por uno con RedisLockStore es la
+    // siguiente decisión de infraestructura, no un requisito para que el resto
+    // funcione correctamente.
+    citasTurnHandler: notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler"),
+    citasConversationGuard: createDefaultConversationGuard(),
     licitacionesRepo: notProductionReady<LicitacionesRepository>("licitacionesRepo"),
     despachosRepo: notProductionReady<DespachosRepository>("despachosRepo"),
     despachosAuditSink: notProductionReady<AuditSink>("despachosAuditSink"),

@@ -15,7 +15,7 @@ import type {
   ProviderRecord,
   ServiceRecord,
 } from "./types.ts";
-import type { CancelResult, CitasRepository, CreateAppointmentResult, NewAppointmentInput, RescheduleResult, ReminderCandidateRow, WaitlistCandidateRow } from "./repository.ts";
+import type { CancelResult, CitasRepository, ConversationMessage, CreateAppointmentResult, NewAppointmentInput, RescheduleResult, ReminderCandidateRow, WaitlistCandidateRow } from "./repository.ts";
 
 /** Serializa operaciones por clave — equivalente en memoria de
  * `pg_advisory_xact_lock`/row lock de Postgres: dos llamadas concurrentes con la
@@ -65,6 +65,19 @@ function overlapsRange(aStart: number, aEnd: number, bStart: number, bEnd: numbe
   return aStart < bEnd && aEnd > bStart;
 }
 
+interface StoredWhatsAppEvent {
+  status: "processing" | "processed" | "failed";
+  attempts: number;
+  claimedAt: number;
+}
+
+interface StoredConversation {
+  messages: ConversationMessage[];
+  status: "active" | "completed" | "abandoned";
+  appointmentId: string | null;
+  propertyId: string | null;
+}
+
 export class InMemoryCitasRepository implements CitasRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -80,11 +93,15 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly appointmentIdByIdempotencyKey = new Map<string, string>(); // `${orgId}:${key}`
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly whatsappPhoneNumberIdByOrg = new Map<string, string>();
+  private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly outbox: { organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown }[] = [];
   private readonly waitlist = new Map<string, StoredWaitlistRow>();
+  private readonly whatsappEvents = new Map<string, StoredWhatsAppEvent>();
+  private readonly whatsappConversations = new Map<string, StoredConversation>();
 
   private readonly appointmentLock = new KeyedMutex();
   private readonly customerLock = new KeyedMutex();
+  private readonly whatsappLock = new KeyedMutex();
 
   // ---- seeding (equivalente a INSERT manual contra las migraciones SQL) ----
 
@@ -122,6 +139,7 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   seedWhatsAppConfig(organizationId: string, phoneNumberId: string): void {
     this.whatsappPhoneNumberIdByOrg.set(organizationId, phoneNumberId);
+    this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
   }
 
   seedWaitlistEntry(row: Omit<StoredWaitlistRow, "id" | "status" | "notifiedCount" | "createdAt" | "expiresAt"> & { id?: string; expiresAt?: string }): string {
@@ -236,6 +254,35 @@ export class InMemoryCitasRepository implements CitasRepository {
       this.customerIdByOrgPhone.set(key, created.id);
       return created;
     });
+  }
+
+  async findCustomerByPhone(organizationId: string, phone: string): Promise<CustomerRecord | null> {
+    const id = this.customerIdByOrgPhone.get(`${organizationId}:${phone}`);
+    if (!id) return null;
+    return this.customers.get(id) ?? null;
+  }
+
+  async listActiveServices(organizationId: string): Promise<readonly ServiceRecord[]> {
+    return [...this.services.values()].filter((s) => s.organizationId === organizationId && s.isActive).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async listActiveProviders(organizationId: string, serviceId?: string): Promise<readonly ProviderRecord[]> {
+    return [...this.providers.values()]
+      .filter((p) => p.organizationId === organizationId && p.isActive && (!serviceId || this.providerServices.has(`${p.id}:${serviceId}`)))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+
+  async listActiveAppointmentsForCustomer(organizationId: string, customerId: string, nowIso: string): Promise<readonly AppointmentRecord[]> {
+    const nowMs = Date.parse(nowIso);
+    return [...this.appointments.values()]
+      .filter(
+        (a) =>
+          a.organizationId === organizationId &&
+          a.customerId === customerId &&
+          (a.status === "pending" || a.status === "confirmed") &&
+          Date.parse(a.startsAt) >= nowMs,
+      )
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
   }
 
   async createAppointmentIdempotent(input: NewAppointmentInput, dedupeFingerprint: string, idempotencyKey: string | null): Promise<CreateAppointmentResult> {
@@ -421,5 +468,75 @@ export class InMemoryCitasRepository implements CitasRepository {
     }
     existing.requestCount += 1;
     return existing.requestCount <= maxRequests;
+  }
+
+  // ---- Fase 2 §2.6 — plomería de WhatsApp (dedupe + historial). La lease de
+  // conversación (mensajes casi-simultáneos del mismo teléfono) NO vive aquí —
+  // ver whatsapp/inbound.ts, que envuelve el turno completo en
+  // @atiende/core-conversation::withConversationLock. ----
+
+  async resolveOrganizationByPhoneNumberId(phoneNumberId: string): Promise<string | null> {
+    return this.phoneNumberIdToOrg.get(phoneNumberId) ?? null;
+  }
+
+  async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
+    void organizationId;
+    return this.whatsappLock.run(`event:${messageId}`, async () => {
+      const existing = this.whatsappEvents.get(messageId);
+      const now = Date.now();
+      if (!existing) {
+        this.whatsappEvents.set(messageId, { status: "processing", attempts: 1, claimedAt: now });
+        return true;
+      }
+      const reclaimable = existing.status === "failed" || (existing.status === "processing" && now - existing.claimedAt > 5 * 60 * 1000);
+      if (!reclaimable) return false;
+      existing.status = "processing";
+      existing.attempts += 1;
+      existing.claimedAt = now;
+      return true;
+    });
+  }
+
+  async appendWhatsAppUserMessageOnce(organizationId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]> {
+    return this.whatsappAppendTurn(organizationId, phone, [message], null, null, null);
+  }
+
+  async whatsappAppendTurn(
+    organizationId: string,
+    phone: string,
+    newMessages: readonly ConversationMessage[],
+    status: "active" | "completed" | "abandoned" | null,
+    appointmentId: string | null,
+    propertyId: string | null,
+  ): Promise<readonly ConversationMessage[]> {
+    const key = `${organizationId}:${phone}`;
+    // Serializado por (organizationId, phone) — equivalente en memoria del row lock
+    // de Postgres que serializa `messages = messages || nuevos`.
+    return this.whatsappLock.run(`conv:${key}`, async () => {
+      const existing = this.whatsappConversations.get(key) ?? { messages: [], status: "active" as const, appointmentId: null, propertyId: null };
+      const updated: StoredConversation = {
+        messages: [...existing.messages, ...newMessages],
+        status: status ?? existing.status,
+        appointmentId: appointmentId ?? existing.appointmentId,
+        propertyId: propertyId ?? existing.propertyId,
+      };
+      this.whatsappConversations.set(key, updated);
+      return updated.messages;
+    });
+  }
+
+  async finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void> {
+    void organizationId;
+    void phoneHash;
+    void errorClass;
+    const event = this.whatsappEvents.get(messageId);
+    if (event) event.status = status;
+  }
+
+  async markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void> {
+    void organizationId;
+    void errorClass;
+    const event = this.whatsappEvents.get(messageId);
+    if (event) event.status = "failed";
   }
 }

@@ -28,6 +28,7 @@ export { actorHash, consumeRateLimit, requestActor } from "./rate-limit.ts";
 export type {
   CancelResult,
   CitasRepository,
+  ConversationMessage,
   CreateAppointmentResult,
   NewAppointmentInput,
   ReminderCandidateRow,
@@ -42,16 +43,40 @@ export {
   cancelAppointment,
   cancelAppointmentFromPanel,
   createAppointment,
+  findAppointmentsForCustomerPhone,
   isValidVoiceConversationId,
   normalizePhone,
   prepareCreateAppointment,
   prepareRescheduleAppointment,
+  queryAvailability,
   rescheduleAppointment,
   validateCancelAppointmentPayload,
   validateCreateAppointmentPayload,
   validateRescheduleAppointmentPayload,
 } from "./appointments.ts";
-export type { PreparedAppointment, PreparedReschedule, RescheduleOutcome } from "./appointments.ts";
+export type { CustomerAppointmentSummary, PreparedAppointment, PreparedReschedule, QueryAvailabilityInput, RescheduleOutcome } from "./appointments.ts";
+
+export { lookupCitasCustomer } from "./customers.ts";
+export type { CitasCustomerContext, UpcomingAppointmentContext } from "./customers.ts";
+
+export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
+export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
+export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
+export { extractMetaPhoneNumberId, extractMetaTextMessages, resolveOrganizationByPhoneNumberId } from "./whatsapp/channel-config.ts";
+export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export { createDefaultConversationGuard, handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
+export type { CitasConversationGuard, InboundMessageOutcome } from "./whatsapp/inbound.ts";
+export {
+  APPOINTMENT_HARD_RULES,
+  createLlmWhatsAppTurnHandler,
+  currentDateContext,
+  FALLBACK_CONFIG,
+  getAgentConfig,
+  providerFailureReply,
+  saludoSegunHora,
+  TOOLS,
+} from "./whatsapp/llm-turn-handler.ts";
+export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions } from "./whatsapp/llm-turn-handler.ts";
 
 export {
   MAX_WAITLIST_NOTIFICATIONS,
