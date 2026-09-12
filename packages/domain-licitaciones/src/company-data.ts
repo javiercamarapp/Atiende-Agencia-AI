@@ -5,11 +5,14 @@
 // aprobada o vencida -> bloqueo. Ningún método puede devolver un valor
 // inventado.
 //
-// Recorte de Fase 1 (§3.1): se porta la interfaz completa, pero
-// `InMemoryCompanyDataResolver`/`PostgresCompanyDataResolver` solo
-// necesitan implementar `getDocuments`/`getApprovedRates` (lo que Flujos 1/2
-// usan) — `getCapabilities`/`getExperience`/`getSigners` quedan como stub
-// ([]) hasta que se porte TechnicalProposalBuilder (fuera de fase).
+// Fase 1 (§3.1) portó la interfaz completa pero dejó `getCapabilities`/
+// `getExperience`/`getSigners` como stub ([]) hasta que se portara
+// TechnicalProposalBuilder. Fase 2 ya lo portó y SÍ los consume
+// (resolveCapability/resolveExperience/resolveAuthorizedSigner) -- Fase 4 los
+// implementó de verdad, respaldados por `licitaciones.company_capability`/
+// `company_experience`/`company_signer` (migración 009) vía
+// `PostgresLicitacionesRepository.listCompanyCapabilities/listCompanyExperience/
+// listCompanySigners`.
 import { assertExplicitOffset, isPast } from "./types.ts";
 
 export type ApprovalStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
@@ -77,19 +80,24 @@ export class InMemoryCompanyDataResolver implements CompanyDataResolver {
     private readonly data: {
       documents?: CompanyDocument[];
       rates?: ApprovedRate[];
+      // Fase 4: TechnicalProposalBuilder ya está portado y SÍ llama
+      // resolveCapability/resolveExperience/resolveAuthorizedSigner -- el stub fijo
+      // de Fase 1 §3.1 (siempre `[]`) degradaba en silencio esos requisitos a
+      // "missing" en producción. Se filtran por companyId igual que documents/rates.
+      capabilities?: CompanyCapability[];
+      experience?: CompanyExperienceRecord[];
+      signers?: CompanySigner[];
     },
   ) {}
 
-  // Stub deliberado (Fase 1 §3.1): sin TechnicalProposalBuilder no hay
-  // consumidor real de capacidades/experiencia/firmantes todavía.
-  getCapabilities(_companyId: string): CompanyCapability[] {
-    return [];
+  getCapabilities(companyId: string): CompanyCapability[] {
+    return (this.data.capabilities ?? []).filter((c) => c.companyId === companyId);
   }
-  getExperience(_companyId: string): CompanyExperienceRecord[] {
-    return [];
+  getExperience(companyId: string): CompanyExperienceRecord[] {
+    return (this.data.experience ?? []).filter((e) => e.companyId === companyId);
   }
-  getSigners(_companyId: string): CompanySigner[] {
-    return [];
+  getSigners(companyId: string): CompanySigner[] {
+    return (this.data.signers ?? []).filter((s) => s.companyId === companyId);
   }
   getDocuments(companyId: string): CompanyDocument[] {
     return (this.data.documents ?? []).filter((d) => d.companyId === companyId);

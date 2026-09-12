@@ -55,7 +55,10 @@ import {
   WRITE_ROLES,
 } from "@atiende/domain-licitaciones";
 import type {
+  CompanyCapability,
   CompanyDocument,
+  CompanyExperienceRecord,
+  CompanySigner,
   ProposalSection,
   RequirementFulfillmentMapping,
   RequirementFulfillmentMappingRecord,
@@ -280,7 +283,19 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
 
         const companyDocuments = await repo.listCompanyDocuments(organizationId, asOfIso);
         const resolverDocuments: CompanyDocument[] = companyDocuments.map((d) => ({ id: d.id, companyId: organizationId, type: d.type, label: d.label, issuedAt: asOfIso, expiresAt: d.expiresAt, approvalStatus: d.approvalStatus }));
-        const companyData = new CompanyDataService(new InMemoryCompanyDataResolver({ documents: resolverDocuments }));
+
+        const companyCapabilities = await repo.listCompanyCapabilities(organizationId);
+        const resolverCapabilities: CompanyCapability[] = companyCapabilities.map((c) => ({ id: c.id, companyId: organizationId, name: c.name, description: c.description, evidenceDocId: c.evidenceDocId ?? undefined, approvalStatus: c.approvalStatus }));
+
+        const companyExperience = await repo.listCompanyExperience(organizationId);
+        const resolverExperience: CompanyExperienceRecord[] = companyExperience.map((e) => ({ id: e.id, companyId: organizationId, description: e.description, evidenceDocId: e.evidenceDocId, approvalStatus: e.approvalStatus }));
+
+        const companySigners = await repo.listCompanySigners(organizationId);
+        const resolverSigners: CompanySigner[] = companySigners.map((s) => ({ id: s.id, companyId: organizationId, name: s.name, role: s.role, authorized: s.authorized }));
+
+        const companyData = new CompanyDataService(
+          new InMemoryCompanyDataResolver({ documents: resolverDocuments, capabilities: resolverCapabilities, experience: resolverExperience, signers: resolverSigners }),
+        );
 
         const technicalProposal = new TechnicalProposalBuilder(companyData).build(organizationId, items, mappings, asOfIso, conditionEvaluations);
 
