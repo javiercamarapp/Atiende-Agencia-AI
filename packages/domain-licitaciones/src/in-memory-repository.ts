@@ -18,9 +18,16 @@ import { ApprovalWorkflow } from "./approval-workflow.ts";
 import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
 import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
+import { WRITE_ROLES } from "./roles.ts";
 import type { LicitacionesRole } from "./roles.ts";
-import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from "./repository.ts";
+import type { RecordTenderVersionResult, RequirementFulfillmentMappingRecord, RequirementItemRecord, TenderChangeNotificationRecord } from "./repository.ts";
 import { buildGoNoGoDecision } from "./go-no-go.ts";
+import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
+import type { PersistedTenderVersion, TenderVersionSnapshot } from "./tender-version-registry.ts";
+import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
+import type { SourceConnectorId } from "./connector-registry.ts";
+import { evaluateSourceFreshness } from "./source-run.ts";
+import type { SourceFreshnessRecord, SourceRunInput, SourceRunRecord } from "./source-run.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
@@ -104,6 +111,11 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly tenderAuditLog = new Map<string, { action: string; actorId: string; createdAt: string }[]>(); // tenderId -> entradas (historial)
   private readonly matchingProfiles = new Map<string, MatchingProfileRecord>(); // orgId -> perfil (singleton)
   private readonly goNoGoDecisions = new Map<string, GoNoGoDecisionRecord[]>(); // tenderId -> decisiones (historial, más reciente al final)
+  // ---- Fase 5 pieza 2: historial de versiones de convocatoria ----
+  private readonly tenderVersionRegistries = new Map<string, TenderVersionRegistry>(); // `${orgId}:${tenderId}` -> registro (historial completo)
+  private readonly tenderChangeNotifications = new Map<string, TenderChangeNotificationRecord[]>(); // orgId -> notificaciones (historial, más reciente al final)
+  // ---- Fase 5 pieza 1: andamiaje de ingesta ----
+  private readonly sourceRuns = new Map<string, SourceRunRecord[]>(); // orgId -> corridas (historial, más reciente al final)
 
   constructor(options: { storageDir?: string } = {}) {
     this.storageDir = options.storageDir ?? mkdtempSync(join(tmpdir(), "licitaciones-test-"));
@@ -213,6 +225,15 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       };
       this.tenders.set(existing.id, updated);
       this.recordTenderAudit(existing.id, "tender.manual_upsert.updated", input.actorId);
+      // Fase 5 pieza 1 (REQ-147): cada alta/actualización manual ES una
+      // "corrida de ingesta" del único conector real hoy -- se registra tal
+      // cual, con la MISMA forma que usaría un conector automatizado futuro.
+      await this.recordManualSourceRun(organizationId, false);
+      // Fase 5 pieza 2: versiona la convocatoria y cascada de invalidación en
+      // la MISMA operación -- generaliza el disparador anterior (solo
+      // `submissionDeadline`) a CUALQUIER campo de bases que haya cambiado
+      // (REQ-151/155, ver tender-version-registry.ts).
+      await this.recordTenderVersion(organizationId, existing.id, input.actorId);
       return { tender: updated, created: false, submissionDeadlineChanged: previousDeadline !== input.submissionDeadline };
     }
 
@@ -235,6 +256,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     this.tenders.set(created.id, created);
     if (externalKey) this.tenderByExternalKey.set(externalKey, created.id);
     this.recordTenderAudit(created.id, "tender.manual_upsert.created", input.actorId);
+    await this.recordManualSourceRun(organizationId, true);
+    await this.recordTenderVersion(organizationId, created.id, input.actorId);
     return { tender: created, created: true, submissionDeadlineChanged: false };
   }
 
@@ -242,6 +265,157 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const list = this.tenderAuditLog.get(tenderId) ?? [];
     list.push({ action, actorId, createdAt: new Date().toISOString() });
     this.tenderAuditLog.set(tenderId, list);
+  }
+
+  /** Fase 5 pieza 1 (REQ-147): registra la corrida del conector "manual" -- cada alta/actualización manual de una convocatoria es, por diseño de esta fase, su propia corrida (ver comentario de cabecera en `connector-registry.ts` sobre por qué "manual" no agrupa varias filas todavía). */
+  private async recordManualSourceRun(organizationId: string, created: boolean): Promise<void> {
+    const nowIso = new Date().toISOString();
+    await this.recordSourceRun(organizationId, {
+      source: "manual",
+      state: "ok",
+      startedAt: nowIso,
+      finishedAt: nowIso,
+      evidence: { message: created ? "Alta manual de convocatoria." : "Actualización manual de convocatoria.", coverage: { expected: 1, obtained: 1 } },
+      correlationId: null,
+    });
+  }
+
+  // ---- Fase 5 pieza 2: historial de versiones de convocatoria (REQ-017/041/151..155) ----
+
+  async recordTenderVersion(organizationId: string, tenderId: string, actorId: string): Promise<RecordTenderVersionResult> {
+    const tender = await this.findTender(organizationId, tenderId);
+    if (!tender) throw new Error(`Tender "${tenderId}" no encontrado para la organización "${organizationId}" (recordTenderVersion).`);
+    const requirementItems = await this.listRequirementItems(organizationId, tenderId);
+
+    const snapshot: TenderVersionSnapshot = {
+      fields: {
+        title: tender.title,
+        submissionDeadline: tender.submissionDeadline,
+        contractingBody: tender.contractingBody ?? null,
+        cpvCodes: tender.cpvCodes ?? [],
+        budgetAmount: tender.budgetAmount ?? null,
+        currency: tender.currency ?? "MXN",
+        state: tender.state ?? null,
+        procedureTypeRaw: tender.procedureTypeRaw ?? null,
+      },
+      requirements: requirementItems.map(toRequirementSnapshot),
+    };
+
+    const key = `${organizationId}:${tenderId}`;
+    const registry = this.tenderVersionRegistries.get(key) ?? new TenderVersionRegistry();
+    this.tenderVersionRegistries.set(key, registry);
+
+    const previousLatest = registry.latest();
+    // REQ-152/154: el snapshot es idéntico al de la última versión registrada -> no crea versión/cascada/notificación nueva (reingesta idempotente).
+    if (previousLatest && computeTenderSnapshotHash(snapshot) === previousLatest.hash) {
+      return { version: previousLatest, created: false, cascadedChanges: [], notification: null };
+    }
+
+    const version = registry.createVersion(snapshot);
+    const cascadedChanges: ChangeDetected[] = [];
+    const proposal = await this.findProposal(organizationId, tenderId);
+
+    if (previousLatest && proposal && version.diff.hasChanges) {
+      if (version.diff.changedFieldNames.length > 0) {
+        cascadedChanges.push(
+          await this.recordChange(organizationId, proposal.id, {
+            scope: "expediente",
+            scopeRef: "expediente",
+            reason: `tender_version_changed:v${version.version}:${version.diff.changedFieldNames.join(",")}`,
+          }),
+        );
+      }
+      // Ver postgres-repository.ts::recordTenderVersion para por qué el
+      // scopeRef necesita el prefijo "technical:" (mismo que persiste
+      // `technicalProposal.ts::saveTechnicalSections`).
+      for (const sectionKey of version.diff.affectedSectionKeys) {
+        cascadedChanges.push(
+          await this.recordChange(organizationId, proposal.id, {
+            scope: "seccion",
+            scopeRef: `seccion:technical:${sectionKey}`,
+            reason: `tender_version_changed:v${version.version}:requisitos_de_seccion:${sectionKey}`,
+          }),
+        );
+      }
+    }
+
+    const notification: TenderChangeNotificationRecord = {
+      id: randomUUID(),
+      organizationId,
+      tenderId,
+      tenderVersion: version.version,
+      reason: previousLatest ? `convocatoria_actualizada:v${version.version}` : "convocatoria_nueva",
+      changedFieldNames: version.diff.changedFieldNames,
+      affectedSectionKeys: version.diff.affectedSectionKeys,
+      notifiedRoles: WRITE_ROLES,
+      createdAt: version.createdAt,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+    };
+    const notifications = this.tenderChangeNotifications.get(organizationId) ?? [];
+    notifications.push(notification);
+    this.tenderChangeNotifications.set(organizationId, notifications);
+
+    // Trazabilidad de quién disparó la corrida que produjo esta versión (alta manual o re-extracción de requisitos) -- reutiliza `tender_audit_log`, ya existente (Fase 3 §6), en vez de inventar un mecanismo nuevo.
+    this.recordTenderAudit(tenderId, "tender.version_recorded", actorId);
+    const persisted: PersistedTenderVersion = { version: version.version, hash: version.hash, snapshot: version.snapshot, diff: version.diff, createdAt: version.createdAt };
+    return { version: persisted, created: true, cascadedChanges, notification };
+  }
+
+  async listTenderVersions(organizationId: string, tenderId: string): Promise<readonly PersistedTenderVersion[]> {
+    const registry = this.tenderVersionRegistries.get(`${organizationId}:${tenderId}`);
+    if (!registry) return [];
+    return registry.all().map((v) => ({ version: v.version, hash: v.hash, snapshot: v.snapshot, diff: v.diff, createdAt: v.createdAt }));
+  }
+
+  async latestTenderVersion(organizationId: string, tenderId: string): Promise<PersistedTenderVersion | null> {
+    const registry = this.tenderVersionRegistries.get(`${organizationId}:${tenderId}`);
+    const latest = registry?.latest();
+    return latest ? { version: latest.version, hash: latest.hash, snapshot: latest.snapshot, diff: latest.diff, createdAt: latest.createdAt } : null;
+  }
+
+  async listTenderChangeNotifications(organizationId: string, tenderId?: string): Promise<readonly TenderChangeNotificationRecord[]> {
+    const all = this.tenderChangeNotifications.get(organizationId) ?? [];
+    const filtered = tenderId ? all.filter((n) => n.tenderId === tenderId) : all;
+    return [...filtered].reverse();
+  }
+
+  async acknowledgeTenderChangeNotification(organizationId: string, notificationId: string, actorId: string): Promise<TenderChangeNotificationRecord> {
+    const all = this.tenderChangeNotifications.get(organizationId) ?? [];
+    const index = all.findIndex((n) => n.id === notificationId);
+    if (index === -1) throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
+    const updated: TenderChangeNotificationRecord = { ...all[index]!, acknowledgedAt: new Date().toISOString(), acknowledgedBy: actorId };
+    all[index] = updated;
+    this.tenderChangeNotifications.set(organizationId, all);
+    return updated;
+  }
+
+  // ---- Fase 5 pieza 1: andamiaje de ingesta sobre fixtures/carga manual (REQ-004/005/146..150) ----
+
+  async recordSourceRun(organizationId: string, input: SourceRunInput): Promise<SourceRunRecord> {
+    const record: SourceRunRecord = { ...input, id: randomUUID(), organizationId, createdAt: new Date().toISOString() };
+    const list = this.sourceRuns.get(organizationId) ?? [];
+    list.push(record);
+    this.sourceRuns.set(organizationId, list);
+    return record;
+  }
+
+  async listSourceRuns(organizationId: string, filter?: { source?: SourceConnectorId; limit?: number }): Promise<readonly SourceRunRecord[]> {
+    const all = this.sourceRuns.get(organizationId) ?? [];
+    const filtered = filter?.source ? all.filter((r) => r.source === filter.source) : all;
+    const ordered = [...filtered].reverse();
+    return filter?.limit ? ordered.slice(0, filter.limit) : ordered;
+  }
+
+  async sourceFreshness(organizationId: string): Promise<readonly SourceFreshnessRecord[]> {
+    const all = this.sourceRuns.get(organizationId) ?? [];
+    const now = new Date();
+    return LICITACIONES_CONNECTOR_REGISTRY.all().map((descriptor) => {
+      const runsOfSource = all.filter((r) => r.source === descriptor.id);
+      const lastRun = runsOfSource[runsOfSource.length - 1] ?? null;
+      const lastSuccess = [...runsOfSource].reverse().find((r) => r.state === "ok") ?? null;
+      return evaluateSourceFreshness(descriptor.id, lastSuccess, lastRun, now);
+    });
   }
 
   /** Solo pruebas/inspección -- no forma parte de `LicitacionesRepository` (ningún endpoint de Fase 3 la expone, ver diseño §6/§9). */

@@ -232,6 +232,13 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
         }
         const { items, conflicts } = await new RequirementMatrixBuilder(extractors).build(documents);
         await repo.replaceRequirementItems(organizationId, tenderId, items.map(toRequirementItemRecord));
+        // Fase 5 pieza 2 (REQ-041): una re-extracción de requisitos es
+        // exactamente el caso de "acta de junta de aclaraciones" que cambia
+        // los requisitos de una convocatoria ya versionada -- versiona la
+        // convocatoria de nuevo aquí para que el diff/cascada/notificación
+        // (ver `recordTenderVersion`) también cubran este camino, no solo el
+        // alta manual de `tenders.ts`.
+        await repo.recordTenderVersion(organizationId, tenderId, c.get("userId"));
 
         return {
           status: 200,

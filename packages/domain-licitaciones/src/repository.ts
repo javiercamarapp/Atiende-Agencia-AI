@@ -21,6 +21,9 @@ import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
 import type { LicitacionesRole } from "./roles.ts";
 import type { EligibilityStatus } from "./matching-engine.ts";
+import type { PersistedTenderVersion } from "./tender-version-registry.ts";
+import type { SourceConnectorId } from "./connector-registry.ts";
+import type { SourceFreshnessRecord, SourceRunInput, SourceRunRecord } from "./source-run.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -107,6 +110,33 @@ export interface GoNoGoDecisionCreateInput {
   readonly matchInputsHash: string;
   readonly actorId: string;
   readonly actorRole: LicitacionesRole;
+}
+
+// ---- Fase 5 pieza 2: historial de versiones de convocatoria (REQ-017/041/151..155) ----
+
+/** Notificación inmediata (REQ-151/155) de una versión de convocatoria nueva o de una cascada de invalidación detectada. Sin canal de envío real (email/SMS) -- se persiste como registro consultable, mismo criterio "honesto" que el resto del backoffice (ver `FuentesFrescuraPage`/`PanelPage` del repo origen: nunca se finge una integración de envío que no existe). */
+export interface TenderChangeNotificationRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly tenderId: string;
+  readonly tenderVersion: number;
+  readonly reason: string;
+  readonly changedFieldNames: readonly string[];
+  readonly affectedSectionKeys: readonly string[];
+  readonly notifiedRoles: readonly LicitacionesRole[];
+  readonly createdAt: string;
+  readonly acknowledgedAt: string | null;
+  readonly acknowledgedBy: string | null;
+}
+
+export interface RecordTenderVersionResult {
+  readonly version: PersistedTenderVersion;
+  /** `false` si el snapshot actual es idéntico al de la última versión persistida -- no se creó fila nueva ni se disparó cascada (REQ-152/154: dedupe + reprocesamiento idempotente). */
+  readonly created: boolean;
+  /** `ChangeDetected` efectivamente aplicados sobre la propuesta abierta de esta convocatoria (vacío si no existe propuesta, o si el cambio no afectó ningún alcance con aprobación vigente). */
+  readonly cascadedChanges: readonly ChangeDetected[];
+  /** `null` únicamente cuando `created === false`. */
+  readonly notification: TenderChangeNotificationRecord | null;
 }
 
 export interface LicitacionesRepository {
@@ -259,6 +289,36 @@ export interface LicitacionesRepository {
     },
   ): Promise<ProposalRecord>;
 
+  // ---- Fase 5 pieza 2: historial de versiones de convocatoria (REQ-017/041/151..155) ----
+  /**
+   * Calcula el snapshot ACTUAL de la convocatoria (campos de bases +
+   * `requirement_item` vigentes), lo compara contra la última
+   * `licitaciones.tender_version` persistida y, si difiere (o si nunca hubo
+   * una versión previa), persiste la nueva versión en la MISMA operación que:
+   * (a) invalida -- vía `recordChange` -- la aprobación "expediente" vigente
+   * si cambió algún campo de bases, y/o las aprobaciones de sección
+   * dependientes (`seccion:<key>`, ver `SECTION_KEY_BY_REQUIREMENT_TYPE`) si
+   * cambió algún requisito de ese tipo (REQ-155); y (b) registra una
+   * notificación inmediata (REQ-151) dirigida a `WRITE_ROLES`. Idempotente
+   * (REQ-154): si el snapshot es idéntico al de la última versión, no crea
+   * fila/cascada/notificación nueva -- ver `RecordTenderVersionResult.created`.
+   */
+  recordTenderVersion(organizationId: string, tenderId: string, actorId: string): Promise<RecordTenderVersionResult>;
+  /** Historial COMPLETO de versiones (REQ-153), más antigua primero. */
+  listTenderVersions(organizationId: string, tenderId: string): Promise<readonly PersistedTenderVersion[]>;
+  latestTenderVersion(organizationId: string, tenderId: string): Promise<PersistedTenderVersion | null>;
+  /** Notificaciones de cambio de convocatoria, más recientes primero. Sin `tenderId`, lista las de TODA la organización (bandeja de "roles responsables"). */
+  listTenderChangeNotifications(organizationId: string, tenderId?: string): Promise<readonly TenderChangeNotificationRecord[]>;
+  acknowledgeTenderChangeNotification(organizationId: string, notificationId: string, actorId: string): Promise<TenderChangeNotificationRecord>;
+
+  // ---- Fase 5 pieza 1: andamiaje de ingesta sobre fixtures/carga manual (REQ-004/005/146..150) ----
+  /** Registra una corrida de un conector (hoy, siempre "manual" -- ver `connector-registry.ts`) con su estado explícito (REQ-148) y evidencia/cobertura (REQ-147). */
+  recordSourceRun(organizationId: string, input: SourceRunInput): Promise<SourceRunRecord>;
+  /** Historial de corridas, más recientes primero -- reconstruye el historial completo de una fuente (REQ-147). */
+  listSourceRuns(organizationId: string, filter?: { source?: SourceConnectorId; limit?: number }): Promise<readonly SourceRunRecord[]>;
+  /** Frescura/obsolescencia por fuente REGISTRADA (REQ-149) -- incluye toda fuente del registro único aunque nunca haya corrido (frescura `stale: true` explícita, nunca oculta). */
+  sourceFreshness(organizationId: string): Promise<readonly SourceFreshnessRecord[]>;
+
   // ---- Idempotencia (transversal) ----
   withIdempotency<T>(params: IdempotencyParams, run: () => Promise<IdempotentResult<T>>): Promise<IdempotentResult<T>>;
 }
@@ -278,3 +338,6 @@ export type {
 } from "./types.ts";
 export type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
 export type { ProposalVersion, ProposalInputRecord, PersistedProposalVersion } from "./proposal-version-registry.ts";
+export type { TenderVersion, PersistedTenderVersion, TenderVersionSnapshot, TenderFieldSnapshot, RequirementSnapshot, TenderVersionDiff, TenderFieldChange, TenderRequirementChange, TenderDiffStatus } from "./tender-version-registry.ts";
+export type { SourceConnectorId, SourceHealthState, SourceConnectorDescriptor } from "./connector-registry.ts";
+export type { SourceRunRecord, SourceRunInput, SourceRunEvidence, SourceFreshnessRecord } from "./source-run.ts";

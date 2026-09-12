@@ -156,3 +156,25 @@ export type {
 } from "./repository.ts";
 export { InMemoryLicitacionesRepository } from "./in-memory-repository.ts";
 export { PostgresLicitacionesRepository } from "./postgres-repository.ts";
+
+// ---- Fase 5 pieza 1: andamiaje de ingesta (REQ-004/005/146..150) ----
+export { SOURCE_CONNECTOR_IDS, isSourceConnectorId, SOURCE_HEALTH_STATES, SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, ConnectorRegistry, LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
+export type { SourceConnectorId, SourceHealthState, SourceCadence, SourceLiveVerification, SourceConnectorKind, SourceConnectorDescriptor } from "./connector-registry.ts";
+export { isSourceHealthState, classifySourceFailure, computeStaleForMs, evaluateSourceFreshness, DEFAULT_STALE_THRESHOLD_MS } from "./source-run.ts";
+export type { SourceRunInput, SourceRunRecord, SourceRunEvidence, SourceFreshnessRecord } from "./source-run.ts";
+
+// ---- Fase 5 pieza 2: historial de versiones de convocatoria (REQ-017/041/151..155) ----
+export { TenderVersionRegistry, computeTenderSnapshotHash, requirementNaturalKey, toRequirementSnapshot } from "./tender-version-registry.ts";
+export type {
+  TenderDiffStatus,
+  TenderFieldSnapshot,
+  TenderFieldName,
+  RequirementSnapshot,
+  TenderVersionSnapshot,
+  TenderFieldChange,
+  TenderRequirementChange,
+  TenderVersionDiff,
+  TenderVersion,
+  PersistedTenderVersion,
+} from "./tender-version-registry.ts";
+export type { TenderChangeNotificationRecord, RecordTenderVersionResult } from "./repository.ts";
