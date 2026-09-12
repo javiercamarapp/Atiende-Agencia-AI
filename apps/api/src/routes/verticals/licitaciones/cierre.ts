@@ -12,18 +12,20 @@
 // estado vivo, y `download` responde 409 explícito si el "ready" guardado ya
 // no lo es (REQ-LIC-009).
 //
-// Se añade además `POST .../expediente/approval` (DECISION_ROLES): el
-// repositorio de dominio (§3.2 del diseño) ya expone `approveExpediente`,
-// pero el diseño no listó explícitamente un endpoint para invocarlo — sin él
-// ningún expediente podría llegar nunca a "ready" (la condición de aprobación
-// vigente nunca se cumpliría). Se agrega aquí, en el mismo espíritu que el
-// resto del Flujo 3: acotado a DECISION_ROLES (owner/admin/analyst — nunca
-// writer/reviewer solos, ver roles.ts), siempre recalculando el hash de
-// insumos ACTUAL antes de aprobar (nunca un hash que el cliente proponga).
+// `POST .../expediente/approval` (DECISION_ROLES) sigue siendo el único gate
+// que hace posible llegar a "ready": acotado a DECISION_ROLES (owner/admin/
+// analyst — nunca writer/reviewer solos, ver roles.ts), siempre recalculando
+// el hash de insumos ACTUAL antes de aprobar (nunca un hash que el cliente
+// proponga). Fase 2 pieza 1 (AE-02/AE-11, ver
+// domain-licitaciones/src/approval-workflow.ts) refuerza su lógica interna
+// sin cambiar la superficie pública, y añade
+// `POST .../proposal/sections/:sectionKey/approval` para revisión granular
+// incremental por sección.
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
+  ApprovalRejectedError,
   DECISION_ROLES,
   IdempotencyConflictError,
   PackageAssembler,
@@ -32,7 +34,7 @@ import {
   sealInputs,
 } from "@atiende/domain-licitaciones";
 import type { AssembleInput, ChecklistReport, ExpedienteInputs, PackageDocumentInput } from "@atiende/domain-licitaciones";
-import type { Approval, InputsHash } from "@atiende/domain-licitaciones";
+import type { Approval, LicitacionesRole } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -41,6 +43,20 @@ function overallStatusOf(items: readonly { result: "verde" | "ambar" | "rojo" }[
   if (items.some((i) => i.result === "rojo")) return "rojo";
   if (items.some((i) => i.result === "ambar")) return "ambar";
   return "verde";
+}
+
+/**
+ * Fase 2 pieza 1: traduce el vocabulario de `ApprovalWorkflow.approve()`
+ * (`ApprovalRejectedError.reasonCode`) a un código HTTP -- rol no autorizado
+ * o autoaprobación (incluida AE-11) son un 403 explícito (el actor está
+ * identificado y autenticado, pero esta acción en particular le está
+ * vedada); una inconsistencia scope/scopeRef (AE-02) es un 400 de
+ * validación, nunca un 500 genérico.
+ */
+function mapApprovalRejectedError(err: unknown): Error {
+  if (!(err instanceof ApprovalRejectedError)) return err instanceof Error ? err : new Error(String(err));
+  if (err.reasonCode === "scope_scopeRef_inconsistente") return Errors.validation(err.message);
+  return Errors.forbidden(err.message);
 }
 
 interface CierreContext {
@@ -56,10 +72,11 @@ async function buildAssembleInput(deps: AppDeps, ctx: CierreContext): Promise<As
 
   const sections = await repo.loadProposalSectionsAsDocuments(ctx.organizationId, ctx.proposalId);
   const documents: PackageDocumentInput[] = sections.map((s) => {
-    // Una sección técnica que TechnicalProposalBuilder no generó todavía
-    // (fuera de fase, ver diseño §6) queda con contenido "PENDIENTE..." — se
-    // trata como documento "no presente" para el manifiesto, coherente con
-    // el origen.
+    // Una sección (económica o técnica, Fase 2 pieza 3) cuyo contenido
+    // arranca con "PENDIENTE" -- porque `TechnicalProposalBuilder` encontró
+    // algún bloqueo (dato faltante/no aprobado, requisito en conflicto) o
+    // porque nunca se generó -- se trata como documento "no presente" para
+    // el manifiesto, nunca se incluye a medias.
     const blocked = s.content !== undefined && s.content.startsWith("PENDIENTE");
     return { documentId: s.documentId, label: s.label, required: true, filename: s.filename, version: s.version, content: blocked ? undefined : s.content };
   });
@@ -82,12 +99,24 @@ async function buildAssembleInput(deps: AppDeps, ctx: CierreContext): Promise<As
     throw new Error("computeCurrentInputsHash: el hash devuelto no coincide con el recalculado a partir de 'raw'.");
   }
 
-  const currentApproval = await repo.findCurrentExpedienteApproval(ctx.organizationId, ctx.proposalId);
-  const approvals: Approval[] = currentApproval
-    ? [{ id: currentApproval.id, scope: "expediente", scopeRef: "expediente", approvedBy: currentApproval.approverId, approvedByRole: currentApproval.approverRole, approvedAt: currentApproval.decidedAt, inputsHash: currentApproval.inputsHash as InputsHash, status: currentApproval.status }]
-    : [];
+  // Fase 2 piezas 1+2 (AE-02/AE-11 + ProposalVersionRegistry, ver diseño
+  // §3.2): mismo choke point que el resto de AE-14 en este archivo -- antes
+  // de derivar `approvals`, sincroniza el historial de versiones y, si la
+  // aprobación vigente de alcance "expediente" ya no coincide con el hash
+  // actual, la invalida explícitamente con un motivo que nombra los insumos
+  // que cambiaron (en vez de dejar una fila "vigente" obsoleta en la BD que
+  // solo `PackageAssembler` filtraría en memoria).
+  await repo.syncExpedienteApprovalWithCurrentHash(ctx.organizationId, ctx.proposalId, sealed, raw as ExpedienteInputs);
 
-  return { expedienteId: ctx.proposalId, documents, checklist, approvals, currentInputsHash: sealed, correlationId: ctx.correlationId };
+  const approvals: Approval[] = [...(await repo.activeApprovalsCovering(ctx.organizationId, ctx.proposalId, "expediente"))];
+
+  // Fase 2 pieza 3: requisitos opcionales/condicionales que
+  // `TechnicalProposalBuilder` marcó explícitamente "NO APLICA" (nunca
+  // omitidos en silencio) -- se reflejan también en el manifiesto final.
+  const proposal = await repo.findProposal(ctx.organizationId, ctx.tenderId);
+  const notApplicableRequirements = proposal?.generationReport?.technical?.notApplicableRequirements ?? [];
+
+  return { expedienteId: ctx.proposalId, documents, checklist, approvals, currentInputsHash: sealed, correlationId: ctx.correlationId, notApplicableRequirements };
 }
 
 export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -101,12 +130,15 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.use(`${propertyBase}/submission`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${propertyBase}/submission/declare`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${propertyBase}/expediente/approval`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(`${propertyBase}/proposal/sections/:sectionKey/approval`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(`${propertyBase}/expediente/approval`, async (c) => {
     assertVerticalRole(c, DECISION_ROLES);
     const organizationId = c.get("organizationId");
     const userId = c.get("userId");
-    const verticalRole = c.get("verticalRole")!;
+    // assertVerticalRole(c, DECISION_ROLES) arriba ya garantiza en runtime
+    // que este valor pertenece a DECISION_ROLES (subconjunto de LicitacionesRole).
+    const verticalRole = c.get("verticalRole")! as LicitacionesRole;
     const tenderId = c.req.param("tenderId");
 
     const tender = await repo.findTender(organizationId, tenderId);
@@ -117,9 +149,47 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // El hash de insumos SIEMPRE se recalcula aquí, en vivo -- nunca se
     // acepta uno que el cliente proponga (mismo principio que el resto del
     // Flujo 3: nada de lo que decide "aprobado" viene del request).
-    const { hash } = await repo.computeCurrentInputsHash(organizationId, tenderId, proposal.id);
-    const approval = await repo.approveExpediente(organizationId, proposal.id, userId, verticalRole, hash);
-    return c.json({ id: approval.id, status: approval.status, inputsHash: approval.inputsHash, decidedAt: approval.decidedAt }, 201);
+    const { raw } = await repo.computeCurrentInputsHash(organizationId, tenderId, proposal.id);
+    const sealed = sealInputs(raw as ExpedienteInputs);
+    try {
+      // Fase 2 pieza 1 (AE-02/AE-11): reemplaza al `approveExpediente` plano
+      // de Fase 1 -- misma superficie pública, lógica interna reforzada
+      // (rechaza autoaprobación de quien es autor de contenido de CUALQUIER
+      // sección, ver approval-workflow.ts).
+      const approval = await repo.approve(organizationId, proposal.id, { scope: "expediente", scopeRef: "expediente", actorId: userId, actorRole: verticalRole, inputsHash: sealed });
+      return c.json({ id: approval.id, scope: approval.scope, scopeRef: approval.scopeRef, status: approval.status, inputsHash: approval.inputsHash, decidedAt: approval.approvedAt }, 201);
+    } catch (err) {
+      throw mapApprovalRejectedError(err);
+    }
+  });
+
+  // Fase 2 pieza 1: revisión granular incremental por sección (scope
+  // "seccion") -- útil sobre todo una vez exista contenido técnico real
+  // (Pieza 3). Mismas DECISION_ROLES que aprobar el expediente completo:
+  // aprobar CUALQUIER alcance es una decisión, nunca redacción.
+  app.post(`${propertyBase}/proposal/sections/:sectionKey/approval`, async (c) => {
+    assertVerticalRole(c, DECISION_ROLES);
+    const organizationId = c.get("organizationId");
+    const userId = c.get("userId");
+    // assertVerticalRole(c, DECISION_ROLES) arriba ya garantiza en runtime
+    // que este valor pertenece a DECISION_ROLES (subconjunto de LicitacionesRole).
+    const verticalRole = c.get("verticalRole")! as LicitacionesRole;
+    const tenderId = c.req.param("tenderId");
+    const sectionKey = c.req.param("sectionKey");
+
+    const tender = await repo.findTender(organizationId, tenderId);
+    if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
+    const proposal = await repo.findProposal(organizationId, tenderId);
+    if (!proposal) throw Errors.notFound("Genere primero la propuesta antes de aprobar una sección.");
+
+    const { raw } = await repo.computeCurrentInputsHash(organizationId, tenderId, proposal.id);
+    const sealed = sealInputs(raw as ExpedienteInputs);
+    try {
+      const approval = await repo.approve(organizationId, proposal.id, { scope: "seccion", scopeRef: `seccion:${sectionKey}`, actorId: userId, actorRole: verticalRole, inputsHash: sealed });
+      return c.json({ id: approval.id, scope: approval.scope, scopeRef: approval.scopeRef, status: approval.status, inputsHash: approval.inputsHash, decidedAt: approval.approvedAt }, 201);
+    } catch (err) {
+      throw mapApprovalRejectedError(err);
+    }
   });
 
   app.post(`${propertyBase}/package/assemble`, async (c) => {

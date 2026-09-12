@@ -8,10 +8,44 @@ import type {
   CompanyDocumentRecord,
   ApprovedRateRecord,
   PackageManifestRecord,
-  ExpedienteApprovalRecord,
   SubmissionRecord,
   RequiredAnnexItem,
 } from "./types.ts";
+import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
+import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
+import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
+import type { LicitacionesRole } from "./roles.ts";
+
+// ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
+// Formas de registro deliberadamente con uniones de string LITERALES (no
+// importadas de requirement-matrix.ts) -- mismo patrón que el resto de este
+// archivo/types.ts (p. ej. `ComplianceItemRecord.result`), para no crear una
+// dependencia circular repository.ts -> requirement-matrix.ts -> types.ts.
+
+export interface RequirementItemRecord {
+  readonly id: string;
+  readonly documentId: string | null;
+  readonly text: string;
+  readonly requirementKind: "tecnico" | "economico" | "legal" | "administrativo" | "anexo";
+  readonly obligatoriedad: "obligatorio" | "opcional" | "condicional";
+  readonly topicKey: string | null;
+  readonly requiredEvidence: readonly string[];
+  readonly extractedBy: "rule" | "llm";
+  readonly page: number | null;
+  readonly clause: string | null;
+  readonly responsibleRole: string;
+  readonly deadline: string | null;
+  readonly status: "pendiente" | "en_progreso" | "cumplido" | "bloqueado" | "no_evaluable";
+  readonly confidence: number | null;
+}
+
+export interface RequirementFulfillmentMappingRecord {
+  readonly id: string;
+  readonly topicKey: string;
+  readonly kind: "capability" | "experience" | "document" | "signer";
+  readonly refKey: string;
+  readonly statementTemplate: string;
+}
 
 export interface IdempotencyParams {
   readonly organizationId: string;
@@ -42,6 +76,7 @@ export interface LicitacionesRepository {
     organizationId: string,
     proposalId: string,
     input: {
+      actorId: string;
       economicTotals: unknown | null;
       generationReportPatch: unknown;
       correlationId: string | null;
@@ -54,8 +89,40 @@ export interface LicitacionesRepository {
   loadProposalSectionsAsDocuments(organizationId: string, proposalId: string): Promise<readonly { documentId: string; label: string; filename: string; version: number; content?: string }[]>;
   /** Wrapper sobre sealed-inputs.ts::sealInputs — `raw` es el `ExpedienteInputs` construido con los insumos REALMENTE usados por esta propuesta. */
   computeCurrentInputsHash(organizationId: string, tenderId: string, proposalId: string): Promise<{ hash: string; raw: unknown }>;
-  findCurrentExpedienteApproval(organizationId: string, proposalId: string): Promise<ExpedienteApprovalRecord | null>;
-  approveExpediente(organizationId: string, proposalId: string, approverId: string, approverRole: string, inputsHash: string): Promise<ExpedienteApprovalRecord>;
+
+  // ---- Fase 2 pieza 1: máquina de aprobaciones granular (AE-02/AE-11) ----
+  /**
+   * Aprueba `input.scope`/`input.scopeRef` para `proposalId`: hidrata una
+   * `ApprovalWorkflow` en memoria con los autores de sección ya registrados
+   * (`licitaciones.section_author`, AE-11) y ejerce la misma máquina pura de
+   * dominio que `packages/domain-licitaciones/src/approval-workflow.ts`
+   * expone para pruebas directas — lanza `ApprovalRejectedError` si la regla
+   * rechaza la operación (rol no autorizado, AE-02, o autoaprobación AE-11).
+   * Si la validación pasa, invalida (marca "invalidada") cualquier
+   * aprobación previa "vigente" de EXACTAMENTE el mismo `scope`/`scopeRef`
+   * antes de insertar la nueva — nunca coexisten dos aprobaciones vigentes
+   * para el mismo alcance exacto.
+   */
+  approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs }): Promise<Approval>;
+  /** Invalida toda aprobación vigente cuyo alcance cubra `input.scopeRef` (la aprobación exacta, o "expediente" cubriendo cualquier sección) y deja un registro de auditoría en `licitaciones.approval_change`. */
+  recordChange(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; reason: string }): Promise<ChangeDetected>;
+  /** Aprobaciones vigentes que cubren `scopeRef` (aprobación exacta, o "expediente" cubriendo cualquier sección). */
+  activeApprovalsCovering(organizationId: string, proposalId: string, scopeRef: string): Promise<readonly Approval[]>;
+  /**
+   * Combina, en un solo choque de estado: (a) registra una nueva
+   * `licitaciones.proposal_version` si `sealed.hash` difiere de la última
+   * versión persistida (Fase 2 pieza 2), y (b) si la aprobación vigente de
+   * alcance "expediente" ya no coincide con `sealed.hash`, la invalida vía
+   * `recordChange` con un motivo LEGIBLE que nombra los insumos que
+   * cambiaron (`ProposalVersionRegistry.diff` contra la versión anterior),
+   * en vez del mensaje opaco `hash_insumos_divergente:...` de Fase 1. Debe
+   * llamarse antes de derivar el estado de aprobación en cualquier punto que
+   * lo necesite (mismo choke point que `buildAssembleInput`, AE-14).
+   */
+  syncExpedienteApprovalWithCurrentHash(organizationId: string, proposalId: string, sealed: HashedInputs, raw: ExpedienteInputs): Promise<ChangeDetected | null>;
+  /** Última `licitaciones.proposal_version` registrada para `proposalId`, o `null` si nunca se registró ninguna (propuesta recién creada). Solo lectura/inspección — la escritura ocurre dentro de `syncExpedienteApprovalWithCurrentHash`. */
+  latestProposalVersion(organizationId: string, proposalId: string): Promise<PersistedProposalVersion | null>;
+
   saveManifest(
     organizationId: string,
     proposalId: string,
@@ -75,6 +142,35 @@ export interface LicitacionesRepository {
     input: { userId: string; submittedAt: string; acknowledgementStorageRef: string | null; acknowledgementFileHash: string | null; notes: string | null },
   ): Promise<SubmissionRecord>;
 
+  // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
+  /** Sustituye TODOS los `requirement_item` de `tenderId` por `items` (mismo criterio de reemplazo completo que `replaceComplianceItems` -- nunca acumula historial de corridas de extracción). */
+  replaceRequirementItems(organizationId: string, tenderId: string, items: readonly RequirementItemRecord[]): Promise<void>;
+  listRequirementItems(organizationId: string, tenderId: string): Promise<readonly RequirementItemRecord[]>;
+  listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]>;
+  /** Configura (o reemplaza) el mapeo requisito->dato-de-empresa para un `topicKey` -- editable por DECISION_ROLES (decidir de qué dato se redacta un requisito es una decisión editorial/de riesgo, no redacción). */
+  upsertFulfillmentMapping(organizationId: string, input: { topicKey: string; kind: RequirementFulfillmentMappingRecord["kind"]; refKey: string; statementTemplate: string }): Promise<RequirementFulfillmentMappingRecord>;
+  /**
+   * Persiste las secciones de la propuesta TÉCNICA (una por cada
+   * `SECTION_KEY_BY_REQUIREMENT_TYPE` presente, ver requirement-matrix.ts) en
+   * `licitaciones.proposal_section` -- mismo mecanismo que
+   * `saveEconomicGeneration` (dispara `section_author`/AE-11 vía el `actorId`
+   * de la sesión autenticada, nunca del cuerpo del request). Además patchea
+   * `proposal.generation_report.technical` con los IDs de documento de
+   * empresa REALMENTE usados (para que `computeCurrentInputsHash` los cubra)
+   * y los requisitos "NO APLICA" (para que `buildAssembleInput` los pueda
+   * reflejar en el manifiesto final, nunca omitidos en silencio).
+   */
+  saveTechnicalSections(
+    organizationId: string,
+    proposalId: string,
+    input: {
+      actorId: string;
+      sections: readonly { sectionKey: string; label: string; content: string }[];
+      usedCompanyDocumentIds: readonly string[];
+      notApplicableRequirements: readonly { requirementId: string; reason: string }[];
+    },
+  ): Promise<ProposalRecord>;
+
   // ---- Idempotencia (transversal) ----
   withIdempotency<T>(params: IdempotencyParams, run: () => Promise<IdempotentResult<T>>): Promise<IdempotentResult<T>>;
 }
@@ -86,7 +182,8 @@ export type {
   CompanyDocumentRecord,
   ApprovedRateRecord,
   PackageManifestRecord,
-  ExpedienteApprovalRecord,
   SubmissionRecord,
   RequiredAnnexItem,
 } from "./types.ts";
+export type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
+export type { ProposalVersion, ProposalInputRecord, PersistedProposalVersion } from "./proposal-version-registry.ts";

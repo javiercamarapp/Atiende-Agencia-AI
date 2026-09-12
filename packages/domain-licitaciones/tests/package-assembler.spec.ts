@@ -8,7 +8,7 @@ import { PackageAssembler, verifyManifest } from "../src/package-assembler.ts";
 import type { AssembleInput } from "../src/package-assembler.ts";
 import type { ChecklistReport } from "../src/integrity-checklist.ts";
 import { sealInputs } from "../src/sealed-inputs.ts";
-import type { Approval } from "../src/expediente-approval.ts";
+import type { Approval } from "../src/approval-workflow.ts";
 
 const GREEN_CHECKLIST: ChecklistReport = { overallStatus: "verde", items: [] };
 const RED_CHECKLIST: ChecklistReport = { overallStatus: "rojo", items: [{ dimension: "vigencias", status: "rojo", detail: "vencido", evidence: [] }] };
