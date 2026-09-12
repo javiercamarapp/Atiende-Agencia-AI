@@ -128,6 +128,7 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+    llmGateway: undefined,
   };
   return { deps, hotelesRepo, organizationId, propertyId };
 }
@@ -254,6 +255,7 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
       despachosAuditSink: new InMemoryAuditSink(),
       rentasRepo: (_db) => new InMemoryRentasRepository(),
       rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+      llmGateway: undefined,
     };
     const app = buildApp(deps);
 

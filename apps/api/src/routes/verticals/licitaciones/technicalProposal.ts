@@ -11,15 +11,16 @@
 //    mismo espíritu que `checklist.ts` recibiendo METADATOS de archivos, no
 //    bytes). Persiste `RequirementItem[]` reales por primera vez.
 //
-//    Límite honesto de alcance (deliberado, no un olvido): `LlmRequirementExtractor`
-//    (domain-licitaciones) está completo y probado, pero esta ruta NO lo
-//    invoca todavía -- hacerlo requeriría registrar una escalera de
-//    proveedores real (`LlmGateway.registerLadder`) para el rol
-//    "licitaciones:requirement_extractor", que ninguna configuración de
-//    producción de este monorepo declara hoy. Wirearlo con un gateway sin
-//    proveedores reales detrás sería fingir una integración que no existe
-//    (mismo principio que `production/not-ready.ts`) -- se deja el extractor
-//    listo para conectarse en cuanto exista esa configuración.
+//    `LlmRequirementExtractor` (domain-licitaciones) SÍ se suma a
+//    `RuleBasedExtractor` en cuanto `AppDeps.llmGateway` exista -- es decir, en
+//    cuanto al menos un proveedor LLM (Anthropic/OpenAI/OpenRouter) tenga API
+//    key configurada, ver `production/llm-gateway.ts::buildProductionLlmGateway`
+//    (registra la escalera real para el rol "licitaciones:requirement_extractor",
+//    el mismo que `LlmRequirementExtractorOptions.role` usa por defecto). Sin
+//    NINGUNA API key configurada, `deps.llmGateway` es `undefined` y esta ruta
+//    sigue corriendo SOLO `RuleBasedExtractor`, exactamente como antes --
+//    fail-closed explícito, nunca fingir una integración que no existe (mismo
+//    principio que `production/not-ready.ts`).
 //
 //  - POST .../proposal/technical/generate (WRITE_ROLES): corre
 //    `TechnicalProposalBuilder` sobre los requisitos ya extraídos +
@@ -43,6 +44,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   DECISION_ROLES,
   IdempotencyConflictError,
+  LlmRequirementExtractor,
   RuleBasedExtractor,
   RequirementMatrixBuilder,
   SECTION_KEY_BY_REQUIREMENT_TYPE,
@@ -60,6 +62,7 @@ import type {
   CompanyExperienceRecord,
   CompanySigner,
   ProposalSection,
+  RequirementExtractor,
   RequirementFulfillmentMapping,
   RequirementFulfillmentMappingRecord,
   RequirementItem,
@@ -219,11 +222,15 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
 
     try {
       const result = await repo.withIdempotency({ organizationId, scope: "requirements.extract", key: idempotencyKey, body: { tenderId, documents } }, async () => {
-        // Solo RuleBasedExtractor en esta ruta -- ver nota de alcance en la
-        // cabecera del archivo (LlmRequirementExtractor existe y está
-        // probado, pero requiere una escalera de proveedores real que hoy no
-        // está configurada para licitaciones).
-        const { items, conflicts } = await new RequirementMatrixBuilder([new RuleBasedExtractor()]).build(documents);
+        // RuleBasedExtractor SIEMPRE corre. LlmRequirementExtractor se suma SOLO SI
+        // `deps.llmGateway` existe (al menos una API key de proveedor configurada,
+        // ver nota de cabecera del archivo) -- fail-closed explícito, nunca fingir
+        // una integración que no existe.
+        const extractors: RequirementExtractor[] = [new RuleBasedExtractor()];
+        if (deps.llmGateway) {
+          extractors.push(new LlmRequirementExtractor(deps.llmGateway, { tenantId: organizationId }));
+        }
+        const { items, conflicts } = await new RequirementMatrixBuilder(extractors).build(documents);
         await repo.replaceRequirementItems(organizationId, tenderId, items.map(toRequirementItemRecord));
 
         return {

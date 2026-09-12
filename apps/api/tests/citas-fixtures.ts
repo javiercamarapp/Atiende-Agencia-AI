@@ -117,6 +117,7 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => rentasRepoUnused,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepoUnused,
+    llmGateway: undefined,
   };
 
   const app = buildApp(deps);

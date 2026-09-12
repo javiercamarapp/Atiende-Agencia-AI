@@ -9,10 +9,12 @@
 // A diferencia de `./index.ts` (entrypoint de Node.js "puro", que deliberadamente NO
 // arranca nada porque documenta el hueco de motor de conexión real), este archivo SÍ
 // construye deps reales de producción (`./production/deps.ts`) — con la salvedad,
-// también documentada ahí (`./production/not-ready.ts`), de que solo `coreRepo`/
-// `engine` (login) están conectados a Postgres real hoy; `restaurantesRepo`/
-// `hotelesRepo`/`turnHandler`/`hotelesPaymentsPort` fallan explícito si algo los
-// invoca en producción, en vez de fingir con datos en memoria.
+// también documentada ahí (`./production/not-ready.ts`), de que `hotelesPaymentsPort`/
+// `despachosAuditSink` fallan explícito si algo los invoca en producción (sin
+// adaptador/credenciales todavía), en vez de fingir con datos en memoria; y de que
+// `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler` solo quedan reales (LLM real
+// vía `./production/llm-gateway.ts`) en cuanto al menos una API key de proveedor
+// esté configurada — sin ninguna, fallan explícito igual que los dos anteriores.
 import { handle } from "hono/vercel";
 import { buildApp } from "./app.ts";
 import { buildProductionDeps } from "./production/deps.ts";

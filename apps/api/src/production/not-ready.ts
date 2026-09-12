@@ -27,18 +27,23 @@
 //
 // Lo que SÍ sigue cubriendo, por razones DISTINTAS a la de arriba (no confundir
 // ambos gaps):
-//   - `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler`: el gateway LLM real
-//     (proveedor/roles configurados) es un problema de infraestructura aparte, sin
-//     relación con sesión-por-request.
+//   - `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler`: SOLO cuando NINGÚN
+//     proveedor LLM (Anthropic/OpenAI/OpenRouter) tiene API key configurada — ver
+//     `production/llm-gateway.ts::buildProductionLlmGateway` y
+//     `production/deps.ts`. En cuanto al menos una esté configurada, estos 3 dejan
+//     de pasar por aquí: se construyen reales (turn-handler factory de cada
+//     dominio + el `LlmGateway` compartido), cada llamada con su propia sesión de
+//     Postgres (ver comentario de `production/deps.ts`).
 //   - `hotelesPaymentsPort`: integración de cobro (Stripe/Conekta) sin adaptador ni
 //     credenciales todavía — no es un repositorio de datos por-tenant, no depende de
 //     RLS, no aplica el patrón de fábrica.
 //   - `despachosAuditSink`: falta un adaptador de auditoría real (tabla/servicio
 //     dedicado) — mismo tipo de gap que `hotelesPaymentsPort`, no el de sesión.
 //
-// Mientras esas 3 decisiones sigan pendientes: cualquier intento real de usarlas en
-// producción falla con un error explícito y accionable (nunca con datos en memoria
-// que parecen reales pero se pierden en cada cold start).
+// Mientras esas decisiones sigan pendientes (o mientras falte configurar alguna API
+// key de proveedor LLM): cualquier intento real de usarlas en producción falla con
+// un error explícito y accionable (nunca con datos en memoria que parecen reales
+// pero se pierden en cada cold start).
 export function notProductionReady<T extends object>(portName: string): T {
   return new Proxy(
     {},

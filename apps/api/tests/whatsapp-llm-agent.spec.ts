@@ -181,6 +181,7 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+    llmGateway: undefined,
   };
   return { deps, restaurantesRepo, organizationId, propertyId, tacosBistecId };
 }
@@ -355,6 +356,7 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       despachosAuditSink: new InMemoryAuditSink(),
       rentasRepo: (_db) => new InMemoryRentasRepository(),
       rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+      llmGateway: undefined,
     };
     const app = buildApp(deps);
 
