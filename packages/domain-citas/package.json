@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@atiende/agent-core": "*",
+    "@atiende/core-conversation": "*",
     "@atiende/core-tenancy": "*"
   }
 }

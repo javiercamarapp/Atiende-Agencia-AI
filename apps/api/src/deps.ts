@@ -2,8 +2,8 @@ import type { CoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import type { HotelesRepository, PaymentsPort } from "@atiende/domain-hoteles";
-import type { CitasRepository } from "@atiende/domain-citas";
+import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
+import type { CitasConversationGuard, CitasRepository, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { RentasRepository } from "@atiende/domain-rentas";
@@ -35,7 +35,20 @@ export interface AppDeps {
   readonly turnHandler: WhatsAppTurnHandler;
   readonly hotelesRepo: HotelesRepository;
   readonly hotelesPaymentsPort: PaymentsPort;
+  /** Fase 2 hoteles §2/§3 — mismo patrón que `turnHandler` de restaurantes:
+   * `acknowledgeOnlyTurnHandler` (sin LLM) o `createLlmHotelesWhatsAppTurnHandler`
+   * (LLM real, ver production/deps.ts vs. tests). */
+  readonly hotelesTurnHandler: HotelesWhatsAppTurnHandler;
   readonly citasRepo: CitasRepository;
+  /** Fase 2 §2 — turn handler real del agente de WhatsApp de citas (LLM real sobre
+   * @atiende/agent-core), inyectado igual que `turnHandler` de restaurantes. */
+  readonly citasTurnHandler: CitasWhatsAppTurnHandler;
+  /** Fase 2 §2.6-b — lock distribuido + máquina de estados de
+   * @atiende/core-conversation que serializa mensajes casi-simultáneos del mismo
+   * teléfono (ver whatsapp/inbound.ts de domain-citas). Construible una sola vez
+   * por proceso; producción real debe pasar un RedisLockStore en vez del
+   * InMemoryLockStore por defecto de `createDefaultConversationGuard()`. */
+  readonly citasConversationGuard: CitasConversationGuard;
   readonly licitacionesRepo: LicitacionesRepository;
   readonly despachosRepo: DespachosRepository;
   /** Auditoría de decisiones de la cola de revisión humana (aprobar/rechazar un CFDI)

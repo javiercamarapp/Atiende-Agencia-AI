@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
-import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
-import { InMemoryCitasRepository } from "@atiende/domain-citas";
+import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -68,15 +68,19 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
   coreRepo.addOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
   coreRepo.addMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
 
+  const hotelesRepo = new InMemoryHotelesRepository();
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
     engine: new InMemoryTenancyEngine(),
     restaurantesRepo,
     turnHandler: acknowledgeOnlyTurnHandler(restaurantesRepo),
-    hotelesRepo: new InMemoryHotelesRepository(),
+    hotelesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
+    hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(hotelesRepo),
     citasRepo: new InMemoryCitasRepository(),
+    citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
+    citasConversationGuard: createDefaultConversationGuard(),
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
