@@ -156,7 +156,7 @@ export interface Order {
   readonly customerAddress: string | null;
   readonly branch: string | null;
   readonly total: number;
-  readonly status: "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema";
+  readonly status: OrderStatus;
   readonly items: readonly PersistedOrderItem[];
   readonly source: "web" | "voice" | "whatsapp" | "admin";
   readonly notes: string | null;
@@ -182,6 +182,110 @@ export interface Customer {
   readonly phone: string;
   readonly name: string | null;
   readonly orderCount: number;
+}
+
+// ---- Fase 5 — back-office CORE (catálogo/sucursales/pedidos/clientes, ver diseño §1) ----
+
+export interface Category {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly displayOrder: number;
+}
+
+export interface NewCategoryInput {
+  readonly name: string;
+  readonly slug: string;
+  readonly displayOrder?: number;
+}
+
+export interface CategoryPatch {
+  readonly name?: string;
+  readonly slug?: string;
+  readonly displayOrder?: number;
+}
+
+/** Catálogo real de un producto (organization-wide) — NO trae precio/disponibilidad
+ * por sucursal (eso vive en `branch_products`, ver `BranchProductState` y
+ * product-search.ts): `price` aquí es el precio BASE del producto
+ * (`restaurantes.products.price`), el mismo que el origen usa como default al
+ * darlo de alta en una sucursal nueva. */
+export interface Product {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly categoryId: string | null;
+  readonly categoryName: string | null;
+  readonly name: string;
+  readonly description: string | null;
+  readonly price: number;
+  readonly imageUrl: string | null;
+  readonly isPopular: boolean;
+  readonly isAvailable: boolean;
+  readonly displayOrder: number;
+  readonly searchKeywords: readonly string[];
+}
+
+export interface NewProductInput {
+  readonly categoryId?: string | null;
+  readonly name: string;
+  readonly description?: string | null;
+  readonly price: number;
+  readonly imageUrl?: string | null;
+  readonly isPopular?: boolean;
+  readonly isAvailable?: boolean;
+  readonly displayOrder?: number;
+  readonly searchKeywords?: readonly string[];
+}
+
+export interface ProductPatch {
+  readonly categoryId?: string | null;
+  readonly name?: string;
+  readonly description?: string | null;
+  readonly price?: number;
+  readonly imageUrl?: string | null;
+  readonly isPopular?: boolean;
+  readonly isAvailable?: boolean;
+  readonly displayOrder?: number;
+  readonly searchKeywords?: readonly string[];
+}
+
+/** Precio/disponibilidad REAL de un producto en UNA sucursal (`branch_products` —
+ * fuente de verdad de precio/disponibilidad que ya usa searchProducts/quoteOrder,
+ * ver product-search.ts). `null` cuando el producto nunca se dio de alta en esa
+ * sucursal (nunca se asume un precio/disponibilidad por defecto). */
+export interface BranchProductState {
+  readonly propertyId: string;
+  readonly productId: string;
+  readonly price: number;
+  readonly isAvailable: boolean;
+}
+
+export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema";
+
+export interface OrderListFilter {
+  readonly propertyIds: readonly string[] | null;
+  readonly status?: OrderStatus;
+  readonly dateFrom?: Date;
+  readonly dateTo?: Date;
+  readonly limit: number;
+  readonly cursor?: string;
+}
+
+export interface OrderListPage {
+  readonly orders: readonly Order[];
+  readonly nextCursor: string | null;
+}
+
+export interface CustomerListFilter {
+  readonly search?: string;
+  readonly limit: number;
+  readonly cursor?: string;
+}
+
+export interface CustomerListPage {
+  readonly customers: readonly Customer[];
+  readonly nextCursor: string | null;
 }
 
 export interface CallbackRequestInput {
