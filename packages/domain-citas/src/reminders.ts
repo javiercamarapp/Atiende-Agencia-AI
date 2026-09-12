@@ -9,6 +9,7 @@
 // existe o el de la organización, nunca el del host). Ver diseño Fase 1 §0.4/§5.3:
 // es la pieza de mayor riesgo silencioso de todo el vertical — un bug de timezone no
 // falla ruidosamente, solo le dice al cliente la hora equivocada.
+import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
 import type { CitasRepository, WaitlistCandidateRow } from "./repository.ts";
 
 /** Rate-limit real: nadie recibe más de esto por su entrada en la lista de espera. */
@@ -39,17 +40,27 @@ export interface ConfirmacionCitaSummary {
   readonly organizationId: string;
   processed: number;
   sent: number;
+  /** Fase 6 §3 — recordatorios reales por correo encolados en esta corrida (canal
+   * independiente del de WhatsApp: un negocio SIN WhatsApp configurado sigue
+   * recibiendo este canal si el cliente dejó correo — ver comentario más abajo). */
+  sentEmail: number;
   skippedNoPhone: number;
   skippedNoWhatsappConfig: boolean;
 }
 
 /**
- * Recordatorio 24h antes por WhatsApp con botones Confirmar/Cancelar/Reagendar. Un
- * tenant con datos raros nunca debe tumbar la corrida de los demás — eso lo maneja
- * el caller (la ruta interna, ver §5.3), que captura por organización y sigue.
+ * Recordatorio 24h antes: WhatsApp (con botones Confirmar/Cancelar/Reagendar) +
+ * correo (Fase 6 §3, appointment-email-notifications.ts) — dos canales
+ * INDEPENDIENTES, cada uno con su propio dedupe_key en `citas.messaging_outbox`
+ * (`reminder-24h:${appointmentId}` en ambos, pero `channel` distinto: 'whatsapp'
+ * vs 'email'), así que un negocio sin WhatsApp configurado no se queda sin
+ * ningún recordatorio solo porque `resolveActiveWhatsAppPhoneNumberId` no
+ * resuelve nada. Un tenant con datos raros nunca debe tumbar la corrida de los
+ * demás — eso lo maneja el caller (la ruta interna, ver §5.3), que captura por
+ * organización y sigue.
  */
 export async function runConfirmacionCitaCore(repo: CitasRepository, organizationId: string, now: Date = new Date()): Promise<ConfirmacionCitaSummary> {
-  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false };
+  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false };
 
   const windowStart = new Date(now.getTime() + REMINDER_HORIZON_MS - REMINDER_WINDOW_TOLERANCE_MS);
   const windowEnd = new Date(now.getTime() + REMINDER_HORIZON_MS + REMINDER_WINDOW_TOLERANCE_MS);
@@ -59,10 +70,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
   if (pending.length === 0) return summary;
 
   const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(organizationId);
-  if (!phoneNumberId) {
-    summary.skippedNoWhatsappConfig = true;
-    return summary;
-  }
+  summary.skippedNoWhatsappConfig = !phoneNumberId;
 
   // Timezone efectivo por proveedor: una sucursal puede tener su propio huso — sin
   // esto, un negocio con sucursal en otro estado seguiría mostrando la hora
@@ -71,32 +79,53 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
   const timeZoneByProvider = new Map<string, string>();
 
   for (const apt of pending) {
-    if (!apt.customerPhone) {
-      summary.skippedNoPhone += 1;
-      continue;
+    let remindedSomehow = false;
+
+    if (phoneNumberId) {
+      if (!apt.customerPhone) {
+        summary.skippedNoPhone += 1;
+      } else {
+        let timeZone = timeZoneByProvider.get(apt.providerId);
+        if (!timeZone) {
+          const provider = await repo.findProvider(organizationId, apt.providerId);
+          timeZone = await repo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+          timeZoneByProvider.set(apt.providerId, timeZone);
+        }
+
+        const time = new Intl.DateTimeFormat("es-MX", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(apt.startsAt));
+        const greeting = apt.customerName ? `Hola ${apt.customerName}, ` : "Hola, ";
+
+        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
+          to: apt.customerPhone,
+          phone_number_id: phoneNumberId,
+          body: `${greeting}le recordamos su cita mañana a las ${time}. ¿Puede confirmar?`,
+          buttons: ["Confirmar", "Cancelar", "Reagendar"],
+        });
+        summary.sent += 1;
+        remindedSomehow = true;
+      }
     }
 
-    let timeZone = timeZoneByProvider.get(apt.providerId);
-    if (!timeZone) {
-      const provider = await repo.findProvider(organizationId, apt.providerId);
-      timeZone = await repo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
-      timeZoneByProvider.set(apt.providerId, timeZone);
+    // Fase 6 §3 — best-effort real (nunca lanza): sin correo en archivo del
+    // cliente simplemente no se encola nada (ver enqueueAppointmentEmailCore),
+    // nunca cuenta como error.
+    const emailResult = await tryEnqueueAppointmentEmail(repo, organizationId, "appointment.reminder_24h", apt.appointmentId);
+    if (emailResult?.enqueued) {
+      summary.sentEmail += 1;
+      remindedSomehow = true;
     }
 
-    const time = new Intl.DateTimeFormat("es-MX", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(apt.startsAt));
-    const greeting = apt.customerName ? `Hola ${apt.customerName}, ` : "Hola, ";
-
-    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
-      to: apt.customerPhone,
-      phone_number_id: phoneNumberId,
-      body: `${greeting}le recordamos su cita mañana a las ${time}. ¿Puede confirmar?`,
-      buttons: ["Confirmar", "Cancelar", "Reagendar"],
-    });
-
-    // Marca reminder24hSentAt SOLO después de encolar exitosamente — evita reenvío
-    // en la siguiente corrida del cron dentro de la misma ventana de tolerancia.
-    await repo.markReminderSent(apt.appointmentId, now.toISOString());
-    summary.sent += 1;
+    // Marca reminder24hSentAt SOLO después de encolar exitosamente en AL MENOS un
+    // canal real — evita reenvío en la siguiente corrida del cron dentro de la
+    // misma ventana de tolerancia. Si ningún canal aplicó (sin WhatsApp
+    // configurado Y sin correo en archivo), se deja sin marcar a propósito: el
+    // dedupe_key de messaging_outbox ya evita duplicados si algo sí llegó a
+    // encolarse, y una cita sin ningún dato de contacto real simplemente sigue
+    // "pendiente" hasta que el cliente deje un correo o el negocio conecte
+    // WhatsApp — no es un estado silencioso, el cron la vuelve a intentar.
+    if (remindedSomehow) {
+      await repo.markReminderSent(apt.appointmentId, now.toISOString());
+    }
   }
 
   return summary;

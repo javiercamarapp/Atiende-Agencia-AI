@@ -35,6 +35,7 @@ import type { CitasCustomerContext } from "../customers.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "../errors.ts";
 import type { CitasRepository, ConversationMessage } from "../repository.ts";
 import type { AppointmentRecord, Slot } from "../types.ts";
+import { getVerticalFaqs } from "../vertical-config.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -105,7 +106,22 @@ export function getAgentConfig(_organizationId: string): WhatsAppLlmAgentConfig 
   return FALLBACK_CONFIG;
 }
 
-function buildSystemPrompt(config: WhatsAppLlmAgentConfig, customer: CitasCustomerContext, now: Date): string {
+/**
+ * Fase 6 §1 — FAQs canónicas del rubro real del negocio (`citas.tenant_config.rubro`),
+ * agregadas como grounding real al prompt — "mismo motor, datos distintos por
+ * rubro" (nunca inventadas por el LLM en tiempo real). Un rubro sin FAQs
+ * configuradas (o sin `citas.tenant_config` seedeado todavía, ver
+ * repository.ts::findTenantConfig) simplemente no agrega este bloque — el agente
+ * sigue funcionando igual, solo sin ese grounding extra.
+ */
+export function verticalFaqsBlock(rubro: string): string | null {
+  const faqs = getVerticalFaqs(rubro);
+  if (faqs.length === 0) return null;
+  const items = faqs.map((faq) => `- P: ${faq.question}\n  R: ${faq.answer}`).join("\n");
+  return `PREGUNTAS FRECUENTES DE ESTE NEGOCIO (úsalas tal cual cuando el cliente pregunte algo parecido — nunca inventes una respuesta distinta a estas para estos temas):\n${items}`;
+}
+
+function buildSystemPrompt(config: WhatsAppLlmAgentConfig, customer: CitasCustomerContext, now: Date, rubro: string | null): string {
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName} para agendar, consultar, reagendar y cancelar citas.
 Tono cálido, directo, mensajes cortos (esto es WhatsApp, no un formulario), ve conversando en vez de leer listas completas de golpe.
 
@@ -121,12 +137,15 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
 9. Para cancelar: confirma con el cliente cuál cita exacta (si tiene varias) antes de llamar a cancelar_cita con el appointment_id real.
 10. Solo hasta que la herramienta correspondiente responda con éxito: confirma la acción realizada (agendada/reagendada/cancelada) con los datos reales devueltos.`;
 
+  const faqsBlock = rubro ? verticalFaqsBlock(rubro) : null;
+
   return [
     basePrompt,
     APPOINTMENT_HARD_RULES,
     `SALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHora(config.timezone, now)}"`,
     currentDateContext(config.timezone, now),
     `CONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`,
+    ...(faqsBlock ? [faqsBlock] : []),
   ].join("\n\n");
 }
 
@@ -365,7 +384,12 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
     async handleInboundMessage({ organizationId, phone, messages, customer }) {
       const deadline = Date.now() + turnBudgetMs;
       const config = getAgentConfig(organizationId);
-      const systemPrompt = buildSystemPrompt(config, customer, now());
+      // Fase 6 §1 — el rubro real (para las FAQs canónicas del prompt) es best-effort:
+      // si `citas.tenant_config` todavía no tiene fila para esta organización, el
+      // agente sigue funcionando igual, solo sin ese grounding extra (ver
+      // verticalFaqsBlock).
+      const tenantConfig = await repo.findTenantConfig(organizationId).catch(() => null);
+      const systemPrompt = buildSystemPrompt(config, customer, now(), tenantConfig?.rubro ?? null);
       const normalizedPhone = normalizePhone(phone);
 
       const working: LlmMessage[] = toLlmHistory(messages);
