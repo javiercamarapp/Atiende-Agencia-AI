@@ -6,7 +6,8 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
-import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, InMemoryCitasRepository } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
+import type { ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, GoogleCalendarPort } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -34,7 +35,20 @@ async function signInAndGetToken(app: TestApp, email: string, password: string):
   return body.token;
 }
 
-export async function buildCitasTestContext(buildApp: BuildAppFn): Promise<CitasTestContext> {
+export interface CitasTestContextOptions {
+  /**
+   * Fase 3 — cuando se pasa, el resolver real de Google Calendar
+   * (`createGoogleCalendarPortResolver`, con la MISMA lógica de resolución/rotación
+   * de token que producción) devuelve este puerto en vez de un
+   * `RealGoogleCalendarPort` real, y el intercambio OAuth devuelve un refresh token
+   * fijo sin tocar la red — para exercitar el flujo HTTP completo (conectar ->
+   * crear/cancelar/reagendar -> sincroniza de verdad contra el puerto falso) sin
+   * credenciales reales.
+   */
+  readonly googleCalendarPort?: GoogleCalendarPort;
+}
+
+export async function buildCitasTestContext(buildApp: BuildAppFn, options: CitasTestContextOptions = {}): Promise<CitasTestContext> {
   const coreRepo = new InMemoryCoreRepository();
   const engine = new InMemoryTenancyEngine();
   const citasRepo = new InMemoryCitasRepository();
@@ -63,6 +77,17 @@ export async function buildCitasTestContext(buildApp: BuildAppFn): Promise<Citas
   coreRepo.addMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
   engine.seedMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
 
+  // Fase 3 — `createGoogleCalendarPortResolver` real (resolución de cuenta
+  // conectada + rotación de refresh token) con un `createPort` inyectado: si el
+  // test pasó un `googleCalendarPort`, se usa ese (nunca red real); si no,
+  // `citasGoogleTokenExchange` nunca debería llamarse porque ningún test conectará
+  // un proveedor sin pasar `googleCalendarPort` primero.
+  const citasGoogleCalendarPortResolver = createGoogleCalendarPortResolver(citasRepo, { clientId: "test-google-client-id", clientSecret: "test-google-client-secret" }, () => options.googleCalendarPort!);
+  const citasGoogleTokenExchange = async (_input: ExchangeAuthorizationCodeInput): Promise<ExchangeAuthorizationCodeResult> => {
+    if (!options.googleCalendarPort) throw new Error("citasGoogleTokenExchange llamado sin googleCalendarPort configurado en buildCitasTestContext.");
+    return { accessToken: "fake-access-token", refreshToken: "fake-refresh-token", expiresIn: 3600 };
+  };
+
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
@@ -75,6 +100,8 @@ export async function buildCitasTestContext(buildApp: BuildAppFn): Promise<Citas
     citasRepo,
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
+    citasGoogleCalendarPortResolver,
+    citasGoogleTokenExchange,
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),

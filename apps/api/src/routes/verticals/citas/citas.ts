@@ -8,6 +8,8 @@ import { citasAppointmentsLifecycleRoutes } from "./appointments-lifecycle.ts";
 import { citasRemindersRoutes } from "./reminders.ts";
 import { citasVoiceToolsRoutes } from "./voice-tools.ts";
 import { citasWhatsAppRoutes } from "./whatsapp.ts";
+import { citasGoogleCalendarOAuthRoutes } from "./google-calendar-oauth.ts";
+import { citasGoogleCalendarSyncRoutes } from "./google-calendar-sync.ts";
 
 export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -17,5 +19,8 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 2 §1/§2 — Server Tools de voz + webhook de WhatsApp con agente LLM real.
   app.route("/", citasVoiceToolsRoutes(deps));
   app.route("/", citasWhatsAppRoutes(deps));
+  // Fase 3 §4/§5 — conexión OAuth de Google Calendar por proveedor + reconciliación.
+  app.route("/", citasGoogleCalendarOAuthRoutes(deps));
+  app.route("/", citasGoogleCalendarSyncRoutes(deps));
   return app;
 }
