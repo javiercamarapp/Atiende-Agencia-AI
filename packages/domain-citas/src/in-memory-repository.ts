@@ -479,7 +479,7 @@ export class InMemoryCitasRepository implements CitasRepository {
     return this.phoneNumberIdToOrg.get(phoneNumberId) ?? null;
   }
 
-  async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
+  async claimWhatsAppMessage(organizationId: string, messageId: string, _phoneHash: string): Promise<boolean> {
     void organizationId;
     return this.whatsappLock.run(`event:${messageId}`, async () => {
       const existing = this.whatsappEvents.get(messageId);

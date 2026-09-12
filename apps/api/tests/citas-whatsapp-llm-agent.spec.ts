@@ -18,7 +18,7 @@ import {
 } from "@atiende/domain-citas";
 import { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyRestaurantesTurnHandler } from "@atiende/domain-restaurantes";
-import { InMemoryHotelesRepository, InMemoryPaymentsPort } from "@atiende/domain-hoteles";
+import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -133,6 +133,7 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     turnHandler: acknowledgeOnlyRestaurantesTurnHandler(new InMemoryRestaurantesRepository()),
     hotelesRepo: new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
+    hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
     citasRepo,
     citasTurnHandler: turnHandler,
     citasConversationGuard: createDefaultConversationGuard(),
