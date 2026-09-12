@@ -1,0 +1,1605 @@
+{
+  "isr_nomina_mensual_tramo0_lower": {
+    "entrada": {
+      "gravable": 0.01,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 0.0
+    }
+  },
+  "isr_nomina_mensual_tramo0_upper": {
+    "entrada": {
+      "gravable": 844.59,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 16.22
+    }
+  },
+  "isr_nomina_mensual_tramo1_lower": {
+    "entrada": {
+      "gravable": 844.6,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 16.22
+    }
+  },
+  "isr_nomina_mensual_tramo1_upper": {
+    "entrada": {
+      "gravable": 7168.51,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 420.95
+    }
+  },
+  "isr_nomina_mensual_tramo2_lower": {
+    "entrada": {
+      "gravable": 7168.52,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 420.95
+    }
+  },
+  "isr_nomina_mensual_tramo2_upper": {
+    "entrada": {
+      "gravable": 13074.34,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 1063.5
+    }
+  },
+  "isr_nomina_mensual_tramo3_lower": {
+    "entrada": {
+      "gravable": 13074.35,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 1073.89
+    }
+  },
+  "isr_nomina_mensual_tramo3_upper": {
+    "entrada": {
+      "gravable": 16217.55,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 1576.8
+    }
+  },
+  "isr_nomina_mensual_tramo4_lower": {
+    "entrada": {
+      "gravable": 16217.56,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 1576.78
+    }
+  },
+  "isr_nomina_mensual_tramo4_upper": {
+    "entrada": {
+      "gravable": 22089.52,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 2831.03
+    }
+  },
+  "isr_nomina_mensual_tramo5_lower": {
+    "entrada": {
+      "gravable": 22089.53,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 2830.39
+    }
+  },
+  "isr_nomina_mensual_tramo5_upper": {
+    "entrada": {
+      "gravable": 36113.04,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 6128.72
+    }
+  },
+  "isr_nomina_mensual_tramo6_lower": {
+    "entrada": {
+      "gravable": 36113.05,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 6128.72
+    }
+  },
+  "isr_nomina_mensual_tramo6_upper": {
+    "entrada": {
+      "gravable": 66356.44,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 15201.74
+    }
+  },
+  "isr_nomina_mensual_tramo7_lower": {
+    "entrada": {
+      "gravable": 66356.45,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 15201.73
+    }
+  },
+  "isr_nomina_mensual_tramo7_upper": {
+    "entrada": {
+      "gravable": 96006.05,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 24689.6
+    }
+  },
+  "isr_nomina_mensual_tramo8_lower": {
+    "entrada": {
+      "gravable": 96006.06,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 24729.61
+    }
+  },
+  "isr_nomina_mensual_tramo8_upper": {
+    "entrada": {
+      "gravable": 133596.27,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 37510.28
+    }
+  },
+  "isr_nomina_mensual_tramo9_lower": {
+    "entrada": {
+      "gravable": 133596.28,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 37530.25
+    }
+  },
+  "isr_nomina_mensual_tramo9_valor_alto": {
+    "entrada": {
+      "gravable": 1133596.28,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 387530.25
+    }
+  },
+  "isr_nomina_anual_tramo0_lower": {
+    "entrada": {
+      "gravable": 0.01,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 0.0
+    }
+  },
+  "isr_nomina_anual_tramo0_upper": {
+    "entrada": {
+      "gravable": 10135.08,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 194.59
+    }
+  },
+  "isr_nomina_anual_tramo1_lower": {
+    "entrada": {
+      "gravable": 10135.09,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 194.64
+    }
+  },
+  "isr_nomina_anual_tramo1_upper": {
+    "entrada": {
+      "gravable": 86022.12,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 5051.41
+    }
+  },
+  "isr_nomina_anual_tramo2_lower": {
+    "entrada": {
+      "gravable": 86022.13,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 5051.4
+    }
+  },
+  "isr_nomina_anual_tramo2_upper": {
+    "entrada": {
+      "gravable": 156892.08,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 12762.05
+    }
+  },
+  "isr_nomina_anual_tramo3_lower": {
+    "entrada": {
+      "gravable": 156892.09,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 12886.68
+    }
+  },
+  "isr_nomina_anual_tramo3_upper": {
+    "entrada": {
+      "gravable": 194610.6,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 18921.64
+    }
+  },
+  "isr_nomina_anual_tramo4_lower": {
+    "entrada": {
+      "gravable": 194610.61,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 18921.36
+    }
+  },
+  "isr_nomina_anual_tramo4_upper": {
+    "entrada": {
+      "gravable": 265074.24,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 33972.39
+    }
+  },
+  "isr_nomina_anual_tramo5_lower": {
+    "entrada": {
+      "gravable": 265074.25,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 33964.68
+    }
+  },
+  "isr_nomina_anual_tramo5_upper": {
+    "entrada": {
+      "gravable": 433356.48,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 73544.66
+    }
+  },
+  "isr_nomina_anual_tramo6_lower": {
+    "entrada": {
+      "gravable": 433356.49,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 73544.64
+    }
+  },
+  "isr_nomina_anual_tramo6_upper": {
+    "entrada": {
+      "gravable": 796277.28,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 182420.88
+    }
+  },
+  "isr_nomina_anual_tramo7_lower": {
+    "entrada": {
+      "gravable": 796277.29,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 182420.76
+    }
+  },
+  "isr_nomina_anual_tramo7_upper": {
+    "entrada": {
+      "gravable": 1152072.6,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 296275.26
+    }
+  },
+  "isr_nomina_anual_tramo8_lower": {
+    "entrada": {
+      "gravable": 1152072.61,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 296755.32
+    }
+  },
+  "isr_nomina_anual_tramo8_upper": {
+    "entrada": {
+      "gravable": 1603155.24,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 450123.41
+    }
+  },
+  "isr_nomina_anual_tramo9_lower": {
+    "entrada": {
+      "gravable": 1603155.25,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 450363.0
+    }
+  },
+  "isr_nomina_anual_tramo9_valor_alto": {
+    "entrada": {
+      "gravable": 2603155.25,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 800363.0
+    }
+  },
+  "isr_nomina_mensual_cero": {
+    "entrada": {
+      "gravable": 0.0,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 0.0
+    }
+  },
+  "isr_nomina_mensual_negativo": {
+    "entrada": {
+      "gravable": -50000.0,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 0.0
+    }
+  },
+  "isr_nomina_mensual_tramo0_hole_denom3": {
+    "entrada": {
+      "gravable": 844.5900000000001,
+      "annual": false
+    },
+    "resultado": {
+      "isr": 0.0
+    },
+    "nota": "upper literal 844.59 da isr=16.22; la reconstrucción de punto flotante cae en el hueco y da isr=0.0 (0.0, retención perdida en silencio)"
+  },
+  "isr_nomina_anual_tramo3_hole_denom17": {
+    "entrada": {
+      "gravable": 194610.60000000003,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 0.0
+    },
+    "nota": "upper literal 194610.6 da isr=18921.64; la reconstrucción de punto flotante cae en el hueco y da isr=0.0 (0.0, retención perdida en silencio)"
+  },
+  "isr_nomina_anual_tramo8_hole_denom11": {
+    "entrada": {
+      "gravable": 1603155.2400000002,
+      "annual": true
+    },
+    "resultado": {
+      "isr": 0.0
+    },
+    "nota": "upper literal 1603155.24 da isr=450123.41; la reconstrucción de punto flotante cae en el hueco y da isr=0.0 (0.0, retención perdida en silencio)"
+  },
+  "imss_sbc_minimo_1_dias15": {
+    "entrada": {
+      "salarioDiario": 1.0,
+      "diasPagados": 15
+    },
+    "resultado": {
+      "sbcDiarioTopado": 1.0,
+      "imssObrero": 0.1875,
+      "imssPatronal": 2.1374999999999997,
+      "infonavit": 0.75
+    }
+  },
+  "imss_sbc_minimo_1_dias30": {
+    "entrada": {
+      "salarioDiario": 1.0,
+      "diasPagados": 30
+    },
+    "resultado": {
+      "sbcDiarioTopado": 1.0,
+      "imssObrero": 0.375,
+      "imssPatronal": 4.2749999999999995,
+      "infonavit": 1.5
+    }
+  },
+  "imss_sbc_minimo_1_dias31": {
+    "entrada": {
+      "salarioDiario": 1.0,
+      "diasPagados": 31
+    },
+    "resultado": {
+      "sbcDiarioTopado": 1.0,
+      "imssObrero": 0.3875,
+      "imssPatronal": 4.4174999999999995,
+      "infonavit": 1.55
+    }
+  },
+  "imss_sbc_uma_exacta_dias15": {
+    "entrada": {
+      "salarioDiario": 117.31,
+      "diasPagados": 15
+    },
+    "resultado": {
+      "sbcDiarioTopado": 117.31,
+      "imssObrero": 21.995625000000004,
+      "imssPatronal": 250.750125,
+      "infonavit": 87.98250000000002
+    }
+  },
+  "imss_sbc_uma_exacta_dias30": {
+    "entrada": {
+      "salarioDiario": 117.31,
+      "diasPagados": 30
+    },
+    "resultado": {
+      "sbcDiarioTopado": 117.31,
+      "imssObrero": 43.99125000000001,
+      "imssPatronal": 501.50025,
+      "infonavit": 175.96500000000003
+    }
+  },
+  "imss_sbc_uma_exacta_dias31": {
+    "entrada": {
+      "salarioDiario": 117.31,
+      "diasPagados": 31
+    },
+    "resultado": {
+      "sbcDiarioTopado": 117.31,
+      "imssObrero": 45.45762500000001,
+      "imssPatronal": 518.216925,
+      "infonavit": 181.83050000000003
+    }
+  },
+  "imss_sbc_tope_exacto_dias15": {
+    "entrada": {
+      "salarioDiario": 2932.75,
+      "diasPagados": 15
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.75,
+      "imssObrero": 549.890625,
+      "imssPatronal": 6268.753124999999,
+      "infonavit": 2199.5625
+    }
+  },
+  "imss_sbc_tope_exacto_dias30": {
+    "entrada": {
+      "salarioDiario": 2932.75,
+      "diasPagados": 30
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.75,
+      "imssObrero": 1099.78125,
+      "imssPatronal": 12537.506249999999,
+      "infonavit": 4399.125
+    }
+  },
+  "imss_sbc_tope_exacto_dias31": {
+    "entrada": {
+      "salarioDiario": 2932.75,
+      "diasPagados": 31
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.75,
+      "imssObrero": 1136.440625,
+      "imssPatronal": 12955.423125,
+      "infonavit": 4545.7625
+    }
+  },
+  "imss_sbc_tope_menos_1_centavo_dias15": {
+    "entrada": {
+      "salarioDiario": 2932.74,
+      "diasPagados": 15
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.74,
+      "imssObrero": 549.88875,
+      "imssPatronal": 6268.731749999999,
+      "infonavit": 2199.555
+    }
+  },
+  "imss_sbc_tope_menos_1_centavo_dias30": {
+    "entrada": {
+      "salarioDiario": 2932.74,
+      "diasPagados": 30
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.74,
+      "imssObrero": 1099.7775,
+      "imssPatronal": 12537.463499999998,
+      "infonavit": 4399.11
+    }
+  },
+  "imss_sbc_tope_menos_1_centavo_dias31": {
+    "entrada": {
+      "salarioDiario": 2932.74,
+      "diasPagados": 31
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.74,
+      "imssObrero": 1136.4367499999998,
+      "imssPatronal": 12955.378949999997,
+      "infonavit": 4545.746999999999
+    }
+  },
+  "imss_sbc_tope_mas_1000_dias15": {
+    "entrada": {
+      "salarioDiario": 3932.75,
+      "diasPagados": 15
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.75,
+      "imssObrero": 549.890625,
+      "imssPatronal": 6268.753124999999,
+      "infonavit": 2199.5625
+    }
+  },
+  "imss_sbc_tope_mas_1000_dias30": {
+    "entrada": {
+      "salarioDiario": 3932.75,
+      "diasPagados": 30
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.75,
+      "imssObrero": 1099.78125,
+      "imssPatronal": 12537.506249999999,
+      "infonavit": 4399.125
+    }
+  },
+  "imss_sbc_tope_mas_1000_dias31": {
+    "entrada": {
+      "salarioDiario": 3932.75,
+      "diasPagados": 31
+    },
+    "resultado": {
+      "sbcDiarioTopado": 2932.75,
+      "imssObrero": 1136.440625,
+      "imssPatronal": 12955.423125,
+      "infonavit": 4545.7625
+    }
+  },
+  "imss_sbc_cero_dias15": {
+    "entrada": {
+      "salarioDiario": 0.0,
+      "diasPagados": 15
+    },
+    "resultado": {
+      "sbcDiarioTopado": 0.0,
+      "imssObrero": 0.0,
+      "imssPatronal": 0.0,
+      "infonavit": 0.0
+    }
+  },
+  "imss_sbc_cero_dias30": {
+    "entrada": {
+      "salarioDiario": 0.0,
+      "diasPagados": 30
+    },
+    "resultado": {
+      "sbcDiarioTopado": 0.0,
+      "imssObrero": 0.0,
+      "imssPatronal": 0.0,
+      "infonavit": 0.0
+    }
+  },
+  "imss_sbc_cero_dias31": {
+    "entrada": {
+      "salarioDiario": 0.0,
+      "diasPagados": 31
+    },
+    "resultado": {
+      "sbcDiarioTopado": 0.0,
+      "imssObrero": 0.0,
+      "imssPatronal": 0.0,
+      "infonavit": 0.0
+    }
+  },
+  "imss_sbc_negativo_dias15": {
+    "entrada": {
+      "salarioDiario": -100.0,
+      "diasPagados": 15
+    },
+    "resultado": {
+      "sbcDiarioTopado": -100.0,
+      "imssObrero": -18.75,
+      "imssPatronal": -213.74999999999997,
+      "infonavit": -75.0
+    }
+  },
+  "imss_sbc_negativo_dias30": {
+    "entrada": {
+      "salarioDiario": -100.0,
+      "diasPagados": 30
+    },
+    "resultado": {
+      "sbcDiarioTopado": -100.0,
+      "imssObrero": -37.5,
+      "imssPatronal": -427.49999999999994,
+      "infonavit": -150.0
+    }
+  },
+  "imss_sbc_negativo_dias31": {
+    "entrada": {
+      "salarioDiario": -100.0,
+      "diasPagados": 31
+    },
+    "resultado": {
+      "sbcDiarioTopado": -100.0,
+      "imssObrero": -38.75,
+      "imssPatronal": -441.74999999999994,
+      "infonavit": -155.0
+    }
+  },
+  "subsidio_mensual_tramo0_lower": {
+    "entrada": {
+      "ingresoGravado": 0.01,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 407.02,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo0_upper": {
+    "entrada": {
+      "ingresoGravado": 2169.53,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 407.02,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo1_lower": {
+    "entrada": {
+      "ingresoGravado": 2169.54,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 406.83,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo1_upper": {
+    "entrada": {
+      "ingresoGravado": 3502.78,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 406.83,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo2_lower": {
+    "entrada": {
+      "ingresoGravado": 3502.79,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 406.62,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo2_upper": {
+    "entrada": {
+      "ingresoGravado": 3861.48,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 406.62,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo3_lower": {
+    "entrada": {
+      "ingresoGravado": 3861.49,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 392.77,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo3_upper": {
+    "entrada": {
+      "ingresoGravado": 4607.32,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 392.77,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo4_lower": {
+    "entrada": {
+      "ingresoGravado": 4607.33,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 382.46,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo4_upper": {
+    "entrada": {
+      "ingresoGravado": 5090.8,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 382.46,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo5_lower": {
+    "entrada": {
+      "ingresoGravado": 5090.81,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 354.24,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo5_upper": {
+    "entrada": {
+      "ingresoGravado": 6355.12,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 354.24,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo6_lower": {
+    "entrada": {
+      "ingresoGravado": 6355.13,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 294.17,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo6_upper": {
+    "entrada": {
+      "ingresoGravado": 7470.57,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 294.17,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo7_lower": {
+    "entrada": {
+      "ingresoGravado": 7470.58,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 253.54,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo7_upper": {
+    "entrada": {
+      "ingresoGravado": 8455.6,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 253.54,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo8_lower": {
+    "entrada": {
+      "ingresoGravado": 8455.61,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 217.61,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo8_upper": {
+    "entrada": {
+      "ingresoGravado": 9912.54,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 217.61,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo9_lower": {
+    "entrada": {
+      "ingresoGravado": 9912.55,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 209.13,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo9_upper": {
+    "entrada": {
+      "ingresoGravado": 11492.66,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 209.13,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo10_lower": {
+    "entrada": {
+      "ingresoGravado": 11492.67,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 0.0,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_tramo10_upper": {
+    "entrada": {
+      "ingresoGravado": 13493.97,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 0.0,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo0_lower": {
+    "entrada": {
+      "ingresoGravado": 0.01,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 203.51,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo0_upper": {
+    "entrada": {
+      "ingresoGravado": 1084.77,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 203.51,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo1_lower": {
+    "entrada": {
+      "ingresoGravado": 1084.78,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 203.42,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo1_upper": {
+    "entrada": {
+      "ingresoGravado": 1751.39,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 203.42,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo2_lower": {
+    "entrada": {
+      "ingresoGravado": 1751.39,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 203.42,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo2_upper": {
+    "entrada": {
+      "ingresoGravado": 1930.74,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 203.31,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo3_lower": {
+    "entrada": {
+      "ingresoGravado": 1930.75,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 196.39,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo3_upper": {
+    "entrada": {
+      "ingresoGravado": 2303.66,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 196.39,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo4_lower": {
+    "entrada": {
+      "ingresoGravado": 2303.67,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 191.23,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo4_upper": {
+    "entrada": {
+      "ingresoGravado": 2545.4,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 191.23,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo5_lower": {
+    "entrada": {
+      "ingresoGravado": 2545.41,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 177.12,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo5_upper": {
+    "entrada": {
+      "ingresoGravado": 3177.56,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 177.12,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo6_lower": {
+    "entrada": {
+      "ingresoGravado": 3177.57,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 147.09,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo6_upper": {
+    "entrada": {
+      "ingresoGravado": 3735.29,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 147.09,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo7_lower": {
+    "entrada": {
+      "ingresoGravado": 3735.3,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 126.77,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo7_upper": {
+    "entrada": {
+      "ingresoGravado": 4227.8,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 126.77,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo8_lower": {
+    "entrada": {
+      "ingresoGravado": 4227.81,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 108.81,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo8_upper": {
+    "entrada": {
+      "ingresoGravado": 4956.27,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 108.81,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo9_lower": {
+    "entrada": {
+      "ingresoGravado": 4956.28,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 104.57,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo9_upper": {
+    "entrada": {
+      "ingresoGravado": 5820.88,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 104.57,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo10_lower": {
+    "entrada": {
+      "ingresoGravado": 5820.89,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 0.0,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_quincenal_tramo10_upper": {
+    "entrada": {
+      "ingresoGravado": 6746.99,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "subsidio": 0.0,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_arriba_del_ultimo_tramo": {
+    "entrada": {
+      "ingresoGravado": 14493.97,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 0.0,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_cero": {
+    "entrada": {
+      "ingresoGravado": 0.0,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 0.0,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "subsidio_mensual_negativo": {
+    "entrada": {
+      "ingresoGravado": -500.0,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "subsidio": 0.0,
+      "subsidio_efectivo": 0.0,
+      "isr_neto": 0.0
+    }
+  },
+  "e2e_salario_minimo_sbc_uma": {
+    "entrada": {
+      "salary": 0.0,
+      "benefits": 0.0,
+      "salaryPerDay": 117.31,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 0.0,
+      "imss_patronal": 501.5,
+      "imss_obrero": 43.99,
+      "infonavit": 175.97,
+      "total": 219.96
+    }
+  },
+  "e2e_salario_medio_15000": {
+    "entrada": {
+      "salary": 15000.0,
+      "benefits": 0.0,
+      "salaryPerDay": 0.0,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 1381.99,
+      "imss_patronal": 2137.5,
+      "imss_obrero": 187.5,
+      "infonavit": 750.0,
+      "total": 2319.49
+    }
+  },
+  "e2e_salario_topa_sbc": {
+    "entrada": {
+      "salary": 0.0,
+      "benefits": 0.0,
+      "salaryPerDay": 3432.75,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 27101.6,
+      "imss_patronal": 12537.51,
+      "imss_obrero": 1099.78,
+      "infonavit": 4399.12,
+      "total": 32600.5
+    }
+  },
+  "e2e_salario_anula_subsidio": {
+    "entrada": {
+      "salary": 20000.0,
+      "benefits": 0.0,
+      "salaryPerDay": 0.0,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 2384.71,
+      "imss_patronal": 2850.0,
+      "imss_obrero": 250.0,
+      "infonavit": 1000.0,
+      "total": 3634.71
+    }
+  },
+  "e2e_salario_con_subsidio_activo": {
+    "entrada": {
+      "salary": 3000.0,
+      "benefits": 0.0,
+      "salaryPerDay": 0.0,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 0.0,
+      "imss_patronal": 427.5,
+      "imss_obrero": 37.5,
+      "infonavit": 150.0,
+      "total": 187.5
+    }
+  },
+  "e2e_salario_con_benefits": {
+    "entrada": {
+      "salary": 15000.0,
+      "benefits": 2000.0,
+      "salaryPerDay": 0.0,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 1743.91,
+      "imss_patronal": 2137.5,
+      "imss_obrero": 187.5,
+      "infonavit": 750.0,
+      "total": 2681.41
+    }
+  },
+  "e2e_salario_quincenal_vs_mensual_base": {
+    "entrada": {
+      "salary": 0.0,
+      "benefits": 0.0,
+      "salaryPerDay": 1000.0,
+      "diasPagados": 15,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 4690.93,
+      "imss_patronal": 2137.5,
+      "imss_obrero": 187.5,
+      "infonavit": 750.0,
+      "total": 5628.43
+    }
+  },
+  "e2e_salario_quincenal_real": {
+    "entrada": {
+      "salary": 0.0,
+      "benefits": 0.0,
+      "salaryPerDay": 1000.0,
+      "diasPagados": 15,
+      "periodicidad": "quincenal"
+    },
+    "resultado": {
+      "isr": 2345.47,
+      "imss_patronal": 2137.5,
+      "imss_obrero": 187.5,
+      "infonavit": 750.0,
+      "total": 3282.97
+    }
+  },
+  "e2e_salario_cero": {
+    "entrada": {
+      "salary": 0.0,
+      "benefits": 0.0,
+      "salaryPerDay": 0.0,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 0.0,
+      "imss_patronal": 0.0,
+      "imss_obrero": 0.0,
+      "infonavit": 0.0,
+      "total": 0.0
+    }
+  },
+  "e2e_salario_negativo": {
+    "entrada": {
+      "salary": -10000.0,
+      "benefits": 0.0,
+      "salaryPerDay": 0.0,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 0.0,
+      "imss_patronal": 0.0,
+      "imss_obrero": 0.0,
+      "infonavit": 0.0,
+      "total": 0.0
+    }
+  },
+  "e2e_salario_dias31": {
+    "entrada": {
+      "salary": 15000.0,
+      "benefits": 0.0,
+      "salaryPerDay": 0.0,
+      "diasPagados": 31,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 1381.99,
+      "imss_patronal": 2208.75,
+      "imss_obrero": 193.75,
+      "infonavit": 775.0,
+      "total": 2350.74
+    }
+  },
+  "e2e_salario_alto_500000": {
+    "entrada": {
+      "salary": 500000.0,
+      "benefits": 0.0,
+      "salaryPerDay": 0.0,
+      "diasPagados": 30,
+      "periodicidad": "mensual"
+    },
+    "resultado": {
+      "isr": 165771.55,
+      "imss_patronal": 12537.51,
+      "imss_obrero": 1099.78,
+      "infonavit": 4399.12,
+      "total": 171270.45
+    }
+  },
+  "e2e_cociente_500000_no_dispara_guard": {
+    "entrada": {
+      "salary": 500000.0
+    },
+    "resultado": {
+      "cociente": 0.3337,
+      "isr": 165771.55,
+      "imss_obrero": 1099.78
+    }
+  },
+  "process_payroll_basico": {
+    "entrada": {
+      "period": {
+        "month": 7,
+        "year": 2026,
+        "dias_pagados": 30
+      },
+      "employees": [
+        {
+          "employee_id": "E1",
+          "nombre": "Empleado Uno",
+          "salario_bruto": 15000.0,
+          "percepciones": 0.0,
+          "banco": "BBVA",
+          "clabe": "012180000000000001"
+        },
+        {
+          "employee_id": "E2",
+          "nombre": "Empleado Dos",
+          "salario_bruto": 30000.0,
+          "percepciones": 1000.0,
+          "banco": "Santander",
+          "clabe": "012180000000000002"
+        }
+      ],
+      "tenant_id": 42
+    },
+    "resultado": {
+      "month": 7,
+      "year": 2026,
+      "employee_count": 2,
+      "employees": [
+        {
+          "employee_id": "E1",
+          "nombre": "Empleado Uno",
+          "salario_diario": 0.0,
+          "salario_bruto": 15000.0,
+          "percepciones": 0.0,
+          "deducciones": 1569.49,
+          "taxes": {
+            "isr": 1381.99,
+            "imss_patronal": 2137.5,
+            "imss_obrero": 187.5,
+            "infonavit": 750.0,
+            "total": 2319.49
+          },
+          "neto": 13430.51,
+          "dias_pagados": 30
+        },
+        {
+          "employee_id": "E2",
+          "nombre": "Empleado Dos",
+          "salario_diario": 0.0,
+          "salario_bruto": 30000.0,
+          "percepciones": 1000.0,
+          "deducciones": 5301.13,
+          "taxes": {
+            "isr": 4926.13,
+            "imss_patronal": 4275.0,
+            "imss_obrero": 375.0,
+            "infonavit": 1500.0,
+            "total": 6801.13
+          },
+          "neto": 25698.87,
+          "dias_pagados": 30
+        }
+      ],
+      "totals": {
+        "bruto": 46000.0,
+        "neto": 39129.38,
+        "deducciones": 6870.62,
+        "isr": 6308.12,
+        "imss_patronal": 6412.5,
+        "imss_obrero": 562.5,
+        "infonavit": 2250.0
+      },
+      "tenant_id": 42
+    }
+  },
+  "process_payroll_idempotencia": {
+    "entrada": {
+      "period": {
+        "month": 7,
+        "year": 2026,
+        "dias_pagados": 30
+      },
+      "employees": [
+        {
+          "employee_id": "E1",
+          "nombre": "Empleado Uno",
+          "salario_bruto": 15000.0,
+          "percepciones": 0.0,
+          "banco": "BBVA",
+          "clabe": "012180000000000001"
+        },
+        {
+          "employee_id": "E2",
+          "nombre": "Empleado Dos",
+          "salario_bruto": 30000.0,
+          "percepciones": 1000.0,
+          "banco": "Santander",
+          "clabe": "012180000000000002"
+        }
+      ],
+      "tenant_id": 42
+    },
+    "resultado": {
+      "idempotency_key_1": "nomina-2026-07-42",
+      "idempotency_key_2": "nomina-2026-07-42",
+      "iguales": true
+    }
+  },
+  "process_payroll_sin_tenant_id": {
+    "entrada": {
+      "period": {
+        "month": 7,
+        "year": 2026,
+        "dias_pagados": 30
+      },
+      "employees": [
+        {
+          "employee_id": "E1",
+          "nombre": "Empleado Uno",
+          "salario_bruto": 15000.0,
+          "percepciones": 0.0,
+          "banco": "BBVA",
+          "clabe": "012180000000000001"
+        },
+        {
+          "employee_id": "E2",
+          "nombre": "Empleado Dos",
+          "salario_bruto": 30000.0,
+          "percepciones": 1000.0,
+          "banco": "Santander",
+          "clabe": "012180000000000002"
+        }
+      ],
+      "tenant_id": null
+    },
+    "resultado": {
+      "idempotency_key": "nomina-2026-07-None"
+    }
+  },
+  "process_payroll_extremo_no_dispara_review": {
+    "entrada": {
+      "period": {
+        "month": 7,
+        "year": 2026,
+        "dias_pagados": 30
+      },
+      "employees": [
+        {
+          "employee_id": "E3",
+          "nombre": "Empleado Extremo",
+          "salario_bruto": 1000000.0,
+          "percepciones": 0.0,
+          "banco": "X",
+          "clabe": "0"
+        }
+      ],
+      "tenant_id": 1
+    },
+    "resultado": {
+      "requires_human_review": false,
+      "total_bruto": 1000000.0,
+      "total_deducciones": 341871.33,
+      "cociente": 0.341871
+    }
+  },
+  "aguinaldo_cero_dias": {
+    "entrada": {
+      "salarioDiario": 500.0,
+      "diasAguinaldo": 0
+    },
+    "resultado": {
+      "aguinaldo": 0.0
+    }
+  },
+  "aguinaldo_negativo": {
+    "entrada": {
+      "salarioDiario": -500.0,
+      "diasAguinaldo": 15
+    },
+    "resultado": {
+      "aguinaldo": 0
+    }
+  },
+  "aguinaldo_estandar_15dias": {
+    "entrada": {
+      "salarioDiario": 500.0,
+      "diasAguinaldo": 15
+    },
+    "resultado": {
+      "aguinaldo": 7500.0
+    }
+  },
+  "prima_vacacional_cero_dias": {
+    "entrada": {
+      "salarioDiario": 500.0,
+      "diasVacaciones": 0
+    },
+    "resultado": {
+      "primaVacacional": 0.0
+    }
+  },
+  "prima_vacacional_negativo": {
+    "entrada": {
+      "salarioDiario": -500.0,
+      "diasVacaciones": 6
+    },
+    "resultado": {
+      "primaVacacional": 0.0
+    }
+  },
+  "prima_vacacional_estandar_6dias_25pct": {
+    "entrada": {
+      "salarioDiario": 500.0,
+      "diasVacaciones": 6,
+      "porcentaje": 0.25
+    },
+    "resultado": {
+      "primaVacacional": 750.0
+    }
+  }
+}
