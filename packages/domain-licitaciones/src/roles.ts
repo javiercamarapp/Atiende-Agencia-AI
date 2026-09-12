@@ -20,6 +20,16 @@ export const WRITE_ROLES: readonly LicitacionesRole[] = ["owner", "admin", "anal
 // estricto que WRITE_ROLES.
 export const DECISION_ROLES: readonly LicitacionesRole[] = ["owner", "admin", "analyst"];
 
+// Fase 3 §7 — port literal del criterio del origen
+// (apps/api/src/modules/matching/go-no-go.routes.ts::GO_NO_GO_ROLES):
+// decidir go/no-go amplía DECISION_ROLES con "reviewer" (a diferencia de
+// aprobar el expediente completo, que sigue exigiendo DECISION_ROLES estricto
+// sin reviewer, ver approval-workflow.ts::APPROVER_ROLES). `writer` y
+// `viewer` NUNCA deciden -- mismo enforcement doble (aplicación + RLS,
+// `licitaciones.can_go_no_go_org` en la migración 008) que el resto del
+// vertical.
+export const GO_NO_GO_ROLES: readonly LicitacionesRole[] = [...DECISION_ROLES, "reviewer"];
+
 /**
  * platformRole = techo común que core-auth entiende sin saber nada de
  * licitaciones. owner->owner, admin->admin, analyst/writer/reviewer->member
