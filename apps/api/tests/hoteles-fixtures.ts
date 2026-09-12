@@ -31,6 +31,8 @@ export interface HotelesTestContext {
     readonly frontdesk: { id: string; email: string; password: string; token: string };
     readonly housekeeping: { id: string; email: string; password: string; token: string };
     readonly fnb: { id: string; email: string; password: string; token: string };
+    readonly reservations: { id: string; email: string; password: string; token: string };
+    readonly accountant: { id: string; email: string; password: string; token: string };
   };
 }
 
@@ -70,6 +72,8 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const frontdeskSeed = await seedStaff("frontdesk", "frontdesk");
   const housekeepingSeed = await seedStaff("housekeeping", "housekeeping");
   const fnbSeed = await seedStaff("fnb", "fnb");
+  const reservationsSeed = await seedStaff("reservations", "reservations");
+  const accountantSeed = await seedStaff("accountant", "accountant");
 
   hotelesRepo.seedTaxConfig(propertyId, { ivaRate: 0.16, ishRate: 0.03, discountThreshold: 500 });
 
@@ -99,7 +103,24 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     { date: "2026-12-01", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
     { date: "2026-12-02", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
     { date: "2026-12-03", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
+    // OJO: NO agregar 2026-12-04 aquí -- hoteles-quotes.spec.ts depende deliberadamente
+    // de que esa noche NO tenga tarifa sembrada (caso real de 409 sin_tarifa).
+    // Fecha en el pasado respecto a "hoy" real -- usada por los tests de Fase 3
+    // (reservationStateMachine/no-show) que necesitan una reserva cuyo check-in ya
+    // pasó sin pasar por reloj real (`asOfDate` explícito en la ruta de no-show).
+    { date: "2025-01-10", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
+    { date: "2025-01-11", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
   ]);
+  // Fase 3 (H02) — inventario real por noche, necesario para que
+  // POST /hoteles/:propertyId/reservas pueda reservar vía bookAvailability. 2
+  // habitaciones libres por noche, sin sobreventa configurada (defaults de
+  // migrations/003_availability.sql: max_overbook_rooms=0, threshold=95%).
+  for (const date of ["2026-12-01", "2026-12-02", "2026-12-03", "2025-01-10", "2025-01-11"]) {
+    hotelesRepo.seedAvailability(propertyId, roomTypeId, date, 2, 0);
+  }
+  // Política de cancelación real: cancelar con más de 48h de anticipación es libre;
+  // menos de eso, penalización del 50% del total.
+  hotelesRepo.seedCancellationPolicy(propertyId, { freeUntilHours: 48, penaltyPct: 0.5 });
 
   const deps: AppDeps = {
     env: TEST_ENV,
@@ -121,11 +142,13 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   };
 
   const app = buildApp(deps);
-  const [ownerToken, frontdeskToken, housekeepingToken, fnbToken] = await Promise.all([
+  const [ownerToken, frontdeskToken, housekeepingToken, fnbToken, reservationsToken, accountantToken] = await Promise.all([
     signInAndGetToken(app, ownerSeed.email, ownerSeed.password),
     signInAndGetToken(app, frontdeskSeed.email, frontdeskSeed.password),
     signInAndGetToken(app, housekeepingSeed.email, housekeepingSeed.password),
     signInAndGetToken(app, fnbSeed.email, fnbSeed.password),
+    signInAndGetToken(app, reservationsSeed.email, reservationsSeed.password),
+    signInAndGetToken(app, accountantSeed.email, accountantSeed.password),
   ]);
 
   return {
@@ -140,6 +163,8 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
       frontdesk: { ...frontdeskSeed, token: frontdeskToken },
       housekeeping: { ...housekeepingSeed, token: housekeepingToken },
       fnb: { ...fnbSeed, token: fnbToken },
+      reservations: { ...reservationsSeed, token: reservationsToken },
+      accountant: { ...accountantSeed, token: accountantToken },
     },
   };
 }

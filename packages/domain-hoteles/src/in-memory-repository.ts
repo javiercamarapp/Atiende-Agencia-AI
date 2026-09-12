@@ -7,6 +7,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
 import type {
+  CancellationPolicyRecord,
   ConversationMessage,
   ContactoNoOperativoRecord,
   FnbOrderRecord,
@@ -16,13 +17,18 @@ import type {
   NewContactoNoOperativoInput,
   NewFnbOrderInput,
   NewPaymentInput,
+  NewReservationInput,
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
+  ReservationRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
 } from "./types.ts";
+import type { ReservationStatus } from "./reservationStateMachine.ts";
+import { isCancellable } from "./reservationStateMachine.ts";
+import { occupancyPct } from "./overbooking.ts";
 import { IdempotencyConflictError } from "./errors.ts";
 
 /** Serializa operaciones por clave — equivalente en memoria de
@@ -95,6 +101,33 @@ interface StoredConversation {
   fnbOrderId: string | null;
 }
 
+interface StoredReservation {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  roomTypeId: string;
+  guestId: string | null;
+  checkInDate: string;
+  checkOutDate: string;
+  status: ReservationStatus;
+  totalAmount: number;
+  cancellationPenaltyAmount: number | null;
+  canceledAt: string | null;
+  createdAt: string;
+}
+
+interface StoredRoomType {
+  id: string;
+  propertyId: string;
+  maxOverbookRooms: number;
+  overbookingOccupancyThresholdPct: number;
+}
+
+interface StoredAvailability {
+  totalRooms: number;
+  bookedRooms: number;
+}
+
 function hashBody(body: unknown): string {
   return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
 }
@@ -107,9 +140,16 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly staff: StoredStaffMember[] = [];
   private readonly taxConfigByProperty = new Map<string, TaxConfigRecord>();
   private readonly fnbOrders = new Map<string, FnbOrderRecord & { propertyId: string; organizationId: string }>();
-  private readonly roomTypes = new Map<string, { id: string; propertyId: string }>();
+  private readonly roomTypes = new Map<string, StoredRoomType>();
   private readonly nightlyRates = new Map<string, NightlyRateRecord[]>(); // key: propertyId:roomTypeId
   private readonly idempotencyKeys = new Map<string, StoredIdempotencyRow>(); // key: organizationId:scope:key
+
+  // ---- Fase 3 — máquina de estados de reservas (H02) ----
+  private readonly reservations = new Map<string, StoredReservation>();
+  private readonly reservationIdempotency = new Map<string, string>(); // key: propertyId:idempotencyKey -> reservationId
+  private readonly availability = new Map<string, StoredAvailability>(); // key: propertyId:roomTypeId:date
+  private readonly cancellationPolicies = new Map<string, CancellationPolicyRecord>(); // key: propertyId
+  private readonly availabilityLock = new KeyedMutex();
 
   // ---- Fase 2 — voz/WhatsApp (§1-§3) ----
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
@@ -154,12 +194,41 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     this.taxConfigByProperty.set(propertyId, config);
   }
 
-  seedRoomType(propertyId: string, roomTypeId: string): void {
-    this.roomTypes.set(roomTypeId, { id: roomTypeId, propertyId });
+  seedRoomType(
+    propertyId: string,
+    roomTypeId: string,
+    overbooking?: { maxOverbookRooms?: number; overbookingOccupancyThresholdPct?: number },
+  ): void {
+    this.roomTypes.set(roomTypeId, {
+      id: roomTypeId,
+      propertyId,
+      // Mismos defaults que `hoteles.room_type` en migrations/003_availability.sql.
+      maxOverbookRooms: overbooking?.maxOverbookRooms ?? 0,
+      overbookingOccupancyThresholdPct: overbooking?.overbookingOccupancyThresholdPct ?? 95,
+    });
   }
 
   seedNightlyRates(propertyId: string, roomTypeId: string, rates: readonly NightlyRateRecord[]): void {
     this.nightlyRates.set(`${propertyId}:${roomTypeId}`, [...rates]);
+  }
+
+  /** Equivalente en memoria de `insert into hoteles.availability(...)` — inventario
+   *  real por noche que `bookAvailability`/`releaseAvailability` decrementan/liberan. */
+  seedAvailability(propertyId: string, roomTypeId: string, date: string, totalRooms: number, bookedRooms = 0): void {
+    this.availability.set(`${propertyId}:${roomTypeId}:${date}`, { totalRooms, bookedRooms });
+  }
+
+  /** Equivalente en memoria de `insert into hoteles.cancellation_policy(...)`. */
+  seedCancellationPolicy(propertyId: string, policy: CancellationPolicyRecord): void {
+    this.cancellationPolicies.set(propertyId, policy);
+  }
+
+  /** Permite a un test construir una reserva preexistente en un estado arbitrario
+   *  (ej. para probar una transición desde `check_in`) sin pasar por la ruta HTTP de
+   *  creación — equivalente en memoria de un `INSERT` manual contra
+   *  `hoteles.reservation` con `status` ya distinto del default. */
+  seedReservation(reservation: StoredReservation): void {
+    this.reservations.set(reservation.id, { ...reservation });
   }
 
   private chargesByFolio(folioId: string): StoredCharge[] {
@@ -387,6 +456,162 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   async loadNightlyRates(propertyId: string, roomTypeId: string, checkInDate: string, checkOutDate: string): Promise<readonly NightlyRateRecord[]> {
     const rates = this.nightlyRates.get(`${propertyId}:${roomTypeId}`) ?? [];
     return rates.filter((r) => r.date >= checkInDate && r.date <= checkOutDate);
+  }
+
+  // ---- HotelesRepository: Fase 3 — máquina de estados de reservas (H02) ----
+
+  private toReservationRecord(stored: StoredReservation): ReservationRecord {
+    return {
+      id: stored.id,
+      organizationId: stored.organizationId,
+      propertyId: stored.propertyId,
+      roomTypeId: stored.roomTypeId,
+      guestId: stored.guestId,
+      checkInDate: stored.checkInDate,
+      checkOutDate: stored.checkOutDate,
+      status: stored.status,
+      totalAmount: stored.totalAmount,
+      cancellationPenaltyAmount: stored.cancellationPenaltyAmount,
+      canceledAt: stored.canceledAt,
+      createdAt: stored.createdAt,
+    };
+  }
+
+  async listReservations(propertyId: string): Promise<readonly ReservationRecord[]> {
+    return [...this.reservations.values()]
+      .filter((r) => r.propertyId === propertyId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .map((r) => this.toReservationRecord(r));
+  }
+
+  async findReservation(propertyId: string, reservationId: string): Promise<ReservationRecord | null> {
+    const stored = this.reservations.get(reservationId);
+    if (!stored || stored.propertyId !== propertyId) return null;
+    return this.toReservationRecord(stored);
+  }
+
+  async insertReservation(input: NewReservationInput): Promise<ReservationRecord> {
+    if (input.idempotencyKey) {
+      const existingId = this.reservationIdempotency.get(`${input.propertyId}:${input.idempotencyKey}`);
+      if (existingId) {
+        const existing = this.reservations.get(existingId);
+        if (existing) return this.toReservationRecord(existing);
+      }
+    }
+    const id = randomUUID();
+    const stored: StoredReservation = {
+      id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      roomTypeId: input.roomTypeId,
+      guestId: input.guestId,
+      checkInDate: input.checkInDate,
+      checkOutDate: input.checkOutDate,
+      // Decisión de alcance Fase 3 §3.2: esta fase no expone `cotizada` por HTTP —
+      // toda reserva creada por `POST crear` aterriza directo en `confirmada`.
+      status: "confirmada",
+      totalAmount: input.totalAmount,
+      cancellationPenaltyAmount: null,
+      canceledAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    this.reservations.set(id, stored);
+    if (input.idempotencyKey) {
+      this.reservationIdempotency.set(`${input.propertyId}:${input.idempotencyKey}`, id);
+    }
+    return this.toReservationRecord(stored);
+  }
+
+  async ensurePrimaryFolio(propertyId: string, organizationId: string, reservationId: string): Promise<{ id: string }> {
+    const existing = [...this.folios.values()].find((f) => f.reservationId === reservationId && f.isPrimary);
+    if (existing) return { id: existing.id };
+    const id = randomUUID();
+    this.folios.set(id, {
+      id,
+      organizationId,
+      propertyId,
+      reservationId,
+      status: "abierto",
+      label: "Principal",
+      isPrimary: true,
+      closedAt: null,
+      closeReason: null,
+      arApprovedBy: null,
+    });
+    return { id };
+  }
+
+  async transitionReservation(
+    propertyId: string,
+    reservationId: string,
+    fromStatuses: readonly ReservationStatus[],
+    toStatus: ReservationStatus,
+    actorUserId: string | null,
+  ): Promise<ReservationRecord | null> {
+    void actorUserId; // el registro append-only de la transición vive solo en la migración SQL real (§4-punto 3); este adaptador en memoria no lo duplica.
+    const stored = this.reservations.get(reservationId);
+    if (!stored || stored.propertyId !== propertyId) return null;
+    if (!fromStatuses.includes(stored.status)) return null; // reclamo atómico fallido: la fila ya no está en el estado esperado
+    stored.status = toStatus;
+    return this.toReservationRecord(stored);
+  }
+
+  async cancelReservation(propertyId: string, reservationId: string, penaltyAmount: number, actorUserId: string | null): Promise<ReservationRecord | null> {
+    void actorUserId;
+    const stored = this.reservations.get(reservationId);
+    if (!stored || stored.propertyId !== propertyId) return null;
+    if (!isCancellable(stored.status)) return null; // reclamo atómico fallido (mismo criterio que transitionReservation)
+    stored.status = "cancelada";
+    stored.canceledAt = new Date().toISOString();
+    stored.cancellationPenaltyAmount = penaltyAmount;
+    return this.toReservationRecord(stored);
+  }
+
+  async releaseAvailability(propertyId: string, roomTypeId: string, date: string, qty: number): Promise<void> {
+    const key = `${propertyId}:${roomTypeId}:${date}`;
+    await this.availabilityLock.run(key, async () => {
+      const row = this.availability.get(key);
+      // Mismo criterio que un UPDATE SQL sin fila que haga match: 0 filas afectadas,
+      // nunca un error — la disponibilidad "que nunca se registró" no es un caso que
+      // esta operación deba lanzar por ella (ver migrations/005_reservas_estado.sql).
+      if (!row) return;
+      row.bookedRooms = Math.max(row.bookedRooms - qty, 0);
+    });
+  }
+
+  async bookAvailability(propertyId: string, roomTypeId: string, date: string, qty: number): Promise<void> {
+    if (qty <= 0) throw new Error("cantidad_invalida: qty debe ser mayor a 0");
+    const key = `${propertyId}:${roomTypeId}:${date}`;
+    await this.availabilityLock.run(key, async () => {
+      const roomType = this.roomTypes.get(roomTypeId);
+      if (!roomType || roomType.propertyId !== propertyId) {
+        throw new Error(`tipo_habitacion_invalido: room_type=${roomTypeId} no pertenece a property=${propertyId}`);
+      }
+      const row = this.availability.get(key);
+      if (!row) {
+        throw new Error(`sin_disponibilidad: no existe inventario para property=${propertyId}, room_type=${roomTypeId}, fecha=${date}`);
+      }
+      // Mismo espejo exacto que `overbooking.ts`/`hoteles.book_availability()` SQL:
+      // total_rooms=0 se trata como 100% de ocupación (nunca "sin datos"), así que SÍ
+      // puede activar sobreventa hasta maxOverbookRooms.
+      const occupied = occupancyPct(row.totalRooms, row.bookedRooms);
+      const effectiveCapacity = row.totalRooms + (occupied >= roomType.overbookingOccupancyThresholdPct ? roomType.maxOverbookRooms : 0);
+      if (row.bookedRooms + qty > effectiveCapacity) {
+        throw new Error(`sin_disponibilidad: no hay habitaciones libres para property=${propertyId}, room_type=${roomTypeId}, fecha=${date}`);
+      }
+      row.bookedRooms += qty;
+    });
+  }
+
+  async loadReservationCancellationPolicy(propertyId: string): Promise<CancellationPolicyRecord | null> {
+    return this.cancellationPolicies.get(propertyId) ?? null;
+  }
+
+  async findDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly ReservationRecord[]> {
+    const cutoff = asOfDate ?? new Date().toISOString().slice(0, 10);
+    return [...this.reservations.values()]
+      .filter((r) => r.propertyId === propertyId && r.status === "confirmada" && r.checkInDate <= cutoff)
+      .map((r) => this.toReservationRecord(r));
   }
 
   // ---- HotelesRepository: idempotencia ----

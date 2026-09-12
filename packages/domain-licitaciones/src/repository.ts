@@ -10,11 +10,14 @@ import type {
   PackageManifestRecord,
   SubmissionRecord,
   RequiredAnnexItem,
+  MatchingProfileRecord,
+  GoNoGoDecisionRecord,
 } from "./types.ts";
 import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
 import type { LicitacionesRole } from "./roles.ts";
+import type { EligibilityStatus } from "./matching-engine.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -58,11 +61,86 @@ export interface IdempotentResult<T> {
   readonly body: T;
 }
 
+// ---- Fase 3: matching/scoring y go/no-go ----
+
+export interface TenderUpsertInput {
+  readonly title: string;
+  readonly submissionDeadline: string | null;
+  /** Clave natural de dedupe: presente -> upsert por (organizationId, source='manual', externalId); ausente -> siempre crea (el llamador es responsable de no duplicar a mano, ver diseño §6). */
+  readonly externalId: string | null;
+  readonly contractingBody: string | null;
+  readonly cpvCodes: readonly string[];
+  readonly budgetAmount: number | null;
+  readonly currency: string;
+  readonly state: string | null;
+  readonly procedureTypeRaw: string | null;
+  /** Tomado SIEMPRE de la sesión autenticada (`c.get("userId")`), nunca del cuerpo del request. */
+  readonly actorId: string;
+}
+
+export interface TenderUpsertResult {
+  readonly tender: TenderRecord;
+  readonly created: boolean;
+  /** `true` solo si esta operación fue una ACTUALIZACIÓN (created=false) y `submissionDeadline` cambió respecto del valor previo -- dispara `recordChange` sobre la propuesta abierta de esta convocatoria, si existe. */
+  readonly submissionDeadlineChanged: boolean;
+}
+
+export interface MatchingProfileUpsertInput {
+  readonly keywords: readonly string[];
+  readonly excludedKeywords: readonly string[];
+  readonly classifierCodes: readonly string[];
+  readonly entities: readonly string[];
+  readonly states: readonly string[];
+  readonly budgetMin: number | null;
+  readonly budgetMax: number | null;
+  readonly actorId: string;
+}
+
+export interface GoNoGoDecisionCreateInput {
+  readonly decision: "go" | "no_go";
+  readonly reasons: readonly string[];
+  readonly matchScore: number;
+  readonly matchEligibilityStatus: EligibilityStatus;
+  readonly matchInputsHash: string;
+  readonly actorId: string;
+  readonly actorRole: LicitacionesRole;
+}
+
 export interface LicitacionesRepository {
   // ---- Convocatoria / expediente (transversal) ----
   findTender(organizationId: string, tenderId: string): Promise<TenderRecord | null>;
   getOrCreateProposal(organizationId: string, tenderId: string, userId: string, title: string): Promise<ProposalRecord>;
   findProposal(organizationId: string, tenderId: string): Promise<ProposalRecord | null>;
+
+  // ---- Fase 3 pieza 1: alta manual de convocatoria (§6) ----
+  /** Lista TODAS las convocatorias de la organización (para `GET .../tenders/matching`, la vista de lista) -- sin paginar en esta fase (mismo criterio de simplicidad que el resto de listas de Fase 1/2). */
+  listTenders(organizationId: string): Promise<readonly TenderRecord[]>;
+  /**
+   * Crea o actualiza (upsert por `externalId`, ver `TenderUpsertInput`) una
+   * convocatoria manual. SIEMPRE fija `source='manual'` server-side (nunca
+   * acepta el valor del cliente) y registra la auditoría
+   * (`licitaciones.tender_audit_log`, acción
+   * `tender.manual_upsert.created|updated`) en la MISMA operación -- nunca
+   * depende de que la ruta se acuerde de auditar por separado (mismo
+   * criterio que AE-11/`recordSectionAuthor`).
+   */
+  upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult>;
+
+  // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----
+  findMatchingProfile(organizationId: string): Promise<MatchingProfileRecord | null>;
+  upsertMatchingProfile(organizationId: string, input: MatchingProfileUpsertInput): Promise<MatchingProfileRecord>;
+
+  // ---- Fase 3 pieza 3: decisiones go/no-go (§7) ----
+  /**
+   * Valida (vía `buildGoNoGoDecision`, go-no-go.ts -- lanza
+   * `GoNoGoRejectedError` si el rol o los motivos no pasan la regla, sin
+   * tocar ninguna fila) y persiste la decisión, y en la MISMA operación
+   * actualiza `licitaciones.tender.status` al valor de la decisión (único
+   * camino que saca una convocatoria de `discovered`/`in_review`).
+   */
+  createGoNoGoDecision(organizationId: string, tenderId: string, input: GoNoGoDecisionCreateInput): Promise<GoNoGoDecisionRecord>;
+  /** Historial COMPLETO de decisiones (no solo la última), más recientes primero -- permite reabrir un `no_go` con un `go` posterior sin perder el rastro. */
+  listGoNoGoDecisions(organizationId: string, tenderId: string): Promise<readonly GoNoGoDecisionRecord[]>;
 
   // ---- Flujo 1: checklist de integridad ----
   listComplianceItems(organizationId: string, proposalId: string): Promise<readonly ComplianceItemRecord[]>;

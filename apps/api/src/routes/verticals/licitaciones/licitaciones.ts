@@ -8,6 +8,10 @@ import { licitacionesChecklistRoutes } from "./checklist.ts";
 import { licitacionesProposalRoutes } from "./proposalEconomic.ts";
 import { licitacionesCierreRoutes } from "./cierre.ts";
 import { licitacionesTechnicalProposalRoutes } from "./technicalProposal.ts";
+import { licitacionesTendersRoutes } from "./tenders.ts";
+import { licitacionesMatchingProfileRoutes } from "./matchingProfile.ts";
+import { licitacionesMatchingRoutes } from "./matching.ts";
+import { licitacionesGoNoGoRoutes } from "./goNoGo.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -15,5 +19,10 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesProposalRoutes(deps));
   app.route("/", licitacionesCierreRoutes(deps));
   app.route("/", licitacionesTechnicalProposalRoutes(deps));
+  // Fase 3 — matching/scoring y go/no-go (ver diseño Fase 3 §8).
+  app.route("/", licitacionesTendersRoutes(deps));
+  app.route("/", licitacionesMatchingProfileRoutes(deps));
+  app.route("/", licitacionesMatchingRoutes(deps));
+  app.route("/", licitacionesGoNoGoRoutes(deps));
   return app;
 }

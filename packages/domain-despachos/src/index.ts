@@ -18,6 +18,34 @@ export type { OpcionesIsrPf } from "./declaraciones/isr-engine.ts";
 
 export { agregarDiot, esRfcGenerico } from "./declaraciones/diot-aggregate.ts";
 
+// ---- Nómina (Fase 3) ----
+export { ISR_NOMINA_MENSUAL_2026, ISR_NOMINA_ANUAL_2026 } from "./nomina/isr-nomina-tablas.ts";
+export { calcularIsrNomina } from "./nomina/isr-nomina-engine.ts";
+export {
+  UMA_MENSUAL_2026 as NOMINA_UMA_MENSUAL_2026,
+  UMA_DIARIA_2026 as NOMINA_UMA_DIARIA_2026,
+  SBC_MAX_UMA,
+  IMSS_OBRERO_TASA,
+  IMSS_PATRONAL_TASA,
+  INFONAVIT_TASA,
+  sbcDiarioTopado,
+  calcularImssObrero,
+  calcularImssPatronal,
+  calcularInfonavit,
+} from "./nomina/imss-engine.ts";
+export { SUBSIDIO_EMPLEO_MENSUAL_2026, SUBSIDIO_EMPLEO_QUINCENAL_2026, calcularSubsidio } from "./nomina/subsidio-empleo.ts";
+export type { FilaSubsidio, TablaSubsidio, Periodicidad } from "./nomina/subsidio-empleo.ts";
+export { calcularAguinaldo, calcularPrimaVacacional } from "./nomina/prestaciones.ts";
+export { calcularImpuestosNomina, procesarNomina } from "./nomina/payroll-engine.ts";
+export type {
+  PayrollTaxes,
+  OpcionesImpuestosNomina,
+  EmployeePayroll,
+  EmployeePayrollInput,
+  PayrollPeriod,
+  PayrollPeriodInput,
+} from "./nomina/types.ts";
+
 export type {
   IsrResultado,
   TipoContribuyente,
