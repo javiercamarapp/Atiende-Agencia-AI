@@ -12,6 +12,8 @@ import { licitacionesTendersRoutes } from "./tenders.ts";
 import { licitacionesMatchingProfileRoutes } from "./matchingProfile.ts";
 import { licitacionesMatchingRoutes } from "./matching.ts";
 import { licitacionesGoNoGoRoutes } from "./goNoGo.ts";
+import { licitacionesSourcesRoutes } from "./sources.ts";
+import { licitacionesTenderVersionsRoutes } from "./tenderVersions.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -24,5 +26,9 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesMatchingProfileRoutes(deps));
   app.route("/", licitacionesMatchingRoutes(deps));
   app.route("/", licitacionesGoNoGoRoutes(deps));
+  // Fase 5 — andamiaje de ingesta (REQ-004/005/146..150) e historial de
+  // versiones de convocatoria + diff + cascada de invalidación (REQ-017/041/151..155).
+  app.route("/", licitacionesSourcesRoutes(deps));
+  app.route("/", licitacionesTenderVersionsRoutes(deps));
   return app;
 }

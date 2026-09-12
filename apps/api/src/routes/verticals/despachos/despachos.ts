@@ -10,6 +10,8 @@ import { despachosRevisionesRoutes } from "./revisiones.ts";
 import { despachosVencimientosRoutes } from "./vencimientos.ts";
 import { despachosDeclaracionesRoutes } from "./declaraciones.ts";
 import { despachosNominaRoutes } from "./nomina.ts";
+import { despachosConciliacionRoutes } from "./conciliacion.ts";
+import { despachosMigracionCatalogoRoutes } from "./migracion-catalogo.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -18,5 +20,7 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", despachosVencimientosRoutes(deps));
   app.route("/", despachosDeclaracionesRoutes(deps));
   app.route("/", despachosNominaRoutes(deps));
+  app.route("/", despachosConciliacionRoutes(deps));
+  app.route("/", despachosMigracionCatalogoRoutes(deps));
   return app;
 }

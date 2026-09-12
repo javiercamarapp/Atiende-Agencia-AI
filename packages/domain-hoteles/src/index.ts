@@ -72,10 +72,46 @@ export {
   CONFIRMAR_COCINA_ROLES,
   MANAGE_RESERVATIONS_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
+  FRAUD_SCAN_ROLES,
+  FRAUD_VIEW_ROLES,
+  FRAUD_RESOLVER_ROLES,
+  CFDI_HOSPEDAJE_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
 
-export { IdempotencyConflictError } from "./errors.ts";
+export { IdempotencyConflictError, FraudAlertAlreadyResolvedError } from "./errors.ts";
+
+// ---- Fase 5 — H16-014/REQ-REC-014: fraude interno (SOLO los 2 patrones que operan
+// sobre folioEngine.ts ya portado; ver domain-hoteles/src/fraude/deteccion.ts para
+// el alcance completo) ----
+export { FRAUD_PATTERNS, recipientRolesForPattern, detectDiscountOutsidePolicy, detectFolioReopenedAfterAudit } from "./fraude/deteccion.ts";
+export type { FraudPattern, FraudFinding, DiscountPolicyInput, FolioReopenInput } from "./fraude/deteccion.ts";
+export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
+
+// ---- Fase 5 — H5/REQ-BO-001/002: CFDI de hospedaje ----
+export {
+  RFC_PUBLICO_GENERAL,
+  RFC_GENERICO_EXTRANJERO,
+  resolveReceptorHospedaje,
+  ReceptorHospedajeInvalidoError,
+  summarizeFacturableCharges,
+  computeDsa,
+  computeCfdiHospedajeBreakdown,
+  TIPO_RELACION_APLICACION_ANTICIPO,
+  validateAnticipoRelacion,
+  validarCfdiHospedaje,
+} from "./cfdi/reglas-fiscales-hospedaje.ts";
+export type {
+  ReceptorHospedajeInput,
+  ReceptorHospedajeResult,
+  CargoFacturable,
+  ResumenCargosFacturables,
+  DesgloseCfdiHospedaje,
+  AnticipoRelacionInput,
+  DatosCfdiHospedaje,
+  ResultadoValidacionCfdiHospedaje,
+} from "./cfdi/reglas-fiscales-hospedaje.ts";
+export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";
 
 export type { PaymentsPort, PaymentChargeInput, PaymentChargeResult } from "./payments-port.ts";
 export { InMemoryPaymentsPort } from "./payments-port.ts";

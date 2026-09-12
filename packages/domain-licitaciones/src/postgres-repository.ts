@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { IdempotencyConflictError } from "./errors.ts";
-import type { GoNoGoDecisionCreateInput, IdempotencyParams, IdempotentResult, LicitacionesRepository, MatchingProfileUpsertInput, TenderUpsertInput, TenderUpsertResult } from "./repository.ts";
+import type { GoNoGoDecisionCreateInput, IdempotencyParams, IdempotentResult, LicitacionesRepository, MatchingProfileUpsertInput, RecordTenderVersionResult, TenderChangeNotificationRecord, TenderUpsertInput, TenderUpsertResult } from "./repository.ts";
 import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
@@ -16,9 +16,16 @@ import { ApprovalWorkflow } from "./approval-workflow.ts";
 import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
 import type { PersistedProposalVersion, ProposalInputRecord } from "./proposal-version-registry.ts";
+import { WRITE_ROLES } from "./roles.ts";
 import type { LicitacionesRole } from "./roles.ts";
 import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from "./repository.ts";
 import { buildGoNoGoDecision } from "./go-no-go.ts";
+import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
+import type { PersistedTenderVersion, TenderVersionDiff, TenderVersionSnapshot } from "./tender-version-registry.ts";
+import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
+import type { SourceConnectorId } from "./connector-registry.ts";
+import { evaluateSourceFreshness } from "./source-run.ts";
+import type { SourceFreshnessRecord, SourceRunInput, SourceRunRecord } from "./source-run.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
@@ -283,7 +290,321 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       input.actorId,
     ]);
 
+    // Fase 5 pieza 1 (REQ-147): cada alta/actualización manual ES una
+    // "corrida de ingesta" del único conector real hoy -- se registra tal
+    // cual, con la MISMA forma que usaría un conector automatizado futuro.
+    await this.recordSourceRun(organizationId, {
+      source: "manual",
+      state: "ok",
+      startedAt: tender.updatedAt,
+      finishedAt: tender.updatedAt,
+      evidence: { message: created ? "Alta manual de convocatoria." : "Actualización manual de convocatoria.", coverage: { expected: 1, obtained: 1 } },
+      correlationId: null,
+    });
+
+    // Fase 5 pieza 2: versiona la convocatoria y ejecuta la cascada de
+    // invalidación en la MISMA operación -- generaliza el disparador anterior
+    // (solo `submissionDeadline`, ver `submissionDeadlineChanged` abajo, que
+    // se conserva por compatibilidad informativa) a CUALQUIER campo de bases
+    // que haya cambiado (REQ-151/155).
+    await this.recordTenderVersion(organizationId, tender.id, input.actorId);
+
     return { tender, created, submissionDeadlineChanged: !created && previousDeadline !== undefined && previousDeadline !== tender.submissionDeadline };
+  }
+
+  // ---- Fase 5 pieza 2: historial de versiones de convocatoria (REQ-017/041/151..155) ----
+
+  async recordTenderVersion(organizationId: string, tenderId: string, actorId: string): Promise<RecordTenderVersionResult> {
+    const tender = await this.findTender(organizationId, tenderId);
+    if (!tender) throw new Error(`Tender "${tenderId}" no encontrado para la organización "${organizationId}" (recordTenderVersion).`);
+    const requirementItems = await this.listRequirementItems(organizationId, tenderId);
+
+    const snapshot: TenderVersionSnapshot = {
+      fields: {
+        title: tender.title,
+        submissionDeadline: tender.submissionDeadline,
+        contractingBody: tender.contractingBody ?? null,
+        cpvCodes: tender.cpvCodes ?? [],
+        budgetAmount: tender.budgetAmount ?? null,
+        currency: tender.currency ?? "MXN",
+        state: tender.state ?? null,
+        procedureTypeRaw: tender.procedureTypeRaw ?? null,
+      },
+      requirements: requirementItems.map(toRequirementSnapshot),
+    };
+    const hash = computeTenderSnapshotHash(snapshot);
+
+    const previousLatest = await this.latestTenderVersion(organizationId, tenderId);
+    // REQ-152/154: snapshot idéntico al de la última versión -> no crea versión/cascada/notificación nueva (reingesta/reprocesamiento idempotente).
+    if (previousLatest && previousLatest.hash === hash) {
+      return { version: previousLatest, created: false, cascadedChanges: [], notification: null };
+    }
+
+    const diff: TenderVersionDiff = TenderVersionRegistry.diff(previousLatest?.snapshot ?? null, snapshot);
+    const nextVersion = (previousLatest?.version ?? 0) + 1;
+
+    const { rows: versionRows } = await this.db.query<{ created_at: string }>(
+      `insert into licitaciones.tender_version (organization_id, tender_id, version, hash, snapshot, diff)
+       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+       on conflict (tender_id, version) do nothing
+       returning created_at::text as created_at;`,
+      [organizationId, tenderId, nextVersion, hash, JSON.stringify(snapshot), JSON.stringify(diff)],
+    );
+    // `on conflict do nothing` sin fila devuelta significaría una carrera con
+    // otra corrida concurrente que ya insertó esta misma versión -- se relee
+    // en vez de asumir "ahora" como fallback silencioso.
+    const createdAt = versionRows[0]?.created_at ?? (await this.latestTenderVersion(organizationId, tenderId))!.createdAt;
+    const persisted: PersistedTenderVersion = { version: nextVersion, hash, snapshot, diff, createdAt };
+
+    const cascadedChanges: ChangeDetected[] = [];
+    if (previousLatest && diff.hasChanges) {
+      const proposal = await this.findProposal(organizationId, tenderId);
+      if (proposal) {
+        if (diff.changedFieldNames.length > 0) {
+          cascadedChanges.push(
+            await this.recordChange(organizationId, proposal.id, {
+              scope: "expediente",
+              scopeRef: "expediente",
+              reason: `tender_version_changed:v${nextVersion}:${diff.changedFieldNames.join(",")}`,
+            }),
+          );
+        }
+        for (const sectionKey of diff.affectedSectionKeys) {
+          // `technicalProposal.ts::saveTechnicalSections` persiste
+          // `proposal_section.section_key` con el prefijo `"technical:"`
+          // (p. ej. "technical:legal", nunca el "legal" bare de
+          // `SECTION_KEY_BY_REQUIREMENT_TYPE") -- el `scopeRef` de la
+          // aprobación granular de esa sección (ver
+          // `cierre.ts::POST .../proposal/sections/:sectionKey/approval`) usa
+          // EXACTAMENTE ese mismo valor con prefijo. `affectedSectionKeys`
+          // se mantiene sin prefijo en el módulo de dominio (es un concepto
+          // de REQUISITOS, no de "cómo se ensambla un documento técnico") --
+          // la traducción a scopeRef vive aquí, en el único punto que conoce
+          // ambas convenciones.
+          cascadedChanges.push(
+            await this.recordChange(organizationId, proposal.id, {
+              scope: "seccion",
+              scopeRef: `seccion:technical:${sectionKey}`,
+              reason: `tender_version_changed:v${nextVersion}:requisitos_de_seccion:${sectionKey}`,
+            }),
+          );
+        }
+      }
+    }
+
+    const { rows: notificationRows } = await this.db.query<{ id: string; created_at: string }>(
+      `insert into licitaciones.tender_change_notification (organization_id, tender_id, tender_version, reason, changed_field_names, affected_section_keys, notified_roles)
+       values ($1, $2, $3, $4, $5::text[], $6::text[], $7::text[])
+       returning id, created_at::text as created_at;`,
+      [
+        organizationId,
+        tenderId,
+        nextVersion,
+        previousLatest ? `convocatoria_actualizada:v${nextVersion}` : "convocatoria_nueva",
+        diff.changedFieldNames,
+        diff.affectedSectionKeys,
+        WRITE_ROLES,
+      ],
+    );
+    const notification: TenderChangeNotificationRecord = {
+      id: notificationRows[0]!.id,
+      organizationId,
+      tenderId,
+      tenderVersion: nextVersion,
+      reason: previousLatest ? `convocatoria_actualizada:v${nextVersion}` : "convocatoria_nueva",
+      changedFieldNames: diff.changedFieldNames,
+      affectedSectionKeys: diff.affectedSectionKeys,
+      notifiedRoles: WRITE_ROLES,
+      createdAt: notificationRows[0]!.created_at,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+    };
+
+    // Trazabilidad de quién disparó la corrida que produjo esta versión.
+    await this.db.query(`insert into licitaciones.tender_audit_log (organization_id, tender_id, action, actor_id) values ($1, $2, 'tender.version_recorded', $3);`, [
+      organizationId,
+      tenderId,
+      actorId,
+    ]);
+
+    return { version: persisted, created: true, cascadedChanges, notification };
+  }
+
+  async listTenderVersions(organizationId: string, tenderId: string): Promise<readonly PersistedTenderVersion[]> {
+    const { rows } = await this.db.query<{ version: number; hash: string; snapshot: TenderVersionSnapshot; diff: TenderVersionDiff; created_at: string }>(
+      `select version, hash, snapshot, diff, created_at::text as created_at from licitaciones.tender_version
+       where organization_id = $1 and tender_id = $2 order by version asc;`,
+      [organizationId, tenderId],
+    );
+    return rows.map((r) => ({ version: r.version, hash: r.hash, snapshot: r.snapshot, diff: r.diff, createdAt: r.created_at }));
+  }
+
+  async latestTenderVersion(organizationId: string, tenderId: string): Promise<PersistedTenderVersion | null> {
+    const { rows } = await this.db.query<{ version: number; hash: string; snapshot: TenderVersionSnapshot; diff: TenderVersionDiff; created_at: string }>(
+      `select version, hash, snapshot, diff, created_at::text as created_at from licitaciones.tender_version
+       where organization_id = $1 and tender_id = $2 order by version desc limit 1;`,
+      [organizationId, tenderId],
+    );
+    const row = rows[0];
+    return row ? { version: row.version, hash: row.hash, snapshot: row.snapshot, diff: row.diff, createdAt: row.created_at } : null;
+  }
+
+  async listTenderChangeNotifications(organizationId: string, tenderId?: string): Promise<readonly TenderChangeNotificationRecord[]> {
+    const { rows } = await this.db.query<{
+      id: string;
+      tender_id: string;
+      tender_version: number;
+      reason: string;
+      changed_field_names: string[];
+      affected_section_keys: string[];
+      notified_roles: LicitacionesRole[];
+      created_at: string;
+      acknowledged_at: string | null;
+      acknowledged_by: string | null;
+    }>(
+      tenderId
+        ? `select id, tender_id, tender_version, reason, changed_field_names, affected_section_keys, notified_roles, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by
+           from licitaciones.tender_change_notification where organization_id = $1 and tender_id = $2 order by created_at desc;`
+        : `select id, tender_id, tender_version, reason, changed_field_names, affected_section_keys, notified_roles, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by
+           from licitaciones.tender_change_notification where organization_id = $1 order by created_at desc;`,
+      tenderId ? [organizationId, tenderId] : [organizationId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      organizationId,
+      tenderId: r.tender_id,
+      tenderVersion: r.tender_version,
+      reason: r.reason,
+      changedFieldNames: r.changed_field_names,
+      affectedSectionKeys: r.affected_section_keys,
+      notifiedRoles: r.notified_roles,
+      createdAt: r.created_at,
+      acknowledgedAt: r.acknowledged_at,
+      acknowledgedBy: r.acknowledged_by,
+    }));
+  }
+
+  async acknowledgeTenderChangeNotification(organizationId: string, notificationId: string, actorId: string): Promise<TenderChangeNotificationRecord> {
+    const { rows } = await this.db.query<{
+      id: string;
+      tender_id: string;
+      tender_version: number;
+      reason: string;
+      changed_field_names: string[];
+      affected_section_keys: string[];
+      notified_roles: LicitacionesRole[];
+      created_at: string;
+      acknowledged_at: string | null;
+      acknowledged_by: string | null;
+    }>(
+      `update licitaciones.tender_change_notification set acknowledged_at = now(), acknowledged_by = $1
+       where organization_id = $2 and id = $3
+       returning id, tender_id, tender_version, reason, changed_field_names, affected_section_keys, notified_roles, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by;`,
+      [actorId, organizationId, notificationId],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
+    return {
+      id: row.id,
+      organizationId,
+      tenderId: row.tender_id,
+      tenderVersion: row.tender_version,
+      reason: row.reason,
+      changedFieldNames: row.changed_field_names,
+      affectedSectionKeys: row.affected_section_keys,
+      notifiedRoles: row.notified_roles,
+      createdAt: row.created_at,
+      acknowledgedAt: row.acknowledged_at,
+      acknowledgedBy: row.acknowledged_by,
+    };
+  }
+
+  // ---- Fase 5 pieza 1: andamiaje de ingesta sobre fixtures/carga manual (REQ-004/005/146..150) ----
+
+  async recordSourceRun(organizationId: string, input: SourceRunInput): Promise<SourceRunRecord> {
+    const { rows } = await this.db.query<{ id: string; created_at: string }>(
+      `insert into licitaciones.source_run (organization_id, source, state, started_at, finished_at, http_status, response_hash, message, coverage_expected, coverage_obtained, correlation_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       returning id, created_at::text as created_at;`,
+      [
+        organizationId,
+        input.source,
+        input.state,
+        input.startedAt,
+        input.finishedAt,
+        input.evidence.httpStatus ?? null,
+        input.evidence.responseHash ?? null,
+        input.evidence.message,
+        input.evidence.coverage?.expected ?? null,
+        input.evidence.coverage?.obtained ?? null,
+        input.correlationId,
+      ],
+    );
+    return { ...input, id: rows[0]!.id, organizationId, createdAt: rows[0]!.created_at };
+  }
+
+  async listSourceRuns(organizationId: string, filter?: { source?: SourceConnectorId; limit?: number }): Promise<readonly SourceRunRecord[]> {
+    const { rows } = await this.db.query<{
+      id: string;
+      source: SourceConnectorId;
+      state: SourceRunRecord["state"];
+      started_at: string;
+      finished_at: string;
+      http_status: number | null;
+      response_hash: string | null;
+      message: string;
+      coverage_expected: number | null;
+      coverage_obtained: number | null;
+      correlation_id: string | null;
+      created_at: string;
+    }>(
+      filter?.source
+        ? `select id, source, state, started_at::text as started_at, finished_at::text as finished_at, http_status, response_hash, message, coverage_expected, coverage_obtained, correlation_id, created_at::text as created_at
+           from licitaciones.source_run where organization_id = $1 and source = $2 order by finished_at desc limit $3;`
+        : `select id, source, state, started_at::text as started_at, finished_at::text as finished_at, http_status, response_hash, message, coverage_expected, coverage_obtained, correlation_id, created_at::text as created_at
+           from licitaciones.source_run where organization_id = $1 order by finished_at desc limit $2;`,
+      filter?.source ? [organizationId, filter.source, filter.limit ?? 500] : [organizationId, filter?.limit ?? 500],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      organizationId,
+      source: r.source,
+      state: r.state,
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      evidence: {
+        ...(r.http_status !== null ? { httpStatus: r.http_status } : {}),
+        ...(r.response_hash !== null ? { responseHash: r.response_hash } : {}),
+        message: r.message,
+        ...(r.coverage_expected !== null && r.coverage_obtained !== null ? { coverage: { expected: r.coverage_expected, obtained: r.coverage_obtained } } : {}),
+      },
+      correlationId: r.correlation_id,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async sourceFreshness(organizationId: string): Promise<readonly SourceFreshnessRecord[]> {
+    // Dos consultas separadas (en vez de una sola con lógica combinada) para
+    // que "la corrida más reciente de cualquier estado" y "la corrida
+    // exitosa más reciente" nunca se confundan entre sí -- una fuente cuya
+    // ÚLTIMA corrida fue exitosa pero tuvo una falla más antigua no debe
+    // reportar la falla como "más reciente".
+    const [lastAnyResult, lastSuccessResult] = await Promise.all([
+      this.db.query<{ source: SourceConnectorId; state: SourceFreshnessRecord["lastRunState"] }>(
+        `select distinct on (source) source, state from licitaciones.source_run where organization_id = $1 order by source, finished_at desc;`,
+        [organizationId],
+      ),
+      this.db.query<{ source: SourceConnectorId; finished_at: string }>(
+        `select distinct on (source) source, finished_at::text as finished_at from licitaciones.source_run where organization_id = $1 and state = 'ok' order by source, finished_at desc;`,
+        [organizationId],
+      ),
+    ]);
+    const now = new Date();
+    return LICITACIONES_CONNECTOR_REGISTRY.all().map((descriptor) => {
+      const lastAny = lastAnyResult.rows.find((r) => r.source === descriptor.id) ?? null;
+      const lastSuccess = lastSuccessResult.rows.find((r) => r.source === descriptor.id) ?? null;
+      return evaluateSourceFreshness(descriptor.id, lastSuccess ? { state: "ok", finishedAt: lastSuccess.finished_at } : null, lastAny ? { state: lastAny.state! } : null, now);
+    });
   }
 
   // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----

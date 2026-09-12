@@ -33,6 +33,18 @@ function getApp() {
   return app;
 }
 
-export default function handler(request: Request): Response | Promise<Response> {
-  return handle(getApp())(request);
-}
+// Export un OBJETO con método `fetch`, no una función suelta -- una función suelta
+// como default export la interpreta el runtime de Node.js de Vercel con la firma
+// vieja `(req, res) => void` (estilo Express/http clásico) en vez de la Web-fetch
+// estándar, así que el `Response` real que devolvemos se ignora en silencio y la
+// función nunca responde (hasta agotar el timeout) -- bug real encontrado en el
+// primer intento de deploy de producción: `WARN: default export returned a
+// 'Response'... You likely meant the Web fetch-style API`, seguido de
+// `Vercel Runtime Timeout Error` en cada request. Ver
+// https://vercel.com/docs/functions/runtimes/node-js -- "TypeScript Web Signature
+// Handler" es exactamente este patrón (`export default { fetch(request) {...} }`).
+export default {
+  fetch(request: Request): Response | Promise<Response> {
+    return handle(getApp())(request);
+  },
+};

@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
+import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
@@ -82,6 +83,10 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const accountantSeed = await seedStaff("accountant", "accountant");
 
   hotelesRepo.seedTaxConfig(propertyId, { ivaRate: 0.16, ishRate: 0.03, discountThreshold: 500 });
+  // Fase 5 (H5/REQ-BO-001/002) — configuración fiscal de CFDI de hospedaje: RFC
+  // emisor del hotel + DSA por cuarto-noche (ver domain-hoteles/src/types.ts,
+  // `HospedajeFiscalConfig`).
+  hotelesRepo.seedHospedajeFiscalConfig(propertyId, { ishRate: 0.03, dsaPerNight: 20, rfcEmisor: "HTP850101AB1" });
 
   const reservationId = randomUUID();
   hotelesRepo.seedGuestIdentity(reservationId, { lastName: "García", phoneLast4: "1234" });
@@ -153,6 +158,8 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     licitacionesRepo: (_db) => licitacionesRepoUnused,
     despachosRepo: (_db) => despachosRepoUnused,
     despachosAuditSink: new InMemoryAuditSink(),
+    hotelesCfdiPort: new DualPacCfdiPort(new FakeFinkokAdapter(), new FakeSwSapienAdapter()),
+    hotelesFraudeAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => rentasRepoUnused,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepoUnused,
     llmGateway: undefined,

@@ -77,3 +77,35 @@ Toda la lógica de negocio de Fase 2 (loop de tool-use, catálogo de 2 tools, gu
 de alergias) vive en `@atiende/domain-hoteles/src/whatsapp/*` — ver
 `packages/domain-hoteles/migrations/004_voz_whatsapp_fase2.sql` para las tablas
 nuevas.
+
+## Fase 5 — CFDI de hospedaje (H5/REQ-BO-001/002) + fraude interno (H16-014/REQ-REC-014)
+
+- `cfdi.ts` — `GET/POST /hoteles/:propertyId/cfdi/...` +
+  `GET/POST /hoteles/:propertyId/folios/:folioId/cfdi[/pago]`: timbrado idempotente
+  por folio (REQ-BO-002), RFC genérico extranjero (`XEXX010101000`)/público en
+  general (`XAXX010101000`), CfdiRelacionados tipo 07 para aplicación de anticipos,
+  propina SIEMPRE excluida del subtotal. El motor de reglas fiscales vive en
+  `@atiende/domain-hoteles::validarCfdiHospedaje`/`computeCfdiHospedajeBreakdown`
+  (nunca en esta ruta); el transporte PAC real es `@atiende/mcp-cfdi::CfdiPort`
+  (dual-PAC Finkok/SW Sapien, inyectado como `deps.hotelesCfdiPort`). A diferencia de
+  `despachos/cfdi.ts` (ingiere un comprobante YA timbrado por un tercero), aquí
+  nuestro propio hotel es el EMISOR: un CFDI que no pasa `validarCfdiHospedaje()`
+  nunca se envía al PAC (422, no se guarda). Roles: `CFDI_HOSPEDAJE_ROLES`
+  (owner/gm/accountant — más estricto que `MONEY_ROLES`, nunca frontdesk/
+  reservations/fnb).
+- `fraude.ts` — `POST /hoteles/:propertyId/fraude/escaneos` +
+  `GET .../fraude/alertas[/:alertId]` + `POST .../alertas/:alertId/confirmar|descartar`:
+  detección determinista (nunca LLM) de 2 de los 4 patrones del criterio original —
+  descuento fuera de política y folio reabierto después de cerrado — sobre datos YA
+  reales de `folioEngine.ts`/`folios.ts` (Fase 1). Los otros 2 patrones
+  (`cargo_fnb_no_posteado`, `reembolso_tarjeta_distinta`) requieren un conector
+  PMS/POS real y quedan explícitamente fuera de esta fase — ver
+  `@atiende/domain-hoteles/src/fraude/deteccion.ts`. Cola de revisión humana
+  (confirmar=fraude real / descartar=falso positivo) auditada vía
+  `@atiende/core-authz::AuditSink` (`deps.hotelesFraudeAuditSink`), MISMO patrón que
+  `despachos/revisiones.ts`. Roles: `FRAUD_SCAN_ROLES`/`FRAUD_VIEW_ROLES`/
+  `FRAUD_RESOLVER_ROLES` (owner/gm/accountant).
+
+Migraciones nuevas: `migrations/006_cfdi_hospedaje.sql` (`hoteles.cfdi_emision` +
+columnas `dsa_per_night`/`rfc_emisor` en `hoteles.tax_config`) y
+`migrations/007_fraude_alerta.sql` (`hoteles.fraud_alert`).

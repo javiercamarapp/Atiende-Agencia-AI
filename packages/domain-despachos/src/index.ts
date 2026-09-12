@@ -89,10 +89,111 @@ export {
   GESTION_VENCIMIENTOS_ROLES,
   DECLARACIONES_ROLES,
   NOMINA_ROLES,
+  CONCILIACION_ROLES,
+  MIGRACION_CATALOGO_ROLES,
+  DECIDIR_MAPEO_MIGRACION_ROLES,
   ADMIN_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
+
+// ---- Conciliación bancaria (Fase 5) ----
+export { conciliarMovimientos } from "./conciliacion/matching-engine.ts";
+export { normalizarTexto as normalizarTextoConciliacion, conjuntoTokens, solapamientoTokens, ratio as ratioTexto, tokenSortRatio, partialRatio } from "./conciliacion/text-similarity.ts";
+export { fechaADate, fechaDiff } from "./conciliacion/fechas.ts";
+export {
+  AGING_BUCKETS,
+  UMBRAL_MOVIMIENTO_GRANDE,
+  RATIO_DISCREPANCIA_INGRESOS,
+  severidadPorAntiguedad,
+  revisarMovimiento,
+  revisarDuplicados,
+  revisarDiscrepanciaIngresos,
+} from "./conciliacion/alerts.ts";
+export {
+  CLASIFICACIONES_REQUIEREN_DOCUMENTO_SOPORTE,
+  UMBRAL_CONFIANZA_SOSPECHOSA,
+  NOTA_ART_59_FR_III_CFF,
+  clasificarDeposito,
+  puedePersistirseClasificacion,
+  evaluarCasoDepositoSospechoso,
+  calcularBalanceIva,
+} from "./conciliacion/classification.ts";
+export { verificarSpeiContraMovimientos, verificarPagoProveedor, verificadorSpeiExternoPendiente } from "./conciliacion/spei-matching.ts";
+export type {
+  NivelCoincidencia,
+  SeveridadAlerta,
+  MovimientoBancario,
+  RegistroConciliable,
+  CoincidenciaConciliacion,
+  ResultadoConciliacion,
+  OpcionesMatchingEngine,
+  AlertaAntiguedad,
+} from "./conciliacion/types.ts";
+export type { ClasificacionDeposito, ResultadoClasificacionDeposito, CasoDepositoSospechoso, BalanceIva } from "./conciliacion/classification.ts";
+export type { ResultadoVerificacionSpei, VerificadorSpeiExternoPort, ConsultaSpeiInput, ConsultaSpeiResultado } from "./conciliacion/spei-matching.ts";
+
+// ---- Migración de catálogo contable (Fase 5) ----
+export {
+  normalizarTexto as normalizarTextoCatalogo,
+  normalizarCodigo,
+  normalizarCodigoEstricto,
+  esMatchExacto,
+  esAlertaRiesgo,
+  similitudNombre,
+  calcularScoreCompuesto,
+  clasificarCuentaOrigen,
+  clasificarCatalogo,
+  PESO_NOMBRE,
+  PESO_NIVEL,
+  PESO_NATURALEZA,
+  PESO_TIPO_AGREGADO,
+  PESO_CUENTA_PADRE,
+  UMBRAL_SIN_MATCH,
+  NOTA_SIN_MATCH,
+} from "./migracion-catalogo/matching.ts";
+export { aprobarMapeo, rechazarMapeo, editarMapeo, validarCardinalidadAntesDeConfirmar, seleccionarMapeosActivosPorOrigen, migrarPoliza, migrarLote } from "./migracion-catalogo/migrador.ts";
+export {
+  TOLERANCIA_BALANCE_POLIZA,
+  TOLERANCIA_CUADRE_MXN_DEFAULT,
+  verificarConteoPolizas,
+  detectarDiscrepanciasBalancePorPoliza,
+  verificarBalancePorPoliza,
+  calcularSaldoCuentaPeriodo,
+  detectarDiscrepanciasCuadreSaldos,
+  verificarCuadreSaldos,
+  detectarReferenciasHuerfanas,
+  verificarSinReferenciasHuerfanas,
+  cerrarMigracion,
+} from "./migracion-catalogo/verificacion.ts";
+export { crearAdaptadorFailClosed } from "./migracion-catalogo/cross-db-port.ts";
+export type { CatalogoOrigenPort, CatalogoDestinoPort } from "./migracion-catalogo/cross-db-port.ts";
+export type {
+  TipoMatchMigracion,
+  EstadoMapeoMigracion,
+  CuentaCatalogo,
+  MapeoMigracionCuenta,
+  NewMapeoMigracionInput,
+  ResultadoMigracionPoliza,
+  LineaPolizaOrigen,
+  PolizaOrigen,
+} from "./migracion-catalogo/types.ts";
+export {
+  MapeoNoEncontradoError,
+  DecisionSinResponsableError,
+  TransicionEstadoInvalidaError,
+  DivisionUnoANoAutomaticaError,
+  EstrategiaConciliacionRequeridaError,
+  PolizaDesbalanceadaError,
+  DiscrepanciaConteoPolizasError,
+  DiscrepanciaBalancePolizaError,
+  DiscrepanciaCuadreSaldoError,
+  ReferenciasHuerfanasError,
+  CuentaContableNoEncontradaError,
+} from "./migracion-catalogo/types.ts";
+export type { ClasificacionCuentaOrigen } from "./migracion-catalogo/matching.ts";
+export type { LineaMigrada, MigracionPolizaResultado, DecisionMapeoOpciones } from "./migracion-catalogo/migrador.ts";
+export type { ParCuadreSaldo, DiscrepanciaCuadreSaldo, DiscrepanciaBalancePoliza, InputCierreMigracion } from "./migracion-catalogo/verificacion.ts";
 
 export { IdempotencyConflictError, InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError } from "./errors.ts";
 

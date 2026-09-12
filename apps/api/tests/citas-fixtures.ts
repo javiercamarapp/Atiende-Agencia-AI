@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
+import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import type { ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, GoogleCalendarPort } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -119,6 +120,8 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     licitacionesRepo: (_db) => licitacionesRepoUnused,
     despachosRepo: (_db) => despachosRepoUnused,
     despachosAuditSink: new InMemoryAuditSink(),
+    hotelesCfdiPort: new DualPacCfdiPort(new FakeFinkokAdapter(), new FakeSwSapienAdapter()),
+    hotelesFraudeAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => rentasRepoUnused,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepoUnused,
     llmGateway: undefined,

@@ -1,0 +1,361 @@
+// Fase 5 hoteles (H5, REQ-BO-001/002) — CFDI 4.0 de hospedaje. Port de
+// hoteles/apps/api/src/routes/cfdi.ts sobre el `CfdiPort` de `@atiende/mcp-cfdi`
+// (dual-PAC, ya construido en esta fase) + el motor de reglas fiscales de
+// `@atiende/domain-hoteles::validarCfdiHospedaje`/`computeCfdiHospedajeBreakdown` —
+// esta ruta NO reimplementa ningún cálculo fiscal, solo orquesta: lee cargos del
+// folio, calcula el desglose, valida ANTES de timbrar (nunca se envía un CFDI mal
+// formado a un PAC real — a diferencia de despachos/cfdi.ts, que ingiere un
+// comprobante YA timbrado por un tercero), y persiste el resultado.
+//
+// Timbrado idempotente por folio+tipo (REQ-BO-002): reintentar la misma emisión
+// devuelve el mismo UUID, delegado al propio `CfdiPort` (idempotente por
+// `input.folio`) Y al índice único parcial de la migración
+// (`cfdi_emision_folio_hospedaje_unq`/`..._payment_unq`).
+//
+// Propina NUNCA entra al subtotal (excluida del CFDI, ver
+// `summarizeFacturableCharges`); los reversos ya vienen con monto negativo y
+// cancelan naturalmente al cargo original que reversaron.
+import { Hono } from "hono";
+import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import {
+  CFDI_HOSPEDAJE_ROLES,
+  IdempotencyConflictError,
+  computeCfdiHospedajeBreakdown,
+  resolveReceptorHospedaje,
+  summarizeFacturableCharges,
+  validarCfdiHospedaje,
+  validateAnticipoRelacion,
+  ReceptorHospedajeInvalidoError,
+  type CfdiEmisionRecord,
+} from "@atiende/domain-hoteles";
+import { Errors } from "../../../errors.ts";
+import { readJsonCapped } from "../../../http-security.ts";
+import type { AppDeps } from "../../../deps.ts";
+
+interface EmitirHospedajeBody {
+  readonly rfcReceptor?: unknown;
+  readonly usoCfdi?: unknown;
+  readonly metodoPago?: unknown;
+  readonly esExtranjero?: unknown;
+  readonly esGlobal?: unknown;
+  readonly esNoShow?: unknown;
+  readonly esAplicacionAnticipo?: unknown;
+  /** UUID de nuestro propio `cfdi_emision` de un anticipo previo. */
+  readonly cfdiRelacionados?: unknown;
+  readonly tipoRelacion?: unknown;
+}
+
+interface EmitirPagoBody {
+  readonly paymentId?: unknown;
+  readonly relacionadoCfdiId?: unknown;
+}
+
+interface CancelarBody {
+  readonly motivo?: unknown;
+  readonly folioSustitucion?: unknown;
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) throw Errors.validation(`${field}: se esperaba un texto no vacío.`);
+  return value.trim();
+}
+
+interface EmitirHospedajeParsed {
+  readonly rfcReceptor: string | undefined;
+  readonly usoCfdi: string | undefined;
+  readonly metodoPago: "PUE" | "PPD";
+  readonly esExtranjero: boolean;
+  readonly esGlobal: boolean;
+  readonly esNoShow: boolean;
+  readonly esAplicacionAnticipo: boolean;
+  readonly cfdiRelacionados: readonly string[] | undefined;
+  readonly tipoRelacion: string | undefined;
+}
+
+function parseEmitirHospedajeBody(raw: EmitirHospedajeBody): EmitirHospedajeParsed {
+  const esExtranjero = raw.esExtranjero === true;
+  const esGlobal = raw.esGlobal === true;
+  const esNoShow = raw.esNoShow === true;
+  const esAplicacionAnticipo = raw.esAplicacionAnticipo === true;
+  const metodoPago: "PUE" | "PPD" = raw.metodoPago === "PPD" ? "PPD" : "PUE"; // default PUE, mismo que el original
+  const cfdiRelacionados = Array.isArray(raw.cfdiRelacionados) ? (raw.cfdiRelacionados as unknown[]).filter((x): x is string => typeof x === "string") : undefined;
+  const tipoRelacion = typeof raw.tipoRelacion === "string" ? raw.tipoRelacion : undefined;
+
+  let rfcReceptor: string | undefined;
+  let usoCfdi: string | undefined;
+  if (!esExtranjero && !esGlobal) {
+    rfcReceptor = requireString(raw.rfcReceptor, "rfcReceptor");
+    usoCfdi = requireString(raw.usoCfdi, "usoCfdi");
+  } else {
+    if (raw.rfcReceptor !== undefined && typeof raw.rfcReceptor !== "string") throw Errors.validation("rfcReceptor: se esperaba un texto.");
+    if (raw.usoCfdi !== undefined && typeof raw.usoCfdi !== "string") throw Errors.validation("usoCfdi: se esperaba un texto.");
+  }
+
+  return { rfcReceptor, usoCfdi, metodoPago, esExtranjero, esGlobal, esNoShow, esAplicacionAnticipo, cfdiRelacionados, tipoRelacion };
+}
+
+function serializeCfdi(record: CfdiEmisionRecord) {
+  return {
+    id: record.id,
+    folioId: record.folioId,
+    tipo: record.tipo,
+    uuidFiscal: record.uuidFiscal,
+    estado: record.status,
+    pac: record.pac,
+    subtotal: record.subtotal,
+    iva: record.iva,
+    impuestosLocales: { ishTasa: record.ishTasa, ishMonto: record.ishMonto, dsaMonto: record.dsaMonto },
+    total: record.total,
+    rfcReceptor: record.rfcReceptor,
+    usoCfdi: record.usoCfdi,
+    metodoPago: record.metodoPago,
+    esExtranjero: record.esExtranjero,
+    esGlobal: record.esGlobal,
+    esNoShow: record.esNoShow,
+    relacionadoCfdiId: record.relatedCfdiId,
+    creadoEn: record.createdAt,
+    canceladoEn: record.canceledAt,
+  };
+}
+
+export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
+  const app = new Hono<CoreAuthHonoEnv>();
+
+  app.use("/hoteles/:propertyId/folios/:folioId/cfdi/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/hoteles/:propertyId/folios/:folioId/cfdi", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/hoteles/:propertyId/cfdi/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/hoteles/:propertyId/cfdi", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+
+  app.get("/hoteles/:propertyId/cfdi", async (c) => {
+    assertVerticalRole(c, CFDI_HOSPEDAJE_ROLES);
+    const repo = deps.hotelesRepo(c.get("db"));
+    const cfdis = await repo.listCfdiEmisiones(c.req.param("propertyId"));
+    return c.json(cfdis.map(serializeCfdi));
+  });
+
+  app.get("/hoteles/:propertyId/folios/:folioId/cfdi", async (c) => {
+    assertVerticalRole(c, CFDI_HOSPEDAJE_ROLES);
+    const repo = deps.hotelesRepo(c.get("db"));
+    const cfdis = await repo.listCfdiEmisiones(c.req.param("propertyId"), { folioId: c.req.param("folioId") });
+    return c.json(cfdis.map(serializeCfdi));
+  });
+
+  app.post("/hoteles/:propertyId/folios/:folioId/cfdi", async (c) => {
+    assertVerticalRole(c, CFDI_HOSPEDAJE_ROLES);
+    const idempotencyKey = c.req.header("idempotency-key");
+    if (!idempotencyKey) throw Errors.idempotencyRequired();
+
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId");
+    const folioId = c.req.param("folioId");
+    const raw = await readJsonCapped<EmitirHospedajeBody>(c.req.raw, 8 * 1024);
+    const body = parseEmitirHospedajeBody(raw);
+
+    const repo = deps.hotelesRepo(c.get("db"));
+    const folio = await repo.findFolio(propertyId, folioId);
+    if (!folio) throw Errors.notFound("Folio no encontrado.");
+
+    // REQ-BO-002: si este folio YA tiene un CFDI de hospedaje, se devuelve tal cual
+    // (mismo UUID) sin volver a llamar al PAC — verificado ANTES de `withIdempotency`
+    // para que también cubra un reintento con una Idempotency-Key DISTINTA.
+    const existing = await repo.findCfdiEmisionByFolio(propertyId, folioId, "hospedaje");
+    if (existing) return c.json(serializeCfdi(existing), 200);
+
+    let receptor: { rfcReceptor: string; usoCfdi: string };
+    try {
+      receptor = resolveReceptorHospedaje({ esExtranjero: body.esExtranjero, esGlobal: body.esGlobal, rfcReceptor: body.rfcReceptor, usoCfdi: body.usoCfdi });
+    } catch (err) {
+      if (err instanceof ReceptorHospedajeInvalidoError) throw Errors.validation(err.message);
+      throw err;
+    }
+
+    const anticipoIssue = validateAnticipoRelacion({ esAplicacionAnticipo: body.esAplicacionAnticipo, cfdiRelacionados: body.cfdiRelacionados, tipoRelacion: body.tipoRelacion });
+    if (anticipoIssue) throw Errors.cfdiHospedajeInvalido([anticipoIssue.codigo]);
+
+    try {
+      const result = await repo.withIdempotency({ organizationId, scope: "cfdi.hospedaje", key: idempotencyKey, body: { folioId, ...body } }, async () => {
+        const fiscalConfig = await repo.loadHospedajeFiscalConfig(propertyId);
+        if (!fiscalConfig.rfcEmisor) throw Errors.validation("Este hotel no tiene RFC emisor configurado todavía: no se puede timbrar CFDI.");
+
+        const { ivaRate } = await repo.loadTaxConfig(propertyId);
+        const charges = await repo.listChargesForCfdi(folioId);
+        const resumen = summarizeFacturableCharges(charges);
+        if (resumen.subtotalBase <= 0) throw Errors.conflict("El folio no tiene cargos facturables (fuera de propina) para timbrar un CFDI.");
+
+        const breakdown = computeCfdiHospedajeBreakdown({ resumen, ivaRate, dsaPerNight: fiscalConfig.dsaPerNight });
+
+        const validacion = validarCfdiHospedaje({
+          rfcEmisor: fiscalConfig.rfcEmisor,
+          rfcReceptor: receptor.rfcReceptor,
+          usoCfdi: receptor.usoCfdi,
+          metodoPago: body.metodoPago,
+          regimenFiscalEmisor: "601",
+          subtotal: breakdown.netAmount,
+          iva: breakdown.ivaAmount,
+          ishMonto: breakdown.ishAmount,
+          dsaMonto: breakdown.dsaMonto,
+          descuento: 0,
+          total: breakdown.total,
+          esExtranjero: body.esExtranjero,
+          esGlobal: body.esGlobal,
+          esNoShow: body.esNoShow,
+          esAplicacionAnticipo: body.esAplicacionAnticipo,
+          cfdiRelacionados: body.cfdiRelacionados,
+          tipoRelacion: body.tipoRelacion,
+        });
+        if (!validacion.ok) throw Errors.cfdiHospedajeInvalido(validacion.issues.map((i) => i.codigo));
+
+        const timbrado = await deps.hotelesCfdiPort.timbrar({
+          folio: `${folioId}:hospedaje`,
+          rfcEmisor: fiscalConfig.rfcEmisor,
+          rfcReceptor: receptor.rfcReceptor,
+          subtotal: breakdown.netAmount,
+          iva: breakdown.ivaAmount,
+          impuestosLocales: { ishTasa: fiscalConfig.ishRate, ishMonto: breakdown.ishAmount, dsaMonto: breakdown.dsaMonto },
+          total: breakdown.total,
+          moneda: "MXN",
+          usoCfdi: receptor.usoCfdi,
+          metodoPago: body.metodoPago,
+        });
+
+        const created = await repo.insertCfdiEmision({
+          organizationId,
+          propertyId,
+          folioId,
+          tipo: "hospedaje",
+          uuidFiscal: timbrado.uuid,
+          status: timbrado.status,
+          pac: timbrado.pac,
+          subtotal: breakdown.netAmount,
+          iva: breakdown.ivaAmount,
+          ishTasa: fiscalConfig.ishRate,
+          ishMonto: breakdown.ishAmount,
+          dsaMonto: breakdown.dsaMonto,
+          total: breakdown.total,
+          rfcReceptor: receptor.rfcReceptor,
+          usoCfdi: receptor.usoCfdi,
+          metodoPago: body.metodoPago,
+          esExtranjero: body.esExtranjero,
+          esGlobal: body.esGlobal,
+          esNoShow: body.esNoShow,
+          relatedCfdiId: body.cfdiRelacionados?.[0] ?? null,
+          paymentId: null,
+        });
+
+        return { status: 201 as const, body: serializeCfdi(created) };
+      });
+      return c.json(result.body as object, result.status as 201);
+    } catch (err) {
+      if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
+      throw err;
+    }
+  });
+
+  // Complemento de pago: CFDI tipo 'pago' que referencia el CFDI de hospedaje (PPD)
+  // al que corresponde — subtotal/IVA en $0 (el impuesto ya se declaró en el CFDI
+  // original), total = monto del pago.
+  app.post("/hoteles/:propertyId/folios/:folioId/cfdi/pago", async (c) => {
+    assertVerticalRole(c, CFDI_HOSPEDAJE_ROLES);
+    const idempotencyKey = c.req.header("idempotency-key");
+    if (!idempotencyKey) throw Errors.idempotencyRequired();
+
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId");
+    const folioId = c.req.param("folioId");
+    const raw = await readJsonCapped<EmitirPagoBody>(c.req.raw, 2 * 1024);
+    const paymentId = requireString(raw.paymentId, "paymentId");
+    const relacionadoCfdiId = requireString(raw.relacionadoCfdiId, "relacionadoCfdiId");
+
+    const repo = deps.hotelesRepo(c.get("db"));
+    const existing = await repo.findCfdiEmisionByPayment(propertyId, paymentId);
+    if (existing) return c.json(serializeCfdi(existing), 200);
+
+    try {
+      const result = await repo.withIdempotency({ organizationId, scope: "cfdi.pago", key: idempotencyKey, body: { folioId, paymentId, relacionadoCfdiId } }, async () => {
+        const folio = await repo.findFolio(propertyId, folioId);
+        if (!folio) throw Errors.notFound("Folio no encontrado.");
+        const payment = folio.payments.find((p) => p.id === paymentId);
+        if (!payment) throw Errors.notFound("Pago no encontrado en este folio.");
+        if (payment.status !== "capturado") throw Errors.conflict("Solo se emite complemento de pago sobre un pago capturado.");
+
+        const related = await repo.findCfdiEmision(propertyId, relacionadoCfdiId);
+        if (!related || related.folioId !== folioId) throw Errors.notFound("El CFDI de hospedaje relacionado no existe en este folio.");
+
+        const fiscalConfig = await repo.loadHospedajeFiscalConfig(propertyId);
+        if (!fiscalConfig.rfcEmisor) throw Errors.validation("Este hotel no tiene RFC emisor configurado todavía.");
+
+        const timbrado = await deps.hotelesCfdiPort.timbrar({
+          folio: `${folioId}:pago:${paymentId}`,
+          rfcEmisor: fiscalConfig.rfcEmisor,
+          rfcReceptor: related.rfcReceptor,
+          subtotal: 0,
+          iva: 0,
+          impuestosLocales: { ishTasa: 0, ishMonto: 0 },
+          total: payment.amount,
+          moneda: "MXN",
+          usoCfdi: "CP01",
+          metodoPago: "PPD",
+        });
+
+        const created = await repo.insertCfdiEmision({
+          organizationId,
+          propertyId,
+          folioId,
+          tipo: "pago",
+          uuidFiscal: timbrado.uuid,
+          status: timbrado.status,
+          pac: timbrado.pac,
+          subtotal: 0,
+          iva: 0,
+          ishTasa: 0,
+          ishMonto: 0,
+          dsaMonto: 0,
+          total: payment.amount,
+          rfcReceptor: related.rfcReceptor,
+          usoCfdi: "CP01",
+          metodoPago: "PPD",
+          esExtranjero: false,
+          esGlobal: false,
+          esNoShow: false,
+          relatedCfdiId: relacionadoCfdiId,
+          paymentId,
+        });
+
+        return { status: 201 as const, body: serializeCfdi(created) };
+      });
+      return c.json(result.body as object, result.status as 201);
+    } catch (err) {
+      if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
+      throw err;
+    }
+  });
+
+  app.post("/hoteles/:propertyId/cfdi/:cfdiId/cancelar", async (c) => {
+    assertVerticalRole(c, CFDI_HOSPEDAJE_ROLES);
+    const idempotencyKey = c.req.header("idempotency-key");
+    if (!idempotencyKey) throw Errors.idempotencyRequired();
+
+    const propertyId = c.req.param("propertyId");
+    const cfdiId = c.req.param("cfdiId");
+    const raw = await readJsonCapped<CancelarBody>(c.req.raw, 2 * 1024);
+    if (raw.motivo !== "01" && raw.motivo !== "02" && raw.motivo !== "03" && raw.motivo !== "04") {
+      throw Errors.validation("motivo: se esperaba 01|02|03|04 (catálogo SAT c_MotivoCancelacion).");
+    }
+    const motivo = raw.motivo;
+    const folioSustitucion = typeof raw.folioSustitucion === "string" ? raw.folioSustitucion : undefined;
+
+    const repo = deps.hotelesRepo(c.get("db"));
+    const cfdi = await repo.findCfdiEmision(propertyId, cfdiId);
+    if (!cfdi) throw Errors.notFound("CFDI no encontrado.");
+    if (!cfdi.uuidFiscal) throw Errors.conflict("Este CFDI no tiene UUID fiscal (no fue timbrado con éxito).");
+    if (cfdi.status === "cancelado") throw Errors.conflict("Este CFDI ya está cancelado.");
+
+    const cancelacion = await deps.hotelesCfdiPort.cancelar({ uuid: cfdi.uuidFiscal, motivo, folioSustitucion, idempotencyKey });
+    await repo.updateCfdiEmisionCancelacion(cfdiId, cancelacion.status);
+
+    return c.json({ id: cfdiId, estado: cancelacion.status });
+  });
+
+  return app;
+}

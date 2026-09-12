@@ -20,6 +20,43 @@ import type {
 } from "./types.ts";
 import type { DiotResult } from "./cfdi/reglas-fiscales-avanzadas.ts";
 import type { EstadoVencimiento, NivelEscalamiento, PrioridadVencimiento, TipoVencimiento } from "./vencimientos/engine.ts";
+import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
+
+interface MapeoMigracionRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  origen_cuenta_id: string;
+  destino_cuenta_id: string | null;
+  tipo_match: MapeoMigracionCuenta["tipoMatch"];
+  score: string;
+  estado: MapeoMigracionCuenta["estado"];
+  aprobado_por: string | null;
+  aprobado_en: string | null;
+  nota: string | null;
+  estrategia_conciliacion_saldos: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapMapeoMigracion(row: MapeoMigracionRawRow): MapeoMigracionCuenta {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    origenCuentaId: row.origen_cuenta_id,
+    destinoCuentaId: row.destino_cuenta_id,
+    tipoMatch: row.tipo_match,
+    score: Number(row.score),
+    estado: row.estado,
+    aprobadoPor: row.aprobado_por,
+    aprobadoEn: row.aprobado_en,
+    nota: row.nota,
+    estrategiaConciliacionSaldos: row.estrategia_conciliacion_saldos,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 // Código de error de Postgres para violación de restricción unique (23505) — mismo
 // criterio que el resto del monorepo detecta conflictos de idempotencia/unicidad
@@ -312,5 +349,49 @@ export class PostgresDespachosRepository implements DespachosRepository {
   async listEscalations(deadlineId: string): Promise<readonly DeadlineEscalationRecord[]> {
     const { rows } = await this.db.query<EscalationRawRow>(`select * from despachos.deadline_escalation where deadline_id = $1 order by sent_at asc;`, [deadlineId]);
     return rows.map(mapEscalation);
+  }
+
+  // ---- Migración de catálogo contable (Fase 5) ----
+
+  async insertMapeoMigracion(
+    input: NewMapeoMigracionInput & { readonly tipoMatch: MapeoMigracionCuenta["tipoMatch"]; readonly score: number; readonly estado: MapeoMigracionCuenta["estado"] },
+  ): Promise<MapeoMigracionCuenta> {
+    const { rows } = await this.db.query<MapeoMigracionRawRow>(
+      `insert into despachos.mapeo_migracion_cuenta
+         (organization_id, property_id, origen_cuenta_id, destino_cuenta_id, tipo_match, score, estado, nota)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       returning *;`,
+      [input.organizationId, input.propertyId, input.origenCuentaId, input.destinoCuentaId, input.tipoMatch, input.score, input.estado, input.nota],
+    );
+    return mapMapeoMigracion(rows[0]!);
+  }
+
+  async findMapeoMigracion(propertyId: string, mapeoId: string): Promise<MapeoMigracionCuenta | null> {
+    const { rows } = await this.db.query<MapeoMigracionRawRow>(`select * from despachos.mapeo_migracion_cuenta where id = $1 and property_id = $2;`, [mapeoId, propertyId]);
+    return rows[0] ? mapMapeoMigracion(rows[0]) : null;
+  }
+
+  async listMapeosMigracion(propertyId: string, filter?: { readonly estado?: MapeoMigracionCuenta["estado"] }): Promise<readonly MapeoMigracionCuenta[]> {
+    const conditions = ["property_id = $1"];
+    const params: unknown[] = [propertyId];
+    if (filter?.estado !== undefined) {
+      params.push(filter.estado);
+      conditions.push(`estado = $${params.length}`);
+    }
+    const { rows } = await this.db.query<MapeoMigracionRawRow>(`select * from despachos.mapeo_migracion_cuenta where ${conditions.join(" and ")} order by created_at asc;`, params);
+    return rows.map(mapMapeoMigracion);
+  }
+
+  async updateMapeoMigracion(mapeo: MapeoMigracionCuenta): Promise<MapeoMigracionCuenta> {
+    const { rows } = await this.db.query<MapeoMigracionRawRow>(
+      `update despachos.mapeo_migracion_cuenta
+       set destino_cuenta_id = $1, tipo_match = $2, score = $3, estado = $4, aprobado_por = $5, aprobado_en = $6,
+           nota = $7, estrategia_conciliacion_saldos = $8, updated_at = now()
+       where id = $9
+       returning *;`,
+      [mapeo.destinoCuentaId, mapeo.tipoMatch, mapeo.score, mapeo.estado, mapeo.aprobadoPor, mapeo.aprobadoEn, mapeo.nota, mapeo.estrategiaConciliacionSaldos, mapeo.id],
+    );
+    if (!rows[0]) throw new Error(`Mapeo de migración ${mapeo.id} no encontrado.`);
+    return mapMapeoMigracion(rows[0]);
   }
 }
