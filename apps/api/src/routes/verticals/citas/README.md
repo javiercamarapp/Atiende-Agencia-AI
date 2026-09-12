@@ -37,8 +37,54 @@ Fase 3 agregó (ver diseño Fase 3 citas §4/§5):
   esas respuestas en un error.
 
 Toda la lógica de negocio vive en `@atiende/domain-citas` — ninguna ruta aquí toca
-SQL directamente. Cualquier proveedor de calendario que no sea Google, el receptor
-de webhooks de Google, `modificar-cita`, `consultar-disponibilidad`/
-`listar-servicios`/`listar-proveedores` como endpoints propios, y el panel visual de
-conexión en `apps/web` quedan reservados para una fase posterior (ver diseño Fase 3
-citas §9).
+SQL directamente. Cualquier proveedor de calendario que no sea Google y el receptor
+de webhooks de Google quedan reservados para una fase posterior (ver diseño Fase 3
+citas §9). `modificar-cita` (Fase 4) y el panel visual de administración (Fase 5,
+ver abajo) ya se construyeron.
+
+Fase 5 agregó `admin.ts` — lecturas paginadas para el panel de administración
+visual de `apps/web` (ver su propio README):
+
+- `GET /v1/citas/:orgSlug/admin/branches` — resuelve el/los `propertyId` reales de
+  la organización desde el slug (mismo rol que
+  `GET /v1/restaurantes/:orgSlug/admin/branches`, mismo guard: `authMiddleware` +
+  verificación de membership vía `coreRepo.findMembershipsByUserId`, sin
+  `requirePropertyMembership` porque todavía no hay `propertyId` en la ruta).
+- `GET /v1/citas/properties/:propertyId/providers(/:providerId)` — expone
+  `listActiveProviders`/`findProvider` (ya existían desde Fase 1/2); la ficha de un
+  proveedor agrega sus reglas de disponibilidad (`loadAvailabilityRules`, Fase 1) y
+  el estado de su conexión de Google Calendar (`findProviderCalendarAccount`, Fase 3).
+- `GET /v1/citas/properties/:propertyId/services(/:serviceId)` — expone
+  `listActiveServices`/`findService` (ya existían desde Fase 1/2).
+- `GET /v1/citas/properties/:propertyId/appointments?from=&to=&provider_id=` —
+  agenda del panel (vista mes/semana). Requirió una función NUEVA en
+  `CitasRepository` (`listAppointmentsInRange`) porque el dominio no tenía ningún
+  listado de citas por rango de fechas para uso administrativo — sí existían
+  `loadBusyIntervals` (solo start/end, sin datos para mostrar) y
+  `listActiveAppointmentsForCustomer` (solo de un cliente). Puro
+  listado/paginado (acotado por rango de fechas + `limit`) de filas que
+  `createAppointmentIdempotent`/`cancelAppointmentFromPanel`/etc. ya escribían —
+  ninguna regla de negocio nueva. La ruta enriquece cada fila con
+  proveedor/servicio/cliente reales (`findProvider`/`findService`/
+  `findCustomerById`) para que la agenda sea legible.
+- `GET /v1/citas/properties/:propertyId/customers(/:customerId)` — requirió 2
+  funciones nuevas (`listCustomers` paginado + `findCustomerById`) porque el
+  dominio solo sabía buscar un cliente por teléfono (`findCustomerByPhone`,
+  necesario para el agente) o crearlo/actualizarlo (`upsertCustomer`) — nunca
+  listarlos ni buscarlos por id. Mismo criterio que arriba: listar/paginar/buscar
+  lo que `upsertCustomer` ya escribía, nunca crear/editar un cliente. La ficha
+  reusa `listActiveAppointmentsForCustomer` (Fase 2) para sus citas próximas.
+
+Estas 3 funciones nuevas de `CitasRepository` (`listPropertiesForOrganization`,
+`listAppointmentsInRange`, `listCustomers`/`findCustomerById`) están implementadas
+en los 2 adaptadores reales (`InMemoryCitasRepository` y `PostgresCitasRepository`,
+ver `packages/domain-citas/src/repository.ts`) — nunca solo en memoria.
+`listPropertiesForOrganization` lee de `core.property` directo (citas no tiene una
+tabla `citas.branch_detail` como restaurantes: sucursal no es un concepto de
+negocio propio de esta vertical, ver diseño Fase 1 §2).
+
+El panel de administración deliberadamente NO ofrece crear/editar proveedores,
+servicios ni reglas de disponibilidad — `domain-citas` no tiene esa lógica de
+escritura todavía, y agregarla habría sido lógica de negocio nueva, fuera del
+alcance de "CRUD de UI sobre lógica de dominio que ya existe" de esta fase. Queda
+para una fase posterior, cuando el dominio la calcule primero.

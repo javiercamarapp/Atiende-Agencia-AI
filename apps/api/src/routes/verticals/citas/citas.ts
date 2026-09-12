@@ -10,6 +10,7 @@ import { citasVoiceToolsRoutes } from "./voice-tools.ts";
 import { citasWhatsAppRoutes } from "./whatsapp.ts";
 import { citasGoogleCalendarOAuthRoutes } from "./google-calendar-oauth.ts";
 import { citasGoogleCalendarSyncRoutes } from "./google-calendar-sync.ts";
+import { citasAdminRoutes } from "./admin.ts";
 
 export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -22,5 +23,7 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 3 §4/§5 — conexión OAuth de Google Calendar por proveedor + reconciliación.
   app.route("/", citasGoogleCalendarOAuthRoutes(deps));
   app.route("/", citasGoogleCalendarSyncRoutes(deps));
+  // Fase 5 — lecturas paginadas para el panel de administración visual.
+  app.route("/", citasAdminRoutes(deps));
   return app;
 }

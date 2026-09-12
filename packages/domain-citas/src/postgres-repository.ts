@@ -29,6 +29,7 @@ import type {
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
+  CustomerPage,
   NewAppointmentInput,
   ReassignResult,
   RescheduleResult,
@@ -163,6 +164,17 @@ export class PostgresCitasRepository implements CitasRepository {
     return row ? { id: row.id, name: row.name, slug: row.slug, isActive: row.status === "active" } : null;
   }
 
+  // Fase 5 §1 — `core.property` no tiene columna propia de vertical citas (a
+  // diferencia de `restaurantes.branch_detail`, ver nota de diseño en
+  // repository.ts) — se lee directo de `core.property`, sin join.
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]> {
+    const { rows } = await this.db.query<{ property_id: string; name: string }>(
+      `select id as property_id, name from core.property where organization_id = $1 and status = 'active' order by name asc;`,
+      [organizationId],
+    );
+    return rows.map((row) => ({ propertyId: row.property_id, name: row.name }));
+  }
+
   async findPropertyTimezone(propertyId: string | null, organizationId: string): Promise<string> {
     if (propertyId) {
       const { rows } = await this.db.query<{ timezone: string }>(`select timezone from citas.property_config where property_id = $1;`, [propertyId]);
@@ -268,6 +280,33 @@ export class PostgresCitasRepository implements CitasRepository {
     return row ? { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email } : null;
   }
 
+  async findCustomerById(organizationId: string, customerId: string): Promise<CustomerRecord | null> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
+      `select id, organization_id, full_name, phone, email from citas.customers where organization_id = $1 and id = $2;`,
+      [organizationId, customerId],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email } : null;
+  }
+
+  async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {
+    const search = opts.search?.trim();
+    const searchPattern = search ? `%${search}%` : null;
+    const { rows } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null; total: string }>(
+      `select id, organization_id, full_name, phone, email, count(*) over ()::text as total
+       from citas.customers
+       where organization_id = $1
+         and ($2::text is null or full_name ilike $2 or phone ilike $2)
+       order by full_name asc
+       limit $3 offset $4;`,
+      [organizationId, searchPattern, opts.limit, opts.offset],
+    );
+    const items = rows.map((row) => ({ id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email }));
+    const total = rows[0] ? Number(rows[0].total) : 0;
+    const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
+    return { items, total, nextOffset };
+  }
+
   async listActiveServices(organizationId: string): Promise<readonly ServiceRecord[]> {
     const { rows } = await this.db.query<ServiceRow>(
       `select id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active
@@ -342,6 +381,19 @@ export class PostgresCitasRepository implements CitasRepository {
       [appointmentId, organizationId],
     );
     return rows[0] ? mapAppointment(rows[0]) : null;
+  }
+
+  async listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]> {
+    const { rows } = await this.db.query<AppointmentRow>(
+      `select id, organization_id, property_id, provider_id, service_id, customer_id, starts_at, ends_at, status, source, notes, dedupe_fingerprint, idempotency_key, reminder_24h_sent_at, created_at, google_event_id, google_sync_status, google_sync_attempts, google_sync_next_retry_at, google_sync_error
+       from citas.appointments
+       where organization_id = $1 and starts_at >= $2 and starts_at < $3
+         and ($4::uuid is null or provider_id = $4)
+       order by starts_at asc
+       limit $5;`,
+      [organizationId, fromIso, toIso, providerId ?? null, limit],
+    );
+    return rows.map(mapAppointment);
   }
 
   private async runCancelRpc(fn: "cancel_appointment_idempotent" | "cancel_appointment_from_panel", organizationId: string, appointmentId: string): Promise<CancelResult> {
