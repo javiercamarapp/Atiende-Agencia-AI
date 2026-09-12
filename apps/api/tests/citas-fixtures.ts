@@ -63,6 +63,10 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
   citasRepo.seedOrganization({ id: organizationId, slug: "clinica-dental-sonrisas", name: "Clínica Dental Sonrisas", defaultTimezone: "America/Merida" });
   coreRepo.addOrganization({ id: organizationId, slug: "clinica-dental-sonrisas", name: "Clínica Dental Sonrisas", vertical: "citas" });
   engine.seedProperty({ id: propertyId, organizationId });
+  // Fase 5 — panel de administración: `listPropertiesForOrganization` lee de su
+  // propio seed en memoria (equivalente a `core.property`), separado del seed de
+  // `engine` (que modela la membership/RLS, no el listado de sucursales).
+  citasRepo.seedCitasProperty({ id: propertyId, organizationId, name: "Sucursal principal" });
 
   const providerId = randomUUID();
   citasRepo.seedProvider({ id: providerId, organizationId, propertyId: null, displayName: "Dra. Fernanda López", roleLabel: "Dentista", isActive: true });

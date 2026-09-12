@@ -25,6 +25,7 @@ import type {
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
+  CustomerPage,
   NewAppointmentInput,
   ReassignResult,
   RescheduleResult,
@@ -58,6 +59,16 @@ interface StoredOrganization {
   readonly name: string;
   readonly isActive: boolean;
   readonly defaultTimezone: string;
+}
+
+/** Fase 5 §1 — equivalente en memoria de una fila de `core.property` (ver
+ * `listPropertiesForOrganization`). No hay tabla `citas.branch_detail` que unir
+ * (citas no tiene concepto propio de sucursal, ver diseño Fase 1 §2) — solo
+ * id+nombre. */
+interface StoredCitasProperty {
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly name: string;
 }
 
 interface StoredWaitlistRow {
@@ -97,6 +108,7 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
   private readonly propertyTimezones = new Map<string, string>();
+  private readonly citasProperties = new Map<string, StoredCitasProperty>(); // por propertyId
   private readonly providers = new Map<string, ProviderRecord>();
   private readonly services = new Map<string, ServiceRecord>();
   private readonly providerServices = new Set<string>(); // `${providerId}:${serviceId}`
@@ -134,6 +146,12 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   seedPropertyTimezone(propertyId: string, timezone: string): void {
     this.propertyTimezones.set(propertyId, timezone);
+  }
+
+  /** Fase 5 §1 — equivalente en memoria de un INSERT en `core.property` (ver
+   * `listPropertiesForOrganization`). */
+  seedCitasProperty(property: { id: string; organizationId: string; name: string }): void {
+    this.citasProperties.set(property.id, { propertyId: property.id, organizationId: property.organizationId, name: property.name });
   }
 
   seedProvider(provider: ProviderRecord): void {
@@ -209,6 +227,13 @@ export class InMemoryCitasRepository implements CitasRepository {
     return org ? { id: org.id, name: org.name, slug: org.slug, isActive: org.isActive } : null;
   }
 
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]> {
+    return [...this.citasProperties.values()]
+      .filter((p) => p.organizationId === organizationId)
+      .map((p) => ({ propertyId: p.propertyId, name: p.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async findPropertyTimezone(propertyId: string | null, organizationId: string): Promise<string> {
     if (propertyId) {
       const tz = this.propertyTimezones.get(propertyId);
@@ -281,6 +306,23 @@ export class InMemoryCitasRepository implements CitasRepository {
     const id = this.customerIdByOrgPhone.get(`${organizationId}:${phone}`);
     if (!id) return null;
     return this.customers.get(id) ?? null;
+  }
+
+  async findCustomerById(organizationId: string, customerId: string): Promise<CustomerRecord | null> {
+    const customer = this.customers.get(customerId);
+    if (!customer || customer.organizationId !== organizationId) return null;
+    return customer;
+  }
+
+  async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {
+    const search = opts.search?.trim().toLowerCase();
+    const matching = [...this.customers.values()]
+      .filter((c) => c.organizationId === organizationId)
+      .filter((c) => !search || c.fullName.toLowerCase().includes(search) || c.phone.includes(search))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName));
+    const page = matching.slice(opts.offset, opts.offset + opts.limit);
+    const nextOffset = opts.offset + page.length < matching.length ? opts.offset + page.length : null;
+    return { items: page, total: matching.length, nextOffset };
   }
 
   async listActiveServices(organizationId: string): Promise<readonly ServiceRecord[]> {
@@ -371,6 +413,19 @@ export class InMemoryCitasRepository implements CitasRepository {
     const appointment = this.appointments.get(appointmentId);
     if (!appointment || appointment.organizationId !== organizationId) return null;
     return appointment;
+  }
+
+  async listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]> {
+    const fromMs = Date.parse(fromIso);
+    const toMs = Date.parse(toIso);
+    return [...this.appointments.values()]
+      .filter((a) => a.organizationId === organizationId && (!providerId || a.providerId === providerId))
+      .filter((a) => {
+        const startsMs = Date.parse(a.startsAt);
+        return startsMs >= fromMs && startsMs < toMs;
+      })
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+      .slice(0, limit);
   }
 
   private cancelInternal(organizationId: string, appointmentId: string): CancelResult {

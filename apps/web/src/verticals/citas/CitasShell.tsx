@@ -1,0 +1,127 @@
+// Shell del panel de administración visual de citas (Fase 5) — resuelve sesión +
+// propertyId UNA vez (mismo patrón de descubrimiento que
+// restaurantes/pages/Dashboard.tsx: la sesión de login nunca trae un propertyId,
+// solo se resuelve al entrar al panel) y le da a las 6 páginas
+// (Agenda/Proveedores/Servicios/Clientes/Disponibilidad/Configuración) la misma
+// nav lateral. Estilos inline, sin design system nuevo — mismo criterio que el
+// resto de este vertical (ver README): esta fase es de CRUD de UI sobre lógica ya
+// existente, no de rediseño visual.
+import { useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { NavLink } from "react-router-dom";
+import { readPersistedCitasSession } from "./lib/auth-client.ts";
+import type { LoginSession } from "./lib/auth-client.ts";
+import { fetchBranches } from "./lib/admin-client.ts";
+import type { BranchOption } from "./lib/admin-client.ts";
+
+export interface CitasShellContext {
+  readonly apiBaseUrl: string;
+  readonly token: string;
+  readonly propertyId: string;
+  readonly orgSlug: string;
+}
+
+export interface CitasShellProps {
+  readonly apiBaseUrl: string;
+  readonly orgSlug: string;
+  readonly onRequireLogin: () => void;
+  readonly children: (ctx: CitasShellContext) => ReactNode;
+}
+
+const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
+  { to: "agenda", label: "Agenda" },
+  { to: "proveedores", label: "Proveedores" },
+  { to: "servicios", label: "Servicios" },
+  { to: "clientes", label: "Clientes" },
+  { to: "disponibilidad", label: "Disponibilidad" },
+  { to: "configuracion", label: "Configuración" },
+];
+
+const linkStyle = (isActive: boolean): CSSProperties => ({
+  display: "block",
+  padding: "8px 12px",
+  borderRadius: 8,
+  fontSize: 14,
+  textDecoration: "none",
+  color: isActive ? "#fff" : "#111827",
+  background: isActive ? "#111827" : "transparent",
+});
+
+export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: CitasShellProps) {
+  const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
+  const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const s = readPersistedCitasSession(window.localStorage);
+    setSession(s);
+    if (!s) onRequireLogin();
+  }, [onRequireLogin]);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const list = await fetchBranches(fetch, apiBaseUrl, session.token, orgSlug);
+        if (!cancelado) setBranches(list);
+      } catch (err) {
+        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudieron cargar las sucursales.");
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [session, apiBaseUrl, orgSlug]);
+
+  if (session === undefined) return null; // resolviendo sesión persistida
+  if (!session) return null; // onRequireLogin ya disparó la redirección
+
+  if (error) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+        <p role="alert" style={{ color: "#b91c1c" }}>
+          {error}
+        </p>
+      </main>
+    );
+  }
+
+  if (!branches) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+        <p style={{ color: "#6b7280" }}>Cargando…</p>
+      </main>
+    );
+  }
+
+  if (branches.length === 0) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+        <p role="alert" style={{ color: "#b91c1c" }}>
+          Este negocio todavía no tiene ninguna sucursal configurada.
+        </p>
+      </main>
+    );
+  }
+
+  // Fase 5 §1 — un negocio de citas casi siempre tiene una sola sucursal (ver
+  // ProviderRecord.propertyId, "null si el negocio es de una sola ubicación, caso
+  // común"); el panel usa la primera hasta que un negocio real necesite elegir
+  // entre varias (mismo criterio que restaurantes/pages/Dashboard.tsx).
+  const propertyId = branches[0]!.propertyId;
+
+  return (
+    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
+      <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
+        <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Citas · {orgSlug}</p>
+        {NAV_ITEMS.map((item) => (
+          <NavLink key={item.to} to={`/citas/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug })}</div>
+    </div>
+  );
+}

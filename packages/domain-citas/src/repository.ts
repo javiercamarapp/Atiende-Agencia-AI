@@ -117,9 +117,26 @@ export interface WaitlistCandidateRow {
   readonly createdAt: string;
 }
 
+/** Fase 5 — panel de administración visual (ver README de esta fase). Página
+ * paginada de resultados: `nextOffset` es `null` cuando ya no hay más filas. */
+export interface CustomerPage {
+  readonly items: readonly CustomerRecord[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}
+
 export interface CitasRepository {
   // ---- Resolución de organización/proveedor/servicio (usado por los 3 flujos) ----
   findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null>;
+  /** Fase 5 §1 — resuelve las properties (sucursales de `core.property`) de una
+   * organización de citas, mismo rol que `listBranchesForOrganization` de
+   * domain-restaurantes: el panel de administración solo conoce el slug de la
+   * organización tras el login, nunca un propertyId (las rutas de staff SÍ lo
+   * necesitan, ver `requirePropertyMembership`). A diferencia de restaurantes, citas
+   * no tiene una tabla `citas.branch_detail` (sucursal no es un concepto de negocio
+   * de esta vertical, ver diseño Fase 1 §2) — se lee directo de `core.property`,
+   * sin slug propio. */
+  listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]>;
   /** Timezone efectivo: el de la property/sucursal si `propertyId` no es null y
    * tiene uno propio configurado; si no, el timezone por defecto de la organización
    * (ver diseño Fase 1 §2 — citas es la primera vertical donde esto es relevante
@@ -139,6 +156,15 @@ export interface CitasRepository {
    * cero-match, se resuelve devolviendo `null` para que el caller decida el
    * contrato de silencio (ver `findAppointmentsForCustomerPhone`). */
   findCustomerByPhone(organizationId: string, phone: string): Promise<CustomerRecord | null>;
+  /** Fase 5 §1 — ficha de cliente del panel (busca por id en vez de por teléfono,
+   * que es lo único que ya resolvía `findCustomerByPhone`). */
+  findCustomerById(organizationId: string, customerId: string): Promise<CustomerRecord | null>;
+  /** Fase 5 §1 — listado paginado de clientes para el panel (lista + búsqueda por
+   * nombre/teléfono). Solo lee filas que `upsertCustomer` ya escribió — ninguna
+   * regla de negocio nueva, mismo criterio que `listActiveServices`/
+   * `listActiveProviders` (Fase 2 §1.2/§1.3): "listar lo que el dominio ya
+   * calcula", nunca decide nada nuevo sobre el cliente. */
+  listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage>;
 
   // ---- Flujo 1: crear cita ----
   createAppointmentIdempotent(input: NewAppointmentInput, dedupeFingerprint: string, idempotencyKey: string | null): Promise<CreateAppointmentResult>;
@@ -156,6 +182,15 @@ export interface CitasRepository {
 
   // ---- Flujo 2: cancelar/reagendar ----
   findAppointmentForOrganization(organizationId: string, appointmentId: string): Promise<AppointmentRecord | null>;
+  /** Fase 5 §1 — agenda del panel (vista mes/semana): citas reales de la
+   * organización cuyo `starts_at` cae en `[fromIso, toIso)`, opcionalmente filtradas
+   * por proveedor. Puro listado/paginado de filas que `createAppointmentIdempotent`/
+   * `cancelAppointmentFromPanel`/etc. ya escribieron — ninguna regla de negocio
+   * nueva (ver nota de diseño Fase 5 §0: "exponer/paginar lo que el dominio ya
+   * calcula", nunca decidir algo nuevo sobre la cita). `limit` acota el peor caso
+   * (una organización con un volumen anómalo de citas en el rango pedido) sin
+   * cursor — un rango de fechas ya acota naturalmente el tamaño esperado. */
+  listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]>;
   cancelAppointmentIdempotent(organizationId: string, appointmentId: string): Promise<CancelResult>;
   cancelAppointmentFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<CancelResult>;
   rescheduleAppointmentIdempotent(

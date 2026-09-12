@@ -36,6 +36,7 @@ export type {
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
+  CustomerPage,
   NewAppointmentInput,
   ReassignResult,
   ReminderCandidateRow,
