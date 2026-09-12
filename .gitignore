@@ -7,3 +7,10 @@ dist/
 .DS_Store
 .pgdata/
 coverage/
+.vercel/
+
+# Generado en build time por scripts/build-vercel-function.mjs (ver vercel.json
+# buildCommand) -- nunca es la fuente canónica, esa sigue viviendo en
+# apps/api/src/vercel.ts. Bundle autocontenido de ~1-2 MB, no tiene sentido versionarlo.
+/api/index.js
+/api/index.js.map

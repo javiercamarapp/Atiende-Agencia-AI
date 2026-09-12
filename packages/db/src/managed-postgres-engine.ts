@@ -27,9 +27,18 @@ export interface ManagedPostgresConfig {
   database?: string;
   user?: string;
   password?: string;
-  /** `true` (default) exige TLS con verificación de certificado — el patrón estándar
-   *  para conectar a Supabase/cualquier Postgres gestionado por red pública. Poner en
-   *  `false` únicamente para un túnel local de un solo uso (nunca en producción real). */
+  /** `true` (default) exige TLS pero SIN validar la cadena de certificado completa
+   *  (`rejectUnauthorized: false`) — verificado en producción real: el pooler de
+   *  Supabase (Supavisor, tanto "Session" como "Transaction") presenta un certificado
+   *  autofirmado/sin cadena completa por diseño (multiplexa muchos proyectos detrás de
+   *  un solo proceso), así que `rejectUnauthorized: true` falla SIEMPRE contra él con
+   *  `SELF_SIGNED_CERT_IN_CHAIN` -- no es una conexión mal configurada, es el
+   *  comportamiento documentado del pooler. La conexión sigue siendo TLS real
+   *  (cifrado en tránsito genuino), solo no se valida el certificado del servidor
+   *  contra una CA pública -- mismo patrón que la documentación/tutoriales oficiales
+   *  de Supabase recomiendan para conexiones serverless a través del pooler. Poner en
+   *  `false` (deshabilita TLS por completo) únicamente para un túnel local de un solo
+   *  uso (nunca en producción real). */
   ssl?: boolean;
   poolMax?: number;
   connectionTimeoutMs?: number;
@@ -81,7 +90,7 @@ export function openManagedPostgres(config: ManagedPostgresConfig): ManagedPostg
     max: config.poolMax ?? 10,
     connectionTimeoutMillis: config.connectionTimeoutMs ?? 5000,
     statement_timeout: config.statementTimeoutMs ?? 30_000,
-    ssl: config.ssl === false ? undefined : { rejectUnauthorized: true },
+    ssl: config.ssl === false ? undefined : { rejectUnauthorized: false },
   });
 
   let poolErrorCount = 0;
