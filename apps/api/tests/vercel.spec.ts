@@ -24,9 +24,24 @@ beforeAll(() => {
 });
 
 describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
+  // Bug real encontrado en el primer deploy de producción: un default export que es
+  // una función SUELTA (`export default function handler(req) {...}`) lo interpreta
+  // el runtime de Node.js de Vercel con la firma vieja `(req, res) => void`
+  // (Express/http clásico) en vez de Web-fetch estándar -- el `Response` real que
+  // devuelve la función se ignora en silencio y la invocación nunca responde hasta
+  // agotar el timeout (`Vercel Runtime Timeout Error`), sin ningún error visible en
+  // build ni en los tests que solo invocan `handler(req)` directo (por eso este test
+  // existe: valida la FORMA del export, no solo que responda cuando se llama
+  // directo). El patrón correcto es exportar un objeto con método `fetch`.
+  it("el default export es un objeto con método `fetch`, NUNCA una función suelta (bug real de invocación silenciosa en Vercel)", async () => {
+    const { default: handler } = await import("../src/vercel.ts");
+    expect(typeof handler).toBe("object");
+    expect(typeof handler.fetch).toBe("function");
+  });
+
   it("responde /health con la firma Fetch estándar (Request -> Response) que hono/vercel produce", async () => {
     const { default: handler } = await import("../src/vercel.ts");
-    const res = await handler(new Request("https://example.com/health"));
+    const res = await handler.fetch(new Request("https://example.com/health"));
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ ok: true });
   });
@@ -82,7 +97,7 @@ describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
   it("un request HTTP real que golpea restaurantesRepo con un DATABASE_URL de mentira falla 500 (intento real de conexión, ya no un error de 'no implementado')", async () => {
     const { default: handler } = await import("../src/vercel.ts");
     const body = JSON.stringify({ phone: "9991234567" });
-    const res = await handler(
+    const res = await handler.fetch(
       new Request("https://example.com/v1/restaurantes/los-taquitos/customers/lookup", {
         method: "POST",
         headers: {
