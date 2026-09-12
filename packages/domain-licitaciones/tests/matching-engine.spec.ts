@@ -100,6 +100,16 @@ describe("MatchingEngine.score -- un criterio sin configurar no participa ni pen
   });
 });
 
+describe("MatchingEngine.score -- criterio 'entities' con dato ausente en la convocatoria", () => {
+  it("contractingBody ausente -> score neutro 0.5 (mismo tratamiento que budget/states ausentes), nunca 0", () => {
+    const profile = toOrganizationMatchingProfile(profileRecord({ entities: ["Secretaría de Movilidad"] }), "org-1");
+    const result = new MatchingEngine().score(tender({ contractingBody: undefined }), profile);
+    const entities = result.criteria.find((c) => c.criterion === "entities")!;
+    expect(entities.score).toBeCloseTo(50, 2); // 0.5/1 normalizado a maxScore 100.
+    expect(entities.explanation).toMatch(/no especifica entidad convocante/);
+  });
+});
+
 describe("MatchingEngine.score -- clasificador por PREFIJO JERÁRQUICO", () => {
   it("un prefijo del perfil que es prefijo del código de la convocatoria (o viceversa) cuenta como match", () => {
     const profile = toOrganizationMatchingProfile(profileRecord({ classifierCodes: ["5011"] }), "org-1");

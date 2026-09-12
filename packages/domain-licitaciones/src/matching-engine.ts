@@ -343,7 +343,7 @@ export class MatchingEngine {
     const entities = profile.entities ?? [];
     const contractingBody = record.contractingBody ?? undefined;
     if (!contractingBody) {
-      return { criterion: "entities", score: 0, maxScore: 1, explanation: "La convocatoria no especifica entidad convocante; no evaluable." };
+      return { criterion: "entities", score: 0.5, maxScore: 1, explanation: "La convocatoria no especifica entidad convocante; score neutro." };
     }
     const matched = entities.find((e) => normalizeText(contractingBody).includes(normalizeText(e)));
     return {
