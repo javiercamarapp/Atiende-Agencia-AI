@@ -151,6 +151,7 @@ export function licitacionesProposalRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
         }
 
         const updated = await repo.saveEconomicGeneration(organizationId, proposal.id, {
+          actorId: userId,
           economicTotals: economicResult.totals,
           generationReportPatch: { usedRateConcepts: economicResult.lineItems.map((li) => li.concept), blockedLineItems: [], totals: economicResult.totals },
           correlationId: requestId ?? null,

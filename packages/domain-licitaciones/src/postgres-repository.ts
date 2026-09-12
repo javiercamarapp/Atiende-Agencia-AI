@@ -9,14 +9,19 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { IdempotencyConflictError } from "./errors.ts";
 import type { IdempotencyParams, IdempotentResult, LicitacionesRepository } from "./repository.ts";
 import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
-import { sealInputs } from "./sealed-inputs.ts";
-import type { ExpedienteInputs } from "./sealed-inputs.ts";
+import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
+import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import { sha256Hex } from "./types.ts";
+import { ApprovalWorkflow } from "./approval-workflow.ts";
+import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
+import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
+import type { PersistedProposalVersion, ProposalInputRecord } from "./proposal-version-registry.ts";
+import type { LicitacionesRole } from "./roles.ts";
+import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from "./repository.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
   ComplianceItemRecord,
-  ExpedienteApprovalRecord,
   PackageManifestRecord,
   ProposalRecord,
   RequiredAnnexItem,
@@ -73,6 +78,36 @@ function mapProposal(row: ProposalRow): ProposalRecord {
 }
 
 const PROPOSAL_COLUMNS = "id, organization_id, tender_id, title, iva_rate, economic_totals, generation_report, correlation_id, created_by, created_at::text as created_at";
+
+interface ApprovalRow {
+  id: string;
+  scope: ApprovalScope;
+  scope_ref: string;
+  approver_id: string;
+  approver_role: string;
+  inputs_hash: string;
+  decided_at: string;
+  status: "vigente" | "invalidada";
+  invalidated_at: string | null;
+  invalidated_reason: string | null;
+}
+
+const APPROVAL_COLUMNS = "id, scope, scope_ref, approver_id, approver_role, inputs_hash, decided_at::text as decided_at, status, invalidated_at::text as invalidated_at, invalidated_reason";
+
+function mapApproval(row: ApprovalRow): Approval {
+  return {
+    id: row.id,
+    scope: row.scope,
+    scopeRef: row.scope_ref,
+    approvedBy: row.approver_id,
+    approvedByRole: row.approver_role as LicitacionesRole,
+    approvedAt: row.decided_at,
+    inputsHash: row.inputs_hash as Approval["inputsHash"],
+    status: row.status,
+    ...(row.invalidated_at !== null ? { invalidatedAt: row.invalidated_at } : {}),
+    ...(row.invalidated_reason !== null ? { invalidatedReason: row.invalidated_reason } : {}),
+  };
+}
 
 export class PostgresLicitacionesRepository implements LicitacionesRepository {
   constructor(
@@ -160,6 +195,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     organizationId: string,
     proposalId: string,
     input: {
+      actorId: string;
       economicTotals: unknown | null;
       generationReportPatch: unknown;
       correlationId: string | null;
@@ -179,19 +215,37 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     );
     const updated = mapProposal(rows[0]!);
 
-    if (input.cartaSection) await this.upsertSection(organizationId, proposalId, "economic:carta", "Carta de proposición económica", input.cartaSection.content);
-    if (input.anexoSection) await this.upsertSection(organizationId, proposalId, "economic:anexo", "Anexo económico", input.anexoSection.content);
+    if (input.cartaSection) await this.upsertSection(organizationId, proposalId, "economic:carta", "Carta de proposición económica", input.cartaSection.content, input.actorId);
+    if (input.anexoSection) await this.upsertSection(organizationId, proposalId, "economic:anexo", "Anexo económico", input.anexoSection.content, input.actorId);
 
     return updated;
   }
 
-  private async upsertSection(organizationId: string, proposalId: string, sectionKey: string, label: string, content: string): Promise<void> {
+  private async upsertSection(organizationId: string, proposalId: string, sectionKey: string, label: string, content: string, actorId: string): Promise<void> {
     await this.db.query(
       `insert into licitaciones.proposal_section (organization_id, proposal_id, section_key, label, filename, content, version)
        values ($1, $2, $3, $4, $5, $6, 1)
        on conflict (proposal_id, section_key) do update
          set content = excluded.content, label = excluded.label, version = licitaciones.proposal_section.version + 1, updated_at = now();`,
       [organizationId, proposalId, sectionKey, label, `${sectionKey}.txt`, content],
+    );
+    await this.recordSectionAuthor(organizationId, proposalId, sectionKey, actorId);
+  }
+
+  /**
+   * AE-11: registra que `actorId` redactó/editó `sectionKey` -- llamado
+   * SIEMPRE desde este adaptador cada vez que se persiste contenido de una
+   * sección (nunca depende de que una ruta Hono se acuerde de invocarlo por
+   * separado, ver diseño Fase 2 §2.3). `actorId` proviene del `input`
+   * construido por la ruta a partir de la sesión autenticada
+   * (`c.get("userId")`), nunca del cuerpo del request.
+   */
+  private async recordSectionAuthor(organizationId: string, proposalId: string, sectionKey: string, actorId: string): Promise<void> {
+    await this.db.query(
+      `insert into licitaciones.section_author (organization_id, proposal_id, section_key, actor_id)
+       values ($1, $2, $3, $4)
+       on conflict (proposal_id, section_key, actor_id) do nothing;`,
+      [organizationId, proposalId, sectionKey, actorId],
     );
   }
 
@@ -249,51 +303,221 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     return { hash: sealed.hash, raw };
   }
 
-  async findCurrentExpedienteApproval(organizationId: string, proposalId: string): Promise<ExpedienteApprovalRecord | null> {
+  // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
+
+  async replaceRequirementItems(organizationId: string, tenderId: string, items: readonly RequirementItemRecord[]): Promise<void> {
+    await this.db.query(`delete from licitaciones.requirement_item where organization_id = $1 and tender_id = $2;`, [organizationId, tenderId]);
+    for (const item of items) {
+      await this.db.query(
+        `insert into licitaciones.requirement_item
+           (id, organization_id, tender_id, document_id, description, requirement_kind, obligatoriedad, topic_key, required_evidence, extracted_by, page, clause, responsible_role, deadline, status, confidence)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9::text[], $10, $11, $12, $13, $14, $15, $16);`,
+        [
+          item.id,
+          organizationId,
+          tenderId,
+          item.documentId,
+          item.text,
+          item.requirementKind,
+          item.obligatoriedad,
+          item.topicKey,
+          item.requiredEvidence,
+          item.extractedBy,
+          item.page,
+          item.clause,
+          item.responsibleRole,
+          item.deadline,
+          item.status,
+          item.confidence,
+        ],
+      );
+    }
+  }
+
+  async listRequirementItems(organizationId: string, tenderId: string): Promise<readonly RequirementItemRecord[]> {
     const { rows } = await this.db.query<{
       id: string;
-      organization_id: string;
-      proposal_id: string;
-      status: "vigente" | "invalidada";
-      approver_id: string;
-      approver_role: string;
-      inputs_hash: string;
-      decided_at: string;
+      document_id: string | null;
+      description: string;
+      requirement_kind: RequirementItemRecord["requirementKind"];
+      obligatoriedad: RequirementItemRecord["obligatoriedad"];
+      topic_key: string | null;
+      required_evidence: string[];
+      extracted_by: RequirementItemRecord["extractedBy"];
+      page: number | null;
+      clause: string | null;
+      responsible_role: string;
+      deadline: string | null;
+      status: RequirementItemRecord["status"];
+      confidence: string | null;
     }>(
-      `select id, organization_id, proposal_id, status, approver_id, approver_role, inputs_hash, decided_at::text as decided_at
-       from licitaciones.expediente_approval where organization_id = $1 and proposal_id = $2 and status = 'vigente' limit 1;`,
+      `select id, document_id, description, requirement_kind, obligatoriedad, topic_key, required_evidence, extracted_by, page, clause, responsible_role, deadline::text as deadline, status, confidence::text as confidence
+       from licitaciones.requirement_item where organization_id = $1 and tender_id = $2 and invalidated_at is null order by created_at asc;`,
+      [organizationId, tenderId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      documentId: r.document_id,
+      text: r.description,
+      requirementKind: r.requirement_kind,
+      obligatoriedad: r.obligatoriedad,
+      topicKey: r.topic_key,
+      requiredEvidence: r.required_evidence,
+      extractedBy: r.extracted_by,
+      page: r.page,
+      clause: r.clause,
+      responsibleRole: r.responsible_role,
+      deadline: r.deadline,
+      status: r.status,
+      confidence: r.confidence === null ? null : Number(r.confidence),
+    }));
+  }
+
+  async listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]> {
+    const { rows } = await this.db.query<{ id: string; topic_key: string; kind: RequirementFulfillmentMappingRecord["kind"]; ref_key: string; statement_template: string }>(
+      `select id, topic_key, kind, ref_key, statement_template from licitaciones.requirement_fulfillment_mapping where organization_id = $1;`,
+      [organizationId],
+    );
+    return rows.map((r) => ({ id: r.id, topicKey: r.topic_key, kind: r.kind, refKey: r.ref_key, statementTemplate: r.statement_template }));
+  }
+
+  async upsertFulfillmentMapping(
+    organizationId: string,
+    input: { topicKey: string; kind: RequirementFulfillmentMappingRecord["kind"]; refKey: string; statementTemplate: string },
+  ): Promise<RequirementFulfillmentMappingRecord> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into licitaciones.requirement_fulfillment_mapping (organization_id, topic_key, kind, ref_key, statement_template)
+       values ($1, $2, $3, $4, $5)
+       on conflict (organization_id, topic_key) do update
+         set kind = excluded.kind, ref_key = excluded.ref_key, statement_template = excluded.statement_template, updated_at = now()
+       returning id;`,
+      [organizationId, input.topicKey, input.kind, input.refKey, input.statementTemplate],
+    );
+    return { id: rows[0]!.id, topicKey: input.topicKey, kind: input.kind, refKey: input.refKey, statementTemplate: input.statementTemplate };
+  }
+
+  async saveTechnicalSections(
+    organizationId: string,
+    proposalId: string,
+    input: {
+      actorId: string;
+      sections: readonly { sectionKey: string; label: string; content: string }[];
+      usedCompanyDocumentIds: readonly string[];
+      notApplicableRequirements: readonly { requirementId: string; reason: string }[];
+    },
+  ): Promise<ProposalRecord> {
+    const { rows } = await this.db.query<ProposalRow>(
+      `update licitaciones.proposal
+       set generation_report = coalesce(generation_report, '{}'::jsonb) || jsonb_build_object('technical', $1::jsonb),
+           updated_at = now()
+       where organization_id = $2 and id = $3
+       returning ${PROPOSAL_COLUMNS};`,
+      [JSON.stringify({ usedCompanyDocumentIds: input.usedCompanyDocumentIds, notApplicableRequirements: input.notApplicableRequirements }), organizationId, proposalId],
+    );
+    const updated = mapProposal(rows[0]!);
+
+    for (const section of input.sections) {
+      await this.upsertSection(organizationId, proposalId, section.sectionKey, section.label, section.content, input.actorId);
+    }
+
+    return updated;
+  }
+
+  // ---- Fase 2 pieza 1: máquina de aprobaciones granular (AE-02/AE-11) ----
+
+  async approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs }): Promise<Approval> {
+    // AE-11: hidrata la máquina pura de dominio con la autoría de sección
+    // REALMENTE persistida -- nunca confía en nada que el llamador declare.
+    const { rows: authorRows } = await this.db.query<{ section_key: string; actor_id: string }>(
+      `select section_key, actor_id from licitaciones.section_author where organization_id = $1 and proposal_id = $2;`,
+      [organizationId, proposalId],
+    );
+    const sectionAuthors = new Map<string, Set<string>>();
+    for (const row of authorRows) {
+      const scopeRef = `seccion:${row.section_key}`;
+      const set = sectionAuthors.get(scopeRef) ?? new Set<string>();
+      set.add(row.actor_id);
+      sectionAuthors.set(scopeRef, set);
+    }
+
+    // Lanza `ApprovalRejectedError` si la regla rechaza (rol no autorizado,
+    // AE-02, o autoaprobación AE-11) -- ninguna fila se toca en ese caso.
+    new ApprovalWorkflow({ sectionAuthors }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash });
+
+    // La validación pasó: invalida cualquier aprobación previa 'vigente' de
+    // EXACTAMENTE el mismo scope/scopeRef antes de insertar la nueva (nunca
+    // coexisten dos vigentes del mismo alcance exacto).
+    await this.db.query(
+      `update licitaciones.approval set status = 'invalidada', invalidated_at = now(), invalidated_reason = 'superseded_by_new_approval'
+       where organization_id = $1 and proposal_id = $2 and scope_ref = $3 and status = 'vigente';`,
+      [organizationId, proposalId, input.scopeRef],
+    );
+
+    const { rows } = await this.db.query<ApprovalRow>(
+      `insert into licitaciones.approval (organization_id, proposal_id, scope, scope_ref, approver_id, approver_role, inputs_hash)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       returning ${APPROVAL_COLUMNS};`,
+      [organizationId, proposalId, input.scope, input.scopeRef, input.actorId, input.actorRole, input.inputsHash.hash],
+    );
+    return mapApproval(rows[0]!);
+  }
+
+  async activeApprovalsCovering(organizationId: string, proposalId: string, scopeRef: string): Promise<readonly Approval[]> {
+    const ancestors = scopeRef === "expediente" ? ["expediente"] : ["expediente", scopeRef];
+    const { rows } = await this.db.query<ApprovalRow>(
+      `select ${APPROVAL_COLUMNS} from licitaciones.approval
+       where organization_id = $1 and proposal_id = $2 and status = 'vigente' and scope_ref = any($3::text[]);`,
+      [organizationId, proposalId, ancestors],
+    );
+    return rows.map(mapApproval);
+  }
+
+  async recordChange(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; reason: string }): Promise<ChangeDetected> {
+    const covering = await this.activeApprovalsCovering(organizationId, proposalId, input.scopeRef);
+    const invalidatedIds = covering.map((a) => a.id);
+    if (invalidatedIds.length > 0) {
+      await this.db.query(`update licitaciones.approval set status = 'invalidada', invalidated_at = now(), invalidated_reason = $1 where id = any($2::uuid[]);`, [input.reason, invalidatedIds]);
+    }
+    const { rows } = await this.db.query<{ id: string; detected_at: string }>(
+      `insert into licitaciones.approval_change (organization_id, proposal_id, scope, scope_ref, reason, invalidated_approval_ids)
+       values ($1, $2, $3, $4, $5, $6::uuid[])
+       returning id, detected_at::text as detected_at;`,
+      [organizationId, proposalId, input.scope, input.scopeRef, input.reason, invalidatedIds],
+    );
+    return { id: rows[0]!.id, scope: input.scope, scopeRef: input.scopeRef, reason: input.reason, detectedAt: rows[0]!.detected_at, invalidatedApprovalIds: invalidatedIds };
+  }
+
+  async syncExpedienteApprovalWithCurrentHash(organizationId: string, proposalId: string, sealed: HashedInputs, raw: ExpedienteInputs): Promise<ChangeDetected | null> {
+    const { hash } = requireValidHashedInputs(sealed, "syncExpedienteApprovalWithCurrentHash(sealed)");
+    const latest = await this.latestProposalVersion(organizationId, proposalId);
+    if (!latest || latest.hash !== hash) {
+      const nextVersion = (latest?.version ?? 0) + 1;
+      const inputRecords = buildProposalInputRecords(raw);
+      await this.db.query(
+        `insert into licitaciones.proposal_version (organization_id, proposal_id, version, hash, inputs)
+         values ($1, $2, $3, $4, $5::jsonb)
+         on conflict (proposal_id, version) do nothing;`,
+        [organizationId, proposalId, nextVersion, hash, JSON.stringify(inputRecords)],
+      );
+    }
+
+    const [currentExpedienteApproval] = await this.activeApprovalsCovering(organizationId, proposalId, "expediente");
+    if (!currentExpedienteApproval || currentExpedienteApproval.inputsHash === hash) return null;
+
+    const changedKeys = latest ? ProposalVersionRegistry.diff(latest.inputs, raw) : [];
+    const reason = changedKeys.length > 0 ? `insumo_cambiado:${changedKeys.join(",")}` : `hash_insumos_divergente:aprobado=${currentExpedienteApproval.inputsHash}:actual=${hash}`;
+
+    return this.recordChange(organizationId, proposalId, { scope: "expediente", scopeRef: "expediente", reason });
+  }
+
+  async latestProposalVersion(organizationId: string, proposalId: string): Promise<PersistedProposalVersion | null> {
+    const { rows } = await this.db.query<{ version: number; hash: string; inputs: ProposalInputRecord[]; created_at: string }>(
+      `select version, hash, inputs, created_at::text as created_at from licitaciones.proposal_version
+       where organization_id = $1 and proposal_id = $2 order by version desc limit 1;`,
       [organizationId, proposalId],
     );
     const row = rows[0];
-    return row
-      ? { id: row.id, organizationId: row.organization_id, proposalId: row.proposal_id, scope: "expediente", status: row.status, approverId: row.approver_id, approverRole: row.approver_role, inputsHash: row.inputs_hash, decidedAt: row.decided_at }
-      : null;
-  }
-
-  async approveExpediente(organizationId: string, proposalId: string, approverId: string, approverRole: string, inputsHash: string): Promise<ExpedienteApprovalRecord> {
-    await this.db.query(
-      `update licitaciones.expediente_approval
-       set status = 'invalidada', invalidated_at = now(), invalidated_reason = 'superseded_by_new_approval'
-       where organization_id = $1 and proposal_id = $2 and status = 'vigente';`,
-      [organizationId, proposalId],
-    );
-    const { rows } = await this.db.query<{ id: string; decided_at: string }>(
-      `insert into licitaciones.expediente_approval (organization_id, proposal_id, approver_id, approver_role, inputs_hash)
-       values ($1, $2, $3, $4, $5)
-       returning id, decided_at::text as decided_at;`,
-      [organizationId, proposalId, approverId, approverRole, inputsHash],
-    );
-    return {
-      id: rows[0]!.id,
-      organizationId,
-      proposalId,
-      scope: "expediente",
-      status: "vigente",
-      approverId,
-      approverRole,
-      inputsHash,
-      decidedAt: rows[0]!.decided_at,
-    };
+    return row ? { version: row.version, hash: row.hash, inputs: row.inputs, createdAt: row.created_at } : null;
   }
 
   async saveManifest(

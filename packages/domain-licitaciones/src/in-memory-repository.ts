@@ -11,14 +11,19 @@ import { join } from "node:path";
 import { IdempotencyConflictError } from "./errors.ts";
 import type { IdempotencyParams, IdempotentResult, LicitacionesRepository } from "./repository.ts";
 import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
-import { sealInputs } from "./sealed-inputs.ts";
-import type { ExpedienteInputs } from "./sealed-inputs.ts";
+import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
+import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
 import { sha256Hex } from "./types.ts";
+import { ApprovalWorkflow } from "./approval-workflow.ts";
+import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
+import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
+import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
+import type { LicitacionesRole } from "./roles.ts";
+import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from "./repository.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
   ComplianceItemRecord,
-  ExpedienteApprovalRecord,
   PackageManifestRecord,
   ProposalRecord,
   RequiredAnnexItem,
@@ -75,7 +80,12 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly companyDocuments = new Map<string, CompanyDocumentRecord[]>(); // orgId -> docs
   private readonly approvedRates = new Map<string, ApprovedRateRecord[]>(); // orgId -> rates
   private readonly proposalSections = new Map<string, Map<string, StoredProposalSection>>(); // proposalId -> sectionKey -> section
-  private readonly expedienteApprovals = new Map<string, ExpedienteApprovalRecord[]>(); // proposalId -> approvals (historial)
+  private readonly approvals = new Map<string, Approval[]>(); // proposalId -> approvals (historial, todos los scopes)
+  private readonly sectionAuthors = new Map<string, Map<string, Set<string>>>(); // proposalId -> scopeRef("seccion:<key>") -> actorIds (AE-11)
+  private readonly approvalChanges = new Map<string, ChangeDetected[]>(); // proposalId -> cambios detectados (historial)
+  private readonly proposalVersions = new Map<string, PersistedProposalVersion[]>(); // proposalId -> versiones (historial, ordenado)
+  private readonly requirementItems = new Map<string, RequirementItemRecord[]>(); // `${orgId}:${tenderId}` -> items (reemplazo completo en cada extracción)
+  private readonly fulfillmentMappings = new Map<string, Map<string, RequirementFulfillmentMappingRecord>>(); // orgId -> topicKey -> mapping
   private readonly packageManifests = new Map<string, PackageManifestRecord[]>(); // proposalId -> manifests (historial)
   private readonly submissions = new Map<string, SubmissionRecord[]>(); // proposalId -> submissions (historial)
   private readonly idempotency = new Map<string, StoredIdempotencyRow>();
@@ -186,6 +196,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     organizationId: string,
     proposalId: string,
     input: {
+      actorId: string;
       economicTotals: unknown | null;
       generationReportPatch: unknown;
       correlationId: string | null;
@@ -205,13 +216,13 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     };
     this.proposals.set(proposalId, updated);
 
-    if (input.cartaSection) this.upsertSection(proposalId, "economic:carta", "Carta de proposición económica", input.cartaSection.content);
-    if (input.anexoSection) this.upsertSection(proposalId, "economic:anexo", "Anexo económico", input.anexoSection.content);
+    if (input.cartaSection) this.upsertSection(proposalId, "economic:carta", "Carta de proposición económica", input.cartaSection.content, input.actorId);
+    if (input.anexoSection) this.upsertSection(proposalId, "economic:anexo", "Anexo económico", input.anexoSection.content, input.actorId);
 
     return updated;
   }
 
-  private upsertSection(proposalId: string, sectionKey: string, label: string, content: string): void {
+  private upsertSection(proposalId: string, sectionKey: string, label: string, content: string, actorId: string): void {
     const map = this.proposalSections.get(proposalId) ?? new Map<string, StoredProposalSection>();
     const existing = map.get(sectionKey);
     map.set(sectionKey, {
@@ -223,6 +234,17 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       content,
     });
     this.proposalSections.set(proposalId, map);
+    this.recordSectionAuthor(proposalId, sectionKey, actorId);
+  }
+
+  /** AE-11 (ver diseño Fase 2 §2.3): SIEMPRE se llama desde el propio repositorio al persistir contenido de una sección, nunca depende de que una ruta se acuerde de invocarlo aparte. */
+  private recordSectionAuthor(proposalId: string, sectionKey: string, actorId: string): void {
+    const scopeRef = `seccion:${sectionKey}`;
+    const perProposal = this.sectionAuthors.get(proposalId) ?? new Map<string, Set<string>>();
+    const authors = perProposal.get(scopeRef) ?? new Set<string>();
+    authors.add(actorId);
+    perProposal.set(scopeRef, authors);
+    this.sectionAuthors.set(proposalId, perProposal);
   }
 
   // ---- Flujo 3: ensamblado / descarga / declaración ----
@@ -267,32 +289,144 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     return { hash: sealed.hash, raw };
   }
 
-  async findCurrentExpedienteApproval(organizationId: string, proposalId: string): Promise<ExpedienteApprovalRecord | null> {
-    this.assertProposalOwnership(organizationId, proposalId);
-    const list = this.expedienteApprovals.get(proposalId) ?? [];
-    return list.find((a) => a.status === "vigente") ?? null;
+  // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
+
+  async replaceRequirementItems(organizationId: string, tenderId: string, items: readonly RequirementItemRecord[]): Promise<void> {
+    this.requirementItems.set(`${organizationId}:${tenderId}`, [...items]);
   }
 
-  async approveExpediente(organizationId: string, proposalId: string, approverId: string, approverRole: string, inputsHash: string): Promise<ExpedienteApprovalRecord> {
-    this.assertProposalOwnership(organizationId, proposalId);
-    const nowIso = new Date().toISOString();
-    const existing = this.expedienteApprovals.get(proposalId) ?? [];
-    const invalidated = existing.map((a) =>
-      a.status === "vigente" ? { ...a, status: "invalidada" as const, invalidatedAt: nowIso, invalidatedReason: "superseded_by_new_approval" } : a,
-    );
-    const created: ExpedienteApprovalRecord = {
-      id: randomUUID(),
-      organizationId,
-      proposalId,
-      scope: "expediente",
-      status: "vigente",
-      approverId,
-      approverRole,
-      inputsHash,
-      decidedAt: nowIso,
+  async listRequirementItems(organizationId: string, tenderId: string): Promise<readonly RequirementItemRecord[]> {
+    return this.requirementItems.get(`${organizationId}:${tenderId}`) ?? [];
+  }
+
+  async listFulfillmentMappings(organizationId: string): Promise<readonly RequirementFulfillmentMappingRecord[]> {
+    return [...(this.fulfillmentMappings.get(organizationId) ?? new Map()).values()];
+  }
+
+  async upsertFulfillmentMapping(
+    organizationId: string,
+    input: { topicKey: string; kind: RequirementFulfillmentMappingRecord["kind"]; refKey: string; statementTemplate: string },
+  ): Promise<RequirementFulfillmentMappingRecord> {
+    const perOrg = this.fulfillmentMappings.get(organizationId) ?? new Map<string, RequirementFulfillmentMappingRecord>();
+    const existing = perOrg.get(input.topicKey);
+    const record: RequirementFulfillmentMappingRecord = { id: existing?.id ?? randomUUID(), topicKey: input.topicKey, kind: input.kind, refKey: input.refKey, statementTemplate: input.statementTemplate };
+    perOrg.set(input.topicKey, record);
+    this.fulfillmentMappings.set(organizationId, perOrg);
+    return record;
+  }
+
+  async saveTechnicalSections(
+    organizationId: string,
+    proposalId: string,
+    input: {
+      actorId: string;
+      sections: readonly { sectionKey: string; label: string; content: string }[];
+      usedCompanyDocumentIds: readonly string[];
+      notApplicableRequirements: readonly { requirementId: string; reason: string }[];
+    },
+  ): Promise<ProposalRecord> {
+    const proposal = this.assertProposalOwnership(organizationId, proposalId);
+    const updated: ProposalRecord = {
+      ...proposal,
+      generationReport: {
+        ...(proposal.generationReport ?? {}),
+        technical: { usedCompanyDocumentIds: [...input.usedCompanyDocumentIds], notApplicableRequirements: [...input.notApplicableRequirements] },
+      },
     };
-    this.expedienteApprovals.set(proposalId, [...invalidated, created]);
+    this.proposals.set(proposalId, updated);
+
+    for (const section of input.sections) {
+      this.upsertSection(proposalId, section.sectionKey, section.label, section.content, input.actorId);
+    }
+
+    return updated;
+  }
+
+  // ---- Fase 2 pieza 1: máquina de aprobaciones granular (AE-02/AE-11) ----
+
+  async approve(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; actorId: string; actorRole: LicitacionesRole; inputsHash: HashedInputs }): Promise<Approval> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    const sectionAuthors = this.sectionAuthors.get(proposalId) ?? new Map<string, Set<string>>();
+
+    // Lanza `ApprovalRejectedError` si la regla rechaza -- ninguna fila se toca en ese caso.
+    new ApprovalWorkflow({ sectionAuthors }).approve({ scope: input.scope, scopeRef: input.scopeRef, actorId: input.actorId, actorRole: input.actorRole, inputsHash: input.inputsHash });
+
+    const nowIso = new Date().toISOString();
+    const existing = this.approvals.get(proposalId) ?? [];
+    // Invalida cualquier aprobación previa 'vigente' de EXACTAMENTE el mismo
+    // scope/scopeRef (nunca coexisten dos vigentes del mismo alcance exacto).
+    const invalidated = existing.map((a) =>
+      a.status === "vigente" && a.scopeRef === input.scopeRef ? { ...a, status: "invalidada" as const, invalidatedAt: nowIso, invalidatedReason: "superseded_by_new_approval" } : a,
+    );
+    const created: Approval = {
+      id: randomUUID(),
+      scope: input.scope,
+      scopeRef: input.scopeRef,
+      approvedBy: input.actorId,
+      approvedByRole: input.actorRole,
+      approvedAt: nowIso,
+      inputsHash: input.inputsHash.hash,
+      status: "vigente",
+    };
+    this.approvals.set(proposalId, [...invalidated, created]);
     return created;
+  }
+
+  async activeApprovalsCovering(organizationId: string, proposalId: string, scopeRef: string): Promise<readonly Approval[]> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    const ancestors = scopeRef === "expediente" ? ["expediente"] : ["expediente", scopeRef];
+    return (this.approvals.get(proposalId) ?? []).filter((a) => a.status === "vigente" && ancestors.includes(a.scopeRef));
+  }
+
+  async recordChange(organizationId: string, proposalId: string, input: { scope: ApprovalScope; scopeRef: string; reason: string }): Promise<ChangeDetected> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    const covering = await this.activeApprovalsCovering(organizationId, proposalId, input.scopeRef);
+    const invalidatedIds = new Set(covering.map((a) => a.id));
+    const nowIso = new Date().toISOString();
+    const existing = this.approvals.get(proposalId) ?? [];
+    this.approvals.set(
+      proposalId,
+      existing.map((a) => (invalidatedIds.has(a.id) ? { ...a, status: "invalidada" as const, invalidatedAt: nowIso, invalidatedReason: input.reason } : a)),
+    );
+    const change: ChangeDetected = {
+      id: randomUUID(),
+      scope: input.scope,
+      scopeRef: input.scopeRef,
+      reason: input.reason,
+      detectedAt: nowIso,
+      invalidatedApprovalIds: [...invalidatedIds],
+    };
+    const changes = this.approvalChanges.get(proposalId) ?? [];
+    this.approvalChanges.set(proposalId, [...changes, change]);
+    return change;
+  }
+
+  async syncExpedienteApprovalWithCurrentHash(organizationId: string, proposalId: string, sealed: HashedInputs, raw: ExpedienteInputs): Promise<ChangeDetected | null> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    const { hash } = requireValidHashedInputs(sealed, "syncExpedienteApprovalWithCurrentHash(sealed)");
+
+    const latest = await this.latestProposalVersion(organizationId, proposalId);
+    if (!latest || latest.hash !== hash) {
+      const inputRecords = buildProposalInputRecords(raw);
+      const versions = this.proposalVersions.get(proposalId) ?? [];
+      const nextVersion = (latest?.version ?? 0) + 1;
+      this.proposalVersions.set(proposalId, [...versions, { version: nextVersion, hash, inputs: inputRecords, createdAt: new Date().toISOString() }]);
+    }
+
+    const [currentExpedienteApproval] = await this.activeApprovalsCovering(organizationId, proposalId, "expediente");
+    if (!currentExpedienteApproval || currentExpedienteApproval.inputsHash === hash) return null;
+
+    const changedKeys = latest ? ProposalVersionRegistry.diff(latest.inputs, raw) : [];
+    const reason = changedKeys.length > 0 ? `insumo_cambiado:${changedKeys.join(",")}` : `hash_insumos_divergente:aprobado=${currentExpedienteApproval.inputsHash}:actual=${hash}`;
+
+    return this.recordChange(organizationId, proposalId, { scope: "expediente", scopeRef: "expediente", reason });
+  }
+
+  async latestProposalVersion(organizationId: string, proposalId: string): Promise<PersistedProposalVersion | null> {
+    this.assertProposalOwnership(organizationId, proposalId);
+    const versions = this.proposalVersions.get(proposalId) ?? [];
+    if (versions.length === 0) return null;
+    return [...versions].sort((a, b) => b.version - a.version)[0]!;
   }
 
   async saveManifest(

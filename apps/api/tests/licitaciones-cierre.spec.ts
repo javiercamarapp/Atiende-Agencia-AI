@@ -97,9 +97,16 @@ describe("Flujo 3 -- ensamblado 'ready' exige checklist verde + aprobación vige
     expect(latestRes.status).toBe(200);
     const latestBody = (await latestRes.json()) as { status: string; draftReasons: string[] };
     // Nunca se sirve el "ready" guardado a secas: se re-deriva contra el
-    // estado vivo y ahora refleja 'draft'.
+    // estado vivo y ahora refleja 'draft'. Fase 2 piezas 1+2: a diferencia de
+    // Fase 1 (donde la aprobación quedaba "vigente" en la BD y solo
+    // `PackageAssembler` la filtraba en memoria por hash divergente),
+    // `syncExpedienteApprovalWithCurrentHash` ahora la invalida
+    // EXPLÍCITAMENTE con un motivo legible (`insumo_cambiado:...`) antes de
+    // llegar aquí -- por eso ya no queda ninguna aprobación "vigente" que
+    // mostrar como "obsoleta": el motivo pasa a ser, correctamente,
+    // "sin aprobación vigente".
     expect(latestBody.status).toBe("draft");
-    expect(latestBody.draftReasons.some((r) => r.startsWith("aprobacion_vigente_con_hash_insumos_divergente"))).toBe(true);
+    expect(latestBody.draftReasons).toContain("sin_aprobacion_vigente_de_alcance_expediente");
 
     const downloadRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/download`, authedJson(ctx.staff.viewer.token));
     expect(downloadRes.status).toBe(409);
@@ -122,6 +129,54 @@ describe("Flujo 3 -- ensamblado 'ready' exige checklist verde + aprobación vige
     const app = buildApp(ctx.deps);
     const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.writer.token, {}));
     expect(res.status).toBe(403);
+  });
+
+  it("Fase 2 pieza 1 (AE-11): quien redactó la sección económica no puede aprobar el expediente completo, aunque tenga rol de aprobador -- una persona distinta sí puede", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    ctx.repo.seedApprovedRates(ctx.organizationId, [{ id: "r1", concept: "consultoria_hora", unitPrice: "500.00", currency: "MXN", approvalStatus: "aprobado", validFrom: "2026-01-01T00:00:00-06:00", validUntil: null }]);
+
+    // El "analyst" (rol de escritura Y de decisión a la vez) genera la
+    // propuesta económica -- queda registrado como autor de contenido de
+    // "seccion:economic:carta"/"seccion:economic:anexo" (AE-11, automático,
+    // ver PostgresLicitacionesRepository::recordSectionAuthor).
+    const economicRes = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal/economic/generate`,
+      authedJson(ctx.staff.analyst.token, { lineItems: [{ concept: "consultoria_hora", quantity: 10 }] }, { "idempotency-key": "econ-ae11" }),
+    );
+    expect(economicRes.status).toBe(200);
+
+    // El MISMO analyst intenta aprobar el expediente completo: rechazado --
+    // consta como autor de una sección cubierta por el alcance "expediente".
+    const selfApproveRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.analyst.token, {}));
+    expect(selfApproveRes.status).toBe(403);
+
+    // El owner, que no redactó nada, sí puede aprobar el mismo expediente.
+    const ownerApproveRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/expediente/approval`, authedJson(ctx.staff.owner.token, {}));
+    expect(ownerApproveRes.status).toBe(201);
+  });
+
+  it("Fase 2 pieza 1: revisión granular por sección (POST .../proposal/sections/:sectionKey/approval) -- scope 'seccion' independiente del expediente completo", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    ctx.repo.seedApprovedRates(ctx.organizationId, [{ id: "r1", concept: "consultoria_hora", unitPrice: "500.00", currency: "MXN", approvalStatus: "aprobado", validFrom: "2026-01-01T00:00:00-06:00", validUntil: null }]);
+    await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal/economic/generate`,
+      authedJson(ctx.staff.writer.token, { lineItems: [{ concept: "consultoria_hora", quantity: 10 }] }, { "idempotency-key": "econ-seccion" }),
+    );
+
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal/sections/economic:carta/approval`, authedJson(ctx.staff.analyst.token, {}));
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { scope: string; scopeRef: string; status: string };
+    expect(body).toMatchObject({ scope: "seccion", scopeRef: "seccion:economic:carta", status: "vigente" });
+
+    // Una aprobación de sección NUNCA basta por sí sola para que el
+    // expediente completo cuente como aprobado (PackageAssembler sigue
+    // exigiendo scope==="expediente" exacto, ver diseño §2.1).
+    const assembleRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/package/assemble`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "assemble-seccion" }));
+    const assembleBody = (await assembleRes.json()) as { status: string; draftReasons: string[] };
+    expect(assembleBody.status).toBe("draft");
+    expect(assembleBody.draftReasons).toContain("sin_aprobacion_vigente_de_alcance_expediente");
   });
 
   it("un viewer no puede ensamblar el paquete (solo lectura)", async () => {

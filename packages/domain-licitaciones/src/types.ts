@@ -209,7 +209,7 @@ export interface ProposalRecord {
   readonly ivaRate: number;
   readonly economicTotals: unknown | null;
   readonly generationReport: {
-    technical?: { usedCompanyDocumentIds?: string[] };
+    technical?: { usedCompanyDocumentIds?: string[]; notApplicableRequirements?: { requirementId: string; reason: string }[] };
     economic?: { usedRateConcepts?: string[]; blockedLineItems?: unknown[]; totals?: unknown };
   } | null;
   readonly correlationId: string | null;
@@ -248,18 +248,6 @@ export interface ApprovedRateRecord {
   readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
   readonly validFrom: string;
   readonly validUntil: string | null;
-}
-
-export interface ExpedienteApprovalRecord {
-  readonly id: string;
-  readonly organizationId: string;
-  readonly proposalId: string;
-  readonly scope: "expediente";
-  readonly status: "vigente" | "invalidada";
-  readonly approverId: string;
-  readonly approverRole: string;
-  readonly inputsHash: string;
-  readonly decidedAt: string;
 }
 
 export interface PackageManifestRecord {

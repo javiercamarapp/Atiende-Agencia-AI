@@ -7,11 +7,13 @@ import type { AppDeps } from "../../../deps.ts";
 import { licitacionesChecklistRoutes } from "./checklist.ts";
 import { licitacionesProposalRoutes } from "./proposalEconomic.ts";
 import { licitacionesCierreRoutes } from "./cierre.ts";
+import { licitacionesTechnicalProposalRoutes } from "./technicalProposal.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   app.route("/", licitacionesChecklistRoutes(deps));
   app.route("/", licitacionesProposalRoutes(deps));
   app.route("/", licitacionesCierreRoutes(deps));
+  app.route("/", licitacionesTechnicalProposalRoutes(deps));
   return app;
 }

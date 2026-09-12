@@ -7,7 +7,6 @@ export type {
   RequiredAnnexItem,
   CompanyDocumentRecord,
   ApprovedRateRecord,
-  ExpedienteApprovalRecord,
   PackageManifestRecord,
   SubmissionRecord,
 } from "./types.ts";
@@ -60,8 +59,11 @@ export type {
 export { sealInputs, computeInputsHash, requireValidHashedInputs, InvalidInputsHashError } from "./sealed-inputs.ts";
 export type { InputsHash, HashedInputs, ExpedienteInputs, ExpedienteInputCompanyDocument, ExpedienteInputRate, ExpedienteInputTemplate } from "./sealed-inputs.ts";
 
-export { evaluateExpedienteApproval } from "./expediente-approval.ts";
-export type { Approval, ApprovalScope } from "./expediente-approval.ts";
+export { evaluateExpedienteApproval, ApprovalWorkflow, APPROVER_ROLES, SUBMITTER_ROLES, resetApprovalCounters } from "./approval-workflow.ts";
+export type { Approval, ApprovalScope, ChangeDetected, ApprovalWorkflowSnapshot } from "./approval-workflow.ts";
+
+export { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
+export type { ProposalVersion, ProposalInputRecord, PersistedProposalVersion } from "./proposal-version-registry.ts";
 
 export { PackageAssembler, USER_RESPONSIBILITY_NOTICE, verifyManifest } from "./package-assembler.ts";
 export type {
@@ -81,8 +83,53 @@ export type { StoredFile } from "./storage.ts";
 export { LICITACIONES_ROLES, isLicitacionesRole, WRITE_ROLES, DECISION_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE } from "./roles.ts";
 export type { LicitacionesRole } from "./roles.ts";
 
-export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError } from "./errors.ts";
+export {
+  RuleBasedExtractor,
+  RequirementMatrixBuilder,
+  detectConflicts,
+  deriveSectionKeysFromRequirementMatrix,
+  extractDeadline,
+  buildMexicoCityIso,
+  classifyType,
+  classifyResponsibleRole,
+  nextRequirementId,
+  resetRequirementCounters,
+  SECTION_KEY_BY_REQUIREMENT_TYPE,
+} from "./requirement-matrix.ts";
+export type {
+  Obligatoriedad,
+  RequirementType,
+  RequirementStatus,
+  RequirementSource,
+  TopicKey,
+  RequirementItem,
+  ConflictKind,
+  Conflict,
+  TenderPageText,
+  TenderDocumentText,
+  RequirementExtractor,
+  RequirementMatrixResult,
+} from "./requirement-matrix.ts";
 
-export type { LicitacionesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
+export { LlmRequirementExtractor, LLM_EXTRACTOR_CONFIDENCE } from "./llm-requirement-extractor.ts";
+export type { LlmRequirementExtractorOptions } from "./llm-requirement-extractor.ts";
+
+export {
+  TechnicalProposalBuilder,
+  NOT_APPLICABLE_TITLE_PREFIX,
+  isNotApplicableSection,
+  extractNotApplicableRequirements,
+} from "./technical-proposal.ts";
+export type {
+  ProposalStatement,
+  SectionBlocker,
+  ProposalSection,
+  TechnicalProposal,
+  RequirementFulfillmentMapping,
+} from "./technical-proposal.ts";
+
+export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError } from "./errors.ts";
+
+export type { LicitacionesRepository, IdempotencyParams, IdempotentResult, RequirementItemRecord, RequirementFulfillmentMappingRecord } from "./repository.ts";
 export { InMemoryLicitacionesRepository } from "./in-memory-repository.ts";
 export { PostgresLicitacionesRepository } from "./postgres-repository.ts";

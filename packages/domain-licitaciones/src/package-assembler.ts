@@ -10,7 +10,7 @@
 // la presentación y firma las realiza el usuario.
 import JSZip from "jszip";
 import type { ChecklistReport } from "./integrity-checklist.ts";
-import type { Approval } from "./expediente-approval.ts";
+import type { Approval } from "./approval-workflow.ts";
 import { isoNow, sha256Bytes } from "./types.ts";
 import { requireValidHashedInputs } from "./sealed-inputs.ts";
 import type { HashedInputs } from "./sealed-inputs.ts";

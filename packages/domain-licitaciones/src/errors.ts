@@ -37,3 +37,22 @@ export class ReadinessStaleError extends Error {
     this.name = "ReadinessStaleError";
   }
 }
+
+/**
+ * Fase 2 pieza 1 (AE-02/AE-11, ver approval-workflow.ts): lanzado por
+ * `ApprovalWorkflow.approve()`/`requestReview()` cuando la regla de
+ * aprobación rechaza la operación -- rol no autorizado, `scope`/`scopeRef`
+ * inconsistentes (AE-02), o autoaprobación (por haber enviado a revisión, o
+ * por ser autor de contenido de una sección cubierta, AE-11). `reasonCode`
+ * es estable y legible por máquina (apps/api lo mapea a un código HTTP
+ * específico); `message` es el texto legible para humanos.
+ */
+export class ApprovalRejectedError extends Error {
+  constructor(
+    readonly reasonCode: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApprovalRejectedError";
+  }
+}
