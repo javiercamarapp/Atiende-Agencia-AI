@@ -7,7 +7,7 @@ import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDe
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -79,8 +79,10 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
   const citasRepo = new InMemoryCitasRepository();
   const licitacionesRepo = new InMemoryLicitacionesRepository();
   const despachosRepo = new InMemoryDespachosRepository();
-  const rentasRepo = new InMemoryRentasRepository();
+  const rentasCalendarStore = new InMemoryRentasCalendarStore();
+  const rentasRepo = new InMemoryRentasRepository(rentasCalendarStore);
   const rentasOwnerPortalRepo = new InMemoryRentasOwnerPortalRepository();
+  const rentasCalendarSyncRepo = new InMemoryRentasCalendarSyncRepository(rentasCalendarStore);
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
@@ -110,6 +112,8 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => rentasRepo,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepo,
+    rentasCalendarSyncRepo: (_db) => rentasCalendarSyncRepo,
+    rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
   };
 

@@ -14,7 +14,7 @@ import type { LicitacionesRole } from "@atiende/domain-licitaciones";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
@@ -104,6 +104,8 @@ export async function buildLicitacionesTestContext(
     hotelesFraudeAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+    rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
+    rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: options.llmGateway,
   };
 

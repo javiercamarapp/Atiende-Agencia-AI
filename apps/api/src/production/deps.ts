@@ -59,7 +59,7 @@ import type { DespachosRepository } from "@atiende/domain-despachos";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RentasRepository } from "@atiende/domain-rentas";
-import { PostgresRentasRepository } from "@atiende/domain-rentas";
+import { PostgresRentasRepository, PostgresRentasCalendarSyncRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
 import { openManagedPostgres } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { loadApiEnv } from "../env.ts";
@@ -217,6 +217,13 @@ export function buildProductionDeps(): AppDeps {
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     despachosAuditSink: notProductionReady<AuditSink>("despachosAuditSink"),
     rentasRepo: (db) => new PostgresRentasRepository(db),
+    // Fase 5 -- ambos son código real de producción, no un stub: un feed iCal de
+    // canal es una URL pública sin credenciales, así que a diferencia de
+    // `citasGoogleCalendarPortResolver` (bloqueado en producción hasta tener
+    // GOOGLE_CLIENT_ID/SECRET), este puerto funciona hoy sin ninguna credencial de
+    // plataforma pendiente.
+    rentasCalendarSyncRepo: (db) => new PostgresRentasCalendarSyncRepository(db),
+    rentasIcalFeedPort: new RealIcalFeedPort(),
     // Los 5 métodos de solo lectura del portal SÍ quedan reales aquí (sesión RLS
     // por-request, igual que el resto). Los otros 3 (credenciales/invitaciones)
     // requieren una sesión de `service_role` que este monorepo no aprovisiona

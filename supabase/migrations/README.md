@@ -33,6 +33,10 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 24–30. `packages/domain-rentas/migrations/001..007_*.sql`
 31–36. `packages/domain-restaurantes/migrations/001..006_*.sql`
 37. `packages/domain-licitaciones/migrations/010_source_runs_and_tender_versions.sql` — Fase 5 (fuera de la secuencia interna 001-009 de licitaciones porque se agregó después de que rentas/restaurantes ya habían tomado los timestamps siguientes; ver regla de "siguiente timestamp libre" abajo.
+38. `packages/domain-hoteles/migrations/006_cfdi_hospedaje.sql` — Fase 5 hoteles.
+39. `packages/domain-hoteles/migrations/007_fraude_alerta.sql` — Fase 5 hoteles.
+40. `packages/domain-licitaciones/migrations/010_source_runs_and_tender_versions.sql` — preexistente (drift de este README frente al repo real, ya presente antes de esta fase; no se investiga más a fondo aquí, fuera de alcance de Fase 5 rentas).
+41. `packages/domain-rentas/migrations/008_ical_sync_schema.sql` — Fase 5 rentas: sincronización de calendario por canal (feeds iCal externos, bookkeeping de versión/anti-eco, ver diseño de esa fase).
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
@@ -41,8 +45,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000036`; usa
-   `20240101000037`, luego `...038`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000041`; usa
+   `20240101000042`, luego `...043`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí).
 3. No edites el contenido SQL al copiarlo: debe ser una copia exacta del original.

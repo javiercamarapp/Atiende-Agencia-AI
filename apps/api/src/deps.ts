@@ -7,7 +7,7 @@ import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
-import type { RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
+import type { CalendarSyncPort, RentasCalendarSyncRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { ApiEnv } from "./env.ts";
 
@@ -120,6 +120,21 @@ export interface AppDeps {
    * (`rentas.owner_credential`), RLS nueva y aditiva -- nunca comparte código de
    * autorización con las rutas de staff. */
   readonly rentasOwnerPortalRepo: (db: TenantDbSession) => RentasOwnerPortalRepository;
+  /** Fase 5 -- bookkeeping de sincronización de calendario por canal (feeds iCal
+   * externos, versión por UID, anti-eco) -- puerto separado de `rentasRepo` a
+   * propósito, mismo criterio que `rentasOwnerPortalRepo`: tablas nuevas
+   * (`rentas.canal_feed_externo`/`rentas.evento_canal_importado`/
+   * `rentas.bloqueo_exportado`, ver migrations/008_ical_sync_schema.sql), actor
+   * distinto (el motor de sync -- ver @atiende/domain-rentas::ejecutarCicloImportacion
+   * -- corre tanto desde una sesión de staff como desde el cron interno de sistema). */
+  readonly rentasCalendarSyncRepo: (db: TenantDbSession) => RentasCalendarSyncRepository;
+  /** Fase 5 -- obtiene el contenido de un feed iCal externo (Airbnb/Booking/VRBO/...).
+   * A diferencia de `citasGoogleCalendarPortResolver` (por-proveedor, requiere OAuth),
+   * este puerto es ÚNICO para toda la plataforma: un feed iCal de canal es una URL
+   * pública sin credenciales, así que no hay nada que resolver por tenant -- en
+   * producción es `RealIcalFeedPort` real (SSRF-safe), en tests un
+   * `FakeIcalFeedPort` compartido. */
+  readonly rentasIcalFeedPort: CalendarSyncPort;
   /** Gateway LLM real compartido (packages/agent-core::LlmGateway), construido por
    * `production/llm-gateway.ts::buildProductionLlmGateway` SOLO SI al menos un
    * proveedor (Anthropic/OpenAI/OpenRouter) tiene API key configurada -- ver ese

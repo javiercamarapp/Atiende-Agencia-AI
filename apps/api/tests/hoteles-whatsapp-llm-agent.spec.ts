@@ -21,7 +21,7 @@ import { InMemoryCitasRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyC
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
@@ -131,6 +131,8 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     hotelesFraudeAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+    rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
+    rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
   };
   return { deps, hotelesRepo, organizationId, propertyId };
@@ -260,6 +262,8 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
       hotelesFraudeAuditSink: new InMemoryAuditSink(),
       rentasRepo: (_db) => new InMemoryRentasRepository(),
       rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+      rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
+      rentasIcalFeedPort: new FakeIcalFeedPort(),
       llmGateway: undefined,
     };
     const app = buildApp(deps);

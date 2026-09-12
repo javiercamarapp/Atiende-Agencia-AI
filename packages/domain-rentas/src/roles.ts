@@ -37,6 +37,15 @@ export const CANCELAR_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "
 export const FINANZAS_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora"];
 export const FINANZAS_LECTURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "contador"];
 
+// Sincronización de calendario por canal (Fase 5): conectar/desconectar un feed iCal
+// es una operación de calendario (afecta qué se considera ocupado) -- mismo criterio
+// de rol que ESCRITURA_CALENDARIO_ROLES. La LECTURA del estado de sync se abre además
+// a `operador:solo_calendario` (rol de solo-lectura de calendario que no participa en
+// ESCRITURA_CALENDARIO_ROLES) -- ver rentas de calendario/bloqueos.ts para el mismo
+// patrón de "lectura más permisiva que escritura".
+export const SYNC_CALENDARIO_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
+export const SYNC_CALENDARIO_LECTURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario"];
+
 // Pricing (Fase 2, Flujo 4): mismo criterio que ROLES_ADMIN del origen
 // (`exigirRol(auth, ...ROLES_ADMIN)` en las 5 rutas de pricing.ts) recortado a
 // `admin_gestora` -- `superadmin` está fuera de fase (depende de

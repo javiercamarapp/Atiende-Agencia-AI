@@ -72,6 +72,8 @@ export {
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
   PRICING_ESCRITURA_ROLES,
   RENTAS_VERTICAL_ROLES,
+  SYNC_CALENDARIO_ESCRITURA_ROLES,
+  SYNC_CALENDARIO_LECTURA_ROLES,
 } from "./roles.ts";
 export type { RentasVerticalRole } from "./roles.ts";
 
@@ -140,3 +142,37 @@ export type {
 export type { RentasOwnerPortalRepository } from "./owner-portal/repository.ts";
 export { InMemoryRentasOwnerPortalRepository } from "./owner-portal/in-memory-repository.ts";
 export { PostgresRentasOwnerPortalRepository } from "./owner-portal/postgres-repository.ts";
+
+// ---------------------------------------------------------------------------
+// Sincronización de calendario por canal (Fase 5) -- ver src/ical/*, src/sync/*.
+// Parser/generador iCal RFC 5545 puro + motor de sync/reconciliación best-effort,
+// mismo principio que domain-citas/calendar-sync.ts: rentas es SIEMPRE la fuente de
+// verdad, el canal externo es downstream.
+// ---------------------------------------------------------------------------
+export { IcsParseError, LIMITES_ICS_POR_DEFECTO, parsearIcs } from "./ical/parser.ts";
+export type { CalendarioIcsNormalizado, EstadoEventoIcs, LimitesParserIcs, VEventNormalizado, ValorFechaIcs } from "./ical/parser.ts";
+export type { CodigoErrorIcs } from "./ical/tipos.ts";
+export { fechaLocalDesdeFechaHoraConZona, fechaLocalDesdeInstante, resolverFechaLocal } from "./ical/resolver-fecha.ts";
+export { calcularHashContenidoBloqueo, construirUidExportado, esUidNamespacePropio, exportarFeedIcs, NAMESPACE_UID_EXPORT } from "./ical/exportador.ts";
+export type { BloqueoExportable, EntradaHashBloqueo, FeedExportado } from "./ical/exportador.ts";
+
+export { aplicarResultadoCiclo, ESTADO_FEED_INICIAL, OPCIONES_CUARENTENA_POR_DEFECTO } from "./sync/cuarentena.ts";
+export type { AlertaCuarentena, EstadoFeedCanal, OpcionesCuarentena, ResultadoAplicarCiclo, ResultadoCicloFetch } from "./sync/cuarentena.ts";
+export { calcularBackoffMs, OPCIONES_BACKOFF_POR_DEFECTO, reconciliarCompleto } from "./sync/reconciliacion.ts";
+export type { OpcionesBackoff, ResultadoReconciliacionCompleta, UidActivoInterno } from "./sync/reconciliacion.ts";
+export { detectarEco } from "./sync/anti-eco.ts";
+export type { CapaAntiEco, EntradaDeteccionEco, ResultadoDeteccionEco } from "./sync/anti-eco.ts";
+export { resolverVersionEvento } from "./sync/resolucion-version.ts";
+export type { AccionResolucion, ResultadoResolucion, VersionEvento } from "./sync/resolucion-version.ts";
+export { FakeIcalFeedPort, RealIcalFeedPort } from "./sync/calendar-sync-port.ts";
+export type { CalendarSyncPort, FetchFeedInput, FetchFeedResult } from "./sync/calendar-sync-port.ts";
+export { SsrfError, redactarUrlParaLog, validarIpPermitida, validarTodasLasIps } from "./sync/net/ssrf.ts";
+export type { MotivoRechazoSsrf, ResultadoValidacionIp } from "./sync/net/ssrf.ts";
+export { fetchIcsSeguro } from "./sync/net/fetch-ics-seguro.ts";
+export type { OpcionesFetchIcs, ResultadoFetchIcs } from "./sync/net/fetch-ics-seguro.ts";
+export { ejecutarCicloImportacion, exportarFeedParaUnidad } from "./sync/motor.ts";
+export type { ContextoExportacion, ContextoSincronizacion, EventoDescartadoPorError, ResultadoImportarCiclo, RevisionUidReciclado } from "./sync/motor.ts";
+export type { RentasCalendarSyncRepository } from "./sync/repository.ts";
+export type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./sync/tipos.ts";
+export { InMemoryRentasCalendarSyncRepository } from "./sync/in-memory-repository.ts";
+export { PostgresRentasCalendarSyncRepository } from "./sync/postgres-repository.ts";

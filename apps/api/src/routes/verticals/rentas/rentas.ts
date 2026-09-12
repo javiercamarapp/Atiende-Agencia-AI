@@ -13,6 +13,9 @@ import { rentasFinanzasStatementsRoutes } from "./finanzas-statements.ts";
 import { rentasFinanzasPayoutsRoutes } from "./finanzas-payouts.ts";
 import { rentasOwnerPortalInviteRoutes } from "./owner-portal-invite.ts";
 import { rentasOwnerPortalRoutes } from "./owner-portal.ts";
+import { rentasIcalSyncRoutes } from "./ical-sync.ts";
+import { rentasIcalFeedPublicoRoutes } from "./ical-feed-publico.ts";
+import { rentasIcalSyncCronRoutes } from "./ical-sync-cron.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -35,6 +38,13 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasOwnerPortalRoutes(deps));
   app.route("/", rentasOwnerPortalInviteRoutes(deps));
 
+  // Fase 5 -- exportación pública del feed iCal (sin auth de staff, ver
+  // ical-feed-publico.ts) montada junto al portal de propietario por la misma razón
+  // documentada arriba: es una ruta literal (`.../feed.ics`) sin
+  // requirePropertyMembership, así que montarla temprano evita cualquier ambigüedad
+  // de forma con el patrón wildcard de las rutas de staff de abajo.
+  app.route("/", rentasIcalFeedPublicoRoutes(deps));
+
   app.route("/", rentasReservasRoutes(deps));
   app.route("/", rentasBloqueosRoutes(deps));
   app.route("/", rentasCotizacionesRoutes(deps));
@@ -42,5 +52,9 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasPricingConfigRoutes(deps));
   app.route("/", rentasFinanzasStatementsRoutes(deps));
   app.route("/", rentasFinanzasPayoutsRoutes(deps));
+  app.route("/", rentasIcalSyncRoutes(deps));
+  // Cron interno (Fase 5) -- mismo patrón que citas/google-calendar-sync.ts: sin
+  // requirePropertyMembership, guardado por x-atiende-internal-secret.
+  app.route("/", rentasIcalSyncCronRoutes(deps));
   return app;
 }
