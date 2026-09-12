@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@atiende/agent-core": "*",
     "@atiende/core-auth": "*",
     "@atiende/core-authz": "*",
     "@atiende/core-tenancy": "*",

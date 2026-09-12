@@ -24,6 +24,7 @@ export const TEST_ENV: ApiEnv = {
   rentasOwnerAccessTokenTtlSeconds: 900,
   rentasOwnerRefreshTokenTtlSeconds: 60 * 60 * 24 * 30,
   licitacionesStorageDir: "/tmp/atiende-licitaciones-storage-test",
+  llmProviders: { anthropic: null, openai: null, openrouter: null },
 };
 
 export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo: InMemoryRestaurantesRepository; organizationId: string; propertyId: string; products: Record<string, string>; ownerEmail: string; ownerPassword: string }> {
@@ -106,6 +107,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => rentasRepo,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepo,
+    llmGateway: undefined,
   };
 
   return { deps, restaurantesRepo, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

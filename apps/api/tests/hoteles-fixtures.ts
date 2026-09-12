@@ -155,6 +155,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => rentasRepoUnused,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepoUnused,
+    llmGateway: undefined,
   };
 
   const app = buildApp(deps);

@@ -42,6 +42,31 @@ export interface ApiEnv {
    * producción real debe apuntar a un volumen persistente o reemplazarse por un
    * adaptador de storage con blob storage real (fuera de alcance de este cambio). */
   readonly licitacionesStorageDir: string;
+  /**
+   * Credenciales de los proveedores LLM directos que `production/llm-gateway.ts`
+   * usa para construir el `LlmGateway` real compartido por los turn handlers de
+   * WhatsApp (restaurantes/hoteles/citas) y `LlmRequirementExtractor`
+   * (licitaciones) -- ver ese archivo para el detalle completo del wiring.
+   * DELIBERADAMENTE opcionales (nunca `requireEnv`): si un proveedor no tiene
+   * TANTO su API key COMO su modelo configurados, ese proveedor simplemente no
+   * entra a la escalera -- nunca se inventa un modelo por defecto (adivinar un
+   * id de modelo sería fingir una integración que nadie confirmó). Si NINGÚN
+   * proveedor queda configurado, `buildProductionLlmGateway` devuelve
+   * `undefined` y `production/deps.ts` cae en el mismo `notProductionReady`
+   * explícito de siempre -- fail-closed, nunca silencioso.
+   */
+  readonly llmProviders: {
+    /** Integración directa con la API de Anthropic (`providers/anthropic.ts`). */
+    readonly anthropic: { readonly apiKey: string; readonly model: string } | null;
+    /** Integración directa con la API de OpenAI (`providers/openai.ts`). */
+    readonly openai: { readonly apiKey: string; readonly model: string } | null;
+    /** Vía el agregador OpenRouter (`providers/openrouter.ts`) -- `countryOfResidence`
+     * es `null` salvo que el operador confirme la ruta real del modelo pineado (ver
+     * nota de RESIDENCIA en ese archivo); un `null` dejaría a OpenRouter fuera de
+     * cualquier escalera con el gate de residencia activo, que es el comportamiento
+     * seguro por defecto. */
+    readonly openrouter: { readonly apiKey: string; readonly model: string; readonly countryOfResidence: string | null } | null;
+  };
 }
 
 function requireEnv(name: string, fallback?: string): string {
@@ -68,5 +93,19 @@ export function loadApiEnv(): ApiEnv {
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
     rentasOwnerRefreshTokenTtlSeconds: Number(process.env.RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
     licitacionesStorageDir: requireEnv("LICITACIONES_STORAGE_DIR", "/tmp/atiende-licitaciones-storage"),
+    llmProviders: {
+      anthropic:
+        process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_MODEL
+          ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL }
+          : null,
+      openai:
+        process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL
+          ? { apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL }
+          : null,
+      openrouter:
+        process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_MODEL
+          ? { apiKey: process.env.OPENROUTER_API_KEY, model: process.env.OPENROUTER_MODEL, countryOfResidence: process.env.OPENROUTER_COUNTRY_OF_RESIDENCE ?? null }
+          : null,
+    },
   };
 }

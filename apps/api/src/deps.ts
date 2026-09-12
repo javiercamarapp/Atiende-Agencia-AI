@@ -7,6 +7,7 @@ import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCode
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
+import type { LlmGateway } from "@atiende/agent-core";
 import type { ApiEnv } from "./env.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
@@ -104,4 +105,15 @@ export interface AppDeps {
    * (`rentas.owner_credential`), RLS nueva y aditiva -- nunca comparte código de
    * autorización con las rutas de staff. */
   readonly rentasOwnerPortalRepo: (db: TenantDbSession) => RentasOwnerPortalRepository;
+  /** Gateway LLM real compartido (packages/agent-core::LlmGateway), construido por
+   * `production/llm-gateway.ts::buildProductionLlmGateway` SOLO SI al menos un
+   * proveedor (Anthropic/OpenAI/OpenRouter) tiene API key configurada -- ver ese
+   * archivo para el detalle completo. `undefined` explícito cuando ninguna lo está:
+   * hoy solo lo usa la ruta de licitaciones `POST .../requirements/extract`
+   * (`technicalProposal.ts`) para decidir si suma `LlmRequirementExtractor` junto a
+   * `RuleBasedExtractor` -- los turn handlers de WhatsApp (restaurantes/hoteles/
+   * citas) NO leen este campo directamente porque necesitan una sesión de Postgres
+   * por-request para su propio repo (ver comentario de `turnHandler` arriba); ellos
+   * reciben el mismo gateway ya cerrado en el closure que arma `production/deps.ts`. */
+  readonly llmGateway: LlmGateway | undefined;
 }

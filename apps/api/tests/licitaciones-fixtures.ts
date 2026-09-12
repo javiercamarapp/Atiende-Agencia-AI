@@ -14,6 +14,7 @@ import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDe
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import type { LlmGateway } from "@atiende/agent-core";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -45,7 +46,10 @@ async function signInAndGetToken(app: TestApp, email: string, password: string):
   return body.token;
 }
 
-export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options: { submissionDeadline?: string | null } = {}): Promise<LicitacionesTestContext> {
+export async function buildLicitacionesTestContext(
+  buildApp: BuildAppFn,
+  options: { submissionDeadline?: string | null; llmGateway?: LlmGateway } = {},
+): Promise<LicitacionesTestContext> {
   const coreRepo = new InMemoryCoreRepository();
   const engine = new InMemoryTenancyEngine();
   const repo = new InMemoryLicitacionesRepository();
@@ -97,6 +101,7 @@ export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+    llmGateway: options.llmGateway,
   };
 
   const app = buildApp(deps);

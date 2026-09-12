@@ -63,6 +63,22 @@ describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
     expect(() => deps.hotelesPaymentsPort.charge({ idempotencyKey: "test", amount: 100, currency: "MXN", paymentMethodToken: "tok_test" })).toThrow(/sin adaptador de producción todavía/);
   });
 
+  // Rama feat/fusion-produccion-gateway-llm: turnHandler/hotelesTurnHandler/
+  // citasTurnHandler dejan de ser SIEMPRE `notProductionReady` (ver
+  // production/llm-gateway.ts + production/deps.ts) — pero en ESTE proceso de
+  // prueba ninguna variable ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY
+  // está configurada (ver REQUIRED_ENV de arriba), así que siguen siendo el
+  // mismo placeholder explícito que `hotelesPaymentsPort` — fail-closed, nunca
+  // un gateway que finge funcionar sin credenciales reales.
+  it("turnHandler/hotelesTurnHandler/citasTurnHandler SIGUEN notProductionReady sin ninguna API key de proveedor LLM configurada", async () => {
+    const { buildProductionDeps } = await import("../src/production/deps.ts");
+    const deps = buildProductionDeps();
+    expect(deps.llmGateway).toBeUndefined();
+    expect(() => deps.turnHandler.handleInboundMessage({} as never)).toThrow(/sin adaptador de producción todavía/);
+    expect(() => deps.hotelesTurnHandler.handleInboundMessage({} as never)).toThrow(/sin adaptador de producción todavía/);
+    expect(() => deps.citasTurnHandler.handleInboundMessage({} as never)).toThrow(/sin adaptador de producción todavía/);
+  });
+
   it("un request HTTP real que golpea restaurantesRepo con un DATABASE_URL de mentira falla 500 (intento real de conexión, ya no un error de 'no implementado')", async () => {
     const { default: handler } = await import("../src/vercel.ts");
     const body = JSON.stringify({ phone: "9991234567" });
