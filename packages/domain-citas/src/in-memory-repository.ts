@@ -26,6 +26,7 @@ import type {
   ConversationMessage,
   CreateAppointmentResult,
   CustomerPage,
+  MessagingOutboxRow,
   NewAppointmentInput,
   ReassignResult,
   RescheduleResult,
@@ -104,6 +105,22 @@ interface StoredConversation {
   propertyId: string | null;
 }
 
+/** Espejo en memoria de `citas.messaging_outbox` (migrations/003+007) — mismo
+ * idioma de claim-con-lease-reclamable que `StoredWhatsAppEvent`. */
+interface InMemoryOutboxRow {
+  id: string;
+  organizationId: string;
+  channel: "whatsapp" | "email";
+  eventType: string;
+  dedupeKey: string;
+  payload: unknown;
+  status: "pending" | "processing" | "sent" | "failed" | "dead";
+  attempts: number;
+  claimedAt: number | null;
+  nextAttemptAt: number;
+  lastErrorClass: string | null;
+}
+
 export class InMemoryCitasRepository implements CitasRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -121,7 +138,7 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly whatsappPhoneNumberIdByOrg = new Map<string, string>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
-  private readonly outbox: { organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown }[] = [];
+  private readonly outbox = new Map<string, InMemoryOutboxRow>();
   private readonly waitlist = new Map<string, StoredWaitlistRow>();
   // ---- Fase 3 — Google Calendar (ver diseño §3/§4) ----
   private readonly calendarAccounts = new Map<string, ProviderCalendarAccountRecord>(); // por providerId
@@ -210,8 +227,8 @@ export class InMemoryCitasRepository implements CitasRepository {
     }
   }
 
-  getOutbox(): readonly { organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown }[] {
-    return this.outbox;
+  getOutbox(): readonly { organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: string; attempts: number }[] {
+    return [...this.outbox.values()];
   }
 
   getWaitlistEntry(id: string): StoredWaitlistRow | undefined {
@@ -581,8 +598,60 @@ export class InMemoryCitasRepository implements CitasRepository {
   }
 
   async enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
-    if (this.outbox.some((o) => o.organizationId === organizationId && o.channel === channel && o.dedupeKey === dedupeKey)) return;
-    this.outbox.push({ organizationId, channel, eventType, dedupeKey, payload });
+    const existing = [...this.outbox.values()].find((o) => o.organizationId === organizationId && o.channel === channel && o.dedupeKey === dedupeKey);
+    if (existing) {
+      // Mismo criterio que `citas.enqueue_messaging_outbox` real: solo se
+      // actualiza el payload si todavía no se procesó (pending/failed) — un
+      // mensaje ya sent/processing/dead no se pisa.
+      if (existing.status === "pending" || existing.status === "failed") {
+        existing.eventType = eventType;
+        existing.payload = payload;
+      }
+      return;
+    }
+    const id = randomUUID();
+    this.outbox.set(id, { id, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0, claimedAt: null, nextAttemptAt: 0, lastErrorClass: null });
+  }
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const now = Date.now();
+    const eligible = [...this.outbox.values()]
+      .filter(
+        (o) =>
+          o.channel === "whatsapp" &&
+          ((o.status === "pending" && o.nextAttemptAt <= now) || (o.status === "processing" && (o.claimedAt ?? 0) < now - leaseSeconds * 1000)),
+      )
+      .slice(0, limit);
+    for (const row of eligible) {
+      row.status = "processing";
+      row.claimedAt = now;
+    }
+    return eligible.map((row) => ({ id: row.id, attempts: row.attempts, payload: row.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "sent";
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "pending";
+    row.attempts = attempts;
+    row.lastErrorClass = errorClass.slice(0, 120);
+    row.nextAttemptAt = Date.parse(nextAttemptAtIso);
+    row.claimedAt = null;
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "dead";
+    row.attempts = attempts;
+    row.lastErrorClass = errorClass.slice(0, 120);
+    row.claimedAt = null;
   }
 
   async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {

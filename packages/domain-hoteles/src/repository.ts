@@ -231,6 +231,29 @@ export interface HotelesRepository {
   findCfdiEmision(propertyId: string, cfdiId: string): Promise<CfdiEmisionRecord | null>;
   listCfdiEmisiones(propertyId: string, filter?: { readonly folioId?: string }): Promise<readonly CfdiEmisionRecord[]>;
   updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void>;
+
+  // ---- Dispatcher real de messaging_outbox (migrations/008) — hoteles NO tenía
+  // NINGÚN concepto de outbox antes de este cambio (a diferencia de citas, que ya
+  // traía la tabla desde su Fase 1): `outcome.reply` del turn handler de WhatsApp
+  // solo se guardaba en `whatsapp_conversations.messages`, nunca se encolaba para
+  // envío real (ver @atiende/whatsapp-gateway/README.md). Partición por
+  // PROPERTY (no organización) — mismo eje que el resto de tablas de WhatsApp de
+  // este dominio, porque 1 número de WhatsApp = 1 property aquí. ----
+  enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
+  claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
+  markMessagingOutboxSent(id: string): Promise<void>;
+  markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
+  markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
+}
+
+/** Fila de `hoteles.messaging_outbox` reclamada para despacho real — mismo shape
+ * que `@atiende/domain-citas::MessagingOutboxRow` (ver
+ * @atiende/whatsapp-gateway::MessagingOutboxPort, el puerto genérico que
+ * `createHotelesMessagingOutboxPort` en whatsapp/outbox-adapter.ts implementa). */
+export interface MessagingOutboxRow {
+  readonly id: string;
+  readonly attempts: number;
+  readonly payload: unknown;
 }
 
 export type { FolioRecord, ChargeRecord, PaymentRecord, NewChargeInput, NewPaymentInput, FnbOrderRecord, NewFnbOrderInput, NightlyRateRecord, TaxConfigRecord, GuestIdentity } from "./types.ts";

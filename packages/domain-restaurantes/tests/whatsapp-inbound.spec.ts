@@ -57,6 +57,7 @@ describe("handleInboundWhatsAppMessage — dedupe/lease/append de punta a punta"
       messageId: "wamid.1",
       phone: "+5219991234567",
       body: "Hola, quiero hacer un pedido",
+      phoneNumberId: "1234567890",
     });
     expect(outcome).toMatchObject({ ok: true, retryable: false });
     expect(outcome.reply).toMatch(/contactar/);
@@ -65,7 +66,7 @@ describe("handleInboundWhatsAppMessage — dedupe/lease/append de punta a punta"
   it("un message_id repetido (retry at-least-once de Meta) se acusa sin reprocesar (dedupe real)", async () => {
     const fixture = buildRestaurantFixture();
     const turnHandler = acknowledgeOnlyTurnHandler(fixture.repo);
-    const args = { organizationId: fixture.organizationId, messageId: "wamid.dup", phone: "+5219991234567", body: "Hola" };
+    const args = { organizationId: fixture.organizationId, messageId: "wamid.dup", phone: "+5219991234567", body: "Hola", phoneNumberId: "1234567890" };
     const first = await handleInboundWhatsAppMessage(fixture.repo, turnHandler, args);
     const second = await handleInboundWhatsAppMessage(fixture.repo, turnHandler, args);
     expect(first).toMatchObject({ ok: true });
@@ -80,8 +81,8 @@ describe("handleInboundWhatsAppMessage — dedupe/lease/append de punta a punta"
     const turnHandler = acknowledgeOnlyTurnHandler(fixture.repo);
     const phone = "+5219998887777";
     const [a, b] = await Promise.all([
-      handleInboundWhatsAppMessage(fixture.repo, turnHandler, { organizationId: fixture.organizationId, messageId: "m1", phone, body: "mensaje uno" }),
-      handleInboundWhatsAppMessage(fixture.repo, turnHandler, { organizationId: fixture.organizationId, messageId: "m2", phone, body: "mensaje dos" }),
+      handleInboundWhatsAppMessage(fixture.repo, turnHandler, { organizationId: fixture.organizationId, messageId: "m1", phone, body: "mensaje uno", phoneNumberId: "1234567890" }),
+      handleInboundWhatsAppMessage(fixture.repo, turnHandler, { organizationId: fixture.organizationId, messageId: "m2", phone, body: "mensaje dos", phoneNumberId: "1234567890" }),
     ]);
     const outcomes = [a, b];
     // Exactamente uno gana el lease y se procesa; el otro queda retryable (Meta

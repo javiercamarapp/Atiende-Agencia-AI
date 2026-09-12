@@ -10,6 +10,15 @@ export interface ApiEnv {
   readonly voiceToolSecret: string;
   readonly whatsappVerifyToken: string;
   readonly whatsappAppSecret: string;
+  /** Token de acceso real de la Meta App de plataforma para ENVIAR mensajes de
+   *  WhatsApp vía Graph API (`Authorization: Bearer`, ver
+   *  @atiende/whatsapp-gateway::MetaGraphWhatsAppClient) — a diferencia de
+   *  `whatsappVerifyToken`/`whatsappAppSecret` (verificación del webhook
+   *  ENTRANTE), esta es la pieza que faltaba para el envío SALIENTE real. `null`
+   *  cuando no está configurada (mismo criterio honesto que `googleOAuth`): la
+   *  ruta `POST /internal/whatsapp/dispatch` responde 503 explícito, nunca finge
+   *  un envío sin ella. */
+  readonly whatsappAccessToken: string | null;
   /** Secreto compartido para rutas internas invocadas por un scheduler externo
    * (header `x-atiende-internal-secret`, análogo a CRON_SECRET del origen) — ver
    * diseño Fase 1 citas §0.4/§5.3: el recordatorio 24h de citas es el primer
@@ -83,6 +92,7 @@ export function loadApiEnv(): ApiEnv {
     voiceToolSecret: requireEnv("VOICE_TOOL_SECRET"),
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
+    whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
     internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
     googleOAuth:

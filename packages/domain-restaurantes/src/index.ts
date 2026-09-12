@@ -46,6 +46,7 @@ export type {
   CustomerOverviewRow,
   TierDistributionMetric,
   TierDistributionRow,
+  MessagingOutboxRow,
 } from "./repository.ts";
 export { InMemoryRestaurantesRepository } from "./in-memory-repository.ts";
 export { PostgresRestaurantesRepository } from "./postgres-repository.ts";
@@ -67,6 +68,7 @@ export { extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationB
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
+export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 

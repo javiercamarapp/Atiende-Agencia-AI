@@ -37,6 +37,7 @@ export type {
   ConversationMessage,
   CreateAppointmentResult,
   CustomerPage,
+  MessagingOutboxRow,
   NewAppointmentInput,
   ReassignResult,
   ReminderCandidateRow,
@@ -104,6 +105,7 @@ export { extractMetaPhoneNumberId, extractMetaTextMessages, resolveOrganizationB
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { createDefaultConversationGuard, handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
 export type { CitasConversationGuard, InboundMessageOutcome } from "./whatsapp/inbound.ts";
+export { createCitasMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export {
   APPOINTMENT_HARD_RULES,
   createLlmWhatsAppTurnHandler,

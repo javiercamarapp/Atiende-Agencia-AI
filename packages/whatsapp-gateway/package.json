@@ -1,5 +1,5 @@
 {
-  "name": "@atiende/domain-restaurantes",
+  "name": "@atiende/whatsapp-gateway",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,8 +11,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@atiende/agent-core": "*",
-    "@atiende/core-tenancy": "*",
-    "@atiende/whatsapp-gateway": "*"
+    "@atiende/agent-core": "*"
   }
 }

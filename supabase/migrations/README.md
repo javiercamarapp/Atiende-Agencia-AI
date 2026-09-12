@@ -34,6 +34,22 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 31–36. `packages/domain-restaurantes/migrations/001..006_*.sql`
 37. `packages/domain-licitaciones/migrations/010_source_runs_and_tender_versions.sql` — Fase 5 (fuera de la secuencia interna 001-009 de licitaciones porque se agregó después de que rentas/restaurantes ya habían tomado los timestamps siguientes; ver regla de "siguiente timestamp libre" abajo.
 
+NOTA (rama `feat/fusion-whatsapp-dispatcher-real`): entre el momento en que la lista
+de arriba se escribió y este cambio, otras ramas en paralelo ya habían tomado los
+timestamps `...038`-`...040` (`domain-despachos/002`, `domain-hoteles/006_cfdi_hospedaje`,
+`domain-hoteles/007_fraude_alerta`) sin actualizar esta lista todavía — no se
+reconstruye aquí esa parte por no pisar trabajo de otra rama en curso; el "siguiente
+timestamp libre" real se confirmó mirando `ls supabase/migrations/` directo, no esta
+lista, siguiendo la propia regla de la sección de abajo.
+
+41. `packages/domain-citas/migrations/007_messaging_outbox_dispatch.sql` — dispatcher
+    real de `citas.messaging_outbox` (claim-con-lease + retry/backoff/dead), la pieza
+    que faltaba desde `003_waitlist_and_rate_limit.sql`.
+42. `packages/domain-hoteles/migrations/008_messaging_outbox.sql` — `hoteles.messaging_outbox`
+    completo (hoteles no tenía NINGÚN concepto de outbox antes de esta rama).
+43. `packages/domain-restaurantes/migrations/007_messaging_outbox.sql` — `restaurantes.messaging_outbox`
+    completo (mismo caso que hoteles).
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 

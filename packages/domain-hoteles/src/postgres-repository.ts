@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
-import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
+import type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 import type {
   CancellationPolicyRecord,
   CfdiEmisionRecord,
@@ -837,6 +837,29 @@ export class PostgresHotelesRepository implements HotelesRepository {
        where message_id = $2 and property_id = $1;`,
       [propertyId, messageId, errorClass],
     );
+  }
+
+  // ---- Dispatcher real de messaging_outbox (migrations/008) ----
+
+  async enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    await this.db.query(`select hoteles.enqueue_messaging_outbox($1, $2, $3, $4, $5, $6::jsonb);`, [propertyId, organizationId, channel, eventType, dedupeKey, JSON.stringify(payload)]);
+  }
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const { rows } = await this.db.query<{ id: string; attempts: number; payload: unknown }>(`select id, attempts, payload from hoteles.claim_messaging_outbox_batch($1, $2);`, [limit, leaseSeconds]);
+    return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    await this.db.query(`select hoteles.complete_messaging_outbox_sent($1);`, [id]);
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    await this.db.query(`select hoteles.complete_messaging_outbox_retry($1, $2, $3, $4);`, [id, attempts, errorClass, nextAttemptAtIso]);
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    await this.db.query(`select hoteles.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
   }
 
   async insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord> {

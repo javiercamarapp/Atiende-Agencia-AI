@@ -117,6 +117,17 @@ export interface WaitlistCandidateRow {
   readonly createdAt: string;
 }
 
+/** Fila de `citas.messaging_outbox` reclamada para despacho real — ver
+ * migrations/007_messaging_outbox_dispatch.sql y
+ * @atiende/whatsapp-gateway::MessagingOutboxPort (el puerto que
+ * `createCitasMessagingOutboxPort` en whatsapp/outbox-adapter.ts implementa sobre
+ * estos 4 métodos). */
+export interface MessagingOutboxRow {
+  readonly id: string;
+  readonly attempts: number;
+  readonly payload: unknown;
+}
+
 /** Fase 5 — panel de administración visual (ver README de esta fase). Página
  * paginada de resultados: `nextOffset` es `null` cuando ya no hay más filas. */
 export interface CustomerPage {
@@ -253,6 +264,13 @@ export interface CitasRepository {
   markReminderSent(appointmentId: string, sentAtIso: string): Promise<void>;
   resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null>;
   enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
+  // ---- Dispatcher real de messaging_outbox (migrations/007) — ver
+  // whatsapp/outbox-adapter.ts para el adaptador que expone estos 4 métodos como
+  // @atiende/whatsapp-gateway::MessagingOutboxPort. ----
+  claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
+  markMessagingOutboxSent(id: string): Promise<void>;
+  markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
+  markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
   claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean>;
 
