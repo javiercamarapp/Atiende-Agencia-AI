@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
+import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { LicitacionesRole } from "@atiende/domain-licitaciones";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
@@ -99,6 +100,8 @@ export async function buildLicitacionesTestContext(
     },
     despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
+    hotelesCfdiPort: new DualPacCfdiPort(new FakeFinkokAdapter(), new FakeSwSapienAdapter()),
+    hotelesFraudeAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
     llmGateway: options.llmGateway,

@@ -34,6 +34,27 @@ export const ADMIN_ROLES: readonly HotelRole[] = ["owner", "gm"];
 // por transición real vive en reservationStateMachine.ts::rolesAllowedForTransition.
 export const MANAGE_RESERVATIONS_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
 
+// H5/REQ-BO-001/002 (Fase 5) — CFDI de hospedaje. Mismo criterio que el original
+// (`CFDI_ROLES = [...ADMIN_ROLES, "accountant"]`): timbrar/cancelar un comprobante
+// fiscal es una acción de dinero MÁS estricta que MONEY_ROLES (nunca frontdesk/
+// reservations/fnb, que sí pueden cobrar un folio pero no fiscalizarlo).
+export const CFDI_HOSPEDAJE_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+
+// H16-014/REQ-REC-014 (Fase 5) — fraude interno. Disparar un escaneo es una acción
+// administrativa (mismo criterio que NIGHT_AUDIT_ROLES del original): owner/gm/
+// accountant. Ver el resto (roles de RESOLVER/VIEW) abajo.
+export const FRAUD_SCAN_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+/** Quién puede ver las alertas ya detectadas — mismos roles que pueden dispararlas
+ *  en esta fase (los 2 patrones portados son ambos de dinero/administración; el
+ *  original suma `fnb` solo para `cargo_fnb_no_posteado`, patrón fuera de alcance
+ *  de Fase 5 — ver domain-hoteles/src/fraude/deteccion.ts). */
+export const FRAUD_VIEW_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+/** Quién puede RESOLVER (confirmar/descartar) una alerta — separación de funciones:
+ *  deliberadamente el mismo conjunto que puede dispararla en esta fase (a
+ *  diferencia de despachos, que excluye `auditor` de resolver pero lo deja ver: aquí
+ *  no hay un rol de solo-auditoría en FRAUD_VIEW_ROLES que deba excluirse). */
+export const FRAUD_RESOLVER_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+
 // Quién puede TOMAR un pedido de F&B (recepción suele tomarlo por teléfono/WhatsApp
 // hasta que exista el canal real de REQ-AB-002; F&B y dirección también pueden).
 export const TOMAR_PEDIDO_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "fnb"];

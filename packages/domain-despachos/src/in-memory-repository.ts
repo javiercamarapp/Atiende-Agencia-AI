@@ -17,6 +17,7 @@ import type {
   NewInvoiceReviewInput,
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
+import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
 
 export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly invoices = new Map<string, InvoiceRecord>();
@@ -24,6 +25,7 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly reviews = new Map<string, InvoiceReviewRecord>();
   private readonly deadlines = new Map<string, FiscalDeadlineRecord>();
   private readonly escalations = new Map<string, DeadlineEscalationRecord[]>(); // key: deadlineId
+  private readonly mapeosMigracion = new Map<string, MapeoMigracionCuenta>();
 
   // ---- CFDI ----
 
@@ -163,5 +165,50 @@ export class InMemoryDespachosRepository implements DespachosRepository {
 
   async listEscalations(deadlineId: string): Promise<readonly DeadlineEscalationRecord[]> {
     return this.escalations.get(deadlineId) ?? [];
+  }
+
+  // ---- Migración de catálogo contable (Fase 5) ----
+
+  async insertMapeoMigracion(
+    input: NewMapeoMigracionInput & { readonly tipoMatch: MapeoMigracionCuenta["tipoMatch"]; readonly score: number; readonly estado: MapeoMigracionCuenta["estado"] },
+  ): Promise<MapeoMigracionCuenta> {
+    const now = new Date().toISOString();
+    const record: MapeoMigracionCuenta = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      origenCuentaId: input.origenCuentaId,
+      destinoCuentaId: input.destinoCuentaId,
+      tipoMatch: input.tipoMatch,
+      score: input.score,
+      estado: input.estado,
+      aprobadoPor: null,
+      aprobadoEn: null,
+      nota: input.nota,
+      estrategiaConciliacionSaldos: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.mapeosMigracion.set(record.id, record);
+    return record;
+  }
+
+  async findMapeoMigracion(propertyId: string, mapeoId: string): Promise<MapeoMigracionCuenta | null> {
+    const mapeo = this.mapeosMigracion.get(mapeoId);
+    if (!mapeo || mapeo.propertyId !== propertyId) return null;
+    return mapeo;
+  }
+
+  async listMapeosMigracion(propertyId: string, filter?: { readonly estado?: MapeoMigracionCuenta["estado"] }): Promise<readonly MapeoMigracionCuenta[]> {
+    return [...this.mapeosMigracion.values()]
+      .filter((m) => m.propertyId === propertyId)
+      .filter((m) => !filter?.estado || m.estado === filter.estado)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  async updateMapeoMigracion(mapeo: MapeoMigracionCuenta): Promise<MapeoMigracionCuenta> {
+    if (!this.mapeosMigracion.has(mapeo.id)) throw new Error(`Mapeo de migración ${mapeo.id} no encontrado.`);
+    this.mapeosMigracion.set(mapeo.id, mapeo);
+    return mapeo;
   }
 }

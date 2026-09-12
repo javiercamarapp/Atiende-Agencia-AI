@@ -7,7 +7,7 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 30_000,
     reporters: ["default"],
-    include: ["packages/*/tests/**/*.spec.ts", "apps/*/tests/**/*.spec.ts"],
+    include: ["packages/*/tests/**/*.spec.ts", "packages/mcp-servers/*/tests/**/*.spec.ts", "apps/*/tests/**/*.spec.ts"],
     exclude: ["**/node_modules/**", "**/.claude/**", "**/dist/**"],
   },
 });

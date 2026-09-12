@@ -42,6 +42,7 @@
 // una sesión entre requests.
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
+import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { PostgresRestaurantesRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { CitasRepository, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
@@ -176,6 +177,17 @@ export function buildProductionDeps(): AppDeps {
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: notProductionReady<PaymentsPort>("hotelesPaymentsPort"),
     hotelesTurnHandler: llmGateway ? buildRealHotelesTurnHandler(engine, llmGateway) : notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
+    // Fase 5 (H5/REQ-BO-001/002) — a diferencia de `hotelesPaymentsPort` (SIN
+    // adaptador real todavía), aquí SÍ se conecta un `CfdiPort` real de punta a
+    // punta: `FinkokAdapter`/`SwSapienAdapter` son esqueletos HONESTOS que fallan
+    // explícito con `PortUnavailableError` mientras falten sus variables de entorno
+    // de credenciales/CSD (ver @atiende/mcp-cfdi/README.md) -- nunca fabrican un
+    // timbrado. No hace falta `notProductionReady` aquí porque el propio adaptador
+    // YA es honesto sobre su disponibilidad vía `status()`.
+    hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()),
+    // Falta un adaptador de auditoría real (tabla/servicio dedicado) -- mismo tipo
+    // de gap que `despachosAuditSink` (ver ese comentario abajo), no el de sesión.
+    hotelesFraudeAuditSink: notProductionReady<AuditSink>("hotelesFraudeAuditSink"),
     citasRepo: (db) => new PostgresCitasRepository(db),
     // El turn handler real (LLM real vía @atiende/agent-core::LlmGateway con
     // roles/proveedores registrados, ver ./llm-gateway.ts) ya se construye aquí en
