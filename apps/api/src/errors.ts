@@ -41,4 +41,10 @@ export const Errors = {
   reservaConflictoDeEstado: () =>
     new ApiError(409, "reserva_conflicto_estado", "La reserva ya cambió de estado (reintento/carrera); vuelve a consultarla antes de reintentar."),
   reservaSinDisponibilidad: (message: string) => new ApiError(409, "sin_disponibilidad", message),
+  // ---- hoteles (CFDI de hospedaje, Fase 5 -- H5/REQ-BO-001/002) ----
+  // Nuestro propio hotel es el EMISOR: a diferencia de despachos (ingesta un CFDI ya
+  // timbrado por un tercero y solo lo marca `requiresHumanReview`), aquí un CFDI mal
+  // formado nunca se envía a un PAC real -- se rechaza ANTES de intentar timbrar.
+  cfdiHospedajeInvalido: (codigos: readonly string[]) =>
+    new ApiError(422, "cfdi_hospedaje_invalido", `El CFDI de hospedaje no pasó la validación fiscal previa al timbrado: ${codigos.join(", ")}.`),
 };

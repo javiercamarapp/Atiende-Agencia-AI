@@ -7,3 +7,13 @@ export class IdempotencyConflictError extends Error {
     this.name = "IdempotencyConflictError";
   }
 }
+
+/** H16-014/REQ-REC-014 (Fase 5) — una alerta de fraude ya resuelta (confirmada o
+ *  descartada) no puede resolverse de nuevo. Mismo criterio que
+ *  `InvoiceReviewAlreadyResolvedError` de domain-despachos para su cola de revisión. */
+export class FraudAlertAlreadyResolvedError extends Error {
+  constructor(message = "Esta alerta de fraude ya fue resuelta anteriormente.") {
+    super(message);
+    this.name = "FraudAlertAlreadyResolvedError";
+  }
+}

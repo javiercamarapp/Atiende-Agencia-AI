@@ -3,6 +3,7 @@ import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
+import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
@@ -66,6 +67,20 @@ export interface AppDeps {
    * `acknowledgeOnlyTurnHandler` (sin LLM) o `createLlmHotelesWhatsAppTurnHandler`
    * (LLM real, ver production/deps.ts vs. tests). */
   readonly hotelesTurnHandler: HotelesWhatsAppTurnHandler;
+  /** Fase 5 (H5/REQ-BO-001/002) — transporte PAC de CFDI de hospedaje
+   * (`@atiende/mcp-cfdi::CfdiPort`, dual-PAC). En producción es
+   * `DualPacCfdiPort(FinkokAdapter, SwSapienAdapter)` — ambos esqueletos HONESTOS
+   * (fallan explícito sin CSD/credenciales verificadas, nunca fabrican un
+   * timbrado); en tests, `DualPacCfdiPort(FakeFinkokAdapter, FakeSwSapienAdapter)`
+   * o un fake directo, mismo criterio que `hotelesPaymentsPort`. No es una fábrica
+   * por-request (no depende de RLS/sesión de Postgres, es una integración externa
+   * igual que `hotelesPaymentsPort`). */
+  readonly hotelesCfdiPort: CfdiPort;
+  /** Fase 5 (H16-014/REQ-REC-014) — auditoría de decisiones de la cola de revisión
+   * de fraude interno (confirmar/descartar una alerta). Reutiliza
+   * `@atiende/core-authz::AuditSink`, MISMO patrón que `despachosAuditSink` (ver
+   * comentario de ese campo abajo) — no una tabla de auditoría propia de hoteles. */
+  readonly hotelesFraudeAuditSink: AuditSink;
   readonly citasRepo: (db: TenantDbSession) => CitasRepository;
   /** Fase 2 §2 — turn handler real del agente de WhatsApp de citas (LLM real sobre
    * @atiende/agent-core), inyectado igual que `turnHandler` de restaurantes. */
