@@ -104,7 +104,14 @@ export interface NewFnbOrderInput {
   readonly notes: string | null;
   readonly allergyDeclared: boolean;
   readonly allergyDeclaredVia: AllergyDeclaredVia | null;
-  readonly createdBy: string;
+  /** `null` cuando el pedido lo creó un canal sin staff humano logueado (Fase 2:
+   *  Server Tool de voz o agente de WhatsApp con LLM — actor `system:voz`/
+   *  `system:whatsapp`, ver domain-hoteles/src/whatsapp/llm-turn-handler.ts y
+   *  apps/api/src/routes/verticals/hoteles/voice-tools.ts). La columna real
+   *  (`hoteles.fnb_order.created_by`) ya era `references core.staff_user(id) on
+   *  delete set null` — nullable desde Fase 1 — así que ensanchar este tipo no
+   *  requiere migración; solo estos dos canales nuevos pasan `null`. */
+  readonly createdBy: string | null;
 }
 
 export interface TaxConfigRecord {
@@ -124,4 +131,69 @@ export interface NightlyRateRecord {
 export interface GuestIdentity {
   readonly lastName: string | null;
   readonly phoneLast4: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 2 — agente de voz (ElevenLabs) y agente de mensajería/WhatsApp con LLM
+// real (ver diseño Fase 2 hoteles §1-§3). Estos tipos son NUEVOS: ningún
+// dominio de WhatsApp/voz existía en domain-hoteles Fase 1 (a diferencia de
+// domain-restaurantes, que ya traía whatsapp/* completo).
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Un mensaje de una conversación de WhatsApp ya persistida — mismo shape
+ *  reducido (solo texto, nunca tool_calls/resultados crudos) que
+ *  `ConversationMessage` en domain-restaurantes (diseño §2.5: el historial
+ *  persistido es SIEMPRE texto plano, el arreglo de tool-use es efímero por
+ *  turno). */
+export interface ConversationMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+}
+
+/** Secreto dedicado por PROPERTY para las Server Tools de voz de ElevenLabs —
+ *  decisión explícita del diseño Fase 2 §1/§5.1: a diferencia de
+ *  restaurantes (secreto compartido de plataforma, `VOICE_TOOL_SECRET`), aquí
+ *  se replica el patrón real del origen (`hotel_voice_agent_config`), porque
+ *  el aislamiento por tenant es "el eje de seguridad central" que el origen
+ *  documenta para hoteles específicamente. */
+export interface VoiceAgentConfig {
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly toolWebhookSecret: string;
+  readonly enabled: boolean;
+}
+
+/** Resultado de resolver a qué property pertenece un `phone_number_id` de
+ *  Meta Cloud API — análogo a `resolveOrganizationByPhoneNumberId` de
+ *  domain-restaurantes, pero resuelve directo a PROPERTY (no a organización):
+ *  en hoteles cada número de WhatsApp real está atado a una sola property
+ *  (`hoteles.whatsapp_channel_config.property_id`), así que el agente nunca
+ *  necesita elegir sucursal — a diferencia de restaurantes multi-sucursal. */
+export interface WhatsAppPropertyRoute {
+  readonly propertyId: string;
+  readonly organizationId: string;
+}
+
+export type ContactoNoOperativoSource = "voice" | "whatsapp";
+
+export interface ContactoNoOperativoRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly guestPhone: string | null;
+  readonly guestName: string | null;
+  readonly reason: string;
+  readonly message: string | null;
+  readonly source: ContactoNoOperativoSource;
+  readonly createdAt: string;
+}
+
+export interface NewContactoNoOperativoInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly guestPhone: string | null;
+  readonly guestName: string | null;
+  readonly reason: string;
+  readonly message: string | null;
+  readonly source: ContactoNoOperativoSource;
 }

@@ -78,3 +78,25 @@ export type {
 export type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
 export { InMemoryHotelesRepository } from "./in-memory-repository.ts";
 export { PostgresHotelesRepository } from "./postgres-repository.ts";
+
+// ---- Fase 2 — Server Tools de voz + agente de WhatsApp con LLM real ----
+export type { ConversationMessage, ContactoNoOperativoRecord, ContactoNoOperativoSource, NewContactoNoOperativoInput, VoiceAgentConfig, WhatsAppPropertyRoute } from "./types.ts";
+
+export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
+export { registerContactoNoOperativo } from "./contacto-no-operativo.ts";
+
+export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
+export { extractMetaTextMessages, extractMetaPhoneNumberId, resolvePropertyByPhoneNumberId } from "./whatsapp/channel-config.ts";
+export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
+export type { HotelesWhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
+export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
+export { handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
+export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
+export {
+  createLlmHotelesWhatsAppTurnHandler,
+  TOOLS as WHATSAPP_HOTELES_TOOLS,
+  FALLBACK_CONFIG as WHATSAPP_HOTELES_FALLBACK_CONFIG,
+  getAgentConfig as getWhatsAppHotelesAgentConfig,
+  providerFailureReply as whatsappHotelesProviderFailureReply,
+} from "./whatsapp/llm-turn-handler.ts";
+export type { WhatsAppHotelesAgentConfig, WhatsAppHotelesLlmAgentOptions } from "./whatsapp/llm-turn-handler.ts";
