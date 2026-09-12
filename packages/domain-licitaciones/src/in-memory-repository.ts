@@ -9,7 +9,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IdempotencyConflictError } from "./errors.ts";
-import type { IdempotencyParams, IdempotentResult, LicitacionesRepository } from "./repository.ts";
+import type { GoNoGoDecisionCreateInput, IdempotencyParams, IdempotentResult, LicitacionesRepository, MatchingProfileUpsertInput, TenderUpsertInput, TenderUpsertResult } from "./repository.ts";
 import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
@@ -20,10 +20,13 @@ import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-v
 import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
 import type { LicitacionesRole } from "./roles.ts";
 import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from "./repository.ts";
+import { buildGoNoGoDecision } from "./go-no-go.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
   ComplianceItemRecord,
+  GoNoGoDecisionRecord,
+  MatchingProfileRecord,
   PackageManifestRecord,
   ProposalRecord,
   RequiredAnnexItem,
@@ -90,6 +93,11 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly submissions = new Map<string, SubmissionRecord[]>(); // proposalId -> submissions (historial)
   private readonly idempotency = new Map<string, StoredIdempotencyRow>();
   private readonly mutex = new KeyedMutex();
+  // ---- Fase 3: matching/scoring y go/no-go ----
+  private readonly tenderByExternalKey = new Map<string, string>(); // `${orgId}:manual:${externalId}` -> tenderId (mismo alcance que tender_org_source_external_idx)
+  private readonly tenderAuditLog = new Map<string, { action: string; actorId: string; createdAt: string }[]>(); // tenderId -> entradas (historial)
+  private readonly matchingProfiles = new Map<string, MatchingProfileRecord>(); // orgId -> perfil (singleton)
+  private readonly goNoGoDecisions = new Map<string, GoNoGoDecisionRecord[]>(); // tenderId -> decisiones (historial, más reciente al final)
 
   constructor(options: { storageDir?: string } = {}) {
     this.storageDir = options.storageDir ?? mkdtempSync(join(tmpdir(), "licitaciones-test-"));
@@ -157,6 +165,149 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     if (!proposalId) return null;
     const proposal = this.proposals.get(proposalId);
     return proposal && proposal.organizationId === organizationId ? proposal : null;
+  }
+
+  // ---- Fase 3 pieza 1: alta manual de convocatoria (§6) ----
+
+  async listTenders(organizationId: string): Promise<readonly TenderRecord[]> {
+    return [...this.tenders.values()].filter((t) => t.organizationId === organizationId);
+  }
+
+  async upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult> {
+    const externalKey = input.externalId !== null ? `${organizationId}:manual:${input.externalId}` : null;
+    const existingTenderId = externalKey ? this.tenderByExternalKey.get(externalKey) : undefined;
+    const existing = existingTenderId ? this.tenders.get(existingTenderId) : undefined;
+
+    const nowIso = new Date().toISOString();
+    if (existing) {
+      const previousDeadline = existing.submissionDeadline;
+      const updated: TenderRecord = {
+        ...existing,
+        title: input.title,
+        submissionDeadline: input.submissionDeadline,
+        contractingBody: input.contractingBody,
+        cpvCodes: [...input.cpvCodes],
+        budgetAmount: input.budgetAmount,
+        currency: input.currency,
+        state: input.state,
+        procedureTypeRaw: input.procedureTypeRaw,
+        updatedAt: nowIso,
+      };
+      this.tenders.set(existing.id, updated);
+      this.recordTenderAudit(existing.id, "tender.manual_upsert.updated", input.actorId);
+      return { tender: updated, created: false, submissionDeadlineChanged: previousDeadline !== input.submissionDeadline };
+    }
+
+    const created: TenderRecord = {
+      id: randomUUID(),
+      organizationId,
+      title: input.title,
+      submissionDeadline: input.submissionDeadline,
+      updatedAt: nowIso,
+      source: "manual",
+      externalId: input.externalId,
+      contractingBody: input.contractingBody,
+      cpvCodes: [...input.cpvCodes],
+      budgetAmount: input.budgetAmount,
+      currency: input.currency,
+      state: input.state,
+      procedureTypeRaw: input.procedureTypeRaw,
+      status: "discovered",
+    };
+    this.tenders.set(created.id, created);
+    if (externalKey) this.tenderByExternalKey.set(externalKey, created.id);
+    this.recordTenderAudit(created.id, "tender.manual_upsert.created", input.actorId);
+    return { tender: created, created: true, submissionDeadlineChanged: false };
+  }
+
+  private recordTenderAudit(tenderId: string, action: string, actorId: string): void {
+    const list = this.tenderAuditLog.get(tenderId) ?? [];
+    list.push({ action, actorId, createdAt: new Date().toISOString() });
+    this.tenderAuditLog.set(tenderId, list);
+  }
+
+  /** Solo pruebas/inspección -- no forma parte de `LicitacionesRepository` (ningún endpoint de Fase 3 la expone, ver diseño §6/§9). */
+  listTenderAuditLogForTests(tenderId: string): readonly { action: string; actorId: string; createdAt: string }[] {
+    return this.tenderAuditLog.get(tenderId) ?? [];
+  }
+
+  // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----
+
+  async findMatchingProfile(organizationId: string): Promise<MatchingProfileRecord | null> {
+    return this.matchingProfiles.get(organizationId) ?? null;
+  }
+
+  async upsertMatchingProfile(organizationId: string, input: MatchingProfileUpsertInput): Promise<MatchingProfileRecord> {
+    const record: MatchingProfileRecord = {
+      organizationId,
+      keywords: [...input.keywords],
+      excludedKeywords: [...input.excludedKeywords],
+      classifierCodes: [...input.classifierCodes],
+      entities: [...input.entities],
+      states: [...input.states],
+      budgetMin: input.budgetMin,
+      budgetMax: input.budgetMax,
+      updatedBy: input.actorId,
+      updatedAt: new Date().toISOString(),
+    };
+    this.matchingProfiles.set(organizationId, record);
+    return record;
+  }
+
+  // ---- Fase 3 pieza 3: decisiones go/no-go (§7) ----
+
+  async createGoNoGoDecision(organizationId: string, tenderId: string, input: GoNoGoDecisionCreateInput): Promise<GoNoGoDecisionRecord> {
+    const tender = this.tenders.get(tenderId);
+    if (!tender || tender.organizationId !== organizationId) {
+      throw new Error(`Tender "${tenderId}" no encontrado para la organización "${organizationId}".`);
+    }
+    // Lanza `GoNoGoRejectedError` si el rol o los motivos no pasan la regla
+    // -- ninguna fila se toca en ese caso (mismo criterio que
+    // `ApprovalWorkflow.approve()`).
+    const validated = buildGoNoGoDecision({
+      decision: input.decision,
+      reasons: input.reasons,
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      matchScore: input.matchScore,
+      matchEligibilityStatus: input.matchEligibilityStatus,
+      matchInputsHash: input.matchInputsHash,
+    });
+
+    const record: GoNoGoDecisionRecord = {
+      id: randomUUID(),
+      organizationId,
+      tenderId,
+      decision: validated.decision,
+      reasons: validated.reasons,
+      matchScore: validated.matchScore,
+      matchEligibilityStatus: validated.matchEligibilityStatus,
+      matchInputsHash: validated.matchInputsHash,
+      decidedBy: validated.decidedBy,
+      decidedAt: validated.decidedAt,
+    };
+    const list = this.goNoGoDecisions.get(tenderId) ?? [];
+    this.goNoGoDecisions.set(tenderId, [...list, record]);
+
+    // §7: un go/no_go es el único camino que saca una convocatoria de
+    // discovered/in_review -- se escribe en la MISMA operación.
+    this.tenders.set(tenderId, { ...tender, status: validated.decision, updatedAt: validated.decidedAt });
+
+    return record;
+  }
+
+  async listGoNoGoDecisions(organizationId: string, tenderId: string): Promise<readonly GoNoGoDecisionRecord[]> {
+    const tender = this.tenders.get(tenderId);
+    if (!tender || tender.organizationId !== organizationId) return [];
+    // `decidedAt` viene de `new Date().toISOString()` (resolución de
+    // milisegundo) -- dos decisiones capturadas en sucesión rápida (normal en
+    // pruebas, y no imposible en producción) pueden empatar exactamente. Se
+    // invierte el arreglo ANTES de ordenar para que, en un empate, el
+    // desempate sea el orden de inserción real (más reciente primero) en vez
+    // de depender de qué tan estable resulte comparar strings iguales --
+    // `Array.prototype.sort` es estable, así que invertir primero es
+    // suficiente y determinista.
+    return [...(this.goNoGoDecisions.get(tenderId) ?? [])].reverse().sort((a, b) => b.decidedAt.localeCompare(a.decidedAt));
   }
 
   // ---- Flujo 1: checklist de integridad ----

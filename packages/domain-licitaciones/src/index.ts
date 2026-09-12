@@ -1,7 +1,8 @@
-export { isoNow, assertExplicitOffset, isPast, sha256Hex, sha256Bytes, stableStringify, MEXICO_CITY_TZ } from "./types.ts";
+export { isoNow, assertExplicitOffset, isPast, sha256Hex, sha256Bytes, stableStringify, MEXICO_CITY_TZ, TENDER_STATUSES, isTenderStatus } from "./types.ts";
 export type {
   SourceRef,
   TenderRecord,
+  TenderStatus,
   ProposalRecord,
   ComplianceItemRecord,
   RequiredAnnexItem,
@@ -9,6 +10,8 @@ export type {
   ApprovedRateRecord,
   PackageManifestRecord,
   SubmissionRecord,
+  MatchingProfileRecord,
+  GoNoGoDecisionRecord,
 } from "./types.ts";
 
 export { dateOnlyToMexicoCityIso, timestampToIso, nowIso, resolveExpedienteAsOfIso } from "./dates.ts";
@@ -80,8 +83,15 @@ export type {
 export { writePackageZip, readPackageZip, storeFile, decodeBase64Content, InvalidFileContentError, MAX_BASE64_LENGTH } from "./storage.ts";
 export type { StoredFile } from "./storage.ts";
 
-export { LICITACIONES_ROLES, isLicitacionesRole, WRITE_ROLES, DECISION_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE } from "./roles.ts";
+export { LICITACIONES_ROLES, isLicitacionesRole, WRITE_ROLES, DECISION_ROLES, GO_NO_GO_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE } from "./roles.ts";
 export type { LicitacionesRole } from "./roles.ts";
+
+// ---- Fase 3: matching/scoring y go/no-go ----
+export { MatchingEngine, DEFAULT_WEIGHTS, normalizeText, normalizedIncludes, toOrganizationMatchingProfile, buildMatchInputsSnapshot, computeMatchInputsHash } from "./matching-engine.ts";
+export type { OrganizationMatchingProfile, BudgetRange, MatchWeights, MatchResult, MatchCriterionResult, EligibilityStatus, EligibilityCriterionResult, EligibilityResult, MatchExplanationEnricher, MatchInputsSnapshot } from "./matching-engine.ts";
+
+export { buildGoNoGoDecision } from "./go-no-go.ts";
+export type { GoNoGoDecisionInput, GoNoGoDecisionToPersist } from "./go-no-go.ts";
 
 export {
   RuleBasedExtractor,
@@ -128,8 +138,18 @@ export type {
   RequirementFulfillmentMapping,
 } from "./technical-proposal.ts";
 
-export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError } from "./errors.ts";
+export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError, GoNoGoRejectedError } from "./errors.ts";
 
-export type { LicitacionesRepository, IdempotencyParams, IdempotentResult, RequirementItemRecord, RequirementFulfillmentMappingRecord } from "./repository.ts";
+export type {
+  LicitacionesRepository,
+  IdempotencyParams,
+  IdempotentResult,
+  RequirementItemRecord,
+  RequirementFulfillmentMappingRecord,
+  TenderUpsertInput,
+  TenderUpsertResult,
+  MatchingProfileUpsertInput,
+  GoNoGoDecisionCreateInput,
+} from "./repository.ts";
 export { InMemoryLicitacionesRepository } from "./in-memory-repository.ts";
 export { PostgresLicitacionesRepository } from "./postgres-repository.ts";
