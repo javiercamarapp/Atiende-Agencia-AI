@@ -9,6 +9,7 @@ import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatemen
 import type { CandidataConciliacion, EstadoConciliacion, LineaConciliada } from "./finanzas/conciliacion.ts";
 import type { RangoFechas } from "./tipos.ts";
 import type {
+  BloqueoRecord,
   CanalRecord,
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
@@ -138,6 +139,17 @@ export class PostgresRentasRepository implements RentasRepository {
     const row = rows[0];
     if (!row) return null;
     return { id: row.id, unidadId: row.unidad_id, capa: row.capa, estado: row.estado, canalOrigenId: row.canal_origen_id };
+  }
+
+  async listBloqueos(propertyId: string, unidadId: string): Promise<readonly BloqueoRecord[]> {
+    const { rows } = await this.db.query<{ id: string; unidad_id: string; inicio: string; fin: string; razon: BloqueoRecord["razon"]; estado: BloqueoRecord["estado"] }>(
+      `select id, unidad_id, lower(rango)::text as inicio, upper(rango)::text as fin, razon, estado
+       from rentas.ocupacion
+       where property_id = $1 and unidad_id = $2 and capa = 'bloqueo'
+       order by lower(rango);`,
+      [propertyId, unidadId],
+    );
+    return rows.map((row) => ({ id: row.id, unidadId: row.unidad_id, rango: { inicio: row.inicio, fin: row.fin }, razon: row.razon, estado: row.estado }));
   }
 
   async insertGuestMinimo(input: NewGuestMinimoInput): Promise<{ id: string }> {

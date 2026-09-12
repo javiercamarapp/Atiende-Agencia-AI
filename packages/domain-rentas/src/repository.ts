@@ -15,6 +15,7 @@
 // mínimo, pricing de solo lectura, y el movimiento financiero por reserva).
 import type { RangoFechas } from "./tipos.ts";
 import type {
+  BloqueoRecord,
   CandidataConciliacion,
   CanalRecord,
   ConfiguracionComisionCanal,
@@ -55,6 +56,10 @@ export interface RentasRepository {
   findOcupacion(propertyId: string, unidadId: string, ocupacionId: string): Promise<OcupacionResumen | null>;
   insertGuestMinimo(input: NewGuestMinimoInput): Promise<{ id: string }>;
   attachGuestToOcupacion(ocupacionId: string, guestMinimoId: string): Promise<void>;
+  /** Fase 4 -- `GET .../bloqueos`: lista bloqueos (capa='bloqueo' únicamente,
+   *  BLOQUEO_PROPIETARIO/MANTENIMIENTO/BUFFER_LIMPIEZA) de una unidad, activos y
+   *  cancelados, ordenados por fecha de inicio. */
+  listBloqueos(propertyId: string, unidadId: string): Promise<readonly BloqueoRecord[]>;
 
   // ---- Pricing / cotización (flujo 2) — SOLO lectura, ninguna escritura de precio ----
   loadPricingContext(propertyId: string, unidadId: string): Promise<ContextoPricingUnidad | null>;
