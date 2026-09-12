@@ -4,6 +4,7 @@
 // real, con InMemoryCitasRepository en vez de Postgres real.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import type { InMemoryCitasRepository } from "@atiende/domain-citas";
 import { buildApp } from "../src/app.ts";
 import { buildCitasTestContext } from "./citas-fixtures.ts";
 import { authedJson } from "./hoteles-fixtures.ts";
@@ -138,6 +139,80 @@ describe("cancelar/reagendar vía el agente (x-atiende-tool-secret)", () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string; alternative_slots: { starts_at: string; ends_at: string }[] };
     expect(body.alternative_slots.length).toBeGreaterThan(0);
+  });
+});
+
+describe("modificar-cita vía el agente (x-atiende-tool-secret) — Fase 4", () => {
+  async function createRealAppointment(ctx: Awaited<ReturnType<typeof buildCitasTestContext>>, app: ReturnType<typeof buildApp>, phone = "9994445566") {
+    const res = await app.request(
+      "/v1/citas/clinica-dental-sonrisas/appointments",
+      jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ana Torres", customer_phone: phone, starts_at: MONDAY_10AM_MERIDA, source: "web" }),
+    );
+    const body = (await res.json()) as { appointment: { id: string } };
+    return body.appointment.id;
+  }
+
+  function seedSecondProvider(ctx: Awaited<ReturnType<typeof buildCitasTestContext>>) {
+    const citasRepo = ctx.deps.citasRepo as InMemoryCitasRepository;
+    const otroProviderId = randomUUID();
+    citasRepo.seedProvider({ id: otroProviderId, organizationId: ctx.organizationId, propertyId: null, displayName: "Dr. Roberto Cen", roleLabel: "Dentista", isActive: true });
+    citasRepo.seedProviderService(otroProviderId, ctx.serviceId);
+    for (const dayOfWeek of [1, 2, 3, 4, 5]) {
+      citasRepo.seedAvailabilityRule({ id: randomUUID(), providerId: otroProviderId, dayOfWeek, startTime: "09:00", endTime: "17:00", isActive: true });
+    }
+    return otroProviderId;
+  }
+
+  it("reasigna a un proveedor nuevo real, preservando el mismo id y el mismo horario de inicio", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const otroProviderId = seedSecondProvider(ctx);
+    const appointmentId = await createRealAppointment(ctx, app);
+
+    const res = await app.request(
+      `/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`,
+      jsonRequestInit({ new_provider_id: otroProviderId, actor_channel: "web" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { appointment: { id: string; provider_id: string; starts_at: string } };
+    expect(body.appointment.id).toBe(appointmentId);
+    expect(body.appointment.provider_id).toBe(otroProviderId);
+    expect(body.appointment.starts_at).toBe(MONDAY_10AM_MERIDA);
+  });
+
+  it("rechaza sin el secreto del tool", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const otroProviderId = seedSecondProvider(ctx);
+    const appointmentId = await createRealAppointment(ctx, app);
+
+    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`, jsonRequestInit({ new_provider_id: otroProviderId }));
+    expect(res.status).toBe(401);
+  });
+
+  it("rechaza reasignar a un proveedor que no ofrece el servicio, con 400 real", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const citasRepo = ctx.deps.citasRepo as InMemoryCitasRepository;
+    const otroProviderId = randomUUID();
+    citasRepo.seedProvider({ id: otroProviderId, organizationId: ctx.organizationId, propertyId: null, displayName: "Dr. sin este servicio", roleLabel: "Dentista", isActive: true });
+    // Nunca se llama seedProviderService -- este proveedor no ofrece ctx.serviceId.
+    const appointmentId = await createRealAppointment(ctx, app);
+
+    const res = await app.request(
+      `/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`,
+      jsonRequestInit({ new_provider_id: otroProviderId }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("sin ningún campo de cambio real es 400 (nunca un no-op silencioso 200)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const appointmentId = await createRealAppointment(ctx, app);
+
+    const res = await app.request(`/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reassign`, jsonRequestInit({}, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }));
+    expect(res.status).toBe(400);
   });
 });
 

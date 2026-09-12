@@ -41,6 +41,15 @@ export type RescheduleResult =
   | { readonly outcome: "not_found" }
   | { readonly outcome: "conflict_invalid_status"; readonly status: string };
 
+/** Fase 4 -- "modificar-cita" (cambio de proveedor/servicio sin tocar el horario
+ * de inicio). Mismo shape discriminado que RescheduleResult -- misma nota de
+ * diseño de arriba aplica igual aquí. */
+export type ReassignResult =
+  | { readonly outcome: "reassigned" | "noop_same_assignment"; readonly appointment: AppointmentRecord }
+  | { readonly outcome: "conflict_slot_taken" }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string };
+
 export interface ReminderCandidateRow {
   readonly appointmentId: string;
   readonly providerId: string;
@@ -157,6 +166,19 @@ export interface CitasRepository {
     actorChannel: AppointmentActorChannel,
     actorNote: string | null,
   ): Promise<RescheduleResult>;
+  /** Fase 4 -- "modificar-cita": cambio de proveedor y/o servicio SIN tocar
+   * startsAt. `newEndsAt` ya viene recalculado por el caller (appointments.ts)
+   * desde la duración del servicio final -- el repositorio nunca decide
+   * duraciones, solo persiste. */
+  reassignAppointmentIdempotent(
+    organizationId: string,
+    appointmentId: string,
+    newProviderId: string,
+    newServiceId: string,
+    newEndsAt: string,
+    actorChannel: AppointmentActorChannel,
+    actorNote: string | null,
+  ): Promise<ReassignResult>;
 
   // ---- Fase 3 — sincronización con Google Calendar (ver diseño §3/§4/§5) ----
   findProviderCalendarAccount(providerId: string): Promise<ProviderCalendarAccountRecord | null>;
