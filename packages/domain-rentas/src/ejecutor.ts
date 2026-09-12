@@ -38,3 +38,20 @@ export async function bloquearUnidadEnTransaccion(ejecutor: EjecutorTransacciona
 export function esViolacionExclusion(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "23P01";
 }
+
+/**
+ * Mismo mecanismo que `bloquearUnidadEnTransaccion`, para la clave compuesta
+ * `(owner, property, periodo)` del owner statement (Fase 2, Flujo 5) — serializa dos
+ * requests concurrentes para el MISMO periodo del MISMO owner/property antes de
+ * decidir si crear una versión nueva, evitando la carrera documentada en el repo
+ * origen: `SELECT version ...` sin `FOR UPDATE`/advisory lock + `INSERT` concurrente ->
+ * `23505` (unique_violation) sin traducir -> 500 genérico para quien pierde la
+ * carrera. El `UNIQUE (owner_id, property_id, periodo_inicio, periodo_fin, version)`
+ * de `005_finanzas_statement_payout_schema.sql` sigue siendo la garantía de última
+ * línea, pero con este lock la segunda request nunca depende de esa garantía para
+ * decidir su respuesta: ve la versión que la primera ya confirmó y responde
+ * `200 creado:false`, nunca un 500 (ver diseño Fase 2 rentas §4.2/§1.3).
+ */
+export async function bloquearOwnerStatementEnTransaccion(ejecutor: EjecutorTransaccional, ownerId: string, propertyId: string, periodoInicio: string, periodoFin: string): Promise<void> {
+  await ejecutor.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`owner_statement:${ownerId}:${propertyId}:${periodoInicio}:${periodoFin}`]);
+}
