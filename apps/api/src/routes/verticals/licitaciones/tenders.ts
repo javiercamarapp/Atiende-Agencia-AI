@@ -99,19 +99,15 @@ export function licitacionesTendersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
       actorId,
     });
 
-    // §6 del diseño: reutiliza la máquina de invalidación de aprobaciones de
-    // Fase 2 pieza 1 (ApprovalWorkflow/recordChange) en vez de inventar una
-    // nueva -- un cambio de fecha límite en una convocatoria ya cargada
-    // invalida la aprobación "expediente" vigente de su propuesta, si existe
-    // (a lo sumo una: `licitaciones.proposal` tiene `unique(organization_id,
-    // tender_id)`, así que "cada propuesta abierta de esa convocatoria" es
-    // 0 o 1 propuesta en este esquema).
-    if (result.submissionDeadlineChanged) {
-      const proposal = await repo.findProposal(organizationId, result.tender.id);
-      if (proposal) {
-        await repo.recordChange(organizationId, proposal.id, { scope: "expediente", scopeRef: "expediente", reason: "Cambio de fecha límite por alta manual" });
-      }
-    }
+    // §6 del diseño original (Fase 3): la invalidación de la aprobación
+    // "expediente" ante un cambio de fecha límite vivía aquí, disparada a
+    // mano solo para `submissionDeadlineChanged`. Fase 5 pieza 2
+    // (`repo.upsertTenderManual` -> `recordTenderVersion`, ver
+    // domain-licitaciones/src/tender-version-registry.ts) la GENERALIZÓ a
+    // cualquier campo de bases o requisito que cambie, versiona la
+    // convocatoria (REQ-153) y además notifica (REQ-151/155) -- ya ocurrió
+    // dentro de `upsertTenderManual` arriba, en la MISMA operación; esta ruta
+    // ya no necesita disparar nada por su cuenta.
 
     return c.json(result.tender, result.created ? 201 : 200);
   });

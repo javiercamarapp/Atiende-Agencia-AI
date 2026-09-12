@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (36 migraciones, timestamps 20240101000001 .. 20240101000036)
+## Orden actual (37 migraciones, timestamps 20240101000001 .. 20240101000037)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -32,6 +32,7 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 15–23. `packages/domain-licitaciones/migrations/001..009_*.sql`
 24–30. `packages/domain-rentas/migrations/001..007_*.sql`
 31–36. `packages/domain-restaurantes/migrations/001..006_*.sql`
+37. `packages/domain-licitaciones/migrations/010_source_runs_and_tender_versions.sql` — Fase 5 (fuera de la secuencia interna 001-009 de licitaciones porque se agregó después de que rentas/restaurantes ya habían tomado los timestamps siguientes; ver regla de "siguiente timestamp libre" abajo.
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
