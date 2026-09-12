@@ -24,6 +24,9 @@ import { buildGoNoGoDecision } from "./go-no-go.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
+  CompanyCapabilityRecord,
+  CompanyExperienceItemRecord,
+  CompanySignerRecord,
   ComplianceItemRecord,
   GoNoGoDecisionRecord,
   MatchingProfileRecord,
@@ -82,6 +85,9 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly requiredAnnexes = new Map<string, RequiredAnnexItem[]>(); // `${orgId}:${tenderId}` -> annexes
   private readonly companyDocuments = new Map<string, CompanyDocumentRecord[]>(); // orgId -> docs
   private readonly approvedRates = new Map<string, ApprovedRateRecord[]>(); // orgId -> rates
+  private readonly companyCapabilities = new Map<string, CompanyCapabilityRecord[]>(); // orgId -> capacidades
+  private readonly companyExperience = new Map<string, CompanyExperienceItemRecord[]>(); // orgId -> experiencia
+  private readonly companySigners = new Map<string, CompanySignerRecord[]>(); // orgId -> firmantes
   private readonly proposalSections = new Map<string, Map<string, StoredProposalSection>>(); // proposalId -> sectionKey -> section
   private readonly approvals = new Map<string, Approval[]>(); // proposalId -> approvals (historial, todos los scopes)
   private readonly sectionAuthors = new Map<string, Map<string, Set<string>>>(); // proposalId -> scopeRef("seccion:<key>") -> actorIds (AE-11)
@@ -119,6 +125,18 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   seedApprovedRates(organizationId: string, rates: readonly ApprovedRateRecord[]): void {
     this.approvedRates.set(organizationId, [...rates]);
+  }
+
+  seedCompanyCapabilities(organizationId: string, capabilities: readonly CompanyCapabilityRecord[]): void {
+    this.companyCapabilities.set(organizationId, [...capabilities]);
+  }
+
+  seedCompanyExperience(organizationId: string, experience: readonly CompanyExperienceItemRecord[]): void {
+    this.companyExperience.set(organizationId, [...experience]);
+  }
+
+  seedCompanySigners(organizationId: string, signers: readonly CompanySignerRecord[]): void {
+    this.companySigners.set(organizationId, [...signers]);
   }
 
   /** Inserta/actualiza una sección de propuesta (equivalente a `proposal_sections`) — usada por el flujo económico y directamente por pruebas del Flujo 3 (secciones "técnicas" no generadas en Fase 1). */
@@ -328,6 +346,18 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async listCompanyDocuments(organizationId: string, _asOfIso: string): Promise<readonly CompanyDocumentRecord[]> {
     return this.companyDocuments.get(organizationId) ?? [];
+  }
+
+  async listCompanyCapabilities(organizationId: string): Promise<readonly CompanyCapabilityRecord[]> {
+    return this.companyCapabilities.get(organizationId) ?? [];
+  }
+
+  async listCompanyExperience(organizationId: string): Promise<readonly CompanyExperienceItemRecord[]> {
+    return this.companyExperience.get(organizationId) ?? [];
+  }
+
+  async listCompanySigners(organizationId: string): Promise<readonly CompanySignerRecord[]> {
+    return this.companySigners.get(organizationId) ?? [];
   }
 
   // ---- Flujo 2: propuesta económica ----

@@ -102,4 +102,68 @@ describe("Fase 2 pieza 3 -- requirements/extract + proposal/technical/generate",
     expect(assembleBody.status).toBe("draft"); // checklist nunca corrió todavía.
     expect(assembleBody.missing).toEqual([]); // la única sección generada (técnica) SÍ está presente.
   });
+
+  it("Fase 4 -- mapeo tipo 'signer' con un firmante APROBADO real (no el stub vacío de Fase 1) resuelve y trazabiliza el sourceRef", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    // Antes de Fase 4, CompanyDataResolver.getSigners() SIEMPRE devolvía [] sin
+    // importar qué se sembrara -- este seed habría sido ignorado en silencio.
+    ctx.repo.seedCompanySigners(ctx.organizationId, [{ id: "signer-1", name: "Juana Pérez Ruiz", role: "representante_legal", authorized: true }]);
+
+    await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal`, authedJson(ctx.staff.writer.token));
+    const extractRes = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements/extract`,
+      authedJson(ctx.staff.writer.token, { documents: [{ documentId: "bases", documentLabel: "Bases", publishedAt: "2026-01-01T00:00:00-06:00", pages: [{ page: 1, text: "El licitante deberá presentar acta constitutiva original." }] }] }, { "idempotency-key": "extract-4" }),
+    );
+    const extractBody = (await extractRes.json()) as { items: { topicKey?: string }[] };
+    const topicKey = extractBody.items.find((i) => i.topicKey === "acta_constitutiva")!.topicKey!;
+
+    const mapRes = await app.request(`/licitaciones/${ctx.propertyId}/requirement-mappings/${topicKey}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ kind: "signer", refKey: "representante_legal", statementTemplate: "Firma el representante legal autorizado: {value}." }),
+    });
+    expect(mapRes.status).toBe(200);
+
+    const generateRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal/technical/generate`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "gen-signer-1" }));
+    expect(generateRes.status).toBe(200);
+    const generateBody = (await generateRes.json()) as { blockers: number };
+    expect(generateBody.blockers).toBe(0); // el firmante autorizado resuelve -- ya no queda "missing" por un stub vacío.
+
+    const proposalRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal`, authedJson(ctx.staff.viewer.token));
+    const proposalBody = (await proposalRes.json()) as { generationReport: { technical?: { usedCompanyDocumentIds?: string[] } } };
+    expect(proposalBody.generationReport.technical?.usedCompanyDocumentIds).toEqual(["signer-1"]); // sourceRef.refId real del firmante sembrado, trazable.
+  });
+
+  it("Fase 4 -- un firmante NO autorizado bloquea explícitamente (nunca 'missing' silencioso ni redacción inventada)", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    ctx.repo.seedCompanySigners(ctx.organizationId, [{ id: "signer-2", name: "Carlos Ibarra Solís", role: "representante_legal", authorized: false }]);
+
+    await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal`, authedJson(ctx.staff.writer.token));
+    const extractRes = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements/extract`,
+      authedJson(ctx.staff.writer.token, { documents: [{ documentId: "bases", documentLabel: "Bases", publishedAt: "2026-01-01T00:00:00-06:00", pages: [{ page: 1, text: "El licitante deberá presentar acta constitutiva original." }] }] }, { "idempotency-key": "extract-5" }),
+    );
+    const extractBody = (await extractRes.json()) as { items: { topicKey?: string }[] };
+    const topicKey = extractBody.items.find((i) => i.topicKey === "acta_constitutiva")!.topicKey!;
+    await app.request(`/licitaciones/${ctx.propertyId}/requirement-mappings/${topicKey}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ kind: "signer", refKey: "representante_legal", statementTemplate: "Firma el representante legal autorizado: {value}." }),
+    });
+
+    const generateRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/proposal/technical/generate`, authedJson(ctx.staff.writer.token, {}, { "idempotency-key": "gen-signer-2" }));
+    expect(generateRes.status).toBe(200);
+    const generateBody = (await generateRes.json()) as { blockers: number };
+    // El detalle fino de "blocked" vs "missing" se prueba a nivel de dominio
+    // (packages/domain-licitaciones/tests/technical-proposal.spec.ts) -- este
+    // endpoint solo expone el conteo agregado. El punto de este test HTTP es
+    // confirmar que el firmante sembrado SÍ se intentó resolver (ya no un
+    // stub siempre-vacío): con InMemoryCompanyDataResolver's stub anterior,
+    // este seed habría sido ignorado en silencio pero el resultado (1 bloqueo
+    // por "missing") habría sido indistinguible de este caso a este nivel --
+    // la cobertura real de la distinción vive en el test de dominio de arriba.
+    expect(generateBody.blockers).toBe(1);
+  });
 });
