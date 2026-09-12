@@ -4,6 +4,7 @@
 import type { ChargeConcept } from "./folioEngine.ts";
 import type { AllergyDeclaredVia } from "./fnbAllergyGuard.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
+import type { FraudPattern } from "./fraude/deteccion.ts";
 
 export type FolioStatus = "abierto" | "cerrado";
 export type FolioCloseReason = "saldo_cero" | "cuenta_por_cobrar";
@@ -230,6 +231,151 @@ export interface WhatsAppPropertyRoute {
 }
 
 export type ContactoNoOperativoSource = "voice" | "whatsapp";
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 5 — H16-014/REQ-REC-014: fraude interno. `FraudAlertRecord` es a la vez el
+// hallazgo detectado Y el sujeto de la cola de revisión humana (a diferencia de
+// domain-despachos, que separa `invoice`/`invoice_review` en dos tablas porque ahí
+// SÍ hay un registro primario propio del CFDI ingerido — aquí no existe un
+// "registro primario" análogo, la alerta ES lo que se revisa).
+// ─────────────────────────────────────────────────────────────────────────
+export type FraudAlertStatus = "pendiente" | "confirmado" | "descartado";
+
+export interface FraudAlertRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly pattern: FraudPattern;
+  readonly folioId: string | null;
+  readonly chargeId: string | null;
+  readonly paymentId: string | null;
+  readonly reason: string;
+  readonly evidence: Readonly<Record<string, unknown>>;
+  readonly recipientRoles: readonly string[];
+  /** Clave determinista de idempotencia de escaneo (ver fraude/deteccion.ts) —
+   *  re-escanear los mismos datos NUNCA duplica la alerta ya generada. */
+  readonly dedupeKey: string;
+  readonly status: FraudAlertStatus;
+  readonly decisionNote: string | null;
+  readonly resolvedBy: string | null;
+  readonly resolvedAt: string | null;
+  readonly createdAt: string;
+}
+
+export interface NewFraudAlertInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly pattern: FraudPattern;
+  readonly folioId: string | null;
+  readonly chargeId: string | null;
+  readonly paymentId: string | null;
+  readonly reason: string;
+  readonly evidence: Readonly<Record<string, unknown>>;
+  readonly recipientRoles: readonly string[];
+  readonly dedupeKey: string;
+}
+
+/** Insumo de lectura del patrón 1 (descuento fuera de política) — filas ya reales
+ *  de `hoteles.charge` (concept='descuento', no reversado). */
+export interface DiscountChargeForFraudScan {
+  readonly chargeId: string;
+  readonly folioId: string;
+  readonly amount: number;
+  readonly discountAuthorizedBy: string | null;
+}
+
+/** Insumo de lectura del patrón 2 (folio reabierto) — filas ya reales de
+ *  `hoteles.folio` + `hoteles.charge` con `charge.created_at > folio.closed_at`. */
+export interface ReopenedFolioChargeForFraudScan {
+  readonly folioId: string;
+  readonly folioClosedAt: string;
+  readonly chargeId: string;
+  readonly chargeCreatedAt: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 5 — H5/REQ-BO-001/002: CFDI de hospedaje. `status` es el mismo vocabulario
+// de dominio que expone `@atiende/mcp-cfdi::DomainCfdiStatus` — copiado aquí como
+// tipo PROPIO de domain-hoteles (nunca un import cruzado hacia el paquete de
+// transporte MCP) para que este paquete de dominio siga sin depender de un
+// adaptador de infraestructura, mismo principio que `PaymentsPort`/
+// `PaymentChargeResult.status` ya establecen para pagos.
+// ─────────────────────────────────────────────────────────────────────────
+export type CfdiEmisionTipo = "hospedaje" | "pago";
+export type CfdiEmisionStatus = "pendiente" | "timbrado" | "en_proceso_cancelacion" | "cancelado" | "rechazado";
+
+export interface CfdiEmisionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly folioId: string;
+  readonly tipo: CfdiEmisionTipo;
+  readonly uuidFiscal: string | null;
+  readonly status: CfdiEmisionStatus;
+  readonly pac: string | null;
+  readonly subtotal: number;
+  readonly iva: number;
+  readonly ishTasa: number;
+  readonly ishMonto: number;
+  readonly dsaMonto: number;
+  readonly total: number;
+  readonly rfcReceptor: string;
+  readonly usoCfdi: string;
+  readonly metodoPago: string;
+  readonly esExtranjero: boolean;
+  readonly esGlobal: boolean;
+  readonly esNoShow: boolean;
+  readonly relatedCfdiId: string | null;
+  readonly paymentId: string | null;
+  readonly createdAt: string;
+  readonly canceledAt: string | null;
+}
+
+export interface NewCfdiEmisionInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly folioId: string;
+  readonly tipo: CfdiEmisionTipo;
+  readonly uuidFiscal: string | null;
+  readonly status: CfdiEmisionStatus;
+  readonly pac: string | null;
+  readonly subtotal: number;
+  readonly iva: number;
+  readonly ishTasa: number;
+  readonly ishMonto: number;
+  readonly dsaMonto: number;
+  readonly total: number;
+  readonly rfcReceptor: string;
+  readonly usoCfdi: string;
+  readonly metodoPago: string;
+  readonly esExtranjero: boolean;
+  readonly esGlobal: boolean;
+  readonly esNoShow: boolean;
+  readonly relatedCfdiId: string | null;
+  readonly paymentId: string | null;
+}
+
+/** `hoteles.tax_config` YA expone `ivaRate`/`ishRate`/`discountThreshold`
+ *  (`TaxConfigRecord`) — Fase 1. Este tipo es ADITIVO, no un reemplazo: separa la
+ *  configuración fiscal de EMISIÓN de CFDI (DSA por cuarto-noche, RFC emisor del
+ *  hotel) para no forzar a CADA seed/consumer existente de `TaxConfigRecord` (folios,
+ *  taxes.ts, decenas de tests ya escritos en Fase 1-4) a aportar campos que solo
+ *  necesita el flujo de CFDI nuevo de esta fase. */
+export interface HospedajeFiscalConfig {
+  /** `hoteles.tax_config.ish_rate` — mismo dato que `TaxConfigRecord.ishRate`,
+   *  repetido aquí porque `computeCfdiHospedajeBreakdown` deriva el monto de ISH
+   *  como residuo de `taxTotal - ivaAmount` (ver
+   *  domain-hoteles/src/cfdi/reglas-fiscales-hospedaje.ts) — la tasa en sí solo se
+   *  usa para reportarla en el desglose fiscal del CFDI (`impuestos_locales.ishTasa`
+   *  de la migración), nunca para recalcular el monto. */
+  readonly ishRate: number;
+  /** Derecho de Saneamiento Ambiental — monto FIJO por cuarto-noche, varía por
+   *  municipio (nunca un valor "de verdad" fijo en código). */
+  readonly dsaPerNight: number;
+  /** RFC del hotel emisor. `null` si el hotel todavía no lo configuró — sin él NO
+   *  se puede timbrar ningún CFDI (mismo criterio que el original). */
+  readonly rfcEmisor: string | null;
+}
 
 export interface ContactoNoOperativoRecord {
   readonly id: string;

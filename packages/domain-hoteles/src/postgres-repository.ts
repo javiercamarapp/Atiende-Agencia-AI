@@ -5,24 +5,32 @@
 // `core.has_property_access`/`hoteles.can_access_money`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { IdempotencyConflictError } from "./errors.ts";
+import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
 import type {
   CancellationPolicyRecord,
+  CfdiEmisionRecord,
   ConversationMessage,
   ContactoNoOperativoRecord,
+  DiscountChargeForFraudScan,
   FnbOrderItem,
   FnbOrderRecord,
   FolioRecord,
+  FraudAlertRecord,
+  FraudAlertStatus,
   GuestIdentity,
+  HospedajeFiscalConfig,
+  NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
   NewFnbOrderInput,
+  NewFraudAlertInput,
   NewPaymentInput,
   NewReservationInput,
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
+  ReopenedFolioChargeForFraudScan,
   ReservationRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
@@ -181,6 +189,112 @@ function mapReservation(row: ReservationRawRow): ReservationRecord {
     cancellationPenaltyAmount: row.cancellation_penalty_amount == null ? null : Number(row.cancellation_penalty_amount),
     canceledAt: row.canceled_at,
     createdAt: row.created_at,
+  };
+}
+
+interface FraudAlertRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  pattern: FraudAlertRecord["pattern"];
+  folio_id: string | null;
+  charge_id: string | null;
+  payment_id: string | null;
+  reason: string;
+  evidence: unknown;
+  recipient_roles: unknown;
+  dedupe_key: string;
+  status: FraudAlertStatus;
+  decision_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+const FRAUD_ALERT_COLUMNS = `id, organization_id, property_id, pattern, folio_id, charge_id, payment_id, reason,
+       evidence, recipient_roles, dedupe_key, status, decision_note, resolved_by,
+       resolved_at::text as resolved_at, created_at::text as created_at`;
+
+function mapFraudAlert(row: FraudAlertRawRow): FraudAlertRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    pattern: row.pattern,
+    folioId: row.folio_id,
+    chargeId: row.charge_id,
+    paymentId: row.payment_id,
+    reason: row.reason,
+    evidence: (row.evidence as Record<string, unknown>) ?? {},
+    recipientRoles: (row.recipient_roles as string[]) ?? [],
+    dedupeKey: row.dedupe_key,
+    status: row.status,
+    decisionNote: row.decision_note,
+    resolvedBy: row.resolved_by,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
+interface CfdiEmisionRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  folio_id: string;
+  tipo: CfdiEmisionRecord["tipo"];
+  uuid_fiscal: string | null;
+  status: CfdiEmisionRecord["status"];
+  pac: string | null;
+  subtotal: string;
+  iva: string;
+  ish_tasa: string;
+  ish_monto: string;
+  dsa_monto: string;
+  total: string;
+  rfc_receptor: string;
+  uso_cfdi: string;
+  metodo_pago: string;
+  es_extranjero: boolean;
+  es_global: boolean;
+  es_no_show: boolean;
+  related_cfdi_id: string | null;
+  payment_id: string | null;
+  created_at: string;
+  canceled_at: string | null;
+}
+
+const CFDI_EMISION_COLUMNS = `id, organization_id, property_id, folio_id, tipo, uuid_fiscal, status, pac,
+       subtotal::text as subtotal, iva::text as iva, ish_tasa::text as ish_tasa, ish_monto::text as ish_monto,
+       dsa_monto::text as dsa_monto, total::text as total, rfc_receptor, uso_cfdi, metodo_pago,
+       es_extranjero, es_global, es_no_show, related_cfdi_id, payment_id,
+       created_at::text as created_at, canceled_at::text as canceled_at`;
+
+function mapCfdiEmision(row: CfdiEmisionRawRow): CfdiEmisionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    folioId: row.folio_id,
+    tipo: row.tipo,
+    uuidFiscal: row.uuid_fiscal,
+    status: row.status,
+    pac: row.pac,
+    subtotal: Number(row.subtotal),
+    iva: Number(row.iva),
+    ishTasa: Number(row.ish_tasa),
+    ishMonto: Number(row.ish_monto),
+    dsaMonto: Number(row.dsa_monto),
+    total: Number(row.total),
+    rfcReceptor: row.rfc_receptor,
+    usoCfdi: row.uso_cfdi,
+    metodoPago: row.metodo_pago,
+    esExtranjero: row.es_extranjero,
+    esGlobal: row.es_global,
+    esNoShow: row.es_no_show,
+    relatedCfdiId: row.related_cfdi_id,
+    paymentId: row.payment_id,
+    createdAt: row.created_at,
+    canceledAt: row.canceled_at,
   };
 }
 
@@ -770,5 +884,172 @@ export class PostgresHotelesRepository implements HotelesRepository {
     const organizationId = rows[0]?.organization_id;
     if (!organizationId) throw new Error(`Property "${propertyId}" no encontrada al resolver su organización para WhatsApp.`);
     return organizationId;
+  }
+
+  // ---- HotelesRepository: Fase 5 — H16-014/REQ-REC-014 fraude interno ----
+
+  async listDiscountChargesForFraudScan(propertyId: string): Promise<readonly DiscountChargeForFraudScan[]> {
+    const { rows } = await this.db.query<{ charge_id: string; folio_id: string; amount: string; discount_authorized_by: string | null }>(
+      `select c.id as charge_id, c.folio_id, c.amount::text as amount, c.discount_authorized_by
+       from hoteles.charge c
+       where c.property_id = $1 and c.concept = 'descuento' and c.reversed_by is null;`,
+      [propertyId],
+    );
+    return rows.map((r) => ({ chargeId: r.charge_id, folioId: r.folio_id, amount: Number(r.amount), discountAuthorizedBy: r.discount_authorized_by }));
+  }
+
+  async listReopenedFolioChargesForFraudScan(propertyId: string): Promise<readonly ReopenedFolioChargeForFraudScan[]> {
+    const { rows } = await this.db.query<{ folio_id: string; closed_at: string; charge_id: string; charge_created_at: string }>(
+      `select f.id as folio_id, f.closed_at::text as closed_at, c.id as charge_id, c.created_at::text as charge_created_at
+       from hoteles.folio f
+       join hoteles.charge c on c.folio_id = f.id
+       where f.property_id = $1 and f.closed_at is not null and c.created_at > f.closed_at;`,
+      [propertyId],
+    );
+    return rows.map((r) => ({ folioId: r.folio_id, folioClosedAt: r.closed_at, chargeId: r.charge_id, chargeCreatedAt: r.charge_created_at }));
+  }
+
+  async recordFraudAlert(input: NewFraudAlertInput): Promise<{ record: FraudAlertRecord; isNew: boolean }> {
+    const inserted = await this.db.query<FraudAlertRawRow>(
+      `insert into hoteles.fraud_alert
+         (organization_id, property_id, pattern, folio_id, charge_id, payment_id, reason, evidence, recipient_roles, dedupe_key)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       on conflict (property_id, dedupe_key) do nothing
+       returning ${FRAUD_ALERT_COLUMNS};`,
+      [input.organizationId, input.propertyId, input.pattern, input.folioId, input.chargeId, input.paymentId, input.reason, JSON.stringify(input.evidence), JSON.stringify(input.recipientRoles), input.dedupeKey],
+    );
+    if (inserted.rows[0]) return { record: mapFraudAlert(inserted.rows[0]), isNew: true };
+    const existing = await this.db.query<FraudAlertRawRow>(
+      `select ${FRAUD_ALERT_COLUMNS} from hoteles.fraud_alert where property_id = $1 and dedupe_key = $2;`,
+      [input.propertyId, input.dedupeKey],
+    );
+    if (!existing.rows[0]) throw new Error(`recordFraudAlert: no se pudo crear ni encontrar la alerta con dedupe_key "${input.dedupeKey}".`);
+    return { record: mapFraudAlert(existing.rows[0]), isNew: false };
+  }
+
+  async listFraudAlerts(propertyId: string, filter?: { readonly status?: FraudAlertStatus }): Promise<readonly FraudAlertRecord[]> {
+    const { rows } = await this.db.query<FraudAlertRawRow>(
+      filter?.status
+        ? `select ${FRAUD_ALERT_COLUMNS} from hoteles.fraud_alert where property_id = $1 and status = $2 order by created_at desc limit 200;`
+        : `select ${FRAUD_ALERT_COLUMNS} from hoteles.fraud_alert where property_id = $1 order by created_at desc limit 200;`,
+      filter?.status ? [propertyId, filter.status] : [propertyId],
+    );
+    return rows.map(mapFraudAlert);
+  }
+
+  async findFraudAlert(propertyId: string, alertId: string): Promise<FraudAlertRecord | null> {
+    const { rows } = await this.db.query<FraudAlertRawRow>(`select ${FRAUD_ALERT_COLUMNS} from hoteles.fraud_alert where id = $1 and property_id = $2;`, [alertId, propertyId]);
+    return rows[0] ? mapFraudAlert(rows[0]) : null;
+  }
+
+  async resolveFraudAlert(propertyId: string, alertId: string, resolvedBy: string, status: "confirmado" | "descartado", decisionNote: string | null): Promise<FraudAlertRecord> {
+    const { rows } = await this.db.query<FraudAlertRawRow>(
+      `update hoteles.fraud_alert
+       set status = $1, decision_note = $2, resolved_by = $3, resolved_at = now()
+       where id = $4 and property_id = $5 and status = 'pendiente'
+       returning ${FRAUD_ALERT_COLUMNS};`,
+      [status, decisionNote, resolvedBy, alertId, propertyId],
+    );
+    if (rows[0]) return mapFraudAlert(rows[0]);
+    const existing = await this.findFraudAlert(propertyId, alertId);
+    if (!existing) throw new Error(`Alerta de fraude ${alertId} no encontrada.`);
+    throw new FraudAlertAlreadyResolvedError();
+  }
+
+  // ---- HotelesRepository: Fase 5 — H5/REQ-BO-001/002 CFDI de hospedaje ----
+
+  async loadHospedajeFiscalConfig(propertyId: string): Promise<HospedajeFiscalConfig> {
+    const { rows } = await this.db.query<{ ish_rate: string; dsa_per_night: string; rfc_emisor: string | null }>(
+      `select ish_rate, dsa_per_night, rfc_emisor from hoteles.tax_config where property_id = $1;`,
+      [propertyId],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`No hay hoteles.tax_config configurado para property "${propertyId}".`);
+    return { ishRate: Number(row.ish_rate), dsaPerNight: Number(row.dsa_per_night), rfcEmisor: row.rfc_emisor };
+  }
+
+  async listChargesForCfdi(folioId: string): Promise<readonly { concept: string; amount: number; taxAmount: number; stayDate: string | null; reversesChargeId: string | null }[]> {
+    const { rows } = await this.db.query<{ concept: string; amount: string; tax_amount: string; stay_date: string | null; reverses_charge_id: string | null }>(
+      `select concept, amount::text as amount, tax_amount::text as tax_amount, stay_date::text as stay_date, reverses_charge_id
+       from hoteles.charge where folio_id = $1;`,
+      [folioId],
+    );
+    return rows.map((r) => ({ concept: r.concept, amount: Number(r.amount), taxAmount: Number(r.tax_amount), stayDate: r.stay_date, reversesChargeId: r.reverses_charge_id }));
+  }
+
+  async findCfdiEmisionByFolio(propertyId: string, folioId: string, tipo: "hospedaje"): Promise<CfdiEmisionRecord | null> {
+    const { rows } = await this.db.query<CfdiEmisionRawRow>(
+      `select ${CFDI_EMISION_COLUMNS} from hoteles.cfdi_emision where property_id = $1 and folio_id = $2 and tipo = $3;`,
+      [propertyId, folioId, tipo],
+    );
+    return rows[0] ? mapCfdiEmision(rows[0]) : null;
+  }
+
+  async findCfdiEmisionByPayment(propertyId: string, paymentId: string): Promise<CfdiEmisionRecord | null> {
+    const { rows } = await this.db.query<CfdiEmisionRawRow>(
+      `select ${CFDI_EMISION_COLUMNS} from hoteles.cfdi_emision where property_id = $1 and payment_id = $2 and tipo = 'pago';`,
+      [propertyId, paymentId],
+    );
+    return rows[0] ? mapCfdiEmision(rows[0]) : null;
+  }
+
+  async insertCfdiEmision(input: NewCfdiEmisionInput): Promise<CfdiEmisionRecord> {
+    const inserted = await this.db.query<CfdiEmisionRawRow>(
+      `insert into hoteles.cfdi_emision
+         (organization_id, property_id, folio_id, tipo, uuid_fiscal, status, pac, subtotal, iva, ish_tasa, ish_monto,
+          dsa_monto, total, rfc_receptor, uso_cfdi, metodo_pago, es_extranjero, es_global, es_no_show, related_cfdi_id, payment_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+       on conflict (folio_id) where tipo = 'hospedaje' do nothing
+       returning ${CFDI_EMISION_COLUMNS};`,
+      [
+        input.organizationId,
+        input.propertyId,
+        input.folioId,
+        input.tipo,
+        input.uuidFiscal,
+        input.status,
+        input.pac,
+        input.subtotal,
+        input.iva,
+        input.ishTasa,
+        input.ishMonto,
+        input.dsaMonto,
+        input.total,
+        input.rfcReceptor,
+        input.usoCfdi,
+        input.metodoPago,
+        input.esExtranjero,
+        input.esGlobal,
+        input.esNoShow,
+        input.relatedCfdiId,
+        input.paymentId,
+      ],
+    );
+    if (inserted.rows[0]) return mapCfdiEmision(inserted.rows[0]);
+    // La carrera perdió contra el índice único parcial (REQ-BO-002) -- el CFDI de
+    // hospedaje/pago YA existe, se devuelve tal cual (mismo UUID) sin timbrar dos veces.
+    const existing =
+      input.tipo === "hospedaje" ? await this.findCfdiEmisionByFolio(input.propertyId, input.folioId, "hospedaje") : input.paymentId ? await this.findCfdiEmisionByPayment(input.propertyId, input.paymentId) : null;
+    if (!existing) throw new Error(`insertCfdiEmision: conflicto de índice único sin fila existente recuperable (folio=${input.folioId}, tipo=${input.tipo}).`);
+    return existing;
+  }
+
+  async findCfdiEmision(propertyId: string, cfdiId: string): Promise<CfdiEmisionRecord | null> {
+    const { rows } = await this.db.query<CfdiEmisionRawRow>(`select ${CFDI_EMISION_COLUMNS} from hoteles.cfdi_emision where id = $1 and property_id = $2;`, [cfdiId, propertyId]);
+    return rows[0] ? mapCfdiEmision(rows[0]) : null;
+  }
+
+  async listCfdiEmisiones(propertyId: string, filter?: { readonly folioId?: string }): Promise<readonly CfdiEmisionRecord[]> {
+    const { rows } = await this.db.query<CfdiEmisionRawRow>(
+      filter?.folioId
+        ? `select ${CFDI_EMISION_COLUMNS} from hoteles.cfdi_emision where property_id = $1 and folio_id = $2 order by created_at asc;`
+        : `select ${CFDI_EMISION_COLUMNS} from hoteles.cfdi_emision where property_id = $1 order by created_at desc limit 200;`,
+      filter?.folioId ? [propertyId, filter.folioId] : [propertyId],
+    );
+    return rows.map(mapCfdiEmision);
+  }
+
+  async updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void> {
+    await this.db.query(`update hoteles.cfdi_emision set status = $1, canceled_at = now() where id = $2;`, [status, cfdiId]);
   }
 }
