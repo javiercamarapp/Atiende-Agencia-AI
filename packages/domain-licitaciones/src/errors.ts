@@ -56,3 +56,20 @@ export class ApprovalRejectedError extends Error {
     this.name = "ApprovalRejectedError";
   }
 }
+
+/**
+ * Fase 3 §7: lanzado por `buildGoNoGoDecision()` (go-no-go.ts) cuando la
+ * regla de decisión rechaza la operación -- rol insuficiente (writer/viewer,
+ * o cualquier rol fuera de GO_NO_GO_ROLES) o motivo vacío. `reasonCode` es
+ * estable y legible por máquina (apps/api lo mapea a un código HTTP
+ * específico, mismo patrón que `ApprovalRejectedError`).
+ */
+export class GoNoGoRejectedError extends Error {
+  constructor(
+    readonly reasonCode: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GoNoGoRejectedError";
+  }
+}

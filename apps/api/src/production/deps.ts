@@ -8,11 +8,11 @@
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { CitasRepository, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
-import { createDefaultConversationGuard } from "@atiende/domain-citas";
+import { createDefaultConversationGuard, createGoogleCalendarPortResolver, exchangeGoogleAuthorizationCode } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { AuditSink } from "@atiende/core-authz";
-import type { RentasRepository } from "@atiende/domain-rentas";
+import type { RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import { openManagedPostgres } from "@atiende/db";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
@@ -44,6 +44,7 @@ export function buildProductionDeps(): AppDeps {
   }
 
   const engine = openManagedPostgres({ connectionString: databaseUrl });
+  const citasRepo = notProductionReady<CitasRepository>("citasRepo");
 
   cached = {
     env,
@@ -54,7 +55,7 @@ export function buildProductionDeps(): AppDeps {
     hotelesRepo: notProductionReady<HotelesRepository>("hotelesRepo"),
     hotelesPaymentsPort: notProductionReady<PaymentsPort>("hotelesPaymentsPort"),
     hotelesTurnHandler: notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler"),
-    citasRepo: notProductionReady<CitasRepository>("citasRepo"),
+    citasRepo,
     // El turn handler real (LLM real vía @atiende/agent-core::LlmGateway con
     // roles/proveedores registrados) requiere la misma decisión de arquitectura
     // pendiente que citasRepo — nunca se marca listo con un LlmGateway sin
@@ -69,10 +70,26 @@ export function buildProductionDeps(): AppDeps {
     // funcione correctamente.
     citasTurnHandler: notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler"),
     citasConversationGuard: createDefaultConversationGuard(),
+    // Fase 3 §4/§9 — el resolver SÍ se construye real (misma lógica de
+    // resolución/rotación de token que producción usará el día que citasRepo tenga
+    // un adaptador de Postgres real, ver comentario de arriba): como `citasRepo`
+    // sigue siendo `notProductionReady` mientras esa decisión de arquitectura no se
+    // tome, cualquier intento real de resolverlo falla con el mismo error explícito
+    // y accionable — nunca silenciosamente `null` fingiendo "sin conectar". El
+    // intercambio de código SÍ es real y no depende de citasRepo (solo llama a
+    // Google) — se activa en cuanto `GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL`
+    // estén configurados (ver env.ts).
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepo, env.googleOAuth),
+    citasGoogleTokenExchange: exchangeGoogleAuthorizationCode,
     licitacionesRepo: notProductionReady<LicitacionesRepository>("licitacionesRepo"),
     despachosRepo: notProductionReady<DespachosRepository>("despachosRepo"),
     despachosAuditSink: notProductionReady<AuditSink>("despachosAuditSink"),
     rentasRepo: notProductionReady<RentasRepository>("rentasRepo"),
+    // Mismo gap documentado que rentasRepo -- ver además la advertencia de privilegio
+    // en owner-portal/postgres-repository.ts (findOwnerCredentialByEmail/
+    // createPortalInvite/consumePortalInvite exigen una sesión administrativa distinta
+    // de la sesión RLS por-request que sí basta para los métodos de solo lectura).
+    rentasOwnerPortalRepo: notProductionReady<RentasOwnerPortalRepository>("rentasOwnerPortalRepo"),
   };
   return cached;
 }

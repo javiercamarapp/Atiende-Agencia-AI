@@ -10,9 +10,9 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
-import { InMemoryRentasCalendarStore, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
+import { InMemoryRentasCalendarStore, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
 import type { RentasVerticalRole } from "@atiende/domain-rentas";
-import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, InMemoryCitasRepository } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -31,6 +31,11 @@ export interface RentasTestContext {
    * pueda seguir sembrando datos (`seedUnidad`/`seedPricingContext`/etc.) después de
    * construido el contexto, sin depender de un cast. */
   readonly rentasRepo: InMemoryRentasRepository;
+  /** Referencia tipada al adaptador en memoria del portal de propietario (Fase 3) --
+   * mismo criterio que `rentasRepo` arriba: para que un test pueda seguir sembrando
+   * datos (`seedOwner`/`seedUnidad`/`seedOwnerStatement`/`seedCredential`/etc.) después
+   * de construido el contexto. */
+  readonly rentasOwnerPortalRepo: InMemoryRentasOwnerPortalRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly unidadId: string;
@@ -58,11 +63,13 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
   const calendarStore = new InMemoryRentasCalendarStore();
   const engine = new InMemoryRentasTenancyEngine(calendarStore);
   const rentasRepo = new InMemoryRentasRepository(calendarStore);
+  const rentasOwnerPortalRepo = new InMemoryRentasOwnerPortalRepository();
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
   coreRepo.addOrganization({ id: organizationId, slug: "rentas-de-prueba", name: "Rentas de Prueba", vertical: "rentas" });
   engine.seedProperty({ id: propertyId, organizationId });
+  rentasOwnerPortalRepo.seedOrganization({ id: organizationId, name: "Rentas de Prueba", slug: "rentas-de-prueba" });
 
   async function seedStaff(role: RentasVerticalRole, label: string, platformRole: "owner" | "admin" | "member" | "viewer") {
     const id = randomUUID();
@@ -103,9 +110,14 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
     rentasRepo,
+    rentasOwnerPortalRepo,
     citasRepo: new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
+    citasGoogleTokenExchange: async () => {
+      throw new Error("citasGoogleTokenExchange no está configurado en este fixture (vertical rentas).");
+    },
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
@@ -123,6 +135,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
     deps,
     engine,
     rentasRepo,
+    rentasOwnerPortalRepo,
     organizationId,
     propertyId,
     unidadId,

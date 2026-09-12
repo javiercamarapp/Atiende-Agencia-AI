@@ -12,6 +12,7 @@ import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   createDefaultConversationGuard,
+  createGoogleCalendarPortResolver,
   createLlmWhatsAppTurnHandler,
   InMemoryCitasRepository,
   type WhatsAppTurnHandler,
@@ -22,7 +23,7 @@ import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHan
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
@@ -137,10 +138,15 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     citasRepo,
     citasTurnHandler: turnHandler,
     citasConversationGuard: createDefaultConversationGuard(),
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepo, null),
+    citasGoogleTokenExchange: async () => {
+      throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp).");
+    },
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
   };
 }
 

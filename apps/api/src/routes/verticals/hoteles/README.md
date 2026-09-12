@@ -17,6 +17,31 @@ staff):
   guardia anti-alucinación de precio (REQ-REV-001/REQ-RES-002).
 - `hoteles.ts` — agregador, montado en `apps/api/src/app.ts`.
 
+## Fase 3 — máquina de estados de reservas (H02)
+
+- `reservas.ts` — `GET/POST/PATCH /hoteles/:propertyId/reservas/...`: ciclo de vida
+  completo de una reserva, motor en `@atiende/domain-hoteles::reservationStateMachine.ts`
+  (espejo de la tabla real `hoteles.reservation_status_transition` + trigger, ver
+  `migrations/005_reservas_estado.sql`):
+  - `GET /reservas` / `GET /reservas/:id` — lectura, cualquier staff de la property.
+  - `POST /reservas` — crea la reserva directo en `confirmada` (esta fase salta
+    `cotizada`, ver diseño §3.2), cotiza con el motor real de `quotes.ts`, reserva
+    inventario noche por noche (`bookAvailability`) y crea el folio primario en la
+    misma operación (`ensurePrimaryFolio`) — `Idempotency-Key` obligatorio.
+  - `PATCH /reservas/:id/transicion` — transición GENÉRICA
+    (`check_in`/`en_estancia`/`check_out`/`cerrada`); el rol permitido depende de
+    `(from,to)` (`canRolePerformTransition`), nunca un rol fijo por ruta.
+    `cancelada`/`no_show` están excluidos deliberadamente (tienen efectos
+    secundarios propios que solo garantizan sus rutas dedicadas).
+  - `POST /reservas/:id/cancelar` — guardia `isCancellable` (después de check-in ya
+    no se puede cancelar), aplica la política de cancelación de la property, libera
+    TODAS las noches restantes y marca la penalización.
+  - `POST /reservas/procesar-no-show` — job por HTTP (`ADMIN_ROLES`), reclamo
+    atómico `WHERE status='confirmada'` por reserva, libera inventario y postea la
+    penalización (`computeNoShowPenaltyAmounts`: IVA sí, ISH no — decisión §3.4) al
+    folio primario; el actor de la transición es SIEMPRE el lógico `system`, nunca el
+    admin humano que disparó el endpoint.
+
 Toda la lógica de negocio vive en `@atiende/domain-hoteles` — ninguna ruta aquí toca
 SQL directamente. `admin`/`backoffice` de superadmin quedan reservados para una fase
 posterior (ver diseño Fase 1 hoteles §6).

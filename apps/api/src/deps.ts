@@ -3,10 +3,10 @@ import type { TenancyEngine } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
-import type { CitasConversationGuard, CitasRepository, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
+import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
-import type { RentasRepository } from "@atiende/domain-rentas";
+import type { RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import type { ApiEnv } from "./env.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
@@ -49,6 +49,18 @@ export interface AppDeps {
    * por proceso; producción real debe pasar un RedisLockStore en vez del
    * InMemoryLockStore por defecto de `createDefaultConversationGuard()`. */
   readonly citasConversationGuard: CitasConversationGuard;
+  /** Fase 3 §4/§5 — resuelve el GoogleCalendarPort real para UN provider_id
+   * concreto (o `null` si no puede sincronizar todavía, ver diseño §4/§9).
+   * Inyectado (no construido dentro de una ruta) para que producción use
+   * `createGoogleCalendarPortResolver(citasRepo, env.googleOAuth)` y las pruebas de
+   * apps/api sustituyan el `createPort` real por un `FakeGoogleCalendarPort`
+   * compartido, sin reescribir la lógica de resolución/rotación de token. */
+  readonly citasGoogleCalendarPortResolver: ResolveCalendarPort;
+  /** Fase 3 §4 paso 3 — intercambio real `code -> {access_token, refresh_token}`
+   * contra Google, inyectado por el mismo motivo que el resolver de arriba: en
+   * producción es `exchangeGoogleAuthorizationCode` real; en pruebas, un doble que
+   * nunca toca la red. */
+  readonly citasGoogleTokenExchange: (input: ExchangeAuthorizationCodeInput) => Promise<ExchangeAuthorizationCodeResult>;
   readonly licitacionesRepo: LicitacionesRepository;
   readonly despachosRepo: DespachosRepository;
   /** Auditoría de decisiones de la cola de revisión humana (aprobar/rechazar un CFDI)
@@ -57,4 +69,10 @@ export interface AppDeps {
    * en core, no se repite por vertical"). */
   readonly despachosAuditSink: AuditSink;
   readonly rentasRepo: RentasRepository;
+  /** Fase 3 rentas -- portal de propietario (solo lectura), identidad/sesión propias
+   * (nunca `core.membership`/`requirePropertyMembership`, ver diseño Fase 3 §1). Puerto
+   * separado de `rentasRepo` a propósito: un actor distinto, tablas nuevas
+   * (`rentas.owner_credential`), RLS nueva y aditiva -- nunca comparte código de
+   * autorización con las rutas de staff. */
+  readonly rentasOwnerPortalRepo: RentasOwnerPortalRepository;
 }

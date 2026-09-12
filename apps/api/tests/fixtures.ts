@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
-import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, InMemoryCitasRepository } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -19,6 +19,10 @@ export const TEST_ENV: ApiEnv = {
   whatsappAppSecret: "test-whatsapp-app-secret",
   internalSecret: "test-internal-secret",
   allowedOrigins: ["http://localhost:5173"],
+  googleOAuth: { clientId: "test-google-client-id", clientSecret: "test-google-client-secret", redirectBaseUrl: "https://api.test.invalid" },
+  rentasOwnerJwtSecret: "test-rentas-owner-jwt-secret",
+  rentasOwnerAccessTokenTtlSeconds: 900,
+  rentasOwnerRefreshTokenTtlSeconds: 60 * 60 * 24 * 30,
 };
 
 export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: string; propertyId: string; products: Record<string, string>; ownerEmail: string; ownerPassword: string }> {
@@ -69,6 +73,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
   coreRepo.addMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
 
   const hotelesRepo = new InMemoryHotelesRepository();
+  const citasRepo = new InMemoryCitasRepository();
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
@@ -78,13 +83,21 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     hotelesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(hotelesRepo),
-    citasRepo: new InMemoryCitasRepository(),
+    citasRepo,
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
+    // Fase 3 — sin credenciales de Google configuradas en este fixture genérico
+    // (no relacionado con citas): el resolver real ya devuelve `null` siempre
+    // (config: null), y el exchange nunca debería llamarse aquí.
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepo, null),
+    citasGoogleTokenExchange: async () => {
+      throw new Error("citasGoogleTokenExchange no está configurado en este fixture de pruebas genérico.");
+    },
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
   };
 
   return { deps, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

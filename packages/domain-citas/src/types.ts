@@ -67,6 +67,17 @@ export type AppointmentStatus = "pending" | "confirmed" | "completed" | "cancell
 export type AppointmentSource = "voice" | "whatsapp" | "web" | "manual";
 export type AppointmentActorChannel = AppointmentSource | "panel";
 
+/**
+ * Fase 3 §3/§6 — estado de la sincronización unidireccional (software -> Google
+ * Calendar, NUNCA al revés) de esta cita. `pending`/`pending_cancel` los escriben
+ * ATÓMICAMENTE las mismas funciones plpgsql que ya cambian la cita real
+ * (create/cancel/reschedule_appointment_idempotent, ver migrations/005) — nunca una
+ * segunda transacción separada. `skipped` = el proveedor no tiene Google Calendar
+ * conectado (no es un error a reintentar). `error` = se agotaron los reintentos
+ * (`MAX_SYNC_ATTEMPTS`) o el refresh token quedó revocado — ver calendar-sync.ts.
+ */
+export type GoogleSyncStatus = "pending" | "synced" | "error" | "skipped" | "pending_cancel" | "deleted";
+
 export interface AppointmentRecord {
   readonly id: string;
   readonly organizationId: string;
@@ -83,6 +94,34 @@ export interface AppointmentRecord {
   readonly idempotencyKey: string | null;
   readonly reminder24hSentAt: string | null;
   readonly createdAt: string;
+  /** Id real del evento en Google Calendar una vez creado — null hasta el primer
+   * `createEvent` exitoso (ver diseño Fase 3 §5/§6). */
+  readonly googleEventId: string | null;
+  readonly googleSyncStatus: GoogleSyncStatus;
+  readonly googleSyncAttempts: number;
+  /** ISO UTC o null — null significa "nunca se ha intentado todavía" (elegible de
+   * inmediato para el cron de reconciliación, ver calendar-sync.ts). */
+  readonly googleSyncNextRetryAt: string | null;
+  readonly googleSyncError: string | null;
+}
+
+/** Fase 3 §3 — estado de la CONEXIÓN de un proveedor con su Google Calendar
+ * personal (distinto del `GoogleSyncStatus` de una cita individual). */
+export type CalendarAccountSyncStatus = "disconnected" | "connected" | "error";
+
+export interface ProviderCalendarAccountRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly providerId: string;
+  /** Normalmente "primary" o el email del profesional — ver diseño Fase 3 §3. */
+  readonly googleCalendarId: string;
+  readonly googleWatchChannelId: string | null;
+  readonly googleWatchResourceId: string | null;
+  readonly googleWatchExpiresAt: string | null;
+  readonly syncStatus: CalendarAccountSyncStatus;
+  readonly syncError: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 // ---- Flujo 1: crear cita ----

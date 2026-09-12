@@ -105,3 +105,37 @@ export { PostgresRentasRepository } from "./postgres-repository.ts";
 export { InMemoryRentasCalendarStore } from "./calendar-store.ts";
 export { InMemoryRentasTenancyEngine } from "./in-memory-tenancy-engine.ts";
 export type { SeedTenancyMembership, SeedTenancyProperty } from "./in-memory-tenancy-engine.ts";
+
+// ---------------------------------------------------------------------------
+// Portal de propietario (Fase 3) -- ver src/owner-portal/*, aislado a propósito del
+// resto del paquete (identidad/JWT/RLS propios, nunca de staff). Ver diseño Fase 3
+// rentas §1-§7.
+// ---------------------------------------------------------------------------
+export {
+  RentasPropertyOwnerTokenExpiredError,
+  RentasPropertyOwnerTokenInvalidError,
+  signRentasPropertyOwnerAccessToken,
+  signRentasPropertyOwnerRefreshToken,
+  verifyRentasPropertyOwnerAccessToken,
+  verifyRentasPropertyOwnerRefreshToken,
+} from "./owner-portal/jwt.ts";
+export type { RentasPropertyOwnerAccessTokenClaims, RentasPropertyOwnerRefreshTokenClaims } from "./owner-portal/jwt.ts";
+
+export { generateInviteToken, hashInviteToken } from "./owner-portal/invite-token.ts";
+export type { GeneratedInviteToken } from "./owner-portal/invite-token.ts";
+
+export type {
+  ConsumePortalInviteInput,
+  FiltroOwnerPortalStatements,
+  NewPortalInviteInput,
+  OwnerCredentialForLogin,
+  OwnerPortalOrganizacion,
+  OwnerPortalProfileBase,
+  OwnerPortalStatementDetalle,
+  OwnerPortalStatementSummary,
+  UnidadPropietarioRecord,
+} from "./owner-portal/types.ts";
+
+export type { RentasOwnerPortalRepository } from "./owner-portal/repository.ts";
+export { InMemoryRentasOwnerPortalRepository } from "./owner-portal/in-memory-repository.ts";
+export { PostgresRentasOwnerPortalRepository } from "./owner-portal/postgres-repository.ts";
