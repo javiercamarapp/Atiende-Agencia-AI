@@ -45,7 +45,7 @@ async function resolveEffectivePropertyIds(deps: AppDeps, c: Context<CoreAuthHon
 
   if (branchId === null) return membershipScope;
 
-  const branches = await deps.restaurantesRepo.listBranchesForOrganization(organizationId);
+  const branches = await deps.restaurantesRepo(c.get("db")).listBranchesForOrganization(organizationId);
   if (!branches.some((b) => b.propertyId === branchId)) {
     throw Errors.validation("branchId no pertenece a esta organización (o no está activo).");
   }
@@ -70,11 +70,11 @@ function parseBranchId(raw: string | undefined): string | null {
 
 export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.restaurantesRepo;
 
   app.use("/v1/restaurantes/:propertyId/admin/kpis/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get("/v1/restaurantes/:propertyId/admin/kpis/sales", async (c) => {
+    const repo = deps.restaurantesRepo(c.get("db"));
     assertVerticalRole(c, MANAGER_ROLES);
     const organizationId = c.get("organizationId");
     const period = parsePeriod(c.req.query("period"));
@@ -96,6 +96,7 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   });
 
   app.get("/v1/restaurantes/:propertyId/admin/kpis/sales/trend", async (c) => {
+    const repo = deps.restaurantesRepo(c.get("db"));
     assertVerticalRole(c, MANAGER_ROLES);
     const organizationId = c.get("organizationId");
     const period = parsePeriod(c.req.query("period"));
@@ -113,6 +114,7 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   });
 
   app.get("/v1/restaurantes/:propertyId/admin/kpis/channels", async (c) => {
+    const repo = deps.restaurantesRepo(c.get("db"));
     assertVerticalRole(c, MANAGER_ROLES);
     const organizationId = c.get("organizationId");
     const branchId = parseBranchId(c.req.query("branchId"));
@@ -123,6 +125,7 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   });
 
   app.get("/v1/restaurantes/:propertyId/admin/kpis/customers", async (c) => {
+    const repo = deps.restaurantesRepo(c.get("db"));
     assertVerticalRole(c, MANAGER_ROLES);
     const organizationId = c.get("organizationId");
     const kpis = await getCustomerKpis(repo, organizationId);
@@ -149,9 +152,17 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   // nueva. Sin filtro de rol (MANAGER_ROLES): la lista de sucursales no es sensible
   // (el propio checkout público ya la expone indirectamente vía el agente de
   // WhatsApp) y hasta un `repartidor` necesita saber en cuál está.
-  app.use("/v1/restaurantes/:orgSlug/admin/branches", authMiddleware(deps.env));
+  // `dbSession` agregado aquí (a diferencia de solo `authMiddleware` antes de este
+  // cambio) porque `deps.restaurantesRepo` dejó de ser un objeto fijo y ahora es una
+  // fábrica `(db) => RestaurantesRepository` -- esta ruta SÍ es de staff autenticado
+  // (JWT real vía authMiddleware), así que abre la misma sesión RLS por-request que
+  // el resto de rutas de staff, aunque no use `requirePropertyMembership` (no hay
+  // `propertyId` en el path; la autorización real es "pertenece a esta
+  // organización", verificada abajo vía `coreRepo`).
+  app.use("/v1/restaurantes/:orgSlug/admin/branches", authMiddleware(deps.env), dbSession(deps.engine));
   app.get("/v1/restaurantes/:orgSlug/admin/branches", async (c) => {
-    const org = await deps.restaurantesRepo.findOrganizationBySlug(c.req.param("orgSlug"));
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const org = await repo.findOrganizationBySlug(c.req.param("orgSlug"));
     if (!org) throw Errors.notFound(`Restaurante "${c.req.param("orgSlug")}" no encontrado.`);
 
     const memberships = await deps.coreRepo.findMembershipsByUserId(c.get("userId"));
@@ -159,7 +170,7 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
       throw Errors.forbidden("No perteneces a esta organización.");
     }
 
-    const branches = await deps.restaurantesRepo.listBranchesForOrganization(org.id);
+    const branches = await repo.listBranchesForOrganization(org.id);
     return c.json({ branches: branches.map((b) => ({ propertyId: b.propertyId, name: b.name, slug: b.slug })) });
   });
 

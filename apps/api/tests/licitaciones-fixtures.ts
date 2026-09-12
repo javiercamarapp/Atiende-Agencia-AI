@@ -80,23 +80,23 @@ export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options
     env: TEST_ENV,
     coreRepo,
     engine,
-    restaurantesRepo: new InMemoryRestaurantesRepository(),
+    restaurantesRepo: (_db) => new InMemoryRestaurantesRepository(),
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
-    hotelesRepo: new InMemoryHotelesRepository(),
+    hotelesRepo: (_db) => new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
-    licitacionesRepo: repo,
-    citasRepo: new InMemoryCitasRepository(),
+    licitacionesRepo: (_db) => repo,
+    citasRepo: (_db) => new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (vertical licitaciones).");
     },
-    despachosRepo: new InMemoryDespachosRepository(),
+    despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    rentasRepo: (_db) => new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
   };
 
   const app = buildApp(deps);

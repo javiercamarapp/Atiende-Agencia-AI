@@ -17,13 +17,13 @@
 // el árbol de archivos deje claro qué endpoints son Server Tools de voz.
 import { Hono } from "hono";
 import { consumeRateLimit, findNearestBranch, OrderValidationError, quoteOrder, searchProducts } from "@atiende/domain-restaurantes";
-import type { RequestedOrderItemInput } from "@atiende/domain-restaurantes";
+import type { RequestedOrderItemInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
-async function resolveOrganizationOrNotFound(deps: AppDeps, orgSlug: string) {
-  const org = await deps.restaurantesRepo.findOrganizationBySlug(orgSlug);
+async function resolveOrganizationOrNotFound(repo: RestaurantesRepository, orgSlug: string) {
+  const org = await repo.findOrganizationBySlug(orgSlug);
   if (!org) throw Errors.notFound(`Restaurante "${orgSlug}" no encontrado.`);
   return org;
 }
@@ -62,16 +62,22 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   // inventa/adivina una sucursal.
   app.post("/v1/restaurantes/:orgSlug/branches/nearest", async (c) => {
     requireVoiceToolSecret(deps, c.req.raw);
-    const org = await resolveOrganizationOrNotFound(deps, c.req.param("orgSlug"));
     const { colonia } = await readJsonCapped<{ colonia?: unknown }>(c.req.raw, 4 * 1024);
     if (typeof colonia !== "string" || !colonia.trim() || colonia.length > 160) throw Errors.validation("colonia es requerido");
 
-    const limited = await consumeRateLimit(deps.restaurantesRepo, "voice-branches-nearest", requestActor(c.req.raw, colonia), 60, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    // Sub-Hono propio sin authMiddleware/dbSession -- abre su propia sesión de
+    // sistema (`userId: null`), igual que public.ts.
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
 
-    const match = await findNearestBranch(deps.restaurantesRepo, { organizationId: org.id, colonia });
-    if (!match.found) return c.json({ encontrada: false, mensaje: match.message });
-    return c.json({ encontrada: true, branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, colonia_reconocida: match.recognizedZoneName });
+      const limited = await consumeRateLimit(repo, "voice-branches-nearest", requestActor(c.req.raw, colonia), 60, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
+
+      const match = await findNearestBranch(repo, { organizationId: org.id, colonia });
+      if (!match.found) return c.json({ encontrada: false, mensaje: match.message });
+      return c.json({ encontrada: true, branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, colonia_reconocida: match.recognizedZoneName });
+    });
   });
 
   // §1.2 — POST /v1/restaurantes/:orgSlug/products/search (buscar_producto).
@@ -81,22 +87,26 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   // origen: hardcode silencioso a `fco-montejo`).
   app.post("/v1/restaurantes/:orgSlug/products/search", async (c) => {
     requireVoiceToolSecret(deps, c.req.raw);
-    const org = await resolveOrganizationOrNotFound(deps, c.req.param("orgSlug"));
     const { query, branch_slug: branchSlug } = await readJsonCapped<{ query?: unknown; branch_slug?: unknown }>(c.req.raw, 8 * 1024);
     if (typeof query !== "string" || !query.trim() || query.length > 160) throw Errors.validation("query es requerido");
     if (typeof branchSlug !== "string" || !branchSlug.trim() || branchSlug.length > 100) {
       throw Errors.validation("branch_slug es requerido — confirma la sucursal antes de buscar productos");
     }
 
-    const limited = await consumeRateLimit(deps.restaurantesRepo, "voice-products-search", requestActor(c.req.raw, branchSlug), 120, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
 
-    const branch = await deps.restaurantesRepo.findBranch(org.id, { slug: branchSlug });
-    if (!branch) throw Errors.validation(`Sucursal '${branchSlug}' no encontrada`);
+      const limited = await consumeRateLimit(repo, "voice-products-search", requestActor(c.req.raw, branchSlug), 120, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
 
-    const productos = await searchProducts(deps.restaurantesRepo, { propertyId: branch.propertyId, query });
-    return c.json({
-      productos: productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation })),
+      const branch = await repo.findBranch(org.id, { slug: branchSlug });
+      if (!branch) throw Errors.validation(`Sucursal '${branchSlug}' no encontrada`);
+
+      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query });
+      return c.json({
+        productos: productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation })),
+      });
     });
   });
 
@@ -109,26 +119,30 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   // calcular él mismo.
   app.post("/v1/restaurantes/:orgSlug/orders/quote", async (c) => {
     requireVoiceToolSecret(deps, c.req.raw);
-    const org = await resolveOrganizationOrNotFound(deps, c.req.param("orgSlug"));
     const body = await readJsonCapped<{ branch_slug?: unknown; items?: unknown; adult_confirmed?: unknown }>(c.req.raw, 24 * 1024);
     const branchSlug = typeof body.branch_slug === "string" ? body.branch_slug : "";
     if (!branchSlug.trim()) throw Errors.validation("branch_slug es requerido");
 
-    const limited = await consumeRateLimit(deps.restaurantesRepo, "voice-orders-quote", requestActor(c.req.raw, branchSlug), 120, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
 
-    try {
-      const quote = await quoteOrder(deps.restaurantesRepo, {
-        organizationId: org.id,
-        branchSlug,
-        items: mapQuoteItems(body.items),
-        adultConfirmed: body.adult_confirmed === true,
-      });
-      return c.json({ quote });
-    } catch (err) {
-      if (err instanceof OrderValidationError) throw Errors.validation(err.message);
-      throw err;
-    }
+      const limited = await consumeRateLimit(repo, "voice-orders-quote", requestActor(c.req.raw, branchSlug), 120, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
+
+      try {
+        const quote = await quoteOrder(repo, {
+          organizationId: org.id,
+          branchSlug,
+          items: mapQuoteItems(body.items),
+          adultConfirmed: body.adult_confirmed === true,
+        });
+        return c.json({ quote });
+      } catch (err) {
+        if (err instanceof OrderValidationError) throw Errors.validation(err.message);
+        throw err;
+      }
+    });
   });
 
   return app;

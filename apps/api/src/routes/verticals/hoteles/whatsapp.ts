@@ -54,34 +54,40 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
       return c.text("Invalid JSON", 400);
     }
 
-    const phoneNumberId = extractMetaPhoneNumberId(payload);
-    const route = phoneNumberId ? await resolvePropertyByPhoneNumberId(deps.hotelesRepo, phoneNumberId) : null;
-    if (!route) {
-      // Número no configurado en la plataforma: ack silencioso, no reintento.
-      return c.json({ ok: true });
-    }
+    // Webhook público/de sistema, sin authMiddleware/dbSession -- abre su propia
+    // sesión de sistema (`userId: null`), igual que el resto de webhooks del
+    // monorepo.
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.hotelesRepo(db);
+      const phoneNumberId = extractMetaPhoneNumberId(payload);
+      const route = phoneNumberId ? await resolvePropertyByPhoneNumberId(repo, phoneNumberId) : null;
+      if (!route) {
+        // Número no configurado en la plataforma: ack silencioso, no reintento.
+        return c.json({ ok: true });
+      }
 
-    const incomingMessages = extractMetaTextMessages(payload);
-    if (incomingMessages.length === 0) {
-      return c.json({ ok: true });
-    }
+      const incomingMessages = extractMetaTextMessages(payload);
+      if (incomingMessages.length === 0) {
+        return c.json({ ok: true });
+      }
 
-    let hadRetryableFailure = false;
-    for (const message of incomingMessages) {
-      const outcome = await handleInboundWhatsAppMessage(deps.hotelesRepo, deps.hotelesTurnHandler, {
-        organizationId: route.organizationId,
-        propertyId: route.propertyId,
-        messageId: message.id,
-        phone: `+${message.from}`,
-        body: message.text.body,
-      });
-      // El envío real de `outcome.reply` vía Graph API es responsabilidad del
-      // dispatcher de apps/worker (messaging_outbox) — fuera de esta fase, igual
-      // criterio que restaurantes.
-      if (outcome.retryable) hadRetryableFailure = true;
-    }
+      let hadRetryableFailure = false;
+      for (const message of incomingMessages) {
+        const outcome = await handleInboundWhatsAppMessage(repo, deps.hotelesTurnHandler, {
+          organizationId: route.organizationId,
+          propertyId: route.propertyId,
+          messageId: message.id,
+          phone: `+${message.from}`,
+          body: message.text.body,
+        });
+        // El envío real de `outcome.reply` vía Graph API es responsabilidad del
+        // dispatcher de apps/worker (messaging_outbox) — fuera de esta fase, igual
+        // criterio que restaurantes.
+        if (outcome.retryable) hadRetryableFailure = true;
+      }
 
-    return c.json({ ok: !hadRetryableFailure }, hadRetryableFailure ? 500 : 200);
+      return c.json({ ok: !hadRetryableFailure }, hadRetryableFailure ? 500 : 200);
+    });
   });
 
   return app;

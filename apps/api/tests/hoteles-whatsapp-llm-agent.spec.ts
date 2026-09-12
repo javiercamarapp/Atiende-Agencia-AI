@@ -71,7 +71,7 @@ interface TicketToolResult {
   readonly ticket: { readonly id: string; readonly alergia_declarada: boolean; readonly mensaje_seguridad: string };
 }
 
-async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => LlmCompletionResult): Promise<{ deps: AppDeps; organizationId: string; propertyId: string }> {
+async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => LlmCompletionResult): Promise<{ deps: AppDeps; hotelesRepo: InMemoryHotelesRepository; organizationId: string; propertyId: string }> {
   const coreRepo = new InMemoryCoreRepository();
   const hotelesRepo = new InMemoryHotelesRepository();
 
@@ -111,30 +111,30 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     env: TEST_ENV,
     coreRepo,
     engine: new InMemoryTenancyEngine(),
-    restaurantesRepo: new InMemoryRestaurantesRepository(),
+    restaurantesRepo: (_db) => new InMemoryRestaurantesRepository(),
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
-    hotelesRepo,
+    hotelesRepo: (_db) => hotelesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler,
-    citasRepo: new InMemoryCitasRepository(),
+    citasRepo: (_db) => new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de hoteles).");
     },
-    licitacionesRepo: new InMemoryLicitacionesRepository(),
-    despachosRepo: new InMemoryDespachosRepository(),
+    licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
+    despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    rentasRepo: (_db) => new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
   };
-  return { deps, organizationId, propertyId };
+  return { deps, hotelesRepo, organizationId, propertyId };
 }
 
 describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webhook HTTP real", () => {
   it("mensaje real de room service con alergia declarada -> TICKET REAL creado, marcado, sin afirmar seguridad (REQ-AB-004 de punta a punta)", async () => {
-    const { deps, propertyId } = await buildLlmAgentTestDeps((request) => {
+    const { deps, hotelesRepo, propertyId } = await buildLlmAgentTestDeps((request) => {
       if (request.messages.filter((m) => m.role === "tool").length === 0) {
         // Primer y único turno: el modelo registra el pedido con la alergia
         // declarada tal cual la mencionó el huésped.
@@ -160,7 +160,7 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
     // El ticket es REAL: existe en el repositorio, marcado con alergia, SIN
     // confirmación humana de cocina ni "seguridad asegurada" — eso solo lo puede
     // hacer un cocinero por el canal de staff ya construido (pedidosFnb.ts).
-    const orders = await deps.hotelesRepo.listFnbOrders(propertyId);
+    const orders = await hotelesRepo.listFnbOrders(propertyId);
     expect(orders).toHaveLength(1);
     const order = orders[0]!;
     expect(order.allergyDeclared).toBe(true);
@@ -171,7 +171,7 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
 
     // El historial de conversación persistido es SOLO TEXTO (mismo diseño §2.5 que
     // restaurantes) — nunca se filtran tool_calls/resultados crudos a la fila.
-    const conversationProbe = await deps.hotelesRepo.appendWhatsAppUserMessageOnce(propertyId, "+5219991230000", { role: "user", content: "probe" });
+    const conversationProbe = await hotelesRepo.appendWhatsAppUserMessageOnce(propertyId, "+5219991230000", { role: "user", content: "probe" });
     expect(conversationProbe).toHaveLength(3); // user + assistant del turno real, + esta "probe".
     for (const message of conversationProbe) {
       expect(Object.keys(message)).toEqual(["role", "content"]);
@@ -179,7 +179,7 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
   });
 
   it("un mensaje que no es de F&B nunca crea un ticket — se deriva a registrar_contacto_no_operativo", async () => {
-    const { deps, propertyId } = await buildLlmAgentTestDeps((request) => {
+    const { deps, hotelesRepo, propertyId } = await buildLlmAgentTestDeps((request) => {
       if (request.messages.filter((m) => m.role === "tool").length === 0) {
         return toolCallTurn("call_1", "registrar_contacto_no_operativo", { motivo: "factura", resumen: "Pide factura del hospedaje de anoche" });
       }
@@ -190,7 +190,7 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
     const res = await app.request("/v1/hoteles/whatsapp/webhook", signedPostInit(metaPayload("wamid.hotel-e2e-2", "Necesito mi factura de anoche")));
     expect(res.status).toBe(200);
 
-    const orders = await deps.hotelesRepo.listFnbOrders(propertyId);
+    const orders = await hotelesRepo.listFnbOrders(propertyId);
     expect(orders).toHaveLength(0);
   });
 
@@ -237,23 +237,23 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
       env: TEST_ENV,
       coreRepo,
       engine: new InMemoryTenancyEngine(),
-      restaurantesRepo: new InMemoryRestaurantesRepository(),
+      restaurantesRepo: (_db) => new InMemoryRestaurantesRepository(),
       turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
-      hotelesRepo,
+      hotelesRepo: (_db) => hotelesRepo,
       hotelesPaymentsPort: new InMemoryPaymentsPort(),
       hotelesTurnHandler,
-      citasRepo: new InMemoryCitasRepository(),
+      citasRepo: (_db) => new InMemoryCitasRepository(),
       citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
       citasConversationGuard: createDefaultConversationGuard(),
       citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
       citasGoogleTokenExchange: async () => {
         throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de hoteles).");
       },
-      licitacionesRepo: new InMemoryLicitacionesRepository(),
-      despachosRepo: new InMemoryDespachosRepository(),
+      licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
+      despachosRepo: (_db) => new InMemoryDespachosRepository(),
       despachosAuditSink: new InMemoryAuditSink(),
-      rentasRepo: new InMemoryRentasRepository(),
-      rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+      rentasRepo: (_db) => new InMemoryRentasRepository(),
+      rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
     };
     const app = buildApp(deps);
 

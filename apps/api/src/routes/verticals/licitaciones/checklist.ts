@@ -101,13 +101,13 @@ function toComplianceRecord(item: ChecklistItemResult) {
 
 export function licitacionesChecklistRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.licitacionesRepo;
   const base = "/licitaciones/:propertyId/tenders/:tenderId/checklist";
 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${base}/run`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(base, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const tenderId = c.req.param("tenderId");
     const tender = await repo.findTender(organizationId, tenderId);
@@ -119,6 +119,7 @@ export function licitacionesChecklistRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   });
 
   app.post(`${base}/run`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
     const idempotencyKey = c.req.header("idempotency-key");
     if (!idempotencyKey) throw Errors.idempotencyRequired();

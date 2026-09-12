@@ -52,38 +52,43 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       return c.text("Invalid JSON", 400);
     }
 
-    const phoneNumberId = extractMetaPhoneNumberId(payload);
-    const organizationId = phoneNumberId ? await deps.restaurantesRepo.resolveOrganizationByPhoneNumberId(phoneNumberId) : null;
-    if (!organizationId) {
-      // Número no configurado en la plataforma: ack silencioso, no reintento.
-      return c.json({ ok: true });
-    }
+    // Webhook público/de sistema, sin authMiddleware/dbSession -- abre su propia
+    // sesión de sistema (`userId: null`), igual que public.ts/voice-tools.ts.
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.restaurantesRepo(db);
+      const phoneNumberId = extractMetaPhoneNumberId(payload);
+      const organizationId = phoneNumberId ? await repo.resolveOrganizationByPhoneNumberId(phoneNumberId) : null;
+      if (!organizationId) {
+        // Número no configurado en la plataforma: ack silencioso, no reintento.
+        return c.json({ ok: true });
+      }
 
-    const incomingMessages = extractMetaTextMessages(payload);
-    if (incomingMessages.length === 0) {
-      return c.json({ ok: true });
-    }
+      const incomingMessages = extractMetaTextMessages(payload);
+      if (incomingMessages.length === 0) {
+        return c.json({ ok: true });
+      }
 
-    let hadRetryableFailure = false;
-    for (const message of incomingMessages) {
-      const outcome = await handleInboundWhatsAppMessage(deps.restaurantesRepo, deps.turnHandler, {
-        organizationId,
-        messageId: message.id,
-        phone: `+${message.from}`,
-        body: message.text.body,
-      });
-      // El envío real de `outcome.reply` vía Graph API es responsabilidad del
-      // dispatcher de apps/worker (messaging_outbox), fuera de las 3 rutas críticas
-      // de esta fase (ver diseño §1, fila messaging_outbox) — aquí solo se procesa y
-      // persiste la conversación/pedido, exactamente la plomería que sí es de esta
-      // fase.
-      if (outcome.retryable) hadRetryableFailure = true;
-    }
+      let hadRetryableFailure = false;
+      for (const message of incomingMessages) {
+        const outcome = await handleInboundWhatsAppMessage(repo, deps.turnHandler, {
+          organizationId,
+          messageId: message.id,
+          phone: `+${message.from}`,
+          body: message.text.body,
+        });
+        // El envío real de `outcome.reply` vía Graph API es responsabilidad del
+        // dispatcher de apps/worker (messaging_outbox), fuera de las 3 rutas críticas
+        // de esta fase (ver diseño §1, fila messaging_outbox) — aquí solo se procesa y
+        // persiste la conversación/pedido, exactamente la plomería que sí es de esta
+        // fase.
+        if (outcome.retryable) hadRetryableFailure = true;
+      }
 
-    // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
-    // mensajes ya procesados quedan idempotentemente saltados por el ledger de
-    // entrada; los fallidos/ocupados se pueden reclamar en el reintento.
-    return c.json({ ok: !hadRetryableFailure }, hadRetryableFailure ? 500 : 200);
+      // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
+      // mensajes ya procesados quedan idempotentemente saltados por el ledger de
+      // entrada; los fallidos/ocupados se pueden reclamar en el reintento.
+      return c.json({ ok: !hadRetryableFailure }, hadRetryableFailure ? 500 : 200);
+    });
   });
 
   return app;

@@ -84,7 +84,7 @@ describe("GET /v1/citas/google-calendar/oauth-callback", () => {
     expect(body.provider_id).toBe(ctx.providerId);
     expect(body.sync_status).toBe("connected");
 
-    const account = await ctx.deps.citasRepo.findProviderCalendarAccount(ctx.providerId);
+    const account = await ctx.citasRepo.findProviderCalendarAccount(ctx.providerId);
     expect(account!.syncStatus).toBe("connected");
   });
 
@@ -97,7 +97,7 @@ describe("GET /v1/citas/google-calendar/oauth-callback", () => {
 
     const res = await app.request(`/v1/citas/google-calendar/oauth-callback?code=fake-auth-code&state=${encodeURIComponent(tamperedState)}`);
     expect(res.status).toBe(401);
-    expect(await ctx.deps.citasRepo.findProviderCalendarAccount(ctx.providerId)).toBeNull();
+    expect(await ctx.citasRepo.findProviderCalendarAccount(ctx.providerId)).toBeNull();
   });
 
   it("faltando code o state responde 400", async () => {
@@ -118,7 +118,7 @@ describe("GET /v1/citas/google-calendar/oauth-callback", () => {
     const appNoRefresh = buildApp(noRefreshTokenDeps);
     const res = await appNoRefresh.request(`/v1/citas/google-calendar/oauth-callback?code=fake-auth-code&state=${encodeURIComponent(state)}`);
     expect(res.status).toBe(400);
-    expect(await ctx.deps.citasRepo.findProviderCalendarAccount(ctx.providerId)).toBeNull();
+    expect(await ctx.citasRepo.findProviderCalendarAccount(ctx.providerId)).toBeNull();
   });
 });
 
@@ -147,7 +147,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     const body = (await res.json()) as { appointment: { id: string } };
 
     expect(port.events.size).toBe(1);
-    const stored = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, body.appointment.id);
+    const stored = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, body.appointment.id);
     expect(stored!.googleSyncStatus).toBe("synced");
     expect(stored!.googleEventId).not.toBeNull();
   });
@@ -163,7 +163,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
       jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ana", customer_phone: "9991112233", starts_at: MONDAY_10AM_MERIDA, source: "web" }),
     );
     const { appointment } = (await createRes.json()) as { appointment: { id: string } };
-    const beforeCancel = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
+    const beforeCancel = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
     const eventId = beforeCancel!.googleEventId!;
     expect(port.events.get(eventId)!.deleted).toBe(false);
 
@@ -171,7 +171,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     expect(cancelRes.status).toBe(200);
 
     expect(port.events.get(eventId)!.deleted).toBe(true);
-    const stored = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
+    const stored = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
     expect(stored!.googleSyncStatus).toBe("deleted");
   });
 
@@ -186,7 +186,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
       jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ana", customer_phone: "9991112233", starts_at: MONDAY_10AM_MERIDA, source: "web" }),
     );
     const { appointment } = (await createRes.json()) as { appointment: { id: string } };
-    const synced = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
+    const synced = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
     const eventId = synced!.googleEventId!;
 
     const rescheduleRes = await app.request(
@@ -196,7 +196,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     expect(rescheduleRes.status).toBe(200);
 
     expect(port.events.get(eventId)!.startTime).toBe(MONDAY_1030AM_MERIDA);
-    const stored = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
+    const stored = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
     expect(stored!.googleSyncStatus).toBe("synced");
   });
 
@@ -210,7 +210,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     );
     expect(createRes.status).toBe(201);
     const { appointment } = (await createRes.json()) as { appointment: { id: string } };
-    const stored = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
+    const stored = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
     expect(stored!.googleSyncStatus).toBe("skipped");
   });
 
@@ -235,7 +235,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     const body = (await res.json()) as { appointment: { id: string; status: string } };
     expect(body.appointment.status).toBe("pending");
 
-    const stored = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, body.appointment.id);
+    const stored = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, body.appointment.id);
     expect(stored!.status).toBe("pending"); // la cita real sigue viva
     expect(stored!.googleSyncStatus).toBe("pending"); // quedó pendiente de reintento, nunca perdida
     expect(stored!.googleSyncError).toContain("ECONNRESET");
@@ -263,7 +263,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     const body = (await cancelRes.json()) as { appointment: { status: string } };
     expect(body.appointment.status).toBe("cancelled"); // la cita real SÍ quedó cancelada
 
-    const stored = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
+    const stored = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
     expect(stored!.status).toBe("cancelled");
     expect(stored!.googleSyncStatus).toBe("pending_cancel"); // pendiente de reintentar el borrado en Google
   });
@@ -290,7 +290,7 @@ describe("Fase 3 §5 — los 3 puntos de sincronización best-effort", () => {
     const body = (await rescheduleRes.json()) as { appointment: { starts_at: string } };
     expect(body.appointment.starts_at).toBe(MONDAY_1030AM_MERIDA); // el horario real SÍ cambió
 
-    const stored = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
+    const stored = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
     expect(stored!.startsAt).toBe(MONDAY_1030AM_MERIDA);
     expect(stored!.googleSyncStatus).toBe("pending"); // pendiente de reintentar la actualización en Google
   });
@@ -313,7 +313,7 @@ describe("POST /internal/citas/google-calendar-sync — reconciliación por lote
     // intento inmediato la toque todavía — así el cron es el único que la procesa,
     // exactamente el caso real de "el intento inmediato se perdió (proceso
     // reiniciado, etc.) pero la reconciliación por lote la recoge después".
-    const appointment = await createAppointment(ctx.deps.citasRepo, {
+    const appointment = await createAppointment(ctx.citasRepo, {
       organizationId: ctx.organizationId,
       providerId: ctx.providerId,
       serviceId: ctx.serviceId,
@@ -332,7 +332,7 @@ describe("POST /internal/citas/google-calendar-sync — reconciliación por lote
     expect(body.processed).toBe(1);
     expect(body.synced).toBe(1);
 
-    const stored = await ctx.deps.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
+    const stored = await ctx.citasRepo.findAppointmentForOrganization(ctx.organizationId, appointment.id);
     expect(stored!.googleSyncStatus).toBe("synced");
     expect(port.events.size).toBe(1);
   });

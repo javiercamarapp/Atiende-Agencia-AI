@@ -79,7 +79,7 @@ describe("POST /hoteles/:propertyId/reservas -- creación", () => {
 
     // La noche solo se reservó UNA vez -- todavía queda 1 de las 2 habitaciones
     // seedeadas libre para otra reserva real.
-    await expect(ctx.deps.hotelesRepo.bookAvailability(ctx.propertyId, ctx.roomTypeId, "2026-12-01", 1)).resolves.toBeUndefined();
+    await expect(ctx.hotelesRepo.bookAvailability(ctx.propertyId, ctx.roomTypeId, "2026-12-01", 1)).resolves.toBeUndefined();
   });
 
   it("rechaza crear sin disponibilidad -- 409 explícito, nunca oversells silenciosamente", async () => {
@@ -184,7 +184,7 @@ describe("POST /hoteles/:propertyId/reservas/:id/cancelar", () => {
     expect(canceladaBody.penalizacionCancelacion).toBe(0);
 
     // Inventario liberado -- las 2 habitaciones vuelven a estar libres esa noche.
-    await expect(ctx.deps.hotelesRepo.bookAvailability(ctx.propertyId, ctx.roomTypeId, "2026-12-01", 2)).resolves.toBeUndefined();
+    await expect(ctx.hotelesRepo.bookAvailability(ctx.propertyId, ctx.roomTypeId, "2026-12-01", 2)).resolves.toBeUndefined();
   });
 
   it("después de check-in ya NO se puede cancelar -- 409 explícito (isCancellable)", async () => {
@@ -248,13 +248,13 @@ describe("POST /hoteles/:propertyId/reservas/procesar-no-show", () => {
     expect(((await consulta.json()) as ReservaBody).estado).toBe("no_show");
 
     // Inventario liberado -- vuelven a caber las 2 habitaciones seedeadas esa noche.
-    await expect(ctx.deps.hotelesRepo.bookAvailability(ctx.propertyId, ctx.roomTypeId, "2025-01-10", 2)).resolves.toBeUndefined();
+    await expect(ctx.hotelesRepo.bookAvailability(ctx.propertyId, ctx.roomTypeId, "2025-01-10", 2)).resolves.toBeUndefined();
 
     // La penalización se posteó SIN stayDate -- nunca choca con el índice
     // anti-doble-captura del night-audit, que solo protege cargos de hospedaje CON
     // noche real posteada (diseño §1).
     await expect(
-      ctx.deps.hotelesRepo.insertCharge({
+      ctx.hotelesRepo.insertCharge({
         organizationId: ctx.organizationId,
         propertyId: ctx.propertyId,
         folioId: noShowBody.detalle[0]!.folioId,

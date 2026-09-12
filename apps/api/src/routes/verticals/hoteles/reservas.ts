@@ -96,7 +96,6 @@ function serializeReservation(r: ReservationRecord) {
 
 export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.hotelesRepo;
 
   app.use("/hoteles/:propertyId/reservas", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/hoteles/:propertyId/reservas/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -104,11 +103,13 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Superficie mínima consultable (diseño §5) — sin roles finos, cualquier staff de la
   // property puede leer, mismo criterio que GET /pedidos-fnb.
   app.get("/hoteles/:propertyId/reservas", async (c) => {
+    const repo = deps.hotelesRepo(c.get("db"));
     const reservas = await repo.listReservations(c.req.param("propertyId"));
     return c.json(reservas.map(serializeReservation));
   });
 
   app.get("/hoteles/:propertyId/reservas/:id", async (c) => {
+    const repo = deps.hotelesRepo(c.get("db"));
     const reservation = await repo.findReservation(c.req.param("propertyId"), c.req.param("id"));
     if (!reservation) throw Errors.notFound("Reserva no encontrada.");
     return c.json(serializeReservation(reservation));
@@ -132,6 +133,7 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const checkOutDate = raw.checkOutDate;
     const guestId = typeof raw.guestId === "string" && raw.guestId.length > 0 ? raw.guestId : null;
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const roomType = await repo.findRoomType(propertyId, roomTypeId);
     if (!roomType) throw Errors.notFound("Tipo de habitación no encontrado en esta property.");
 
@@ -217,6 +219,7 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const toStatus = raw.toStatus;
     if (!GENERIC_TRANSITION_TARGETS.has(toStatus)) throw Errors.reservaTransicionNoPermitidaPorRuta(toStatus);
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const reservation = await repo.findReservation(propertyId, reservationId);
     if (!reservation) throw Errors.notFound("Reserva no encontrada.");
     const fromStatus = reservation.status;
@@ -242,6 +245,7 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const userId = c.get("userId");
     await readJsonCapped<CancelarBody>(c.req.raw, 1024); // valida que el body sea JSON bien formado; `motivo` es informativo, sin efecto en el cálculo.
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const reservation = await repo.findReservation(propertyId, reservationId);
     if (!reservation) throw Errors.notFound("Reserva no encontrada.");
     if (!isCancellable(reservation.status)) throw Errors.reservaNoCancelable(reservation.status);
@@ -272,6 +276,7 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<ProcesarNoShowBody>(c.req.raw, 1024);
     const asOfDate = typeof raw.asOfDate === "string" && DATE_RE.test(raw.asOfDate) ? raw.asOfDate : null;
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const candidatas = await repo.findDueNoShowReservations(propertyId, asOfDate);
     const procesadas: Array<{ reservationId: string; folioId: string; penalizacionNeta: number; penalizacionImpuesto: number }> = [];
 

@@ -134,12 +134,12 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     env: TEST_ENV,
     coreRepo,
     engine,
-    restaurantesRepo,
+    restaurantesRepo: (_db) => restaurantesRepo,
     turnHandler: acknowledgeOnlyTurnHandler(restaurantesRepo),
-    hotelesRepo: new InMemoryHotelesRepository(),
+    hotelesRepo: (_db) => new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
-    citasRepo: kpiFixtureCitasRepo,
+    citasRepo: (_db) => kpiFixtureCitasRepo,
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     // Fase 3 citas — sin credenciales de Google configuradas en este fixture de
@@ -148,11 +148,11 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture de pruebas de KPIs de restaurantes.");
     },
-    licitacionesRepo: new InMemoryLicitacionesRepository(),
-    despachosRepo: new InMemoryDespachosRepository(),
+    licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
+    despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    rentasRepo: (_db) => new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
   };
 
   const app = buildApp(deps);

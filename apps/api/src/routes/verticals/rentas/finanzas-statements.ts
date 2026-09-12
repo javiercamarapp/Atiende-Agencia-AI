@@ -46,7 +46,6 @@ interface GenerarStatementBody {
 
 export function rentasFinanzasStatementsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.rentasRepo;
 
   const ownerPath = "/rentas/:propertyId/owners/:ownerId/statements";
   const detallePath = "/rentas/:propertyId/statements/:id";
@@ -60,6 +59,7 @@ export function rentasFinanzasStatementsRoutes(deps: AppDeps): Hono<CoreAuthHono
     const ownerId = c.req.param("ownerId");
     const userId = c.get("userId");
     const db = c.get("db");
+    const repo = deps.rentasRepo(db);
 
     const raw = await readJsonCapped<GenerarStatementBody>(c.req.raw, 2 * 1024);
     const periodo: RangoFechas = { inicio: requireFecha(raw.periodoInicio, "periodoInicio"), fin: requireFecha(raw.periodoFin, "periodoFin") };
@@ -126,6 +126,7 @@ export function rentasFinanzasStatementsRoutes(deps: AppDeps): Hono<CoreAuthHono
     assertVerticalRole(c, FINANZAS_LECTURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const ownerId = c.req.param("ownerId");
+    const repo = deps.rentasRepo(c.get("db"));
 
     const owner = await repo.findOwnerConUnidadesEnProperty(propertyId, ownerId);
     if (!owner) throw Errors.notFound("Propietario no encontrado, o sin ninguna unidad en esta property.");
@@ -138,6 +139,7 @@ export function rentasFinanzasStatementsRoutes(deps: AppDeps): Hono<CoreAuthHono
     assertVerticalRole(c, FINANZAS_LECTURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const id = c.req.param("id");
+    const repo = deps.rentasRepo(c.get("db"));
 
     const statement = await repo.findOwnerStatementDetalle(propertyId, id);
     if (!statement) throw Errors.notFound("Statement no encontrado en esta property.");

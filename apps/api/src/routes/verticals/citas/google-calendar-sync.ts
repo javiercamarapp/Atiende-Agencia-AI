@@ -21,15 +21,20 @@ export function citasGoogleCalendarSyncRoutes(deps: AppDeps): Hono {
   app.post("/internal/citas/google-calendar-sync", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
 
-    const summary = await syncPendingAppointments(deps.citasRepo, deps.citasGoogleCalendarPortResolver);
-    return c.json({
-      ok: true,
-      processed: summary.processed,
-      synced: summary.synced,
-      retried: summary.retried,
-      exhausted: summary.exhausted,
-      skipped: summary.skipped,
-      errors: summary.errors.map((e) => ({ appointment_id: e.appointmentId, error: e.error })),
+    // Ruta interna de scheduler, sin authMiddleware/dbSession -- misma sesión de
+    // sistema que reminders.ts (barre TODA la plataforma, no una org concreta).
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const citasRepo = deps.citasRepo(db);
+      const summary = await syncPendingAppointments(citasRepo, deps.citasGoogleCalendarPortResolver);
+      return c.json({
+        ok: true,
+        processed: summary.processed,
+        synced: summary.synced,
+        retried: summary.retried,
+        exhausted: summary.exhausted,
+        skipped: summary.skipped,
+        errors: summary.errors.map((e) => ({ appointment_id: e.appointmentId, error: e.error })),
+      });
     });
   });
 

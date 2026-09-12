@@ -1,31 +1,44 @@
 // notProductionReady — placeholder EXPLÍCITO (nunca silencioso) para los puertos que
 // todavía no tienen un adaptador de producción seguro.
 //
-// Por qué esto existe en vez de simplemente usar los adaptadores en memoria de
-// tests/fixtures.ts: `RestaurantesRepository`/`HotelesRepository` (@atiende/domain-*)
-// SÍ tienen ya un `Postgres*Repository` real (ver postgres-repository.ts de cada
-// paquete), pero — a diferencia de `CoreRepository` (login, sesión de sistema
-// `userId: null`, patrón ya documentado y sin ambigüedad, ver core-repository.ts de
-// esta misma carpeta) — las rutas de estos dos puertos (`/restaurantes/*`,
-// `/hoteles/:propertyId/*`) dependen de RLS real por-usuario (`auth.uid()` vía
-// `core.has_property_access`/`hoteles.can_access_money`) resuelto en la transacción
-// que `dbSession(engine)` abre POR REQUEST (`c.get("db")`, ver
-// `@atiende/core-auth/src/middleware.ts`) — pero `deps.restaurantesRepo`/
-// `deps.hotelesRepo` son objetos FIJOS construidos una sola vez al armar `AppDeps`
-// (ver `../deps.ts` y cómo los usan `routes/verticals/*/*.ts`: `const repo =
-// deps.hotelesRepo`, nunca `c.get("db")`). Conectar un `Postgres*Repository` real aquí
-// significaría fijarlo a UNA sola sesión — de sistema o de un usuario arbitrario — para
-// TODAS las requests, lo que rompería el aislamiento RLS por-tenant (fuga de datos
-// entre organizaciones) en vez de arreglar el gap. Esa es una decisión de arquitectura
-// (¿sesión por-request inyectada en cada método del puerto? ¿el puerto deja de ser un
-// singleton y pasa a ser una fábrica por-request?) que packages/db/README.md y
-// apps/api/src/index.ts ya marcan como "trabajo pendiente de infraestructura" — no algo
-// que este cambio de configuración de deploy deba decidir ni inventar en silencio.
+// HISTORIA (por qué existía para restaurantesRepo/hotelesRepo/citasRepo/
+// licitacionesRepo/despachosRepo/rentasRepo/rentasOwnerPortalRepo, y por qué ya NO
+// los cubre): estos 7 puertos SÍ tienen un `Postgres*Repository` real (ver
+// postgres-repository.ts de cada paquete de dominio) desde antes, pero — a
+// diferencia de `CoreRepository` (login, sesión de sistema `userId: null`, patrón ya
+// documentado y sin ambigüedad, ver core-repository.ts de esta misma carpeta) — sus
+// rutas dependen de RLS real por-tenant (`auth.uid()`/rol vía
+// `core.has_property_access` y equivalentes por vertical) resuelto en la transacción
+// que se abre POR REQUEST (`dbSession(engine)` -> `c.get("db")` en rutas de staff
+// autenticado; `engine.withAppSession({userId: null}, ...)` inline en rutas
+// públicas/de sistema, ver `@atiende/core-auth/src/middleware.ts` y
+// `@atiende/core-tenancy::TenancyEngine`). Conectar un `Postgres*Repository` real
+// como objeto FIJO en `AppDeps` habría fijado UNA sola sesión para TODAS las
+// requests, rompiendo el aislamiento RLS por-tenant en vez de arreglar el gap.
 //
-// Mientras esa decisión no se tome: cualquier intento real de golpear
-// `/restaurantes/*`/`/hoteles/*` en producción falla con un error explícito y
-// accionable (nunca con datos en memoria que parecen reales pero se pierden en cada
-// cold start, y nunca con una fuga de RLS por compartir sesión entre tenants).
+// La resolución (rama `feat/fusion-produccion-repos-por-request`): estos 7 campos de
+// `AppDeps` (ver `../deps.ts`) dejaron de ser el repositorio ya construido y pasaron
+// a ser una FÁBRICA `(db: TenantDbSession) => XRepository` — cada ruta HTTP hace
+// `deps.xRepo(c.get("db"))` (o `deps.xRepo(db)` dentro de su propio
+// `withAppSession`) para ligar el repositorio a la sesión correcta de ESE request,
+// nunca a un singleton. `buildProductionDeps()` (`../production/deps.ts`) ya los
+// construye como `(db) => new PostgresXRepository(db)` reales — este archivo
+// (`notProductionReady`) ya NO los cubre.
+//
+// Lo que SÍ sigue cubriendo, por razones DISTINTAS a la de arriba (no confundir
+// ambos gaps):
+//   - `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler`: el gateway LLM real
+//     (proveedor/roles configurados) es un problema de infraestructura aparte, sin
+//     relación con sesión-por-request.
+//   - `hotelesPaymentsPort`: integración de cobro (Stripe/Conekta) sin adaptador ni
+//     credenciales todavía — no es un repositorio de datos por-tenant, no depende de
+//     RLS, no aplica el patrón de fábrica.
+//   - `despachosAuditSink`: falta un adaptador de auditoría real (tabla/servicio
+//     dedicado) — mismo tipo de gap que `hotelesPaymentsPort`, no el de sesión.
+//
+// Mientras esas 3 decisiones sigan pendientes: cualquier intento real de usarlas en
+// producción falla con un error explícito y accionable (nunca con datos en memoria
+// que parecen reales pero se pierden en cada cold start).
 export function notProductionReady<T extends object>(portName: string): T {
   return new Proxy(
     {},

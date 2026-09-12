@@ -34,7 +34,7 @@ import {
   sealInputs,
 } from "@atiende/domain-licitaciones";
 import type { AssembleInput, ChecklistReport, ExpedienteInputs, PackageDocumentInput } from "@atiende/domain-licitaciones";
-import type { Approval, LicitacionesRole } from "@atiende/domain-licitaciones";
+import type { Approval, LicitacionesRepository, LicitacionesRole } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -67,9 +67,7 @@ interface CierreContext {
 }
 
 /** Reconstruye el `AssembleInput` completo contra el estado VIVO del expediente — usado tanto por `assemble` como por la re-derivación de `latest`/`download` (AE-14), para que ambos caminos apliquen exactamente la misma lógica. */
-async function buildAssembleInput(deps: AppDeps, ctx: CierreContext): Promise<AssembleInput> {
-  const repo = deps.licitacionesRepo;
-
+async function buildAssembleInput(repo: LicitacionesRepository, ctx: CierreContext): Promise<AssembleInput> {
   const sections = await repo.loadProposalSectionsAsDocuments(ctx.organizationId, ctx.proposalId);
   const documents: PackageDocumentInput[] = sections.map((s) => {
     // Una sección (económica o técnica, Fase 2 pieza 3) cuyo contenido
@@ -121,7 +119,6 @@ async function buildAssembleInput(deps: AppDeps, ctx: CierreContext): Promise<As
 
 export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.licitacionesRepo;
   const propertyBase = "/licitaciones/:propertyId/tenders/:tenderId";
 
   app.use(`${propertyBase}/package/assemble`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -133,6 +130,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.use(`${propertyBase}/proposal/sections/:sectionKey/approval`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(`${propertyBase}/expediente/approval`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, DECISION_ROLES);
     const organizationId = c.get("organizationId");
     const userId = c.get("userId");
@@ -168,6 +166,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // (Pieza 3). Mismas DECISION_ROLES que aprobar el expediente completo:
   // aprobar CUALQUIER alcance es una decisión, nunca redacción.
   app.post(`${propertyBase}/proposal/sections/:sectionKey/approval`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, DECISION_ROLES);
     const organizationId = c.get("organizationId");
     const userId = c.get("userId");
@@ -193,6 +192,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   app.post(`${propertyBase}/package/assemble`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
     const idempotencyKey = c.req.header("idempotency-key");
     if (!idempotencyKey) throw Errors.idempotencyRequired();
@@ -209,7 +209,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     try {
       const result = await repo.withIdempotency({ organizationId, scope: "package.assemble", key: idempotencyKey, body: { proposalId: proposal.id } }, async () => {
-        const input = await buildAssembleInput(deps, { organizationId, tenderId, proposalId: proposal.id, correlationId: requestId ?? null });
+        const input = await buildAssembleInput(repo, { organizationId, tenderId, proposalId: proposal.id, correlationId: requestId ?? null });
         const assembled = await new PackageAssembler().assemble(input);
 
         const storageRef = await repo.writeManifestZip(organizationId, proposal.id, assembled.zip);
@@ -233,6 +233,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   app.get(`${propertyBase}/package/latest`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const tenderId = c.req.param("tenderId");
 
@@ -256,11 +257,12 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // AE-14: el manifiesto guardado ERA "ready" -- se recalcula contra el
     // estado VIVO (sin volver a escribir el ZIP) y se reporta SIEMPRE el
     // estado recién derivado, nunca el guardado a secas.
-    const fresh = new PackageAssembler().buildManifest(await buildAssembleInput(deps, { organizationId, tenderId, proposalId: proposal.id, correlationId: null }));
+    const fresh = new PackageAssembler().buildManifest(await buildAssembleInput(repo, { organizationId, tenderId, proposalId: proposal.id, correlationId: null }));
     return c.json({ id: proposal.id, status: fresh.status, draftReasons: fresh.draftReasons, missing: fresh.missing, generatedAt: stored.generatedAt, notice: fresh.notice });
   });
 
   app.get(`${propertyBase}/package/download`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const tenderId = c.req.param("tenderId");
 
@@ -276,7 +278,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // REQ-LIC-009/AE-14: nunca se sirve un ZIP "ready" viejo si la
       // re-derivación en vivo ya no lo es (p. ej. la aprobación se invalidó
       // por un cambio de tarifa después de ensamblar).
-      const fresh = new PackageAssembler().buildManifest(await buildAssembleInput(deps, { organizationId, tenderId, proposalId: proposal.id, correlationId: null }));
+      const fresh = new PackageAssembler().buildManifest(await buildAssembleInput(repo, { organizationId, tenderId, proposalId: proposal.id, correlationId: null }));
       if (fresh.status !== "ready") {
         // REQ-LIC-009/AE-14: 409 explícito, con los motivos ya derivados --
         // nunca se sirve el ZIP viejo como si siguiera vigente.
@@ -297,6 +299,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   app.get(`${propertyBase}/submission`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const tenderId = c.req.param("tenderId");
 
@@ -310,6 +313,7 @@ export function licitacionesCierreRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   app.post(`${propertyBase}/submission/declare`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
     const idempotencyKey = c.req.header("idempotency-key");
     if (!idempotencyKey) throw Errors.idempotencyRequired();

@@ -21,6 +21,12 @@ type TestApp = ReturnType<BuildAppFn>;
 
 export interface HotelesTestContext {
   readonly deps: AppDeps;
+  /** Mismo objeto que resuelve `deps.hotelesRepo(...)`, tipado concreto (no la
+   * interfaz `HotelesRepository`) para que los tests puedan seguir llamando
+   * directamente al repo en memoria (p. ej. `bookAvailability`/`insertCharge`) sin
+   * pasar por una ruta HTTP -- ya no se puede hacer `ctx.deps.hotelesRepo.metodo()`
+   * porque `deps.hotelesRepo` es ahora una fábrica `(db) => HotelesRepository`. */
+  readonly hotelesRepo: InMemoryHotelesRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly reservationId: string;
@@ -122,27 +128,33 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   // menos de eso, penalización del 50% del total.
   hotelesRepo.seedCancellationPolicy(propertyId, { freeUntilHours: 48, penaltyPct: 0.5 });
 
+  const citasRepoForResolver = new InMemoryCitasRepository();
+  const restaurantesRepoUnused = new InMemoryRestaurantesRepository();
+  const licitacionesRepoUnused = new InMemoryLicitacionesRepository();
+  const despachosRepoUnused = new InMemoryDespachosRepository();
+  const rentasRepoUnused = new InMemoryRentasRepository();
+  const rentasOwnerPortalRepoUnused = new InMemoryRentasOwnerPortalRepository();
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
     engine,
-    restaurantesRepo: new InMemoryRestaurantesRepository(),
+    restaurantesRepo: (_db) => restaurantesRepoUnused,
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
-    hotelesRepo,
+    hotelesRepo: (_db) => hotelesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(hotelesRepo),
-    citasRepo: new InMemoryCitasRepository(),
+    citasRepo: (_db) => citasRepoForResolver,
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
-    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepoForResolver, null),
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (vertical hoteles).");
     },
-    licitacionesRepo: new InMemoryLicitacionesRepository(),
-    despachosRepo: new InMemoryDespachosRepository(),
+    licitacionesRepo: (_db) => licitacionesRepoUnused,
+    despachosRepo: (_db) => despachosRepoUnused,
     despachosAuditSink: new InMemoryAuditSink(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    rentasRepo: (_db) => rentasRepoUnused,
+    rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepoUnused,
   };
 
   const app = buildApp(deps);
@@ -157,6 +169,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
 
   return {
     deps,
+    hotelesRepo,
     organizationId,
     propertyId,
     reservationId,

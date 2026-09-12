@@ -47,7 +47,7 @@ describe("POST /despachos/:propertyId/cfdi — ingesta y validación (end-to-end
     expect(body.diot.reportable).toBe(true);
 
     // La revisión debe existir de verdad en el repositorio -- no un flag suelto.
-    const pendientes = await ctx.deps.despachosRepo.listPendingReviews(ctx.propertyId);
+    const pendientes = await ctx.despachosRepo.listPendingReviews(ctx.propertyId);
     expect(pendientes).toHaveLength(1);
     expect(pendientes[0]!.invoiceId).toBe(body.id);
   });
@@ -60,7 +60,7 @@ describe("POST /despachos/:propertyId/cfdi — ingesta y validación (end-to-end
     const second = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot()));
     expect(second.status).toBe(409);
 
-    const invoices = await ctx.deps.despachosRepo.listInvoices(ctx.propertyId);
+    const invoices = await ctx.despachosRepo.listInvoices(ctx.propertyId);
     expect(invoices).toHaveLength(1);
   });
 
@@ -76,7 +76,7 @@ describe("POST /despachos/:propertyId/cfdi — ingesta y validación (end-to-end
     expect(res.status).toBe(201);
     const body = (await res.json()) as { requiereRevisionHumana: boolean };
     expect(body.requiereRevisionHumana).toBe(false);
-    expect(await ctx.deps.despachosRepo.listPendingReviews(ctx.propertyId)).toHaveLength(0);
+    expect(await ctx.despachosRepo.listPendingReviews(ctx.propertyId)).toHaveLength(0);
   });
 
   it("un rol readonly no puede ingestar CFDI (403)", async () => {
@@ -108,7 +108,7 @@ describe("cola de revisión humana — flujo 2, gateado por requiresHumanReview"
     expect(resuelto.resueltoPor).toBe(ctx.staff.contador.id);
 
     // No queda pendiente.
-    expect(await ctx.deps.despachosRepo.listPendingReviews(ctx.propertyId)).toHaveLength(0);
+    expect(await ctx.despachosRepo.listPendingReviews(ctx.propertyId)).toHaveLength(0);
 
     // Auditoría real -- no una tabla propia de despachos, ver diseño Fase 1 §3.
     const auditEntries = (ctx.deps.despachosAuditSink as unknown as { entries: { action: string; decision: string }[] }).entries;

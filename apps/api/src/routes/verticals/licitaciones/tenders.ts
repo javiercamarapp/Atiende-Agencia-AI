@@ -54,12 +54,12 @@ function parseOptionalNonNegativeNumber(raw: unknown, field: string): number | n
 
 export function licitacionesTendersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.licitacionesRepo;
   const base = "/licitaciones/:propertyId/tenders";
 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(base, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
     const organizationId = c.get("organizationId");
     const actorId = c.get("userId");

@@ -23,9 +23,10 @@ export const TEST_ENV: ApiEnv = {
   rentasOwnerJwtSecret: "test-rentas-owner-jwt-secret",
   rentasOwnerAccessTokenTtlSeconds: 900,
   rentasOwnerRefreshTokenTtlSeconds: 60 * 60 * 24 * 30,
+  licitacionesStorageDir: "/tmp/atiende-licitaciones-storage-test",
 };
 
-export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: string; propertyId: string; products: Record<string, string>; ownerEmail: string; ownerPassword: string }> {
+export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo: InMemoryRestaurantesRepository; organizationId: string; propertyId: string; products: Record<string, string>; ownerEmail: string; ownerPassword: string }> {
   const coreRepo = new InMemoryCoreRepository();
   const restaurantesRepo = new InMemoryRestaurantesRepository();
 
@@ -74,16 +75,23 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
 
   const hotelesRepo = new InMemoryHotelesRepository();
   const citasRepo = new InMemoryCitasRepository();
+  const licitacionesRepo = new InMemoryLicitacionesRepository();
+  const despachosRepo = new InMemoryDespachosRepository();
+  const rentasRepo = new InMemoryRentasRepository();
+  const rentasOwnerPortalRepo = new InMemoryRentasOwnerPortalRepository();
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
     engine: new InMemoryTenancyEngine(),
-    restaurantesRepo,
+    // Fábricas `(_db) => instancia` — ignoran el argumento porque el repo en memoria
+    // no tiene ningún concepto de sesión/RLS (ver comentario de AppDeps en
+    // ../src/deps.ts para por qué el campo es una fábrica y no la instancia directa).
+    restaurantesRepo: (_db) => restaurantesRepo,
     turnHandler: acknowledgeOnlyTurnHandler(restaurantesRepo),
-    hotelesRepo,
+    hotelesRepo: (_db) => hotelesRepo,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(hotelesRepo),
-    citasRepo,
+    citasRepo: (_db) => citasRepo,
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     // Fase 3 — sin credenciales de Google configuradas en este fixture genérico
@@ -93,14 +101,14 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture de pruebas genérico.");
     },
-    licitacionesRepo: new InMemoryLicitacionesRepository(),
-    despachosRepo: new InMemoryDespachosRepository(),
+    licitacionesRepo: (_db) => licitacionesRepo,
+    despachosRepo: (_db) => despachosRepo,
     despachosAuditSink: new InMemoryAuditSink(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    rentasRepo: (_db) => rentasRepo,
+    rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepo,
   };
 
-  return { deps, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };
+  return { deps, restaurantesRepo, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };
 }
 
 /** `readJsonCapped` exige un header `content-length` explícito (igual que el origen

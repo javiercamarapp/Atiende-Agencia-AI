@@ -38,7 +38,32 @@ describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
     expect(typeof deps.engine.withAppSession).toBe("function");
   });
 
-  it("restaurantesRepo/hotelesRepo fallan explícito en vez de fingir datos en memoria (gap de arquitectura documentado, ver production/not-ready.ts)", async () => {
+  // Rama feat/fusion-produccion-repos-por-request: restaurantesRepo/hotelesRepo/
+  // citasRepo/licitacionesRepo/despachosRepo/rentasRepo/rentasOwnerPortalRepo dejaron
+  // de ser `notProductionReady` (ver production/deps.ts) — ahora son fábricas reales
+  // `(db) => new PostgresXRepository(db)`. Esta prueba confirma justo eso: la fábrica
+  // construye un `PostgresRestaurantesRepository`/`PostgresHotelesRepository` real
+  // (nunca el Proxy que lanza "sin adaptador de producción todavía"), aunque el
+  // `TenantDbSession` que se le pase aquí sea uno de mentira (`{}` — no hace falta un
+  // Postgres real para verificar QUÉ CLASE se construyó).
+  it("restaurantesRepo/hotelesRepo son fábricas reales de Postgres*Repository -- ya NO son notProductionReady", async () => {
+    const { buildProductionDeps } = await import("../src/production/deps.ts");
+    const deps = buildProductionDeps();
+    const fakeDb = {} as Parameters<typeof deps.restaurantesRepo>[0];
+    expect(deps.restaurantesRepo(fakeDb).constructor.name).toBe("PostgresRestaurantesRepository");
+    expect(deps.hotelesRepo(fakeDb).constructor.name).toBe("PostgresHotelesRepository");
+  });
+
+  // El gap de arquitectura de `production/not-ready.ts` sigue vivo para las
+  // integraciones sin adaptador/credenciales (no relacionadas con sesión-por-request,
+  // ver comentario de ese archivo) — `hotelesPaymentsPort` sigue fallando explícito.
+  it("hotelesPaymentsPort SÍ sigue notProductionReady (gap distinto: sin credenciales de Stripe/Conekta, ver production/not-ready.ts)", async () => {
+    const { buildProductionDeps } = await import("../src/production/deps.ts");
+    const deps = buildProductionDeps();
+    expect(() => deps.hotelesPaymentsPort.charge({ idempotencyKey: "test", amount: 100, currency: "MXN", paymentMethodToken: "tok_test" })).toThrow(/sin adaptador de producción todavía/);
+  });
+
+  it("un request HTTP real que golpea restaurantesRepo con un DATABASE_URL de mentira falla 500 (intento real de conexión, ya no un error de 'no implementado')", async () => {
     const { default: handler } = await import("../src/vercel.ts");
     const body = JSON.stringify({ phone: "9991234567" });
     const res = await handler(

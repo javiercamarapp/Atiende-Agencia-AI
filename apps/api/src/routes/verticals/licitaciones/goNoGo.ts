@@ -27,13 +27,13 @@ function mapGoNoGoRejectedError(err: unknown): Error {
 
 export function licitacionesGoNoGoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.licitacionesRepo;
   const engine = new MatchingEngine();
   const base = "/licitaciones/:propertyId/tenders/:tenderId/go-no-go";
 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(base, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const tenderId = c.req.param("tenderId");
     const tender = await repo.findTender(organizationId, tenderId);
@@ -45,6 +45,7 @@ export function licitacionesGoNoGoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   app.post(base, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     // Enforcement de aplicación, ADEMÁS de RLS (`licitaciones.can_go_no_go_org`,
     // migración 008) y de la validación de dominio en `buildGoNoGoDecision`
     // (llamada dentro de `repo.createGoNoGoDecision`) -- ninguna capa confía

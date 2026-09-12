@@ -153,13 +153,13 @@ function resumirMotivoRevision(result: ReturnType<typeof validarCfdiDespachos>, 
 
 export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.despachosRepo;
 
   app.use("/despachos/:propertyId/cfdi/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/despachos/:propertyId/cfdi", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post("/despachos/:propertyId/cfdi", async (c) => {
     assertVerticalRole(c, INGESTA_CFDI_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<IngestaCfdiBody>(c.req.raw, 64 * 1024);
@@ -209,6 +209,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.get("/despachos/:propertyId/cfdi/:invoiceId", async (c) => {
     assertVerticalRole(c, INGESTA_CFDI_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const invoice = await repo.findInvoice(c.req.param("propertyId"), c.req.param("invoiceId"));
     if (!invoice) throw Errors.notFound("CFDI no encontrado.");
     return c.json(serializeInvoice(invoice));
@@ -216,6 +217,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.get("/despachos/:propertyId/cfdi", async (c) => {
     assertVerticalRole(c, INGESTA_CFDI_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const soloRevision = c.req.query("requiereRevisionHumana");
     const invoices = await repo.listInvoices(c.req.param("propertyId"), soloRevision !== undefined ? { requiresHumanReview: soloRevision === "true" } : undefined);
     return c.json(invoices.map(serializeInvoice));

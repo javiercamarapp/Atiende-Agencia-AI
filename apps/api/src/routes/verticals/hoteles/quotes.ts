@@ -34,7 +34,6 @@ const CODE_STATUS: Record<string, number> = {
 
 export function hotelesQuotesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.hotelesRepo;
 
   app.use("/hoteles/:propertyId/quotes", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
@@ -47,6 +46,7 @@ export function hotelesQuotesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (typeof raw.checkOutDate !== "string" || !DATE_RE.test(raw.checkOutDate)) throw Errors.validation("checkOutDate: formato de fecha esperado YYYY-MM-DD.");
     if (raw.checkOutDate <= raw.checkInDate) throw Errors.validation("checkOutDate debe ser posterior a checkInDate.");
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const roomType = await repo.findRoomType(propertyId, raw.roomTypeId);
     if (!roomType) throw Errors.notFound("Tipo de habitación no encontrado en esta property.");
 

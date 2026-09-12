@@ -33,6 +33,15 @@ export interface ApiEnv {
   readonly rentasOwnerJwtSecret: string;
   readonly rentasOwnerAccessTokenTtlSeconds: number;
   readonly rentasOwnerRefreshTokenTtlSeconds: number;
+  /** Directorio local donde `PostgresLicitacionesRepository` lee/escribe expedientes
+   * (ZIP de propuesta, documentos) -- ver packages/domain-licitaciones/src/storage.ts.
+   * NO forma parte del gap de sesión-por-request (no es RLS, es una ruta de
+   * filesystem de proceso), así que no viaja por request como el resto de config de
+   * licitaciones -- se resuelve una sola vez al armar `AppDeps`, igual que
+   * `DATABASE_URL`. Default razonable para desarrollo/serverless efímero; en
+   * producción real debe apuntar a un volumen persistente o reemplazarse por un
+   * adaptador de storage con blob storage real (fuera de alcance de este cambio). */
+  readonly licitacionesStorageDir: string;
 }
 
 function requireEnv(name: string, fallback?: string): string {
@@ -58,5 +67,6 @@ export function loadApiEnv(): ApiEnv {
     rentasOwnerJwtSecret: requireEnv("RENTAS_OWNER_JWT_SECRET"),
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
     rentasOwnerRefreshTokenTtlSeconds: Number(process.env.RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
+    licitacionesStorageDir: requireEnv("LICITACIONES_STORAGE_DIR", "/tmp/atiende-licitaciones-storage"),
   };
 }

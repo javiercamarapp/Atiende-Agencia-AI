@@ -96,21 +96,30 @@ async function issueOwnerSession(deps: AppDeps, ownerId: string, email: string) 
 
 export function rentasOwnerPortalRoutes(deps: AppDeps): Hono<RentasOwnerPortalHonoEnv> {
   const app = new Hono<RentasOwnerPortalHonoEnv>();
-  const repo = deps.rentasOwnerPortalRepo;
 
   // ---- auth pública ----
+  // Sin `requireRentasOwnerSession` (aún no hay identidad verificada) -- cada
+  // handler abre su propia sesión vía `engine.withAppSession(...)`, igual que el
+  // resto de rutas públicas/de sistema del monorepo. `findOwnerCredentialByEmail`/
+  // `consumePortalInvite` son, además, dos de los 3 métodos que requieren privilegio
+  // de `service_role` (ver production/rentas-owner-portal-repository.ts) -- la
+  // sesión que se les pasa aquí es la mejor disponible hoy, no una que ya satisfaga
+  // ese requisito (gap de infraestructura aparte, documentado ahí).
 
   app.post("/rentas/owner-portal/auth/login", async (c) => {
     const raw = await readJsonCapped<LoginBody>(c.req.raw, 2 * 1024);
     const { email, password } = validateLoginBody(raw);
 
-    const invalidCredentials = () => Errors.unauthorized("Correo o contraseña incorrectos.");
-    const credential = await repo.findOwnerCredentialByEmail(email);
-    if (!credential) throw invalidCredentials();
-    const valid = await verifyPassword(password, credential.passwordHash);
-    if (!valid) throw invalidCredentials();
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.rentasOwnerPortalRepo(db);
+      const invalidCredentials = () => Errors.unauthorized("Correo o contraseña incorrectos.");
+      const credential = await repo.findOwnerCredentialByEmail(email);
+      if (!credential) throw invalidCredentials();
+      const valid = await verifyPassword(password, credential.passwordHash);
+      if (!valid) throw invalidCredentials();
 
-    return c.json(await issueOwnerSession(deps, credential.ownerId, credential.email), 200);
+      return c.json(await issueOwnerSession(deps, credential.ownerId, credential.email), 200);
+    });
   });
 
   app.post("/rentas/owner-portal/auth/refresh", async (c) => {
@@ -125,9 +134,15 @@ export function rentasOwnerPortalRoutes(deps: AppDeps): Hono<RentasOwnerPortalHo
       throw Errors.unauthorized("Refresh token inválido o expirado.");
     }
 
-    const profile = await repo.findOwnerProfile(ownerId);
-    if (!profile || !profile.email) throw Errors.unauthorized();
-    return c.json(await issueOwnerSession(deps, ownerId, profile.email), 200);
+    // `ownerId` ya viene verificado (firma del refresh token) -- abre una sesión RLS
+    // real con ESE claim, igual que `requireRentasOwnerSession` hace para las rutas
+    // autenticadas (findOwnerProfile SÍ es uno de los 5 métodos de solo lectura).
+    return deps.engine.withAppSession({ userId: ownerId }, async (db) => {
+      const repo = deps.rentasOwnerPortalRepo(db);
+      const profile = await repo.findOwnerProfile(ownerId);
+      if (!profile || !profile.email) throw Errors.unauthorized();
+      return c.json(await issueOwnerSession(deps, ownerId, profile.email), 200);
+    });
   });
 
   // Consume la invitación de un solo uso emitida por staff (ver
@@ -138,12 +153,17 @@ export function rentasOwnerPortalRoutes(deps: AppDeps): Hono<RentasOwnerPortalHo
     const body = await readJsonCapped<{ token?: unknown; password?: unknown }>(c.req.raw, 2 * 1024);
     if (typeof body.token !== "string" || body.token.length === 0) throw Errors.validation("token requerido");
     if (typeof body.password !== "string" || body.password.length < 8) throw Errors.validation("password: mínimo 8 caracteres");
+    const token = body.token;
+    const password = body.password;
 
-    const passwordHash = await hashPassword(body.password);
-    const resultado = await repo.consumePortalInvite({ tokenHash: hashInviteToken(body.token), passwordHash, now: new Date().toISOString() });
-    if (!resultado) throw Errors.rentasOwnerInviteTokenInvalido();
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.rentasOwnerPortalRepo(db);
+      const passwordHash = await hashPassword(password);
+      const resultado = await repo.consumePortalInvite({ tokenHash: hashInviteToken(token), passwordHash, now: new Date().toISOString() });
+      if (!resultado) throw Errors.rentasOwnerInviteTokenInvalido();
 
-    return c.json({ ok: true }, 200);
+      return c.json({ ok: true }, 200);
+    });
   });
 
   // ---- autenticadas (requireRentasOwnerSession) ----
@@ -163,6 +183,7 @@ export function rentasOwnerPortalRoutes(deps: AppDeps): Hono<RentasOwnerPortalHo
 
   app.get(mePath, async (c) => {
     const ownerId = c.get("ownerId");
+    const repo = deps.rentasOwnerPortalRepo(c.get("db"));
     const [profile, organizaciones] = await Promise.all([repo.findOwnerProfile(ownerId), repo.listOwnerOrganizaciones(ownerId)]);
     if (!profile) throw Errors.notFound("Perfil de propietario no encontrado.");
     // `organizaciones` es puramente informativo (diseño §1.5) -- NUNCA un selector que
@@ -172,12 +193,14 @@ export function rentasOwnerPortalRoutes(deps: AppDeps): Hono<RentasOwnerPortalHo
 
   app.get(unidadesPath, async (c) => {
     const ownerId = c.get("ownerId");
+    const repo = deps.rentasOwnerPortalRepo(c.get("db"));
     const unidades = await repo.listUnidadesPropietario(ownerId);
     return c.json({ unidades }, 200);
   });
 
   app.get(statementsPath, async (c) => {
     const ownerId = c.get("ownerId");
+    const repo = deps.rentasOwnerPortalRepo(c.get("db"));
     const propertyId = c.req.query("propertyId");
     const desde = c.req.query("desde");
     const hasta = c.req.query("hasta");
@@ -190,6 +213,7 @@ export function rentasOwnerPortalRoutes(deps: AppDeps): Hono<RentasOwnerPortalHo
 
   app.get(statementDetallePath, async (c) => {
     const ownerId = c.get("ownerId");
+    const repo = deps.rentasOwnerPortalRepo(c.get("db"));
     const id = c.req.param("id");
     // `id` viene de la URL, pero el WHERE real (aquí y, en Postgres, en la RLS) es
     // owner_id = ownerId -- nunca se acepta un ownerId por parámetro (diseño §4): un id

@@ -21,7 +21,7 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
 
   it("401 con el secreto equivocado, incluso una vez configurado el agente", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "el-secreto-correcto-de-esta-property", true);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "el-secreto-correcto-de-esta-property", true);
     const app = buildApp(ctx.deps);
     const res = await app.request(`/v1/hoteles/${ctx.propertyId}/voz/tickets-fnb`, jsonRequestInit({ mensaje: "Quiero dos cafés" }, { "x-atiende-tool-secret": "un-secreto-equivocado" }));
     expect(res.status).toBe(401);
@@ -29,10 +29,10 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
 
   it("AISLAMIENTO POR TENANT (diseño §1/§5.1): el secreto de OTRA property nunca sirve para esta", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
     // Otra property con su propio secreto, distinto.
     const otraPropertyId = "00000000-0000-4000-8000-000000000099";
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(otraPropertyId, ctx.organizationId, "secreto-de-la-otra-property", true);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(otraPropertyId, ctx.organizationId, "secreto-de-la-otra-property", true);
 
     const app = buildApp(ctx.deps);
     const res = await app.request(`/v1/hoteles/${ctx.propertyId}/voz/tickets-fnb`, jsonRequestInit({ mensaje: "Quiero dos cafés" }, { "x-atiende-tool-secret": "secreto-de-la-otra-property" }));
@@ -41,7 +41,7 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
 
   it("503 si el agente está deshabilitado (enabled:false), aunque el secreto sea correcto", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", false);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", false);
     const app = buildApp(ctx.deps);
     const res = await app.request(`/v1/hoteles/${ctx.propertyId}/voz/tickets-fnb`, jsonRequestInit({ mensaje: "Quiero dos cafés" }, { "x-atiende-tool-secret": "secreto-de-esta-property" }));
     expect(res.status).toBe(503);
@@ -49,7 +49,7 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
 
   it("400 si falta mensaje", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
     const app = buildApp(ctx.deps);
     const res = await app.request(`/v1/hoteles/${ctx.propertyId}/voz/tickets-fnb`, jsonRequestInit({}, { "x-atiende-tool-secret": "secreto-de-esta-property" }));
     expect(res.status).toBe(400);
@@ -57,7 +57,7 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
 
   it("crea el ticket real (actor system:voz, sin staff logueado) y NUNCA afirma que el platillo es seguro incluso con alergia declarada", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
     const app = buildApp(ctx.deps);
     const res = await app.request(
       `/v1/hoteles/${ctx.propertyId}/voz/tickets-fnb`,
@@ -69,7 +69,7 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
     expect(body.mensaje).not.toMatch(/es seguro/i);
     expect(body.mensaje).toMatch(/cocina/i);
 
-    const order = await ctx.deps.hotelesRepo.findFnbOrder(ctx.propertyId, body.id);
+    const order = await ctx.hotelesRepo.findFnbOrder(ctx.propertyId, body.id);
     expect(order).not.toBeNull();
     expect(order!.createdBy).toBeNull(); // actor system:voz.
     expect(order!.kitchenConfirmedBy).toBeNull();
@@ -78,7 +78,7 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
 
   it("una alergia detectada solo en texto libre (sin el flag estructurado) también queda marcada — fail-closed real, no solo en el canal de staff", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
     const app = buildApp(ctx.deps);
     const res = await app.request(
       `/v1/hoteles/${ctx.propertyId}/voz/tickets-fnb`,
@@ -86,7 +86,7 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
     );
     const body = (await res.json()) as { id: string; alergiaDeclarada: boolean };
     expect(body.alergiaDeclarada).toBe(true);
-    const order = await ctx.deps.hotelesRepo.findFnbOrder(ctx.propertyId, body.id);
+    const order = await ctx.hotelesRepo.findFnbOrder(ctx.propertyId, body.id);
     expect(order!.allergyDeclaredVia).toBe("texto_libre");
   });
 });
@@ -94,7 +94,7 @@ describe("POST /v1/hoteles/:propertyId/voz/tickets-fnb — crear_ticket_huesped_
 describe("POST /v1/hoteles/:propertyId/voz/contacto-no-operativo — registrar_contacto_no_operativo", () => {
   it("401 sin secreto y 400 sin motivo, con el secreto correcto", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
     const app = buildApp(ctx.deps);
     const noAuth = await app.request(`/v1/hoteles/${ctx.propertyId}/voz/contacto-no-operativo`, jsonRequestInit({ motivo: "queja" }));
     expect(noAuth.status).toBe(401);
@@ -104,14 +104,14 @@ describe("POST /v1/hoteles/:propertyId/voz/contacto-no-operativo — registrar_c
 
   it("registra el contacto real, nunca crea un pedido de F&B", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
-    await ctx.deps.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
+    await ctx.hotelesRepo.upsertVoiceAgentConfig(ctx.propertyId, ctx.organizationId, "secreto-de-esta-property", true);
     const app = buildApp(ctx.deps);
     const res = await app.request(
       `/v1/hoteles/${ctx.propertyId}/voz/contacto-no-operativo`,
       jsonRequestInit({ motivo: "factura", resumen: "Pide factura del hospedaje" }, { "x-atiende-tool-secret": "secreto-de-esta-property" }),
     );
     expect(res.status).toBe(200);
-    const orders = await ctx.deps.hotelesRepo.listFnbOrders(ctx.propertyId);
+    const orders = await ctx.hotelesRepo.listFnbOrders(ctx.propertyId);
     expect(orders).toHaveLength(0);
   });
 });
