@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { IdempotencyConflictError } from "./errors.ts";
-import type { IdempotencyParams, IdempotentResult, LicitacionesRepository } from "./repository.ts";
+import type { GoNoGoDecisionCreateInput, IdempotencyParams, IdempotentResult, LicitacionesRepository, MatchingProfileUpsertInput, TenderUpsertInput, TenderUpsertResult } from "./repository.ts";
 import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
@@ -18,15 +18,19 @@ import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-v
 import type { PersistedProposalVersion, ProposalInputRecord } from "./proposal-version-registry.ts";
 import type { LicitacionesRole } from "./roles.ts";
 import type { RequirementFulfillmentMappingRecord, RequirementItemRecord } from "./repository.ts";
+import { buildGoNoGoDecision } from "./go-no-go.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
   ComplianceItemRecord,
+  GoNoGoDecisionRecord,
+  MatchingProfileRecord,
   PackageManifestRecord,
   ProposalRecord,
   RequiredAnnexItem,
   SubmissionRecord,
   TenderRecord,
+  TenderStatus,
 } from "./types.ts";
 
 // Ventana de protección contra reintento de un Idempotency-Key — mismo
@@ -43,10 +47,97 @@ interface TenderRow {
   title: string;
   submission_deadline: string | null;
   updated_at: string;
+  source: string;
+  external_id: string | null;
+  contracting_body: string | null;
+  cpv_codes: string[];
+  budget_amount: string | null;
+  currency: string;
+  state: string | null;
+  procedure_type_raw: string | null;
+  status: TenderStatus;
 }
 
+// Fase 3: se centraliza la lista de columnas para que `findTender`,
+// `listTenders` y `upsertTenderManual` (los 3 lugares que leen la fila
+// completa de `licitaciones.tender`) nunca diverjan entre sí.
+const TENDER_COLUMNS =
+  "id, organization_id, title, submission_deadline::text as submission_deadline, updated_at::text as updated_at, " +
+  "source, external_id, contracting_body, cpv_codes, budget_amount::text as budget_amount, currency, state, procedure_type_raw, status";
+
 function mapTender(row: TenderRow): TenderRecord {
-  return { id: row.id, organizationId: row.organization_id, title: row.title, submissionDeadline: row.submission_deadline, updatedAt: row.updated_at };
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    title: row.title,
+    submissionDeadline: row.submission_deadline,
+    updatedAt: row.updated_at,
+    source: row.source,
+    externalId: row.external_id,
+    contractingBody: row.contracting_body,
+    cpvCodes: row.cpv_codes,
+    budgetAmount: row.budget_amount === null ? null : Number(row.budget_amount),
+    currency: row.currency,
+    state: row.state,
+    procedureTypeRaw: row.procedure_type_raw,
+    status: row.status,
+  };
+}
+
+interface MatchingProfileRow {
+  organization_id: string;
+  keywords: string[];
+  excluded_keywords: string[];
+  classifier_codes: string[];
+  entities: string[];
+  states: string[];
+  budget_min: string | null;
+  budget_max: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+function mapMatchingProfile(row: MatchingProfileRow): MatchingProfileRecord {
+  return {
+    organizationId: row.organization_id,
+    keywords: row.keywords,
+    excludedKeywords: row.excluded_keywords,
+    classifierCodes: row.classifier_codes,
+    entities: row.entities,
+    states: row.states,
+    budgetMin: row.budget_min === null ? null : Number(row.budget_min),
+    budgetMax: row.budget_max === null ? null : Number(row.budget_max),
+    updatedBy: row.updated_by,
+    updatedAt: row.updated_at,
+  };
+}
+
+interface GoNoGoDecisionRow {
+  id: string;
+  organization_id: string;
+  tender_id: string;
+  decision: "go" | "no_go";
+  reasons: string[];
+  match_score: string;
+  match_eligibility_status: GoNoGoDecisionRecord["matchEligibilityStatus"];
+  match_inputs_hash: string;
+  decided_by: string;
+  decided_at: string;
+}
+
+function mapGoNoGoDecision(row: GoNoGoDecisionRow): GoNoGoDecisionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    tenderId: row.tender_id,
+    decision: row.decision,
+    reasons: row.reasons,
+    matchScore: Number(row.match_score),
+    matchEligibilityStatus: row.match_eligibility_status,
+    matchInputsHash: row.match_inputs_hash,
+    decidedBy: row.decided_by,
+    decidedAt: row.decided_at,
+  };
 }
 
 interface ProposalRow {
@@ -116,11 +207,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   ) {}
 
   async findTender(organizationId: string, tenderId: string): Promise<TenderRecord | null> {
-    const { rows } = await this.db.query<TenderRow>(
-      `select id, organization_id, title, submission_deadline::text as submission_deadline, updated_at::text as updated_at
-       from licitaciones.tender where id = $1 and organization_id = $2;`,
-      [tenderId, organizationId],
-    );
+    const { rows } = await this.db.query<TenderRow>(`select ${TENDER_COLUMNS} from licitaciones.tender where id = $1 and organization_id = $2;`, [tenderId, organizationId]);
     const row = rows[0];
     return row ? mapTender(row) : null;
   }
@@ -142,6 +229,132 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     const { rows } = await this.db.query<ProposalRow>(`select ${PROPOSAL_COLUMNS} from licitaciones.proposal where organization_id = $1 and tender_id = $2;`, [organizationId, tenderId]);
     const row = rows[0];
     return row ? mapProposal(row) : null;
+  }
+
+  // ---- Fase 3 pieza 1: alta manual de convocatoria (§6) ----
+
+  async listTenders(organizationId: string): Promise<readonly TenderRecord[]> {
+    const { rows } = await this.db.query<TenderRow>(`select ${TENDER_COLUMNS} from licitaciones.tender where organization_id = $1 order by updated_at desc;`, [organizationId]);
+    return rows.map(mapTender);
+  }
+
+  async upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult> {
+    // La comparación de "¿cambió submissionDeadline?" necesita el valor
+    // PREVIO -- se lee antes del upsert (misma snapshot que verá el ON
+    // CONFLICT) en vez de intentar una CTE combinada, para que el criterio
+    // sea explícito y fácil de verificar en pruebas.
+    let previousDeadline: string | null | undefined;
+    if (input.externalId !== null) {
+      const { rows } = await this.db.query<{ submission_deadline: string | null }>(
+        `select submission_deadline::text as submission_deadline from licitaciones.tender where organization_id = $1 and source = 'manual' and external_id = $2;`,
+        [organizationId, input.externalId],
+      );
+      if (rows[0]) previousDeadline = rows[0].submission_deadline;
+    }
+
+    const { rows } = await this.db.query<TenderRow & { inserted: boolean }>(
+      `insert into licitaciones.tender (organization_id, title, submission_deadline, source, external_id, contracting_body, cpv_codes, budget_amount, currency, state, procedure_type_raw, created_by)
+       values ($1, $2, $3, 'manual', $4, $5, $6::text[], $7, $8, $9, $10, $11)
+       on conflict (organization_id, source, external_id) where external_id is not null
+       do update set
+         title = excluded.title,
+         submission_deadline = excluded.submission_deadline,
+         contracting_body = excluded.contracting_body,
+         cpv_codes = excluded.cpv_codes,
+         budget_amount = excluded.budget_amount,
+         currency = excluded.currency,
+         state = excluded.state,
+         procedure_type_raw = excluded.procedure_type_raw,
+         updated_at = now()
+       returning ${TENDER_COLUMNS}, (xmax = 0) as inserted;`,
+      [organizationId, input.title, input.submissionDeadline, input.externalId, input.contractingBody, input.cpvCodes, input.budgetAmount, input.currency, input.state, input.procedureTypeRaw, input.actorId],
+    );
+    const row = rows[0]!;
+    const tender = mapTender(row);
+    const created = row.inserted;
+
+    await this.db.query(`insert into licitaciones.tender_audit_log (organization_id, tender_id, action, actor_id) values ($1, $2, $3, $4);`, [
+      organizationId,
+      tender.id,
+      created ? "tender.manual_upsert.created" : "tender.manual_upsert.updated",
+      input.actorId,
+    ]);
+
+    return { tender, created, submissionDeadlineChanged: !created && previousDeadline !== undefined && previousDeadline !== tender.submissionDeadline };
+  }
+
+  // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----
+
+  async findMatchingProfile(organizationId: string): Promise<MatchingProfileRecord | null> {
+    const { rows } = await this.db.query<MatchingProfileRow>(
+      `select organization_id, keywords, excluded_keywords, classifier_codes, entities, states, budget_min::text as budget_min, budget_max::text as budget_max, updated_by, updated_at::text as updated_at
+       from licitaciones.matching_profile where organization_id = $1;`,
+      [organizationId],
+    );
+    const row = rows[0];
+    return row ? mapMatchingProfile(row) : null;
+  }
+
+  async upsertMatchingProfile(organizationId: string, input: MatchingProfileUpsertInput): Promise<MatchingProfileRecord> {
+    const { rows } = await this.db.query<MatchingProfileRow>(
+      `insert into licitaciones.matching_profile (organization_id, keywords, excluded_keywords, classifier_codes, entities, states, budget_min, budget_max, updated_by)
+       values ($1, $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7, $8, $9)
+       on conflict (organization_id) do update set
+         keywords = excluded.keywords,
+         excluded_keywords = excluded.excluded_keywords,
+         classifier_codes = excluded.classifier_codes,
+         entities = excluded.entities,
+         states = excluded.states,
+         budget_min = excluded.budget_min,
+         budget_max = excluded.budget_max,
+         updated_by = excluded.updated_by,
+         updated_at = now()
+       returning organization_id, keywords, excluded_keywords, classifier_codes, entities, states, budget_min::text as budget_min, budget_max::text as budget_max, updated_by, updated_at::text as updated_at;`,
+      [organizationId, input.keywords, input.excludedKeywords, input.classifierCodes, input.entities, input.states, input.budgetMin, input.budgetMax, input.actorId],
+    );
+    return mapMatchingProfile(rows[0]!);
+  }
+
+  // ---- Fase 3 pieza 3: decisiones go/no-go (§7) ----
+
+  async createGoNoGoDecision(organizationId: string, tenderId: string, input: GoNoGoDecisionCreateInput): Promise<GoNoGoDecisionRecord> {
+    const tender = await this.findTender(organizationId, tenderId);
+    if (!tender) throw new Error(`Tender "${tenderId}" no encontrado para la organización "${organizationId}".`);
+
+    // Lanza `GoNoGoRejectedError` si el rol o los motivos no pasan la regla
+    // -- ninguna fila se toca en ese caso (mismo criterio que
+    // `ApprovalWorkflow.approve()` en `approve()` más abajo).
+    const validated = buildGoNoGoDecision({
+      decision: input.decision,
+      reasons: input.reasons,
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      matchScore: input.matchScore,
+      matchEligibilityStatus: input.matchEligibilityStatus,
+      matchInputsHash: input.matchInputsHash,
+    });
+
+    const { rows } = await this.db.query<GoNoGoDecisionRow>(
+      `insert into licitaciones.go_no_go_decision (organization_id, tender_id, decision, reasons, match_score, match_eligibility_status, match_inputs_hash, decided_by)
+       values ($1, $2, $3, $4::text[], $5, $6, $7, $8)
+       returning id, organization_id, tender_id, decision, reasons, match_score::text as match_score, match_eligibility_status, match_inputs_hash, decided_by, decided_at::text as decided_at;`,
+      [organizationId, tenderId, validated.decision, validated.reasons, validated.matchScore, validated.matchEligibilityStatus, validated.matchInputsHash, validated.decidedBy],
+    );
+
+    // §7: un go/no_go es el único camino que saca una convocatoria de
+    // discovered/in_review -- se escribe en la MISMA operación.
+    await this.db.query(`update licitaciones.tender set status = $1, updated_at = now() where organization_id = $2 and id = $3;`, [validated.decision, organizationId, tenderId]);
+
+    return mapGoNoGoDecision(rows[0]!);
+  }
+
+  async listGoNoGoDecisions(organizationId: string, tenderId: string): Promise<readonly GoNoGoDecisionRecord[]> {
+    const { rows } = await this.db.query<GoNoGoDecisionRow>(
+      `select id, organization_id, tender_id, decision, reasons, match_score::text as match_score, match_eligibility_status, match_inputs_hash, decided_by, decided_at::text as decided_at
+       from licitaciones.go_no_go_decision where organization_id = $1 and tender_id = $2 order by decided_at desc;`,
+      [organizationId, tenderId],
+    );
+    return rows.map(mapGoNoGoDecision);
   }
 
   async listComplianceItems(organizationId: string, proposalId: string): Promise<readonly ComplianceItemRecord[]> {
