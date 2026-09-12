@@ -153,6 +153,7 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+    llmGateway: undefined,
   };
 
   const app = buildApp(deps);

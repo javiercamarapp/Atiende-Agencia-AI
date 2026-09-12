@@ -98,6 +98,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+    llmGateway: undefined,
   };
 
   const app = buildApp(deps);

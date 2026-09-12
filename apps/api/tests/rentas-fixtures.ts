@@ -111,6 +111,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
     rentasRepo: (_db) => rentasRepo,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepo,
+    llmGateway: undefined,
     citasRepo: (_db) => new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
