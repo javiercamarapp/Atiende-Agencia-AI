@@ -62,7 +62,7 @@ describe("POST /v1/restaurantes/whatsapp/webhook — verificación HMAC sobre by
   });
 
   it("200 y procesa el mensaje cuando la firma es válida, rutea por phone_number_id, y crea el callback_request del turn handler de Fase 1", async () => {
-    const { deps, organizationId } = await buildTestDeps();
+    const { deps, restaurantesRepo, organizationId } = await buildTestDeps();
     const app = buildApp(deps);
     const res = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(metaPayload()));
     expect(res.status).toBe(200);
@@ -71,7 +71,7 @@ describe("POST /v1/restaurantes/whatsapp/webhook — verificación HMAC sobre by
 
     // Verifica que de verdad corrió el flujo completo (dedupe -> lease -> append ->
     // turn handler -> callback_request), no solo que respondió 200.
-    const conversation = await deps.restaurantesRepo.appendWhatsAppUserMessageOnce(organizationId, "+5219991234567", { role: "user", content: "probe" });
+    const conversation = await restaurantesRepo.appendWhatsAppUserMessageOnce(organizationId, "+5219991234567", { role: "user", content: "probe" });
     expect(conversation.length).toBeGreaterThanOrEqual(3); // user real + assistant real + esta "probe"
   });
 
@@ -84,7 +84,7 @@ describe("POST /v1/restaurantes/whatsapp/webhook — verificación HMAC sobre by
   });
 
   it("un message_id reenviado (retry at-least-once real de Meta) se acusa 200 sin duplicar el turno procesado", async () => {
-    const { deps, organizationId } = await buildTestDeps();
+    const { deps, restaurantesRepo, organizationId } = await buildTestDeps();
     const app = buildApp(deps);
     const payload = metaPayload({ messageId: "wamid.dup-http" });
     const first = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload));
@@ -92,7 +92,7 @@ describe("POST /v1/restaurantes/whatsapp/webhook — verificación HMAC sobre by
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
 
-    const conversation = await deps.restaurantesRepo.appendWhatsAppUserMessageOnce(organizationId, "+5219991234567", { role: "user", content: "probe" });
+    const conversation = await restaurantesRepo.appendWhatsAppUserMessageOnce(organizationId, "+5219991234567", { role: "user", content: "probe" });
     // 1 user + 1 assistant del único turno real procesado + esta "probe" = 3, nunca 5.
     expect(conversation).toHaveLength(3);
   });

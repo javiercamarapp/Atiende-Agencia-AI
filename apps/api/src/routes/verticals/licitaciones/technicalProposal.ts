@@ -186,7 +186,6 @@ const SECTION_LABEL_BY_KEY: Record<string, string> = {
 
 export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.licitacionesRepo;
   const propertyBase = "/licitaciones/:propertyId/tenders/:tenderId";
 
   app.use(`${propertyBase}/requirements/extract`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -195,6 +194,7 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
   app.use("/licitaciones/:propertyId/requirement-mappings/:topicKey", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(`${propertyBase}/requirements`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const tenderId = c.req.param("tenderId");
     const tender = await repo.findTender(organizationId, tenderId);
@@ -204,6 +204,7 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
   });
 
   app.post(`${propertyBase}/requirements/extract`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
     const idempotencyKey = c.req.header("idempotency-key");
     if (!idempotencyKey) throw Errors.idempotencyRequired();
@@ -241,6 +242,7 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
   });
 
   app.post(`${propertyBase}/proposal/technical/generate`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
     const idempotencyKey = c.req.header("idempotency-key");
     if (!idempotencyKey) throw Errors.idempotencyRequired();
@@ -343,6 +345,7 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
   });
 
   app.put("/licitaciones/:propertyId/requirement-mappings/:topicKey", async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, DECISION_ROLES);
     const organizationId = c.get("organizationId");
     const topicKey = c.req.param("topicKey");

@@ -83,7 +83,6 @@ function serializeMovimiento(m: { moneda: string; ingresoBrutoCentavos: number; 
 
 export function rentasFinanzasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.rentasRepo;
 
   const path = "/rentas/:propertyId/reservas/:ocupacionId/movimiento";
   app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -94,6 +93,7 @@ export function rentasFinanzasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const ocupacionId = c.req.param("ocupacionId");
     const userId = c.get("userId");
+    const repo = deps.rentasRepo(c.get("db"));
 
     const ocupacion = await repo.findOcupacionParaMovimiento(propertyId, ocupacionId);
     if (!ocupacion || ocupacion.capa !== "reserva") throw Errors.notFound("Reserva no encontrada en esta property.");
@@ -154,6 +154,7 @@ export function rentasFinanzasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     assertVerticalRole(c, FINANZAS_LECTURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const ocupacionId = c.req.param("ocupacionId");
+    const repo = deps.rentasRepo(c.get("db"));
 
     const movimiento = await repo.findReservaFinanciero(propertyId, ocupacionId);
     if (!movimiento) throw Errors.notFound("No hay movimiento financiero registrado para esta reserva.");

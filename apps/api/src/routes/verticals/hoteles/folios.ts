@@ -147,19 +147,20 @@ function serializeFolio(deps: { id: string; status: string; reservationId: strin
 
 export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.hotelesRepo;
 
   app.use("/hoteles/:propertyId/folios/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/hoteles/:propertyId/reservas/:reservationId/folios", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get("/hoteles/:propertyId/reservas/:reservationId/folios", async (c) => {
     assertVerticalRole(c, MONEY_ROLES);
+    const repo = deps.hotelesRepo(c.get("db"));
     const folios = await repo.listFoliosByReservation(c.req.param("propertyId"), c.req.param("reservationId"));
     return c.json(folios.map(serializeFolio));
   });
 
   app.get("/hoteles/:propertyId/folios/:folioId", async (c) => {
     assertVerticalRole(c, MONEY_ROLES);
+    const repo = deps.hotelesRepo(c.get("db"));
     const folio = await repo.findFolio(c.req.param("propertyId"), c.req.param("folioId"));
     if (!folio) throw Errors.notFound("Folio no encontrado.");
     return c.json(serializeFolio(folio));
@@ -177,6 +178,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<ChargeBody>(c.req.raw, 8 * 1024);
     const body = parseChargeBody(raw);
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const folio = await repo.findFolio(propertyId, folioId);
     if (!folio) throw Errors.notFound("Folio no encontrado.");
     if (folio.status !== "abierto") throw Errors.conflict("El folio está cerrado: no admite nuevos cargos.");
@@ -241,6 +243,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const monto = requirePositiveNumber(raw.monto, "monto");
     const autorizadoPorUserId = typeof raw.autorizadoPorUserId === "string" ? raw.autorizadoPorUserId : null;
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const folio = await repo.findFolio(propertyId, folioId);
     if (!folio) throw Errors.notFound("Folio no encontrado.");
     if (folio.status !== "abierto") throw Errors.conflict("El folio está cerrado: no admite descuentos.");
@@ -288,6 +291,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<ReversoBody>(c.req.raw, 2 * 1024);
     const motivo = requireString(raw.motivo, "motivo", { max: 300 });
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const folio = await repo.findFolio(propertyId, folioId);
     if (!folio) throw Errors.notFound("Folio no encontrado.");
     if (folio.status !== "abierto") throw Errors.conflict("El folio está cerrado: no admite reversos.");
@@ -334,6 +338,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     if (folioDestinoId === folioId) throw Errors.validation("El folio destino no puede ser el mismo folio origen.");
 
+    const repo = deps.hotelesRepo(c.get("db"));
     try {
       const result = await repo.withIdempotency({ organizationId, scope: "charge.transfer", key: idempotencyKey, body: { chargeId, folioDestinoId, motivo } }, async () => {
         const source = await repo.findFolio(propertyId, folioId);
@@ -397,6 +402,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     }
     const chargeIds = raw.chargeIds as string[];
 
+    const repo = deps.hotelesRepo(c.get("db"));
     try {
       const result = await repo.withIdempotency({ organizationId, scope: "folio.split", key: idempotencyKey, body: { etiqueta, chargeIds } }, async () => {
         const source = await repo.findFolio(propertyId, folioId);
@@ -467,6 +473,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       throw Errors.validation("Un pago con tarjeta requiere tokenPago (nunca se acepta un número de tarjeta).");
     }
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const folio = await repo.findFolio(propertyId, folioId);
     if (!folio) throw Errors.notFound("Folio no encontrado.");
     if (folio.status !== "abierto") throw Errors.conflict("El folio está cerrado: no admite nuevos pagos.");
@@ -512,6 +519,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const motivo = raw.motivo;
     const autorizadoPorUserId = typeof raw.autorizadoPorUserId === "string" ? raw.autorizadoPorUserId : null;
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const folio = await repo.findFolio(propertyId, folioId);
     if (!folio) throw Errors.notFound("Folio no encontrado.");
     if (folio.status !== "abierto") throw Errors.conflict("El folio ya está cerrado.");

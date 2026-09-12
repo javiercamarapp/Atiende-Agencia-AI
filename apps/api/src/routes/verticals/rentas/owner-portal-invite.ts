@@ -29,17 +29,23 @@ export function rentasOwnerPortalInviteRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const propertyId = c.req.param("propertyId");
     const ownerId = c.req.param("ownerId");
     const staffId = c.get("userId");
+    const db = c.get("db");
 
     // Reutiliza EXACTAMENTE la misma verificación que ya hace finanzas-statements.ts
     // antes de generar/listar statements: el owner debe tener al menos una unidad en
     // ESTA property -- nunca se invita a un id de propietario arbitrario que staff no
     // pueda ya ver por su membership real.
-    const owner = await deps.rentasRepo.findOwnerConUnidadesEnProperty(propertyId, ownerId);
+    const owner = await deps.rentasRepo(db).findOwnerConUnidadesEnProperty(propertyId, ownerId);
     if (!owner) throw Errors.notFound("Propietario no encontrado, o sin ninguna unidad en esta property.");
 
     const { tokenPlain, tokenHash } = generateInviteToken();
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
-    await deps.rentasOwnerPortalRepo.createPortalInvite({ ownerId, tokenHash, expiresAt, createdBy: staffId });
+    // `createPortalInvite` es uno de los 3 métodos que requieren privilegio de
+    // `service_role` (ver production/rentas-owner-portal-repository.ts) -- la sesión
+    // de staff (`db`) no lo satisface; en producción real esto falla explícito
+    // mientras esa infraestructura no exista, mismo criterio que el resto de gaps
+    // documentados en production/not-ready.ts.
+    await deps.rentasOwnerPortalRepo(db).createPortalInvite({ ownerId, tokenHash, expiresAt, createdBy: staffId });
 
     // El envío por correo real queda fuera de fase (§8, sin proveedor SMTP en el
     // monorepo todavía) -- staff copia/pega este token en el mensaje que le mande al

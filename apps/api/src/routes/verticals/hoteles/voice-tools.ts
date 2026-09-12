@@ -23,6 +23,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ADMIN_ROLES, consumeRateLimit, registerContactoNoOperativo, resolveAllergyDeclared } from "@atiende/domain-hoteles";
+import type { HotelesRepository } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { constantTimeEqual, readJsonCapped, requestActor } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -32,8 +33,8 @@ import type { AppDeps } from "../../../deps.ts";
  * `deps.env`), aquí cada property tiene el suyo en `hoteles.voice_agent_config`,
  * verificado en tiempo constante con la misma primitiva que el resto del app
  * (`constantTimeEqual`). */
-async function requireVoiceAgentConfig(deps: AppDeps, propertyId: string, req: Request): Promise<{ organizationId: string }> {
-  const config = await deps.hotelesRepo.findVoiceAgentConfig(propertyId);
+async function requireVoiceAgentConfig(repo: HotelesRepository, propertyId: string, req: Request): Promise<{ organizationId: string }> {
+  const config = await repo.findVoiceAgentConfig(propertyId);
   if (!config || !config.enabled) throw Errors.serviceUnavailable("El agente de voz no está configurado o está deshabilitado para esta property.");
   if (!constantTimeEqual(req.headers.get("x-atiende-tool-secret"), config.toolWebhookSecret)) throw Errors.unauthorized();
   return { organizationId: config.organizationId };
@@ -65,39 +66,45 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // seguro — eso sigue exigiendo confirmación humana de cocina (REQ-AB-004).
   app.post("/v1/hoteles/:propertyId/voz/tickets-fnb", async (c) => {
     const propertyId = c.req.param("propertyId");
-    const { organizationId } = await requireVoiceAgentConfig(deps, propertyId, c.req.raw);
 
-    const limited = await consumeRateLimit(deps.hotelesRepo, "voice-tickets-fnb", requestActor(c.req.raw, propertyId), 60, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    // Server Tool de voz, sin sesión de staff -- abre su propia sesión de sistema
+    // (`userId: null`), igual que las rutas públicas/de sistema de otras verticales.
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.hotelesRepo(db);
+      const { organizationId } = await requireVoiceAgentConfig(repo, propertyId, c.req.raw);
 
-    const body = await readJsonCapped<CrearTicketFnbBody>(c.req.raw, 8 * 1024);
-    const mensaje = typeof body.mensaje === "string" ? body.mensaje.trim() : "";
-    if (!mensaje || mensaje.length > 1000) throw Errors.validation("mensaje es requerido (máximo 1000 caracteres).");
-    const habitacion = typeof body.habitacion === "string" && body.habitacion.trim() ? body.habitacion.trim().slice(0, 50) : null;
-    const notes = habitacion ? `Habitación declarada por el huésped vía voz: ${habitacion}` : null;
+      const limited = await consumeRateLimit(repo, "voice-tickets-fnb", requestActor(c.req.raw, propertyId), 60, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
 
-    const { allergyDeclared, declaredVia } = resolveAllergyDeclared({
-      structuredFlag: body.alergia_declarada === true,
-      freeTextFields: [mensaje, notes],
-    });
+      const body = await readJsonCapped<CrearTicketFnbBody>(c.req.raw, 8 * 1024);
+      const mensaje = typeof body.mensaje === "string" ? body.mensaje.trim() : "";
+      if (!mensaje || mensaje.length > 1000) throw Errors.validation("mensaje es requerido (máximo 1000 caracteres).");
+      const habitacion = typeof body.habitacion === "string" && body.habitacion.trim() ? body.habitacion.trim().slice(0, 50) : null;
+      const notes = habitacion ? `Habitación declarada por el huésped vía voz: ${habitacion}` : null;
 
-    const order = await deps.hotelesRepo.insertFnbOrder({
-      organizationId,
-      propertyId,
-      roomId: null,
-      items: [{ nombre: mensaje }],
-      notes,
-      allergyDeclared,
-      allergyDeclaredVia: declaredVia,
-      createdBy: null, // actor system:voz — sin staff humano logueado.
-    });
+      const { allergyDeclared, declaredVia } = resolveAllergyDeclared({
+        structuredFlag: body.alergia_declarada === true,
+        freeTextFields: [mensaje, notes],
+      });
 
-    return c.json({
-      id: order.id,
-      alergiaDeclarada: order.allergyDeclared,
-      mensaje: order.allergyDeclared
-        ? "Registramos tu pedido y tu alergia/restricción alimentaria. La cocina va a revisarlo antes de prepararlo."
-        : "Registramos tu pedido, la cocina lo va a preparar.",
+      const order = await repo.insertFnbOrder({
+        organizationId,
+        propertyId,
+        roomId: null,
+        items: [{ nombre: mensaje }],
+        notes,
+        allergyDeclared,
+        allergyDeclaredVia: declaredVia,
+        createdBy: null, // actor system:voz — sin staff humano logueado.
+      });
+
+      return c.json({
+        id: order.id,
+        alergiaDeclarada: order.allergyDeclared,
+        mensaje: order.allergyDeclared
+          ? "Registramos tu pedido y tu alergia/restricción alimentaria. La cocina va a revisarlo antes de prepararlo."
+          : "Registramos tu pedido, la cocina lo va a preparar.",
+      });
     });
   });
 
@@ -107,26 +114,30 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // registrado para seguimiento humano.
   app.post("/v1/hoteles/:propertyId/voz/contacto-no-operativo", async (c) => {
     const propertyId = c.req.param("propertyId");
-    const { organizationId } = await requireVoiceAgentConfig(deps, propertyId, c.req.raw);
 
-    const limited = await consumeRateLimit(deps.hotelesRepo, "voice-contacto-no-operativo", requestActor(c.req.raw, propertyId), 60, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const repo = deps.hotelesRepo(db);
+      const { organizationId } = await requireVoiceAgentConfig(repo, propertyId, c.req.raw);
 
-    const body = await readJsonCapped<ContactoNoOperativoBody>(c.req.raw, 4 * 1024);
-    const motivo = typeof body.motivo === "string" ? body.motivo.trim() : "";
-    if (!motivo || motivo.length > 500) throw Errors.validation("motivo es requerido (máximo 500 caracteres).");
+      const limited = await consumeRateLimit(repo, "voice-contacto-no-operativo", requestActor(c.req.raw, propertyId), 60, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
 
-    const contacto = await registerContactoNoOperativo(deps.hotelesRepo, {
-      organizationId,
-      propertyId,
-      guestPhone: typeof body.telefono === "string" ? body.telefono.trim().slice(0, 32) : null,
-      guestName: null,
-      reason: motivo,
-      message: typeof body.resumen === "string" ? body.resumen.trim().slice(0, 1000) : null,
-      source: "voice",
+      const body = await readJsonCapped<ContactoNoOperativoBody>(c.req.raw, 4 * 1024);
+      const motivo = typeof body.motivo === "string" ? body.motivo.trim() : "";
+      if (!motivo || motivo.length > 500) throw Errors.validation("motivo es requerido (máximo 500 caracteres).");
+
+      const contacto = await registerContactoNoOperativo(repo, {
+        organizationId,
+        propertyId,
+        guestPhone: typeof body.telefono === "string" ? body.telefono.trim().slice(0, 32) : null,
+        guestName: null,
+        reason: motivo,
+        message: typeof body.resumen === "string" ? body.resumen.trim().slice(0, 1000) : null,
+        source: "voice",
+      });
+
+      return c.json({ id: contacto.id, ok: true });
     });
-
-    return c.json({ id: contacto.id, ok: true });
   });
 
   // Endpoint de rotación (diseño §1/§5.1) — SÍ requiere sesión de staff, solo
@@ -142,7 +153,7 @@ export function hotelesVoiceToolsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<RotateVoiceConfigBody>(c.req.raw, 1 * 1024);
     const enabled = raw.enabled !== false;
     const newSecret = randomUUID() + randomUUID();
-    await deps.hotelesRepo.upsertVoiceAgentConfig(propertyId, organizationId, newSecret, enabled);
+    await deps.hotelesRepo(c.get("db")).upsertVoiceAgentConfig(propertyId, organizationId, newSecret, enabled);
     return c.json({ toolWebhookSecret: newSecret, enabled });
   });
 

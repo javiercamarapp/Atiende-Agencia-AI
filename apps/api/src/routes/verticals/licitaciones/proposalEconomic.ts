@@ -71,13 +71,13 @@ interface EconomicGenerateResponseBody {
 
 export function licitacionesProposalRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.licitacionesRepo;
   const base = "/licitaciones/:propertyId/tenders/:tenderId/proposal";
 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${base}/economic/generate`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(base, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const userId = c.get("userId");
     const tenderId = c.req.param("tenderId");
@@ -91,6 +91,7 @@ export function licitacionesProposalRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   });
 
   app.post(`${base}/economic/generate`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
     const idempotencyKey = c.req.header("idempotency-key");
     if (!idempotencyKey) throw Errors.idempotencyRequired();

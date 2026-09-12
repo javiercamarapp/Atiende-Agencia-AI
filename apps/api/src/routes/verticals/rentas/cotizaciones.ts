@@ -15,7 +15,6 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function rentasCotizacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.rentasRepo;
 
   const path = "/rentas/:propertyId/unidades/:unidadId/cotizacion";
   app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -28,6 +27,7 @@ export function rentasCotizacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const checkIn = c.req.query("checkIn");
     const checkOut = c.req.query("checkOut");
     const canal = c.req.query("canal");
+    const repo = deps.rentasRepo(c.get("db"));
 
     if (!checkIn || !DATE_RE.test(checkIn)) throw Errors.validation("checkIn: formato de fecha esperado YYYY-MM-DD.");
     if (!checkOut || !DATE_RE.test(checkOut)) throw Errors.validation("checkOut: formato de fecha esperado YYYY-MM-DD.");

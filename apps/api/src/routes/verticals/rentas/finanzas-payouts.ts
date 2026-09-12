@@ -68,7 +68,6 @@ interface ImportarPayoutBody {
 
 export function rentasFinanzasPayoutsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.rentasRepo;
 
   const base = "/rentas/:propertyId/payouts";
   const detallePath = `${base}/:id`;
@@ -80,6 +79,7 @@ export function rentasFinanzasPayoutsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const userId = c.get("userId");
+    const repo = deps.rentasRepo(c.get("db"));
 
     const raw = await readJsonCapped<ImportarPayoutBody>(c.req.raw, 16 * 1024);
     const canalCodigo = requireString(raw.canalCodigo, "canalCodigo", 60);
@@ -117,6 +117,7 @@ export function rentasFinanzasPayoutsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     assertVerticalRole(c, FINANZAS_LECTURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const id = c.req.param("id");
+    const repo = deps.rentasRepo(c.get("db"));
 
     const payout = await repo.findPayoutDetalle(propertyId, id);
     if (!payout) throw Errors.notFound("Payout no encontrado en esta property.");

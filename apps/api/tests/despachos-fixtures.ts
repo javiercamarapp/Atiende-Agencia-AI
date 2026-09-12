@@ -23,6 +23,11 @@ type TestApp = ReturnType<BuildAppFn>;
 
 export interface DespachosTestContext {
   readonly deps: AppDeps;
+  /** Mismo objeto que resuelve `deps.despachosRepo(...)`, tipado concreto -- para que
+   * los tests puedan seguir llamando directamente al repo en memoria sin pasar por
+   * una ruta HTTP (`deps.despachosRepo` ahora es una fábrica `(db) =>
+   * DespachosRepository`). */
+  readonly despachosRepo: InMemoryDespachosRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly staff: {
@@ -74,14 +79,14 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     env: TEST_ENV,
     coreRepo,
     engine,
-    restaurantesRepo: new InMemoryRestaurantesRepository(),
+    restaurantesRepo: (_db) => new InMemoryRestaurantesRepository(),
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
-    hotelesRepo: new InMemoryHotelesRepository(),
+    hotelesRepo: (_db) => new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
-    despachosRepo,
+    despachosRepo: (_db) => despachosRepo,
     despachosAuditSink: new InMemoryAuditSink(),
-    citasRepo: new InMemoryCitasRepository(),
+    citasRepo: (_db) => new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     // Fase 3 — no relevante para este fixture (vertical despachos); sin
@@ -90,9 +95,9 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (vertical despachos).");
     },
-    licitacionesRepo: new InMemoryLicitacionesRepository(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
+    rentasRepo: (_db) => new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
   };
 
   const app = buildApp(deps);
@@ -105,6 +110,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
 
   return {
     deps,
+    despachosRepo,
     organizationId,
     propertyId,
     staff: {

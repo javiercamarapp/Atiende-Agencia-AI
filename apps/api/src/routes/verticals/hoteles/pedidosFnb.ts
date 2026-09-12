@@ -81,12 +81,12 @@ function serializePedido(order: FnbOrderRecord) {
 
 export function hotelesPedidosFnbRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.hotelesRepo;
 
   app.use("/hoteles/:propertyId/pedidos-fnb/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/hoteles/:propertyId/pedidos-fnb", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get("/hoteles/:propertyId/pedidos-fnb", async (c) => {
+    const repo = deps.hotelesRepo(c.get("db"));
     const orders = await repo.listFnbOrders(c.req.param("propertyId"));
     return c.json(orders.map(serializePedido));
   });
@@ -101,6 +101,7 @@ export function hotelesPedidosFnbRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const roomId = typeof raw.roomId === "string" ? raw.roomId : null;
     const alergiaDeclarada = raw.alergiaDeclarada === true;
 
+    const repo = deps.hotelesRepo(c.get("db"));
     // Red de seguridad fail-closed: si el huésped no marcó el campo estructurado pero
     // SÍ escribió su alergia en una nota libre (notas generales o de algún platillo),
     // el pedido se trata igual que si lo hubiera declarado explícitamente.
@@ -124,6 +125,7 @@ export function hotelesPedidosFnbRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   app.get("/hoteles/:propertyId/pedidos-fnb/:orderId", async (c) => {
+    const repo = deps.hotelesRepo(c.get("db"));
     const order = await repo.findFnbOrder(c.req.param("propertyId"), c.req.param("orderId"));
     if (!order) throw Errors.notFound("Pedido de F&B no encontrado.");
     return c.json(serializePedido(order));
@@ -139,6 +141,7 @@ export function hotelesPedidosFnbRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<ConfirmarCocinaBody>(c.req.raw, 4 * 1024);
     const nota = typeof raw.nota === "string" ? raw.nota.trim().slice(0, 1000) : null;
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const existing = await repo.findFnbOrder(propertyId, orderId);
     if (!existing) throw Errors.notFound("Pedido de F&B no encontrado.");
     if (!existing.allergyDeclared) {
@@ -159,6 +162,7 @@ export function hotelesPedidosFnbRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const orderId = c.req.param("orderId");
 
+    const repo = deps.hotelesRepo(c.get("db"));
     const existing = await repo.findFnbOrder(propertyId, orderId);
     if (!existing) throw Errors.notFound("Pedido de F&B no encontrado.");
 

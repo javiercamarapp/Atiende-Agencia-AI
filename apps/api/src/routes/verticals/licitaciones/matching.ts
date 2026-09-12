@@ -16,7 +16,6 @@ import type { AppDeps } from "../../../deps.ts";
 
 export function licitacionesMatchingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.licitacionesRepo;
   const engine = new MatchingEngine();
   const listBase = "/licitaciones/:propertyId/tenders/matching";
   const detailBase = "/licitaciones/:propertyId/tenders/:tenderId/matching";
@@ -25,6 +24,7 @@ export function licitacionesMatchingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   app.use(detailBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(listBase, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const [tenders, profileRecord] = await Promise.all([repo.listTenders(organizationId), repo.findMatchingProfile(organizationId)]);
     const profile = toOrganizationMatchingProfile(profileRecord, organizationId);
@@ -33,6 +33,7 @@ export function licitacionesMatchingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   });
 
   app.get(detailBase, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const tenderId = c.req.param("tenderId");
     const tender = await repo.findTender(organizationId, tenderId);

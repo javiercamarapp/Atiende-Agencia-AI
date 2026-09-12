@@ -47,13 +47,13 @@ function serializeDeadline(d: FiscalDeadlineRecord) {
 
 export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.despachosRepo;
 
   app.use("/despachos/:propertyId/vencimientos/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/despachos/:propertyId/vencimientos", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get("/despachos/:propertyId/vencimientos", async (c) => {
     assertVerticalRole(c, GESTION_VENCIMIENTOS_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const estado = c.req.query("estado");
     const deadlines = await repo.listDeadlines(c.req.param("propertyId"), estado ? { estado } : undefined);
     return c.json(deadlines.map(serializeDeadline));
@@ -61,6 +61,7 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
 
   app.post("/despachos/:propertyId/vencimientos/calcular", async (c) => {
     assertVerticalRole(c, GESTION_VENCIMIENTOS_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<CalcularBody>(c.req.raw, 1024);
@@ -79,6 +80,7 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
 
   app.post("/despachos/:propertyId/vencimientos/:deadlineId/completar", async (c) => {
     assertVerticalRole(c, GESTION_VENCIMIENTOS_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const deadlineId = c.req.param("deadlineId");
     const raw = await readJsonCapped<CompletarBody>(c.req.raw, 1024);
@@ -94,6 +96,7 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
 
   app.post("/despachos/:propertyId/vencimientos/:deadlineId/escalar", async (c) => {
     assertVerticalRole(c, GESTION_VENCIMIENTOS_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const deadlineId = c.req.param("deadlineId");
 

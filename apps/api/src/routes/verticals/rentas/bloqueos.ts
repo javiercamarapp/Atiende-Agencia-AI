@@ -59,7 +59,6 @@ interface CrearBloqueoBody {
 
 export function rentasBloqueosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.rentasRepo;
 
   const base = "/rentas/:propertyId/unidades/:unidadId/bloqueos";
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -71,6 +70,7 @@ export function rentasBloqueosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
     const db = c.get("db");
+    const repo = deps.rentasRepo(db);
 
     // Defensa en profundidad, mismo criterio que reservas.ts: nunca confiar en que el
     // cliente "sabe" que `unidadId` pertenece a `propertyId`.
@@ -94,6 +94,7 @@ export function rentasBloqueosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     assertVerticalRole(c, ESCRITURA_CALENDARIO_ROLES);
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
+    const repo = deps.rentasRepo(c.get("db"));
 
     const unidad = await repo.findUnidad(propertyId, unidadId);
     if (!unidad) throw Errors.notFound("Unidad no encontrada en esta property.");
@@ -108,6 +109,7 @@ export function rentasBloqueosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const unidadId = c.req.param("unidadId");
     const ocupacionId = c.req.param("ocupacionId");
     const db = c.get("db");
+    const repo = deps.rentasRepo(db);
 
     const unidad = await repo.findUnidad(propertyId, unidadId);
     if (!unidad) throw Errors.notFound("Unidad no encontrada en esta property.");

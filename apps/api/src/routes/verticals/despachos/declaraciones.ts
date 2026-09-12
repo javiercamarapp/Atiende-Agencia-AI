@@ -55,7 +55,6 @@ function optionalNumber(value: unknown, field: string, fallback: number): number
 
 export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.despachosRepo;
 
   app.use("/despachos/:propertyId/declaraciones/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
@@ -85,6 +84,7 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
   app.get("/despachos/:propertyId/declaraciones/diot/:periodo", async (c) => {
     assertVerticalRole(c, DECLARACIONES_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const periodo = c.req.param("periodo");
     if (!/^\d{4}-\d{2}$/.test(periodo)) throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");

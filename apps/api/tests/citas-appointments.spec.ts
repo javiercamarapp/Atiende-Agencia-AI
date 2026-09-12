@@ -4,7 +4,6 @@
 // real, con InMemoryCitasRepository en vez de Postgres real.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { InMemoryCitasRepository } from "@atiende/domain-citas";
 import { buildApp } from "../src/app.ts";
 import { buildCitasTestContext } from "./citas-fixtures.ts";
 import { authedJson } from "./hoteles-fixtures.ts";
@@ -153,7 +152,7 @@ describe("modificar-cita vía el agente (x-atiende-tool-secret) — Fase 4", () 
   }
 
   function seedSecondProvider(ctx: Awaited<ReturnType<typeof buildCitasTestContext>>) {
-    const citasRepo = ctx.deps.citasRepo as InMemoryCitasRepository;
+    const citasRepo = ctx.citasRepo;
     const otroProviderId = randomUUID();
     citasRepo.seedProvider({ id: otroProviderId, organizationId: ctx.organizationId, propertyId: null, displayName: "Dr. Roberto Cen", roleLabel: "Dentista", isActive: true });
     citasRepo.seedProviderService(otroProviderId, ctx.serviceId);
@@ -193,7 +192,7 @@ describe("modificar-cita vía el agente (x-atiende-tool-secret) — Fase 4", () 
   it("rechaza reasignar a un proveedor que no ofrece el servicio, con 400 real", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
-    const citasRepo = ctx.deps.citasRepo as InMemoryCitasRepository;
+    const citasRepo = ctx.citasRepo;
     const otroProviderId = randomUUID();
     citasRepo.seedProvider({ id: otroProviderId, organizationId: ctx.organizationId, propertyId: null, displayName: "Dr. sin este servicio", roleLabel: "Dentista", isActive: true });
     // Nunca se llama seedProviderService -- este proveedor no ofrece ctx.serviceId.

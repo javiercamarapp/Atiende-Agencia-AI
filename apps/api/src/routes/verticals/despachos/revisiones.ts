@@ -36,19 +36,20 @@ function serializeReview(review: InvoiceReviewRecord) {
 
 export function despachosRevisionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.despachosRepo;
 
   app.use("/despachos/:propertyId/revisiones/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/despachos/:propertyId/revisiones", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get("/despachos/:propertyId/revisiones", async (c) => {
     assertVerticalRole(c, RESOLVER_REVISION_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const pendientes = await repo.listPendingReviews(c.req.param("propertyId"));
     return c.json(pendientes.map(serializeReview));
   });
 
   app.get("/despachos/:propertyId/revisiones/:reviewId", async (c) => {
     assertVerticalRole(c, RESOLVER_REVISION_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
     const review = await repo.findReview(c.req.param("propertyId"), c.req.param("reviewId"));
     if (!review) throw Errors.notFound("Revisión no encontrada.");
     return c.json(serializeReview(review));
@@ -66,6 +67,7 @@ export function despachosRevisionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const userId = c.get("userId");
     const raw = await readJsonCapped<ResolverBody>(c.req.raw, 4 * 1024);
     const nota = typeof raw.nota === "string" ? raw.nota.trim() : null;
+    const repo = deps.despachosRepo(c.get("db"));
 
     try {
       const resolved = await repo.resolveReview(propertyId, reviewId, userId, decision, nota);

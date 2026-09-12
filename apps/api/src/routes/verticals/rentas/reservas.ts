@@ -80,7 +80,6 @@ interface ModificarReservaBody {
 
 export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.rentasRepo;
 
   const base = "/rentas/:propertyId/unidades/:unidadId/reservas";
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -93,6 +92,7 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
     const db = c.get("db");
+    const repo = deps.rentasRepo(db);
 
     // Defensa en profundidad: nunca confiar en que el cliente "sabe" que `unidadId`
     // pertenece a `propertyId" — el motor de dominio también lo verifica, pero un
@@ -145,6 +145,7 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const unidadId = c.req.param("unidadId");
     const ocupacionId = c.req.param("ocupacionId");
     const db = c.get("db");
+    const repo = deps.rentasRepo(db);
 
     const unidad = await repo.findUnidad(propertyId, unidadId);
     if (!unidad) throw Errors.notFound("Unidad no encontrada en esta property.");
@@ -184,6 +185,7 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const unidadId = c.req.param("unidadId");
     const ocupacionId = c.req.param("ocupacionId");
     const db = c.get("db");
+    const repo = deps.rentasRepo(db);
 
     const unidad = await repo.findUnidad(propertyId, unidadId);
     if (!unidad) throw Errors.notFound("Unidad no encontrada en esta property.");

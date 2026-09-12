@@ -95,7 +95,7 @@ interface OrderToolResult {
   readonly order: { readonly status: string; readonly total: number };
 }
 
-async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => LlmCompletionResult): Promise<{ deps: AppDeps; organizationId: string; propertyId: string; tacosBistecId: string }> {
+async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => LlmCompletionResult): Promise<{ deps: AppDeps; restaurantesRepo: InMemoryRestaurantesRepository; organizationId: string; propertyId: string; tacosBistecId: string }> {
   const coreRepo = new InMemoryCoreRepository();
   const restaurantesRepo = new InMemoryRestaurantesRepository();
 
@@ -164,31 +164,31 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     env: TEST_ENV,
     coreRepo,
     engine: new InMemoryTenancyEngine(),
-    restaurantesRepo,
+    restaurantesRepo: (_db) => restaurantesRepo,
     turnHandler,
-    hotelesRepo: new InMemoryHotelesRepository(),
+    hotelesRepo: (_db) => new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
-    citasRepo: new InMemoryCitasRepository(),
+    citasRepo: (_db) => new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de restaurantes).");
     },
-    licitacionesRepo: new InMemoryLicitacionesRepository(),
-    despachosRepo: new InMemoryDespachosRepository(),
+    licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
+    despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    rentasRepo: (_db) => new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
   };
-  return { deps, organizationId, propertyId, tacosBistecId };
+  return { deps, restaurantesRepo, organizationId, propertyId, tacosBistecId };
 }
 
 describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP real", () => {
   it("colonia -> sucursal real -> producto real -> cotización real -> PEDIDO REAL creado, en dos mensajes reales de WhatsApp", async () => {
     let step = 0;
-    const { deps, propertyId, tacosBistecId } = await buildLlmAgentTestDeps((request) => {
+    const { deps, restaurantesRepo, propertyId, tacosBistecId } = await buildLlmAgentTestDeps((request) => {
       const current = step++;
       switch (current) {
         case 0:
@@ -260,17 +260,17 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
     expect(await res2.json()).toEqual({ ok: true });
 
     // ── El pedido es REAL: existe en el repositorio, con precio server-side ──
-    const org = (await deps.restaurantesRepo.findOrganizationBySlug("los-taquitos-de-pm"))!;
+    const org = (await restaurantesRepo.findOrganizationBySlug("los-taquitos-de-pm"))!;
     const customerPhoneNormalized = CUSTOMER_PHONE_E164.replace(/\D/g, "").slice(-10);
-    const customer = await deps.restaurantesRepo.findCustomerByPhone(org.id, customerPhoneNormalized);
+    const customer = await restaurantesRepo.findCustomerByPhone(org.id, customerPhoneNormalized);
     expect(customer).not.toBeNull();
-    const orders = await deps.restaurantesRepo.listEligibleOrderHistory(customer!.id);
+    const orders = await restaurantesRepo.listEligibleOrderHistory(customer!.id);
     expect(orders).toHaveLength(1);
     expect(orders[0]!.items).toEqual([expect.objectContaining({ name: "Tacos de Bistec de Res (orden de 3)", quantity: 1, price: 164 })]);
 
     // ── El historial de conversación persistido es SOLO TEXTO (diseño §2.5)
     // — nunca se filtran tool_calls/resultados crudos a la fila persistida. ──
-    const conversationProbe = await deps.restaurantesRepo.appendWhatsAppUserMessageOnce(org.id, CUSTOMER_PHONE_E164, { role: "user", content: "probe" });
+    const conversationProbe = await restaurantesRepo.appendWhatsAppUserMessageOnce(org.id, CUSTOMER_PHONE_E164, { role: "user", content: "probe" });
     // 2 turnos reales (user+assistant) x2 mensajes + esta "probe" = 5.
     expect(conversationProbe).toHaveLength(5);
     for (const message of conversationProbe) {
@@ -338,23 +338,23 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       env: TEST_ENV,
       coreRepo,
       engine: new InMemoryTenancyEngine(),
-      restaurantesRepo,
+      restaurantesRepo: (_db) => restaurantesRepo,
       turnHandler,
-      hotelesRepo: new InMemoryHotelesRepository(),
+      hotelesRepo: (_db) => new InMemoryHotelesRepository(),
       hotelesPaymentsPort: new InMemoryPaymentsPort(),
       hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
-      citasRepo: new InMemoryCitasRepository(),
+      citasRepo: (_db) => new InMemoryCitasRepository(),
       citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
       citasConversationGuard: createDefaultConversationGuard(),
       citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
       citasGoogleTokenExchange: async () => {
         throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de restaurantes).");
       },
-      licitacionesRepo: new InMemoryLicitacionesRepository(),
-      despachosRepo: new InMemoryDespachosRepository(),
+      licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
+      despachosRepo: (_db) => new InMemoryDespachosRepository(),
       despachosAuditSink: new InMemoryAuditSink(),
-      rentasRepo: new InMemoryRentasRepository(),
-      rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+      rentasRepo: (_db) => new InMemoryRentasRepository(),
+      rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
     };
     const app = buildApp(deps);
 

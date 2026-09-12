@@ -38,12 +38,12 @@ const EMPTY_PROFILE = { keywords: [], excludedKeywords: [], classifierCodes: [],
 
 export function licitacionesMatchingProfileRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.licitacionesRepo;
   const base = "/licitaciones/:propertyId/matching-profile";
 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(base, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
     const profile = await repo.findMatchingProfile(organizationId);
     // Ningún perfil configurado todavía -- se responde el "vacío" explícito
@@ -54,6 +54,7 @@ export function licitacionesMatchingProfileRoutes(deps: AppDeps): Hono<CoreAuthH
   });
 
   app.put(base, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
     assertVerticalRole(c, WRITE_ROLES);
     const organizationId = c.get("organizationId");
     const actorId = c.get("userId");

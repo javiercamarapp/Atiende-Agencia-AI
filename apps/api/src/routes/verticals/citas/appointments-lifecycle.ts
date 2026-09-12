@@ -29,7 +29,7 @@ import {
   tryNotifyWaitlistOfFreedSlot,
   tryTriggerGoogleSync,
 } from "@atiende/domain-citas";
-import type { AppointmentRecord } from "@atiende/domain-citas";
+import type { AppointmentRecord, CitasRepository } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -64,23 +64,23 @@ function serializeAppointment(appointment: AppointmentRecord) {
   };
 }
 
-async function resolveOrganizationOrNotFound(deps: AppDeps, orgSlug: string) {
-  const org = await deps.citasRepo.findOrganizationBySlug(orgSlug);
+async function resolveOrganizationOrNotFound(citasRepo: CitasRepository, orgSlug: string) {
+  const org = await citasRepo.findOrganizationBySlug(orgSlug);
   if (!org || !org.isActive) throw Errors.notFound(`Negocio "${orgSlug}" no encontrado o inactivo.`);
   return org;
 }
 
 /** Best-effort: nunca bloquea la respuesta de cancelar/reagendar si falla. */
-async function tryNotifyWaitlistAndEmail(deps: AppDeps, organizationId: string, providerId: string, serviceId: string, previousStartsAt: string, newStartsAt: string, appointmentId: string) {
+async function tryNotifyWaitlistAndEmail(citasRepo: CitasRepository, organizationId: string, providerId: string, serviceId: string, previousStartsAt: string, newStartsAt: string, appointmentId: string) {
   try {
-    const provider = await deps.citasRepo.findProvider(organizationId, providerId);
-    const timeZone = await deps.citasRepo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
-    await notifyWaitlistAfterReschedule(deps.citasRepo, organizationId, timeZone, { providerId, serviceId, previousStartsAt, newStartsAt });
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    const timeZone = await citasRepo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+    await notifyWaitlistAfterReschedule(citasRepo, organizationId, timeZone, { providerId, serviceId, previousStartsAt, newStartsAt });
   } catch (err) {
     console.error("citas: notifyWaitlistAfterReschedule best-effort falló:", err);
   }
   try {
-    await deps.citasRepo.enqueueMessagingOutbox(organizationId, "email", "appointment.rescheduled", `appointment-rescheduled:${appointmentId}:${newStartsAt}`, { appointment_id: appointmentId, previous_starts_at: previousStartsAt, new_starts_at: newStartsAt });
+    await citasRepo.enqueueMessagingOutbox(organizationId, "email", "appointment.rescheduled", `appointment-rescheduled:${appointmentId}:${newStartsAt}`, { appointment_id: appointmentId, previous_starts_at: previousStartsAt, new_starts_at: newStartsAt });
   } catch (err) {
     console.error("citas: enqueueMessagingOutbox(appointment.rescheduled) best-effort falló:", err);
   }
@@ -88,19 +88,19 @@ async function tryNotifyWaitlistAndEmail(deps: AppDeps, organizationId: string, 
 
 /** Best-effort: cancelar SIEMPRE libera el horario de la cita — a diferencia de
  * reagendar (donde solo se libera si el nuevo horario es distinto del viejo). */
-async function tryNotifyWaitlistAfterCancel(deps: AppDeps, organizationId: string, appointment: AppointmentRecord) {
+async function tryNotifyWaitlistAfterCancel(citasRepo: CitasRepository, organizationId: string, appointment: AppointmentRecord) {
   try {
-    const provider = await deps.citasRepo.findProvider(organizationId, appointment.providerId);
-    const timeZone = await deps.citasRepo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
-    await tryNotifyWaitlistOfFreedSlot(deps.citasRepo, organizationId, timeZone, { providerId: appointment.providerId, serviceId: appointment.serviceId, startsAt: appointment.startsAt });
+    const provider = await citasRepo.findProvider(organizationId, appointment.providerId);
+    const timeZone = await citasRepo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+    await tryNotifyWaitlistOfFreedSlot(citasRepo, organizationId, timeZone, { providerId: appointment.providerId, serviceId: appointment.serviceId, startsAt: appointment.startsAt });
   } catch (err) {
     console.error("citas: aviso de lista de espera tras cancelar falló (best-effort):", err);
   }
 }
 
-async function tryNotifyCancelledEmail(deps: AppDeps, organizationId: string, appointmentId: string) {
+async function tryNotifyCancelledEmail(citasRepo: CitasRepository, organizationId: string, appointmentId: string) {
   try {
-    await deps.citasRepo.enqueueMessagingOutbox(organizationId, "email", "appointment.cancelled", `appointment-cancelled:${appointmentId}`, { appointment_id: appointmentId });
+    await citasRepo.enqueueMessagingOutbox(organizationId, "email", "appointment.cancelled", `appointment-cancelled:${appointmentId}`, { appointment_id: appointmentId });
   } catch (err) {
     console.error("citas: enqueueMessagingOutbox(appointment.cancelled) best-effort falló:", err);
   }
@@ -127,54 +127,65 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
   const app = new Hono<CoreAuthHonoEnv>();
 
   // ---- Agente (voz/WhatsApp): cancelar ----
+  // Rutas del agente: sin authMiddleware/dbSession montado (guard por
+  // x-atiende-tool-secret, ver cabecera del archivo) -- abren su propia sesión de
+  // sistema (`userId: null`), igual que documenta postgres-repository.ts.
   app.post("/v1/citas/:orgSlug/appointments/:appointmentId/cancel", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-tool-secret", deps.env.voiceToolSecret)) throw Errors.unauthorized();
-    const org = await resolveOrganizationOrNotFound(deps, c.req.param("orgSlug"));
     const appointmentId = c.req.param("appointmentId");
 
-    const limited = await consumeRateLimit(deps.citasRepo, "cancel-appointment", requestActor(c.req.raw, appointmentId), 60, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const citasRepo = deps.citasRepo(db);
+      const org = await resolveOrganizationOrNotFound(citasRepo, c.req.param("orgSlug"));
 
-    try {
-      const appointment = await cancelAppointment(deps.citasRepo, { organizationId: org.id, appointmentId });
-      await tryNotifyWaitlistAfterCancel(deps, org.id, appointment);
-      await tryNotifyCancelledEmail(deps, org.id, appointment.id);
-      // Fase 3 §5 — la fila ya quedó en 'pending_cancel'/'skipped' de forma atómica
-      // dentro de cancel_appointment_idempotent; best-effort real, nunca puede
-      // convertir esta respuesta 200 en un error.
-      await tryTriggerGoogleSync(deps.citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
-      return c.json({ appointment: serializeAppointment(appointment) });
-    } catch (err) {
-      return mapErrorToHttp(err, c);
-    }
+      const limited = await consumeRateLimit(citasRepo, "cancel-appointment", requestActor(c.req.raw, appointmentId), 60, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
+
+      try {
+        const appointment = await cancelAppointment(citasRepo, { organizationId: org.id, appointmentId });
+        await tryNotifyWaitlistAfterCancel(citasRepo, org.id, appointment);
+        await tryNotifyCancelledEmail(citasRepo, org.id, appointment.id);
+        // Fase 3 §5 — la fila ya quedó en 'pending_cancel'/'skipped' de forma atómica
+        // dentro de cancel_appointment_idempotent; best-effort real, nunca puede
+        // convertir esta respuesta 200 en un error.
+        await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+        return c.json({ appointment: serializeAppointment(appointment) });
+      } catch (err) {
+        return mapErrorToHttp(err, c);
+      }
+    });
   });
 
   // ---- Agente (voz/WhatsApp): reagendar ----
   app.post("/v1/citas/:orgSlug/appointments/:appointmentId/reschedule", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-tool-secret", deps.env.voiceToolSecret)) throw Errors.unauthorized();
-    const org = await resolveOrganizationOrNotFound(deps, c.req.param("orgSlug"));
     const appointmentId = c.req.param("appointmentId");
     const raw = await readJsonCapped<RescheduleBody>(c.req.raw, 8 * 1024);
 
-    const limited = await consumeRateLimit(deps.citasRepo, "reschedule-appointment", requestActor(c.req.raw, appointmentId), 60, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const citasRepo = deps.citasRepo(db);
+      const org = await resolveOrganizationOrNotFound(citasRepo, c.req.param("orgSlug"));
 
-    try {
-      const { appointment, previousStartsAt } = await rescheduleAppointment(deps.citasRepo, {
-        organizationId: org.id,
-        appointmentId,
-        newStartsAt: typeof raw.new_starts_at === "string" ? raw.new_starts_at : "",
-        actorChannel: raw.actor_channel === "voice" || raw.actor_channel === "whatsapp" || raw.actor_channel === "web" || raw.actor_channel === "manual" ? raw.actor_channel : undefined,
-        actorNote: typeof raw.actor_note === "string" ? raw.actor_note : undefined,
-      });
-      await tryNotifyWaitlistAndEmail(deps, org.id, appointment.providerId, appointment.serviceId, previousStartsAt, appointment.startsAt, appointment.id);
-      // Fase 3 §5 — reschedule_appointment_idempotent ya dejó 'pending' (si había
-      // google_event_id) de forma atómica; best-effort real.
-      await tryTriggerGoogleSync(deps.citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
-      return c.json({ appointment: serializeAppointment(appointment) });
-    } catch (err) {
-      return mapErrorToHttp(err, c);
-    }
+      const limited = await consumeRateLimit(citasRepo, "reschedule-appointment", requestActor(c.req.raw, appointmentId), 60, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
+
+      try {
+        const { appointment, previousStartsAt } = await rescheduleAppointment(citasRepo, {
+          organizationId: org.id,
+          appointmentId,
+          newStartsAt: typeof raw.new_starts_at === "string" ? raw.new_starts_at : "",
+          actorChannel: raw.actor_channel === "voice" || raw.actor_channel === "whatsapp" || raw.actor_channel === "web" || raw.actor_channel === "manual" ? raw.actor_channel : undefined,
+          actorNote: typeof raw.actor_note === "string" ? raw.actor_note : undefined,
+        });
+        await tryNotifyWaitlistAndEmail(citasRepo, org.id, appointment.providerId, appointment.serviceId, previousStartsAt, appointment.startsAt, appointment.id);
+        // Fase 3 §5 — reschedule_appointment_idempotent ya dejó 'pending' (si había
+        // google_event_id) de forma atómica; best-effort real.
+        await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+        return c.json({ appointment: serializeAppointment(appointment) });
+      } catch (err) {
+        return mapErrorToHttp(err, c);
+      }
+    });
   });
 
   // ---- Agente (voz/WhatsApp): modificar-cita — Fase 4. Cambia proveedor y/o
@@ -182,38 +193,42 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
   // (reassignAppointment) para las guardias reales. ----
   app.post("/v1/citas/:orgSlug/appointments/:appointmentId/reassign", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-tool-secret", deps.env.voiceToolSecret)) throw Errors.unauthorized();
-    const org = await resolveOrganizationOrNotFound(deps, c.req.param("orgSlug"));
     const appointmentId = c.req.param("appointmentId");
     const raw = await readJsonCapped<ReassignBody>(c.req.raw, 8 * 1024);
 
-    const limited = await consumeRateLimit(deps.citasRepo, "reassign-appointment", requestActor(c.req.raw, appointmentId), 60, 60);
-    if (!limited.allowed) throw Errors.tooManyRequests();
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const citasRepo = deps.citasRepo(db);
+      const org = await resolveOrganizationOrNotFound(citasRepo, c.req.param("orgSlug"));
 
-    try {
-      const { appointment, previousProviderId, previousServiceId } = await reassignAppointment(deps.citasRepo, {
-        organizationId: org.id,
-        appointmentId,
-        newProviderId: typeof raw.new_provider_id === "string" ? raw.new_provider_id : undefined,
-        newServiceId: typeof raw.new_service_id === "string" ? raw.new_service_id : undefined,
-        actorChannel: raw.actor_channel === "voice" || raw.actor_channel === "whatsapp" || raw.actor_channel === "web" || raw.actor_channel === "manual" ? raw.actor_channel : undefined,
-        actorNote: typeof raw.actor_note === "string" ? raw.actor_note : undefined,
-      });
-      // El hueco (proveedor, servicio, horario) VIEJO queda libre — mismo aviso
-      // de lista de espera que usa cancelar (nadie más "ocupa" ese hueco ahora).
+      const limited = await consumeRateLimit(citasRepo, "reassign-appointment", requestActor(c.req.raw, appointmentId), 60, 60);
+      if (!limited.allowed) throw Errors.tooManyRequests();
+
       try {
-        const oldProvider = await deps.citasRepo.findProvider(org.id, previousProviderId);
-        const timeZone = await deps.citasRepo.findPropertyTimezone(oldProvider?.propertyId ?? null, org.id);
-        await tryNotifyWaitlistOfFreedSlot(deps.citasRepo, org.id, timeZone, { providerId: previousProviderId, serviceId: previousServiceId, startsAt: appointment.startsAt });
+        const { appointment, previousProviderId, previousServiceId } = await reassignAppointment(citasRepo, {
+          organizationId: org.id,
+          appointmentId,
+          newProviderId: typeof raw.new_provider_id === "string" ? raw.new_provider_id : undefined,
+          newServiceId: typeof raw.new_service_id === "string" ? raw.new_service_id : undefined,
+          actorChannel: raw.actor_channel === "voice" || raw.actor_channel === "whatsapp" || raw.actor_channel === "web" || raw.actor_channel === "manual" ? raw.actor_channel : undefined,
+          actorNote: typeof raw.actor_note === "string" ? raw.actor_note : undefined,
+        });
+        // El hueco (proveedor, servicio, horario) VIEJO queda libre — mismo aviso
+        // de lista de espera que usa cancelar (nadie más "ocupa" ese hueco ahora).
+        try {
+          const oldProvider = await citasRepo.findProvider(org.id, previousProviderId);
+          const timeZone = await citasRepo.findPropertyTimezone(oldProvider?.propertyId ?? null, org.id);
+          await tryNotifyWaitlistOfFreedSlot(citasRepo, org.id, timeZone, { providerId: previousProviderId, serviceId: previousServiceId, startsAt: appointment.startsAt });
+        } catch (err) {
+          console.error("citas: aviso de lista de espera tras modificar-cita falló (best-effort):", err);
+        }
+        // Fase 3 §5 — reassign_appointment_idempotent ya dejó 'pending' (si había
+        // google_event_id) de forma atómica; best-effort real.
+        await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+        return c.json({ appointment: serializeAppointment(appointment) });
       } catch (err) {
-        console.error("citas: aviso de lista de espera tras modificar-cita falló (best-effort):", err);
+        return mapErrorToHttp(err, c);
       }
-      // Fase 3 §5 — reassign_appointment_idempotent ya dejó 'pending' (si había
-      // google_event_id) de forma atómica; best-effort real.
-      await tryTriggerGoogleSync(deps.citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
-      return c.json({ appointment: serializeAppointment(appointment) });
-    } catch (err) {
-      return mapErrorToHttp(err, c);
-    }
+    });
   });
 
   // ---- Staff panel: cancelar (única de las 2 acciones que el panel tiene, ver
@@ -228,13 +243,14 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
     const organizationId = c.get("organizationId");
     const appointmentId = c.req.param("appointmentId");
     const userId = c.get("userId");
+    const citasRepo = deps.citasRepo(c.get("db"));
 
     try {
-      const appointment = await cancelAppointmentFromPanel(deps.citasRepo, organizationId, appointmentId, userId);
-      await tryNotifyWaitlistAfterCancel(deps, organizationId, appointment);
-      await tryNotifyCancelledEmail(deps, organizationId, appointment.id);
+      const appointment = await cancelAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
+      await tryNotifyWaitlistAfterCancel(citasRepo, organizationId, appointment);
+      await tryNotifyCancelledEmail(citasRepo, organizationId, appointment.id);
       // Fase 3 §5 — mismo best-effort que la cancelación del agente.
-      await tryTriggerGoogleSync(deps.citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+      await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);

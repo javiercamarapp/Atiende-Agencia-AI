@@ -3,7 +3,6 @@
 // HTTP real vía `app.request`, sobre `buildTestDeps()` (in-memory), sin mocks
 // de la lógica de negocio.
 import { describe, expect, it } from "vitest";
-import type { InMemoryRestaurantesRepository } from "@atiende/domain-restaurantes";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
 
@@ -32,9 +31,9 @@ describe("POST /v1/restaurantes/:orgSlug/branches/nearest — buscar_sucursal_ce
   });
 
   it("una colonia reconocida devuelve la sucursal real más cercana calculada por distancia (nunca adivinada)", async () => {
-    const { deps } = await buildTestDeps();
-    (deps.restaurantesRepo as InMemoryRestaurantesRepository).seedKnownZone({
-      organizationId: (await deps.restaurantesRepo.findOrganizationBySlug("los-taquitos-de-pm"))!.id,
+    const { deps, restaurantesRepo } = await buildTestDeps();
+    restaurantesRepo.seedKnownZone({
+      organizationId: (await restaurantesRepo.findOrganizationBySlug("los-taquitos-de-pm"))!.id,
       name: "Francisco de Montejo",
       lat: 21.0186,
       lng: -89.6708,

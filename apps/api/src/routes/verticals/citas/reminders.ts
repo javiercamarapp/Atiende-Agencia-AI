@@ -15,24 +15,30 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
   app.post("/internal/citas/confirmacion-cita", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
 
-    const organizations = await deps.citasRepo.listActiveOrganizations();
-    let processed = 0;
-    let sent = 0;
-    const failures: { organization_id: string; error: string }[] = [];
+    // Ruta interna de scheduler, sin authMiddleware/dbSession -- abre su propia
+    // sesión de sistema (`userId: null`) para todo el barrido, igual que documenta
+    // postgres-repository.ts (ninguna de estas queries depende de un auth.uid() real).
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const citasRepo = deps.citasRepo(db);
+      const organizations = await citasRepo.listActiveOrganizations();
+      let processed = 0;
+      let sent = 0;
+      const failures: { organization_id: string; error: string }[] = [];
 
-    // Un tenant con datos raros nunca tumba la corrida completa de los demás — se
-    // captura y se sigue, se reporta en `failures[]` (ver diseño §5.3).
-    for (const org of organizations) {
-      try {
-        const summary = await runConfirmacionCitaCore(deps.citasRepo, org.id);
-        processed += summary.processed;
-        sent += summary.sent;
-      } catch (err) {
-        failures.push({ organization_id: org.id, error: err instanceof Error ? err.message : String(err) });
+      // Un tenant con datos raros nunca tumba la corrida completa de los demás — se
+      // captura y se sigue, se reporta en `failures[]` (ver diseño §5.3).
+      for (const org of organizations) {
+        try {
+          const summary = await runConfirmacionCitaCore(citasRepo, org.id);
+          processed += summary.processed;
+          sent += summary.sent;
+        } catch (err) {
+          failures.push({ organization_id: org.id, error: err instanceof Error ? err.message : String(err) });
+        }
       }
-    }
 
-    return c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, failures });
+      return c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, failures });
+    });
   });
 
   return app;

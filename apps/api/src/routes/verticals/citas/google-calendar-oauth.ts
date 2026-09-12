@@ -46,8 +46,9 @@ export function citasGoogleCalendarOAuthRoutes(deps: AppDeps): Hono<CoreAuthHono
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const providerId = c.req.param("providerId");
+    const citasRepo = deps.citasRepo(c.get("db"));
 
-    const provider = await deps.citasRepo.findProvider(organizationId, providerId);
+    const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
 
     const state = signGoogleCalendarOAuthState({ organizationId, providerId, propertyId }, deps.env.whatsappAppSecret);
@@ -97,17 +98,22 @@ export function citasGoogleCalendarOAuthRoutes(deps: AppDeps): Hono<CoreAuthHono
       throw Errors.validation("Google no devolvió un refresh_token. Revoca el acceso de atiende.ai desde tu cuenta de Google (myaccount.google.com/permissions) e inténtalo de nuevo.");
     }
 
-    const provider = await deps.citasRepo.findProvider(state.organizationId, state.providerId);
-    if (!provider) throw Errors.notFound("El proveedor de esta conexión ya no existe.");
+    // Callback público (Google redirige el navegador aquí directo, sin JWT de
+    // staff) -- sin authMiddleware/dbSession, abre su propia sesión de sistema.
+    return deps.engine.withAppSession({ userId: null }, async (db) => {
+      const citasRepo = deps.citasRepo(db);
+      const provider = await citasRepo.findProvider(state.organizationId, state.providerId);
+      if (!provider) throw Errors.notFound("El proveedor de esta conexión ya no existe.");
 
-    const account = await deps.citasRepo.connectProviderCalendarAccount({
-      organizationId: state.organizationId,
-      providerId: state.providerId,
-      googleCalendarId: "primary",
-      refreshToken: exchanged.refreshToken,
+      const account = await citasRepo.connectProviderCalendarAccount({
+        organizationId: state.organizationId,
+        providerId: state.providerId,
+        googleCalendarId: "primary",
+        refreshToken: exchanged.refreshToken!,
+      });
+
+      return c.json({ connected: true, provider_id: account.providerId, google_calendar_id: account.googleCalendarId, sync_status: account.syncStatus });
     });
-
-    return c.json({ connected: true, provider_id: account.providerId, google_calendar_id: account.googleCalendarId, sync_status: account.syncStatus });
   });
 
   return app;

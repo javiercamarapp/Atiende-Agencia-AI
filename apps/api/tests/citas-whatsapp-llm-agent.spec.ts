@@ -130,23 +130,23 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     env: TEST_ENV,
     coreRepo: new InMemoryCoreRepository(),
     engine: new InMemoryTenancyEngine(),
-    restaurantesRepo: new InMemoryRestaurantesRepository(),
+    restaurantesRepo: (_db) => new InMemoryRestaurantesRepository(),
     turnHandler: acknowledgeOnlyRestaurantesTurnHandler(new InMemoryRestaurantesRepository()),
-    hotelesRepo: new InMemoryHotelesRepository(),
+    hotelesRepo: (_db) => new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
-    citasRepo,
+    citasRepo: (_db) => citasRepo,
     citasTurnHandler: turnHandler,
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepo, null),
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp).");
     },
-    licitacionesRepo: new InMemoryLicitacionesRepository(),
-    despachosRepo: new InMemoryDespachosRepository(),
+    licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
+    despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    rentasRepo: (_db) => new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
   };
 }
 

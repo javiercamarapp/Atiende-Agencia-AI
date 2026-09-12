@@ -17,7 +17,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { encontrarMinStaySolapada, encontrarTemporadaSolapada, esRangoValido, PRICING_ESCRITURA_ROLES } from "@atiende/domain-rentas";
-import type { RangoFechas } from "@atiende/domain-rentas";
+import type { RangoFechas, RentasRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -115,7 +115,6 @@ interface ReglaCanalBody {
 
 export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
-  const repo = deps.rentasRepo;
 
   const base = "/rentas/:propertyId/unidades/:unidadId";
   const paths = [`${base}/tarifa-base`, `${base}/temporadas`, `${base}/descuentos-duracion`, `${base}/min-stay`, `${base}/reglas-canal`];
@@ -123,7 +122,7 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   }
 
-  async function requireUnidad(propertyId: string, unidadId: string) {
+  async function requireUnidad(repo: RentasRepository, propertyId: string, unidadId: string) {
     const unidad = await repo.findUnidad(propertyId, unidadId);
     if (!unidad) throw Errors.notFound("Unidad no encontrada en esta property.");
     return unidad;
@@ -135,7 +134,8 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
     const userId = c.get("userId");
-    const unidad = await requireUnidad(propertyId, unidadId);
+    const repo = deps.rentasRepo(c.get("db"));
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
 
     const raw = await readJsonCapped<TarifaBaseBody>(c.req.raw, 2 * 1024);
     const precioNocheCentavos = requireNonNegativeInteger(raw.precioNocheCentavos, "precioNocheCentavos");
@@ -157,7 +157,8 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
     const userId = c.get("userId");
-    const unidad = await requireUnidad(propertyId, unidadId);
+    const repo = deps.rentasRepo(c.get("db"));
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
 
     const raw = await readJsonCapped<TemporadaBody>(c.req.raw, 2 * 1024);
     const nombre = requireString(raw.nombre, "nombre", 200);
@@ -189,7 +190,8 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
-    const unidad = await requireUnidad(propertyId, unidadId);
+    const repo = deps.rentasRepo(c.get("db"));
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
 
     const raw = await readJsonCapped<DescuentoDuracionBody>(c.req.raw, 2 * 1024);
     const nochesMinimas = requirePositiveInteger(raw.nochesMinimas, "nochesMinimas");
@@ -207,7 +209,8 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
-    const unidad = await requireUnidad(propertyId, unidadId);
+    const repo = deps.rentasRepo(c.get("db"));
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
 
     const raw = await readJsonCapped<MinStayBody>(c.req.raw, 2 * 1024);
     const rango = requireRango(raw.rango);
@@ -231,7 +234,8 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
-    const unidad = await requireUnidad(propertyId, unidadId);
+    const repo = deps.rentasRepo(c.get("db"));
+    const unidad = await requireUnidad(repo, propertyId, unidadId);
 
     const raw = await readJsonCapped<ReglaCanalBody>(c.req.raw, 2 * 1024);
     const canalCodigo = requireString(raw.canalCodigo, "canalCodigo", 60);

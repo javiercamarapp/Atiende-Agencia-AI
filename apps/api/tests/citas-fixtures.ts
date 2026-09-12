@@ -21,6 +21,10 @@ type TestApp = ReturnType<BuildAppFn>;
 
 export interface CitasTestContext {
   readonly deps: AppDeps;
+  /** Mismo objeto que resuelve `deps.citasRepo(...)`, tipado concreto -- para que los
+   * tests puedan seguir llamando directamente al repo en memoria sin pasar por una
+   * ruta HTTP (`deps.citasRepo` ahora es una fábrica `(db) => CitasRepository`). */
+  readonly citasRepo: InMemoryCitasRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly providerId: string;
@@ -88,29 +92,35 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     return { accessToken: "fake-access-token", refreshToken: "fake-refresh-token", expiresIn: 3600 };
   };
 
+  const restaurantesRepoUnused = new InMemoryRestaurantesRepository();
+  const hotelesRepoUnused = new InMemoryHotelesRepository();
+  const licitacionesRepoUnused = new InMemoryLicitacionesRepository();
+  const despachosRepoUnused = new InMemoryDespachosRepository();
+  const rentasRepoUnused = new InMemoryRentasRepository();
+  const rentasOwnerPortalRepoUnused = new InMemoryRentasOwnerPortalRepository();
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
     engine,
-    restaurantesRepo: new InMemoryRestaurantesRepository(),
+    restaurantesRepo: (_db) => restaurantesRepoUnused,
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),
-    hotelesRepo: new InMemoryHotelesRepository(),
+    hotelesRepo: (_db) => hotelesRepoUnused,
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
-    citasRepo,
+    citasRepo: (_db) => citasRepo,
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver,
     citasGoogleTokenExchange,
-    licitacionesRepo: new InMemoryLicitacionesRepository(),
-    despachosRepo: new InMemoryDespachosRepository(),
+    licitacionesRepo: (_db) => licitacionesRepoUnused,
+    despachosRepo: (_db) => despachosRepoUnused,
     despachosAuditSink: new InMemoryAuditSink(),
-    rentasRepo: new InMemoryRentasRepository(),
-    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
+    rentasRepo: (_db) => rentasRepoUnused,
+    rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepoUnused,
   };
 
   const app = buildApp(deps);
   const ownerToken = await signInAndGetToken(app, ownerEmail, ownerPassword);
 
-  return { deps, organizationId, propertyId, providerId, serviceId, staff: { owner: { id: ownerId, email: ownerEmail, password: ownerPassword, token: ownerToken } } };
+  return { deps, citasRepo, organizationId, propertyId, providerId, serviceId, staff: { owner: { id: ownerId, email: ownerEmail, password: ownerPassword, token: ownerToken } } };
 }
