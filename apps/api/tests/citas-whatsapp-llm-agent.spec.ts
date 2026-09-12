@@ -12,6 +12,7 @@ import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   createDefaultConversationGuard,
+  createGoogleCalendarPortResolver,
   createLlmWhatsAppTurnHandler,
   InMemoryCitasRepository,
   type WhatsAppTurnHandler,
@@ -137,6 +138,10 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     citasRepo,
     citasTurnHandler: turnHandler,
     citasConversationGuard: createDefaultConversationGuard(),
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepo, null),
+    citasGoogleTokenExchange: async () => {
+      throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp).");
+    },
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),

@@ -6,9 +6,12 @@ export type {
   AvailabilityOverride,
   AvailabilityRule,
   BusyInterval,
+  CalendarAccountSyncStatus,
   CancelAppointmentPayload,
   CreateAppointmentPayload,
   CustomerRecord,
+  GoogleSyncStatus,
+  ProviderCalendarAccountRecord,
   ProviderRecord,
   RescheduleAppointmentPayload,
   ServiceRecord,
@@ -26,8 +29,10 @@ export type { CitasRole } from "./roles.ts";
 export { actorHash, consumeRateLimit, requestActor } from "./rate-limit.ts";
 
 export type {
+  AppointmentSyncRow,
   CancelResult,
   CitasRepository,
+  ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
   NewAppointmentInput,
@@ -37,6 +42,33 @@ export type {
 } from "./repository.ts";
 export { InMemoryCitasRepository } from "./in-memory-repository.ts";
 export { PostgresCitasRepository } from "./postgres-repository.ts";
+
+// ---- Fase 3 — sincronización con Google Calendar (ver diseño §3-§8) ----
+export {
+  assertGoogleCalendarPortContract,
+  CalendarEventNotFoundError,
+  exchangeGoogleAuthorizationCode,
+  FakeGoogleCalendarPort,
+  GoogleCalendarApiError,
+  isInvalidGrantError,
+  RealGoogleCalendarPort,
+} from "./google-calendar-port.ts";
+export type {
+  CalendarEventResult,
+  CreateEventInput,
+  DeleteEventInput,
+  ExchangeAuthorizationCodeInput,
+  ExchangeAuthorizationCodeResult,
+  GoogleCalendarPort,
+  RealGoogleCalendarPortConfig,
+  UpdateEventInput,
+} from "./google-calendar-port.ts";
+export { createGoogleCalendarPortResolver } from "./google-calendar-factory.ts";
+export type { GoogleOAuthPlatformConfig } from "./google-calendar-factory.ts";
+export { MAX_SYNC_ATTEMPTS, nextSyncBackoffMs, SYNC_BATCH_SIZE, syncPendingAppointments, tryTriggerGoogleSync } from "./calendar-sync.ts";
+export type { ResolveCalendarPort, SyncSummary } from "./calendar-sync.ts";
+export { OAUTH_STATE_TTL_MS, signGoogleCalendarOAuthState, verifyGoogleCalendarOAuthState } from "./google-calendar-oauth-state.ts";
+export type { GoogleCalendarOAuthState } from "./google-calendar-oauth-state.ts";
 
 export {
   BUSY_APPOINTMENT_STATUSES,

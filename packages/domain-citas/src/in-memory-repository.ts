@@ -5,6 +5,7 @@
 // fixture de seed para tests determinísticos y como fallback dev/CI sin Postgres
 // real — mismo rol que InMemoryRestaurantesRepository/InMemoryHotelesRepository.
 import { randomUUID } from "node:crypto";
+import { MAX_SYNC_ATTEMPTS } from "./calendar-sync.ts";
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
@@ -12,10 +13,23 @@ import type {
   AvailabilityRule,
   BusyInterval,
   CustomerRecord,
+  GoogleSyncStatus,
+  ProviderCalendarAccountRecord,
   ProviderRecord,
   ServiceRecord,
 } from "./types.ts";
-import type { CancelResult, CitasRepository, ConversationMessage, CreateAppointmentResult, NewAppointmentInput, RescheduleResult, ReminderCandidateRow, WaitlistCandidateRow } from "./repository.ts";
+import type {
+  AppointmentSyncRow,
+  CancelResult,
+  CitasRepository,
+  ConnectProviderCalendarAccountInput,
+  ConversationMessage,
+  CreateAppointmentResult,
+  NewAppointmentInput,
+  RescheduleResult,
+  ReminderCandidateRow,
+  WaitlistCandidateRow,
+} from "./repository.ts";
 
 /** Serializa operaciones por clave — equivalente en memoria de
  * `pg_advisory_xact_lock`/row lock de Postgres: dos llamadas concurrentes con la
@@ -96,6 +110,12 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly outbox: { organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown }[] = [];
   private readonly waitlist = new Map<string, StoredWaitlistRow>();
+  // ---- Fase 3 — Google Calendar (ver diseño §3/§4) ----
+  private readonly calendarAccounts = new Map<string, ProviderCalendarAccountRecord>(); // por providerId
+  /** Nunca hay Vault real en memoria — el "secreto" es el refresh token en texto
+   * plano, guardado aparte del registro público para que un log accidental de
+   * `calendarAccounts` no lo incluya (mismo espíritu que Vault, sin Vault real). */
+  private readonly calendarRefreshTokens = new Map<string, string>(); // por providerId
   private readonly whatsappEvents = new Map<string, StoredWhatsAppEvent>();
   private readonly whatsappConversations = new Map<string, StoredConversation>();
 
@@ -331,6 +351,14 @@ export class InMemoryCitasRepository implements CitasRepository {
         idempotencyKey,
         reminder24hSentAt: null,
         createdAt: new Date().toISOString(),
+        // Fase 3 §3: toda cita nueva nace elegible de inmediato para sincronizar —
+        // el motor de sincronización decide "skipped" si el proveedor no tiene
+        // Google Calendar conectado (nunca se decide aquí, en el punto de creación).
+        googleEventId: null,
+        googleSyncStatus: "pending",
+        googleSyncAttempts: 0,
+        googleSyncNextRetryAt: null,
+        googleSyncError: null,
       };
       this.appointments.set(created.id, created);
       if (idempotencyKey) this.appointmentIdByIdempotencyKey.set(`${input.organizationId}:${idempotencyKey}`, created.id);
@@ -353,7 +381,21 @@ export class InMemoryCitasRepository implements CitasRepository {
       return { outcome: "conflict_invalid_status", status: appointment.status };
     }
 
-    const updated: AppointmentRecord = { ...appointment, status: "cancelled" };
+    // Fase 3 §3/§5: transición ATÓMICA (misma "operación" que el cancel real, sin
+    // segunda pasada) a 'pending_cancel' si ya había un evento en Google que borrar,
+    // o 'skipped' si esta cita nunca llegó a sincronizarse (nunca dejarla en
+    // 'pending' — si no se toca, el cron intentaría CREAR un evento para una cita ya
+    // cancelada). Reinicia el contador de intentos/backoff: es, en efecto, una
+    // intención de sincronización nueva.
+    const nextGoogleSyncStatus: GoogleSyncStatus = appointment.googleEventId ? "pending_cancel" : "skipped";
+    const updated: AppointmentRecord = {
+      ...appointment,
+      status: "cancelled",
+      googleSyncStatus: nextGoogleSyncStatus,
+      googleSyncAttempts: 0,
+      googleSyncNextRetryAt: null,
+      googleSyncError: null,
+    };
     this.appointments.set(appointmentId, updated);
     return { outcome: "cancelled", appointment: updated };
   }
@@ -392,7 +434,19 @@ export class InMemoryCitasRepository implements CitasRepository {
       );
       if (conflict) return { outcome: "conflict_slot_taken" };
 
-      const updated: AppointmentRecord = { ...appointment, startsAt: newStartsAt, endsAt: newEndsAt, reminder24hSentAt: null };
+      // Fase 3 §3/§5: si ya había un evento sincronizado en Google, reagendar debe
+      // volver a empujarlo (nunca queda "olvidado" con el horario viejo) — se
+      // reinicia el backoff porque es, en efecto, un intento de sincronización
+      // nuevo. Si nunca tuvo evento (todavía 'pending' o 'skipped' sin conectar),
+      // se deja tal cual: la fila ya trae el horario nuevo, así que cuando sí
+      // sincronice lo hará con el dato correcto sin necesitar ningún cambio aquí.
+      const updated: AppointmentRecord = {
+        ...appointment,
+        startsAt: newStartsAt,
+        endsAt: newEndsAt,
+        reminder24hSentAt: null,
+        ...(appointment.googleEventId ? { googleSyncStatus: "pending" as GoogleSyncStatus, googleSyncAttempts: 0, googleSyncNextRetryAt: null, googleSyncError: null } : {}),
+      };
       this.appointments.set(appointmentId, updated);
       return { outcome: "rescheduled", appointment: updated };
     });
@@ -538,5 +592,135 @@ export class InMemoryCitasRepository implements CitasRepository {
     void errorClass;
     const event = this.whatsappEvents.get(messageId);
     if (event) event.status = "failed";
+  }
+
+  // ============================================================================
+  // Fase 3 — sincronización con Google Calendar (ver diseño §3/§4/§5)
+  // ============================================================================
+
+  /** Solo para tests: conecta un proveedor directo, sin pasar por el flujo OAuth
+   * completo — equivalente a un seed manual contra `provider_calendar_accounts`. */
+  seedProviderCalendarAccount(input: { organizationId: string; providerId: string; googleCalendarId?: string; refreshToken?: string; syncStatus?: ProviderCalendarAccountRecord["syncStatus"] }): void {
+    const now = new Date().toISOString();
+    this.calendarAccounts.set(input.providerId, {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      providerId: input.providerId,
+      googleCalendarId: input.googleCalendarId ?? "primary",
+      googleWatchChannelId: null,
+      googleWatchResourceId: null,
+      googleWatchExpiresAt: null,
+      syncStatus: input.syncStatus ?? "connected",
+      syncError: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (input.refreshToken) this.calendarRefreshTokens.set(input.providerId, input.refreshToken);
+  }
+
+  async findProviderCalendarAccount(providerId: string): Promise<ProviderCalendarAccountRecord | null> {
+    return this.calendarAccounts.get(providerId) ?? null;
+  }
+
+  async connectProviderCalendarAccount(input: ConnectProviderCalendarAccountInput): Promise<ProviderCalendarAccountRecord> {
+    const existing = this.calendarAccounts.get(input.providerId);
+    const now = new Date().toISOString();
+    const record: ProviderCalendarAccountRecord = {
+      id: existing?.id ?? randomUUID(),
+      organizationId: input.organizationId,
+      providerId: input.providerId,
+      googleCalendarId: input.googleCalendarId,
+      googleWatchChannelId: existing?.googleWatchChannelId ?? null,
+      googleWatchResourceId: existing?.googleWatchResourceId ?? null,
+      googleWatchExpiresAt: existing?.googleWatchExpiresAt ?? null,
+      syncStatus: "connected",
+      syncError: null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.calendarAccounts.set(input.providerId, record);
+    this.calendarRefreshTokens.set(input.providerId, input.refreshToken);
+    return record;
+  }
+
+  async rotateProviderCalendarRefreshToken(providerId: string, refreshToken: string): Promise<void> {
+    this.calendarRefreshTokens.set(providerId, refreshToken);
+  }
+
+  async resolveProviderCalendarRefreshToken(providerId: string): Promise<string | null> {
+    return this.calendarRefreshTokens.get(providerId) ?? null;
+  }
+
+  async setProviderCalendarAccountSyncError(providerId: string, error: string): Promise<void> {
+    const existing = this.calendarAccounts.get(providerId);
+    if (!existing) return;
+    this.calendarAccounts.set(providerId, { ...existing, syncStatus: "error", syncError: error, updatedAt: new Date().toISOString() });
+  }
+
+  private toAppointmentSyncRow(appointment: AppointmentRecord): AppointmentSyncRow {
+    const service = this.services.get(appointment.serviceId);
+    const customer = this.customers.get(appointment.customerId);
+    return {
+      id: appointment.id,
+      organizationId: appointment.organizationId,
+      providerId: appointment.providerId,
+      serviceName: service?.name ?? null,
+      customerName: customer?.fullName ?? null,
+      customerPhone: customer?.phone ?? null,
+      startsAt: appointment.startsAt,
+      endsAt: appointment.endsAt,
+      notes: appointment.notes,
+      // Resuelto de forma síncrona porque el timezone efectivo ya vive en memoria
+      // (mismo criterio que findPropertyTimezone) — nunca inventa "UTC" en silencio.
+      timeZone: this.propertyTimezones.get(this.providers.get(appointment.providerId)?.propertyId ?? "") ?? this.organizations.get(appointment.organizationId)?.defaultTimezone ?? "America/Mexico_City",
+      googleEventId: appointment.googleEventId,
+      googleSyncStatus: appointment.googleSyncStatus,
+      googleSyncAttempts: appointment.googleSyncAttempts,
+    };
+  }
+
+  async loadAppointmentSyncRow(appointmentId: string): Promise<AppointmentSyncRow | null> {
+    const appointment = this.appointments.get(appointmentId);
+    return appointment ? this.toAppointmentSyncRow(appointment) : null;
+  }
+
+  async loadPendingGoogleSyncAppointments(limit: number, nowIso: string): Promise<readonly AppointmentSyncRow[]> {
+    const nowMs = Date.parse(nowIso);
+    return [...this.appointments.values()]
+      .filter((a) => {
+        if (a.googleSyncStatus !== "pending" && a.googleSyncStatus !== "pending_cancel") return false;
+        if (a.googleSyncAttempts >= MAX_SYNC_ATTEMPTS) return false;
+        // null = nunca se intentó todavía -> elegible de inmediato (ver diseño §5/§8).
+        return a.googleSyncNextRetryAt === null || Date.parse(a.googleSyncNextRetryAt) <= nowMs;
+      })
+      .sort((a, b) => (Date.parse(a.googleSyncNextRetryAt ?? a.createdAt) || 0) - (Date.parse(b.googleSyncNextRetryAt ?? b.createdAt) || 0))
+      .slice(0, limit)
+      .map((a) => this.toAppointmentSyncRow(a));
+  }
+
+  private updateAppointmentSyncFields(appointmentId: string, patch: Partial<Pick<AppointmentRecord, "googleEventId" | "googleSyncStatus" | "googleSyncAttempts" | "googleSyncNextRetryAt" | "googleSyncError">>): void {
+    const appointment = this.appointments.get(appointmentId);
+    if (!appointment) return;
+    this.appointments.set(appointmentId, { ...appointment, ...patch });
+  }
+
+  async markAppointmentGoogleSynced(appointmentId: string, googleEventId: string, attempts: number): Promise<void> {
+    this.updateAppointmentSyncFields(appointmentId, { googleEventId, googleSyncStatus: "synced", googleSyncAttempts: attempts, googleSyncNextRetryAt: null, googleSyncError: null });
+  }
+
+  async markAppointmentGoogleSyncDeleted(appointmentId: string, attempts: number): Promise<void> {
+    this.updateAppointmentSyncFields(appointmentId, { googleSyncStatus: "deleted", googleSyncAttempts: attempts, googleSyncNextRetryAt: null, googleSyncError: null });
+  }
+
+  async markAppointmentGoogleSyncSkipped(appointmentId: string): Promise<void> {
+    this.updateAppointmentSyncFields(appointmentId, { googleSyncStatus: "skipped", googleSyncNextRetryAt: null, googleSyncError: null });
+  }
+
+  async markAppointmentGoogleSyncRetry(appointmentId: string, attempts: number, error: string, nextRetryAtIso: string): Promise<void> {
+    this.updateAppointmentSyncFields(appointmentId, { googleSyncAttempts: attempts, googleSyncError: error, googleSyncNextRetryAt: nextRetryAtIso });
+  }
+
+  async markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void> {
+    this.updateAppointmentSyncFields(appointmentId, { googleSyncStatus: "error", googleSyncAttempts: attempts, googleSyncError: error, googleSyncNextRetryAt: null });
   }
 }

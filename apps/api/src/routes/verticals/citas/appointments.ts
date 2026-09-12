@@ -7,7 +7,7 @@
 // Protección real: originAllowed() (CORS) para source="web", x-atiende-tool-secret
 // para source="voice"|"whatsapp" (agente), rate-limit distinto por canal.
 import { Hono } from "hono";
-import { consumeRateLimit, createAppointment, AppointmentConflictError, AppointmentValidationError } from "@atiende/domain-citas";
+import { consumeRateLimit, createAppointment, tryTriggerGoogleSync, AppointmentConflictError, AppointmentValidationError } from "@atiende/domain-citas";
 import type { CreateAppointmentPayload } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
@@ -93,6 +93,13 @@ export function citasAppointmentsRoutes(deps: AppDeps): Hono {
       deps.citasRepo
         .enqueueMessagingOutbox(org.id, "email", "appointment.created", `appointment-created:${appointment.id}`, { appointment_id: appointment.id })
         .catch((err) => console.error("citas: enqueueMessagingOutbox(appointment.created) best-effort falló:", err));
+      // Fase 3 §5 — intento inmediato de sincronizar con Google Calendar. La fila
+      // ya quedó en google_sync_status='pending' de forma atómica dentro de
+      // create_appointment_idempotent; tryTriggerGoogleSync absorbe cualquier
+      // excepción internamente (best-effort real, mismo criterio que
+      // tryNotifyWaitlistAfterCancel de appointments-lifecycle.ts) — esperarla aquí
+      // NUNCA puede convertir esta respuesta 201 en un error 500.
+      await tryTriggerGoogleSync(deps.citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) }, 201);
     } catch (err) {
       if (err instanceof AppointmentConflictError) throw Errors.conflict(err.message);

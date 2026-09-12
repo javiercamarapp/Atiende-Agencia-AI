@@ -10,7 +10,7 @@
 // las lanza la capa de negocio (appointments.ts), nunca el adaptador. Esto reproduce
 // fielmente el mapeo real AT423->conflict / AT404->not_found / AT409->conflict del
 // origen sin acoplar el puerto a códigos de error de Postgres.
-import type { AppointmentActorChannel, AppointmentRecord, AppointmentSource, AvailabilityOverride, AvailabilityRule, BusyInterval, CustomerRecord, ProviderRecord, ServiceRecord } from "./types.ts";
+import type { AppointmentActorChannel, AppointmentRecord, AppointmentSource, AvailabilityOverride, AvailabilityRule, BusyInterval, CustomerRecord, GoogleSyncStatus, ProviderCalendarAccountRecord, ProviderRecord, ServiceRecord } from "./types.ts";
 
 export interface NewAppointmentInput {
   readonly organizationId: string;
@@ -56,6 +56,43 @@ export interface ReminderCandidateRow {
 export interface ConversationMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
+}
+
+// ============================================================================
+// Fase 3 — sincronización con Google Calendar (ver diseño §3/§5/§6). El puerto de
+// acceso a datos NUNCA importa GoogleCalendarPort ni toca la API de Google — solo
+// modela lo que calendar-sync.ts/google-calendar-factory.ts necesitan leer/escribir.
+// ============================================================================
+
+export interface ConnectProviderCalendarAccountInput {
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly googleCalendarId: string;
+  /** En texto plano SOLO en esta frontera — el adaptador de Postgres lo envuelve de
+   * inmediato en el secreto de Supabase Vault (`set_provider_calendar_refresh_token`,
+   * ver diseño §4) antes de que toque ninguna columna en claro; el adaptador en
+   * memoria (tests) lo guarda tal cual, nunca hay Vault real que envolver ahí. */
+  readonly refreshToken: string;
+}
+
+/** Fila pre-unida (cita + servicio + cliente + timezone efectivo) que
+ * calendar-sync.ts necesita para construir el evento de Google — evita que el motor
+ * de sincronización tenga que orquestar 3 lookups sueltos por cita, mismo criterio
+ * que `ReminderCandidateRow`. */
+export interface AppointmentSyncRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly serviceName: string | null;
+  readonly customerName: string | null;
+  readonly customerPhone: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly notes: string | null;
+  readonly timeZone: string;
+  readonly googleEventId: string | null;
+  readonly googleSyncStatus: GoogleSyncStatus;
+  readonly googleSyncAttempts: number;
 }
 
 export interface WaitlistCandidateRow {
@@ -120,6 +157,38 @@ export interface CitasRepository {
     actorChannel: AppointmentActorChannel,
     actorNote: string | null,
   ): Promise<RescheduleResult>;
+
+  // ---- Fase 3 — sincronización con Google Calendar (ver diseño §3/§4/§5) ----
+  findProviderCalendarAccount(providerId: string): Promise<ProviderCalendarAccountRecord | null>;
+  /** Upsert real: primera conexión inserta, una reconexión posterior actualiza el
+   * mismo refresh token y vuelve a poner `sync_status='connected'` (ver diseño §4
+   * paso 3 — "solo entonces hace upsert... con sync_status='connected'"). */
+  connectProviderCalendarAccount(input: ConnectProviderCalendarAccountInput): Promise<ProviderCalendarAccountRecord>;
+  /** Google rotó el refresh_token (pasa ocasionalmente) — persistirlo de inmediato es
+   * lo que evita que la siguiente corrida falle con un token ya revocado (ver diseño
+   * §4 paso 5). */
+  rotateProviderCalendarRefreshToken(providerId: string, refreshToken: string): Promise<void>;
+  /** Lee el refresh token real (vía Supabase Vault en Postgres, ver diseño §4) — el
+   * adaptador de Postgres trata "el RPC de Vault no existe todavía" exactamente
+   * igual que "sin proveedor conectado": null, nunca una excepción (ver diseño §4/§9,
+   * mismo criterio honesto que `resolveRefreshTokenFromVault` del origen). */
+  resolveProviderCalendarRefreshToken(providerId: string): Promise<string | null>;
+  /** Falla PERMANENTE (invalid_grant: el proveedor revocó el acceso) — marca la
+   * cuenta como desconectada de una vez, en vez de quemar los reintentos de cada
+   * cita contra un token que ya sabemos que no sirve (ver diseño §8, riesgo 2). */
+  setProviderCalendarAccountSyncError(providerId: string, error: string): Promise<void>;
+
+  loadAppointmentSyncRow(appointmentId: string): Promise<AppointmentSyncRow | null>;
+  /** Citas con `google_sync_status in ('pending','pending_cancel')` cuyo
+   * `google_sync_next_retry_at` ya se cumplió (o nunca se intentó: null se trata
+   * como "elegible de inmediato", ver diseño §5/§8), más viejas primero — el mismo
+   * subconjunto real que recorre `syncPendingAppointments`. */
+  loadPendingGoogleSyncAppointments(limit: number, nowIso: string): Promise<readonly AppointmentSyncRow[]>;
+  markAppointmentGoogleSynced(appointmentId: string, googleEventId: string, attempts: number): Promise<void>;
+  markAppointmentGoogleSyncDeleted(appointmentId: string, attempts: number): Promise<void>;
+  markAppointmentGoogleSyncSkipped(appointmentId: string): Promise<void>;
+  markAppointmentGoogleSyncRetry(appointmentId: string, attempts: number, error: string, nextRetryAtIso: string): Promise<void>;
+  markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void>;
 
   // ---- Flujo 3: recordatorio/confirmación ----
   listActiveOrganizations(): Promise<readonly { id: string; timezone: string }[]>;

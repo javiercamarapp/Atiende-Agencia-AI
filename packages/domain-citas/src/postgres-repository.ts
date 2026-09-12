@@ -17,10 +17,23 @@ import type {
   AvailabilityRule,
   BusyInterval,
   CustomerRecord,
+  GoogleSyncStatus,
+  ProviderCalendarAccountRecord,
   ProviderRecord,
   ServiceRecord,
 } from "./types.ts";
-import type { CancelResult, CitasRepository, ConversationMessage, CreateAppointmentResult, NewAppointmentInput, RescheduleResult, ReminderCandidateRow, WaitlistCandidateRow } from "./repository.ts";
+import type {
+  AppointmentSyncRow,
+  CancelResult,
+  CitasRepository,
+  ConnectProviderCalendarAccountInput,
+  ConversationMessage,
+  CreateAppointmentResult,
+  NewAppointmentInput,
+  RescheduleResult,
+  ReminderCandidateRow,
+  WaitlistCandidateRow,
+} from "./repository.ts";
 
 interface ProviderRow {
   readonly id: string;
@@ -75,6 +88,11 @@ interface AppointmentRow {
   readonly idempotency_key: string | null;
   readonly reminder_24h_sent_at: string | null;
   readonly created_at: string;
+  readonly google_event_id: string | null;
+  readonly google_sync_status: GoogleSyncStatus;
+  readonly google_sync_attempts: number;
+  readonly google_sync_next_retry_at: string | null;
+  readonly google_sync_error: string | null;
 }
 
 function mapAppointment(row: AppointmentRow): AppointmentRecord {
@@ -94,6 +112,41 @@ function mapAppointment(row: AppointmentRow): AppointmentRecord {
     idempotencyKey: row.idempotency_key,
     reminder24hSentAt: row.reminder_24h_sent_at,
     createdAt: row.created_at,
+    googleEventId: row.google_event_id,
+    googleSyncStatus: row.google_sync_status,
+    googleSyncAttempts: row.google_sync_attempts,
+    googleSyncNextRetryAt: row.google_sync_next_retry_at,
+    googleSyncError: row.google_sync_error,
+  };
+}
+
+interface ProviderCalendarAccountRow {
+  readonly id: string;
+  readonly organization_id: string;
+  readonly provider_id: string;
+  readonly google_calendar_id: string;
+  readonly google_watch_channel_id: string | null;
+  readonly google_watch_resource_id: string | null;
+  readonly google_watch_expires_at: string | null;
+  readonly sync_status: ProviderCalendarAccountRecord["syncStatus"];
+  readonly sync_error: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+function mapCalendarAccount(row: ProviderCalendarAccountRow): ProviderCalendarAccountRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    providerId: row.provider_id,
+    googleCalendarId: row.google_calendar_id,
+    googleWatchChannelId: row.google_watch_channel_id,
+    googleWatchResourceId: row.google_watch_resource_id,
+    googleWatchExpiresAt: row.google_watch_expires_at,
+    syncStatus: row.sync_status,
+    syncError: row.sync_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -245,7 +298,7 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async listActiveAppointmentsForCustomer(organizationId: string, customerId: string, nowIso: string): Promise<readonly AppointmentRecord[]> {
     const { rows } = await this.db.query<AppointmentRow>(
-      `select id, organization_id, property_id, provider_id, service_id, customer_id, starts_at, ends_at, status, source, notes, dedupe_fingerprint, idempotency_key, reminder_24h_sent_at, created_at
+      `select id, organization_id, property_id, provider_id, service_id, customer_id, starts_at, ends_at, status, source, notes, dedupe_fingerprint, idempotency_key, reminder_24h_sent_at, created_at, google_event_id, google_sync_status, google_sync_attempts, google_sync_next_retry_at, google_sync_error
        from citas.appointments
        where organization_id = $1 and customer_id = $2 and status in ('pending','confirmed') and starts_at >= $3
        order by starts_at asc;`,
@@ -283,7 +336,7 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async findAppointmentForOrganization(organizationId: string, appointmentId: string): Promise<AppointmentRecord | null> {
     const { rows } = await this.db.query<AppointmentRow>(
-      `select id, organization_id, property_id, provider_id, service_id, customer_id, starts_at, ends_at, status, source, notes, dedupe_fingerprint, idempotency_key, reminder_24h_sent_at, created_at
+      `select id, organization_id, property_id, provider_id, service_id, customer_id, starts_at, ends_at, status, source, notes, dedupe_fingerprint, idempotency_key, reminder_24h_sent_at, created_at, google_event_id, google_sync_status, google_sync_attempts, google_sync_next_retry_at, google_sync_error
        from citas.appointments where id = $1 and organization_id = $2;`,
       [appointmentId, organizationId],
     );
@@ -451,5 +504,158 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void> {
     await this.db.query(`update citas.whatsapp_inbound_events set status = 'failed', last_error_class = left($3, 120) where message_id = $2 and organization_id = $1;`, [organizationId, messageId, errorClass]);
+  }
+
+  // ============================================================================
+  // Fase 3 — sincronización con Google Calendar (ver diseño §3/§4/§5, migración
+  // 005_google_calendar_sync.sql)
+  // ============================================================================
+
+  async findProviderCalendarAccount(providerId: string): Promise<ProviderCalendarAccountRecord | null> {
+    const { rows } = await this.db.query<ProviderCalendarAccountRow>(
+      `select id, organization_id, provider_id, google_calendar_id, google_watch_channel_id, google_watch_resource_id, google_watch_expires_at, sync_status, sync_error, created_at, updated_at
+       from citas.provider_calendar_accounts where provider_id = $1;`,
+      [providerId],
+    );
+    return rows[0] ? mapCalendarAccount(rows[0]) : null;
+  }
+
+  async connectProviderCalendarAccount(input: ConnectProviderCalendarAccountInput): Promise<ProviderCalendarAccountRecord> {
+    // El refresh token NUNCA toca una columna en claro: se envuelve de inmediato en
+    // Supabase Vault vía la RPC `set_provider_calendar_refresh_token` (ver diseño
+    // §4 paso 4) — el upsert de abajo solo guarda el `secret_id` que esa RPC
+    // devuelve, nunca el token mismo.
+    const { rows: existingRows } = await this.db.query<{ google_refresh_token_secret_id: string | null }>(`select google_refresh_token_secret_id from citas.provider_calendar_accounts where provider_id = $1;`, [input.providerId]);
+    const existingSecretId = existingRows[0]?.google_refresh_token_secret_id ?? null;
+
+    const { rows: secretRows } = await this.db.query<{ set_provider_calendar_refresh_token: string }>(`select citas.set_provider_calendar_refresh_token($1, $2) as set_provider_calendar_refresh_token;`, [existingSecretId, input.refreshToken]);
+    const secretId = secretRows[0]!.set_provider_calendar_refresh_token;
+
+    const { rows } = await this.db.query<ProviderCalendarAccountRow>(
+      `insert into citas.provider_calendar_accounts (organization_id, provider_id, google_calendar_id, google_refresh_token_secret_id, sync_status, sync_error)
+       values ($1, $2, $3, $4, 'connected', null)
+       on conflict (provider_id) do update set
+         google_calendar_id = excluded.google_calendar_id,
+         google_refresh_token_secret_id = excluded.google_refresh_token_secret_id,
+         sync_status = 'connected',
+         sync_error = null,
+         updated_at = now()
+       returning id, organization_id, provider_id, google_calendar_id, google_watch_channel_id, google_watch_resource_id, google_watch_expires_at, sync_status, sync_error, created_at, updated_at;`,
+      [input.organizationId, input.providerId, input.googleCalendarId, secretId],
+    );
+    return mapCalendarAccount(rows[0]!);
+  }
+
+  async rotateProviderCalendarRefreshToken(providerId: string, refreshToken: string): Promise<void> {
+    const { rows: existingRows } = await this.db.query<{ google_refresh_token_secret_id: string | null }>(`select google_refresh_token_secret_id from citas.provider_calendar_accounts where provider_id = $1;`, [providerId]);
+    const secretId = existingRows[0]?.google_refresh_token_secret_id ?? null;
+    if (!secretId) return; // sin cuenta conectada -- nada que rotar (no debería pasar en la práctica).
+    await this.db.query(`select citas.set_provider_calendar_refresh_token($1, $2);`, [secretId, refreshToken]);
+  }
+
+  /**
+   * Trata "el RPC de Vault no existe todavía" (Vault/pgsodium no habilitado en este
+   * proyecto, ver diseño §4/§9) exactamente igual que "sin proveedor conectado":
+   * null, nunca una excepción que tumbe la corrida de reconciliación completa —
+   * mismo criterio honesto que `resolveRefreshTokenFromVault` del origen.
+   */
+  async resolveProviderCalendarRefreshToken(providerId: string): Promise<string | null> {
+    const { rows: accountRows } = await this.db.query<{ google_refresh_token_secret_id: string | null }>(`select google_refresh_token_secret_id from citas.provider_calendar_accounts where provider_id = $1;`, [providerId]);
+    const secretId = accountRows[0]?.google_refresh_token_secret_id ?? null;
+    if (!secretId) return null;
+    try {
+      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+      return rows[0]?.get_provider_calendar_refresh_token ?? null;
+    } catch (err) {
+      console.warn("resolveProviderCalendarRefreshToken: Vault no disponible todavía (Google Calendar real pendiente de infraestructura, ver diseño §4/§9):", err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+
+  async setProviderCalendarAccountSyncError(providerId: string, error: string): Promise<void> {
+    await this.db.query(`update citas.provider_calendar_accounts set sync_status = 'error', sync_error = left($2, 500), updated_at = now() where provider_id = $1;`, [providerId, error]);
+  }
+
+  private static readonly APPOINTMENT_SYNC_ROW_SELECT = `select
+       a.id, a.organization_id, a.provider_id,
+       s.name as service_name, c.full_name as customer_name, c.phone as customer_phone,
+       a.starts_at, a.ends_at, a.notes,
+       coalesce(pc.timezone, tc.default_timezone, 'America/Mexico_City') as time_zone,
+       a.google_event_id, a.google_sync_status, a.google_sync_attempts
+     from citas.appointments a
+     join citas.services s on s.id = a.service_id
+     join citas.customers c on c.id = a.customer_id
+     left join citas.providers p on p.id = a.provider_id
+     left join citas.property_config pc on pc.property_id = p.property_id
+     left join citas.tenant_config tc on tc.organization_id = a.organization_id`;
+
+  private mapAppointmentSyncRow(row: {
+    id: string;
+    organization_id: string;
+    provider_id: string;
+    service_name: string | null;
+    customer_name: string | null;
+    customer_phone: string | null;
+    starts_at: string;
+    ends_at: string;
+    notes: string | null;
+    time_zone: string;
+    google_event_id: string | null;
+    google_sync_status: GoogleSyncStatus;
+    google_sync_attempts: number;
+  }): AppointmentSyncRow {
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      providerId: row.provider_id,
+      serviceName: row.service_name,
+      customerName: row.customer_name,
+      customerPhone: row.customer_phone,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      notes: row.notes,
+      timeZone: row.time_zone,
+      googleEventId: row.google_event_id,
+      googleSyncStatus: row.google_sync_status,
+      googleSyncAttempts: row.google_sync_attempts,
+    };
+  }
+
+  async loadAppointmentSyncRow(appointmentId: string): Promise<AppointmentSyncRow | null> {
+    const { rows } = await this.db.query<Parameters<PostgresCitasRepository["mapAppointmentSyncRow"]>[0]>(`${PostgresCitasRepository.APPOINTMENT_SYNC_ROW_SELECT} where a.id = $1;`, [appointmentId]);
+    return rows[0] ? this.mapAppointmentSyncRow(rows[0]) : null;
+  }
+
+  async loadPendingGoogleSyncAppointments(limit: number, nowIso: string): Promise<readonly AppointmentSyncRow[]> {
+    const { rows } = await this.db.query<Parameters<PostgresCitasRepository["mapAppointmentSyncRow"]>[0]>(
+      `${PostgresCitasRepository.APPOINTMENT_SYNC_ROW_SELECT}
+       where a.google_sync_status in ('pending','pending_cancel')
+         and a.google_sync_attempts < 5
+         and (a.google_sync_next_retry_at is null or a.google_sync_next_retry_at <= $2)
+       order by coalesce(a.google_sync_next_retry_at, a.created_at) asc
+       limit $1;`,
+      [limit, nowIso],
+    );
+    return rows.map((r) => this.mapAppointmentSyncRow(r));
+  }
+
+  async markAppointmentGoogleSynced(appointmentId: string, googleEventId: string, attempts: number): Promise<void> {
+    await this.db.query(`update citas.appointments set google_event_id = $2, google_sync_status = 'synced', google_sync_attempts = $3, google_sync_next_retry_at = null, google_sync_error = null where id = $1;`, [appointmentId, googleEventId, attempts]);
+  }
+
+  async markAppointmentGoogleSyncDeleted(appointmentId: string, attempts: number): Promise<void> {
+    await this.db.query(`update citas.appointments set google_sync_status = 'deleted', google_sync_attempts = $2, google_sync_next_retry_at = null, google_sync_error = null where id = $1;`, [appointmentId, attempts]);
+  }
+
+  async markAppointmentGoogleSyncSkipped(appointmentId: string): Promise<void> {
+    await this.db.query(`update citas.appointments set google_sync_status = 'skipped', google_sync_next_retry_at = null, google_sync_error = null where id = $1;`, [appointmentId]);
+  }
+
+  async markAppointmentGoogleSyncRetry(appointmentId: string, attempts: number, error: string, nextRetryAtIso: string): Promise<void> {
+    await this.db.query(`update citas.appointments set google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = $4 where id = $1;`, [appointmentId, attempts, error, nextRetryAtIso]);
+  }
+
+  async markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void> {
+    await this.db.query(`update citas.appointments set google_sync_status = 'error', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, error]);
   }
 }

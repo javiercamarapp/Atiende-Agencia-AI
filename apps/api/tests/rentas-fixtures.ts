@@ -12,7 +12,7 @@ import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@ati
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { InMemoryRentasCalendarStore, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
 import type { RentasVerticalRole } from "@atiende/domain-rentas";
-import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, InMemoryCitasRepository } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -114,6 +114,10 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
     citasRepo: new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
+    citasGoogleTokenExchange: async () => {
+      throw new Error("citasGoogleTokenExchange no está configurado en este fixture (vertical rentas).");
+    },
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),

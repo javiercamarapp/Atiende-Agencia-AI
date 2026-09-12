@@ -16,6 +16,16 @@ export interface ApiEnv {
    * consumidor real. */
   readonly internalSecret: string;
   readonly allowedOrigins: readonly string[];
+  /**
+   * Fase 3 citas §4/§9 — credenciales OAuth de PLATAFORMA para Google Calendar
+   * (un solo proyecto OAuth de Google, compartido por todos los proveedores; el
+   * refresh_token que sí es por-proveedor vive en `provider_calendar_accounts`,
+   * ver diseño §3/§4). `null` cuando no están configuradas todavía (estado real de
+   * este entorno de desarrollo, ver diseño §9) — las rutas de conexión responden
+   * 503 en vez de fallar al arrancar, mismo criterio que el origen
+   * (`google-calendar-factory.ts`: "if (!clientId || !clientSecret) return null").
+   */
+  readonly googleOAuth: { readonly clientId: string; readonly clientSecret: string; readonly redirectBaseUrl: string } | null;
   /** Secreto de firma DISTINTO al de staff (`jwtSecret`) para el JWT del portal de
    * propietario de rentas (Fase 3) -- ver diseño Fase 3 rentas §1.2/§3: defensa en
    * profundidad barata, un token de propietario nunca verifica bajo el secreto de
@@ -41,6 +51,10 @@ export function loadApiEnv(): ApiEnv {
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
+    googleOAuth:
+      process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL
+        ? { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET, redirectBaseUrl: process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL }
+        : null,
     rentasOwnerJwtSecret: requireEnv("RENTAS_OWNER_JWT_SECRET"),
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
     rentasOwnerRefreshTokenTtlSeconds: Number(process.env.RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),

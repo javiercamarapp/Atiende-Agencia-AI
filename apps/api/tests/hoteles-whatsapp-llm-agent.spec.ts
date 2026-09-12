@@ -16,7 +16,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@at
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
 import type { HotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
-import { InMemoryCitasRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard } from "@atiende/domain-citas";
+import { InMemoryCitasRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -119,6 +119,10 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     citasRepo: new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
+    citasGoogleTokenExchange: async () => {
+      throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de hoteles).");
+    },
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
@@ -241,6 +245,10 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
       citasRepo: new InMemoryCitasRepository(),
       citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
       citasConversationGuard: createDefaultConversationGuard(),
+      citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
+      citasGoogleTokenExchange: async () => {
+        throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de hoteles).");
+      },
       licitacionesRepo: new InMemoryLicitacionesRepository(),
       despachosRepo: new InMemoryDespachosRepository(),
       despachosAuditSink: new InMemoryAuditSink(),
