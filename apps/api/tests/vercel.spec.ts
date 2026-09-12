@@ -11,6 +11,9 @@ const REQUIRED_ENV = {
   WHATSAPP_VERIFY_TOKEN: "test-verify-token",
   WHATSAPP_APP_SECRET: "test-whatsapp-app-secret",
   INTERNAL_SECRET: "test-internal-secret",
+  // Fase 3 rentas — portal de propietario: secreto de firma independiente del de staff
+  // (ver diseño Fase 3 §1.2/§3), también exigido por loadApiEnv().
+  RENTAS_OWNER_JWT_SECRET: "test-rentas-owner-jwt-secret",
   // Cadena sintácticamente válida pero que nunca se disca de verdad en este test —
   // ver comentario de arriba.
   DATABASE_URL: "postgres://user:pass@localhost:5432/postgres",
