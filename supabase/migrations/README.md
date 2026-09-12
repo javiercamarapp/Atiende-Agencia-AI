@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (37 migraciones, timestamps 20240101000001 .. 20240101000037)
+## Orden actual (46 migraciones, timestamps 20240101000001 .. 20240101000046)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -33,6 +33,7 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 24–30. `packages/domain-rentas/migrations/001..007_*.sql`
 31–36. `packages/domain-restaurantes/migrations/001..006_*.sql`
 37. `packages/domain-licitaciones/migrations/010_source_runs_and_tender_versions.sql` — Fase 5 (fuera de la secuencia interna 001-009 de licitaciones porque se agregó después de que rentas/restaurantes ya habían tomado los timestamps siguientes; ver regla de "siguiente timestamp libre" abajo.
+38–43. `packages/domain-licitaciones/migrations/011..016_*.sql` — Fase 6, seguimiento post-adjudicación (REQ-051..055): máquina de estados del contrato + historial (011), extracción determinista del contrato firmado (012), cobranza/facturas (013), redactor de inconformidades (014), autopsia del fallo + lecciones aprendidas (015), radar de renovaciones (016).
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
@@ -41,8 +42,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000036`; usa
-   `20240101000037`, luego `...038`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000046`; usa
+   `20240101000047`, luego `...048`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí).
 3. No edites el contenido SQL al copiarlo: debe ser una copia exacta del original.

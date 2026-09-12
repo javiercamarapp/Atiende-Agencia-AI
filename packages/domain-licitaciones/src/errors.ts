@@ -73,3 +73,24 @@ export class GoNoGoRejectedError extends Error {
     this.name = "GoNoGoRejectedError";
   }
 }
+
+/**
+ * Fase 6 (REQ-051, ver contract-lifecycle.ts): lanzado por
+ * `LicitacionesRepository.transitionContract()` cuando `toStatus` no es una
+ * transición válida desde el `fromStatus` actual del contrato --
+ * `allowedNextStates` (posiblemente vacío, estado terminal) va en la
+ * respuesta HTTP (409) para que el cliente sepa exactamente qué transiciones
+ * sí son válidas, sin adivinar.
+ */
+export class ContractTransitionRejectedError extends Error {
+  constructor(
+    readonly fromStatus: string,
+    readonly toStatus: string,
+    readonly allowedNextStates: readonly string[],
+  ) {
+    super(
+      `Transición inválida: "${fromStatus}" -> "${toStatus}". Estados permitidos desde "${fromStatus}": ${allowedNextStates.length > 0 ? allowedNextStates.join(", ") : "(ninguno; estado terminal)"}.`,
+    );
+    this.name = "ContractTransitionRejectedError";
+  }
+}
