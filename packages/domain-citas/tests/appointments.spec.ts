@@ -3,7 +3,7 @@
 // domain-restaurantes/tests/orders.spec.ts.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { cancelAppointment, cancelAppointmentFromPanel, createAppointment, rescheduleAppointment } from "../src/appointments.ts";
+import { cancelAppointment, cancelAppointmentFromPanel, createAppointment, reassignAppointment, rescheduleAppointment } from "../src/appointments.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "../src/errors.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { buildCitasFixture } from "./fixtures.ts";
@@ -159,5 +159,106 @@ describe("rescheduleAppointment", () => {
     const appointment = await createAppointment(fixture.repo, basePayload(fixture));
     await cancelAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id });
     await expect(rescheduleAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id, newStartsAt: MONDAY_1030AM_MERIDA })).rejects.toThrow(AppointmentConflictError);
+  });
+});
+
+describe("reassignAppointment -- Fase 4, cambio de proveedor/servicio sin tocar horario", () => {
+  function seedSecondProvider(fixture: ReturnType<typeof buildCitasFixture>, opts: { readonly offersOriginalService?: boolean } = {}) {
+    const providerId = randomUUID();
+    fixture.repo.seedProvider({ id: providerId, organizationId: fixture.organizationId, propertyId: null, displayName: "Dr. Roberto Cen", roleLabel: "Dentista", isActive: true });
+    if (opts.offersOriginalService !== false) fixture.repo.seedProviderService(providerId, fixture.serviceId);
+    for (const dayOfWeek of [1, 2, 3, 4, 5]) {
+      fixture.repo.seedAvailabilityRule({ id: randomUUID(), providerId, dayOfWeek, startTime: "09:00", endTime: "17:00", isActive: true });
+    }
+    return providerId;
+  }
+
+  it("cambia SOLO el proveedor, preservando el MISMO id y el MISMO horario de inicio", async () => {
+    const fixture = buildCitasFixture();
+    const otroProviderId = seedSecondProvider(fixture);
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+
+    const { appointment: reasignada, previousProviderId, previousServiceId } = await reassignAppointment(fixture.repo, {
+      organizationId: fixture.organizationId,
+      appointmentId: appointment.id,
+      newProviderId: otroProviderId,
+    });
+
+    expect(reasignada.id).toBe(appointment.id);
+    expect(reasignada.providerId).toBe(otroProviderId);
+    expect(reasignada.serviceId).toBe(fixture.serviceId); // no se tocó -- no vino newServiceId.
+    expect(reasignada.startsAt).toBe(MONDAY_10AM_MERIDA); // el horario de inicio NUNCA se toca.
+    expect(previousProviderId).toBe(fixture.providerId);
+    expect(previousServiceId).toBe(fixture.serviceId);
+  });
+
+  it("cambia SOLO el servicio (mismo proveedor) y recalcula ends_at desde la duración del servicio nuevo", async () => {
+    const fixture = buildCitasFixture();
+    const servicioLargoId = randomUUID();
+    fixture.repo.seedService({ id: servicioLargoId, organizationId: fixture.organizationId, name: "Limpieza profunda", durationMinutes: 60, bufferMinutesBefore: 0, bufferMinutesAfter: 0, priceCents: 90000, isActive: true });
+    fixture.repo.seedProviderService(fixture.providerId, servicioLargoId);
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    const horaFinOriginal = appointment.endsAt;
+
+    const { appointment: reasignada } = await reassignAppointment(fixture.repo, {
+      organizationId: fixture.organizationId,
+      appointmentId: appointment.id,
+      newServiceId: servicioLargoId,
+    });
+
+    expect(reasignada.providerId).toBe(fixture.providerId); // no se tocó -- no vino newProviderId.
+    expect(reasignada.serviceId).toBe(servicioLargoId);
+    expect(reasignada.startsAt).toBe(MONDAY_10AM_MERIDA);
+    expect(reasignada.endsAt).not.toBe(horaFinOriginal); // 60 min en vez de 30 -- ends_at real distinto.
+    expect(new Date(reasignada.endsAt).getTime() - new Date(reasignada.startsAt).getTime()).toBe(60 * 60_000);
+  });
+
+  it("rechaza reasignar a un proveedor que no ofrece el servicio solicitado", async () => {
+    const fixture = buildCitasFixture();
+    const otroProviderId = seedSecondProvider(fixture, { offersOriginalService: false });
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+
+    await expect(
+      reassignAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id, newProviderId: otroProviderId }),
+    ).rejects.toThrow(AppointmentValidationError);
+  });
+
+  it("rechaza reasignar al proveedor NUEVO si ya tiene otra cita real en ese mismo horario, con alternativas reales", async () => {
+    const fixture = buildCitasFixture();
+    const otroProviderId = seedSecondProvider(fixture);
+    // El proveedor nuevo YA tiene una cita a las 10:00 -- el horario que la cita
+    // original conserva al reasignarse (nunca se toca startsAt).
+    await createAppointment(fixture.repo, { organizationId: fixture.organizationId, providerId: otroProviderId, serviceId: fixture.serviceId, customerName: "Otro cliente", customerPhone: "9993333333", startsAt: MONDAY_10AM_MERIDA, source: "web" });
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture, { customerPhone: "9991111111" }));
+
+    let caught: unknown;
+    try {
+      await reassignAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id, newProviderId: otroProviderId });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppointmentAlternativesError);
+    expect((caught as AppointmentAlternativesError).alternativeSlots.length).toBeGreaterThan(0);
+  });
+
+  it("exige al menos un cambio real (newProviderId/newServiceId ausentes, o iguales a lo que la cita ya tiene, es error de validación)", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+
+    await expect(reassignAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id })).rejects.toThrow(AppointmentValidationError);
+    await expect(
+      reassignAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id, newProviderId: fixture.providerId, newServiceId: fixture.serviceId }),
+    ).rejects.toThrow(AppointmentValidationError);
+  });
+
+  it("no se puede modificar una cita cancelada", async () => {
+    const fixture = buildCitasFixture();
+    const otroProviderId = seedSecondProvider(fixture);
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await cancelAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id });
+
+    await expect(
+      reassignAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id, newProviderId: otroProviderId }),
+    ).rejects.toThrow(AppointmentConflictError);
   });
 });

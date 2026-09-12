@@ -26,6 +26,7 @@ import type {
   ConversationMessage,
   CreateAppointmentResult,
   NewAppointmentInput,
+  ReassignResult,
   RescheduleResult,
   ReminderCandidateRow,
   WaitlistCandidateRow,
@@ -449,6 +450,48 @@ export class InMemoryCitasRepository implements CitasRepository {
       };
       this.appointments.set(appointmentId, updated);
       return { outcome: "rescheduled", appointment: updated };
+    });
+  }
+
+  async reassignAppointmentIdempotent(organizationId: string, appointmentId: string, newProviderId: string, newServiceId: string, newEndsAt: string, actorChannel: AppointmentActorChannel, _actorNote: string | null): Promise<ReassignResult> {
+    return this.appointmentLock.run(`reassign:${organizationId}:${appointmentId}`, async () => {
+      void actorChannel;
+      const appointment = this.appointments.get(appointmentId);
+      if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+      if (appointment.status !== "pending" && appointment.status !== "confirmed") {
+        return { outcome: "conflict_invalid_status", status: appointment.status };
+      }
+
+      // Reintento del mismo intento (mismo proveedor/servicio/ends_at ya
+      // vigentes): no-op idempotente real.
+      if (appointment.providerId === newProviderId && appointment.serviceId === newServiceId && appointment.endsAt === newEndsAt) {
+        return { outcome: "noop_same_assignment", appointment };
+      }
+
+      // El conflicto se revisa contra el PROVEEDOR NUEVO -- mismo criterio que el
+      // `exclude using gist (provider_id with =, ...)` real de Postgres, que
+      // revalida automáticamente porque el UPDATE real toca `provider_id`.
+      const newStart = Date.parse(appointment.startsAt);
+      const newEnd = Date.parse(newEndsAt);
+      const conflict = [...this.appointments.values()].some(
+        (a) =>
+          a.id !== appointmentId &&
+          a.providerId === newProviderId &&
+          (["pending", "confirmed", "completed"] as const).includes(a.status as "pending" | "confirmed" | "completed") &&
+          overlapsRange(Date.parse(a.startsAt), Date.parse(a.endsAt), newStart, newEnd),
+      );
+      if (conflict) return { outcome: "conflict_slot_taken" };
+
+      const updated: AppointmentRecord = {
+        ...appointment,
+        providerId: newProviderId,
+        serviceId: newServiceId,
+        endsAt: newEndsAt,
+        reminder24hSentAt: null,
+        ...(appointment.googleEventId ? { googleSyncStatus: "pending" as GoogleSyncStatus, googleSyncAttempts: 0, googleSyncNextRetryAt: null, googleSyncError: null } : {}),
+      };
+      this.appointments.set(appointmentId, updated);
+      return { outcome: "reassigned", appointment: updated };
     });
   }
 

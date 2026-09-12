@@ -30,6 +30,7 @@ import type {
   ConversationMessage,
   CreateAppointmentResult,
   NewAppointmentInput,
+  ReassignResult,
   RescheduleResult,
   ReminderCandidateRow,
   WaitlistCandidateRow,
@@ -375,6 +376,27 @@ export class PostgresCitasRepository implements CitasRepository {
         actorNote,
       ]);
       return { outcome: "rescheduled", appointment: mapAppointment(rows[0]!.reschedule_appointment_idempotent) };
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (code === "AT404") return { outcome: "not_found" };
+      if (code === "AT409") return { outcome: "conflict_invalid_status", status: "completed" };
+      throw err;
+    }
+  }
+
+  async reassignAppointmentIdempotent(organizationId: string, appointmentId: string, newProviderId: string, newServiceId: string, newEndsAt: string, actorChannel: AppointmentActorChannel, actorNote: string | null): Promise<ReassignResult> {
+    try {
+      const { rows } = await this.db.query<{ reassign_appointment_idempotent: AppointmentRow }>(`select citas.reassign_appointment_idempotent($1, $2, $3, $4, $5, $6, $7) as reassign_appointment_idempotent;`, [
+        organizationId,
+        appointmentId,
+        newProviderId,
+        newServiceId,
+        newEndsAt,
+        actorChannel,
+        actorNote,
+      ]);
+      return { outcome: "reassigned", appointment: mapAppointment(rows[0]!.reassign_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
       if (code === "AT423") return { outcome: "conflict_slot_taken" };

@@ -159,3 +159,15 @@ export interface RescheduleAppointmentPayload {
   readonly actorChannel?: AppointmentActorChannel;
   readonly actorNote?: string;
 }
+
+/** Fase 4 -- "modificar-cita": cambio de proveedor y/o servicio de una cita
+ * existente SIN tocar `startsAt`. Al menos uno de los dos campos debe venir
+ * distinto del actual -- ver validateReassignAppointmentPayload. */
+export interface ReassignAppointmentPayload {
+  readonly organizationId: string;
+  readonly appointmentId: string;
+  readonly newProviderId?: string;
+  readonly newServiceId?: string;
+  readonly actorChannel?: AppointmentActorChannel;
+  readonly actorNote?: string;
+}

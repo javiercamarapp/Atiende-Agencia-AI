@@ -1,14 +1,16 @@
-// Flujo 2 — gestión de cita existente: cancelar + reagendar. Dos entradas de
-// autenticación distintas, como en el origen (ver diseño Fase 1 citas §5.2):
+// Flujo 2 — gestión de cita existente: cancelar + reagendar + modificar (Fase 4).
+// Distintas entradas de autenticación, como en el origen (ver diseño Fase 1
+// citas §5.2) y como Fase 4 extiende el mismo criterio a "modificar-cita":
 //
 //   POST /v1/citas/:orgSlug/appointments/:appointmentId/cancel            (agente, x-atiende-tool-secret)
 //   POST /v1/citas/:orgSlug/appointments/:appointmentId/reschedule        (agente, x-atiende-tool-secret)
+//   POST /v1/citas/:orgSlug/appointments/:appointmentId/reassign          (agente, x-atiende-tool-secret) — Fase 4
 //   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/cancel  (staff panel, JWT)
 //
 // La ruta de staff SÍ ejercita requirePropertyMembership("propertyId") de
 // core-auth — SIN allowedRoles (el origen no restringe por rol quién cancela desde
-// el panel, ver domain-citas/src/roles.ts). El panel no tiene botón de reagendar en
-// el origen — solo el agente reagenda hoy.
+// el panel, ver domain-citas/src/roles.ts). El panel no tiene botón de reagendar ni
+// de reasignar en el origen — solo el agente ejecuta esas dos hoy.
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
@@ -22,6 +24,7 @@ import {
   cancelAppointmentFromPanel,
   consumeRateLimit,
   notifyWaitlistAfterReschedule,
+  reassignAppointment,
   rescheduleAppointment,
   tryNotifyWaitlistOfFreedSlot,
   tryTriggerGoogleSync,
@@ -33,6 +36,13 @@ import type { AppDeps } from "../../../deps.ts";
 
 interface RescheduleBody {
   readonly new_starts_at?: unknown;
+  readonly actor_channel?: unknown;
+  readonly actor_note?: unknown;
+}
+
+interface ReassignBody {
+  readonly new_provider_id?: unknown;
+  readonly new_service_id?: unknown;
   readonly actor_channel?: unknown;
   readonly actor_note?: unknown;
 }
@@ -159,6 +169,45 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       });
       await tryNotifyWaitlistAndEmail(deps, org.id, appointment.providerId, appointment.serviceId, previousStartsAt, appointment.startsAt, appointment.id);
       // Fase 3 §5 — reschedule_appointment_idempotent ya dejó 'pending' (si había
+      // google_event_id) de forma atómica; best-effort real.
+      await tryTriggerGoogleSync(deps.citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+      return c.json({ appointment: serializeAppointment(appointment) });
+    } catch (err) {
+      return mapErrorToHttp(err, c);
+    }
+  });
+
+  // ---- Agente (voz/WhatsApp): modificar-cita — Fase 4. Cambia proveedor y/o
+  // servicio SIN tocar el horario de inicio; ver domain-citas/src/appointments.ts
+  // (reassignAppointment) para las guardias reales. ----
+  app.post("/v1/citas/:orgSlug/appointments/:appointmentId/reassign", async (c) => {
+    if (!secretMatches(c.req.raw, "x-atiende-tool-secret", deps.env.voiceToolSecret)) throw Errors.unauthorized();
+    const org = await resolveOrganizationOrNotFound(deps, c.req.param("orgSlug"));
+    const appointmentId = c.req.param("appointmentId");
+    const raw = await readJsonCapped<ReassignBody>(c.req.raw, 8 * 1024);
+
+    const limited = await consumeRateLimit(deps.citasRepo, "reassign-appointment", requestActor(c.req.raw, appointmentId), 60, 60);
+    if (!limited.allowed) throw Errors.tooManyRequests();
+
+    try {
+      const { appointment, previousProviderId, previousServiceId } = await reassignAppointment(deps.citasRepo, {
+        organizationId: org.id,
+        appointmentId,
+        newProviderId: typeof raw.new_provider_id === "string" ? raw.new_provider_id : undefined,
+        newServiceId: typeof raw.new_service_id === "string" ? raw.new_service_id : undefined,
+        actorChannel: raw.actor_channel === "voice" || raw.actor_channel === "whatsapp" || raw.actor_channel === "web" || raw.actor_channel === "manual" ? raw.actor_channel : undefined,
+        actorNote: typeof raw.actor_note === "string" ? raw.actor_note : undefined,
+      });
+      // El hueco (proveedor, servicio, horario) VIEJO queda libre — mismo aviso
+      // de lista de espera que usa cancelar (nadie más "ocupa" ese hueco ahora).
+      try {
+        const oldProvider = await deps.citasRepo.findProvider(org.id, previousProviderId);
+        const timeZone = await deps.citasRepo.findPropertyTimezone(oldProvider?.propertyId ?? null, org.id);
+        await tryNotifyWaitlistOfFreedSlot(deps.citasRepo, org.id, timeZone, { providerId: previousProviderId, serviceId: previousServiceId, startsAt: appointment.startsAt });
+      } catch (err) {
+        console.error("citas: aviso de lista de espera tras modificar-cita falló (best-effort):", err);
+      }
+      // Fase 3 §5 — reassign_appointment_idempotent ya dejó 'pending' (si había
       // google_event_id) de forma atómica; best-effort real.
       await tryTriggerGoogleSync(deps.citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });

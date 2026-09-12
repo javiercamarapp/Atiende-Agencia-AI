@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { computeAvailableSlots, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
 import type { CitasRepository } from "./repository.ts";
-import type { AppointmentRecord, CancelAppointmentPayload, CreateAppointmentPayload, ProviderRecord, RescheduleAppointmentPayload, ServiceRecord, Slot } from "./types.ts";
+import type { AppointmentRecord, CancelAppointmentPayload, CreateAppointmentPayload, ProviderRecord, ReassignAppointmentPayload, RescheduleAppointmentPayload, ServiceRecord, Slot } from "./types.ts";
 
 /**
  * Estados que cuentan como "el proveedor está ocupado" — debe ser EXACTAMENTE el
@@ -492,6 +492,134 @@ export async function rescheduleAppointment(repo: CitasRepository, rawPayload: R
   }
 
   return { appointment: result.appointment, previousStartsAt };
+}
+
+// ============================================================================
+// Fase 4 — "modificar-cita": cambio de proveedor y/o servicio de una cita
+// existente SIN tocar el horario de inicio (startsAt se conserva; endsAt se
+// recalcula desde la duración del servicio final). Explícitamente diferido
+// desde Fase 1 (README de domain-citas), nunca construido en Fase 2/3. Mismo
+// principio de "revalidar todo antes de tocar la base de datos" que
+// prepareRescheduleAppointment, aplicado a proveedor/servicio en vez de horario.
+// ============================================================================
+
+export function validateReassignAppointmentPayload(raw: ReassignAppointmentPayload): ReassignAppointmentPayload {
+  if (
+    !raw ||
+    typeof raw !== "object" ||
+    typeof raw.organizationId !== "string" ||
+    !raw.organizationId.trim() ||
+    typeof raw.appointmentId !== "string" ||
+    !raw.appointmentId.trim() ||
+    raw.appointmentId.length > 64 ||
+    (raw.newProviderId === undefined && raw.newServiceId === undefined) ||
+    (raw.newProviderId !== undefined && (typeof raw.newProviderId !== "string" || !raw.newProviderId.trim())) ||
+    (raw.newServiceId !== undefined && (typeof raw.newServiceId !== "string" || !raw.newServiceId.trim())) ||
+    invalidOptionalString(raw.actorNote, 2000)
+  ) {
+    throw new AppointmentValidationError("appointmentId y al menos uno de newProviderId/newServiceId son requeridos");
+  }
+  if (raw.actorChannel !== undefined && !["voice", "whatsapp", "web", "manual", "panel"].includes(raw.actorChannel)) {
+    throw new AppointmentValidationError("actorChannel inválido");
+  }
+  return {
+    ...raw,
+    appointmentId: raw.appointmentId.trim(),
+    actorNote: raw.actorNote?.trim() || undefined,
+  };
+}
+
+export interface PreparedReassign {
+  readonly payload: ReassignAppointmentPayload;
+  readonly appointment: AppointmentRecord;
+  readonly finalProviderId: string;
+  readonly finalServiceId: string;
+  readonly timeZone: string;
+  readonly startsAt: Date;
+  readonly newEndsAt: Date;
+}
+
+/** Misma disciplina que prepareRescheduleAppointment: validación completa ANTES
+ * de tocar la base de datos. `newProviderId`/`newServiceId` ausentes se resuelven
+ * al valor ACTUAL de la cita — permite cambiar solo uno de los dos sin tener que
+ * repetir el otro. */
+export async function prepareReassignAppointment(repo: CitasRepository, rawPayload: ReassignAppointmentPayload): Promise<PreparedReassign> {
+  const payload = validateReassignAppointmentPayload(rawPayload);
+  const appointment = await repo.findAppointmentForOrganization(payload.organizationId, payload.appointmentId);
+  if (!appointment) throw new AppointmentNotFoundError("Cita no encontrada");
+
+  if (!(LIFECYCLE_EDITABLE_STATUSES as readonly string[]).includes(appointment.status)) {
+    throw new AppointmentConflictError(`No se puede modificar una cita en estado '${appointment.status}'.`);
+  }
+
+  const finalProviderId = payload.newProviderId ?? appointment.providerId;
+  const finalServiceId = payload.newServiceId ?? appointment.serviceId;
+  if (finalProviderId === appointment.providerId && finalServiceId === appointment.serviceId) {
+    throw new AppointmentValidationError("newProviderId/newServiceId coinciden con la asignación actual — no hay ningún cambio que aplicar.");
+  }
+
+  // resolveProviderAndService valida provider/service activos Y que el proveedor
+  // FINAL ofrezca el servicio FINAL (providerOffersService) — nunca asume que la
+  // combinación pedida es válida solo porque cada id existe por separado.
+  const { service, timeZone } = await resolveProviderAndService(repo, payload.organizationId, finalProviderId, finalServiceId);
+
+  const startsAt = new Date(appointment.startsAt);
+  const newEndsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
+
+  const localDateStr = zonedDateStr(startsAt, timeZone);
+  const { rules, override } = await loadRulesAndOverride(repo, finalProviderId, localDateStr);
+
+  const withinAvailability = isSlotWithinAvailability(startsAt, newEndsAt, {
+    timeZone,
+    durationMinutes: service.durationMinutes,
+    bufferBeforeMinutes: service.bufferMinutesBefore,
+    bufferAfterMinutes: service.bufferMinutesAfter,
+    rules,
+    override,
+  });
+  if (!withinAvailability) {
+    const alternatives = await computeAlternativeSlots(repo, payload.organizationId, finalProviderId, finalServiceId, startsAt, timeZone, appointment.id);
+    throw new AppointmentAlternativesError(
+      "El proveedor/servicio solicitado no tiene disponibilidad real a la hora actual de la cita. Elige uno de estos horarios o conserva el proveedor/servicio original.",
+      alternatives,
+    );
+  }
+
+  return { payload, appointment, finalProviderId, finalServiceId, timeZone, startsAt, newEndsAt };
+}
+
+export interface ReassignOutcome {
+  readonly appointment: AppointmentRecord;
+  /** Proveedor/servicio VIEJOS, capturados antes del RPC — el hueco (provider,
+   * service, startsAt) que en verdad se libera cuando el cambio es real. Mismo
+   * criterio que RescheduleOutcome.previousStartsAt. */
+  readonly previousProviderId: string;
+  readonly previousServiceId: string;
+}
+
+export async function reassignAppointment(repo: CitasRepository, rawPayload: ReassignAppointmentPayload): Promise<ReassignOutcome> {
+  const prepared = await prepareReassignAppointment(repo, rawPayload);
+  const { payload, appointment, finalProviderId, finalServiceId, timeZone, startsAt, newEndsAt } = prepared;
+  // Capturado ANTES del RPC a propósito — mismo motivo que rescheduleAppointment:
+  // un adaptador en memoria puede mutar el mismo objeto `appointment` in-place.
+  const previousProviderId = appointment.providerId;
+  const previousServiceId = appointment.serviceId;
+
+  const result = await repo.reassignAppointmentIdempotent(payload.organizationId, appointment.id, finalProviderId, finalServiceId, newEndsAt.toISOString(), payload.actorChannel ?? "manual", payload.actorNote ?? null);
+
+  if (result.outcome === "conflict_slot_taken") {
+    // Misma razón que rescheduleAppointment: la revisión de horario de atención
+    // de arriba pasó, pero el EXCLUDE USING gist real (autoridad final anti-
+    // traslape) encontró que el proveedor final ya tiene otra cita en ese hueco.
+    const alternatives = await computeAlternativeSlots(repo, payload.organizationId, finalProviderId, finalServiceId, startsAt, timeZone, appointment.id);
+    throw new AppointmentAlternativesError("Ese proveedor ya tiene otra cita en ese horario — alguien más lo tomó primero.", alternatives);
+  }
+  if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
+  if (result.outcome === "conflict_invalid_status") {
+    throw new AppointmentConflictError(`No se puede modificar una cita en estado '${result.status}'.`);
+  }
+
+  return { appointment: result.appointment, previousProviderId, previousServiceId };
 }
 
 // ============================================================================

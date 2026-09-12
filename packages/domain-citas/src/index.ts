@@ -13,6 +13,7 @@ export type {
   GoogleSyncStatus,
   ProviderCalendarAccountRecord,
   ProviderRecord,
+  ReassignAppointmentPayload,
   RescheduleAppointmentPayload,
   ServiceRecord,
   Slot,
@@ -36,6 +37,7 @@ export type {
   ConversationMessage,
   CreateAppointmentResult,
   NewAppointmentInput,
+  ReassignResult,
   ReminderCandidateRow,
   RescheduleResult,
   WaitlistCandidateRow,
@@ -79,14 +81,17 @@ export {
   isValidVoiceConversationId,
   normalizePhone,
   prepareCreateAppointment,
+  prepareReassignAppointment,
   prepareRescheduleAppointment,
   queryAvailability,
+  reassignAppointment,
   rescheduleAppointment,
   validateCancelAppointmentPayload,
   validateCreateAppointmentPayload,
+  validateReassignAppointmentPayload,
   validateRescheduleAppointmentPayload,
 } from "./appointments.ts";
-export type { CustomerAppointmentSummary, PreparedAppointment, PreparedReschedule, QueryAvailabilityInput, RescheduleOutcome } from "./appointments.ts";
+export type { CustomerAppointmentSummary, PreparedAppointment, PreparedReassign, PreparedReschedule, QueryAvailabilityInput, ReassignOutcome, RescheduleOutcome } from "./appointments.ts";
 
 export { lookupCitasCustomer } from "./customers.ts";
 export type { CitasCustomerContext, UpcomingAppointmentContext } from "./customers.ts";
