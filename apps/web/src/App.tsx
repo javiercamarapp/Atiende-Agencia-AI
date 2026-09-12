@@ -5,6 +5,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { RestaurantesLoginPage } from "./verticals/restaurantes/pages/Login.tsx";
 import { RestaurantesDashboardPage } from "./verticals/restaurantes/pages/Dashboard.tsx";
+import { RestaurantesShell } from "./verticals/restaurantes/RestaurantesShell.tsx";
+import { ProductosPage } from "./verticals/restaurantes/pages/Productos.tsx";
+import { SucursalesPage } from "./verticals/restaurantes/pages/Sucursales.tsx";
+import { PedidosPage } from "./verticals/restaurantes/pages/Pedidos.tsx";
+import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
+import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -38,6 +44,72 @@ function RestaurantesDashboardRoute() {
       orgSlug={orgSlug}
       onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}
     />
+  );
+}
+
+function RestaurantesProductosRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <ProductosPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
+function RestaurantesSucursalesRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <SucursalesPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
+function RestaurantesPedidosRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <PedidosPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
+function RestaurantesHistorialRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <HistorialPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
+function RestaurantesClientesRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <RestaurantesClientesListPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
+function RestaurantesClienteFichaRoute() {
+  const navigate = useNavigate();
+  const { orgSlug, customerId } = useParams<{ orgSlug: string; customerId: string }>();
+  if (!orgSlug || !customerId) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <RestaurantesClienteFichaPage {...ctx} customerId={customerId} />}
+    </RestaurantesShell>
   );
 }
 
@@ -179,6 +251,12 @@ export function App() {
       <Routes>
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
         <Route path="/restaurantes/:orgSlug" element={<RestaurantesDashboardRoute />} />
+        <Route path="/restaurantes/:orgSlug/productos" element={<RestaurantesProductosRoute />} />
+        <Route path="/restaurantes/:orgSlug/sucursales" element={<RestaurantesSucursalesRoute />} />
+        <Route path="/restaurantes/:orgSlug/pedidos" element={<RestaurantesPedidosRoute />} />
+        <Route path="/restaurantes/:orgSlug/historial" element={<RestaurantesHistorialRoute />} />
+        <Route path="/restaurantes/:orgSlug/clientes" element={<RestaurantesClientesRoute />} />
+        <Route path="/restaurantes/:orgSlug/clientes/:customerId" element={<RestaurantesClienteFichaRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
