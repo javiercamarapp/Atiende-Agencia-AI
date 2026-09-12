@@ -12,7 +12,7 @@ import { createDefaultConversationGuard } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { AuditSink } from "@atiende/core-authz";
-import type { RentasRepository } from "@atiende/domain-rentas";
+import type { RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import { openManagedPostgres } from "@atiende/db";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
@@ -73,6 +73,11 @@ export function buildProductionDeps(): AppDeps {
     despachosRepo: notProductionReady<DespachosRepository>("despachosRepo"),
     despachosAuditSink: notProductionReady<AuditSink>("despachosAuditSink"),
     rentasRepo: notProductionReady<RentasRepository>("rentasRepo"),
+    // Mismo gap documentado que rentasRepo -- ver además la advertencia de privilegio
+    // en owner-portal/postgres-repository.ts (findOwnerCredentialByEmail/
+    // createPortalInvite/consumePortalInvite exigen una sesión administrativa distinta
+    // de la sesión RLS por-request que sí basta para los métodos de solo lectura).
+    rentasOwnerPortalRepo: notProductionReady<RentasOwnerPortalRepository>("rentasOwnerPortalRepo"),
   };
   return cached;
 }
