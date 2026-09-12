@@ -15,6 +15,8 @@ import type {
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
+import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
+import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
 export interface DespachosRepository {
   // ---- CFDI (flujo 1) ----
@@ -61,6 +63,27 @@ export interface DespachosRepository {
   /** Reemplaza el mapeo completo — usado tras `aprobarMapeo`/`rechazarMapeo`/
    * `editarMapeo` (funciones puras de `migrador.ts`) para persistir el resultado. */
   updateMapeoMigracion(mapeo: MapeoMigracionCuenta): Promise<MapeoMigracionCuenta>;
+
+  // ---- Cierre mensual (Fase 6) ----
+  /** Crea el período + las tareas resueltas de la plantilla en una sola
+   * operación (igual que `open_period` del origen, que también arma las
+   * tareas atómicamente al abrir). El llamador (ruta HTTP) es responsable de
+   * llamar `verificarPeriodoNoDuplicado` con `listPeriodosCierre` ANTES de
+   * llamar esto — el repositorio no re-valida el duplicado (la unique
+   * constraint de la migración es la última línea de defensa real). */
+  insertPeriodoCierre(input: NewPeriodoCierreInput): Promise<{ readonly periodo: ClosePeriod; readonly tareas: readonly CloseTask[] }>;
+  findPeriodoCierre(propertyId: string, periodoId: string): Promise<ClosePeriod | null>;
+  /** Único período con ese (property, año, mes) — usado por el chequeo de
+   * bloqueo de edición (ver `cfdi.ts`) para resolver el período de una fecha
+   * dada sin tener que listar todos los períodos de la property. */
+  findPeriodoCierrePorAnioMes(propertyId: string, anio: number, mes: number): Promise<ClosePeriod | null>;
+  listPeriodosCierre(propertyId: string): Promise<readonly ClosePeriod[]>;
+  listTareasCierre(periodoId: string): Promise<readonly CloseTask[]>;
+  updatePeriodoCierre(periodo: ClosePeriod): Promise<ClosePeriod>;
+  /** Reemplaza el arreglo completo de tareas del período — los motores de
+   * `engine.ts` (`completarTarea`/`autoCheckTareas`) devuelven la lista
+   * COMPLETA recalculada, no un diff. */
+  replaceTareasCierre(periodoId: string, tareas: readonly CloseTask[]): Promise<readonly CloseTask[]>;
 }
 
 export type { InvoiceRecord, InvoiceReviewRecord, FiscalDeadlineRecord, DeadlineEscalationRecord } from "./types.ts";
