@@ -192,6 +192,20 @@ function sortKeysDeep(value: unknown): unknown {
 // adaptador es InMemory o Postgres.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Fase 3 (matching/scoring, go/no-go, migración 007): enum de estado del
+// ciclo de vida de la convocatoria -- port literal del `TENDER_STATUSES` que
+// el repo origen definía en apps/api/src/modules/tenders/schemas.ts. Se
+// reutiliza tal cual (incluye estados de fases futuras como "won"/"lost")
+// porque ya está pensado para sostener post-adjudicación sin reinventarlo.
+// ---------------------------------------------------------------------------
+export const TENDER_STATUSES = ["discovered", "in_review", "go", "no_go", "in_progress", "submitted", "won", "lost", "cancelled"] as const;
+export type TenderStatus = (typeof TENDER_STATUSES)[number];
+
+export function isTenderStatus(value: string): value is TenderStatus {
+  return (TENDER_STATUSES as readonly string[]).includes(value);
+}
+
 export interface TenderRecord {
   readonly id: string;
   readonly organizationId: string;
@@ -199,6 +213,63 @@ export interface TenderRecord {
   /** ISO 8601 con offset explícito, o `null` si las bases aún no fijan fecha límite (REQ-LIC-001). */
   readonly submissionDeadline: string | null;
   readonly updatedAt: string;
+  // --- Fase 3 (§3 del diseño): campos aditivos que el matching necesita.
+  // Opcionales a nivel de TIPO (aunque Postgres los puebla con NOT NULL
+  // DEFAULT y el adaptador real siempre los devuelve) para no romper los
+  // sitios de Fase 1/2 que ya construyen un `TenderRecord` literal con solo
+  // los 5 campos originales (fixtures/specs de dates.ts e
+  // in-memory-repository.ts) -- "aditivo" significa que ni leerlos ni
+  // omitirlos rompe nada, en ninguna dirección.
+  /** Siempre "manual" mientras B-02 (ver docs/BLOQUEOS.md) siga abierto -- ningún conector real está verificado todavía. */
+  readonly source?: string;
+  /** Clave natural de deduplicación dentro de `source`, o `null`/`undefined` si el alta manual no la declaró (en cuyo caso cada alta crea una convocatoria nueva). */
+  readonly externalId?: string | null;
+  readonly contractingBody?: string | null;
+  readonly cpvCodes?: readonly string[];
+  readonly budgetAmount?: number | null;
+  readonly currency?: string;
+  /** Entidad federativa, para cobertura geográfica del matching. */
+  readonly state?: string | null;
+  readonly procedureTypeRaw?: string | null;
+  readonly status?: TenderStatus;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 §5: perfil de matching de la organización (singleton, tabla
+// `licitaciones.matching_profile`). Todos los criterios son opcionales por
+// diseño del motor (matching-engine.ts): un criterio sin configurar no
+// participa ni penaliza.
+// ---------------------------------------------------------------------------
+export interface MatchingProfileRecord {
+  readonly organizationId: string;
+  readonly keywords: readonly string[];
+  readonly excludedKeywords: readonly string[];
+  readonly classifierCodes: readonly string[];
+  readonly entities: readonly string[];
+  readonly states: readonly string[];
+  readonly budgetMin: number | null;
+  readonly budgetMax: number | null;
+  readonly updatedBy: string | null;
+  readonly updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3 §7: decisión Go/No-Go. `matchScore`/`matchEligibilityStatus`/
+// `matchInputsHash` son un snapshot INMUTABLE del `MatchResult` vigente en el
+// momento exacto de decidir (ver matching-engine.ts::computeMatchInputsHash)
+// -- nunca se recalculan retroactivamente.
+// ---------------------------------------------------------------------------
+export interface GoNoGoDecisionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly tenderId: string;
+  readonly decision: "go" | "no_go";
+  readonly reasons: readonly string[];
+  readonly matchScore: number;
+  readonly matchEligibilityStatus: "cumple" | "no_cumple" | "no_evaluable";
+  readonly matchInputsHash: string;
+  readonly decidedBy: string;
+  readonly decidedAt: string;
 }
 
 export interface ProposalRecord {

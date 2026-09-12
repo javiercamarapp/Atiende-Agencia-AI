@@ -13,7 +13,7 @@ import type { LicitacionesRole } from "@atiende/domain-licitaciones";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -31,6 +31,9 @@ export interface LicitacionesTestContext {
     readonly owner: { id: string; email: string; password: string; token: string };
     readonly analyst: { id: string; email: string; password: string; token: string };
     readonly writer: { id: string; email: string; password: string; token: string };
+    // Fase 3 §7: GO_NO_GO_ROLES = DECISION_ROLES + "reviewer" -- ningún
+    // fixture de Fase 1/2 necesitaba un staff "reviewer" propio hasta ahora.
+    readonly reviewer: { id: string; email: string; password: string; token: string };
     readonly viewer: { id: string; email: string; password: string; token: string };
   };
 }
@@ -66,6 +69,7 @@ export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options
   const ownerSeed = await seedStaff("owner", "owner");
   const analystSeed = await seedStaff("analyst", "analyst");
   const writerSeed = await seedStaff("writer", "writer");
+  const reviewerSeed = await seedStaff("reviewer", "reviewer");
   const viewerSeed = await seedStaff("viewer", "viewer");
 
   const tenderId = randomUUID();
@@ -92,13 +96,15 @@ export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
   };
 
   const app = buildApp(deps);
-  const [ownerToken, analystToken, writerToken, viewerToken] = await Promise.all([
+  const [ownerToken, analystToken, writerToken, reviewerToken, viewerToken] = await Promise.all([
     signInAndGetToken(app, ownerSeed.email, ownerSeed.password),
     signInAndGetToken(app, analystSeed.email, analystSeed.password),
     signInAndGetToken(app, writerSeed.email, writerSeed.password),
+    signInAndGetToken(app, reviewerSeed.email, reviewerSeed.password),
     signInAndGetToken(app, viewerSeed.email, viewerSeed.password),
   ]);
 
@@ -112,6 +118,7 @@ export async function buildLicitacionesTestContext(buildApp: BuildAppFn, options
       owner: { ...ownerSeed, token: ownerToken },
       analyst: { ...analystSeed, token: analystToken },
       writer: { ...writerSeed, token: writerToken },
+      reviewer: { ...reviewerSeed, token: reviewerToken },
       viewer: { ...viewerSeed, token: viewerToken },
     },
   };

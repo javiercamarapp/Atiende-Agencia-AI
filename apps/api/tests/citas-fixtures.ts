@@ -11,7 +11,7 @@ import type { ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, G
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -106,6 +106,7 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
   };
 
   const app = buildApp(deps);

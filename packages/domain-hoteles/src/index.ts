@@ -1,6 +1,8 @@
 export {
   CHARGE_CONCEPTS,
   computeChargeAmounts,
+  computeNoShowPenaltyAmounts,
+  evaluateNoShowPenaltyBase,
   evaluateDiscountAuthorization,
   evaluateFolioClose,
   assertRoomChargeIdentityVerified,
@@ -10,6 +12,8 @@ export type {
   ChargeConcept,
   ChargeCalcInput,
   ChargeCalcResult,
+  NoShowPenaltyCalcInput,
+  NoShowReservationInput,
   DiscountAuthorizationInput,
   DiscountAuthorizationResult,
   RoomChargeIdentityClaim,
@@ -19,6 +23,24 @@ export type {
   FolioCloseInput,
   FolioCloseResult,
 } from "./folioEngine.ts";
+
+// ---- Fase 3 — máquina de estados de reservas (H02) ----
+export {
+  RESERVATION_STATUSES,
+  isReservationStatus,
+  canTransition,
+  isCancellable,
+  isModifiable,
+  rolesAllowedForTransition,
+  canRolePerformTransition,
+  evaluateCancellation,
+} from "./reservationStateMachine.ts";
+export type {
+  ReservationStatus,
+  CancellationPolicyConfig,
+  CancellationEvaluationInput,
+  CancellationEvaluationResult,
+} from "./reservationStateMachine.ts";
 
 export { applyTaxes, assertValidTaxConfig } from "./taxes.ts";
 export type { TaxConfig, TaxBreakdown } from "./taxes.ts";
@@ -48,6 +70,7 @@ export {
   ADMIN_ROLES,
   TOMAR_PEDIDO_ROLES,
   CONFIRMAR_COCINA_ROLES,
+  MANAGE_RESERVATIONS_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
@@ -73,6 +96,9 @@ export type {
   TaxConfigRecord,
   NightlyRateRecord,
   GuestIdentity,
+  ReservationRecord,
+  NewReservationInput,
+  CancellationPolicyRecord,
 } from "./types.ts";
 
 export type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   computeChargeAmounts,
+  computeNoShowPenaltyAmounts,
+  evaluateNoShowPenaltyBase,
   evaluateDiscountAuthorization,
   evaluateFolioClose,
   assertRoomChargeIdentityVerified,
@@ -28,6 +30,42 @@ describe("computeChargeAmounts", () => {
 
   it("rechaza netAmount negativo para un cargo real", () => {
     expect(() => computeChargeAmounts({ concept: "hospedaje", netAmount: -1, taxConfig: TAX_CONFIG })).toThrow(RangeError);
+  });
+});
+
+// Diseño Fase 3 §3.4 (resuelto opción 1): la penalización de no-show grava IVA pero
+// EXCLUYE ISH SIEMPRE, a diferencia de un cargo real de concept='hospedaje' que
+// `computeChargeAmounts` sí grava con ambos — son funciones DISTINTAS a propósito.
+describe("computeNoShowPenaltyAmounts", () => {
+  it("grava IVA pero NUNCA ISH, sin importar taxConfig.ishRate", () => {
+    const result = computeNoShowPenaltyAmounts({ netAmount: 1000, taxConfig: TAX_CONFIG });
+    expect(result.netAmount).toBe(1000);
+    expect(result.taxAmount).toBe(160); // solo 16% IVA, cero ISH
+    expect(result.totalAmount).toBe(1160);
+  });
+
+  it("difiere de computeChargeAmounts({concept:'hospedaje'}) exactamente en el ISH", () => {
+    const noShow = computeNoShowPenaltyAmounts({ netAmount: 1000, taxConfig: TAX_CONFIG });
+    const hospedajeReal = computeChargeAmounts({ concept: "hospedaje", netAmount: 1000, taxConfig: TAX_CONFIG });
+    expect(hospedajeReal.taxAmount - noShow.taxAmount).toBe(30); // el 3% de ISH que el no-show nunca cobra
+  });
+
+  it("rechaza netAmount negativo", () => {
+    expect(() => computeNoShowPenaltyAmounts({ netAmount: -1, taxConfig: TAX_CONFIG })).toThrow(RangeError);
+  });
+});
+
+describe("evaluateNoShowPenaltyBase", () => {
+  it("calcula el promedio por noche del total de la reserva", () => {
+    expect(evaluateNoShowPenaltyBase({ totalAmount: 3000, checkInDate: "2026-12-01", checkOutDate: "2026-12-04" })).toBe(1000);
+  });
+
+  it("una reserva de 1 noche penaliza el total completo", () => {
+    expect(evaluateNoShowPenaltyBase({ totalAmount: 1500, checkInDate: "2026-12-01", checkOutDate: "2026-12-02" })).toBe(1500);
+  });
+
+  it("rechaza un rango de 0 noches", () => {
+    expect(() => evaluateNoShowPenaltyBase({ totalAmount: 1000, checkInDate: "2026-12-01", checkOutDate: "2026-12-01" })).toThrow(RangeError);
   });
 });
 

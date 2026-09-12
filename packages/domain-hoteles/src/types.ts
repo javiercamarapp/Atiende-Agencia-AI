@@ -3,6 +3,7 @@
 // una fila cruda de SQL directamente, mismo criterio que domain-restaurantes/src/types.ts.
 import type { ChargeConcept } from "./folioEngine.ts";
 import type { AllergyDeclaredVia } from "./fnbAllergyGuard.ts";
+import type { ReservationStatus } from "./reservationStateMachine.ts";
 
 export type FolioStatus = "abierto" | "cerrado";
 export type FolioCloseReason = "saldo_cero" | "cuenta_por_cobrar";
@@ -132,6 +133,60 @@ export interface GuestIdentity {
   readonly lastName: string | null;
   readonly phoneLast4: string | null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 3 — máquina de estados de reservas (H02, ver diseño Fase 3 §1/§3.3). El
+// `status` de una fila real siempre es un `ReservationStatus` (enum en Postgres desde
+// migrations/005_reservas_estado.sql) — la validez de una TRANSICIÓN concreta la decide
+// siempre `reservationStateMachine.ts::canTransition`, nunca este tipo.
+// ─────────────────────────────────────────────────────────────────────────
+export interface ReservationRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly roomTypeId: string;
+  readonly guestId: string | null;
+  readonly checkInDate: string;
+  readonly checkOutDate: string;
+  readonly status: ReservationStatus;
+  /** Monto NETO (antes de IVA/ISH) de la estadía completa — el mismo `netAmount` que
+   *  devuelve el motor de cotización real (`quote.ts::Quote.netAmount`), NUNCA el
+   *  total con impuestos ya incluidos. Decisión deliberada (diseño Fase 3 §3.4): si
+   *  aquí se guardara el total CON impuestos, `evaluateNoShowPenaltyBase` +
+   *  `computeNoShowPenaltyAmounts` volverían a gravar con IVA un monto que ya lo
+   *  llevaba incluido — un bug de doble imposición, no cosmético. Cualquier ruta que
+   *  necesite mostrar el total CON impuestos al huésped debe recalcularlo con
+   *  `computeQuote`/`applyTaxes`, nunca leerlo de aquí. */
+  readonly totalAmount: number;
+  readonly cancellationPenaltyAmount: number | null;
+  readonly canceledAt: string | null;
+  readonly createdAt: string;
+}
+
+export interface NewReservationInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly roomTypeId: string;
+  readonly guestId: string | null;
+  readonly checkInDate: string;
+  readonly checkOutDate: string;
+  /** Ver `ReservationRecord.totalAmount`: SIEMPRE el neto (`Quote.netAmount`), nunca
+   *  el total con impuestos. */
+  readonly totalAmount: number;
+  /** Opcional: mismo criterio de idempotencia a nivel de fila que ya usa
+   *  `hoteles.idempotency_key`, pero ESTE índice (`(property_id, idempotency_key)`
+   *  parcial) vive directo en `hoteles.reservation` porque una reserva es la entidad
+   *  raíz de la que cuelga el folio primario — un reintento de creación nunca debe
+   *  producir dos reservas ni dos folios primarios. */
+  readonly idempotencyKey?: string | null;
+}
+
+export interface CancellationPolicyRecord {
+  readonly freeUntilHours: number;
+  readonly penaltyPct: number;
+}
+
+export type { ReservationStatus } from "./reservationStateMachine.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Fase 2 — agente de voz (ElevenLabs) y agente de mensajería/WhatsApp con LLM

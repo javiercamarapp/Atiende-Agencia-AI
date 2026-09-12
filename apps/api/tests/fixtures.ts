@@ -6,7 +6,7 @@ import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDe
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -20,6 +20,9 @@ export const TEST_ENV: ApiEnv = {
   internalSecret: "test-internal-secret",
   allowedOrigins: ["http://localhost:5173"],
   googleOAuth: { clientId: "test-google-client-id", clientSecret: "test-google-client-secret", redirectBaseUrl: "https://api.test.invalid" },
+  rentasOwnerJwtSecret: "test-rentas-owner-jwt-secret",
+  rentasOwnerAccessTokenTtlSeconds: 900,
+  rentasOwnerRefreshTokenTtlSeconds: 60 * 60 * 24 * 30,
 };
 
 export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: string; propertyId: string; products: Record<string, string>; ownerEmail: string; ownerPassword: string }> {
@@ -94,6 +97,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; organizationId: 
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
   };
 
   return { deps, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

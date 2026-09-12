@@ -23,7 +23,7 @@ import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHan
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
@@ -146,6 +146,7 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
   };
 }
 

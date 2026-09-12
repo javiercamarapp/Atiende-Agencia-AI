@@ -6,7 +6,7 @@ import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from
 import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
-import type { RentasRepository } from "@atiende/domain-rentas";
+import type { RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import type { ApiEnv } from "./env.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
@@ -69,4 +69,10 @@ export interface AppDeps {
    * en core, no se repite por vertical"). */
   readonly despachosAuditSink: AuditSink;
   readonly rentasRepo: RentasRepository;
+  /** Fase 3 rentas -- portal de propietario (solo lectura), identidad/sesión propias
+   * (nunca `core.membership`/`requirePropertyMembership`, ver diseño Fase 3 §1). Puerto
+   * separado de `rentasRepo` a propósito: un actor distinto, tablas nuevas
+   * (`rentas.owner_credential`), RLS nueva y aditiva -- nunca comparte código de
+   * autorización con las rutas de staff. */
+  readonly rentasOwnerPortalRepo: RentasOwnerPortalRepository;
 }
