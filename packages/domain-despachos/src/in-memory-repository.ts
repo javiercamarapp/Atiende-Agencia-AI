@@ -52,10 +52,11 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     return id ? (this.invoices.get(id) ?? null) : null;
   }
 
-  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean }): Promise<readonly InvoiceRecord[]> {
+  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]> {
     return [...this.invoices.values()]
       .filter((i) => i.propertyId === propertyId)
       .filter((i) => filter?.requiresHumanReview === undefined || i.requiresHumanReview === filter.requiresHumanReview)
+      .filter((i) => filter?.periodo === undefined || i.diot.proveedoresReportables.some((p) => p.periodo === filter.periodo))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 

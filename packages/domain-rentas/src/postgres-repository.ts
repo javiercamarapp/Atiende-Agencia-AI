@@ -5,19 +5,38 @@
 // funciones propias del schema `rentas`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { RentasRepository } from "./repository.ts";
+import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatement } from "./finanzas/statement.ts";
+import type { CandidataConciliacion, EstadoConciliacion, LineaConciliada } from "./finanzas/conciliacion.ts";
+import type { RangoFechas } from "./tipos.ts";
 import type {
   CanalRecord,
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
   DescuentoDuracion,
+  DescuentoDuracionRecord,
   MovimientoFinancieroReserva,
+  NewDescuentoDuracionInput,
   NewGuestMinimoInput,
+  NewOwnerStatementInput,
+  NewPayoutInput,
+  NewReglaCanalPricingInput,
+  NewReglaMinStayInput,
   NewReservaFinancieroInput,
+  NewTarifaBaseInput,
+  NewTemporadaInput,
   OcupacionParaMovimiento,
   OcupacionResumen,
+  OwnerRecord,
+  OwnerStatementDetalle,
+  OwnerStatementSummary,
+  PayoutDetalle,
   ReglaCanal,
   ReglaMinStay,
+  ReglaMinStayRecord,
+  ReservaParaStatement,
+  TemporadaRecord,
   TemporadaTarifa,
+  UltimaVersionOwnerStatement,
   UnidadRecord,
 } from "./types.ts";
 
@@ -26,6 +45,7 @@ interface UnidadRow {
   organization_id: string;
   property_id: string;
   duracion_minima_noches: number;
+  owner_id: string | null;
 }
 
 interface TarifaBaseRow {
@@ -96,13 +116,13 @@ export class PostgresRentasRepository implements RentasRepository {
   constructor(private readonly db: TenantDbSession) {}
 
   async findUnidad(propertyId: string, unidadId: string): Promise<UnidadRecord | null> {
-    const { rows } = await this.db.query<UnidadRow>(`select id, organization_id, property_id, duracion_minima_noches from rentas.unidad where id = $1 and property_id = $2;`, [
+    const { rows } = await this.db.query<UnidadRow>(`select id, organization_id, property_id, duracion_minima_noches, owner_id from rentas.unidad where id = $1 and property_id = $2;`, [
       unidadId,
       propertyId,
     ]);
     const row = rows[0];
     if (!row) return null;
-    return { id: row.id, organizationId: row.organization_id, propertyId: row.property_id, duracionMinimaNoches: row.duracion_minima_noches };
+    return { id: row.id, organizationId: row.organization_id, propertyId: row.property_id, duracionMinimaNoches: row.duracion_minima_noches, ownerId: row.owner_id };
   }
 
   async findCanalPorCodigo(codigo: string): Promise<CanalRecord | null> {
@@ -292,5 +312,355 @@ export class PostgresRentasRepository implements RentasRepository {
     );
     const row = rows[0];
     return row ? mapReservaFinanciero(row) : null;
+  }
+
+  // ---- Pricing CRUD (flujo 4, Fase 2) ----
+
+  async findMonedaExistentePricing(unidadId: string, excluirVigenteDesde?: string): Promise<string | null> {
+    const base = await this.db.query<{ moneda: string }>(`select moneda from rentas.tarifa_base where unidad_id = $1 and ($2::date is null or vigente_desde <> $2::date) limit 1;`, [
+      unidadId,
+      excluirVigenteDesde ?? null,
+    ]);
+    if (base.rows[0]) return base.rows[0].moneda;
+    const temporada = await this.db.query<{ moneda: string }>(`select moneda from rentas.tarifa_temporada where unidad_id = $1 limit 1;`, [unidadId]);
+    return temporada.rows[0]?.moneda ?? null;
+  }
+
+  async upsertTarifaBase(input: NewTarifaBaseInput): Promise<{ id: string }> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into rentas.tarifa_base (organization_id, property_id, unidad_id, precio_noche_centavos, moneda, vigente_desde, creado_por)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (unidad_id, vigente_desde) do update set precio_noche_centavos = excluded.precio_noche_centavos, moneda = excluded.moneda
+       returning id;`,
+      [input.organizationId, input.propertyId, input.unidadId, input.precioNocheCentavos, input.moneda, input.vigenteDesde, input.createdBy],
+    );
+    return { id: rows[0]!.id };
+  }
+
+  async listTemporadas(unidadId: string): Promise<TemporadaRecord[]> {
+    const { rows } = await this.db.query<{ id: string; nombre: string; fecha_inicio: string; fecha_fin: string; precio_noche_centavos: string }>(
+      `select id, nombre, fecha_inicio::text as fecha_inicio, fecha_fin::text as fecha_fin, precio_noche_centavos from rentas.tarifa_temporada where unidad_id = $1 order by fecha_inicio;`,
+      [unidadId],
+    );
+    return rows.map((r) => ({ id: r.id, nombre: r.nombre, rango: { inicio: r.fecha_inicio, fin: r.fecha_fin }, precioNocheCentavos: Number(r.precio_noche_centavos) }));
+  }
+
+  async insertTemporada(input: NewTemporadaInput): Promise<{ id: string }> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into rentas.tarifa_temporada (organization_id, property_id, unidad_id, nombre, fecha_inicio, fecha_fin, precio_noche_centavos, moneda, creado_por)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id;`,
+      [input.organizationId, input.propertyId, input.unidadId, input.nombre, input.rango.inicio, input.rango.fin, input.precioNocheCentavos, input.moneda, input.createdBy],
+    );
+    return { id: rows[0]!.id };
+  }
+
+  async listDescuentosDuracion(unidadId: string): Promise<DescuentoDuracionRecord[]> {
+    const { rows } = await this.db.query<{ id: string; noches_minimas: number; porcentaje_descuento_basis_points: number; fuente: string }>(
+      `select id, noches_minimas, porcentaje_descuento_basis_points, fuente from rentas.tarifa_descuento_duracion where unidad_id = $1 order by noches_minimas;`,
+      [unidadId],
+    );
+    return rows.map((r) => ({ id: r.id, nochesMinimas: r.noches_minimas, porcentajeDescuentoBasisPoints: r.porcentaje_descuento_basis_points, fuente: r.fuente }));
+  }
+
+  async upsertDescuentoDuracion(input: NewDescuentoDuracionInput): Promise<{ id: string }> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into rentas.tarifa_descuento_duracion (organization_id, property_id, unidad_id, noches_minimas, porcentaje_descuento_basis_points, fuente)
+       values ($1,$2,$3,$4,$5,$6)
+       on conflict (unidad_id, noches_minimas) do update set porcentaje_descuento_basis_points = excluded.porcentaje_descuento_basis_points, fuente = excluded.fuente
+       returning id;`,
+      [input.organizationId, input.propertyId, input.unidadId, input.nochesMinimas, input.porcentajeDescuentoBasisPoints, input.fuente],
+    );
+    return { id: rows[0]!.id };
+  }
+
+  async listReglasMinStay(unidadId: string): Promise<ReglaMinStayRecord[]> {
+    const { rows } = await this.db.query<{ id: string; fecha_inicio: string; fecha_fin: string; dia_semana_checkin: number | null; noches_minimas: number }>(
+      `select id, fecha_inicio::text as fecha_inicio, fecha_fin::text as fecha_fin, dia_semana_checkin, noches_minimas from rentas.tarifa_min_stay where unidad_id = $1 order by fecha_inicio;`,
+      [unidadId],
+    );
+    return rows.map((r) => ({ id: r.id, rango: { inicio: r.fecha_inicio, fin: r.fecha_fin }, diaSemanaCheckIn: r.dia_semana_checkin, nochesMinimas: r.noches_minimas }));
+  }
+
+  async insertReglaMinStay(input: NewReglaMinStayInput): Promise<{ id: string }> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into rentas.tarifa_min_stay (organization_id, property_id, unidad_id, fecha_inicio, fecha_fin, dia_semana_checkin, noches_minimas)
+       values ($1,$2,$3,$4,$5,$6,$7) returning id;`,
+      [input.organizationId, input.propertyId, input.unidadId, input.rango.inicio, input.rango.fin, input.diaSemanaCheckIn, input.nochesMinimas],
+    );
+    return { id: rows[0]!.id };
+  }
+
+  async upsertReglaCanalPricing(input: NewReglaCanalPricingInput): Promise<{ id: string }> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into rentas.tarifa_regla_canal (organization_id, property_id, unidad_id, canal_id, markup_basis_points, activo)
+       values ($1,$2,$3,$4,$5,$6)
+       on conflict (unidad_id, canal_id) do update set markup_basis_points = excluded.markup_basis_points, activo = excluded.activo
+       returning id;`,
+      [input.organizationId, input.propertyId, input.unidadId, input.canalId, input.markupBasisPoints, input.activo],
+    );
+    return { id: rows[0]!.id };
+  }
+
+  // ---- Owner statement (flujo 5, Fase 2) ----
+
+  async findOwnerConUnidadesEnProperty(propertyId: string, ownerId: string): Promise<OwnerRecord | null> {
+    const { rows } = await this.db.query<{ id: string; name: string }>(
+      `select o.id, o.name from rentas.owner o
+       where o.id = $2 and exists (select 1 from rentas.unidad u where u.property_id = $1 and u.owner_id = o.id)
+       limit 1;`,
+      [propertyId, ownerId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async findMovimientosPeriodoParaOwner(propertyId: string, ownerId: string, periodo: RangoFechas): Promise<ReservaParaStatement[]> {
+    const { rows } = await this.db.query<{
+      ocupacion_id: string;
+      moneda: string;
+      monto_bruto_centavos: string;
+      comision_canal_centavos: string;
+      comision_gestor_centavos: string;
+      gastos_centavos: string;
+      impuestos_centavos: string;
+      neto_centavos: string;
+    }>(
+      `select rf.ocupacion_id, rf.moneda, rf.monto_bruto_centavos, rf.comision_canal_centavos, rf.comision_gestor_centavos, rf.gastos_centavos, rf.impuestos_centavos, rf.neto_centavos
+       from rentas.reserva_financiero rf
+       join rentas.ocupacion o on o.id = rf.ocupacion_id
+       join rentas.unidad u on u.id = o.unidad_id
+       where o.property_id = $1 and u.owner_id = $2 and o.estado <> 'cancelado'
+         and upper(o.rango) >= $3::date and upper(o.rango) < $4::date;`,
+      [propertyId, ownerId, periodo.inicio, periodo.fin],
+    );
+    return rows.map((r) => ({
+      ocupacionId: r.ocupacion_id,
+      moneda: r.moneda,
+      ingresoBrutoCentavos: Number(r.monto_bruto_centavos),
+      comisionCanalCentavos: Number(r.comision_canal_centavos),
+      comisionGestorCentavos: Number(r.comision_gestor_centavos),
+      gastosCentavos: Number(r.gastos_centavos),
+      impuestosCentavos: Number(r.impuestos_centavos),
+      netoCentavos: Number(r.neto_centavos),
+    }));
+  }
+
+  async findUltimaVersionOwnerStatement(propertyId: string, ownerId: string, periodo: RangoFechas): Promise<UltimaVersionOwnerStatement | null> {
+    const { rows } = await this.db.query<{ id: string; version: number; hash_contenido: string }>(
+      `select id, version, hash_contenido from rentas.owner_statement
+       where owner_id = $1 and property_id = $2 and periodo_inicio = $3::date and periodo_fin = $4::date
+       order by version desc limit 1;`,
+      [ownerId, propertyId, periodo.inicio, periodo.fin],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, version: row.version, hashContenido: row.hash_contenido } : null;
+  }
+
+  async insertOwnerStatement(input: NewOwnerStatementInput): Promise<{ id: string; generadoEn: string }> {
+    const { rows } = await this.db.query<{ id: string; generado_en: string }>(
+      `insert into rentas.owner_statement
+         (organization_id, owner_id, property_id, periodo_inicio, periodo_fin, version, moneda,
+          ingresos_brutos_centavos, comision_canal_centavos, comision_gestor_centavos, gastos_centavos, impuestos_centavos, neto_centavos,
+          hash_contenido, motivo_version, generado_por)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       returning id, generado_en::text as generado_en;`,
+      [
+        input.organizationId,
+        input.ownerId,
+        input.propertyId,
+        input.periodo.inicio,
+        input.periodo.fin,
+        input.version,
+        input.moneda,
+        input.totales.ingresosBrutosCentavos,
+        input.totales.comisionCanalCentavos,
+        input.totales.comisionGestorCentavos,
+        input.totales.gastosCentavos,
+        input.totales.impuestosCentavos,
+        input.totales.netoCentavos,
+        input.hashContenido,
+        input.motivoVersion,
+        input.generadoPor,
+      ],
+    );
+    const statementId = rows[0]!.id;
+
+    for (const linea of input.lineas) {
+      await this.db.query(`insert into rentas.owner_statement_linea (statement_id, ocupacion_id, tipo, descripcion, monto_centavos, moneda) values ($1,$2,$3,$4,$5,$6);`, [
+        statementId,
+        linea.ocupacionId,
+        linea.tipo,
+        linea.descripcion,
+        linea.montoCentavos,
+        input.moneda,
+      ]);
+    }
+
+    return { id: statementId, generadoEn: rows[0]!.generado_en };
+  }
+
+  async listOwnerStatements(propertyId: string, ownerId: string): Promise<OwnerStatementSummary[]> {
+    const { rows } = await this.db.query<{
+      id: string;
+      owner_id: string;
+      property_id: string;
+      periodo_inicio: string;
+      periodo_fin: string;
+      version: number;
+      moneda: string;
+      neto_centavos: string;
+      generado_en: string;
+    }>(
+      `select distinct on (periodo_inicio, periodo_fin) id, owner_id, property_id, periodo_inicio::text as periodo_inicio, periodo_fin::text as periodo_fin,
+              version, moneda, neto_centavos, generado_en::text as generado_en
+       from rentas.owner_statement
+       where property_id = $1 and owner_id = $2
+       order by periodo_inicio desc, periodo_fin desc, version desc;`,
+      [propertyId, ownerId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      propertyId: r.property_id,
+      periodo: { inicio: r.periodo_inicio, fin: r.periodo_fin },
+      version: r.version,
+      moneda: r.moneda,
+      netoCentavos: Number(r.neto_centavos),
+      generadoEn: r.generado_en,
+    }));
+  }
+
+  async findOwnerStatementDetalle(propertyId: string, statementId: string): Promise<OwnerStatementDetalle | null> {
+    const { rows } = await this.db.query<{
+      id: string;
+      owner_id: string;
+      property_id: string;
+      periodo_inicio: string;
+      periodo_fin: string;
+      version: number;
+      moneda: string;
+      ingresos_brutos_centavos: string;
+      comision_canal_centavos: string;
+      comision_gestor_centavos: string;
+      gastos_centavos: string;
+      impuestos_centavos: string;
+      neto_centavos: string;
+      motivo_version: string | null;
+      generado_en: string;
+    }>(
+      `select id, owner_id, property_id, periodo_inicio::text as periodo_inicio, periodo_fin::text as periodo_fin, version, moneda,
+              ingresos_brutos_centavos, comision_canal_centavos, comision_gestor_centavos, gastos_centavos, impuestos_centavos, neto_centavos,
+              motivo_version, generado_en::text as generado_en
+       from rentas.owner_statement where id = $1 and property_id = $2;`,
+      [statementId, propertyId],
+    );
+    const s = rows[0];
+    if (!s) return null;
+
+    const lineasResult = await this.db.query<{ ocupacion_id: string | null; tipo: TipoLineaOwnerStatement; descripcion: string; monto_centavos: string }>(
+      `select ocupacion_id, tipo, descripcion, monto_centavos from rentas.owner_statement_linea where statement_id = $1 order by tipo, ocupacion_id;`,
+      [statementId],
+    );
+
+    const totales: TotalesOwnerStatement = {
+      ingresosBrutosCentavos: Number(s.ingresos_brutos_centavos),
+      comisionCanalCentavos: Number(s.comision_canal_centavos),
+      comisionGestorCentavos: Number(s.comision_gestor_centavos),
+      gastosCentavos: Number(s.gastos_centavos),
+      impuestosCentavos: Number(s.impuestos_centavos),
+      netoCentavos: Number(s.neto_centavos),
+    };
+    const lineas: LineaOwnerStatement[] = lineasResult.rows.map((l) => ({ ocupacionId: l.ocupacion_id ?? "", tipo: l.tipo, descripcion: l.descripcion, montoCentavos: Number(l.monto_centavos) }));
+
+    return {
+      id: s.id,
+      ownerId: s.owner_id,
+      propertyId: s.property_id,
+      periodo: { inicio: s.periodo_inicio, fin: s.periodo_fin },
+      version: s.version,
+      moneda: s.moneda,
+      netoCentavos: totales.netoCentavos,
+      generadoEn: s.generado_en,
+      totales,
+      lineas,
+      motivoVersion: s.motivo_version,
+    };
+  }
+
+  // ---- Payout / conciliación (flujo 6, Fase 2, alcance recortado) ----
+
+  async findCandidatasConciliacion(propertyId: string, canalId: string): Promise<CandidataConciliacion[]> {
+    const { rows } = await this.db.query<{ ocupacion_id: string; external_id: string | null; monto_esperado_centavos: string }>(
+      `select o.id as ocupacion_id, o.external_id, rf.monto_recibido_centavos as monto_esperado_centavos
+       from rentas.ocupacion o
+       join rentas.reserva_financiero rf on rf.ocupacion_id = o.id
+       where o.property_id = $1 and o.canal_origen_id = $2;`,
+      [propertyId, canalId],
+    );
+    return rows.map((r) => ({ ocupacionId: r.ocupacion_id, externalId: r.external_id, montoEsperadoCentavos: Number(r.monto_esperado_centavos) }));
+  }
+
+  async insertPayout(input: NewPayoutInput): Promise<{ id: string; creadoEn: string }> {
+    const { rows } = await this.db.query<{ id: string; creado_en: string }>(
+      `insert into rentas.payout_canal (organization_id, property_id, canal_id, referencia_externa, moneda, monto_total_centavos, fecha_payout, creado_por)
+       values ($1,$2,$3,$4,$5,$6,$7,$8) returning id, creado_en::text as creado_en;`,
+      [input.organizationId, input.propertyId, input.canalId, input.referenciaExterna, input.moneda, input.montoTotalCentavos, input.fechaPayout, input.createdBy],
+    );
+    const payoutId = rows[0]!.id;
+
+    for (const linea of input.lineas) {
+      await this.db.query(
+        `insert into rentas.payout_linea (payout_id, ocupacion_id, referencia_externa_reserva, monto_centavos, monto_esperado_centavos, estado_conciliacion) values ($1,$2,$3,$4,$5,$6);`,
+        [payoutId, linea.ocupacionId, linea.referenciaExternaReserva, linea.montoCentavos, linea.montoEsperadoCentavos, linea.estado],
+      );
+    }
+
+    return { id: payoutId, creadoEn: rows[0]!.creado_en };
+  }
+
+  async findPayoutDetalle(propertyId: string, payoutId: string): Promise<PayoutDetalle | null> {
+    const { rows } = await this.db.query<{
+      id: string;
+      property_id: string;
+      canal_codigo: string;
+      moneda: string;
+      monto_total_centavos: string;
+      fecha_payout: string;
+      referencia_externa: string | null;
+    }>(
+      `select pc.id, pc.property_id, c.codigo as canal_codigo, pc.moneda, pc.monto_total_centavos, pc.fecha_payout::text as fecha_payout, pc.referencia_externa
+       from rentas.payout_canal pc join rentas.canal c on c.id = pc.canal_id
+       where pc.id = $1 and pc.property_id = $2;`,
+      [payoutId, propertyId],
+    );
+    const p = rows[0];
+    if (!p) return null;
+
+    const lineasResult = await this.db.query<{ ocupacion_id: string | null; referencia_externa_reserva: string | null; monto_centavos: string; monto_esperado_centavos: string | null; estado_conciliacion: EstadoConciliacion }>(
+      `select ocupacion_id, referencia_externa_reserva, monto_centavos, monto_esperado_centavos, estado_conciliacion from rentas.payout_linea where payout_id = $1;`,
+      [payoutId],
+    );
+    const lineas: LineaConciliada[] = lineasResult.rows.map((l) => ({
+      ocupacionId: l.ocupacion_id,
+      referenciaExternaReserva: l.referencia_externa_reserva,
+      montoCentavos: Number(l.monto_centavos),
+      montoEsperadoCentavos: l.monto_esperado_centavos === null ? null : Number(l.monto_esperado_centavos),
+      estado: l.estado_conciliacion,
+    }));
+
+    return {
+      id: p.id,
+      propertyId: p.property_id,
+      canalCodigo: p.canal_codigo,
+      moneda: p.moneda,
+      montoTotalCentavos: Number(p.monto_total_centavos),
+      fechaPayout: p.fecha_payout,
+      referenciaExterna: p.referencia_externa,
+      resumen: {
+        conciliadas: lineas.filter((l) => l.estado === "conciliado").length,
+        pendientes: lineas.filter((l) => l.estado === "pendiente").length,
+        discrepancias: lineas.filter((l) => l.estado === "discrepancia").length,
+      },
+      lineas,
+    };
   }
 }

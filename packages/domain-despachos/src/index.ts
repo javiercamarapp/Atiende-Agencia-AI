@@ -4,6 +4,30 @@ export {
 } from "./cfdi/reglas-fiscales-avanzadas.ts";
 export type { DatosCfdiDespachos, ResultadoValidacionCfdiDespachos, DiotResult, ProveedorReportableDiot, NominaCfdi } from "./cfdi/reglas-fiscales-avanzadas.ts";
 
+// ---- Declaraciones ISR/IVA/RESICO + DIOT (Fase 2) ----
+export {
+  ISR_PF_MENSUAL_2025,
+  ISR_PF_ANUAL_2025,
+  ISR_PM_MENSUAL_RESICO,
+  ISR_PM_TASA,
+} from "./declaraciones/isr-tablas.ts";
+export type { TablaIsr, FilaTablaIsr } from "./declaraciones/isr-tablas.ts";
+
+export { aplicarTablaIsr, calcularIsrPf, calcularIsrPm, calcularIsrPmResico } from "./declaraciones/isr-engine.ts";
+export type { OpcionesIsrPf } from "./declaraciones/isr-engine.ts";
+
+export { agregarDiot, esRfcGenerico } from "./declaraciones/diot-aggregate.ts";
+
+export type {
+  IsrResultado,
+  TipoContribuyente,
+  TablaAplicadaIsr,
+  DiotTipoOperacion,
+  RegistroDiotCandidato,
+  DiotRegistroAgregado,
+  DiotAgregado,
+} from "./declaraciones/types.ts";
+
 export {
   TIPOS_FACTOR,
   DIOT_TIPO_OPERACION,

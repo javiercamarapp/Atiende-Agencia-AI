@@ -25,7 +25,14 @@ export interface DespachosRepository {
   insertInvoice(input: NewInvoiceInput): Promise<InvoiceRecord>;
   findInvoice(propertyId: string, invoiceId: string): Promise<InvoiceRecord | null>;
   findInvoiceByFolioFiscal(organizationId: string, folioFiscal: string): Promise<InvoiceRecord | null>;
-  listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean }): Promise<readonly InvoiceRecord[]>;
+  /** `filter.periodo` (Fase 2, aditivo — ver diseño declaraciones §3, `repository.ts`):
+   * "YYYY-MM", filtra a los invoices cuyo `diot.proveedoresReportables` contenga al
+   * menos un registro para ese período — es el filtro que habilita
+   * `GET /despachos/:propertyId/diot/:periodo` (Fase 3+: agregar DIOT sin releer CFDI
+   * crudos, aplanando `proveedoresReportables` de cada invoice y llamando
+   * `agregarDiot()`). No requiere migración de esquema nueva: se resuelve contra el
+   * jsonb `diot` ya persistido en `invoice` (migrations/001). */
+  listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]>;
 
   // ---- Cola de revisión humana (flujo 2) ----
   createReview(input: NewInvoiceReviewInput): Promise<InvoiceReviewRecord>;

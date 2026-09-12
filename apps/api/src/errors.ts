@@ -24,4 +24,9 @@ export const Errors = {
   rentasUnidadNoDisponible: (conflictoId: string) =>
     new ApiError(409, "unidad_no_disponible", `La unidad no está disponible para el rango solicitado (conflicto registrado: ${conflictoId}).`),
   rentasReservaNoDirecta: () => new ApiError(409, "reserva_no_directa", "Esta reserva proviene de un canal externo: nunca se modifica/cancela desde aquí, solo reservas directas."),
+  // ---- rentas (pricing CRUD, ver diseño Fase 2 rentas §3.6) ----
+  rentasPricingSolapado: (nombreOtro: string, rango: { inicio: string; fin: string }) =>
+    new ApiError(409, "pricing_solapado", `Se traslapa con "${nombreOtro}" (${rango.inicio}..${rango.fin}).`),
+  rentasPricingMonedaInconsistente: (monedaExistente: string) =>
+    new ApiError(400, "pricing_moneda_inconsistente", `La unidad ya tiene tarifas en "${monedaExistente}"; no se mezclan monedas por unidad.`),
 };

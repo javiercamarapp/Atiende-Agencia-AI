@@ -235,6 +235,20 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
       },
     };
 
-    return fn(session);
+    // Espejo de `managed-postgres-engine.ts::withAppSession` (Postgres real): el
+    // advisory lock es xact-scoped y SIEMPRE se libera cuando la transacción de la
+    // request termina (commit o rollback), sin que el caller tenga que liberarlo a
+    // mano (ver diseño Fase 2 rentas §4.2, "se libera solo al COMMIT/ROLLBACK de la
+    // transacción de la request"). `aplicacion/reservas.ts` ya libera explícito antes
+    // de esto vía `exec("COMMIT"/"ROLLBACK")` para su propia sub-transacción anidada
+    // -- `releaseAllLocks()` es idempotente (vacía el array), así que liberar aquí de
+    // nuevo al final es inofensivo para ese caso y es la única liberación real para
+    // cualquier otro caller (p. ej. `bloquearOwnerStatementEnTransaccion`) que nunca
+    // emite su propio exec de cierre, exactamente como en producción.
+    try {
+      return await fn(session);
+    } finally {
+      releaseAllLocks();
+    }
   }
 }

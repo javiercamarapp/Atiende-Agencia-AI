@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { computeAvailableSlots, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
 import type { CitasRepository } from "./repository.ts";
-import type { AppointmentRecord, CancelAppointmentPayload, CreateAppointmentPayload, ProviderRecord, RescheduleAppointmentPayload, ServiceRecord } from "./types.ts";
+import type { AppointmentRecord, CancelAppointmentPayload, CreateAppointmentPayload, ProviderRecord, RescheduleAppointmentPayload, ServiceRecord, Slot } from "./types.ts";
 
 /**
  * Estados que cuentan como "el proveedor está ocupado" — debe ser EXACTAMENTE el
@@ -49,6 +49,19 @@ export function normalizePhone(phone: string): string {
 
 function invalidOptionalString(value: unknown, maxLength: number): boolean {
   return value !== undefined && value !== null && (typeof value !== "string" || value.length > maxLength);
+}
+
+/** "YYYY-MM-DD" real y estricto — nunca deja pasar un string arbitrario a
+ * `zonedTimeToUtc` (Fase 2 §1.1/§4.3: `consultar_disponibilidad` es el único
+ * endpoint nuevo que recibe una fecha suelta del agente, sin pasar por un
+ * `Date.parse` de un ISO 8601 completo como el resto de los flujos). Rechaza
+ * también fechas de calendario inválidas (ej. "2026-02-30") en vez de dejar que
+ * `Date.UTC` las normalice en silencio a otro día. */
+function isValidDateStr(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number) as [number, number, number];
+  const asDate = new Date(Date.UTC(year, month - 1, day));
+  return asDate.getUTCFullYear() === year && asDate.getUTCMonth() === month - 1 && asDate.getUTCDate() === day;
 }
 
 // ============================================================================
@@ -128,6 +141,52 @@ async function computeAlternativeSlots(
     console.error("computeAlternativeSlots: no se pudieron calcular alternativas reales", err);
     return [];
   }
+}
+
+// ============================================================================
+// Fase 2 §1.1 — consultar_disponibilidad (Server Tool de voz + tool de WhatsApp)
+// ============================================================================
+
+export interface QueryAvailabilityInput {
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly serviceId: string;
+  /** "YYYY-MM-DD" en la hora local del negocio — validado estrictamente antes de
+   * tocar zonedTimeToUtc (ver diseño Fase 2 §1.1/§4.3). */
+  readonly dateStr: string;
+  /** Inyectable solo para tests deterministas de "ya pasó". */
+  readonly now?: Date;
+}
+
+/**
+ * Reutiliza el motor ya construido en Fase 1 (`computeAvailableSlots`) y la
+ * resolución ya construida (`resolveProviderAndService`/`loadRulesAndOverride`/
+ * `loadBusyForDay`, privadas de este mismo archivo) — mismo patrón que
+ * `quoteOrder` reutilizando `buildOrderQuoteFromProducts` en restaurantes sin
+ * tocar una línea de esos helpers. `resolveProviderAndService` ya lanza
+ * `AppointmentValidationError` si el proveedor no ofrece el servicio — se deja
+ * propagar tal cual, mismo mapeo 400 que ya usan las rutas existentes.
+ */
+export async function queryAvailability(repo: CitasRepository, input: QueryAvailabilityInput): Promise<{ readonly slots: readonly Slot[] }> {
+  if (typeof input.dateStr !== "string" || !isValidDateStr(input.dateStr)) {
+    throw new AppointmentValidationError("date debe tener formato YYYY-MM-DD válido");
+  }
+  const { service, timeZone } = await resolveProviderAndService(repo, input.organizationId, input.providerId, input.serviceId);
+  const { rules, override } = await loadRulesAndOverride(repo, input.providerId, input.dateStr);
+  const busy = await loadBusyForDay(repo, input.providerId, input.dateStr, timeZone);
+
+  const slots = computeAvailableSlots({
+    dateStr: input.dateStr,
+    timeZone,
+    durationMinutes: service.durationMinutes,
+    bufferBeforeMinutes: service.bufferMinutesBefore,
+    bufferAfterMinutes: service.bufferMinutesAfter,
+    rules,
+    override,
+    busy,
+    now: input.now,
+  });
+  return { slots };
 }
 
 // ============================================================================
@@ -433,4 +492,46 @@ export async function rescheduleAppointment(repo: CitasRepository, rawPayload: R
   }
 
   return { appointment: result.appointment, previousStartsAt };
+}
+
+// ============================================================================
+// Fase 2 §1.4 — buscar_citas_cliente (Server Tool de voz, mayor riesgo real) +
+// buscar_mis_citas (tool de WhatsApp). Misma función de dominio respalda ambos
+// canales — ver diseño Fase 2 §2.4 ("un solo núcleo, dos canales").
+// ============================================================================
+
+export interface CustomerAppointmentSummary {
+  readonly appointmentId: string;
+  readonly providerId: string;
+  readonly serviceId: string;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly status: AppointmentRecord["status"];
+}
+
+/**
+ * Contrato de SILENCIO ante cero-match (mismo criterio que restaurantes): un
+ * teléfono nunca visto en esta organización devuelve `{ appointments: [] }`,
+ * nunca un error — un mensaje hostil pidiendo "las citas de otro número" no
+ * tiene ningún campo que pueda usar para suplantar a otro cliente, porque
+ * `phone` SIEMPRE llega inyectado server-side (canal de voz: variable dinámica
+ * de plataforma de ElevenLabs; WhatsApp: remitente real del webhook — ver
+ * diseño Fase 2 §1.4/§4.4), nunca como parámetro que el LLM redacta. Solo
+ * citas activas/próximas (pending|confirmed, startsAt >= now) — nunca el
+ * historial completo de citas pasadas/canceladas de un cliente.
+ */
+export async function findAppointmentsForCustomerPhone(
+  repo: CitasRepository,
+  organizationId: string,
+  phone: string,
+  now: Date = new Date(),
+): Promise<{ readonly appointments: readonly CustomerAppointmentSummary[] }> {
+  const normalized = normalizePhone(phone);
+  const customer = await repo.findCustomerByPhone(organizationId, normalized);
+  if (!customer) return { appointments: [] };
+
+  const rows = await repo.listActiveAppointmentsForCustomer(organizationId, customer.id, now.toISOString());
+  return {
+    appointments: rows.map((a) => ({ appointmentId: a.id, providerId: a.providerId, serviceId: a.serviceId, startsAt: a.startsAt, endsAt: a.endsAt, status: a.status })),
+  };
 }

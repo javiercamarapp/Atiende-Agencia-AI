@@ -37,6 +37,16 @@ export const CANCELAR_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "
 export const FINANZAS_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora"];
 export const FINANZAS_LECTURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "contador"];
 
+// Pricing (Fase 2, Flujo 4): mismo criterio que ROLES_ADMIN del origen
+// (`exigirRol(auth, ...ROLES_ADMIN)` en las 5 rutas de pricing.ts) recortado a
+// `admin_gestora` -- `superadmin` está fuera de fase (depende de
+// feat/fusion-superadmin-impersonacion, no mergeada), mismo mapeo que ya adoptó
+// Fase 1 para finanzas. `contador` (lectura financiera) NUNCA obtiene escritura de
+// pricing -- mismo criterio que el origen. La LECTURA de contexto de pricing sigue
+// libre para cualquier staff con membership de la property (ver cotizaciones.ts,
+// Fase 1) -- no se restringe aquí.
+export const PRICING_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora"];
+
 /**
  * platformRole = techo común que core-auth entiende SIN saber nada de rentas. La
  * distinción fina la hace SIEMPRE `assertVerticalRole()` con RENTAS_VERTICAL_ROLES,

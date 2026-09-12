@@ -1,0 +1,1133 @@
+{
+  "isr_pf_mensual_tramo0_lower": {
+    "entrada": {
+      "baseGravable": 0.0
+    },
+    "resultado": {
+      "base_gravable": 0.0,
+      "isr_bruto": 0.0,
+      "tasa_efectiva": 0.0,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo0_upper": {
+    "entrada": {
+      "baseGravable": 416.34
+    },
+    "resultado": {
+      "base_gravable": 416.34,
+      "isr_bruto": 7.99,
+      "tasa_efectiva": 0.0192,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 7.99,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo1_lower": {
+    "entrada": {
+      "baseGravable": 416.35
+    },
+    "resultado": {
+      "base_gravable": 416.35,
+      "isr_bruto": 7.99,
+      "tasa_efectiva": 0.0192,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 7.99,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo1_upper": {
+    "entrada": {
+      "baseGravable": 3508.42
+    },
+    "resultado": {
+      "base_gravable": 3508.42,
+      "isr_bruto": 205.88,
+      "tasa_efectiva": 0.0587,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 205.88,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo2_lower": {
+    "entrada": {
+      "baseGravable": 3508.43
+    },
+    "resultado": {
+      "base_gravable": 3508.43,
+      "isr_bruto": 205.29,
+      "tasa_efectiva": 0.0585,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 205.29,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo2_upper": {
+    "entrada": {
+      "baseGravable": 6145.58
+    },
+    "resultado": {
+      "base_gravable": 6145.58,
+      "isr_bruto": 492.21,
+      "tasa_efectiva": 0.0801,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 492.21,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo3_lower": {
+    "entrada": {
+      "baseGravable": 6145.59
+    },
+    "resultado": {
+      "base_gravable": 6145.59,
+      "isr_bruto": 492.98,
+      "tasa_efectiva": 0.0802,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 492.98,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo3_upper": {
+    "entrada": {
+      "baseGravable": 7185.25
+    },
+    "resultado": {
+      "base_gravable": 7185.25,
+      "isr_bruto": 659.33,
+      "tasa_efectiva": 0.0918,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 659.33,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo4_lower": {
+    "entrada": {
+      "baseGravable": 7185.26
+    },
+    "resultado": {
+      "base_gravable": 7185.26,
+      "isr_bruto": 659.32,
+      "tasa_efectiva": 0.0918,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 659.32,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo4_upper": {
+    "entrada": {
+      "baseGravable": 8564.67
+    },
+    "resultado": {
+      "base_gravable": 8564.67,
+      "isr_bruto": 953.96,
+      "tasa_efectiva": 0.1114,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 953.96,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo5_lower": {
+    "entrada": {
+      "baseGravable": 8564.68
+    },
+    "resultado": {
+      "base_gravable": 8564.68,
+      "isr_bruto": 952.82,
+      "tasa_efectiva": 0.1112,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 952.82,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo5_upper": {
+    "entrada": {
+      "baseGravable": 17128.42
+    },
+    "resultado": {
+      "base_gravable": 17128.42,
+      "isr_bruto": 2967.01,
+      "tasa_efectiva": 0.1732,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 2967.01,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo6_lower": {
+    "entrada": {
+      "baseGravable": 17128.43
+    },
+    "resultado": {
+      "base_gravable": 17128.43,
+      "isr_bruto": 2963.16,
+      "tasa_efectiva": 0.173,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 2963.16,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo6_upper": {
+    "entrada": {
+      "baseGravable": 34256.83
+    },
+    "resultado": {
+      "base_gravable": 34256.83,
+      "isr_bruto": 8101.68,
+      "tasa_efectiva": 0.2365,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 8101.68,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo7_lower": {
+    "entrada": {
+      "baseGravable": 34256.84
+    },
+    "resultado": {
+      "base_gravable": 34256.84,
+      "isr_bruto": 8099.64,
+      "tasa_efectiva": 0.2364,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 8099.64,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo7_upper": {
+    "entrada": {
+      "baseGravable": 45675.74
+    },
+    "resultado": {
+      "base_gravable": 45675.74,
+      "isr_bruto": 11753.69,
+      "tasa_efectiva": 0.2573,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 11753.69,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo8_lower": {
+    "entrada": {
+      "baseGravable": 45675.75
+    },
+    "resultado": {
+      "base_gravable": 45675.75,
+      "isr_bruto": 11753.69,
+      "tasa_efectiva": 0.2573,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 11753.69,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo8_upper": {
+    "entrada": {
+      "baseGravable": 91351.48
+    },
+    "resultado": {
+      "base_gravable": 91351.48,
+      "isr_bruto": 27283.44,
+      "tasa_efectiva": 0.2987,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 27283.44,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo9_lower": {
+    "entrada": {
+      "baseGravable": 91351.49
+    },
+    "resultado": {
+      "base_gravable": 91351.49,
+      "isr_bruto": 27285.41,
+      "tasa_efectiva": 0.2987,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 27285.41,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_tramo9_valor_alto": {
+    "entrada": {
+      "baseGravable": 1091351.49
+    },
+    "resultado": {
+      "base_gravable": 1091351.49,
+      "isr_bruto": 377285.41,
+      "tasa_efectiva": 0.3457,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 377285.41,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo0_lower": {
+    "entrada": {
+      "baseGravable": 0.0
+    },
+    "resultado": {
+      "base_gravable": 0.0,
+      "isr_bruto": 0.0,
+      "tasa_efectiva": 0.0,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo0_upper": {
+    "entrada": {
+      "baseGravable": 4996.07
+    },
+    "resultado": {
+      "base_gravable": 4996.07,
+      "isr_bruto": 95.92,
+      "tasa_efectiva": 0.0192,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 95.92,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo1_lower": {
+    "entrada": {
+      "baseGravable": 4996.08
+    },
+    "resultado": {
+      "base_gravable": 4996.08,
+      "isr_bruto": 95.93,
+      "tasa_efectiva": 0.0192,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 95.93,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo1_upper": {
+    "entrada": {
+      "baseGravable": 42101.07
+    },
+    "resultado": {
+      "base_gravable": 42101.07,
+      "isr_bruto": 2470.65,
+      "tasa_efectiva": 0.0587,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 2470.65,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo2_lower": {
+    "entrada": {
+      "baseGravable": 42101.08
+    },
+    "resultado": {
+      "base_gravable": 42101.08,
+      "isr_bruto": 2464.95,
+      "tasa_efectiva": 0.0585,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 2464.95,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo2_upper": {
+    "entrada": {
+      "baseGravable": 73747.05
+    },
+    "resultado": {
+      "base_gravable": 73747.05,
+      "isr_bruto": 5908.03,
+      "tasa_efectiva": 0.0801,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 5908.03,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo3_lower": {
+    "entrada": {
+      "baseGravable": 73747.06
+    },
+    "resultado": {
+      "base_gravable": 73747.06,
+      "isr_bruto": 5921.82,
+      "tasa_efectiva": 0.0803,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 5921.82,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo3_upper": {
+    "entrada": {
+      "baseGravable": 86222.93
+    },
+    "resultado": {
+      "base_gravable": 86222.93,
+      "isr_bruto": 7917.96,
+      "tasa_efectiva": 0.0918,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 7917.96,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo4_lower": {
+    "entrada": {
+      "baseGravable": 86222.94
+    },
+    "resultado": {
+      "base_gravable": 86222.94,
+      "isr_bruto": 7918.14,
+      "tasa_efectiva": 0.0918,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 7918.14,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo4_upper": {
+    "entrada": {
+      "baseGravable": 102775.97
+    },
+    "resultado": {
+      "base_gravable": 102775.97,
+      "isr_bruto": 11453.87,
+      "tasa_efectiva": 0.1114,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 11453.87,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo5_lower": {
+    "entrada": {
+      "baseGravable": 102775.98
+    },
+    "resultado": {
+      "base_gravable": 102775.98,
+      "isr_bruto": 11454.29,
+      "tasa_efectiva": 0.1114,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 11454.29,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo5_upper": {
+    "entrada": {
+      "baseGravable": 205540.72
+    },
+    "resultado": {
+      "base_gravable": 205540.72,
+      "isr_bruto": 35624.56,
+      "tasa_efectiva": 0.1733,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 35624.56,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo6_lower": {
+    "entrada": {
+      "baseGravable": 205540.73
+    },
+    "resultado": {
+      "base_gravable": 205540.73,
+      "isr_bruto": 35594.91,
+      "tasa_efectiva": 0.1732,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 35594.91,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo6_upper": {
+    "entrada": {
+      "baseGravable": 411081.46
+    },
+    "resultado": {
+      "base_gravable": 411081.46,
+      "isr_bruto": 97257.13,
+      "tasa_efectiva": 0.2366,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 97257.13,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo7_lower": {
+    "entrada": {
+      "baseGravable": 411081.47
+    },
+    "resultado": {
+      "base_gravable": 411081.47,
+      "isr_bruto": 97257.13,
+      "tasa_efectiva": 0.2366,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 97257.13,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo7_upper": {
+    "entrada": {
+      "baseGravable": 548108.74
+    },
+    "resultado": {
+      "base_gravable": 548108.74,
+      "isr_bruto": 141105.86,
+      "tasa_efectiva": 0.2574,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 141105.86,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo8_lower": {
+    "entrada": {
+      "baseGravable": 548108.75
+    },
+    "resultado": {
+      "base_gravable": 548108.75,
+      "isr_bruto": 141065.88,
+      "tasa_efectiva": 0.2574,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 141065.88,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo8_upper": {
+    "entrada": {
+      "baseGravable": 1096217.44
+    },
+    "resultado": {
+      "base_gravable": 1096217.44,
+      "isr_bruto": 327422.83,
+      "tasa_efectiva": 0.2987,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 327422.83,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo9_lower": {
+    "entrada": {
+      "baseGravable": 1096217.45
+    },
+    "resultado": {
+      "base_gravable": 1096217.45,
+      "isr_bruto": 327422.79,
+      "tasa_efectiva": 0.2987,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 327422.79,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_anual_tramo9_valor_alto": {
+    "entrada": {
+      "baseGravable": 2096217.45
+    },
+    "resultado": {
+      "base_gravable": 2096217.45,
+      "isr_bruto": 677422.79,
+      "tasa_efectiva": 0.3232,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "annual",
+      "isr_neto": 677422.79,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pm_resico_tramo0_lower": {
+    "entrada": {
+      "baseGravable": 0.0
+    },
+    "resultado": {
+      "base_gravable": 0,
+      "isr_bruto": 0.0,
+      "tasa_efectiva": 0.0,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo0_upper": {
+    "entrada": {
+      "baseGravable": 25000.0
+    },
+    "resultado": {
+      "base_gravable": 25000.0,
+      "isr_bruto": 250.0,
+      "tasa_efectiva": 0.01,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 250.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo1_lower": {
+    "entrada": {
+      "baseGravable": 25000.01
+    },
+    "resultado": {
+      "base_gravable": 25000.01,
+      "isr_bruto": 250.0,
+      "tasa_efectiva": 0.01,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 250.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo1_upper": {
+    "entrada": {
+      "baseGravable": 50000.0
+    },
+    "resultado": {
+      "base_gravable": 50000.0,
+      "isr_bruto": 525.0,
+      "tasa_efectiva": 0.0105,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 525.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo2_lower": {
+    "entrada": {
+      "baseGravable": 50000.01
+    },
+    "resultado": {
+      "base_gravable": 50000.01,
+      "isr_bruto": 525.0,
+      "tasa_efectiva": 0.0105,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 525.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo2_upper": {
+    "entrada": {
+      "baseGravable": 83333.33
+    },
+    "resultado": {
+      "base_gravable": 83333.33,
+      "isr_bruto": 1025.0,
+      "tasa_efectiva": 0.0123,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 1025.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo3_lower": {
+    "entrada": {
+      "baseGravable": 83333.34
+    },
+    "resultado": {
+      "base_gravable": 83333.34,
+      "isr_bruto": 1025.0,
+      "tasa_efectiva": 0.0123,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 1025.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo3_upper": {
+    "entrada": {
+      "baseGravable": 208333.33
+    },
+    "resultado": {
+      "base_gravable": 208333.33,
+      "isr_bruto": 3525.0,
+      "tasa_efectiva": 0.0169,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 3525.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo4_lower": {
+    "entrada": {
+      "baseGravable": 208333.34
+    },
+    "resultado": {
+      "base_gravable": 208333.34,
+      "isr_bruto": 3525.0,
+      "tasa_efectiva": 0.0169,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 3525.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo4_upper": {
+    "entrada": {
+      "baseGravable": 3500000.0
+    },
+    "resultado": {
+      "base_gravable": 3500000.0,
+      "isr_bruto": 85816.67,
+      "tasa_efectiva": 0.0245,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 85816.67,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo5_lower": {
+    "entrada": {
+      "baseGravable": 3500000.01
+    },
+    "resultado": {
+      "base_gravable": 3500000.01,
+      "isr_bruto": 86799.17,
+      "tasa_efectiva": 0.0248,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 86799.17,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pm_resico_tramo5_valor_alto": {
+    "entrada": {
+      "baseGravable": 4500000.01
+    },
+    "resultado": {
+      "base_gravable": 4500000.01,
+      "isr_bruto": 116799.17,
+      "tasa_efectiva": 0.026,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_resico",
+      "isr_neto": 116799.17,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 206, 209 (RESICO PM)"
+    }
+  },
+  "isr_pf_mensual_cero": {
+    "entrada": {
+      "baseGravable": 0.0
+    },
+    "resultado": {
+      "base_gravable": 0.0,
+      "isr_bruto": 0.0,
+      "tasa_efectiva": 0.0,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_negativo": {
+    "entrada": {
+      "baseGravable": -50000.0
+    },
+    "resultado": {
+      "base_gravable": -50000.0,
+      "isr_bruto": 0.0,
+      "tasa_efectiva": 0.0,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pf_mensual_con_pagos_provisionales": {
+    "entrada": {
+      "baseGravable": 20000.0,
+      "pagosProvisionales": 2000.0
+    },
+    "resultado": {
+      "base_gravable": 20000.0,
+      "isr_bruto": 3824.63,
+      "tasa_efectiva": 0.1912,
+      "tipo_contribuyente": "PF",
+      "tabla_aplicada": "monthly",
+      "isr_neto": 1824.63,
+      "pagos_provisionales": 2000.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pm_basico": {
+    "entrada": {
+      "utilidadFiscal": 100000.0
+    },
+    "resultado": {
+      "base_gravable": 100000.0,
+      "isr_bruto": 30000.0,
+      "tasa_efectiva": 0.3,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_30%",
+      "isr_neto": 30000.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pm_cero": {
+    "entrada": {
+      "utilidadFiscal": 0.0
+    },
+    "resultado": {
+      "base_gravable": 0,
+      "isr_bruto": 0.0,
+      "tasa_efectiva": 0.0,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_30%",
+      "isr_neto": 0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pm_negativo": {
+    "entrada": {
+      "utilidadFiscal": -50000.0
+    },
+    "resultado": {
+      "base_gravable": 0,
+      "isr_bruto": 0.0,
+      "tasa_efectiva": 0.0,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_30%",
+      "isr_neto": 0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pm_con_pagos_provisionales": {
+    "entrada": {
+      "utilidadFiscal": 100000.0,
+      "pagosProvisionales": 10000.0
+    },
+    "resultado": {
+      "base_gravable": 100000.0,
+      "isr_bruto": 30000.0,
+      "tasa_efectiva": 0.3,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_30%",
+      "isr_neto": 20000.0,
+      "pagos_provisionales": 10000.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "isr_pm_redondeo_tercer_decimal": {
+    "entrada": {
+      "utilidadFiscal": 333333.33
+    },
+    "resultado": {
+      "base_gravable": 333333.33,
+      "isr_bruto": 100000.0,
+      "tasa_efectiva": 0.3,
+      "tipo_contribuyente": "PM",
+      "tabla_aplicada": "pm_30%",
+      "isr_neto": 100000.0,
+      "pagos_provisionales": 0.0,
+      "referencia_legal": "LISR Art. 9 (PM) / Art. 96 (PF)"
+    }
+  },
+  "diot_caso_a_multi_factura_generico_filtrado": {
+    "entrada": {
+      "invoices": [
+        {
+          "rfc_emisor": "CON950820K12",
+          "nombre_emisor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "subtotal": 5000.0,
+          "iva_trasladado": 800.0,
+          "iva_acreditable": 800.0,
+          "tasa_iva": 0.16,
+          "tipo_cambio": 1.0,
+          "moneda": "MXN",
+          "fecha": "2026-07-05"
+        },
+        {
+          "rfc_emisor": "con950820k12",
+          "nombre_emisor": "PROVEEDOR DE PRUEBA SA DE CV",
+          "subtotal": 3000.0,
+          "iva_trasladado": 480.0,
+          "iva_acreditable": 480.0,
+          "tasa_iva": 0.16,
+          "tipo_cambio": 1.0,
+          "moneda": "MXN",
+          "fecha": "2026-07-12"
+        },
+        {
+          "rfc_emisor": "XAXX010101000",
+          "nombre_emisor": "PUBLICO EN GENERAL",
+          "subtotal": 999999.0,
+          "iva_trasladado": 159999.84,
+          "iva_acreditable": 0.0,
+          "tasa_iva": 0.16,
+          "tipo_cambio": 1.0,
+          "moneda": "MXN",
+          "fecha": "2026-07-20"
+        }
+      ],
+      "rfcContribuyente": "DESP010101AB1",
+      "periodo": "2026-07"
+    },
+    "resultado": {
+      "records": [
+        {
+          "rfc_tercero": "CON950820K12",
+          "nombre": "PROVEEDOR DE PRUEBA SA DE CV",
+          "tipo_operacion": "03",
+          "tipo_tercero": "05",
+          "tipo_documento": "01",
+          "moneda": "MXN",
+          "tipo_cambio": 1.0,
+          "num_reg_id_trib": "",
+          "fecha": "2026-07-12",
+          "monto_neto": 8000.0,
+          "iva_trasladado_16": 1280.0,
+          "iva_trasladado_0": 0.0,
+          "iva_acreditable_16": 1280.0,
+          "iva_acreditable_0": 0.0,
+          "iva_exento": 0.0,
+          "iva_retenido": 0.0,
+          "count": 2
+        }
+      ],
+      "total_records": 1,
+      "total_monto_neto": 8000.0,
+      "total_iva_trasladado": 1280.0,
+      "total_iva_acreditable": 1280.0,
+      "periodo": "2026-07",
+      "rfc_contribuyente": "DESP010101AB1",
+      "referencia_legal": "RMF 3.10.7 / CFF Art. 85"
+    }
+  },
+  "diot_caso_b_mismo_rfc_dos_tasas": {
+    "entrada": {
+      "invoices": [
+        {
+          "rfc_emisor": "EXP900101AB1",
+          "nombre_emisor": "EXPORTADORA DE PRUEBA SA DE CV",
+          "subtotal": 10000.0,
+          "iva_trasladado": 1600.0,
+          "iva_acreditable": 1600.0,
+          "tasa_iva": 0.16,
+          "tipo_cambio": 1.0,
+          "moneda": "MXN",
+          "fecha": "2026-07-08"
+        },
+        {
+          "rfc_emisor": "EXP900101AB1",
+          "nombre_emisor": "EXPORTADORA DE PRUEBA SA DE CV",
+          "subtotal": 20000.0,
+          "iva_trasladado": 0.0,
+          "iva_acreditable": 0.0,
+          "tasa_iva": 0.0,
+          "tipo_cambio": 1.0,
+          "moneda": "MXN",
+          "fecha": "2026-07-15"
+        }
+      ],
+      "rfcContribuyente": "DESP010101AB1",
+      "periodo": "2026-07"
+    },
+    "resultado": {
+      "records": [
+        {
+          "rfc_tercero": "EXP900101AB1",
+          "nombre": "EXPORTADORA DE PRUEBA SA DE CV",
+          "tipo_operacion": "03",
+          "tipo_tercero": "05",
+          "tipo_documento": "01",
+          "moneda": "MXN",
+          "tipo_cambio": 1.0,
+          "num_reg_id_trib": "",
+          "fecha": "2026-07-08",
+          "monto_neto": 10000.0,
+          "iva_trasladado_16": 1600.0,
+          "iva_trasladado_0": 0.0,
+          "iva_acreditable_16": 1600.0,
+          "iva_acreditable_0": 0.0,
+          "iva_exento": 0.0,
+          "iva_retenido": 0.0,
+          "count": 1
+        },
+        {
+          "rfc_tercero": "EXP900101AB1",
+          "nombre": "EXPORTADORA DE PRUEBA SA DE CV",
+          "tipo_operacion": "06",
+          "tipo_tercero": "05",
+          "tipo_documento": "01",
+          "moneda": "MXN",
+          "tipo_cambio": 1.0,
+          "num_reg_id_trib": "",
+          "fecha": "2026-07-15",
+          "monto_neto": 20000.0,
+          "iva_trasladado_16": 0.0,
+          "iva_trasladado_0": 0.0,
+          "iva_acreditable_16": 0.0,
+          "iva_acreditable_0": 0.0,
+          "iva_exento": 0.0,
+          "iva_retenido": 0.0,
+          "count": 1
+        }
+      ],
+      "total_records": 2,
+      "total_monto_neto": 30000.0,
+      "total_iva_trasladado": 1600.0,
+      "total_iva_acreditable": 1600.0,
+      "periodo": "2026-07",
+      "rfc_contribuyente": "DESP010101AB1",
+      "referencia_legal": "RMF 3.10.7 / CFF Art. 85"
+    }
+  },
+  "diot_caso_c_moneda_extranjera_y_frontera_8pct": {
+    "entrada": {
+      "invoices": [
+        {
+          "rfc_emisor": "USA010101XX1",
+          "nombre_emisor": "PROVEEDOR EXTRANJERO USD",
+          "subtotal": 1000.0,
+          "iva_trasladado": 0.0,
+          "iva_acreditable": 0.0,
+          "tasa_iva": 0.0,
+          "tipo_cambio": 18.35,
+          "moneda": "USD",
+          "fecha": "2026-07-10"
+        },
+        {
+          "rfc_emisor": "FRO010101YY2",
+          "nombre_emisor": "PROVEEDOR FRONTERA 8PCT",
+          "subtotal": 4000.0,
+          "iva_trasladado": 320.0,
+          "iva_acreditable": 320.0,
+          "tasa_iva": 0.08,
+          "tipo_cambio": 1.0,
+          "moneda": "MXN",
+          "fecha": "2026-07-18"
+        }
+      ],
+      "rfcContribuyente": "DESP010101AB1",
+      "periodo": "2026-07"
+    },
+    "resultado": {
+      "records": [
+        {
+          "rfc_tercero": "FRO010101YY2",
+          "nombre": "PROVEEDOR FRONTERA 8PCT",
+          "tipo_operacion": "85",
+          "tipo_tercero": "05",
+          "tipo_documento": "01",
+          "moneda": "MXN",
+          "tipo_cambio": 1.0,
+          "num_reg_id_trib": "",
+          "fecha": "2026-07-18",
+          "monto_neto": 4000.0,
+          "iva_trasladado_16": 0.0,
+          "iva_trasladado_0": 0.0,
+          "iva_acreditable_16": 0.0,
+          "iva_acreditable_0": 0.0,
+          "iva_exento": 320.0,
+          "iva_retenido": 0.0,
+          "count": 1
+        },
+        {
+          "rfc_tercero": "USA010101XX1",
+          "nombre": "PROVEEDOR EXTRANJERO USD",
+          "tipo_operacion": "06",
+          "tipo_tercero": "05",
+          "tipo_documento": "01",
+          "moneda": "USD",
+          "tipo_cambio": 18.35,
+          "num_reg_id_trib": "",
+          "fecha": "2026-07-10",
+          "monto_neto": 18350.0,
+          "iva_trasladado_16": 0.0,
+          "iva_trasladado_0": 0.0,
+          "iva_acreditable_16": 0.0,
+          "iva_acreditable_0": 0.0,
+          "iva_exento": 0.0,
+          "iva_retenido": 0.0,
+          "count": 1
+        }
+      ],
+      "total_records": 2,
+      "total_monto_neto": 22350.0,
+      "total_iva_trasladado": 0.0,
+      "total_iva_acreditable": 0.0,
+      "periodo": "2026-07",
+      "rfc_contribuyente": "DESP010101AB1",
+      "referencia_legal": "RMF 3.10.7 / CFF Art. 85"
+    }
+  }
+}

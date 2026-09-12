@@ -13,16 +13,34 @@
 // crearReservaConfirmada/modificarFechasReserva/cancelarOcupacion; este repository solo
 // cubre las lecturas/escrituras auxiliares (resolver unidad/canal, adjuntar huésped
 // mínimo, pricing de solo lectura, y el movimiento financiero por reserva).
+import type { RangoFechas } from "./tipos.ts";
 import type {
+  CandidataConciliacion,
   CanalRecord,
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
+  DescuentoDuracionRecord,
   MovimientoFinancieroReserva,
+  NewDescuentoDuracionInput,
   NewGuestMinimoInput,
+  NewOwnerStatementInput,
+  NewPayoutInput,
+  NewReglaCanalPricingInput,
+  NewReglaMinStayInput,
   NewReservaFinancieroInput,
+  NewTarifaBaseInput,
+  NewTemporadaInput,
   OcupacionParaMovimiento,
   OcupacionResumen,
+  OwnerRecord,
+  OwnerStatementDetalle,
+  OwnerStatementSummary,
+  PayoutDetalle,
   ReglaCanal,
+  ReglaMinStayRecord,
+  ReservaParaStatement,
+  TemporadaRecord,
+  UltimaVersionOwnerStatement,
   UnidadRecord,
 } from "./types.ts";
 
@@ -51,17 +69,64 @@ export interface RentasRepository {
   findReglaComisionCanal(propertyId: string, canalId: string | null): Promise<ConfiguracionComisionCanal>;
   insertReservaFinanciero(input: NewReservaFinancieroInput): Promise<{ id: string; createdAt: string }>;
   findReservaFinanciero(propertyId: string, ocupacionId: string): Promise<MovimientoFinancieroReserva | null>;
+
+  // ---- Pricing CRUD (flujo 4, Fase 2) ----
+  /** Moneda ya en uso por la unidad (cualquier `tarifa_base` con otra `vigente_desde` o
+   *  cualquier `tarifa_temporada`), o `null` si la unidad no tiene pricing configurado
+   *  todavía -- guardia de "nunca mezclar monedas por unidad" (ver diseño §3.1). */
+  findMonedaExistentePricing(unidadId: string, excluirVigenteDesde?: string): Promise<string | null>;
+  upsertTarifaBase(input: NewTarifaBaseInput): Promise<{ id: string }>;
+  listTemporadas(unidadId: string): Promise<TemporadaRecord[]>;
+  insertTemporada(input: NewTemporadaInput): Promise<{ id: string }>;
+  listDescuentosDuracion(unidadId: string): Promise<DescuentoDuracionRecord[]>;
+  upsertDescuentoDuracion(input: NewDescuentoDuracionInput): Promise<{ id: string }>;
+  listReglasMinStay(unidadId: string): Promise<ReglaMinStayRecord[]>;
+  insertReglaMinStay(input: NewReglaMinStayInput): Promise<{ id: string }>;
+  upsertReglaCanalPricing(input: NewReglaCanalPricingInput): Promise<{ id: string }>;
+
+  // ---- Owner statement (flujo 5, Fase 2) ----
+  /** `null` si el owner no existe o no tiene ninguna unidad en esta property (defensa
+   *  en profundidad: nunca generar un statement "vacío de sentido" para un owner sin
+   *  presencia real en la property -- ver diseño §4.1, alcance por property). */
+  findOwnerConUnidadesEnProperty(propertyId: string, ownerId: string): Promise<OwnerRecord | null>;
+  findMovimientosPeriodoParaOwner(propertyId: string, ownerId: string, periodo: RangoFechas): Promise<ReservaParaStatement[]>;
+  findUltimaVersionOwnerStatement(propertyId: string, ownerId: string, periodo: RangoFechas): Promise<UltimaVersionOwnerStatement | null>;
+  insertOwnerStatement(input: NewOwnerStatementInput): Promise<{ id: string; generadoEn: string }>;
+  listOwnerStatements(propertyId: string, ownerId: string): Promise<OwnerStatementSummary[]>;
+  findOwnerStatementDetalle(propertyId: string, statementId: string): Promise<OwnerStatementDetalle | null>;
+
+  // ---- Payout / conciliación (flujo 6, Fase 2, alcance recortado) ----
+  findCandidatasConciliacion(propertyId: string, canalId: string): Promise<CandidataConciliacion[]>;
+  insertPayout(input: NewPayoutInput): Promise<{ id: string; creadoEn: string }>;
+  findPayoutDetalle(propertyId: string, payoutId: string): Promise<PayoutDetalle | null>;
 }
 
 export type {
+  CandidataConciliacion,
   CanalRecord,
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
+  DescuentoDuracionRecord,
   MovimientoFinancieroReserva,
+  NewDescuentoDuracionInput,
   NewGuestMinimoInput,
+  NewOwnerStatementInput,
+  NewPayoutInput,
+  NewReglaCanalPricingInput,
+  NewReglaMinStayInput,
   NewReservaFinancieroInput,
+  NewTarifaBaseInput,
+  NewTemporadaInput,
   OcupacionParaMovimiento,
   OcupacionResumen,
+  OwnerRecord,
+  OwnerStatementDetalle,
+  OwnerStatementSummary,
+  PayoutDetalle,
   ReglaCanal,
+  ReglaMinStayRecord,
+  ReservaParaStatement,
+  TemporadaRecord,
+  UltimaVersionOwnerStatement,
   UnidadRecord,
 } from "./types.ts";

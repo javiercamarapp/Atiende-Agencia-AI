@@ -199,15 +199,22 @@ export class PostgresDespachosRepository implements DespachosRepository {
     return rows[0] ? mapInvoice(rows[0]) : null;
   }
 
-  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean }): Promise<readonly InvoiceRecord[]> {
+  async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]> {
+    // Filtro por período (Fase 2, aditivo — ver repository.ts): sin migración de
+    // esquema nueva, resuelto contra el jsonb `diot.proveedoresReportables` ya
+    // persistido (un invoice es del período si al menos un registro reportable
+    // coincide con "YYYY-MM").
+    const conditions = ["property_id = $1"];
+    const params: unknown[] = [propertyId];
     if (filter?.requiresHumanReview !== undefined) {
-      const { rows } = await this.db.query<InvoiceRawRow>(
-        `select * from despachos.invoice where property_id = $1 and requires_human_review = $2 order by created_at desc;`,
-        [propertyId, filter.requiresHumanReview],
-      );
-      return rows.map(mapInvoice);
+      params.push(filter.requiresHumanReview);
+      conditions.push(`requires_human_review = $${params.length}`);
     }
-    const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where property_id = $1 order by created_at desc;`, [propertyId]);
+    if (filter?.periodo !== undefined) {
+      params.push(filter.periodo);
+      conditions.push(`exists (select 1 from jsonb_array_elements(diot->'proveedoresReportables') as p where p->>'periodo' = $${params.length})`);
+    }
+    const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where ${conditions.join(" and ")} order by created_at desc;`, params);
     return rows.map(mapInvoice);
   }
 
