@@ -15,7 +15,7 @@ proveedor" — la selección es por sesión, no por request.
 | Proveedor | Estado | Superficie servidor | Superficie cliente |
 | --- | --- | --- | --- |
 | `elevenlabs` (`ElevenLabsVoiceProvider`) | **Real, en producción** | Sí | Sí |
-| `gptlive` (`GptLiveVoiceProvider`) | **Inerte** — sin API pública | Falla cerrado | Falla cerrado |
+| `gptlive` (`GptLiveVoiceProvider`) | **Real, activado 12-sep-2026** | Sí (con límites documentados abajo) | Sí (WebRTC) |
 
 ---
 
@@ -122,105 +122,202 @@ Si llamas `startSession` sin tenerlo instalado, el `import()` dinámico falla
 con el error normal de "módulo no encontrado" de Node/el bundler — no un
 fallo silencioso.
 
+---
+
+## Usar GPT-Live-1 hoy
+
+`GptLiveVoiceProvider` es una implementación **real** contra la API pública
+de OpenAI, lanzada el 10-sep-2026 y activada en este paquete el 12-sep-2026.
+GPT-Live-1 es **full-duplex** (escucha y habla al mismo tiempo, a diferencia
+de ElevenLabs, que es por turnos) y **delega razonamiento/tool-calling a un
+modelo backend separado** — ver la sección del bridge más abajo.
+
+### 1. Modo servidor — el único que toca `OPENAI_API_KEY`
+
+```ts
+import { GptLiveVoiceProvider } from '@atiende/voice-gateway';
+
+const provider = new GptLiveVoiceProvider({
+  mode: 'server',
+  apiKeyProvider: async () => {
+    // Mismo secreto de Vault que ya usarías para OPENAI_API_KEY del
+    // LlmGateway de texto (ver decisión de scope de la key más abajo).
+    const { data, error } = await supabase.rpc('get_secret', { secret_name: 'OPENAI_API_KEY' });
+    if (error) throw error;
+    return data as string;
+  },
+});
+
+// Crea un ephemeral client secret real (POST /v1/realtime/client_secrets)
+// para que el navegador abra la sesión WebRTC. NO es una URL — ver nota en
+// el código fuente (`gptlive-provider.ts`) sobre por qué se reutiliza el
+// campo `url` del contrato compartido para transportar este secreto.
+const { url: clientSecret, expiresAt } = await provider.getSignedUrl(tenant);
+
+// Catálogo FIJO de voces multilingües (no hay endpoint de catálogo dinámico
+// ni filtro real por idioma en la API — `languageFilter` se ignora a propósito).
+const voces = await provider.listVoices('es');
+```
+
+Para desarrollo local / scripts:
+
+```ts
+apiKeyProvider: async () => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error('falta OPENAI_API_KEY');
+  return key;
+},
+```
+
+**Variable de entorno:** `OPENAI_API_KEY` — **la misma** que ya usa
+`@atiende/agent-core` (`LlmGateway`) para el proveedor OpenAI de texto (ver
+`apps/api/src/env.ts`). **Decisión de scope tomada y verificada, no
+inventada**: la documentación real de OpenAI (`developers.openai.com/api/docs/guides/realtime`,
+`.../guides/live`, `.../api/reference/.../client_secrets`) no menciona un
+scope/permiso de API key separado para Realtime/Live frente al resto de la
+API — crear un ephemeral client secret es una llamada de servidor estándar
+con `Authorization: Bearer <API key de proyecto>`. Por eso **no se introduce
+una env var nueva** (`OPENAI_VOICE_API_KEY` o similar) — habría sido
+inventar una distinción que la documentación no respalda. Si OpenAI publica
+un scope dedicado en el futuro, el único punto de cambio es este
+`apiKeyProvider`.
+
+### 2. Modo cliente (navegador) — WebRTC real, sin key
+
+```ts
+import { GptLiveVoiceProvider } from '@atiende/voice-gateway';
+
+const provider = new GptLiveVoiceProvider({
+  mode: 'client',
+  resolveSignedUrl: async (tenant) => {
+    const { data, error } = await supabase.functions.invoke('gptlive-config', {
+      body: { action: 'signed_url', tenant },
+    });
+    if (error) throw error;
+    return { url: data.client_secret };
+  },
+});
+
+const handle = await provider.startSession({
+  tenant,
+  onConnect: (info) => console.log('conectado', info.conversationId),
+  onTranscript: (event) => console.log(event.role, event.text),
+  onError: (msg) => console.error('voz:', msg),
+  onDisconnect: () => console.log('sesión terminada'),
+});
+
+await handle.endSession();
+```
+
+`startSession` negocia WebRTC real: crea un `RTCPeerConnection`, agrega el
+micrófono (`navigator.mediaDevices.getUserMedia`), abre un data channel de
+eventos, arma el SDP offer/answer contra `POST /v1/realtime/calls` con el
+client secret efímero como `Authorization: Bearer`, y traduce el evento
+`session.started` (y cualquier frame con `role`+texto reconocible) del data
+channel a `onConnect`/`onTranscript`. A diferencia de ElevenLabs, **no hay un
+SDK propietario de navegador confirmado** para GPT-Live-1 — por eso esta
+implementación usa solo APIs web estándar (`RTCPeerConnection`,
+`getUserMedia`), inyectables como `createPeerConnection`/`requestMicrophone`
+para pruebas (mismo patrón que `fetchImpl` en el resto del monorepo). Correr
+`startSession` en Node sin navegador falla explícito con
+`VoiceProviderConfigError` — nunca simula audio.
+
+### Presupuesto — facturación por SEGUNDO, no por tokens
+
+GPT-Live-1 cobra **$0.05/min de la capa de voz, por segundo** — muy distinto
+al `LlmCostEstimator` de `agent-core/gateway/budget.ts` (que estima en
+tokens). `voice-gateway` **no tiene** (todavía) su propio store de
+presupuesto tipo reserva-antes-de-gastar — es independiente del de
+`agent-core`. Este paquete exporta `estimateGptLiveCostUsd(durationSeconds)`
+como estimador puro, listo para conectarse a un ledger real el día que uno
+exista para voz; no se fabrica aquí infraestructura de reserva que este
+paquete no tiene hoy.
+
+### Límites conocidos — fail-closed deliberado (no inventado)
+
+Dos superficies quedan **fail-closed explícito**, con un mensaje que dice
+por qué, porque la búsqueda de documentación real (12-sep-2026) no fue
+concluyente:
+
+1. **`getAgentConfig` / `updateAgentConfig`** — no se encontró un recurso
+   persistente de "agente"/"assistant" con GET/PATCH por id para GPT-Live-1
+   (a diferencia del `agent_id` de ElevenLabs Conversational AI). La config
+   real (voz, instrucciones, temperatura) se manda **por sesión**, al pedir
+   el ephemeral client secret — no se lee/actualiza contra un id guardado
+   del lado de OpenAI. Ambos métodos lanzan `VoiceProviderConfigError`
+   explícito en vez de inventar un endpoint.
+2. **Telefonía SIP nativa** (`GptLiveVoiceProvider.assertNativeSipTelephonySupported()`,
+   extensión fuera de la interfaz `VoiceProvider` compartida) — OpenAI
+   documenta integraciones de **socio** (LiveKit, Twilio, Telnyx,
+   Daily/Pipecat) para telefonía con GPT-Live-1
+   (`/api/docs/guides/live-partner-integrations`), pero la búsqueda no pudo
+   confirmar un SIP trunk **nativo y directo** de OpenAI para `gpt-live-1`
+   específicamente (análogo a `realtime-sip` de los modelos `gpt-realtime`
+   anteriores) sin pasar por el media server de un socio. Este método
+   siempre lanza `VoiceProviderConfigError` — una vertical que necesite
+   telefonía real hoy debe integrar uno de esos partners directamente,
+   fuera de este paquete. `tests/gptlive-provider.spec.ts` confirma este
+   fail-closed explícitamente.
+
+### Fuentes reales consultadas (12-sep-2026)
+
+- `https://developers.openai.com/api/docs/guides/live` — flujo general de GPT-Live
+- `https://developers.openai.com/api/docs/guides/realtime` — ephemeral client secrets, header `OpenAI-Safety-Identifier`
+- `https://developers.openai.com/api/docs/models/gpt-live-1` — model id, precio, delegación a backend
+- `https://developers.openai.com/api/reference/resources/realtime/subresources/client_secrets/methods/create` — shape real de `POST /v1/realtime/client_secrets`
+- `https://developers.openai.com/api/docs/guides/live-partner-integrations` — integraciones de socio para telefonía
+- Hilos de la comunidad de desarrolladores de OpenAI + LiteLLM/webrtchacks (sep-2026) — intercambio SDP real vía `POST /v1/realtime/calls`
+
 ### Selección por config
 
 ```ts
 import { selectVoiceProvider, readVoiceProviderFromEnv } from '@atiende/voice-gateway';
 
 const provider = selectVoiceProvider(readVoiceProviderFromEnv(), {
-  elevenlabs: { mode: 'server', apiKeyProvider: async () => await leerDeVault() },
+  elevenlabs: { mode: 'server', apiKeyProvider: async () => await leerDeVault('ELEVENLABS_API_KEY') },
+  gptlive: { mode: 'server', apiKeyProvider: async () => await leerDeVault('OPENAI_API_KEY') },
 });
 ```
 
 `VOICE_PROVIDER` no definida (o `"elevenlabs"`) construye
-`ElevenLabsVoiceProvider`. `VOICE_PROVIDER=gptlive` hace que la selección
-misma **lance de inmediato** `VoiceProviderNotActivatableError` — nunca cae
-en silencio a ElevenLabs cuando alguien pidió GPT-Live-1 explícito.
+`ElevenLabsVoiceProvider`. `VOICE_PROVIDER=gptlive` construye
+`GptLiveVoiceProvider` real — ya no lanza `VoiceProviderNotActivatableError`
+por selección; si falta `opts.gptlive`, lanza `VoiceProviderConfigError`
+explícito (nunca adivina la config).
 
----
+## Activar el bridge de tool-calling (`bridge/gptlive-agent-bridge.ts`)
 
-## Por qué `GptLiveVoiceProvider` está inerte
+Activo desde el 12-sep-2026 — conecta las decisiones de tool-calling que
+GPT-Live-1 delega a un backend con el `LlmGateway` real de
+`@atiende/agent-core`:
 
-GPT-Live-1 (OpenAI) se lanzó el **10 de septiembre de 2026** — el día antes
-de que este paquete se construyera. Verificado en ese momento: **no tiene
-API pública todavía**, solo un formulario de lista de espera. OpenAI dice
-"semanas, no meses", no una fecha.
+```ts
+import { createGptLiveAgentBridge, VOICE_TOOL_PLANNER_ROLE } from '@atiende/voice-gateway/bridge';
+import { LlmGateway } from '@atiende/agent-core/gateway';
 
-Construir una implementación real hoy sería inventar un contrato contra una
-API que no existe. En vez de eso, `GptLiveVoiceProvider` implementa
-`VoiceProvider` completo, pero **cada método falla cerrado** con
-`VoiceProviderNotActivatableError` — nunca simula una respuesta, nunca
-degrada en silencio a ElevenLabs. El test
-`tests/gptlive-provider.spec.ts` confirma explícitamente que los 7 métodos
-(los 6 de `VoiceProvider` + `assertAvailable()`) fallan, cada uno con un
-mensaje que nombra el método, para que un uso accidental en producción sea
-inmediato y diagnosticable, no un silencio confuso.
+const gateway = new LlmGateway({ breaker, budgetStore, budgetLimits });
+// Igual que cualquier otro rol de LlmGateway: registra la escalera de
+// proveedores de TEXTO que atienden las decisiones de voz.
+gateway.registerLadder(VOICE_TOOL_PLANNER_ROLE, [openAiProvider, anthropicProvider]);
 
-`selectVoiceProvider('gptlive', …)` llama `assertAvailable()` en el momento
-de la **selección** (no solo en el primer uso) — mismo principio que
-`ResidencyGateBlockedError` en `agent-core/gateway/residency.ts`: un
-proveedor pedido explícito que no puede activarse debe fallar ahí mismo.
+const bridge = createGptLiveAgentBridge(gateway);
 
-## Activar GPT-Live-1 el día que haya API pública
+// Desde el orquestador de la vertical, con la transcripción acumulada de
+// `onTranscript` de `startSession`:
+const { spokenResponse } = await bridge.handleToolCall({
+  conversationId: handle.conversationId,
+  tenantId: tenant.organizationId,
+  transcriptSoFar: transcripcionAcumulada,
+});
+```
 
-Cuando OpenAI publique la API real, esto es lo que hay que llenar — **sin
-rediseñar nada del contrato compartido**:
-
-1. **Confirmar el shape real contra la documentación oficial** antes de
-   escribir una sola línea — no adivinar campos (ver la nota en
-   `src/bridge/gptlive-agent-bridge.ts` sobre `GptLiveToolCallEvent`, que
-   hoy es un placeholder deliberadamente mínimo).
-
-2. **`src/providers/gptlive-provider.ts`** — llenar cada método (ya no
-   llamar `this.fail(...)`):
-   - `getSignedUrl` — probablemente un endpoint REST que firma una sesión
-     realtime, análogo a `get-signed-url` de ElevenLabs.
-   - `listVoices` — catálogo de voces/idiomas de GPT-Live-1.
-   - `getAgentConfig` / `updateAgentConfig` — lectura/escritura de la
-     config del "assistant" de voz (nombre exacto de la entidad TBD).
-   - `startSession` / `endSession` — el SDK realtime de GPT-Live-1 es
-     **full-duplex** (a diferencia de ElevenLabs, por turnos). El contrato
-     de `VoiceProvider` NO cambia — `VoiceTranscriptEvent` ya modela
-     `role: 'user' | 'agent'` de forma agnóstica al proveedor — lo que
-     cambia es la implementación interna (streaming continuo, no eventos
-     por turno).
-   - Quitar `assertAvailable()` del bloqueo duro en `router.ts` una vez
-     que el proveedor sea real (o dejarlo como health-check si la API
-     expone uno).
-
-3. **`src/bridge/gptlive-agent-bridge.ts`** — llenar `handleToolCall`:
-   traducir el evento de tool-calling de GPT-Live-1 a una
-   `LlmCompletionRequest` de `@atiende/agent-core/gateway` y llamar
-   `LlmGateway.complete({ tenantId, runId, lane: 'interactive', role: 'voice-tool-planner', request })`
-   — mismo gateway, mismo circuit breaker, mismo presupuesto que ya usa el
-   resto del monorepo para texto. Cero infraestructura nueva: el diseño ya
-   referencia el tipo real `LlmGateway`, no un stub.
-
-4. **Variables de entorno que hará falta agregar** (nombres exactos TBD
-   hasta que exista la documentación oficial — no se inventan aquí; seguir
-   el mismo patrón de `apiKeyProvider` async de `ElevenLabsVoiceProvider`,
-   nunca una key hardcodeada):
-   - Una API key de OpenAI con scope para GPT-Live-1 (probablemente
-     reutiliza `OPENAI_API_KEY` si el endpoint cuelga de la misma cuenta
-     que el resto de OpenAI, o una key separada si GPT-Live-1 tiene su
-     propio scope — confirmar contra la documentación real).
-   - Si telefonía entra vía Twilio Agent Connect (mencionado en el
-     lanzamiento): credenciales de Twilio, ya probablemente presentes en
-     el monorepo si algún dominio usa Twilio para SMS/voz.
-   - Guardarlas en Supabase Vault, igual que `ELEVENLABS_API_KEY` — nunca
-     en una env var estática de una Edge Function ni en el navegador.
-
-5. **Presupuesto/costo** — GPT-Live-1 se factura a $0.05/min **por
-   segundo**, no por tokens. Si este monorepo conecta voz a
-   `agent-core/gateway/budget.ts` (reserva-antes-de-gastar), el
-   cost-estimator de GPT-Live-1 debe estimar en segundos de audio, a
-   diferencia del estimador de tokens que ya existe para LLM de texto.
-
-6. **Correr `tests/gptlive-provider.spec.ts`** — al llenar los métodos,
-   ese archivo deja de tener sentido tal cual (hoy prueba que TODO falla);
-   reemplazarlo por tests reales contra mocks de la API real de GPT-Live-1,
-   siguiendo el mismo patrón que `tests/elevenlabs-provider.spec.ts`
-   (inyección de `fetchImpl`, sin tocar la red real).
+`gateway.registerLadder` y la construcción del `LlmGateway` son
+responsabilidad de la app (igual que cualquier otro rol) — el bridge no
+impone qué proveedores de texto usa cada vertical. El payload EXACTO que
+GPT-Live-1 dispararía por un webhook/evento de tool-calling nativo (si
+expone uno) no se pudo confirmar contra documentación real hoy — este
+bridge asume que el orquestador de la vertical arma `transcriptSoFar` desde
+el contrato ya real de `onTranscript`, no un webhook inventado.
 
 ## Estructura
 
@@ -234,11 +331,12 @@ packages/voice-gateway/
     providers/
       elevenlabs-provider.ts      → ElevenLabsVoiceProvider (real)
       elevenlabs-client.d.ts      → shim de tipos para @elevenlabs/client (peer opcional)
-      gptlive-provider.ts         → GptLiveVoiceProvider (inerte, falla cerrado)
+      gptlive-provider.ts         → GptLiveVoiceProvider (real, activado 12-sep-2026)
     bridge/
-      gptlive-agent-bridge.ts     → conexión diseñada (no implementada) hacia @atiende/agent-core
+      gptlive-agent-bridge.ts     → conexión real hacia @atiende/agent-core (LlmGateway)
   tests/
     elevenlabs-provider.spec.ts   → mocks de la API HTTP real de ElevenLabs
-    gptlive-provider.spec.ts      → confirma que los 7 métodos fallan cerrado
-    router.spec.ts                → selección por config + rechazo explícito de gptlive
+    gptlive-provider.spec.ts      → mocks de la API HTTP real de OpenAI + WebRTC fake
+    gptlive-agent-bridge.spec.ts  → LlmGateway real + FakeLlmProvider determinista
+    router.spec.ts                → selección por config, ambos proveedores reales
 ```
