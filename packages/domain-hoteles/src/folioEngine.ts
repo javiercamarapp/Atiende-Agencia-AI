@@ -6,6 +6,7 @@
 // (mismo principio que taxes.ts).
 import { roundCurrency } from "./money.ts";
 import { applyTaxes, type TaxConfig } from "./taxes.ts";
+import { nightsBetween } from "./quote.ts";
 
 export const CHARGE_CONCEPTS = [
   "hospedaje",
@@ -61,6 +62,57 @@ export function computeChargeAmounts(input: ChargeCalcInput): ChargeCalcResult {
     taxAmount: roundCurrency(breakdown.ivaAmount + breakdown.ishAmount),
     totalAmount: breakdown.totalAmount,
   };
+}
+
+// ---------------------------------------------------------------------------
+// No-show (H02, Fase 3 §1/§3.4): penalización dedicada, DISTINTA de un cargo real de
+// hospedaje. El origen la calcula con una función separada de `computeChargeAmounts`
+// porque grava IVA (SÍ es una contraprestación — el hotel bloqueó el inventario) pero
+// EXCLUYE ISH ("no hubo hospedaje real", el impuesto sobre hospedaje grava la
+// ocupación efectiva de la habitación, que aquí nunca ocurrió). Decisión §3.4 resuelta:
+// se porta esta función dedicada (opción 1 del diseño) en vez de reusar
+// `computeChargeAmounts({concept:'hospedaje', ...})`, que cobraría ISH de más — un bug
+// de fidelidad fiscal, no cosmético.
+export interface NoShowPenaltyCalcInput {
+  /** Monto neto de la penalización (ya calculado desde `evaluateNoShow`/la política de
+   *  la property — nunca inventado aquí). */
+  netAmount: number;
+  taxConfig: TaxConfig;
+}
+
+/** Idéntica forma de retorno que `computeChargeAmounts` (mismo contrato que
+ *  `insertCharge` espera), pero la tasa de ISH efectiva SIEMPRE es 0, sin importar el
+ *  concepto con el que se postee el cargo resultante. */
+export function computeNoShowPenaltyAmounts(input: NoShowPenaltyCalcInput): ChargeCalcResult {
+  if (input.netAmount < 0) {
+    throw new RangeError("netAmount de una penalización de no-show no puede ser negativo.");
+  }
+  const effectiveTaxConfig = { ivaRate: input.taxConfig.ivaRate, ishRate: 0 };
+  const breakdown = applyTaxes(input.netAmount, effectiveTaxConfig);
+  return {
+    netAmount: breakdown.netAmount,
+    taxAmount: roundCurrency(breakdown.ivaAmount),
+    totalAmount: breakdown.totalAmount,
+  };
+}
+
+export interface NoShowReservationInput {
+  readonly totalAmount: number;
+  readonly checkInDate: string;
+  readonly checkOutDate: string;
+}
+
+/** Base (neto) de la penalización de no-show: una noche promedio de la reserva
+ *  (`totalAmount / número de noches`) — política simple, determinista y auditable.
+ *  El origen deja esto configurable por property; aquí se fija un único criterio
+ *  explícito (nunca inventado ad hoc en la ruta HTTP) hasta que una fase futura
+ *  necesite una política distinta por property. */
+export function evaluateNoShowPenaltyBase(input: NoShowReservationInput): number {
+  const nights = nightsBetween(input.checkInDate, input.checkOutDate).length;
+  if (nights < 1) {
+    throw new RangeError("evaluateNoShowPenaltyBase: la reserva debe tener al menos 1 noche.");
+  }
+  return roundCurrency(input.totalAmount / nights);
 }
 
 // ---------------------------------------------------------------------------

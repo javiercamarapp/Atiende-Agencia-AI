@@ -29,4 +29,14 @@ export const Errors = {
     new ApiError(409, "pricing_solapado", `Se traslapa con "${nombreOtro}" (${rango.inicio}..${rango.fin}).`),
   rentasPricingMonedaInconsistente: (monedaExistente: string) =>
     new ApiError(400, "pricing_moneda_inconsistente", `La unidad ya tiene tarifas en "${monedaExistente}"; no se mezclan monedas por unidad.`),
+  // ---- hoteles (máquina de estados de reservas, ver diseño Fase 3 §5) ----
+  reservaTransicionInvalida: (from: string, to: string) =>
+    new ApiError(409, "transicion_invalida", `"${from}" -> "${to}" no es una transición válida de una reserva.`),
+  reservaTransicionNoPermitidaPorRuta: (to: string) =>
+    new ApiError(400, "transicion_no_permitida_por_ruta", `"${to}" tiene efectos secundarios propios (liberar inventario/penalización) y solo se ejecuta desde su ruta dedicada (/cancelar o el job de no-show), nunca desde la transición genérica.`),
+  reservaNoCancelable: (status: string) =>
+    new ApiError(409, "reserva_no_cancelable", `La reserva está en estado "${status}": ya no admite cancelación (después de check-in solo se sigue el flujo hasta check-out/cierre).`),
+  reservaConflictoDeEstado: () =>
+    new ApiError(409, "reserva_conflicto_estado", "La reserva ya cambió de estado (reintento/carrera); vuelve a consultarla antes de reintentar."),
+  reservaSinDisponibilidad: (message: string) => new ApiError(409, "sin_disponibilidad", message),
 };

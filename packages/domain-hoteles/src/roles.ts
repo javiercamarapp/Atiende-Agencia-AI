@@ -27,6 +27,13 @@ export function isHotelRole(value: string): value is HotelRole {
 export const MONEY_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations", "fnb", "accountant"];
 export const ADMIN_ROLES: readonly HotelRole[] = ["owner", "gm"];
 
+// Fase 3 (H02) — quién puede crear/leer una reserva y ejecutar transiciones genéricas
+// del ciclo de vida (check-in/en_estancia/check-out/cerrada) y cancelar. Distinto de
+// MONEY_ROLES (housekeeping/maintenance nunca aparecen aquí tampoco, pero `fnb`/
+// `accountant` sí tienen acceso a dinero sin poder mover una reserva) — la lista fina
+// por transición real vive en reservationStateMachine.ts::rolesAllowedForTransition.
+export const MANAGE_RESERVATIONS_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
+
 // Quién puede TOMAR un pedido de F&B (recepción suele tomarlo por teléfono/WhatsApp
 // hasta que exista el canal real de REQ-AB-002; F&B y dirección también pueden).
 export const TOMAR_PEDIDO_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "fnb"];
