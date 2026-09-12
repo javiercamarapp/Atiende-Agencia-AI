@@ -321,6 +321,35 @@ export interface ApprovedRateRecord {
   readonly validUntil: string | null;
 }
 
+// ---- Fase 4: CompanyDataResolver real (capacidades/experiencia/firmantes) ----
+// Puerto de licitaciones.company_capability/company_experience/company_signer
+// (migración 009) -- mismo patrón que CompanyDocumentRecord/ApprovedRateRecord
+// arriba. Nombrado "...ItemRecord"/"...RegistryRecord" para no chocar con las
+// interfaces homónimas de dominio en company-data.ts (CompanyCapability,
+// CompanyExperienceRecord, CompanySigner), que son la forma que consume
+// TechnicalProposalBuilder, no la forma de fila de la tabla.
+export interface CompanyCapabilityRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly evidenceDocId: string | null;
+  readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
+}
+
+export interface CompanyExperienceItemRecord {
+  readonly id: string;
+  readonly description: string;
+  readonly evidenceDocId: string;
+  readonly approvalStatus: "aprobado" | "pendiente_aprobacion" | "rechazado";
+}
+
+export interface CompanySignerRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly role: string;
+  readonly authorized: boolean;
+}
+
 export interface PackageManifestRecord {
   readonly id: string;
   readonly status: "draft" | "ready";

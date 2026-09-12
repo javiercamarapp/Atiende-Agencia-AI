@@ -152,3 +152,92 @@ describe("TechnicalProposalBuilder -- solo redacta con datos APROBADOS, trazable
     expect(result.sections).toEqual([]);
   });
 });
+
+// Fase 4 -- getCapabilities/getExperience/getSigners dejaron de ser un stub
+// fijo ([]) y ahora resuelven de verdad contra los datos sembrados en el
+// resolver (ver company-data.ts). Antes de este cambio, los 3 tests de abajo
+// habrían fallado con "missing" sin importar qué se sembrara.
+describe("TechnicalProposalBuilder -- capacidad/experiencia/firmante (Fase 4, ya no stub)", () => {
+  it("una capacidad APROBADA produce un ProposalStatement trazable", () => {
+    const resolver = new InMemoryCompanyDataResolver({
+      capabilities: [{ id: "cap-1", companyId: COMPANY_ID, name: "mantenimiento_vial", description: "Mantenimiento de vialidades urbanas", approvalStatus: "aprobado" }],
+    });
+    const builder = new TechnicalProposalBuilder(new CompanyDataService(resolver));
+    const requirement = baseRequirement({ requiredEvidence: ["mantenimiento_vial"] });
+    const mapping: RequirementFulfillmentMapping = { requirementId: requirement.id, kind: "capability", refKey: "mantenimiento_vial", statementText: () => "Se acredita la capacidad de mantenimiento vial." };
+    const result = builder.build(COMPANY_ID, [requirement], [mapping], AS_OF);
+
+    expect(result.blockers).toEqual([]);
+    expect(result.sections[0]!.statements[0]!.sourceRef).toMatchObject({ refId: "cap-1" });
+  });
+
+  it("una capacidad NO aprobada produce SectionBlocker, nunca se redacta igual", () => {
+    const resolver = new InMemoryCompanyDataResolver({
+      capabilities: [{ id: "cap-1", companyId: COMPANY_ID, name: "mantenimiento_vial", description: "Mantenimiento de vialidades urbanas", approvalStatus: "pendiente_aprobacion" }],
+    });
+    const builder = new TechnicalProposalBuilder(new CompanyDataService(resolver));
+    const requirement = baseRequirement({ requiredEvidence: ["mantenimiento_vial"] });
+    const mapping: RequirementFulfillmentMapping = { requirementId: requirement.id, kind: "capability", refKey: "mantenimiento_vial", statementText: () => "..." };
+    const result = builder.build(COMPANY_ID, [requirement], [mapping], AS_OF);
+
+    expect(result.sections[0]!.statements).toEqual([]);
+    expect(result.sections[0]!.blockers[0]!.status).toBe("blocked");
+  });
+
+  it("experiencia APROBADA con evidencia documental real produce un ProposalStatement trazable", () => {
+    const resolver = new InMemoryCompanyDataResolver({
+      documents: [{ id: "doc-exp-1", companyId: COMPANY_ID, type: "acta_entrega_recepcion", label: "Acta entrega-recepción Proyecto X", issuedAt: "2023-01-01T00:00:00-06:00", expiresAt: null, approvalStatus: "aprobado" }],
+      experience: [{ id: "exp-1", companyId: COMPANY_ID, description: "3 años de mantenimiento vial en el municipio de Mérida", evidenceDocId: "doc-exp-1", approvalStatus: "aprobado" }],
+    });
+    const builder = new TechnicalProposalBuilder(new CompanyDataService(resolver));
+    const requirement = baseRequirement({ requiredEvidence: ["exp-1"] });
+    const mapping: RequirementFulfillmentMapping = { requirementId: requirement.id, kind: "experience", refKey: "exp-1", statementText: () => "Se acredita experiencia previa en proyectos similares." };
+    const result = builder.build(COMPANY_ID, [requirement], [mapping], AS_OF);
+
+    expect(result.blockers).toEqual([]);
+    expect(result.sections[0]!.statements[0]!.sourceRef).toMatchObject({ refId: "doc-exp-1" }); // sourceRef apunta al documento de evidencia, no al id de la experiencia -- ver resolveExperience.
+  });
+
+  it("experiencia cuyo evidenceDocId no corresponde a ningún documento real bloquea explícitamente -- nunca se da por probada sin evidencia verificable", () => {
+    const resolver = new InMemoryCompanyDataResolver({
+      documents: [],
+      experience: [{ id: "exp-1", companyId: COMPANY_ID, description: "3 años de mantenimiento vial", evidenceDocId: "doc-inexistente", approvalStatus: "aprobado" }],
+    });
+    const builder = new TechnicalProposalBuilder(new CompanyDataService(resolver));
+    const requirement = baseRequirement({ requiredEvidence: ["exp-1"] });
+    const mapping: RequirementFulfillmentMapping = { requirementId: requirement.id, kind: "experience", refKey: "exp-1", statementText: () => "..." };
+    const result = builder.build(COMPANY_ID, [requirement], [mapping], AS_OF);
+
+    expect(result.sections[0]!.statements).toEqual([]);
+    expect(result.sections[0]!.blockers[0]!.status).toBe("blocked");
+    expect(result.sections[0]!.blockers[0]!.detail).toContain("no corresponde a ningún documento existente");
+  });
+
+  it("un firmante AUTORIZADO produce un ProposalStatement trazable", () => {
+    const resolver = new InMemoryCompanyDataResolver({
+      signers: [{ id: "signer-1", companyId: COMPANY_ID, name: "Juana Pérez Ruiz", role: "representante_legal", authorized: true }],
+    });
+    const builder = new TechnicalProposalBuilder(new CompanyDataService(resolver));
+    const requirement = baseRequirement({ requiredEvidence: ["representante_legal"] });
+    const mapping: RequirementFulfillmentMapping = { requirementId: requirement.id, kind: "signer", refKey: "representante_legal", statementText: () => "Firma el representante legal autorizado." };
+    const result = builder.build(COMPANY_ID, [requirement], [mapping], AS_OF);
+
+    expect(result.blockers).toEqual([]);
+    expect(result.sections[0]!.statements[0]!.sourceRef).toMatchObject({ refId: "signer-1" });
+  });
+
+  it("un firmante NO autorizado bloquea explícitamente, nunca redacta como si estuviera autorizado", () => {
+    const resolver = new InMemoryCompanyDataResolver({
+      signers: [{ id: "signer-1", companyId: COMPANY_ID, name: "Carlos Ibarra Solís", role: "representante_legal", authorized: false }],
+    });
+    const builder = new TechnicalProposalBuilder(new CompanyDataService(resolver));
+    const requirement = baseRequirement({ requiredEvidence: ["representante_legal"] });
+    const mapping: RequirementFulfillmentMapping = { requirementId: requirement.id, kind: "signer", refKey: "representante_legal", statementText: () => "..." };
+    const result = builder.build(COMPANY_ID, [requirement], [mapping], AS_OF);
+
+    expect(result.sections[0]!.statements).toEqual([]);
+    expect(result.sections[0]!.blockers[0]!.status).toBe("blocked");
+    expect(result.sections[0]!.blockers[0]!.field).toBe("firmante:representante_legal");
+    expect(result.sections[0]!.blockers[0]!.detail).toContain("no está autorizado");
+  });
+});

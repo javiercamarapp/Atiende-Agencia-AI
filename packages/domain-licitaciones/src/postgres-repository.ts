@@ -22,6 +22,9 @@ import { buildGoNoGoDecision } from "./go-no-go.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
+  CompanyCapabilityRecord,
+  CompanyExperienceItemRecord,
+  CompanySignerRecord,
   ComplianceItemRecord,
   GoNoGoDecisionRecord,
   MatchingProfileRecord,
@@ -392,6 +395,30 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [organizationId],
     );
     return rows.map((r) => ({ id: r.id, type: r.document_type, label: r.label, expiresAt: r.expires_at, approvalStatus: r.approval_status }));
+  }
+
+  async listCompanyCapabilities(organizationId: string): Promise<readonly CompanyCapabilityRecord[]> {
+    const { rows } = await this.db.query<{ id: string; name: string; description: string; evidence_doc_id: string | null; approval_status: CompanyCapabilityRecord["approvalStatus"] }>(
+      `select id, name, description, evidence_doc_id, approval_status from licitaciones.company_capability where organization_id = $1;`,
+      [organizationId],
+    );
+    return rows.map((r) => ({ id: r.id, name: r.name, description: r.description, evidenceDocId: r.evidence_doc_id, approvalStatus: r.approval_status }));
+  }
+
+  async listCompanyExperience(organizationId: string): Promise<readonly CompanyExperienceItemRecord[]> {
+    const { rows } = await this.db.query<{ id: string; description: string; evidence_doc_id: string; approval_status: CompanyExperienceItemRecord["approvalStatus"] }>(
+      `select id, description, evidence_doc_id, approval_status from licitaciones.company_experience where organization_id = $1;`,
+      [organizationId],
+    );
+    return rows.map((r) => ({ id: r.id, description: r.description, evidenceDocId: r.evidence_doc_id, approvalStatus: r.approval_status }));
+  }
+
+  async listCompanySigners(organizationId: string): Promise<readonly CompanySignerRecord[]> {
+    const { rows } = await this.db.query<{ id: string; name: string; role: string; authorized: boolean }>(
+      `select id, name, role, authorized from licitaciones.company_signer where organization_id = $1;`,
+      [organizationId],
+    );
+    return rows.map((r) => ({ id: r.id, name: r.name, role: r.role, authorized: r.authorized }));
   }
 
   async listApprovedRates(organizationId: string, asOfIso: string): Promise<readonly ApprovedRateRecord[]> {
