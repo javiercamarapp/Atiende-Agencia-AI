@@ -40,6 +40,70 @@ export interface ConversationMessage {
   readonly content: string;
 }
 
+// ---- KPIs de admin (Fase 3, ver diseño §2) ----
+
+/** Un tramo de fecha [start, end) — mismo shape que usa kpis.ts para pedir agregados
+ * por tramo (tendencia) o por ventana única (periodo actual/anterior de comparación),
+ * en una sola llamada al repositorio (ver comentario en kpis.ts sobre por qué se piden
+ * juntos: evita N round-trips, mismo patrón que `orders_bucketed_stats` del origen). */
+export interface KpiDateRange {
+  readonly start: Date;
+  readonly end: Date;
+}
+
+export interface SalesBucketRow {
+  readonly revenue: number;
+  readonly orderCount: number;
+  /** Clientes ÚNICOS por `customer_name` dentro del tramo — mismo criterio (no
+   * `customer_id`) que `orders_bucketed_stats` del origen, preservado literal porque
+   * pedidos sin cliente vinculado (customer_id null) siguen contando por nombre. */
+  readonly customerCount: number;
+}
+
+export interface ChannelStatsRow {
+  readonly totalOrders: number;
+  readonly totalRevenue: number;
+  readonly voice: { readonly orders: number; readonly completed: number; readonly cancelled: number; readonly revenue: number };
+  readonly whatsapp: { readonly orders: number; readonly completed: number; readonly cancelled: number; readonly revenue: number };
+}
+
+export interface WhatsAppConversationStatsRow {
+  readonly total: number;
+  readonly withOrder: number;
+  /** 0 cuando `total` es 0 (mismo `coalesce(avg(...), 0)` que el origen — cero
+   * conversaciones es un cero real, no un "sin datos"). */
+  readonly averageMessages: number;
+}
+
+export interface TopCustomerRow {
+  readonly id: string;
+  readonly name: string | null;
+  readonly phone: string;
+  readonly orderCount: number;
+}
+
+export interface CustomerOverviewRow {
+  readonly totalCustomers: number;
+  /** null cuando la organización no tiene NINGÚN pedido todavía — nunca un $0
+   * fingido (ver diseño §2: "cualquier métrica no calculable responde null"). */
+  readonly averageOrderValue: number | null;
+  readonly customersWithOrders: number;
+  readonly recurringCustomers: number;
+  readonly topCustomer: TopCustomerRow | null;
+  readonly avgDaysSinceLastOrder: number | null;
+}
+
+export type TierDistributionMetric = "gasto" | "frecuencia" | "sin_datos";
+
+export interface TierDistributionRow {
+  readonly metric: TierDistributionMetric;
+  readonly black: number;
+  readonly platinum: number;
+  readonly gold: number;
+  readonly blue: number;
+  readonly withoutTier: number;
+}
+
 export interface RestaurantesRepository {
   findOrganizationBySlug(slug: string): Promise<{ id: string; slug: string; name: string } | null>;
   findBranch(organizationId: string, selector: { slug?: string; name?: string }): Promise<Branch | null>;
@@ -96,4 +160,30 @@ export interface RestaurantesRepository {
   ): Promise<readonly ConversationMessage[]>;
   finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void>;
   markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void>;
+
+  // ---- KPIs de admin (Fase 3 — ver diseño §2, únicas rutas de staff autenticado de
+  // este vertical hasta ahora). `propertyIds`: null = sin restricción (agrega TODA la
+  // organización — owner/admin con membership org-wide); un arreglo acota la consulta a
+  // esas properties exactas — nunca a toda la organización — para no filtrar datos de
+  // sucursales fuera del alcance real de la membership del caller (ver
+  // apps/api/src/routes/verticals/restaurantes/admin-kpis.ts, que resuelve ese
+  // alcance vía @atiende/db::CoreRepository.findMembershipsByUserId, nunca confiando en
+  // el claim del JWT). `buckets` se piden TODOS en una sola llamada (tramos de
+  // tendencia + ventana actual + ventana previa de comparación) — mismo motivo que
+  // `orders_bucketed_stats` del origen: evita N round-trips y agrega en Postgres en vez
+  // de bajar cada pedido al llamador.
+  getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]>;
+  /** `created_at` del primer pedido real de la organización (acotado al mismo alcance
+   * de properties que el resto de KPIs de ventas) — MIN(created_at) directo en
+   * Postgres, nunca bajando pedidos para calcularlo. Alimenta la granularidad
+   * adaptativa de 'historico' en buildTrendBuckets (kpis.ts) — null si la organización
+   * (o el alcance filtrado) todavía no tiene ningún pedido. */
+  getFirstOrderCreatedAt(organizationId: string, propertyIds: readonly string[] | null): Promise<Date | null>;
+  getChannelStats(organizationId: string, propertyIds: readonly string[] | null): Promise<ChannelStatsRow>;
+  getWhatsappConversationStats(organizationId: string, propertyIds: readonly string[] | null): Promise<WhatsAppConversationStatsRow>;
+  /** Sin `propertyIds`: la memoria de cliente es por-organización, nunca por-sucursal
+   * (mismo criterio que `customers`/`calc_customer_tier` — ver diseño §2, la lista de
+   * métodos del repositorio omite `propertyIds` aquí a propósito). */
+  getCustomerOverviewKpis(organizationId: string): Promise<CustomerOverviewRow>;
+  getCustomerTierDistribution(organizationId: string): Promise<TierDistributionRow>;
 }

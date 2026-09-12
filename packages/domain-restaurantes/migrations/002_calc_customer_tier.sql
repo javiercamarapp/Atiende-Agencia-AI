@@ -1,8 +1,17 @@
 -- Ported de restaurantes/supabase/migrations/20260903140000_customer_tier_percentile.sql
--- Cambia únicamente: schema `public.*` -> `restaurantes.*`, `restaurant_id` ->
--- `organization_id`. La lógica de percentil/cortes NO se rediseña — ya está resuelta
--- correctamente en el origen (mismo método "mid-rank" que ClientesSection.tsx del
--- panel admin de origen).
+-- Cambia: schema `public.*` -> `restaurantes.*`, `restaurant_id` -> `organization_id`.
+-- La lógica de percentil ("mid-rank") NO se rediseña — ya está resuelta correctamente
+-- en el origen.
+--
+-- CORTES CORREGIDOS en Fase 3 restaurantes (diseño §1.4/§5): el port original de esta
+-- función (Fase 1, commit de las 08:49am del 3-sep-2026) copió los cortes 90/75/35 de
+-- `20260903140000_customer_tier_percentile.sql`. Pero el mismo día, a las 12:51pm, el
+-- origen cambió esos cortes a 95/90/70 en `ClientesSection.tsx` (líneas 32-34: "Pedido
+-- explícito de Javier: Black = top 5% ('elite'), Platinum = top 10%, Gold = top 30%")
+-- — ese ajuste nunca se retro-portó a esta función SQL. Fase 3 pone "Distribución por
+-- tier" en un dashboard visible (ver kpis.ts/calc_customer_tier_distribution), así que
+-- se corrige aquí a 95/90/70 para que coincida con el criterio de negocio real y
+-- vigente, no con el valor viejo que el port heredó por un desfase de horas.
 create or replace function restaurantes.calc_customer_tier(p_organization_id uuid, p_customer_id uuid)
 returns jsonb
 language sql
@@ -72,9 +81,9 @@ as $$
       (
         select jsonb_build_object(
           'tier', case
-            when p.percentil >= 90 then 'BLACK'
-            when p.percentil >= 75 then 'PLATINUM'
-            when p.percentil >= 35 then 'GOLD'
+            when p.percentil >= 95 then 'BLACK'
+            when p.percentil >= 90 then 'PLATINUM'
+            when p.percentil >= 70 then 'GOLD'
             else 'BLUE'
           end,
           'percentile', round(p.percentil, 2)
