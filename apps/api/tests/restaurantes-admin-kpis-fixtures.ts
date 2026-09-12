@@ -13,11 +13,11 @@ import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@at
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import type { Order, PersistedOrderItem } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
-import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, InMemoryCitasRepository } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -129,6 +129,7 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
   const repartidorSeed = await seedStaff(organizationId, "repartidor", "repartidor", null);
   const otroOrgOwnerSeed = await seedStaff(otherOrganizationId, "owner", "owner-otro", null);
 
+  const kpiFixtureCitasRepo = new InMemoryCitasRepository();
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
@@ -138,13 +139,20 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     hotelesRepo: new InMemoryHotelesRepository(),
     hotelesPaymentsPort: new InMemoryPaymentsPort(),
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
-    citasRepo: new InMemoryCitasRepository(),
+    citasRepo: kpiFixtureCitasRepo,
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
+    // Fase 3 citas — sin credenciales de Google configuradas en este fixture de
+    // KPIs de restaurantes (no relacionado): el resolver siempre devuelve `null`.
+    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(kpiFixtureCitasRepo, null),
+    citasGoogleTokenExchange: async () => {
+      throw new Error("citasGoogleTokenExchange no está configurado en este fixture de pruebas de KPIs de restaurantes.");
+    },
     licitacionesRepo: new InMemoryLicitacionesRepository(),
     despachosRepo: new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: new InMemoryRentasRepository(),
+    rentasOwnerPortalRepo: new InMemoryRentasOwnerPortalRepository(),
   };
 
   const app = buildApp(deps);
