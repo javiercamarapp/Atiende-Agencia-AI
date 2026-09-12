@@ -12,7 +12,19 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { OrderConflictError } from "./errors.ts";
 import type { Branch, BranchSummary, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, NearestBranchMatch, Order, PersistedOrderItem } from "./types.ts";
-import type { ConversationMessage, NewOrderRecord, RestaurantesRepository, SearchableProduct } from "./repository.ts";
+import type {
+  ChannelStatsRow,
+  ConversationMessage,
+  CustomerOverviewRow,
+  KpiDateRange,
+  NewOrderRecord,
+  RestaurantesRepository,
+  SalesBucketRow,
+  SearchableProduct,
+  TierDistributionMetric,
+  TierDistributionRow,
+  WhatsAppConversationStatsRow,
+} from "./repository.ts";
 
 interface BranchRow {
   readonly property_id: string;
@@ -396,5 +408,106 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
        where message_id = $2 and organization_id = $1;`,
       [organizationId, messageId, errorClass],
     );
+  }
+
+  // ---- KPIs de admin (Fase 3 — ver migrations/006_kpi_aggregates.sql) ----
+
+  async getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]> {
+    if (buckets.length === 0) return [];
+    const { rows } = await this.db.query<{ idx: number; revenue: string; order_count: string; customer_count: string }>(
+      `select idx, revenue, order_count, customer_count
+       from restaurantes.orders_bucketed_stats($1, $2::uuid[], $3::timestamptz[], $4::timestamptz[]);`,
+      [organizationId, propertyIds ? [...propertyIds] : null, buckets.map((b) => b.start.toISOString()), buckets.map((b) => b.end.toISOString())],
+    );
+    const byIdx = new Map(rows.map((row) => [Number(row.idx), { revenue: Number(row.revenue), orderCount: Number(row.order_count), customerCount: Number(row.customer_count) }]));
+    return buckets.map((_, i) => byIdx.get(i + 1) ?? { revenue: 0, orderCount: 0, customerCount: 0 });
+  }
+
+  async getFirstOrderCreatedAt(organizationId: string, propertyIds: readonly string[] | null): Promise<Date | null> {
+    const { rows } = await this.db.query<{ min: string | null }>(
+      `select min(created_at) as min from restaurantes.orders where organization_id = $1 and ($2::uuid[] is null or property_id = any($2::uuid[]));`,
+      [organizationId, propertyIds ? [...propertyIds] : null],
+    );
+    const min = rows[0]?.min ?? null;
+    return min === null ? null : new Date(min);
+  }
+
+  async getChannelStats(organizationId: string, propertyIds: readonly string[] | null): Promise<ChannelStatsRow> {
+    const { rows } = await this.db.query<{
+      total_orders: string;
+      total_revenue: string;
+      voice_orders: string;
+      voice_completed: string;
+      voice_cancelled: string;
+      voice_revenue: string;
+      whatsapp_orders: string;
+      whatsapp_completed: string;
+      whatsapp_cancelled: string;
+      whatsapp_revenue: string;
+    }>(`select * from restaurantes.orders_channel_stats($1, $2::uuid[]);`, [organizationId, propertyIds ? [...propertyIds] : null]);
+    const row = rows[0];
+    if (!row) return { totalOrders: 0, totalRevenue: 0, voice: { orders: 0, completed: 0, cancelled: 0, revenue: 0 }, whatsapp: { orders: 0, completed: 0, cancelled: 0, revenue: 0 } };
+    return {
+      totalOrders: Number(row.total_orders),
+      totalRevenue: Number(row.total_revenue),
+      voice: { orders: Number(row.voice_orders), completed: Number(row.voice_completed), cancelled: Number(row.voice_cancelled), revenue: Number(row.voice_revenue) },
+      whatsapp: { orders: Number(row.whatsapp_orders), completed: Number(row.whatsapp_completed), cancelled: Number(row.whatsapp_cancelled), revenue: Number(row.whatsapp_revenue) },
+    };
+  }
+
+  async getWhatsappConversationStats(organizationId: string, propertyIds: readonly string[] | null): Promise<WhatsAppConversationStatsRow> {
+    const { rows } = await this.db.query<{ total: string; with_order: string; average_messages: string }>(
+      `select total, with_order, average_messages from restaurantes.whatsapp_conversation_stats($1, $2::uuid[]);`,
+      [organizationId, propertyIds ? [...propertyIds] : null],
+    );
+    const row = rows[0];
+    if (!row) return { total: 0, withOrder: 0, averageMessages: 0 };
+    return { total: Number(row.total), withOrder: Number(row.with_order), averageMessages: Number(row.average_messages) };
+  }
+
+  async getCustomerOverviewKpis(organizationId: string): Promise<CustomerOverviewRow> {
+    const { rows } = await this.db.query<{
+      total_customers: string;
+      average_order_value: string | null;
+      customers_with_orders: string;
+      recurring_customers: string;
+      top_customer_id: string | null;
+      top_customer_name: string | null;
+      top_customer_phone: string | null;
+      top_customer_order_count: number | null;
+      avg_days_since_last_order: string | null;
+    }>(`select * from restaurantes.get_customer_overview_kpis($1);`, [organizationId]);
+    const row = rows[0];
+    if (!row) {
+      return { totalCustomers: 0, averageOrderValue: null, customersWithOrders: 0, recurringCustomers: 0, topCustomer: null, avgDaysSinceLastOrder: null };
+    }
+    return {
+      totalCustomers: Number(row.total_customers),
+      averageOrderValue: row.average_order_value === null ? null : Number(row.average_order_value),
+      customersWithOrders: Number(row.customers_with_orders),
+      recurringCustomers: Number(row.recurring_customers),
+      topCustomer:
+        row.top_customer_id === null
+          ? null
+          : { id: row.top_customer_id, name: row.top_customer_name, phone: row.top_customer_phone ?? "", orderCount: row.top_customer_order_count ?? 0 },
+      avgDaysSinceLastOrder: row.avg_days_since_last_order === null ? null : Number(row.avg_days_since_last_order),
+    };
+  }
+
+  async getCustomerTierDistribution(organizationId: string): Promise<TierDistributionRow> {
+    const { rows } = await this.db.query<{ metric: TierDistributionMetric; black: string; platinum: string; gold: string; blue: string; without_tier: string }>(
+      `select metric, black, platinum, gold, blue, without_tier from restaurantes.calc_customer_tier_distribution($1);`,
+      [organizationId],
+    );
+    const row = rows[0];
+    if (!row) return { metric: "sin_datos", black: 0, platinum: 0, gold: 0, blue: 0, withoutTier: 0 };
+    return {
+      metric: row.metric,
+      black: Number(row.black),
+      platinum: Number(row.platinum),
+      gold: Number(row.gold),
+      blue: Number(row.blue),
+      withoutTier: Number(row.without_tier),
+    };
   }
 }

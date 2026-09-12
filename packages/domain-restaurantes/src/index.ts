@@ -33,7 +33,20 @@ export { tokenizeForProductSearch, matchesProductSearch, extraerPackSize, requir
 
 export { DEFAULT_COMPLEMENTS, buildComplementNotes, buildOrderQuoteFromProducts } from "./order-quote.ts";
 
-export type { RestaurantesRepository, SearchableProduct, NewOrderRecord, ConversationMessage } from "./repository.ts";
+export type {
+  RestaurantesRepository,
+  SearchableProduct,
+  NewOrderRecord,
+  ConversationMessage,
+  KpiDateRange,
+  SalesBucketRow,
+  ChannelStatsRow,
+  WhatsAppConversationStatsRow,
+  TopCustomerRow,
+  CustomerOverviewRow,
+  TierDistributionMetric,
+  TierDistributionRow,
+} from "./repository.ts";
 export { InMemoryRestaurantesRepository } from "./in-memory-repository.ts";
 export { PostgresRestaurantesRepository } from "./postgres-repository.ts";
 
@@ -59,3 +72,18 @@ export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 
 export { createLlmWhatsAppTurnHandler, FALLBACK_CONFIG, getAgentConfig, TOOLS, TONE_INSTRUCTIONS, enforceBistecPackNotice, saludoSegunHora, providerFailureReply } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions, WhatsAppToneStyle } from "./whatsapp/llm-turn-handler.ts";
+
+export {
+  STATS_PERIODS,
+  isStatsPeriod,
+  buildTrendBuckets,
+  buildComparisonPeriods,
+  periodLabel,
+  getSalesKpis,
+  getSalesTrendKpis,
+  getChannelKpis,
+  computeChannelKpis,
+  getCustomerKpis,
+  computeCustomerKpis,
+} from "./kpis.ts";
+export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";

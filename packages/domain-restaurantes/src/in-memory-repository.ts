@@ -9,7 +9,69 @@ import { randomUUID } from "node:crypto";
 import { OrderConflictError } from "./errors.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type { Branch, BranchSummary, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, NearestBranchMatch, Order, PersistedOrderItem } from "./types.ts";
-import type { ConversationMessage, NewOrderRecord, RestaurantesRepository, SearchableProduct } from "./repository.ts";
+import type {
+  ChannelStatsRow,
+  ConversationMessage,
+  CustomerOverviewRow,
+  KpiDateRange,
+  NewOrderRecord,
+  RestaurantesRepository,
+  SalesBucketRow,
+  SearchableProduct,
+  TierDistributionRow,
+  TopCustomerRow,
+  WhatsAppConversationStatsRow,
+} from "./repository.ts";
+
+/** Percentil "mid-rank" con empates promediados (0-100) — mismo método que
+ * `restaurantes.calc_customer_tier` (migrations/002) y que `calcularPercentiles` de
+ * `ClientesSection.tsx` del origen. Factorizado una sola vez para que
+ * `calcCustomerTier` (un cliente) y `getCustomerTierDistribution` (todos, agregados)
+ * nunca puedan divergir en la fórmula. n=1 -> 100 (es, por definición, el mejor de un
+ * universo de uno). */
+function computeMidRankPercentiles<T>(items: readonly T[], valueOf: (item: T) => number): Map<T, number> {
+  const n = items.length;
+  const result = new Map<T, number>();
+  if (n === 0) return result;
+  const sorted = [...items].sort((a, b) => valueOf(a) - valueOf(b));
+  if (n === 1) {
+    result.set(sorted[0]!, 100);
+    return result;
+  }
+  let index = 0;
+  while (index < sorted.length) {
+    let end = index;
+    while (end + 1 < sorted.length && valueOf(sorted[end + 1]!) === valueOf(sorted[index]!)) end += 1;
+    const rankMin = index; // 0-based, igual que (rank() - 1) del SQL
+    const tieCount = end - index + 1;
+    const percentil = ((rankMin + rankMin + tieCount - 1) / 2 / (n - 1)) * 100;
+    for (let i = index; i <= end; i += 1) result.set(sorted[i]!, percentil);
+    index = end + 1;
+  }
+  return result;
+}
+
+/** Cortes 95/90/70 (corregidos en Fase 3 — ver comentario en migrations/002). */
+function tierFromPercentile(percentil: number): CustomerTier {
+  if (percentil >= 95) return "BLACK";
+  if (percentil >= 90) return "PLATINUM";
+  if (percentil >= 70) return "GOLD";
+  return "BLUE";
+}
+
+/** Selección de métrica real de tier: gasto si al menos 30% de los clientes tiene
+ * gasto>0 (señal suficientemente representativa), si no frecuencia (order_count),
+ * si tampoco eso hay señal real -> sin_datos. Mismo criterio que
+ * `restaurantes.calc_customer_tier` y `ClientesSection.tsx` del origen. */
+function chooseTierMetric(clientes: readonly Customer[], gastoPorCliente: ReadonlyMap<string, number>): "gasto" | "frecuencia" | "sin_datos" {
+  const n = clientes.length;
+  if (n === 0) return "sin_datos";
+  const conGasto = clientes.filter((c) => (gastoPorCliente.get(c.id) ?? 0) > 0).length;
+  if (conGasto >= Math.max(1, Math.ceil(n * 0.3))) return "gasto";
+  const conFrecuencia = clientes.filter((c) => c.orderCount > 0).length;
+  if (conFrecuencia > 0) return "frecuencia";
+  return "sin_datos";
+}
 
 /** Serializa operaciones por clave — equivalente en memoria de
  * `pg_advisory_xact_lock`/row lock de Postgres: dos llamadas concurrentes con la
@@ -148,6 +210,37 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     this.knownZones.push(zone);
   }
 
+  /** Fase 3 — inserta un pedido YA en el estado/canal/fecha que el test necesita,
+   * sin pasar por `createOrderIdempotent` (que siempre crea en `status: "pending"` y
+   * `createdAt: now()` — no hay todavía, en ninguna fase, un caso de negocio que
+   * transicione el estado de un pedido o le fije una fecha pasada). Necesario para
+   * probar KPIs de canal/tendencia/tier con datos reales de "completado"/"cancelado"
+   * y de fechas distintas a "ahora" — mismo rol que los demás `seed*` de esta clase
+   * (fixture determinístico, nunca código de producción). También actualiza
+   * `customer.orderCount` cuando `customerId` viene dado, para que
+   * getCustomerOverviewKpis/getCustomerTierDistribution vean un conteo consistente. */
+  seedOrder(order: Order): void {
+    this.orders.push(order);
+    if (order.customerId) {
+      const customer = this.customers.get(order.customerId);
+      if (customer) this.customers.set(customer.id, { ...customer, orderCount: customer.orderCount + 1 });
+    }
+  }
+
+  /** Fase 3 — inserta un cliente ya con `orderCount` fijo (para tests de tier/
+   * recurrencia que necesitan una base de clientes sin pasar 1 a 1 por
+   * `upsertCustomer` + N pedidos reales cuando solo el conteo importa). */
+  seedCustomer(customer: Customer): void {
+    this.customers.set(customer.id, customer);
+    this.customerIdByOrgPhone.set(`${customer.organizationId}:${customer.phone}`, customer.id);
+  }
+
+  /** Fase 3 — conversación de WhatsApp ya resuelta (para whatsapp_conversation_stats:
+   * total/withOrder/averageMessages), sin pasar por el flujo real de mensajería. */
+  seedWhatsAppConversation(organizationId: string, phone: string, conversation: { messages: ConversationMessage[]; status: "active" | "completed" | "abandoned"; orderId: string | null; propertyId: string | null }): void {
+    this.whatsappConversations.set(`${organizationId}:${phone}`, conversation);
+  }
+
   // ---- RestaurantesRepository ----
 
   async findOrganizationBySlug(slug: string): Promise<{ id: string; slug: string; name: string } | null> {
@@ -274,47 +367,179 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
   async calcCustomerTier(organizationId: string, customerId: string): Promise<CustomerTier | null> {
     // Réplica en JS de restaurantes.calc_customer_tier (migrations/002): mismo
-    // criterio de selección de métrica (gasto si >=30% de clientes tiene gasto>0, si
-    // no frecuencia, si no sin_datos) y mismos cortes de percentil "mid-rank".
+    // criterio de selección de métrica y mismos cortes de percentil "mid-rank"
+    // (factorizados en computeMidRankPercentiles/chooseTierMetric/tierFromPercentile,
+    // compartidos con getCustomerTierDistribution para no divergir).
     const clientes = [...this.customers.values()].filter((c) => c.organizationId === organizationId);
     if (clientes.length === 0) return null;
+    const gastoPorCliente = this.gastoPorClienteDeOrganizacion(organizationId);
+    const metrica = chooseTierMetric(clientes, gastoPorCliente);
+    if (metrica === "sin_datos") return null;
+
+    const valueOf = (c: Customer) => (metrica === "gasto" ? (gastoPorCliente.get(c.id) ?? 0) : c.orderCount);
+    const percentiles = computeMidRankPercentiles(clientes, valueOf);
+    const target = clientes.find((c) => c.id === customerId);
+    if (!target) return null;
+    const percentil = percentiles.get(target);
+    if (percentil === undefined) return null;
+    return tierFromPercentile(percentil);
+  }
+
+  /** Suma de `orders.total` por `customer_id` dentro de la organización — compartido
+   * entre calcCustomerTier (un cliente) y getCustomerTierDistribution (todos). */
+  private gastoPorClienteDeOrganizacion(organizationId: string): Map<string, number> {
     const gastoPorCliente = new Map<string, number>();
     for (const o of this.orders) {
       if (o.organizationId !== organizationId || !o.customerId) continue;
       gastoPorCliente.set(o.customerId, (gastoPorCliente.get(o.customerId) ?? 0) + o.total);
     }
-    const conGasto = clientes.filter((c) => (gastoPorCliente.get(c.id) ?? 0) > 0).length;
-    const conFrecuencia = clientes.filter((c) => c.orderCount > 0).length;
-    const n = clientes.length;
-    const metrica = conGasto >= Math.max(1, Math.ceil(n * 0.3)) ? "gasto" : conFrecuencia > 0 ? "frecuencia" : "sin_datos";
-    if (metrica === "sin_datos") return null;
+    return gastoPorCliente;
+  }
 
-    const valores = clientes.map((c) => ({
-      id: c.id,
-      valor: metrica === "gasto" ? (gastoPorCliente.get(c.id) ?? 0) : c.orderCount,
-    }));
-    const sorted = [...valores].sort((a, b) => a.valor - b.valor);
-    const percentilById = new Map<string, number>();
-    if (n === 1) {
-      percentilById.set(sorted[0]!.id, 100);
-    } else {
-      let index = 0;
-      while (index < sorted.length) {
-        let end = index;
-        while (end + 1 < sorted.length && sorted[end + 1]!.valor === sorted[index]!.valor) end += 1;
-        const rankMin = index; // 0-based, igual que (rank() - 1) del SQL
-        const tieCount = end - index + 1;
-        const percentil = ((rankMin + rankMin + tieCount - 1) / 2 / (n - 1)) * 100;
-        for (let i = index; i <= end; i += 1) percentilById.set(sorted[i]!.id, percentil);
-        index = end + 1;
+  // ---- KPIs de admin (Fase 3) ----
+
+  async getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]> {
+    const scope = propertyIds ? new Set(propertyIds) : null;
+    return buckets.map((bucket) => {
+      const startMs = bucket.start.getTime();
+      const endMs = bucket.end.getTime();
+      const enRango = this.orders.filter((o) => {
+        if (o.organizationId !== organizationId) return false;
+        if (scope !== null && !scope.has(o.propertyId)) return false;
+        const createdMs = Date.parse(o.createdAt);
+        return createdMs >= startMs && createdMs < endMs;
+      });
+      const revenue = enRango.reduce((sum, o) => sum + o.total, 0);
+      const customerCount = new Set(enRango.map((o) => o.customerName)).size;
+      return { revenue, orderCount: enRango.length, customerCount };
+    });
+  }
+
+  async getFirstOrderCreatedAt(organizationId: string, propertyIds: readonly string[] | null): Promise<Date | null> {
+    const scope = propertyIds ? new Set(propertyIds) : null;
+    let earliest: number | null = null;
+    for (const o of this.orders) {
+      if (o.organizationId !== organizationId) continue;
+      if (scope !== null && !scope.has(o.propertyId)) continue;
+      const ts = Date.parse(o.createdAt);
+      if (earliest === null || ts < earliest) earliest = ts;
+    }
+    return earliest === null ? null : new Date(earliest);
+  }
+
+  async getChannelStats(organizationId: string, propertyIds: readonly string[] | null): Promise<ChannelStatsRow> {
+    const scope = propertyIds ? new Set(propertyIds) : null;
+    const relevantes = this.orders.filter((o) => o.organizationId === organizationId && (scope === null || scope.has(o.propertyId)));
+    const porCanal = (source: "voice" | "whatsapp") => {
+      const list = relevantes.filter((o) => o.source === source);
+      return {
+        orders: list.length,
+        completed: list.filter((o) => o.status === "completado" || o.status === "entregado").length,
+        cancelled: list.filter((o) => o.status === "cancelado").length,
+        revenue: list.reduce((sum, o) => sum + o.total, 0),
+      };
+    };
+    return {
+      totalOrders: relevantes.length,
+      totalRevenue: relevantes.reduce((sum, o) => sum + o.total, 0),
+      voice: porCanal("voice"),
+      whatsapp: porCanal("whatsapp"),
+    };
+  }
+
+  async getWhatsappConversationStats(organizationId: string, propertyIds: readonly string[] | null): Promise<WhatsAppConversationStatsRow> {
+    const scope = propertyIds ? new Set(propertyIds) : null;
+    let total = 0;
+    let withOrder = 0;
+    let sumMessages = 0;
+    const prefix = `${organizationId}:`;
+    for (const [key, conv] of this.whatsappConversations) {
+      if (!key.startsWith(prefix)) continue;
+      if (scope !== null && (conv.propertyId === null || !scope.has(conv.propertyId))) continue;
+      total += 1;
+      if (conv.orderId) withOrder += 1;
+      sumMessages += conv.messages.length;
+    }
+    return { total, withOrder, averageMessages: total > 0 ? sumMessages / total : 0 };
+  }
+
+  async getCustomerOverviewKpis(organizationId: string): Promise<CustomerOverviewRow> {
+    const clientes = [...this.customers.values()].filter((c) => c.organizationId === organizationId);
+    const ordenesOrg = this.orders.filter((o) => o.organizationId === organizationId);
+
+    const averageOrderValue = ordenesOrg.length > 0 ? ordenesOrg.reduce((sum, o) => sum + o.total, 0) / ordenesOrg.length : null;
+    const customersWithOrders = clientes.filter((c) => c.orderCount > 0).length;
+    const recurringCustomers = clientes.filter((c) => c.orderCount > 1).length;
+
+    // Empates: gana el cliente creado MÁS RECIENTEMENTE (mismo criterio que
+    // ClientesSection.tsx, que itera su lista `created_at desc` con comparación
+    // estricta `>` — aquí se itera en orden de creación ascendente con `>=`, que
+    // produce el mismo resultado: el último visto de un empate es el más reciente).
+    let topCustomer: TopCustomerRow | null = null;
+    for (const c of clientes) {
+      if (c.orderCount <= 0) continue;
+      if (!topCustomer || c.orderCount >= topCustomer.orderCount) {
+        topCustomer = { id: c.id, name: c.name, phone: c.phone, orderCount: c.orderCount };
       }
     }
-    const percentil = percentilById.get(customerId);
-    if (percentil === undefined) return null;
-    if (percentil >= 90) return "BLACK";
-    if (percentil >= 75) return "PLATINUM";
-    if (percentil >= 35) return "GOLD";
-    return "BLUE";
+
+    // avgDaysSinceLastOrder se calcula desde `orders.created_at` (max por cliente),
+    // no desde una columna `customers.last_order_at` — esta última existe en el
+    // schema SQL (migrations/001) pero ningún caso de negocio la escribe todavía
+    // (gap real preexistente, fuera de alcance de Fase 3 arreglar la escritura);
+    // calcularlo desde `orders` da el mismo resultado sin depender de una columna
+    // que nadie mantiene.
+    const ultimoPedidoPorCliente = new Map<string, number>();
+    for (const o of ordenesOrg) {
+      if (!o.customerId) continue;
+      const ts = Date.parse(o.createdAt);
+      const actual = ultimoPedidoPorCliente.get(o.customerId);
+      if (actual === undefined || ts > actual) ultimoPedidoPorCliente.set(o.customerId, ts);
+    }
+    const dias = [...ultimoPedidoPorCliente.values()].map((ts) => Math.max(0, Math.floor((Date.now() - ts) / 86_400_000)));
+    const avgDaysSinceLastOrder = dias.length > 0 ? dias.reduce((sum, d) => sum + d, 0) / dias.length : null;
+
+    return {
+      totalCustomers: clientes.length,
+      averageOrderValue,
+      customersWithOrders,
+      recurringCustomers,
+      topCustomer,
+      avgDaysSinceLastOrder,
+    };
+  }
+
+  async getCustomerTierDistribution(organizationId: string): Promise<TierDistributionRow> {
+    const clientes = [...this.customers.values()].filter((c) => c.organizationId === organizationId);
+    const n = clientes.length;
+    if (n === 0) return { metric: "sin_datos", black: 0, platinum: 0, gold: 0, blue: 0, withoutTier: 0 };
+
+    const gastoPorCliente = this.gastoPorClienteDeOrganizacion(organizationId);
+    const metrica = chooseTierMetric(clientes, gastoPorCliente);
+    if (metrica === "sin_datos") return { metric: "sin_datos", black: 0, platinum: 0, gold: 0, blue: 0, withoutTier: n };
+
+    const valueOf = (c: Customer) => (metrica === "gasto" ? (gastoPorCliente.get(c.id) ?? 0) : c.orderCount);
+    const percentiles = computeMidRankPercentiles(clientes, valueOf);
+    const distribucion = { black: 0, platinum: 0, gold: 0, blue: 0 };
+    for (const c of clientes) {
+      const percentil = percentiles.get(c);
+      if (percentil === undefined) continue; // no debería ocurrir: todo cliente recibe percentil cuando metrica !== sin_datos
+      switch (tierFromPercentile(percentil)) {
+        case "BLACK":
+          distribucion.black += 1;
+          break;
+        case "PLATINUM":
+          distribucion.platinum += 1;
+          break;
+        case "GOLD":
+          distribucion.gold += 1;
+          break;
+        case "BLUE":
+          distribucion.blue += 1;
+          break;
+      }
+    }
+    return { metric: metrica, ...distribucion, withoutTier: 0 };
   }
 
   async createOrderIdempotent(order: NewOrderRecord, dedupeFingerprint: string, idempotencyKey: string | null): Promise<Order> {
