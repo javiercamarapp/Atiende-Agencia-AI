@@ -49,6 +49,15 @@ export interface ReminderCandidateRow {
   readonly customerPhone: string;
 }
 
+/** Mismo shape que `ConversationMessage` de domain-restaurantes/domain-hoteles —
+ * SOLO texto (role/content), nunca tool_calls/resultados crudos (ver diseño Fase 2
+ * §2.5: el historial persistido entre turnos es efímero-de-texto, reconstruido en
+ * cada turno junto con el mensaje nuevo). */
+export interface ConversationMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+}
+
 export interface WaitlistCandidateRow {
   readonly id: string;
   readonly customerPhone: string;
@@ -79,9 +88,25 @@ export interface CitasRepository {
 
   // ---- Clientes (Flujo 1) ----
   upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null): Promise<CustomerRecord>;
+  /** Fase 2 §1.4/§5 — memoria de cliente por teléfono (agente de voz/WhatsApp).
+   * `phone` debe llegar ya normalizado (ver `normalizePhone`) — nunca null en
+   * cero-match, se resuelve devolviendo `null` para que el caller decida el
+   * contrato de silencio (ver `findAppointmentsForCustomerPhone`). */
+  findCustomerByPhone(organizationId: string, phone: string): Promise<CustomerRecord | null>;
 
   // ---- Flujo 1: crear cita ----
   createAppointmentIdempotent(input: NewAppointmentInput, dedupeFingerprint: string, idempotencyKey: string | null): Promise<CreateAppointmentResult>;
+
+  // ---- Fase 2 §1.2/§1.3 — catálogo real para los Server Tools de voz/WhatsApp
+  // (listar_servicios/listar_proveedores) — nunca inventado por el LLM. ----
+  listActiveServices(organizationId: string): Promise<readonly ServiceRecord[]>;
+  /** Si `serviceId` viene, filtra por `providerOffersService` (ya existe la
+   * relación en Fase 1 — solo faltaba el listado). */
+  listActiveProviders(organizationId: string, serviceId?: string): Promise<readonly ProviderRecord[]>;
+  /** Fase 2 §1.4 — citas activas/próximas (pending|confirmed, startsAt >= now) de
+   * UN cliente ya resuelto por `findCustomerByPhone`, más antigua primero. Nunca
+   * expone citas de otro cliente/organización (scoped por customerId+organizationId). */
+  listActiveAppointmentsForCustomer(organizationId: string, customerId: string, nowIso: string): Promise<readonly AppointmentRecord[]>;
 
   // ---- Flujo 2: cancelar/reagendar ----
   findAppointmentForOrganization(organizationId: string, appointmentId: string): Promise<AppointmentRecord | null>;
@@ -107,4 +132,25 @@ export interface CitasRepository {
 
   // ---- Idempotencia/rate-limit (transversal) ----
   consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
+
+  // ---- Fase 2 §2.6 — plomería de WhatsApp. La serialización de mensajes
+  // casi-simultáneos del mismo teléfono NO vive aquí (a diferencia de
+  // domain-restaurantes/domain-hoteles, que tienen su propio lease bespoke):
+  // se adoptó @atiende/core-conversation (`withConversationLock`) para esa parte
+  // (ver diseño Fase 2 §2.6-b y whatsapp/inbound.ts) — este repositorio solo
+  // resuelve el número de WhatsApp de la organización, el dedupe de mensaje
+  // at-least-once y el historial de conversación persistido. ----
+  resolveOrganizationByPhoneNumberId(phoneNumberId: string): Promise<string | null>;
+  claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean>;
+  appendWhatsAppUserMessageOnce(organizationId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]>;
+  whatsappAppendTurn(
+    organizationId: string,
+    phone: string,
+    newMessages: readonly ConversationMessage[],
+    status: "active" | "completed" | "abandoned" | null,
+    appointmentId: string | null,
+    propertyId: string | null,
+  ): Promise<readonly ConversationMessage[]>;
+  finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void>;
+  markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void>;
 }

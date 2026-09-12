@@ -20,7 +20,7 @@ import type {
   ProviderRecord,
   ServiceRecord,
 } from "./types.ts";
-import type { CancelResult, CitasRepository, CreateAppointmentResult, NewAppointmentInput, RescheduleResult, ReminderCandidateRow, WaitlistCandidateRow } from "./repository.ts";
+import type { CancelResult, CitasRepository, ConversationMessage, CreateAppointmentResult, NewAppointmentInput, RescheduleResult, ReminderCandidateRow, WaitlistCandidateRow } from "./repository.ts";
 
 interface ProviderRow {
   readonly id: string;
@@ -205,6 +205,55 @@ export class PostgresCitasRepository implements CitasRepository {
     }
   }
 
+  async findCustomerByPhone(organizationId: string, phone: string): Promise<CustomerRecord | null> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
+      `select id, organization_id, full_name, phone, email from citas.customers where organization_id = $1 and phone = $2;`,
+      [organizationId, phone],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email } : null;
+  }
+
+  async listActiveServices(organizationId: string): Promise<readonly ServiceRecord[]> {
+    const { rows } = await this.db.query<ServiceRow>(
+      `select id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active
+       from citas.services where organization_id = $1 and is_active = true order by name asc;`,
+      [organizationId],
+    );
+    return rows.map(mapService);
+  }
+
+  async listActiveProviders(organizationId: string, serviceId?: string): Promise<readonly ProviderRecord[]> {
+    if (serviceId) {
+      const { rows } = await this.db.query<ProviderRow>(
+        `select p.id, p.organization_id, p.property_id, p.display_name, p.role_label, p.is_active
+         from citas.providers p
+         join citas.provider_services ps on ps.provider_id = p.id
+         where p.organization_id = $1 and p.is_active = true and ps.service_id = $2
+         order by p.display_name asc;`,
+        [organizationId, serviceId],
+      );
+      return rows.map(mapProvider);
+    }
+    const { rows } = await this.db.query<ProviderRow>(
+      `select id, organization_id, property_id, display_name, role_label, is_active
+       from citas.providers where organization_id = $1 and is_active = true order by display_name asc;`,
+      [organizationId],
+    );
+    return rows.map(mapProvider);
+  }
+
+  async listActiveAppointmentsForCustomer(organizationId: string, customerId: string, nowIso: string): Promise<readonly AppointmentRecord[]> {
+    const { rows } = await this.db.query<AppointmentRow>(
+      `select id, organization_id, property_id, provider_id, service_id, customer_id, starts_at, ends_at, status, source, notes, dedupe_fingerprint, idempotency_key, reminder_24h_sent_at, created_at
+       from citas.appointments
+       where organization_id = $1 and customer_id = $2 and status in ('pending','confirmed') and starts_at >= $3
+       order by starts_at asc;`,
+      [organizationId, customerId, nowIso],
+    );
+    return rows.map(mapAppointment);
+  }
+
   async createAppointmentIdempotent(input: NewAppointmentInput, dedupeFingerprint: string, idempotencyKey: string | null): Promise<CreateAppointmentResult> {
     try {
       const { rows } = await this.db.query<{ create_appointment_idempotent: AppointmentRow }>(`select citas.create_appointment_idempotent($1::jsonb, $2, $3) as create_appointment_idempotent;`, [
@@ -357,5 +406,50 @@ export class PostgresCitasRepository implements CitasRepository {
   async consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean> {
     const { rows } = await this.db.query<{ consume_api_rate_limit: boolean }>(`select citas.consume_api_rate_limit($1, $2, $3, $4) as consume_api_rate_limit;`, [scope, actorHash, maxRequests, windowSeconds]);
     return rows[0]?.consume_api_rate_limit === true;
+  }
+
+  // ---- Fase 2 §2.6 — plomería de WhatsApp (dedupe + historial). La lease de
+  // conversación bespoke NO se porta — ver comentario de migrations/004 y
+  // whatsapp/inbound.ts (@atiende/core-conversation::withConversationLock). ----
+
+  async resolveOrganizationByPhoneNumberId(phoneNumberId: string): Promise<string | null> {
+    const { rows } = await this.db.query<{ organization_id: string }>(`select organization_id from citas.whatsapp_config where phone_number_id = $1 and is_active = true;`, [phoneNumberId]);
+    return rows[0]?.organization_id ?? null;
+  }
+
+  async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ claim_whatsapp_message: boolean }>(`select citas.claim_whatsapp_message($1, $2, $3) as claim_whatsapp_message;`, [organizationId, messageId, phoneHash]);
+    return rows[0]?.claim_whatsapp_message === true;
+  }
+
+  async appendWhatsAppUserMessageOnce(organizationId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]> {
+    const { rows } = await this.db.query<{ append_whatsapp_user_message_once: ConversationMessage[] }>(
+      `select citas.append_whatsapp_user_message_once($1, $2, $3, $4::jsonb) as append_whatsapp_user_message_once;`,
+      [organizationId, `${organizationId}:${phone}:${Date.now()}`, phone, JSON.stringify(message)],
+    );
+    return rows[0]?.append_whatsapp_user_message_once ?? [message];
+  }
+
+  async whatsappAppendTurn(
+    organizationId: string,
+    phone: string,
+    newMessages: readonly ConversationMessage[],
+    status: "active" | "completed" | "abandoned" | null,
+    appointmentId: string | null,
+    propertyId: string | null,
+  ): Promise<readonly ConversationMessage[]> {
+    const { rows } = await this.db.query<{ whatsapp_append_turn: ConversationMessage[] }>(
+      `select citas.whatsapp_append_turn($1, $2, $3::jsonb, $4, $5, $6) as whatsapp_append_turn;`,
+      [organizationId, phone, JSON.stringify(newMessages), status, appointmentId, propertyId],
+    );
+    return rows[0]?.whatsapp_append_turn ?? [...newMessages];
+  }
+
+  async finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void> {
+    await this.db.query(`select citas.finish_whatsapp_message($1, $2, $3, $4, $5);`, [organizationId, messageId, phoneHash, status, errorClass]);
+  }
+
+  async markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void> {
+    await this.db.query(`update citas.whatsapp_inbound_events set status = 'failed', last_error_class = left($3, 120) where message_id = $2 and organization_id = $1;`, [organizationId, messageId, errorClass]);
   }
 }
