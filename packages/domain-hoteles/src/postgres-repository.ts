@@ -8,6 +8,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { IdempotencyConflictError } from "./errors.ts";
 import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
 import type {
+  CancellationPolicyRecord,
   ConversationMessage,
   ContactoNoOperativoRecord,
   FnbOrderItem,
@@ -18,13 +19,16 @@ import type {
   NewContactoNoOperativoInput,
   NewFnbOrderInput,
   NewPaymentInput,
+  NewReservationInput,
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
+  ReservationRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
 } from "./types.ts";
+import type { ReservationStatus } from "./reservationStateMachine.ts";
 
 // Ventana de protección contra reintento de un Idempotency-Key — mismo criterio que
 // hoteles/apps/api/src/lib/idempotency.ts (migración 0022): 7 días cubre un
@@ -142,6 +146,43 @@ const FNB_ORDER_COLUMNS = `id, property_id, room_id, items, notes, allergy_decla
        kitchen_confirmed_by, kitchen_confirmed_at::text as kitchen_confirmed_at,
        kitchen_confirmation_note, safety_assurance_sent_by,
        safety_assurance_sent_at::text as safety_assurance_sent_at, created_by, created_at::text as created_at`;
+
+interface ReservationRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  room_type_id: string;
+  guest_id: string | null;
+  check_in_date: string;
+  check_out_date: string;
+  status: ReservationStatus;
+  total_amount: string;
+  cancellation_penalty_amount: string | null;
+  canceled_at: string | null;
+  created_at: string;
+}
+
+const RESERVATION_COLUMNS = `id, organization_id, property_id, room_type_id, guest_id,
+       check_in_date::text as check_in_date, check_out_date::text as check_out_date, status,
+       total_amount, cancellation_penalty_amount, canceled_at::text as canceled_at,
+       created_at::text as created_at`;
+
+function mapReservation(row: ReservationRawRow): ReservationRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    roomTypeId: row.room_type_id,
+    guestId: row.guest_id,
+    checkInDate: row.check_in_date,
+    checkOutDate: row.check_out_date,
+    status: row.status,
+    totalAmount: Number(row.total_amount),
+    cancellationPenaltyAmount: row.cancellation_penalty_amount == null ? null : Number(row.cancellation_penalty_amount),
+    canceledAt: row.canceled_at,
+    createdAt: row.created_at,
+  };
+}
 
 export class PostgresHotelesRepository implements HotelesRepository {
   constructor(private readonly db: TenantDbSession) {}
@@ -308,6 +349,25 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return rows[0]!;
   }
 
+  async ensurePrimaryFolio(propertyId: string, organizationId: string, reservationId: string): Promise<{ id: string }> {
+    const inserted = await this.db.query<{ id: string }>(
+      `insert into hoteles.folio (organization_id, property_id, reservation_id, label, is_primary)
+       values ($1, $2, $3, 'Principal', true)
+       on conflict (reservation_id) where is_primary do nothing
+       returning id;`,
+      [organizationId, propertyId, reservationId],
+    );
+    if (inserted.rows[0]) return inserted.rows[0];
+    const existing = await this.db.query<{ id: string }>(
+      `select id from hoteles.folio where reservation_id = $1 and is_primary limit 1;`,
+      [reservationId],
+    );
+    if (!existing.rows[0]) {
+      throw new Error(`ensurePrimaryFolio: no se pudo crear ni encontrar el folio primario de la reserva ${reservationId}.`);
+    }
+    return existing.rows[0];
+  }
+
   async closeFolio(folioId: string, reason: "saldo_cero" | "cuenta_por_cobrar", arApprovedBy: string | null): Promise<void> {
     await this.db.query(
       `update hoteles.folio set status = 'cerrado', closed_at = now(), close_reason = $1, ar_approved_by = $2, updated_at = now()
@@ -397,6 +457,131 @@ export class PostgresHotelesRepository implements HotelesRepository {
       closedToArrival: r.closed_to_arrival,
       closedToDeparture: r.closed_to_departure,
     }));
+  }
+
+  // ---- HotelesRepository: Fase 3 — máquina de estados de reservas (H02) ----
+
+  async listReservations(propertyId: string): Promise<readonly ReservationRecord[]> {
+    const { rows } = await this.db.query<ReservationRawRow>(
+      `select ${RESERVATION_COLUMNS} from hoteles.reservation where property_id = $1 order by created_at desc;`,
+      [propertyId],
+    );
+    return rows.map(mapReservation);
+  }
+
+  async findReservation(propertyId: string, reservationId: string): Promise<ReservationRecord | null> {
+    const { rows } = await this.db.query<ReservationRawRow>(
+      `select ${RESERVATION_COLUMNS} from hoteles.reservation where id = $1 and property_id = $2;`,
+      [reservationId, propertyId],
+    );
+    const row = rows[0];
+    return row ? mapReservation(row) : null;
+  }
+
+  async insertReservation(input: NewReservationInput): Promise<ReservationRecord> {
+    // `POST crear` aterriza directo en `confirmada` (diseño §3.2). El `ON CONFLICT`
+    // apunta al índice único parcial `reservation_property_idempotency_key_idx` — con
+    // `idempotency_key IS NULL` (llamador sin Idempotency-Key) Postgres nunca considera
+    // esta fila candidata a conflicto (los NULL no participan en un índice parcial
+    // `where idempotency_key is not null`), así que el INSERT procede normal.
+    const inserted = await this.db.query<ReservationRawRow>(
+      `insert into hoteles.reservation
+         (organization_id, property_id, room_type_id, guest_id, check_in_date, check_out_date, status, total_amount, idempotency_key)
+       values ($1, $2, $3, $4, $5, $6, 'confirmada', $7, $8)
+       on conflict (property_id, idempotency_key) where idempotency_key is not null do nothing
+       returning ${RESERVATION_COLUMNS};`,
+      [
+        input.organizationId,
+        input.propertyId,
+        input.roomTypeId,
+        input.guestId,
+        input.checkInDate,
+        input.checkOutDate,
+        input.totalAmount,
+        input.idempotencyKey ?? null,
+      ],
+    );
+    if (inserted.rows[0]) return mapReservation(inserted.rows[0]);
+
+    // Conflicto: ya existía una reserva con este idempotencyKey para esta property —
+    // se devuelve la existente (mismo criterio idempotente que `withIdempotency`).
+    const existing = await this.db.query<ReservationRawRow>(
+      `select ${RESERVATION_COLUMNS} from hoteles.reservation where property_id = $1 and idempotency_key = $2;`,
+      [input.propertyId, input.idempotencyKey],
+    );
+    const row = existing.rows[0];
+    if (!row) {
+      throw new Error("insertReservation: conflicto de idempotencia sin fila existente (la fila que causó el conflicto se revirtió entre el INSERT y este SELECT).");
+    }
+    return mapReservation(row);
+  }
+
+  /** Fija el actor lógico de la transición para que el trigger AFTER
+   *  (`reservation_log_status_event`) lo lea vía `current_setting('hoteles.actor_user_id', true)`
+   *  — `null` (actor "system", ver migrations/005 §3) se traduce a cadena vacía, que el
+   *  trigger normaliza de vuelta a NULL con `nullif(...)`. */
+  private async setActorForTransition(actorUserId: string | null): Promise<void> {
+    await this.db.query(`select set_config('hoteles.actor_user_id', $1, true);`, [actorUserId ?? ""]);
+  }
+
+  async transitionReservation(
+    propertyId: string,
+    reservationId: string,
+    fromStatuses: readonly ReservationStatus[],
+    toStatus: ReservationStatus,
+    actorUserId: string | null,
+  ): Promise<ReservationRecord | null> {
+    await this.setActorForTransition(actorUserId);
+    const { rows } = await this.db.query<ReservationRawRow>(
+      `update hoteles.reservation
+       set status = $1
+       where id = $2 and property_id = $3 and status = any($4::hoteles.reservation_status[])
+       returning ${RESERVATION_COLUMNS};`,
+      [toStatus, reservationId, propertyId, fromStatuses],
+    );
+    const row = rows[0];
+    return row ? mapReservation(row) : null;
+  }
+
+  async cancelReservation(propertyId: string, reservationId: string, penaltyAmount: number, actorUserId: string | null): Promise<ReservationRecord | null> {
+    await this.setActorForTransition(actorUserId);
+    const { rows } = await this.db.query<ReservationRawRow>(
+      `update hoteles.reservation
+       set status = 'cancelada', canceled_at = now(), cancellation_penalty_amount = $1
+       where id = $2 and property_id = $3 and status in ('cotizada', 'confirmada')
+       returning ${RESERVATION_COLUMNS};`,
+      [penaltyAmount, reservationId, propertyId],
+    );
+    const row = rows[0];
+    return row ? mapReservation(row) : null;
+  }
+
+  async releaseAvailability(propertyId: string, roomTypeId: string, date: string, qty: number): Promise<void> {
+    await this.db.query(`select hoteles.release_availability($1, $2, $3, $4);`, [propertyId, roomTypeId, date, qty]);
+  }
+
+  async bookAvailability(propertyId: string, roomTypeId: string, date: string, qty: number): Promise<void> {
+    await this.db.query(`select hoteles.book_availability($1, $2, $3, $4);`, [propertyId, roomTypeId, date, qty]);
+  }
+
+  async loadReservationCancellationPolicy(propertyId: string): Promise<CancellationPolicyRecord | null> {
+    const { rows } = await this.db.query<{ free_until_hours: number; penalty_pct: string }>(
+      `select free_until_hours, penalty_pct from hoteles.cancellation_policy where property_id = $1;`,
+      [propertyId],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { freeUntilHours: row.free_until_hours, penaltyPct: Number(row.penalty_pct) };
+  }
+
+  async findDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly ReservationRecord[]> {
+    const { rows } = await this.db.query<ReservationRawRow>(
+      `select ${RESERVATION_COLUMNS} from hoteles.reservation
+       where property_id = $1 and status = 'confirmada' and check_in_date <= coalesce($2::date, current_date)
+       order by check_in_date asc;`,
+      [propertyId, asOfDate],
+    );
+    return rows.map(mapReservation);
   }
 
   async withIdempotency<T>(params: IdempotencyParams, run: () => Promise<IdempotentResult<T>>): Promise<IdempotentResult<T>> {
