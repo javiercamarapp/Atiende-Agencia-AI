@@ -80,6 +80,18 @@ describe("POST /rentas/:propertyId/unidades/:unidadId/temporadas", () => {
     expect(res.status).toBe(201);
   });
 
+  it("rechaza mezclar monedas dentro de la misma unidad -- 400 pricing_moneda_inconsistente (mismo guardia que tarifa-base)", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/temporadas`,
+      authedJson(ctx.staff.adminGestora.token, { nombre: "Verano", rango: { inicio: "2026-07-01", fin: "2026-08-01" }, precioNocheCentavos: 250000, moneda: "USD" }),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("pricing_moneda_inconsistente");
+  });
+
   it("rechaza una temporada que se traslapa con una ya existente -- 409 pricing_solapado", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);

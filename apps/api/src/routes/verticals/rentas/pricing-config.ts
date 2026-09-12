@@ -165,6 +165,13 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const precioNocheCentavos = requireNonNegativeInteger(raw.precioNocheCentavos, "precioNocheCentavos");
     const moneda = requireMoneda(raw.moneda);
 
+    // Guardia nueva (ver diseño §3.1): misma guardia anti-mezcla-de-monedas que
+    // tarifa-base -- una temporada en una moneda distinta a la tarifa-base/otras
+    // temporadas de la misma unidad dejaría un dato inconsistente en la base aunque
+    // el motor de cotización no la use hoy (nunca convierte tipo de cambio).
+    const monedaExistente = await repo.findMonedaExistentePricing(unidadId);
+    if (monedaExistente && monedaExistente !== moneda) throw Errors.rentasPricingMonedaInconsistente(monedaExistente);
+
     // Guardia nueva (ver diseño §3.2): dos temporadas de la misma unidad NUNCA pueden
     // traslaparse -- el origen no lo comprueba, y `cotizacion.ts` resuelve el precio
     // de una noche con el PRIMER match del arreglo (precio no determinista si hay
