@@ -93,3 +93,41 @@ catálogo real del origen), panel admin de voz sobre `voice-gateway`, y el mecan
 aprobación humana tipo `ApprovalQueue`/gate shadow (solo necesario si se porta
 `enviar_mensaje_whatsapp_plantilla` en una fase futura — el `LlmGateway` fusionado no
 lo tiene todavía).
+
+## Fase 5 — CFDI de hospedaje (H5/REQ-BO-001/002) + fraude interno (H16-014/REQ-REC-014)
+
+- `cfdi/reglas-fiscales-hospedaje.ts` — extensión de hospedaje sobre el núcleo
+  genérico de `@atiende/billing` (RFC/catálogos SAT reutilizados directo, nunca
+  reescritos), MISMO patrón que
+  `@atiende/domain-despachos/src/cfdi/reglas-fiscales-avanzadas.ts` (leído como
+  plantilla). ISH (residuo `taxTotal - ivaAmount`, nunca recalculado desde cero
+  sobre el subtotal agregado), DSA (monto fijo por cuarto-noche, port literal de
+  `fiscalHospedaje.ts::computeDsa`), RFC genérico extranjero (`XEXX010101000`)/
+  público en general (`XAXX010101000`), CfdiRelacionados tipo 07 para aplicación de
+  anticipos (gap que el original dejaba "PENDIENTE" por límite del `CfdiPort` de
+  entonces — cerrado aquí a propósito), propina SIEMPRE excluida
+  (`summarizeFacturableCharges`). NO compone sobre `validarCfdi()` completo como
+  despachos sí hace — ver NOTA DE FIDELIDAD en la cabecera del archivo: ese
+  validador asume un comprobante YA timbrado (sello/certificado/folio fiscal reales),
+  mientras que aquí NUESTRO hotel es el emisor y la validación corre ANTES de
+  timbrar, cuando esos 3 campos todavía no existen.
+- `fraude/deteccion.ts` — 2 de los 4 patrones de detección de fraude interno del
+  criterio original (descuento fuera de política, folio reabierto después de
+  cerrado), puros y deterministas, operando SOLO sobre datos de folio/charge YA
+  reales (Fase 1). Los otros 2 (`cargo_fnb_no_posteado`, `reembolso_tarjeta_distinta`)
+  requieren un conector PMS/POS real — explícitamente fuera de esta fase, ver
+  comentario de cabecera del archivo para el detalle completo.
+- `HospedajeFiscalConfig`/`loadHospedajeFiscalConfig` — RFC emisor + DSA por
+  cuarto-noche, ADITIVO sobre `hoteles.tax_config` (nunca reemplaza
+  `TaxConfigRecord`, para no forzar a los seeds/tests ya escritos de Fase 1-4 a
+  aportar campos que solo necesita el CFDI de esta fase).
+- `FraudAlertRecord` — a diferencia de `domain-despachos` (separa `invoice`/
+  `invoice_review` en dos tablas), aquí la alerta de fraude ES el sujeto de la cola
+  de revisión humana (una sola tabla con `status`/`resolvedBy`/`resolvedAt`).
+
+Transporte PAC real (dual Finkok/SW Sapien, con adaptador fake para tests) en el
+paquete nuevo `@atiende/mcp-cfdi` (`packages/mcp-servers/cfdi`), NO en este paquete
+— `domain-hoteles` solo conoce el resultado ya calculado, ningún cálculo fiscal ni
+llamada de red vive fuera de aquí/de ese puerto.
+
+Migraciones nuevas: `migrations/006_cfdi_hospedaje.sql`, `migrations/007_fraude_alerta.sql`.
