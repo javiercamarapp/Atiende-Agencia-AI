@@ -26,6 +26,16 @@ export const INGESTA_CFDI_ROLES: readonly DespachosRole[] = ["admin", "contador"
 /** Quién puede gestionar vencimientos fiscales (crear/marcar completado/escalar). */
 export const GESTION_VENCIMIENTOS_ROLES: readonly DespachosRole[] = ["admin", "contador"];
 
+/** Quién puede calcular declaraciones (ISR de honorarios/PM/RESICO, agregación DIOT)
+ * — Fase 4: mismo criterio que INGESTA_CFDI_ROLES/GESTION_VENCIMIENTOS_ROLES, son los
+ * mismos operadores que preparan las obligaciones fiscales del cliente; `auditor`/
+ * `readonly` ven el resultado ya persistido (invoice.diot vía GET /cfdi) pero no
+ * ejecutan el cálculo/agregación en vivo. */
+export const DECLARACIONES_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
+/** Quién puede calcular nómina (Fase 4) — mismo criterio que DECLARACIONES_ROLES. */
+export const NOMINA_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
 export const ADMIN_ROLES: readonly DespachosRole[] = ["admin"];
 
 /**

@@ -27,6 +27,7 @@ import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/stat
 import type { CandidataConciliacion, LineaConciliada, ResumenConciliacion } from "./finanzas/conciliacion.ts";
 import type { RangoFechas } from "./tipos.ts";
 import type {
+  BloqueoRecord,
   CanalRecord,
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
@@ -236,6 +237,10 @@ export class InMemoryRentasRepository implements RentasRepository {
 
   async attachGuestToOcupacion(ocupacionId: string, guestMinimoId: string): Promise<void> {
     this.calendarStore.attachGuestToOcupacion(ocupacionId, guestMinimoId);
+  }
+
+  async listBloqueos(propertyId: string, unidadId: string): Promise<readonly BloqueoRecord[]> {
+    return this.calendarStore.listBloqueos(propertyId, unidadId);
   }
 
   // ---- RentasRepository: pricing (lectura, flujo 2 Fase 1) ----

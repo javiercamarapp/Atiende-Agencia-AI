@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import type { AppDeps } from "../../../deps.ts";
 import { rentasReservasRoutes } from "./reservas.ts";
+import { rentasBloqueosRoutes } from "./bloqueos.ts";
 import { rentasCotizacionesRoutes } from "./cotizaciones.ts";
 import { rentasFinanzasRoutes } from "./finanzas.ts";
 import { rentasPricingConfigRoutes } from "./pricing-config.ts";
@@ -35,6 +36,7 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasOwnerPortalInviteRoutes(deps));
 
   app.route("/", rentasReservasRoutes(deps));
+  app.route("/", rentasBloqueosRoutes(deps));
   app.route("/", rentasCotizacionesRoutes(deps));
   app.route("/", rentasFinanzasRoutes(deps));
   app.route("/", rentasPricingConfigRoutes(deps));

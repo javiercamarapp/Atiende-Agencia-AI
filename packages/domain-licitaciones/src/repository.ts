@@ -7,6 +7,9 @@ import type {
   ComplianceItemRecord,
   CompanyDocumentRecord,
   ApprovedRateRecord,
+  CompanyCapabilityRecord,
+  CompanyExperienceItemRecord,
+  CompanySignerRecord,
   PackageManifestRecord,
   SubmissionRecord,
   RequiredAnnexItem,
@@ -147,6 +150,13 @@ export interface LicitacionesRepository {
   replaceComplianceItems(organizationId: string, tenderId: string, proposalId: string, items: readonly ComplianceItemRecord[]): Promise<void>;
   listRequiredAnnexes(organizationId: string, tenderId: string): Promise<readonly RequiredAnnexItem[]>;
   listCompanyDocuments(organizationId: string, asOfIso: string): Promise<readonly CompanyDocumentRecord[]>;
+  /** Fase 4 -- alimenta CompanyDataResolver.getCapabilities/getExperience/getSigners,
+   * consumidos por TechnicalProposalBuilder para requisitos tipo capacidad/experiencia/
+   * firmante. Sin filtro de vigencia (a diferencia de listApprovedRates): la aprobación
+   * es el único gate, no hay fecha de vigencia en el dominio para estos tres. */
+  listCompanyCapabilities(organizationId: string): Promise<readonly CompanyCapabilityRecord[]>;
+  listCompanyExperience(organizationId: string): Promise<readonly CompanyExperienceItemRecord[]>;
+  listCompanySigners(organizationId: string): Promise<readonly CompanySignerRecord[]>;
 
   // ---- Flujo 2: propuesta económica ----
   listApprovedRates(organizationId: string, asOfIso: string): Promise<readonly ApprovedRateRecord[]>;
@@ -259,6 +269,9 @@ export type {
   ComplianceItemRecord,
   CompanyDocumentRecord,
   ApprovedRateRecord,
+  CompanyCapabilityRecord,
+  CompanyExperienceItemRecord,
+  CompanySignerRecord,
   PackageManifestRecord,
   SubmissionRecord,
   RequiredAnnexItem,

@@ -47,7 +47,7 @@ function requireOptionalString(value: unknown, field: string, max: number): stri
  * `domain-hoteles::QuoteError` mapeado en quotes.ts. `ocupacion_no_encontrada` como
  * 404 es defensa en profundidad (la ruta ya verificó pertenencia antes de llamar al
  * motor), nunca la vía principal de un 404 legítimo. */
-function mapRentasDomainError(err: RentasDomainError): ApiError {
+export function mapRentasDomainError(err: RentasDomainError): ApiError {
   switch (err.code) {
     case "rango_invalido":
       return Errors.validation(err.message);
