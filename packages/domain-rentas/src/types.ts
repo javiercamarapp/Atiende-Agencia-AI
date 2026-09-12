@@ -1,7 +1,7 @@
 // Tipos de registro (fila ya mapeada a camelCase) que RentasRepository
 // devuelve/recibe — ninguna función de negocio de las rutas de apps/api toca una
 // fila cruda de SQL directamente, mismo criterio que domain-hoteles/domain-restaurantes.
-import type { EstadoOcupacion, RangoFechas } from "./tipos.ts";
+import type { EstadoOcupacion, Razon, RangoFechas } from "./tipos.ts";
 import type { ConfiguracionComisionCanal, LineaGastoEntrada, LineaImpuestoEntrada, MovimientoFinancieroReserva } from "./finanzas/tipos.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
 import type { LineaConciliada, ResumenConciliacion } from "./finanzas/conciliacion.ts";
@@ -45,6 +45,18 @@ export interface OcupacionParaMovimiento {
   readonly id: string;
   readonly capa: "reserva" | "bloqueo";
   readonly canalId: string | null;
+}
+
+/** Fila de listado para `GET .../bloqueos` -- Fase 4, expone `crearBloqueo` (motor
+ * puro ya existente desde Fase 1, nunca alcanzable por HTTP hasta ahora). Solo cubre
+ * `capa='bloqueo'` (BLOQUEO_PROPIETARIO/MANTENIMIENTO/BUFFER_LIMPIEZA) -- nunca
+ * mezcla reservas de canal aquí, mismo criterio que `OcupacionResumen`. */
+export interface BloqueoRecord {
+  readonly id: string;
+  readonly unidadId: string;
+  readonly rango: RangoFechas;
+  readonly razon: Extract<Razon, "BLOQUEO_PROPIETARIO" | "MANTENIMIENTO" | "BUFFER_LIMPIEZA">;
+  readonly estado: EstadoOcupacion;
 }
 
 export interface NewReservaFinancieroInput {

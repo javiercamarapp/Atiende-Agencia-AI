@@ -26,7 +26,7 @@
 // segunda adquisición espera a que la primera libere).
 import { randomUUID } from "node:crypto";
 import type { EstadoOcupacion } from "./tipos.ts";
-import type { CanalRecord, NewGuestMinimoInput, OcupacionParaMovimiento, OcupacionResumen, UnidadRecord } from "./types.ts";
+import type { BloqueoRecord, CanalRecord, NewGuestMinimoInput, OcupacionParaMovimiento, OcupacionResumen, UnidadRecord } from "./types.ts";
 
 export interface StoredOcupacion {
   id: string;
@@ -144,6 +144,21 @@ export class InMemoryRentasCalendarStore {
     const fila = this.ocupaciones.get(ocupacionId);
     if (!fila || fila.propertyId !== propertyId) return null;
     return { id: fila.id, capa: fila.capa, canalId: fila.canalOrigenId };
+  }
+
+  /** Fase 4 -- `GET .../bloqueos`: lista bloqueos activos y cancelados de una unidad
+   * (capa='bloqueo' únicamente), ordenados por fecha de inicio. */
+  listBloqueos(propertyId: string, unidadId: string): BloqueoRecord[] {
+    return [...this.ocupaciones.values()]
+      .filter((o) => o.propertyId === propertyId && o.unidadId === unidadId && o.capa === "bloqueo")
+      .sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0))
+      .map((o) => ({
+        id: o.id,
+        unidadId: o.unidadId,
+        rango: { inicio: o.inicio, fin: o.fin },
+        razon: o.razon as BloqueoRecord["razon"],
+        estado: o.estado,
+      }));
   }
 
   insertGuestMinimo(input: NewGuestMinimoInput): { id: string } {

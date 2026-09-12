@@ -34,9 +34,13 @@ para el mapeo completo tabla-por-tabla y la justificación de cada decisión.
   ambos Fase 2) se omiten — no hay ningún consumidor en esta fase y la tabla no forma
   parte del esquema mapeado (§2.3 del diseño no la incluye).
 
-## Fuera de fase (ver diseño Fase 1 §6)
+## Bloqueos de propietario/mantenimiento/buffer (Fase 4)
 
-`crearBloqueo` (bloqueos de propietario/mantenimiento/buffer) no se expone por HTTP en
-esta fase — solo reservas directas. El motor puro se porta completo (para no dejar el
-paquete con lógica a medias que otros casos de negocio sí necesitan, p. ej.
-`detectarYRegistrarConflictosCapaCruzada`), pero ninguna ruta lo invoca todavía.
+`crearBloqueo` (motor puro portado desde Fase 1, ver diseño Fase 1 §6) ya se expone por
+HTTP: `POST/GET /rentas/:propertyId/unidades/:unidadId/bloqueos` y
+`POST .../bloqueos/:ocupacionId/cancelar` (`apps/api/src/routes/verticals/rentas/bloqueos.ts`).
+Comportamiento heredado del motor, no decidido en la capa HTTP: un bloqueo NUNCA
+rechaza la creación de una reserva de canal que se solape (ni viceversa) — el EXCLUDE
+de Postgres solo protege `capa='reserva'`; cualquier solape entre capas se registra como
+`rentas.conflicto_calendario` (`capa_cruzada`) para revisión humana, nunca como rechazo
+automático.

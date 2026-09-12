@@ -76,6 +76,7 @@ export {
 export type { RentasVerticalRole } from "./roles.ts";
 
 export type {
+  BloqueoRecord,
   CanalRecord,
   DescuentoDuracionRecord,
   NewDescuentoDuracionInput,
