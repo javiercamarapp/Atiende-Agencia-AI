@@ -14,6 +14,7 @@ import type {
   NewInvoiceReviewInput,
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
+import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
 
 export interface DespachosRepository {
   // ---- CFDI (flujo 1) ----
@@ -49,6 +50,18 @@ export interface DespachosRepository {
   updateDeadlineEstado(deadlineId: string, estado: FiscalDeadlineRecord["estado"]): Promise<void>;
   insertEscalation(deadlineId: string, level: NivelEscalamiento, sentAt: string, notes: string): Promise<DeadlineEscalationRecord>;
   listEscalations(deadlineId: string): Promise<readonly DeadlineEscalationRecord[]>;
+
+  // ---- Migración de catálogo contable (Fase 5) ----
+  /** Crea un mapeo recién clasificado (`clasificarCuentaOrigen`) — `estado` viene
+   * ya decidido por el clasificador ("aprobado" solo si `tipoMatch==="exacto"",
+   * ADR-3; "pendiente" en cualquier otro caso). */
+  insertMapeoMigracion(input: NewMapeoMigracionInput & { readonly tipoMatch: MapeoMigracionCuenta["tipoMatch"]; readonly score: number; readonly estado: MapeoMigracionCuenta["estado"] }): Promise<MapeoMigracionCuenta>;
+  findMapeoMigracion(propertyId: string, mapeoId: string): Promise<MapeoMigracionCuenta | null>;
+  listMapeosMigracion(propertyId: string, filter?: { readonly estado?: MapeoMigracionCuenta["estado"] }): Promise<readonly MapeoMigracionCuenta[]>;
+  /** Reemplaza el mapeo completo — usado tras `aprobarMapeo`/`rechazarMapeo`/
+   * `editarMapeo` (funciones puras de `migrador.ts`) para persistir el resultado. */
+  updateMapeoMigracion(mapeo: MapeoMigracionCuenta): Promise<MapeoMigracionCuenta>;
 }
 
 export type { InvoiceRecord, InvoiceReviewRecord, FiscalDeadlineRecord, DeadlineEscalationRecord } from "./types.ts";
+export type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";

@@ -1,0 +1,373 @@
+{
+  "score_todo_coincide_menos_nombre": {
+    "entrada": {
+      "origen": {
+        "codigo": "102-001",
+        "nombre": "Bancos Nacionales",
+        "nivel": 2,
+        "naturaleza": "D",
+        "tipoAgregado": "Activo",
+        "cuentaPadreCodigo": "102"
+      },
+      "destino": {
+        "codigo": "102-001",
+        "nombre": "Efectivo en Caja",
+        "nivel": 2,
+        "naturaleza": "D",
+        "tipoAgregado": "Activo",
+        "cuentaPadreCodigo": "102"
+      }
+    },
+    "resultado": {
+      "score": 68.18
+    }
+  },
+  "score_solo_nombre_coincide": {
+    "entrada": {
+      "origen": {
+        "codigo": "999",
+        "nombre": "Bancos Nacionales",
+        "nivel": 3,
+        "naturaleza": "A",
+        "tipoAgregado": "Pasivo",
+        "cuentaPadreCodigo": "900"
+      },
+      "destino": {
+        "codigo": "111",
+        "nombre": "Bancos Nacionales",
+        "nivel": 1,
+        "naturaleza": "D",
+        "tipoAgregado": "Ingreso",
+        "cuentaPadreCodigo": null
+      }
+    },
+    "resultado": {
+      "score": 50.0
+    }
+  },
+  "score_nada_coincide": {
+    "entrada": {
+      "origen": {
+        "codigo": "999",
+        "nombre": "Zzzz Totalmente Distinto",
+        "nivel": 5,
+        "naturaleza": "A",
+        "tipoAgregado": "Capital",
+        "cuentaPadreCodigo": "888"
+      },
+      "destino": {
+        "codigo": "111",
+        "nombre": "Aaaa Otra Cosa",
+        "nivel": 1,
+        "naturaleza": "D",
+        "tipoAgregado": "Gasto",
+        "cuentaPadreCodigo": null
+      }
+    },
+    "resultado": {
+      "score": 13.16
+    }
+  },
+  "score_todo_coincide": {
+    "entrada": {
+      "origen": {
+        "codigo": "500",
+        "nombre": "Gastos de Venta",
+        "nivel": 2,
+        "naturaleza": "D",
+        "tipoAgregado": "Gasto",
+        "cuentaPadreCodigo": "500"
+      },
+      "destino": {
+        "codigo": "500-A",
+        "nombre": "Gastos De Venta",
+        "nivel": 2,
+        "naturaleza": "D",
+        "tipoAgregado": "Gasto",
+        "cuentaPadreCodigo": "500"
+      }
+    },
+    "resultado": {
+      "score": 100.0
+    }
+  },
+  "score_nombre_reordenado": {
+    "entrada": {
+      "origen": {
+        "codigo": "1",
+        "nombre": "Caja General",
+        "nivel": 1,
+        "naturaleza": "D",
+        "tipoAgregado": "Activo",
+        "cuentaPadreCodigo": null
+      },
+      "destino": {
+        "codigo": "2",
+        "nombre": "General Caja",
+        "nivel": 1,
+        "naturaleza": "D",
+        "tipoAgregado": "Activo",
+        "cuentaPadreCodigo": null
+      }
+    },
+    "resultado": {
+      "score": 90.0
+    }
+  },
+  "clasificar_exacto_directo": {
+    "entrada": {
+      "origen": {
+        "id": "o1",
+        "codigo": "101-001",
+        "nombre": "Caja General",
+        "nivel": 1,
+        "naturaleza": "D",
+        "tipoAgregado": "Activo",
+        "cuentaPadreCodigo": null
+      },
+      "candidatos": [
+        {
+          "id": "d1",
+          "codigo": "200",
+          "nombre": "Otra Cosa",
+          "nivel": 1,
+          "naturaleza": "D",
+          "tipoAgregado": "Activo",
+          "cuentaPadreCodigo": null
+        },
+        {
+          "id": "d2",
+          "codigo": "101-001",
+          "nombre": "Caja General",
+          "nivel": 1,
+          "naturaleza": "D",
+          "tipoAgregado": "Activo",
+          "cuentaPadreCodigo": null
+        }
+      ]
+    },
+    "resultado": {
+      "origen_cuenta_id": "o1",
+      "destino_cuenta_id": "d2",
+      "tipo_match": "exacto",
+      "score": 100.0,
+      "estado": "aprobado"
+    }
+  },
+  "clasificar_exacto_con_guiones_normalizador_estricto": {
+    "entrada": {
+      "origen": {
+        "id": "o2",
+        "codigo": "102-001",
+        "nombre": "Bancos",
+        "nivel": 1,
+        "naturaleza": "D",
+        "tipoAgregado": "Activo",
+        "cuentaPadreCodigo": null
+      },
+      "candidatos": [
+        {
+          "id": "d3",
+          "codigo": "1020 01",
+          "nombre": "Bancos",
+          "nivel": 1,
+          "naturaleza": "D",
+          "tipoAgregado": "Activo",
+          "cuentaPadreCodigo": null
+        }
+      ]
+    },
+    "resultado": {
+      "origen_cuenta_id": "o2",
+      "destino_cuenta_id": "d3",
+      "tipo_match": "exacto",
+      "score": 100.0,
+      "estado": "aprobado"
+    }
+  },
+  "clasificar_alerta_riesgo_por_codigo": {
+    "entrada": {
+      "origen": {
+        "id": "o3",
+        "codigo": "300",
+        "nombre": "Proveedores Nacionales",
+        "nivel": 2,
+        "naturaleza": "A",
+        "tipoAgregado": "Pasivo",
+        "cuentaPadreCodigo": null
+      },
+      "candidatos": [
+        {
+          "id": "d4",
+          "codigo": "300",
+          "nombre": "Proveedores Extranjeros",
+          "nivel": 2,
+          "naturaleza": "A",
+          "tipoAgregado": "Pasivo",
+          "cuentaPadreCodigo": null
+        }
+      ]
+    },
+    "resultado": {
+      "origen_cuenta_id": "o3",
+      "destino_cuenta_id": "d4",
+      "tipo_match": "alerta_riesgo",
+      "score": 50.0,
+      "estado": "pendiente"
+    }
+  },
+  "clasificar_alerta_riesgo_por_nombre": {
+    "entrada": {
+      "origen": {
+        "id": "o4",
+        "codigo": "301",
+        "nombre": "Acreedores Diversos",
+        "nivel": 2,
+        "naturaleza": "A",
+        "tipoAgregado": "Pasivo",
+        "cuentaPadreCodigo": null
+      },
+      "candidatos": [
+        {
+          "id": "d5",
+          "codigo": "999",
+          "nombre": "Acreedores Diversos",
+          "nivel": 2,
+          "naturaleza": "A",
+          "tipoAgregado": "Pasivo",
+          "cuentaPadreCodigo": null
+        }
+      ]
+    },
+    "resultado": {
+      "origen_cuenta_id": "o4",
+      "destino_cuenta_id": "d5",
+      "tipo_match": "alerta_riesgo",
+      "score": 50.0,
+      "estado": "pendiente"
+    }
+  },
+  "clasificar_fuzzy_por_encima_umbral": {
+    "entrada": {
+      "origen": {
+        "id": "o5",
+        "codigo": "601",
+        "nombre": "Gastos de Operacion",
+        "nivel": 3,
+        "naturaleza": "D",
+        "tipoAgregado": "Gasto",
+        "cuentaPadreCodigo": "600"
+      },
+      "candidatos": [
+        {
+          "id": "d6",
+          "codigo": "701",
+          "nombre": "Gastos de Operación",
+          "nivel": 3,
+          "naturaleza": "D",
+          "tipoAgregado": "Gasto",
+          "cuentaPadreCodigo": "600"
+        }
+      ]
+    },
+    "resultado": {
+      "origen_cuenta_id": "o5",
+      "destino_cuenta_id": "d6",
+      "tipo_match": "alerta_riesgo",
+      "score": 50.0,
+      "estado": "pendiente"
+    }
+  },
+  "clasificar_fuzzy_por_debajo_umbral_sin_match": {
+    "entrada": {
+      "origen": {
+        "id": "o6",
+        "codigo": "888",
+        "nombre": "Cuenta Completamente Distinta Sin Relacion",
+        "nivel": 4,
+        "naturaleza": "A",
+        "tipoAgregado": "Capital",
+        "cuentaPadreCodigo": null
+      },
+      "candidatos": [
+        {
+          "id": "d7",
+          "codigo": "111",
+          "nombre": "Otra Cuenta Diferente De Verdad",
+          "nivel": 1,
+          "naturaleza": "D",
+          "tipoAgregado": "Ingreso",
+          "cuentaPadreCodigo": null
+        }
+      ]
+    },
+    "resultado": {
+      "origen_cuenta_id": "o6",
+      "destino_cuenta_id": null,
+      "tipo_match": "sin_match",
+      "score": 20.55,
+      "estado": "pendiente"
+    }
+  },
+  "clasificar_sin_match_sin_candidatos": {
+    "entrada": {
+      "origen": {
+        "id": "o7",
+        "codigo": "999",
+        "nombre": "Cuenta Nueva",
+        "nivel": 1,
+        "naturaleza": "D",
+        "tipoAgregado": "Activo",
+        "cuentaPadreCodigo": null
+      },
+      "candidatos": []
+    },
+    "resultado": {
+      "origen_cuenta_id": "o7",
+      "destino_cuenta_id": null,
+      "tipo_match": "sin_match",
+      "score": 0.0,
+      "estado": "pendiente"
+    }
+  },
+  "clasificar_desempate_primer_candidato_con_mismo_score": {
+    "entrada": {
+      "origen": {
+        "id": "o8",
+        "codigo": "400",
+        "nombre": "Ingresos Varios",
+        "nivel": 2,
+        "naturaleza": "A",
+        "tipoAgregado": "Ingreso",
+        "cuentaPadreCodigo": "400"
+      },
+      "candidatos": [
+        {
+          "id": "d8a",
+          "codigo": "aaa",
+          "nombre": "Ingresos Varios A",
+          "nivel": 2,
+          "naturaleza": "A",
+          "tipoAgregado": "Ingreso",
+          "cuentaPadreCodigo": "400"
+        },
+        {
+          "id": "d8b",
+          "codigo": "bbb",
+          "nombre": "Ingresos Varios B",
+          "nivel": 2,
+          "naturaleza": "A",
+          "tipoAgregado": "Ingreso",
+          "cuentaPadreCodigo": "400"
+        }
+      ]
+    },
+    "resultado": {
+      "origen_cuenta_id": "o8",
+      "destino_cuenta_id": "d8a",
+      "tipo_match": "fuzzy",
+      "score": 96.88,
+      "estado": "pendiente"
+    }
+  }
+}
