@@ -1,8 +1,10 @@
 // InMemoryRentasRepository — implementación real (no un mock) de `RentasRepository`,
-// con las mismas restricciones de integridad que el DDL real de migrations/002-003
-// (p. ej. `reserva_financiero.ocupacion_id UNIQUE`). Sirve para tests determinísticos
-// y como fallback dev/CI sin Postgres real — mismo rol que
-// `InMemoryHotelesRepository`/`InMemoryRestaurantesRepository`.
+// con las mismas restricciones de integridad que el DDL real de migrations/002-005
+// (p. ej. `reserva_financiero.ocupacion_id UNIQUE`, `tarifa_base (unidad_id,
+// vigente_desde) UNIQUE`, `owner_statement (owner_id, property_id, periodo_inicio,
+// periodo_fin, version) UNIQUE`). Sirve para tests determinísticos y como fallback
+// dev/CI sin Postgres real — mismo rol que `InMemoryHotelesRepository`/
+// `InMemoryRestaurantesRepository`.
 //
 // Las lecturas/escrituras de calendario (findUnidad/findCanalPorCodigo/findOcupacion/
 // insertGuestMinimo/attachGuestToOcupacion/findOcupacionParaMovimiento) delegan a un
@@ -11,19 +13,45 @@
 // compartiendo una instancia (ver apps/api/tests/rentas-fixtures.ts): en Postgres real
 // ambos caminos leen/escriben la misma tabla `rentas.ocupacion`, así que la fixture de
 // prueba reproduce esa misma propiedad en vez de mantener dos copias divergentes.
+//
+// Fase 2: el pricing (tarifa_base/tarifa_temporada/tarifa_descuento_duracion/
+// tarifa_min_stay/tarifa_regla_canal) se modela con las MISMAS tablas granulares que
+// Postgres real -- `loadPricingContext` RECONSTRUYE el `ContextoPricingUnidad` desde
+// esas tablas (igual que `PostgresRentasRepository.loadPricingContext`), nunca desde un
+// blob pre-armado -- así, una escritura real (POST tarifa-base/temporadas/...) se
+// refleja de inmediato en una cotización posterior, exactamente como en producción.
 import { randomUUID } from "node:crypto";
 import { InMemoryRentasCalendarStore } from "./calendar-store.ts";
 import type { RentasRepository } from "./repository.ts";
+import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
+import type { CandidataConciliacion, LineaConciliada, ResumenConciliacion } from "./finanzas/conciliacion.ts";
+import type { RangoFechas } from "./tipos.ts";
 import type {
   CanalRecord,
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
+  DescuentoDuracionRecord,
   MovimientoFinancieroReserva,
+  NewDescuentoDuracionInput,
   NewGuestMinimoInput,
+  NewOwnerStatementInput,
+  NewPayoutInput,
+  NewReglaCanalPricingInput,
+  NewReglaMinStayInput,
   NewReservaFinancieroInput,
+  NewTarifaBaseInput,
+  NewTemporadaInput,
   OcupacionParaMovimiento,
   OcupacionResumen,
+  OwnerRecord,
+  OwnerStatementDetalle,
+  OwnerStatementSummary,
+  PayoutDetalle,
   ReglaCanal,
+  ReglaMinStayRecord,
+  ReservaParaStatement,
+  TemporadaRecord,
+  UltimaVersionOwnerStatement,
   UnidadRecord,
 } from "./types.ts";
 
@@ -42,11 +70,103 @@ interface StoredReservaFinanciero {
   movimiento: MovimientoFinancieroReserva;
 }
 
+interface StoredTarifaBase {
+  id: string;
+  precioNocheCentavos: number;
+  moneda: string;
+  vigenteDesde: string;
+}
+
+interface StoredTemporada {
+  id: string;
+  nombre: string;
+  rango: RangoFechas;
+  precioNocheCentavos: number;
+  moneda: string;
+}
+
+interface StoredDescuentoDuracion {
+  id: string;
+  nochesMinimas: number;
+  porcentajeDescuentoBasisPoints: number;
+  fuente: string;
+}
+
+interface StoredReglaMinStay {
+  id: string;
+  rango: RangoFechas;
+  diaSemanaCheckIn: number | null;
+  nochesMinimas: number;
+}
+
+interface StoredReglaCanalPricing {
+  id: string;
+  canalId: string;
+  markupBasisPoints: number;
+  activo: boolean;
+}
+
+interface StoredOwnerStatement {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  ownerId: string;
+  periodo: RangoFechas;
+  version: number;
+  moneda: string;
+  totales: TotalesOwnerStatement;
+  lineas: LineaOwnerStatement[];
+  hashContenido: string;
+  motivoVersion: string | null;
+  generadoPor: string;
+  generadoEn: string;
+}
+
+interface StoredPayout {
+  id: string;
+  propertyId: string;
+  canalId: string;
+  canalCodigo: string;
+  moneda: string;
+  montoTotalCentavos: number;
+  fechaPayout: string;
+  referenciaExterna: string | null;
+  lineas: LineaConciliada[];
+  creadoEn: string;
+}
+
+function hoyIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function mismoPeriodo(a: RangoFechas, b: RangoFechas): boolean {
+  return a.inicio === b.inicio && a.fin === b.fin;
+}
+
+function resumenDeLineas(lineas: readonly LineaConciliada[]): ResumenConciliacion {
+  return {
+    conciliadas: lineas.filter((l) => l.estado === "conciliado").length,
+    pendientes: lineas.filter((l) => l.estado === "pendiente").length,
+    discrepancias: lineas.filter((l) => l.estado === "discrepancia").length,
+  };
+}
+
 export class InMemoryRentasRepository implements RentasRepository {
-  private readonly pricingByUnidad = new Map<string, ContextoPricingUnidad>();
-  private readonly reglasCanalPricing = new Map<string, ReglaCanal>(); // key: unidadId:canalCodigo
+  private readonly reglasCanalPricing = new Map<string, ReglaCanal>(); // key: unidadId:canalCodigo (usado por loadReglaCanalPricing)
   private readonly reglasComisionCanal: StoredReglaComisionCanal[] = [];
   private readonly reservasFinancieroPorOcupacion = new Map<string, StoredReservaFinanciero>();
+
+  // ---- Pricing CRUD (Fase 2) — tablas granulares, mismo shape que migrations/002 ----
+  private readonly tarifaBase = new Map<string, Map<string, StoredTarifaBase>>(); // unidadId -> vigenteDesde -> fila
+  private readonly temporadas = new Map<string, StoredTemporada[]>(); // unidadId -> filas
+  private readonly descuentosDuracion = new Map<string, Map<number, StoredDescuentoDuracion>>(); // unidadId -> nochesMinimas -> fila
+  private readonly reglasMinStay = new Map<string, StoredReglaMinStay[]>(); // unidadId -> filas
+  private readonly reglasCanalWrite = new Map<string, StoredReglaCanalPricing>(); // key: unidadId:canalId
+
+  // ---- Owner statement / payout (Fase 2) ----
+  private readonly owners = new Map<string, OwnerRecord>();
+  private readonly ownerStatements: StoredOwnerStatement[] = [];
+  private readonly payouts = new Map<string, StoredPayout>();
 
   constructor(private readonly calendarStore: InMemoryRentasCalendarStore = new InMemoryRentasCalendarStore()) {}
 
@@ -56,8 +176,36 @@ export class InMemoryRentasRepository implements RentasRepository {
     this.calendarStore.seedUnidad(unidad);
   }
 
+  seedOwner(owner: OwnerRecord): void {
+    this.owners.set(owner.id, owner);
+  }
+
+  /** Compatibilidad con la fixture de Fase 1 (`rentas-fixtures.ts`): descompone el
+   *  `ContextoPricingUnidad` ya armado en las tablas granulares, con
+   *  `vigenteDesde` deliberadamente muy en el pasado -- así una escritura real de
+   *  Fase 2 (vigente_desde = hoy por defecto) siempre gana como "la más reciente
+   *  vigente", igual que en Postgres real (`order by vigente_desde desc limit 1`). */
   seedPricingContext(unidadId: string, contexto: ContextoPricingUnidad): void {
-    this.pricingByUnidad.set(unidadId, contexto);
+    const vigenteDesdeSemilla = "2000-01-01";
+    const porUnidad = this.tarifaBase.get(unidadId) ?? new Map<string, StoredTarifaBase>();
+    porUnidad.set(vigenteDesdeSemilla, { id: randomUUID(), precioNocheCentavos: contexto.precioBaseNocheCentavos, moneda: contexto.moneda, vigenteDesde: vigenteDesdeSemilla });
+    this.tarifaBase.set(unidadId, porUnidad);
+
+    this.temporadas.set(
+      unidadId,
+      contexto.temporadas.map((t) => ({ id: randomUUID(), nombre: t.nombre, rango: t.rango, precioNocheCentavos: t.precioNocheCentavos, moneda: contexto.moneda })),
+    );
+
+    const descuentos = new Map<number, StoredDescuentoDuracion>();
+    for (const d of contexto.descuentosDuracion) {
+      descuentos.set(d.nochesMinimas, { id: randomUUID(), nochesMinimas: d.nochesMinimas, porcentajeDescuentoBasisPoints: d.porcentajeDescuentoBasisPoints, fuente: d.fuente });
+    }
+    this.descuentosDuracion.set(unidadId, descuentos);
+
+    this.reglasMinStay.set(
+      unidadId,
+      contexto.reglasMinStay.map((r) => ({ id: randomUUID(), rango: r.rango, diaSemanaCheckIn: r.diaSemanaCheckIn, nochesMinimas: r.nochesMinimas })),
+    );
   }
 
   seedReglaCanalPricing(unidadId: string, canalCodigo: string, regla: ReglaCanal): void {
@@ -90,19 +238,250 @@ export class InMemoryRentasRepository implements RentasRepository {
     this.calendarStore.attachGuestToOcupacion(ocupacionId, guestMinimoId);
   }
 
-  // ---- RentasRepository: pricing (solo lectura) ----
+  // ---- RentasRepository: pricing (lectura, flujo 2 Fase 1) ----
 
   async loadPricingContext(propertyId: string, unidadId: string): Promise<ContextoPricingUnidad | null> {
     const unidad = this.calendarStore.findUnidad(propertyId, unidadId);
     if (!unidad) return null;
-    return this.pricingByUnidad.get(unidadId) ?? null;
+
+    const hoy = hoyIso();
+    const bases = [...(this.tarifaBase.get(unidadId)?.values() ?? [])].filter((b) => b.vigenteDesde <= hoy);
+    if (bases.length === 0) return null;
+    const vigente = bases.sort((a, b) => (a.vigenteDesde < b.vigenteDesde ? 1 : a.vigenteDesde > b.vigenteDesde ? -1 : 0))[0]!;
+
+    return {
+      unidadId,
+      moneda: vigente.moneda,
+      precioBaseNocheCentavos: vigente.precioNocheCentavos,
+      temporadas: (this.temporadas.get(unidadId) ?? []).map((t) => ({ nombre: t.nombre, rango: t.rango, precioNocheCentavos: t.precioNocheCentavos })),
+      descuentosDuracion: [...(this.descuentosDuracion.get(unidadId)?.values() ?? [])].map((d) => ({ nochesMinimas: d.nochesMinimas, porcentajeDescuentoBasisPoints: d.porcentajeDescuentoBasisPoints, fuente: d.fuente })),
+      reglasMinStay: (this.reglasMinStay.get(unidadId) ?? []).map((r) => ({ rango: r.rango, diaSemanaCheckIn: r.diaSemanaCheckIn, nochesMinimas: r.nochesMinimas })),
+    };
   }
 
   async loadReglaCanalPricing(unidadId: string, canalCodigo: string): Promise<ReglaCanal | null> {
     return this.reglasCanalPricing.get(`${unidadId}:${canalCodigo}`) ?? null;
   }
 
-  // ---- RentasRepository: finanzas ----
+  // ---- RentasRepository: pricing CRUD (flujo 4, Fase 2) ----
+
+  async findMonedaExistentePricing(unidadId: string, excluirVigenteDesde?: string): Promise<string | null> {
+    const bases = [...(this.tarifaBase.get(unidadId)?.values() ?? [])].filter((b) => b.vigenteDesde !== excluirVigenteDesde);
+    if (bases[0]) return bases[0].moneda;
+    const temporadas = this.temporadas.get(unidadId) ?? [];
+    if (temporadas[0]) return temporadas[0].moneda;
+    return null;
+  }
+
+  async upsertTarifaBase(input: NewTarifaBaseInput): Promise<{ id: string }> {
+    const porUnidad = this.tarifaBase.get(input.unidadId) ?? new Map<string, StoredTarifaBase>();
+    const existente = porUnidad.get(input.vigenteDesde);
+    const id = existente?.id ?? randomUUID();
+    porUnidad.set(input.vigenteDesde, { id, precioNocheCentavos: input.precioNocheCentavos, moneda: input.moneda, vigenteDesde: input.vigenteDesde });
+    this.tarifaBase.set(input.unidadId, porUnidad);
+    return { id };
+  }
+
+  async listTemporadas(unidadId: string): Promise<TemporadaRecord[]> {
+    return (this.temporadas.get(unidadId) ?? []).map((t) => ({ id: t.id, nombre: t.nombre, rango: t.rango, precioNocheCentavos: t.precioNocheCentavos }));
+  }
+
+  async insertTemporada(input: NewTemporadaInput): Promise<{ id: string }> {
+    const id = randomUUID();
+    const lista = this.temporadas.get(input.unidadId) ?? [];
+    lista.push({ id, nombre: input.nombre, rango: input.rango, precioNocheCentavos: input.precioNocheCentavos, moneda: input.moneda });
+    this.temporadas.set(input.unidadId, lista);
+    return { id };
+  }
+
+  async listDescuentosDuracion(unidadId: string): Promise<DescuentoDuracionRecord[]> {
+    return [...(this.descuentosDuracion.get(unidadId)?.values() ?? [])].map((d) => ({ id: d.id, nochesMinimas: d.nochesMinimas, porcentajeDescuentoBasisPoints: d.porcentajeDescuentoBasisPoints, fuente: d.fuente }));
+  }
+
+  async upsertDescuentoDuracion(input: NewDescuentoDuracionInput): Promise<{ id: string }> {
+    const porUnidad = this.descuentosDuracion.get(input.unidadId) ?? new Map<number, StoredDescuentoDuracion>();
+    const existente = porUnidad.get(input.nochesMinimas);
+    const id = existente?.id ?? randomUUID();
+    porUnidad.set(input.nochesMinimas, { id, nochesMinimas: input.nochesMinimas, porcentajeDescuentoBasisPoints: input.porcentajeDescuentoBasisPoints, fuente: input.fuente });
+    this.descuentosDuracion.set(input.unidadId, porUnidad);
+    return { id };
+  }
+
+  async listReglasMinStay(unidadId: string): Promise<ReglaMinStayRecord[]> {
+    return (this.reglasMinStay.get(unidadId) ?? []).map((r) => ({ id: r.id, rango: r.rango, diaSemanaCheckIn: r.diaSemanaCheckIn, nochesMinimas: r.nochesMinimas }));
+  }
+
+  async insertReglaMinStay(input: NewReglaMinStayInput): Promise<{ id: string }> {
+    const id = randomUUID();
+    const lista = this.reglasMinStay.get(input.unidadId) ?? [];
+    lista.push({ id, rango: input.rango, diaSemanaCheckIn: input.diaSemanaCheckIn, nochesMinimas: input.nochesMinimas });
+    this.reglasMinStay.set(input.unidadId, lista);
+    return { id };
+  }
+
+  async upsertReglaCanalPricing(input: NewReglaCanalPricingInput): Promise<{ id: string }> {
+    const key = `${input.unidadId}:${input.canalId}`;
+    const existente = this.reglasCanalWrite.get(key);
+    const id = existente?.id ?? randomUUID();
+    this.reglasCanalWrite.set(key, { id, canalId: input.canalId, markupBasisPoints: input.markupBasisPoints, activo: input.activo });
+
+    // Mantiene sincronizado el mapa de LECTURA (keyed por código, usado por
+    // cotizaciones.ts) — en Postgres real ambos caminos leen la misma tabla
+    // `tarifa_regla_canal`, aquí se refleja el mismo efecto manualmente.
+    const canal = [...this.calendarStore.canales.entries()].find(([, c]) => c.id === input.canalId);
+    if (canal) {
+      const [codigo] = canal;
+      this.reglasCanalPricing.set(`${input.unidadId}:${codigo}`, { canalCodigo: codigo, markupBasisPoints: input.markupBasisPoints, activo: input.activo });
+    }
+    return { id };
+  }
+
+  // ---- RentasRepository: owner statement (flujo 5, Fase 2) ----
+
+  async findOwnerConUnidadesEnProperty(propertyId: string, ownerId: string): Promise<OwnerRecord | null> {
+    const owner = this.owners.get(ownerId);
+    if (!owner) return null;
+    const tieneUnidad = [...this.calendarStore.unidades.values()].some((u) => u.propertyId === propertyId && u.ownerId === ownerId);
+    return tieneUnidad ? owner : null;
+  }
+
+  async findMovimientosPeriodoParaOwner(propertyId: string, ownerId: string, periodo: RangoFechas): Promise<ReservaParaStatement[]> {
+    const resultado: ReservaParaStatement[] = [];
+    for (const fila of this.reservasFinancieroPorOcupacion.values()) {
+      if (fila.propertyId !== propertyId) continue;
+      const ocupacion = this.calendarStore.getOcupacion(fila.ocupacionId);
+      if (!ocupacion || ocupacion.estado === "cancelado") continue;
+      const unidad = [...this.calendarStore.unidades.values()].find((u) => u.id === ocupacion.unidadId);
+      if (!unidad || unidad.ownerId !== ownerId) continue;
+      // Mismo criterio que el origen: el checkout (`upper(rango)`) cae dentro del
+      // periodo `[periodoInicio, periodoFin)`.
+      if (!(ocupacion.fin >= periodo.inicio && ocupacion.fin < periodo.fin)) continue;
+      resultado.push({
+        ocupacionId: fila.ocupacionId,
+        moneda: fila.movimiento.moneda,
+        ingresoBrutoCentavos: fila.movimiento.ingresoBrutoCentavos,
+        comisionCanalCentavos: fila.movimiento.comisionCanalCentavos,
+        comisionGestorCentavos: fila.movimiento.comisionGestorCentavos,
+        gastosCentavos: fila.movimiento.gastosCentavos,
+        impuestosCentavos: fila.movimiento.impuestosCentavos,
+        netoCentavos: fila.movimiento.netoCentavos,
+      });
+    }
+    return resultado;
+  }
+
+  async findUltimaVersionOwnerStatement(propertyId: string, ownerId: string, periodo: RangoFechas): Promise<UltimaVersionOwnerStatement | null> {
+    const candidatas = this.ownerStatements.filter((s) => s.propertyId === propertyId && s.ownerId === ownerId && mismoPeriodo(s.periodo, periodo));
+    if (candidatas.length === 0) return null;
+    const ultima = candidatas.sort((a, b) => b.version - a.version)[0]!;
+    return { id: ultima.id, version: ultima.version, hashContenido: ultima.hashContenido };
+  }
+
+  async insertOwnerStatement(input: NewOwnerStatementInput): Promise<{ id: string; generadoEn: string }> {
+    const yaExiste = this.ownerStatements.some((s) => s.propertyId === input.propertyId && s.ownerId === input.ownerId && mismoPeriodo(s.periodo, input.periodo) && s.version === input.version);
+    if (yaExiste) {
+      throw new Error(`owner_statement_owner_id_property_id_periodo_inicio_periodo_fin_version_key: ya existe la versión ${input.version} para este owner/periodo.`);
+    }
+    const id = randomUUID();
+    const generadoEn = new Date().toISOString();
+    this.ownerStatements.push({
+      id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      ownerId: input.ownerId,
+      periodo: input.periodo,
+      version: input.version,
+      moneda: input.moneda,
+      totales: input.totales,
+      lineas: [...input.lineas],
+      hashContenido: input.hashContenido,
+      motivoVersion: input.motivoVersion,
+      generadoPor: input.generadoPor,
+      generadoEn,
+    });
+    return { id, generadoEn };
+  }
+
+  async listOwnerStatements(propertyId: string, ownerId: string): Promise<OwnerStatementSummary[]> {
+    const propios = this.ownerStatements.filter((s) => s.propertyId === propertyId && s.ownerId === ownerId);
+    const ultimaPorPeriodo = new Map<string, StoredOwnerStatement>();
+    for (const s of propios) {
+      const key = `${s.periodo.inicio}:${s.periodo.fin}`;
+      const actual = ultimaPorPeriodo.get(key);
+      if (!actual || s.version > actual.version) ultimaPorPeriodo.set(key, s);
+    }
+    return [...ultimaPorPeriodo.values()]
+      .sort((a, b) => (a.periodo.inicio < b.periodo.inicio ? 1 : a.periodo.inicio > b.periodo.inicio ? -1 : 0))
+      .map((s) => ({ id: s.id, ownerId: s.ownerId, propertyId: s.propertyId, periodo: s.periodo, version: s.version, moneda: s.moneda, netoCentavos: s.totales.netoCentavos, generadoEn: s.generadoEn }));
+  }
+
+  async findOwnerStatementDetalle(propertyId: string, statementId: string): Promise<OwnerStatementDetalle | null> {
+    const s = this.ownerStatements.find((x) => x.id === statementId && x.propertyId === propertyId);
+    if (!s) return null;
+    return {
+      id: s.id,
+      ownerId: s.ownerId,
+      propertyId: s.propertyId,
+      periodo: s.periodo,
+      version: s.version,
+      moneda: s.moneda,
+      netoCentavos: s.totales.netoCentavos,
+      generadoEn: s.generadoEn,
+      totales: s.totales,
+      lineas: s.lineas,
+      motivoVersion: s.motivoVersion,
+    };
+  }
+
+  // ---- RentasRepository: payout / conciliación (flujo 6, Fase 2) ----
+
+  async findCandidatasConciliacion(propertyId: string, canalId: string): Promise<CandidataConciliacion[]> {
+    const resultado: CandidataConciliacion[] = [];
+    for (const fila of this.reservasFinancieroPorOcupacion.values()) {
+      if (fila.propertyId !== propertyId) continue;
+      const ocupacion = this.calendarStore.getOcupacion(fila.ocupacionId);
+      if (!ocupacion || ocupacion.canalOrigenId !== canalId) continue;
+      resultado.push({ ocupacionId: fila.ocupacionId, externalId: ocupacion.externalId, montoEsperadoCentavos: fila.movimiento.montoRecibidoCentavos });
+    }
+    return resultado;
+  }
+
+  async insertPayout(input: NewPayoutInput): Promise<{ id: string; creadoEn: string }> {
+    const id = randomUUID();
+    const creadoEn = new Date().toISOString();
+    const canal = [...this.calendarStore.canales.entries()].find(([, c]) => c.id === input.canalId);
+    this.payouts.set(id, {
+      id,
+      propertyId: input.propertyId,
+      canalId: input.canalId,
+      canalCodigo: canal?.[0] ?? "desconocido",
+      moneda: input.moneda,
+      montoTotalCentavos: input.montoTotalCentavos,
+      fechaPayout: input.fechaPayout,
+      referenciaExterna: input.referenciaExterna,
+      lineas: [...input.lineas],
+      creadoEn,
+    });
+    return { id, creadoEn };
+  }
+
+  async findPayoutDetalle(propertyId: string, payoutId: string): Promise<PayoutDetalle | null> {
+    const p = this.payouts.get(payoutId);
+    if (!p || p.propertyId !== propertyId) return null;
+    return {
+      id: p.id,
+      propertyId: p.propertyId,
+      canalCodigo: p.canalCodigo,
+      moneda: p.moneda,
+      montoTotalCentavos: p.montoTotalCentavos,
+      fechaPayout: p.fechaPayout,
+      referenciaExterna: p.referenciaExterna,
+      resumen: resumenDeLineas(p.lineas),
+      lineas: p.lineas,
+    };
+  }
+
+  // ---- RentasRepository: finanzas (flujo 3, Fase 1) ----
 
   async findOcupacionParaMovimiento(propertyId: string, ocupacionId: string): Promise<OcupacionParaMovimiento | null> {
     return this.calendarStore.findOcupacionParaMovimiento(propertyId, ocupacionId);

@@ -6,7 +6,7 @@ export { puedeTransicionar, transicionar } from "./estados.ts";
 export { calcularNoches, diaDeLaSemana, esRangoValido, nochesDelRango, rangoCubreNoche, rangosSeSuperponen } from "./fechas.ts";
 
 export type { EjecutorTransaccional, FilaSql } from "./ejecutor.ts";
-export { bloquearUnidadEnTransaccion, esViolacionExclusion } from "./ejecutor.ts";
+export { bloquearOwnerStatementEnTransaccion, bloquearUnidadEnTransaccion, esViolacionExclusion } from "./ejecutor.ts";
 
 export { RentasDomainError } from "./errors.ts";
 export type { RentasErrorCode } from "./errors.ts";
@@ -41,6 +41,9 @@ export type {
   ViolacionMinStay,
 } from "./pricing/tipos.ts";
 
+export { encontrarMinStaySolapada, encontrarTemporadaSolapada } from "./pricing/validacion.ts";
+export type { ReglaMinStayExistente, TemporadaExistente } from "./pricing/validacion.ts";
+
 export { aplicarPorcentaje, centavosDesdeDecimal, decimalDesdeCentavos, restarCentavos, sumarCentavos } from "./finanzas/redondeo.ts";
 export { calcularMovimientoReserva } from "./finanzas/movimiento.ts";
 export type {
@@ -54,6 +57,12 @@ export type {
   MovimientoFinancieroReserva,
 } from "./finanzas/tipos.ts";
 
+export { calcularHashStatement, esMismoContenidoQueVersionAnterior, generarOwnerStatement } from "./finanzas/statement.ts";
+export type { LineaOwnerStatement, ParametrosOwnerStatement, ResultadoOwnerStatement, ReservaParaStatement, TipoLineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
+
+export { conciliarPayout } from "./finanzas/conciliacion.ts";
+export type { CandidataConciliacion, EstadoConciliacion, LineaConciliada, LineaPayoutEntrada, ResultadoConciliacion, ResumenConciliacion } from "./finanzas/conciliacion.ts";
+
 export {
   CANCELAR_ROLES,
   ESCRITURA_CALENDARIO_ROLES,
@@ -61,16 +70,32 @@ export {
   FINANZAS_LECTURA_ROLES,
   isRentasVerticalRole,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
+  PRICING_ESCRITURA_ROLES,
   RENTAS_VERTICAL_ROLES,
 } from "./roles.ts";
 export type { RentasVerticalRole } from "./roles.ts";
 
 export type {
   CanalRecord,
+  DescuentoDuracionRecord,
+  NewDescuentoDuracionInput,
   NewGuestMinimoInput,
+  NewOwnerStatementInput,
+  NewPayoutInput,
+  NewReglaCanalPricingInput,
+  NewReglaMinStayInput,
   NewReservaFinancieroInput,
+  NewTarifaBaseInput,
+  NewTemporadaInput,
   OcupacionParaMovimiento,
   OcupacionResumen,
+  OwnerRecord,
+  OwnerStatementDetalle,
+  OwnerStatementSummary,
+  PayoutDetalle,
+  ReglaMinStayRecord,
+  TemporadaRecord,
+  UltimaVersionOwnerStatement,
   UnidadRecord,
 } from "./types.ts";
 
