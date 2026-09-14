@@ -23,6 +23,30 @@ export interface UnidadRecord {
   readonly name?: string;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 12 -- descubrimiento de organización/property para el panel web de staff
+// (apps/web/src/verticals/rentas): el login (`POST /auth/login`) nunca trae un
+// propertyId, solo `{id, slug, nombre, vertical, rol}` -- mismo problema y misma
+// solución que ya resolvió hoteles (`GET /v1/hoteles/:orgSlug/admin/propiedades`,
+// ver domain-hoteles/src/types.ts::HotelOrganizationSummary/PropertySummary,
+// comentario de cabecera de esa ruta) y antes restaurantes
+// (`GET /v1/restaurantes/:orgSlug/admin/branches`). `RentasOrganizationSummary`/
+// `RentasPropertySummary` son un espejo de solo-lectura de
+// `core.organization`/`core.property` (vertical 'rentas') -- este dominio no posee
+// esas filas (viven en `core`), solo las expone para que la ruta de descubrimiento
+// no tenga que hablar SQL de `core` directamente.
+// ─────────────────────────────────────────────────────────────────────────
+export interface RentasOrganizationSummary {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+}
+
+export interface RentasPropertySummary {
+  readonly propertyId: string;
+  readonly name: string;
+}
+
 export interface CanalRecord {
   readonly id: string;
   readonly codigo: string;

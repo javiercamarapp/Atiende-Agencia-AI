@@ -37,6 +37,8 @@ import type {
   ReglaCanal,
   ReglaMinStay,
   ReglaMinStayRecord,
+  RentasOrganizationSummary,
+  RentasPropertySummary,
   ReservaParaStatement,
   ReservaProximaCheckIn,
   TemporadaRecord,
@@ -757,5 +759,26 @@ export class PostgresRentasRepository implements RentasRepository {
 
   async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
     await this.db.query(`select rentas.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
+  }
+
+  // ---- RentasRepository: Fase 12 — descubrimiento de organización/property ----
+
+  async findOrganizationBySlug(slug: string): Promise<RentasOrganizationSummary | null> {
+    const { rows } = await this.db.query<{ id: string; slug: string; name: string }>(
+      `select id, slug, name from core.organization where slug = $1 and vertical = 'rentas';`,
+      [slug],
+    );
+    return rows[0] ?? null;
+  }
+
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly RentasPropertySummary[]> {
+    const { rows } = await this.db.query<{ property_id: string; name: string }>(
+      `select id as property_id, name
+       from core.property
+       where organization_id = $1 and status = 'active'
+       order by name asc;`,
+      [organizationId],
+    );
+    return rows.map((row) => ({ propertyId: row.property_id, name: row.name }));
   }
 }

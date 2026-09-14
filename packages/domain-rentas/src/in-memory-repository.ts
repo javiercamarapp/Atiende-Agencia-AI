@@ -53,6 +53,8 @@ import type {
   PayoutDetalle,
   ReglaCanal,
   ReglaMinStayRecord,
+  RentasOrganizationSummary,
+  RentasPropertySummary,
   ReservaParaStatement,
   ReservaProximaCheckIn,
   TemporadaRecord,
@@ -194,6 +196,17 @@ export class InMemoryRentasRepository implements RentasRepository {
   private readonly organizaciones = new Map<string, { name: string }>();
   private readonly messagingOutbox = new Map<string, StoredMessagingOutboxRow>();
 
+  // ---- Fase 12 — descubrimiento de organización/property (panel web de staff) ----
+  /** Espejo de solo-lectura de `core.organization` (vertical 'rentas') — mismo rol
+   *  que `InMemoryHotelesRepository.organizations`. Deliberadamente separado de
+   *  `organizaciones` de arriba (Fase 9, solo guarda `name` por id, insumo del
+   *  correo transaccional): esta fila necesita también `slug`, que Fase 9 nunca
+   *  necesitó. */
+  private readonly organizationsDiscovery = new Map<string, RentasOrganizationSummary>();
+  /** Espejo de solo-lectura de `core.property` (vertical 'rentas') — mismo rol que
+   *  `InMemoryHotelesRepository.properties`. */
+  private readonly propertiesDiscovery = new Map<string, RentasPropertySummary & { organizationId: string }>();
+
   constructor(private readonly calendarStore: InMemoryRentasCalendarStore = new InMemoryRentasCalendarStore()) {}
 
   // ---- seeding ----
@@ -210,6 +223,20 @@ export class InMemoryRentasRepository implements RentasRepository {
    *  findOcupacionParaCorreo). Sin seed, cae a "atiende" (nunca lanza). */
   seedOrganizacion(organizationId: string, name: string): void {
     this.organizaciones.set(organizationId, { name });
+  }
+
+  /** Fase 12 -- siembra el espejo de `core.organization` que necesita
+   *  `findOrganizationBySlug` (descubrimiento del panel web de staff). Separado de
+   *  `seedOrganizacion` arriba a propósito (ver comentario de cabecera de
+   *  `organizationsDiscovery`). */
+  seedOrganization(organization: RentasOrganizationSummary): void {
+    this.organizationsDiscovery.set(organization.id, organization);
+  }
+
+  /** Fase 12 -- siembra el espejo de `core.property` que necesita
+   *  `listPropertiesForOrganization` (descubrimiento del panel web de staff). */
+  seedPropertySummary(organizationId: string, property: RentasPropertySummary): void {
+    this.propertiesDiscovery.set(property.propertyId, { ...property, organizationId });
   }
 
   /** Solo para tests -- inspecciona el outbox de correo encolado (mismo rol que
@@ -614,5 +641,21 @@ export class InMemoryRentasRepository implements RentasRepository {
     const job = this.messagingOutbox.get(id);
     if (!job || job.channel !== "email") return;
     job.status = status;
+  }
+
+  // ---- RentasRepository: Fase 12 — descubrimiento de organización/property ----
+
+  async findOrganizationBySlug(slug: string): Promise<RentasOrganizationSummary | null> {
+    for (const org of this.organizationsDiscovery.values()) {
+      if (org.slug === slug) return org;
+    }
+    return null;
+  }
+
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly RentasPropertySummary[]> {
+    return [...this.propertiesDiscovery.values()]
+      .filter((p) => p.organizationId === organizationId)
+      .map((p) => ({ propertyId: p.propertyId, name: p.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 }
