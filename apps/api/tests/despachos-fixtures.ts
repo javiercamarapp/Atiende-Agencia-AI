@@ -59,6 +59,12 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   const propertyId = randomUUID();
   coreRepo.addOrganization({ id: organizationId, slug: "despacho-de-prueba", name: "Despacho de Prueba SC", vertical: "despachos" });
   engine.seedProperty({ id: propertyId, organizationId });
+  // Fase 9 — mismo doble-seed que licitaciones-fixtures.ts/citas-fixtures.ts:
+  // coreRepo/engine PARA auth/RLS + despachosRepo PARA que
+  // `GET /v1/despachos/:orgSlug/admin/branches` resuelva algo real (ver
+  // InMemoryDespachosRepository.findOrganizationBySlug).
+  despachosRepo.seedOrganization({ id: organizationId, slug: "despacho-de-prueba", name: "Despacho de Prueba SC" });
+  despachosRepo.seedDespachosProperty({ id: propertyId, organizationId, name: "Sede principal" });
 
   async function seedStaff(role: DespachosRole, label: string) {
     const id = randomUUID();

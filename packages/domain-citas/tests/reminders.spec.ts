@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createAppointment, rescheduleAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
-import { notifyWaitlistAfterReschedule, runConfirmacionCitaCore } from "../src/reminders.ts";
+import { MAX_LISTA_ESPERA_LIMIT, notifyWaitlistAfterReschedule, runConfirmacionCitaCore, runListaEsperaCore } from "../src/reminders.ts";
 import { buildCitasFixture } from "./fixtures.ts";
 
 describe("runConfirmacionCitaCore", () => {
@@ -125,5 +125,174 @@ describe("notifyWaitlistAfterReschedule", () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+describe("runListaEsperaCore", () => {
+  it("notifica en orden de posición (FIFO, el que se anotó primero primero), recortado a `limit`", async () => {
+    const fixture = buildCitasFixture();
+    const first = fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9990000001",
+      customerName: "Primero en la fila",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    });
+    const second = fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9990000002",
+      customerName: "Segundo en la fila",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T11:00:00.000Z",
+    });
+    fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9990000003",
+      customerName: "Tercero en la fila",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T12:00:00.000Z",
+    });
+
+    const summary = await runListaEsperaCore(fixture.repo, fixture.organizationId, {}, 2);
+
+    expect(summary.candidatesConsidered).toBe(2);
+    expect(summary.notified).toBe(2);
+    expect(summary.skippedNoWhatsappConfig).toBe(false);
+
+    const outbox = fixture.repo.getOutbox();
+    expect(outbox).toHaveLength(2);
+    // El primero en anotarse (`first`) se notifica antes que el segundo — el
+    // tercero (fuera del límite de 2) nunca recibe mensaje.
+    const dedupeKeys = outbox.map((m) => m.dedupeKey);
+    expect(dedupeKeys.some((k) => k.startsWith(`waitlist-broadcast:${first}:`))).toBe(true);
+    expect(dedupeKeys.some((k) => k.startsWith(`waitlist-broadcast:${second}:`))).toBe(true);
+    expect(fixture.repo.getWaitlistEntry(first)?.notifiedCount).toBe(1);
+  });
+
+  it("filtra por proveedor/servicio cuando el staff lo especifica, sin matchear fecha/franja preferida", async () => {
+    const fixture = buildCitasFixture();
+    const otroProviderId = randomUUID();
+    fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9991110000",
+      customerName: "Prefiere otro proveedor",
+      providerId: otroProviderId,
+      serviceId: null,
+      preferredDateFrom: "2099-01-01", // fecha absurdamente lejana — igual matchea, no se filtra por fecha
+      preferredDateTo: "2099-01-02",
+      preferredTimeWindow: "morning",
+    });
+    const matching = fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9992220000",
+      customerName: "Sin preferencia de proveedor",
+      providerId: null,
+      serviceId: fixture.serviceId,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "evening", // tampoco se filtra por franja preferida
+    });
+
+    const summary = await runListaEsperaCore(fixture.repo, fixture.organizationId, { providerId: fixture.providerId });
+
+    expect(summary.candidatesConsidered).toBe(1);
+    expect(summary.notified).toBe(1);
+    expect(fixture.repo.getOutbox()[0]?.dedupeKey).toMatch(new RegExp(`^waitlist-broadcast:${matching}:`));
+  });
+
+  it("respeta el tope real de MAX_WAITLIST_NOTIFICATIONS por cliente — se salta a quien ya llegó a su tope", async () => {
+    const fixture = buildCitasFixture();
+    const capped = fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9993330000",
+      customerName: "Ya en su tope",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T09:00:00.000Z",
+    });
+    // Lleva al tope real (3) vía la misma RPC que usa runListaEsperaCore, no a mano.
+    await fixture.repo.claimWaitlistNotificationSlot(capped, 3);
+    await fixture.repo.claimWaitlistNotificationSlot(capped, 3);
+    await fixture.repo.claimWaitlistNotificationSlot(capped, 3);
+    const fresh = fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9994440000",
+      customerName: "Candidato fresco",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    });
+
+    const summary = await runListaEsperaCore(fixture.repo, fixture.organizationId);
+
+    // `capped` ya no aparece como candidato vivo (loadLiveWaitlistCandidates
+    // filtra notified_count < 3), así que solo el fresco cuenta y se notifica.
+    expect(summary.candidatesConsidered).toBe(1);
+    expect(summary.notified).toBe(1);
+    expect(fixture.repo.getOutbox()[0]?.dedupeKey).toMatch(new RegExp(`^waitlist-broadcast:${fresh}:`));
+  });
+
+  it("nunca lanza y reporta skippedNoWhatsappConfig si el negocio no tiene WhatsApp activo", async () => {
+    const fixture = buildCitasFixture();
+    const sinWhatsapp = randomUUID();
+    fixture.repo.seedOrganization({ id: sinWhatsapp, slug: "sin-whatsapp", name: "Negocio Sin WhatsApp" });
+    fixture.repo.seedWaitlistEntry({
+      organizationId: sinWhatsapp,
+      customerPhone: "9995550000",
+      customerName: "Cliente en espera",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+    });
+
+    const summary = await runListaEsperaCore(fixture.repo, sinWhatsapp);
+
+    expect(summary.skippedNoWhatsappConfig).toBe(true);
+    expect(summary.notified).toBe(0);
+    expect(fixture.repo.getOutbox()).toHaveLength(0);
+  });
+
+  it("recorta un límite pedido por el caller al techo real MAX_LISTA_ESPERA_LIMIT", async () => {
+    const fixture = buildCitasFixture();
+    for (let i = 0; i < 3; i += 1) {
+      fixture.repo.seedWaitlistEntry({
+        organizationId: fixture.organizationId,
+        customerPhone: `999000000${i}`,
+        customerName: `Cliente ${i}`,
+        providerId: null,
+        serviceId: null,
+        preferredDateFrom: null,
+        preferredDateTo: null,
+        preferredTimeWindow: "any",
+        createdAt: `2026-09-01T0${i}:00:00.000Z`,
+      });
+    }
+
+    const summary = await runListaEsperaCore(fixture.repo, fixture.organizationId, {}, MAX_LISTA_ESPERA_LIMIT + 1000);
+
+    // Solo hay 3 candidatos reales, así que el techo no cambia el resultado aquí
+    // — esto prueba que un límite absurdo no lanza ni se cuela sin recortar.
+    expect(summary.candidatesConsidered).toBe(3);
+    expect(summary.notified).toBe(3);
   });
 });

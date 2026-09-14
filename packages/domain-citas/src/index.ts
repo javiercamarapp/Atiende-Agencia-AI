@@ -135,14 +135,18 @@ export {
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions } from "./whatsapp/llm-turn-handler.ts";
 
 export {
+  DEFAULT_LISTA_ESPERA_LIMIT,
+  MAX_LISTA_ESPERA_LIMIT,
   MAX_WAITLIST_NOTIFICATIONS,
   notifyWaitlistAfterReschedule,
   runConfirmacionCitaCore,
+  runListaEsperaCore,
   runOptimizadorCore,
+  sortWaitlistByPosition,
   timeWindowFor,
   tryNotifyWaitlistOfFreedSlot,
 } from "./reminders.ts";
-export type { ConfirmacionCitaSummary, OptimizadorResult, TimeWindow } from "./reminders.ts";
+export type { ConfirmacionCitaSummary, ListaEsperaEvent, ListaEsperaSummary, OptimizadorResult, TimeWindow } from "./reminders.ts";
 
 // ---- Fase 6 §1 — guardia de crisis + FAQs canónicas por rubro ----
 export {
