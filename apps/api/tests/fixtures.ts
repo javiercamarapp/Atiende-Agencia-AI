@@ -18,6 +18,12 @@ export const TEST_ENV: ApiEnv = {
   voiceToolSecret: "test-voice-tool-secret",
   whatsappVerifyToken: "test-verify-token",
   whatsappAppSecret: "test-whatsapp-app-secret",
+  // `null` por defecto (mismo criterio que `googleOAuth`): la mayoría de los tests
+  // de este monorepo no ejercitan el dispatcher de WhatsApp saliente. Los tests que
+  // SÍ lo necesitan (apps/api/tests/whatsapp-dispatch.spec.ts) construyen su propio
+  // `AppDeps.whatsAppDispatcher` con un `FakeWhatsAppGraphClient` — nunca tocan la
+  // red real, nunca usan un WHATSAPP_ACCESS_TOKEN real.
+  whatsappAccessToken: null,
   internalSecret: "test-internal-secret",
   allowedOrigins: ["http://localhost:5173"],
   googleOAuth: { clientId: "test-google-client-id", clientSecret: "test-google-client-secret", redirectBaseUrl: "https://api.test.invalid" },

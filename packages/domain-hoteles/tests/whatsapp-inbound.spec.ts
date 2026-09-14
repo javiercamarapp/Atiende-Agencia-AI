@@ -61,6 +61,7 @@ describe("handleInboundWhatsAppMessage (hoteles) — dedupe/lease/append de punt
       messageId: "wamid.1",
       phone: "+5219991234567",
       body: "Hola, ¿tienen servicio a cuartos?",
+      phoneNumberId: "9876543210",
     });
     expect(outcome).toMatchObject({ ok: true, retryable: false });
     expect(outcome.reply).toMatch(/contactar/);
@@ -69,7 +70,7 @@ describe("handleInboundWhatsAppMessage (hoteles) — dedupe/lease/append de punt
   it("un message_id repetido (retry at-least-once de Meta) se acusa sin reprocesar (dedupe real)", async () => {
     const fixture = buildHotelFixture();
     const turnHandler = acknowledgeOnlyTurnHandler(fixture.repo);
-    const args = { organizationId: fixture.organizationId, propertyId: fixture.propertyId, messageId: "wamid.dup", phone: "+5219991234567", body: "Hola" };
+    const args = { organizationId: fixture.organizationId, propertyId: fixture.propertyId, messageId: "wamid.dup", phone: "+5219991234567", body: "Hola", phoneNumberId: "9876543210" };
     const first = await handleInboundWhatsAppMessage(fixture.repo, turnHandler, args);
     const second = await handleInboundWhatsAppMessage(fixture.repo, turnHandler, args);
     expect(first).toMatchObject({ ok: true });
@@ -81,8 +82,8 @@ describe("handleInboundWhatsAppMessage (hoteles) — dedupe/lease/append de punt
     const turnHandler = acknowledgeOnlyTurnHandler(fixture.repo);
     const phone = "+5219998887777";
     const [a, b] = await Promise.all([
-      handleInboundWhatsAppMessage(fixture.repo, turnHandler, { organizationId: fixture.organizationId, propertyId: fixture.propertyId, messageId: "m1", phone, body: "mensaje uno" }),
-      handleInboundWhatsAppMessage(fixture.repo, turnHandler, { organizationId: fixture.organizationId, propertyId: fixture.propertyId, messageId: "m2", phone, body: "mensaje dos" }),
+      handleInboundWhatsAppMessage(fixture.repo, turnHandler, { organizationId: fixture.organizationId, propertyId: fixture.propertyId, messageId: "m1", phone, body: "mensaje uno", phoneNumberId: "9876543210" }),
+      handleInboundWhatsAppMessage(fixture.repo, turnHandler, { organizationId: fixture.organizationId, propertyId: fixture.propertyId, messageId: "m2", phone, body: "mensaje dos", phoneNumberId: "9876543210" }),
     ]);
     const outcomes = [a, b];
     expect(outcomes.filter((o) => o.ok && o.retryable === false)).toHaveLength(1);

@@ -40,6 +40,7 @@ import type {
   ConversationMessage,
   CustomerOverviewRow,
   KpiDateRange,
+  MessagingOutboxRow,
   NewOrderRecord,
   RestaurantesRepository,
   SalesBucketRow,
@@ -489,6 +490,29 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
        where message_id = $2 and organization_id = $1;`,
       [organizationId, messageId, errorClass],
     );
+  }
+
+  // ---- Dispatcher real de messaging_outbox (migrations/007) ----
+
+  async enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    await this.db.query(`select restaurantes.enqueue_messaging_outbox($1, $2, $3, $4, $5::jsonb);`, [organizationId, channel, eventType, dedupeKey, JSON.stringify(payload)]);
+  }
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const { rows } = await this.db.query<{ id: string; attempts: number; payload: unknown }>(`select id, attempts, payload from restaurantes.claim_messaging_outbox_batch($1, $2);`, [limit, leaseSeconds]);
+    return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1);`, [id]);
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    await this.db.query(`select restaurantes.complete_messaging_outbox_retry($1, $2, $3, $4);`, [id, attempts, errorClass, nextAttemptAtIso]);
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    await this.db.query(`select restaurantes.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
   }
 
   // ---- KPIs de admin (Fase 3 — ver migrations/006_kpi_aggregates.sql) ----

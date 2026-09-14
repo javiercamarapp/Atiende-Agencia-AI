@@ -32,6 +32,7 @@ import type {
   EmailOutboxJobRow,
   EmergencyEscalationInput,
   EmergencyEscalationRecord,
+  MessagingOutboxRow,
   NewAppointmentInput,
   ProviderCalComAccountRecord,
   ProviderCalDavAccountRecord,
@@ -113,6 +114,25 @@ interface StoredConversation {
   propertyId: string | null;
 }
 
+/** Espejo en memoria de `citas.messaging_outbox` (migrations/003+007) — mismo
+ * idioma de claim-con-lease-reclamable que `StoredWhatsAppEvent`. */
+interface InMemoryOutboxRow {
+  id: string;
+  organizationId: string;
+  channel: "whatsapp" | "email";
+  eventType: string;
+  dedupeKey: string;
+  payload: unknown;
+  status: "pending" | "processing" | "sent" | "failed" | "dead";
+  attempts: number;
+  claimedAt: number | null;
+  nextAttemptAt: number;
+  lastErrorClass: string | null;
+  /** Fase 6 §3 — dispatcher de email (migrations/009): columna separada de
+   *  `lastErrorClass` (WhatsApp), mismo criterio que el SQL real. */
+  lastError: string | null;
+}
+
 export class InMemoryCitasRepository implements CitasRepository {
   private readonly organizations = new Map<string, StoredOrganization>();
   private readonly organizationIdBySlug = new Map<string, string>();
@@ -130,7 +150,7 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly rateLimits = new Map<string, { windowStartedAt: number; requestCount: number }>();
   private readonly whatsappPhoneNumberIdByOrg = new Map<string, string>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
-  private readonly outbox: { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: "pending" | "processing" | "sent" | "failed" | "dead"; attempts: number }[] = [];
+  private readonly outbox = new Map<string, InMemoryOutboxRow>();
   // ---- Fase 6 §1 — guardia de crisis ----
   private readonly tenantConfigs = new Map<string, TenantConfigRecord>();
   private readonly emergencyEscalations: EmergencyEscalationRecord[] = [];
@@ -228,7 +248,7 @@ export class InMemoryCitasRepository implements CitasRepository {
   }
 
   getOutbox(): readonly { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: string; attempts: number }[] {
-    return this.outbox;
+    return [...this.outbox.values()];
   }
 
   /** Solo para tests: seedea `citas.tenant_config` (rubro + teléfono de aviso) sin
@@ -608,18 +628,60 @@ export class InMemoryCitasRepository implements CitasRepository {
   }
 
   async enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
-    const existing = this.outbox.find((o) => o.organizationId === organizationId && o.channel === channel && o.dedupeKey === dedupeKey);
+    const existing = [...this.outbox.values()].find((o) => o.organizationId === organizationId && o.channel === channel && o.dedupeKey === dedupeKey);
     if (existing) {
-      // Mismo criterio que citas.enqueue_messaging_outbox (003_waitlist_and_rate_limit.sql):
-      // un reintento con el mismo dedupe_key actualiza el payload SOLO si el job
-      // todavía no se envió con éxito.
+      // Mismo criterio que `citas.enqueue_messaging_outbox` real: solo se
+      // actualiza el payload si todavía no se procesó (pending/failed) — un
+      // mensaje ya sent/processing/dead no se pisa.
       if (existing.status === "pending" || existing.status === "failed") {
-        existing.payload = payload;
         existing.eventType = eventType;
+        existing.payload = payload;
       }
       return;
     }
-    this.outbox.push({ id: randomUUID(), organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0 });
+    const id = randomUUID();
+    this.outbox.set(id, { id, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0, claimedAt: null, nextAttemptAt: 0, lastErrorClass: null, lastError: null });
+  }
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const now = Date.now();
+    const eligible = [...this.outbox.values()]
+      .filter(
+        (o) =>
+          o.channel === "whatsapp" &&
+          ((o.status === "pending" && o.nextAttemptAt <= now) || (o.status === "processing" && (o.claimedAt ?? 0) < now - leaseSeconds * 1000)),
+      )
+      .slice(0, limit);
+    for (const row of eligible) {
+      row.status = "processing";
+      row.claimedAt = now;
+    }
+    return eligible.map((row) => ({ id: row.id, attempts: row.attempts, payload: row.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "sent";
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "pending";
+    row.attempts = attempts;
+    row.lastErrorClass = errorClass.slice(0, 120);
+    row.nextAttemptAt = Date.parse(nextAttemptAtIso);
+    row.claimedAt = null;
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "dead";
+    row.attempts = attempts;
+    row.lastErrorClass = errorClass.slice(0, 120);
+    row.claimedAt = null;
   }
 
   async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {
@@ -966,7 +1028,9 @@ export class InMemoryCitasRepository implements CitasRepository {
   // ============================================================================
 
   async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
-    const claimable = this.outbox.filter((o) => o.channel === "email" && (o.status === "pending" || o.status === "failed") && o.attempts < 5).slice(0, Math.max(limit, 0));
+    const claimable = [...this.outbox.values()]
+      .filter((o) => o.channel === "email" && (o.status === "pending" || o.status === "failed") && o.attempts < 5)
+      .slice(0, Math.max(limit, 0));
     for (const job of claimable) {
       job.status = "processing";
       job.attempts += 1;
@@ -975,9 +1039,9 @@ export class InMemoryCitasRepository implements CitasRepository {
   }
 
   async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
-    void error;
-    const job = this.outbox.find((o) => o.id === id && o.channel === "email");
-    if (!job) return;
+    const job = this.outbox.get(id);
+    if (!job || job.channel !== "email") return;
     job.status = status;
+    job.lastError = error === null ? null : error.slice(0, 500);
   }
 }

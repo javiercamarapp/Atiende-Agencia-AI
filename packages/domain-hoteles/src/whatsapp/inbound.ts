@@ -37,9 +37,9 @@ export interface InboundMessageOutcome {
 export async function handleInboundWhatsAppMessage(
   repo: HotelesRepository,
   turnHandler: HotelesWhatsAppTurnHandler,
-  args: { readonly organizationId: string; readonly propertyId: string; readonly messageId: string; readonly phone: string; readonly body: string },
+  args: { readonly organizationId: string; readonly propertyId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly phoneNumberId: string },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, propertyId, messageId, phone, body } = args;
+  const { organizationId, propertyId, messageId, phone, body, phoneNumberId } = args;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(propertyId, messageId, phoneHash);
@@ -60,6 +60,15 @@ export async function handleInboundWhatsAppMessage(
 
     const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
     await repo.whatsappAppendTurn(propertyId, phone, [assistantMessage], turn.fnbOrderId ? "completed" : "active", turn.fnbOrderId);
+
+    // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
+    // solo se guardaba en el historial de la conversación y nunca llegaba de
+    // verdad al huésped (ver @atiende/whatsapp-gateway/README.md).
+    await repo.enqueueMessagingOutbox(propertyId, organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
+      to: phone,
+      phone_number_id: phoneNumberId,
+      body: turn.reply,
+    });
 
     await repo.finishWhatsAppMessage(propertyId, messageId, phoneHash, "processed", null);
     return { ok: true, retryable: false, reply: turn.reply };

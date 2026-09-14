@@ -210,6 +210,17 @@ export interface RestaurantesRepository {
   getCustomerOverviewKpis(organizationId: string): Promise<CustomerOverviewRow>;
   getCustomerTierDistribution(organizationId: string): Promise<TierDistributionRow>;
 
+  // ---- Dispatcher real de messaging_outbox (migrations/007) — restaurantes NO
+  // tenía NINGÚN concepto de outbox antes de este cambio (a diferencia de citas,
+  // que ya lo tenía desde su Fase 1): `outcome.reply` del turn handler de
+  // WhatsApp solo se guardaba en `whatsapp_conversations.messages`, nunca se
+  // encolaba para envío real (ver @atiende/whatsapp-gateway/README.md). ----
+  enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
+  claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
+  markMessagingOutboxSent(id: string): Promise<void>;
+  markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
+  markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
+
   // ---- Fase 5 — back-office CORE (ver diseño §1) ----
 
   /** Sucursal completa (activa o inactiva) por id — a diferencia de `findBranch`
@@ -267,4 +278,13 @@ export interface RestaurantesRepository {
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
+}
+
+/** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo
+ * shape que `@atiende/domain-citas::MessagingOutboxRow` (ver
+ * @atiende/whatsapp-gateway::MessagingOutboxPort). */
+export interface MessagingOutboxRow {
+  readonly id: string;
+  readonly attempts: number;
+  readonly payload: unknown;
 }
