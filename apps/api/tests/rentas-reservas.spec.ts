@@ -37,6 +37,41 @@ describe("POST /rentas/:propertyId/unidades/:unidadId/reservas", () => {
     expect(fila.huespedMinimoId).not.toBeNull();
   });
 
+  // Fase 9 -- correo de confirmación real al huésped (best-effort, encolado vía
+  // rentas.messaging_outbox channel='email', ver
+  // @atiende/domain-rentas::enqueueReservaEmailCore). Cierra el gap donde este
+  // envío estaba documentado como diferido ("no hay motor de correo migrado a
+  // atiende-fusion todavía").
+  it("huespedContacto con correo real: encola la confirmación en rentas.messaging_outbox", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas`,
+      authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-07-01", fin: "2026-07-03" }, huespedNombre: "Ana Pérez", huespedContacto: "ana@example.com" }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id: string };
+
+    const job = ctx.rentasRepo.getMessagingOutbox().find((o) => o.channel === "email" && o.eventType === "reserva.creada");
+    expect(job).toBeDefined();
+    expect(job!.dedupeKey).toBe(`creada:${body.id}`);
+    const payload = job!.payload as { to: string; subject: string; html: string };
+    expect(payload.to).toBe("ana@example.com");
+    expect(payload.subject).toContain("Reserva confirmada");
+    expect(payload.html).toContain("Ana Pérez");
+  });
+
+  it("huespedContacto sin correo real (solo teléfono): no encola ningún correo (nunca es un error para la reserva)", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas`,
+      authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-07-05", fin: "2026-07-07" }, huespedNombre: "Luis Ruiz", huespedContacto: "+52 55 1234 5678" }),
+    );
+    expect(res.status).toBe(201);
+    expect(ctx.rentasRepo.getMessagingOutbox().filter((o) => o.channel === "email")).toHaveLength(0);
+  });
+
   it("un rol de SOLO calendario (lectura) no puede crear reservas -- 403", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);

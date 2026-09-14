@@ -85,6 +85,8 @@ export type {
   BloqueoRecord,
   CanalRecord,
   DescuentoDuracionRecord,
+  EmailOutboxJobRow,
+  MessagingOutboxChannel,
   NewDescuentoDuracionInput,
   NewGuestMinimoInput,
   NewOwnerStatementInput,
@@ -94,6 +96,7 @@ export type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,
   OwnerRecord,
@@ -101,6 +104,7 @@ export type {
   OwnerStatementSummary,
   PayoutDetalle,
   ReglaMinStayRecord,
+  ReservaProximaCheckIn,
   TemporadaRecord,
   UltimaVersionOwnerStatement,
   UnidadRecord,
@@ -201,3 +205,22 @@ export * from "./agentes/index.ts";
 // incidencias -- ver README de este paquete.
 // ---------------------------------------------------------------------------
 export * from "./limpieza/index.ts";
+
+// ---------------------------------------------------------------------------
+// Correo transaccional al huésped (Fase 9) -- confirmación al crear una reserva +
+// recordatorio de check-in 24-48h antes, ambos deterministas/sin IA (nunca pasan por
+// la cola de aprobación humana de ./mensajeria/colaAprobacion.ts, ver comentario de
+// cabecera de ./emails/reserva-templates.ts). Cierra el gap identificado por
+// auditoría: el repo original enviaba estos dos correos reales y
+// apps/api/.../rentas/reservas.ts lo documentaba explícitamente como diferido
+// ("no hay motor de correo migrado a atiende-fusion todavía") — domain-citas ya
+// había traído ese motor en su propia Fase 6 §3; esta fase lo porta a rentas.
+// ---------------------------------------------------------------------------
+export { correoReservaConfirmada, correoReservaRecordatorioCheckIn } from "./emails/reserva-templates.ts";
+export type { Correo as ReservaCorreo, ReservaCorreoDatos } from "./emails/reserva-templates.ts";
+export { enqueueReservaEmailCore, tryEnqueueReservaEmail } from "./reserva-email-notifications.ts";
+export type { ReservaEmailEvent, ReservaEmailResult } from "./reserva-email-notifications.ts";
+export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "./email-dispatch.ts";
+export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
+export { runRecordatorioCheckInCore } from "./checkin-reminders.ts";
+export type { RecordatorioCheckInSummary } from "./checkin-reminders.ts";

@@ -45,6 +45,25 @@ export interface StoredOcupacion {
   version: number;
   createdAt: string;
   updatedAt: string;
+  /** Fase 9 -- espejo de `rentas.ocupacion.recordatorio_checkin_enviado_en` (belt-
+   *  and-suspenders sobre el dedupe_key real del outbox, ver migrations/011). */
+  recordatorioCheckinEnviadoEn: string | null;
+}
+
+/** Todo lo que `InMemoryRentasRepository.findOcupacionParaCorreo` necesita, MENOS el
+ *  nombre del tenant (`organization.name` no vive en este store -- lo agrega el
+ *  repository, que sí guarda un mapa `organizaciones`, mismo criterio que
+ *  `domain-citas::InMemoryCitasRepository.organizations`). */
+export interface DatosOcupacionParaCorreo {
+  readonly ocupacionId: string;
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly capa: "reserva" | "bloqueo";
+  readonly estado: EstadoOcupacion;
+  readonly rango: { readonly inicio: string; readonly fin: string };
+  readonly unidadNombre: string;
+  readonly huespedNombre: string | null;
+  readonly huespedContacto: string | null;
 }
 
 export interface StoredConflicto {
@@ -230,6 +249,7 @@ export class InMemoryRentasCalendarStore {
       version: 1,
       createdAt: ahora,
       updatedAt: ahora,
+      recordatorioCheckinEnviadoEn: null,
     });
     return { id };
   }
@@ -254,6 +274,7 @@ export class InMemoryRentasCalendarStore {
       version: 1,
       createdAt: ahora,
       updatedAt: ahora,
+      recordatorioCheckinEnviadoEn: null,
     });
     return { id };
   }
@@ -315,5 +336,45 @@ export class InMemoryRentasCalendarStore {
     fila.fin = fin;
     fila.version += 1;
     fila.updatedAt = new Date().toISOString();
+  }
+
+  // ---- Fase 9 -- correo transaccional al huésped (ver reserva-email-notifications.ts/
+  // checkin-reminders.ts). El nombre del tenant NO vive aquí -- lo agrega
+  // InMemoryRentasRepository.findOcupacionParaCorreo con su propio mapa
+  // `organizaciones`, mismo criterio que domain-citas. ----
+
+  findOcupacionParaCorreoDatos(organizationId: string, ocupacionId: string): DatosOcupacionParaCorreo | null {
+    const fila = this.ocupaciones.get(ocupacionId);
+    if (!fila || fila.organizationId !== organizationId) return null;
+    const unidad = this.unidades.get(fila.unidadId);
+    const huesped = fila.huespedMinimoId ? (this.huespedes.get(fila.huespedMinimoId) ?? null) : null;
+    return {
+      ocupacionId: fila.id,
+      propertyId: fila.propertyId,
+      organizationId: fila.organizationId,
+      capa: fila.capa,
+      estado: fila.estado,
+      rango: { inicio: fila.inicio, fin: fila.fin },
+      unidadNombre: unidad?.name ?? "tu alojamiento",
+      huespedNombre: huesped?.nombre ?? null,
+      huespedContacto: huesped?.contacto ?? null,
+    };
+  }
+
+  /** Reservas directas confirmadas cuyo check-in cae en `[desdeFecha, hastaFecha]`
+   *  (ambos extremos inclusivos) y que todavía no recibieron el recordatorio -- mismo
+   *  filtro que `rentas.claim_email_outbox_batch`/`listReservasProximasACheckIn` real
+   *  (ver migrations/011). */
+  listReservasProximasACheckIn(desdeFecha: string, hastaFecha: string): { id: string; organizationId: string }[] {
+    return [...this.ocupaciones.values()]
+      .filter((o) => o.capa === "reserva" && o.estado === "confirmado" && o.recordatorioCheckinEnviadoEn === null && o.inicio >= desdeFecha && o.inicio <= hastaFecha)
+      .sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0))
+      .map((o) => ({ id: o.id, organizationId: o.organizationId }));
+  }
+
+  marcarRecordatorioCheckInEnviado(ocupacionId: string, enviadoEnIso: string): void {
+    const fila = this.ocupaciones.get(ocupacionId);
+    if (!fila) throw new Error(`rentas.ocupacion ${ocupacionId} no existe`);
+    fila.recordatorioCheckinEnviadoEn = enviadoEnIso;
   }
 }

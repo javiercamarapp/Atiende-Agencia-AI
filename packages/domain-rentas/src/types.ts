@@ -16,6 +16,11 @@ export interface UnidadRecord {
    *  todavía. Solo lo necesita el owner statement (Fase 2, Flujo 5); opcional para no
    *  romper los seeds de Fase 1 que no lo pasan. */
   readonly ownerId?: string | null;
+  /** `rentas.unidad.name` -- opcional para no romper los seeds de fases anteriores
+   *  que no lo pasan (`findUnidad` nunca lo necesitó hasta Fase 9). Solo lo necesita
+   *  el correo transaccional al huésped (Fase 9, `findOcupacionParaCorreo`), que cae a
+   *  un texto genérico si falta -- ver reserva-email-notifications.ts. */
+  readonly name?: string;
 }
 
 export interface CanalRecord {
@@ -231,4 +236,61 @@ export interface PayoutDetalle {
   readonly referenciaExterna: string | null;
   readonly resumen: ResumenConciliacion;
   readonly lineas: readonly LineaConciliada[];
+}
+
+// ---------------------------------------------------------------------------
+// Correo transaccional al huésped (Fase 9) -- ver
+// migrations/011_rentas_email_outbox.sql, ../reserva-email-notifications.ts,
+// ../email-dispatch.ts, ../checkin-reminders.ts.
+// ---------------------------------------------------------------------------
+
+/** Todo lo que `enqueueReservaEmailCore` necesita para armar el correo real
+ *  (to/subject/html) a partir de solo un `ocupacionId` -- mismo principio que
+ *  `domain-citas::CitaCorreo`/`findAppointmentForOrganization`: el caller nunca arma
+ *  este objeto a mano. `capa`/`estado` se exponen para que el caller pueda negarse a
+ *  encolar un correo sobre una fila que no sea una reserva directa 'confirmado'
+ *  (nunca un bloqueo, nunca una `provisional`/`conflicto_pendiente` -- una estancia
+ *  que todavía no es real no amerita confirmársela al huésped). */
+export interface OcupacionParaCorreo {
+  readonly ocupacionId: string;
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly capa: "reserva" | "bloqueo";
+  readonly estado: EstadoOcupacion;
+  readonly rango: RangoFechas;
+  /** `rentas.unidad.name` -- nunca `null`: `findOcupacionParaCorreo` cae a un texto
+   *  genérico ("tu alojamiento") si la unidad no tiene nombre configurado, nunca deja
+   *  el correo sin este dato. */
+  readonly unidadNombre: string;
+  /** `core.organization.name` del tenant dueño de la property -- mismo rol que
+   *  `organization.name` en `domain-citas::CitaCorreo.tenantNombre`. */
+  readonly tenantNombre: string;
+  readonly huespedNombre: string | null;
+  /** `rentas.guest_minimo.contacto` tal cual -- campo libre (puede ser teléfono o
+   *  correo, ver migrations/001). `enqueueReservaEmailCore` decide si es un correo
+   *  válido; este repositorio nunca filtra ni valida el formato. */
+  readonly huespedContacto: string | null;
+}
+
+export type MessagingOutboxChannel = "whatsapp" | "email";
+
+/** Fila reclamada por `rentas.claim_email_outbox_batch` -- mismo shape que
+ *  `domain-citas::EmailOutboxJobRow`, con `propertyId` de más porque
+ *  `rentas.messaging_outbox` particiona por property (igual que
+ *  `hoteles.messaging_outbox`), no por organización. */
+export interface EmailOutboxJobRow {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly attempts: number;
+  readonly payload: Record<string, unknown>;
+}
+
+/** Candidata a recordatorio de check-in -- fila mínima que devuelve
+ *  `listReservasProximasACheckIn`, suficiente para que el cron resuelva el resto vía
+ *  `findOcupacionParaCorreo`, mismo principio de "autosuficiente a partir de un id"
+ *  que `domain-citas::ReminderCandidateRow`. */
+export interface ReservaProximaCheckIn {
+  readonly ocupacionId: string;
+  readonly organizationId: string;
 }
