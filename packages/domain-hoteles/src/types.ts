@@ -427,6 +427,32 @@ export interface ActiveHotelProperty {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Fase 7 — descubrimiento de organización/property para el panel web de staff
+// (apps/web/src/verticals/hoteles): `LoginSession.organizations` (ver
+// apps/web/src/lib/auth-client.ts) solo trae {id, slug, nombre, vertical, rol} —
+// nunca un propertyId, porque una organización de hoteles puede tener más de un
+// hotel (a diferencia del supuesto "1 org = 1 property" que sí vale para algunas
+// otras verticales) — mismo problema y misma solución que ya resolvió
+// restaurantes (`GET /v1/restaurantes/:orgSlug/admin/branches`, ver
+// apps/api/src/routes/verticals/restaurantes/admin-kpis.ts, comentario de
+// cabecera de esa ruta). `HotelOrganizationSummary`/`PropertySummary` son un
+// espejo de solo-lectura de `core.organization`/`core.property` (vertical
+// 'hoteles') — igual que `BranchSummary` en domain-restaurantes, este dominio no
+// posee esas filas (viven en `core`), solo las expone para que la ruta de
+// descubrimiento no tenga que hablar SQL de `core` directamente.
+// ─────────────────────────────────────────────────────────────────────────
+export interface HotelOrganizationSummary {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+}
+
+export interface PropertySummary {
+  readonly propertyId: string;
+  readonly name: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Fase 6 — REQ-HK-011: tickets de mantenimiento correctivo (intake por staff/WhatsApp,
 // SOLO turnos LFT + tickets -- explícitamente FUERA de esta fase: asignación
 // automática de camaristas/CP-SAT e inspección por foto/OCR, ambas dependientes de

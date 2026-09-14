@@ -21,6 +21,7 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HotelOrganizationSummary,
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
   MaintenanceTicketStatus,
@@ -37,6 +38,7 @@ import type {
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
+  PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
   TaxConfigRecord,
@@ -1186,6 +1188,27 @@ export class PostgresHotelesRepository implements HotelesRepository {
 
   async updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void> {
     await this.db.query(`update hoteles.cfdi_emision set status = $1, canceled_at = now() where id = $2;`, [status, cfdiId]);
+  }
+
+  // ---- HotelesRepository: Fase 7 — descubrimiento de organización/property ----
+
+  async findOrganizationBySlug(slug: string): Promise<HotelOrganizationSummary | null> {
+    const { rows } = await this.db.query<{ id: string; slug: string; name: string }>(
+      `select id, slug, name from core.organization where slug = $1 and vertical = 'hoteles';`,
+      [slug],
+    );
+    return rows[0] ?? null;
+  }
+
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly PropertySummary[]> {
+    const { rows } = await this.db.query<{ property_id: string; name: string }>(
+      `select id as property_id, name
+       from core.property
+       where organization_id = $1 and status = 'active'
+       order by name asc;`,
+      [organizationId],
+    );
+    return rows.map((row) => ({ propertyId: row.property_id, name: row.name }));
   }
 
   // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
