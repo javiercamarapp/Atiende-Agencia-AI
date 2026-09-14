@@ -35,6 +35,7 @@ export interface HotelesTestContext {
   readonly roomTypeId: string;
   readonly staff: {
     readonly owner: { id: string; email: string; password: string; token: string };
+    readonly gm: { id: string; email: string; password: string; token: string };
     readonly frontdesk: { id: string; email: string; password: string; token: string };
     readonly housekeeping: { id: string; email: string; password: string; token: string };
     readonly fnb: { id: string; email: string; password: string; token: string };
@@ -81,6 +82,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   }
 
   const ownerSeed = await seedStaff("owner", "owner");
+  const gmSeed = await seedStaff("gm", "gm");
   const frontdeskSeed = await seedStaff("frontdesk", "frontdesk");
   const housekeepingSeed = await seedStaff("housekeeping", "housekeeping");
   const fnbSeed = await seedStaff("fnb", "fnb");
@@ -178,8 +180,9 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   };
 
   const app = buildApp(deps);
-  const [ownerToken, frontdeskToken, housekeepingToken, fnbToken, reservationsToken, accountantToken] = await Promise.all([
+  const [ownerToken, gmToken, frontdeskToken, housekeepingToken, fnbToken, reservationsToken, accountantToken] = await Promise.all([
     signInAndGetToken(app, ownerSeed.email, ownerSeed.password),
+    signInAndGetToken(app, gmSeed.email, gmSeed.password),
     signInAndGetToken(app, frontdeskSeed.email, frontdeskSeed.password),
     signInAndGetToken(app, housekeepingSeed.email, housekeepingSeed.password),
     signInAndGetToken(app, fnbSeed.email, fnbSeed.password),
@@ -197,6 +200,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     roomTypeId,
     staff: {
       owner: { ...ownerSeed, token: ownerToken },
+      gm: { ...gmSeed, token: gmToken },
       frontdesk: { ...frontdeskSeed, token: frontdeskToken },
       housekeeping: { ...housekeepingSeed, token: housekeepingToken },
       fnb: { ...fnbSeed, token: fnbToken },

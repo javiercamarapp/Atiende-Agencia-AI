@@ -13,6 +13,7 @@ import { hotelesFraudeRoutes } from "./fraude.ts";
 import { hotelesNightAuditRoutes } from "./night-audit.ts";
 import { hotelesHousekeepingRoutes } from "./housekeeping.ts";
 import { hotelesAdminDiscoveryRoutes } from "./admin-discovery.ts";
+import { hotelesAsistenciaRoutes } from "./asistencia.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -28,5 +29,7 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesHousekeepingRoutes(deps));
   // Fase 7 — descubrimiento de organización/property para el panel web de staff.
   app.route("/", hotelesAdminDiscoveryRoutes(deps));
+  // Fase 8 — REQ-BO-024 (LFT art.132 fr.XXXIV): checador de asistencia inalterable.
+  app.route("/", hotelesAsistenciaRoutes(deps));
   return app;
 }
