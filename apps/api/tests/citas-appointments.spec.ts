@@ -294,6 +294,64 @@ describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/{con
     expect(body.appointment.status).toBe("no_show");
   });
 
+  // Fase 11 — gap real cerrado por esta fase: confirmar/completar/no-show nunca
+  // encolaban correo (Fase 7 lo dejó documentado a propósito). Verifica el
+  // encolado real end-to-end (to/subject/html reales en messaging_outbox), mismo
+  // patrón que citas-email-dispatch.spec.ts para appointment.created.
+  async function createRealAppointmentWithEmail(ctx: Awaited<ReturnType<typeof buildCitasTestContext>>, app: ReturnType<typeof buildApp>) {
+    const res = await app.request(
+      "/v1/citas/clinica-dental-sonrisas/appointments",
+      jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ana", customer_phone: "9991112244", customer_email: "ana@example.com", starts_at: MONDAY_10AM_MERIDA, source: "web" }),
+    );
+    const { appointment } = (await res.json()) as { appointment: { id: string } };
+    return appointment.id;
+  }
+
+  it("confirmar encola el correo real de confirmación en messaging_outbox", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const appointmentId = await createRealAppointmentWithEmail(ctx, app);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/confirm`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(200);
+
+    const job = ctx.citasRepo.getOutbox().find((o) => o.channel === "email" && o.eventType === "appointment.confirmed");
+    expect(job).toBeDefined();
+    const payload = job!.payload as { to: string; subject: string; html: string };
+    expect(payload.to).toBe("ana@example.com");
+    expect(payload.subject).toContain("Cita confirmada");
+  });
+
+  it("completar encola el correo real de agradecimiento en messaging_outbox", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const appointmentId = await createRealAppointmentWithEmail(ctx, app);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/complete`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(200);
+
+    const job = ctx.citasRepo.getOutbox().find((o) => o.channel === "email" && o.eventType === "appointment.completed");
+    expect(job).toBeDefined();
+    const payload = job!.payload as { to: string; subject: string };
+    expect(payload.to).toBe("ana@example.com");
+    expect(payload.subject).toContain("Gracias por tu visita");
+  });
+
+  it("marcar no-show encola el correo real correspondiente en messaging_outbox", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const appointmentId = await createRealAppointmentWithEmail(ctx, app);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/no-show`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(200);
+
+    const job = ctx.citasRepo.getOutbox().find((o) => o.channel === "email" && o.eventType === "appointment.no_show");
+    expect(job).toBeDefined();
+    const payload = job!.payload as { to: string; subject: string };
+    expect(payload.to).toBe("ana@example.com");
+    expect(payload.subject).toContain("No asististe");
+  });
+
   it("completar una cita ya cancelada da 409 (conflicto real, nunca la resucita en silencio)", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);

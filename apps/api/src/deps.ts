@@ -7,7 +7,7 @@ import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
-import type { CalendarSyncPort, RentasCalendarSyncRepository, RentasMensajeriaRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
+import type { CalendarSyncPort, RentasCalendarSyncRepository, RentasMensajeriaRepository, RentasOnboardingRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { ApiEnv } from "./env.ts";
@@ -156,6 +156,18 @@ export interface AppDeps {
    * migrations/009_rentas_mensajeria_schema.sql), sin depender del repositorio
    * gigante de calendario/pricing/finanzas para leerse/probarse. */
   readonly rentasMensajeriaRepo: (db: TenantDbSession) => RentasMensajeriaRepository;
+  /** Fase 11 -- onboarding self-serve del tenant (alta de organización/primera
+   * propiedad/admin desde el producto, ver @atiende/domain-rentas::onboarding/*).
+   * Fábrica por-request, mismo criterio que `rentasOwnerPortalRepo`/
+   * `rentasCalendarSyncRepo` -- aunque `registrarTenant` corre SIEMPRE sobre
+   * `engine.withAppSession({userId: null}, ...)` (nunca hay `auth.uid()` real
+   * todavía, ver routes/verticals/rentas/onboarding.ts), se mantiene como fábrica
+   * (no un objeto fijo) por consistencia con el resto de puertos de dominio y para
+   * que `production/deps.ts` pueda decidir con qué tipo de sesión construirlo el día
+   * que el gap de plataforma se resuelva. En producción hoy es
+   * `notProductionReady` completo (puerto ENTERO bloqueado, no solo 3 métodos como
+   * `rentasOwnerPortalRepo` -- ver production/rentas-onboarding-repository.ts). */
+  readonly rentasOnboardingRepo: (db: TenantDbSession) => RentasOnboardingRepository;
   /** Gateway LLM real compartido (packages/agent-core::LlmGateway), construido por
    * `production/llm-gateway.ts::buildProductionLlmGateway` SOLO SI al menos un
    * proveedor (Anthropic/OpenAI/OpenRouter) tiene API key configurada -- ver ese

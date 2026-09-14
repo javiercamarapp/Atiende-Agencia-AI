@@ -226,6 +226,38 @@ export { runRecordatorioCheckInCore } from "./checkin-reminders.ts";
 export type { RecordatorioCheckInSummary } from "./checkin-reminders.ts";
 
 // ---------------------------------------------------------------------------
+// Onboarding self-serve del tenant de rentas (Fase 11) -- ver src/onboarding/*.
+// Cierra el gap identificado por auditoría: el repo original permite que un cliente
+// nuevo se dé de alta a sí mismo (organización + primera propiedad + admin +
+// configuración inicial de rentas, un solo submit); en atiende-fusion,
+// `core.organization`/`core.property`/`core.staff_user`/`core.membership` son
+// service_role-write-only (gap de plataforma real, documentado en
+// ./onboarding/repository.ts junto con su solución conocida -- mismo patrón
+// `security definer` que `core.accept_staff_invite`). Esta fase construye la
+// porción de rentas que SÍ es del paquete: validación/normalización de la captura
+// (./onboarding/captura.ts) + el puerto de persistencia con su adaptador real (SQL
+// correcto, sin mocks) listo para conectarse en cuanto esa decisión de plataforma se
+// tome -- ver apps/api/src/production/rentas-onboarding-repository.ts para cómo se
+// documenta el bloqueo en la capa de aplicación.
+// ---------------------------------------------------------------------------
+export { validarCapturaOnboardingRentas, slugificarNombreOrganizacion } from "./onboarding/captura.ts";
+export type {
+  CapturaOnboardingAdminInput,
+  CapturaOnboardingConfiguracionInicialInput,
+  CapturaOnboardingOrganizacionInput,
+  CapturaOnboardingPrimerOwnerInput,
+  CapturaOnboardingPropiedadInput,
+  CapturaOnboardingRentasInput,
+  CapturaOnboardingRentasValidada,
+  NuevoTenantRentasInput,
+  ResultadoRegistroTenantRentas,
+  TipoOrganizacionRentas,
+} from "./onboarding/tipos.ts";
+export type { RentasOnboardingRepository } from "./onboarding/repository.ts";
+export { InMemoryRentasOnboardingRepository } from "./onboarding/in-memory-repository.ts";
+export { PostgresRentasOnboardingRepository } from "./onboarding/postgres-repository.ts";
+
+// ---------------------------------------------------------------------------
 // Acceso auditado "romper cristal" (Fase 10) -- ver src/break-glass/*. Superadmin de
 // plataforma lee datos de un tenant específico fuera del flujo normal de RLS, con
 // razón obligatoria y bitácora inmutable encadenada por hash (migrations/

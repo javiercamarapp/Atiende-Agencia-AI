@@ -16,17 +16,48 @@
 // recordatorio 24h) necesita saber qué columnas hacen falta para armar el
 // correo.
 //
-// GAP QUE ESTA FASE CIERRA: las rutas HTTP de citas (apps/api) ya encolaban
-// `citas.messaging_outbox` con `channel='email'` en `appointment.created`/
-// `cancelled`/`rescheduled` — pero solo con `{appointment_id}` como payload, SIN
-// to/subject/html reales (nada en el repo armaba el contenido del correo
-// todavía). Este archivo es esa pieza faltante; las rutas HTTP se actualizaron
-// para llamar `tryEnqueueAppointmentEmail` en vez de encolar el payload
-// incompleto a mano (ver apps/api/src/routes/verticals/citas/appointments*.ts).
-import { correoCitaCancelada, correoCitaCreada, correoCitaModificada, correoCitaReagendada, correoCitaRecordatorio, type CitaCorreo } from "./emails/appointment-templates.ts";
+// GAP QUE ESTA FASE CIERRA (Fase 6 §3): las rutas HTTP de citas (apps/api) ya
+// encolaban `citas.messaging_outbox` con `channel='email'` en
+// `appointment.created`/`cancelled`/`rescheduled` — pero solo con
+// `{appointment_id}` como payload, SIN to/subject/html reales (nada en el repo
+// armaba el contenido del correo todavía). Este archivo es esa pieza faltante;
+// las rutas HTTP se actualizaron para llamar `tryEnqueueAppointmentEmail` en
+// vez de encolar el payload incompleto a mano (ver
+// apps/api/src/routes/verticals/citas/appointments*.ts).
+//
+// GAP ADICIONAL QUE CIERRA FASE 11: Fase 7 agregó las 3 transiciones de estado
+// confirmar/completar/no-show desde el panel de staff
+// (confirmAppointmentFromPanel/completeAppointmentFromPanel/
+// markAppointmentNoShowFromPanel en appointments.ts), pero documentó
+// explícitamente que NO tenían plantilla de correo — ver
+// appointments-lifecycle.ts. Los eventos `appointment.confirmed`/`completed`/
+// `no_show` de abajo, y sus rutas correspondientes ya cableadas a
+// `tryEnqueueAppointmentEmail`, cierran ese gap.
+import {
+  correoCitaCancelada,
+  correoCitaCompletada,
+  correoCitaConfirmada,
+  correoCitaCreada,
+  correoCitaModificada,
+  correoCitaNoShow,
+  correoCitaReagendada,
+  correoCitaRecordatorio,
+  type CitaCorreo,
+} from "./emails/appointment-templates.ts";
 import type { CitasRepository } from "./repository.ts";
 
-export type AppointmentEmailEvent = "appointment.created" | "appointment.reminder_24h" | "appointment.cancelled" | "appointment.rescheduled" | "appointment.modified";
+// Fase 11 — agrega confirmed/completed/no_show: gap real de auditoría (ver
+// cabecera de emails/appointment-templates.ts). Mismo criterio de dedupe_key
+// por evento que las 5 transiciones anteriores.
+export type AppointmentEmailEvent =
+  | "appointment.created"
+  | "appointment.reminder_24h"
+  | "appointment.cancelled"
+  | "appointment.rescheduled"
+  | "appointment.modified"
+  | "appointment.confirmed"
+  | "appointment.completed"
+  | "appointment.no_show";
 
 export interface AppointmentEmailExtra {
   /** Solo relevante para "appointment.rescheduled": el starts_at ANTERIOR de esta misma cita. */
@@ -113,6 +144,18 @@ export async function enqueueAppointmentEmailCore(repo: CitasRepository, organiz
       // proveedor/servicio distinto del último correo enviado debe poder mandar
       // el suyo propio.
       dedupeKey = `modified:${appointmentId}:${appointment.providerId}:${appointment.serviceId}`;
+      break;
+    case "appointment.confirmed":
+      correo = correoCitaConfirmada(base);
+      dedupeKey = `confirmed:${appointmentId}`;
+      break;
+    case "appointment.completed":
+      correo = correoCitaCompletada(base);
+      dedupeKey = `completed:${appointmentId}`;
+      break;
+    case "appointment.no_show":
+      correo = correoCitaNoShow(base);
+      dedupeKey = `no-show:${appointmentId}`;
       break;
     default:
       throw new Error(`Evento de correo de cita desconocido: ${String(event)}`);

@@ -74,6 +74,11 @@ export function mapRentasDomainError(err: RentasDomainError): ApiError {
     case "bloqueo_mantenimiento_no_aplicable":
     case "bloqueo_mantenimiento_sin_rango":
       return Errors.validation(err.message);
+    // ---- onboarding self-serve (Fase 11, ver ../../../../packages/domain-rentas/src/onboarding/*) ----
+    case "onboarding_datos_invalidos":
+      return Errors.validation(err.message);
+    case "onboarding_organizacion_duplicada":
+      return Errors.conflict(err.message);
     default: {
       // Exhaustividad: si RentasErrorCode gana un valor nuevo sin actualizar este
       // mapeo, TypeScript marca `err.code` aquí como no asignable a `never`.

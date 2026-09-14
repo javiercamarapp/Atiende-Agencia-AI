@@ -24,7 +24,7 @@ import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDe
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
@@ -185,6 +185,7 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     hotelesFraudeAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+    rentasOnboardingRepo: (_db) => new InMemoryRentasOnboardingRepository(),
     rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
     rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
@@ -366,6 +367,7 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       hotelesFraudeAuditSink: new InMemoryAuditSink(),
       rentasRepo: (_db) => new InMemoryRentasRepository(),
       rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
+      rentasOnboardingRepo: (_db) => new InMemoryRentasOnboardingRepository(),
       rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
       rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
       rentasIcalFeedPort: new FakeIcalFeedPort(),
