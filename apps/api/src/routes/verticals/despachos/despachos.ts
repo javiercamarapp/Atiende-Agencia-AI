@@ -15,9 +15,13 @@ import { despachosMigracionCatalogoRoutes } from "./migracion-catalogo.ts";
 import { despachosDevolucionIvaRoutes } from "./devolucion-iva.ts";
 import { despachosBookkeepingRoutes } from "./bookkeeping.ts";
 import { despachosCierreMensualRoutes } from "./cierre-mensual.ts";
+import { despachosAdminRoutes } from "./admin.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
+  // Fase 9 — resolución de propertyId(s) desde el slug de la organización, primer
+  // eslabón que necesita CUALQUIER pantalla nueva del panel web (ver admin.ts).
+  app.route("/", despachosAdminRoutes(deps));
   app.route("/", despachosCfdiRoutes(deps));
   app.route("/", despachosRevisionesRoutes(deps));
   app.route("/", despachosVencimientosRoutes(deps));
