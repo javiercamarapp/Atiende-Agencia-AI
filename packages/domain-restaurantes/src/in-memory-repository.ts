@@ -8,7 +8,30 @@
 import { randomUUID } from "node:crypto";
 import { OrderConflictError } from "./errors.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
-import type { Branch, BranchSummary, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, NearestBranchMatch, Order, PersistedOrderItem } from "./types.ts";
+import type {
+  Branch,
+  BranchProductState,
+  BranchSummary,
+  CallbackRequest,
+  CallbackRequestInput,
+  Category,
+  CategoryPatch,
+  Customer,
+  CustomerAddress,
+  CustomerListFilter,
+  CustomerListPage,
+  CustomerTier,
+  NearestBranchMatch,
+  NewCategoryInput,
+  NewProductInput,
+  Order,
+  OrderListFilter,
+  OrderListPage,
+  OrderStatus,
+  PersistedOrderItem,
+  Product,
+  ProductPatch,
+} from "./types.ts";
 import type {
   ChannelStatsRow,
   ConversationMessage,
@@ -53,6 +76,20 @@ function computeMidRankPercentiles<T>(items: readonly T[], valueOf: (item: T) =>
 }
 
 /** Cortes 95/90/70 (corregidos en Fase 3 — ver comentario en migrations/002). */
+/** Slugify mínimo para el default de `seedCategory`/fixtures viejos que nunca
+ * pasaron un slug explícito — la ruta HTTP real de creación (admin-catalog.ts)
+ * SIEMPRE exige un slug explícito del caller, esto es solo para no romper fixtures
+ * preexistentes de otras fases. */
+function slugify(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function tierFromPercentile(percentil: number): CustomerTier {
   if (percentil >= 95) return "BLACK";
   if (percentil >= 90) return "PLATINUM";
@@ -106,18 +143,25 @@ interface StoredOrganization {
 interface StoredBranch extends Branch {}
 
 interface StoredCategory {
-  readonly id: string;
-  readonly organizationId: string;
-  readonly name: string;
+  id: string;
+  organizationId: string;
+  name: string;
+  slug: string;
+  displayOrder: number;
 }
 
 interface StoredProduct {
-  readonly id: string;
-  readonly organizationId: string;
-  readonly categoryId: string | null;
-  readonly name: string;
-  readonly description: string | null;
-  readonly searchKeywords: readonly string[];
+  id: string;
+  organizationId: string;
+  categoryId: string | null;
+  name: string;
+  description: string | null;
+  searchKeywords: readonly string[];
+  price: number;
+  imageUrl: string | null;
+  isPopular: boolean;
+  isAvailable: boolean;
+  displayOrder: number;
 }
 
 interface StoredBranchProduct {
@@ -205,12 +249,42 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     this.branches.set(branch.propertyId, branch);
   }
 
-  seedCategory(category: StoredCategory): void {
-    this.categories.set(category.id, category);
+  // `slug`/`displayOrder` (category) y `price`/`imageUrl`/`isPopular`/`isAvailable`/
+  // `displayOrder` (product) son opcionales aquí con default — Fase 5 los agregó
+  // para el CRUD real de administración, pero decenas de fixtures YA existentes de
+  // Fase 1-4 (búsqueda/cotización de pedidos) siembran categorías/productos sin
+  // ellos: exigirlos habría roto esos tests sin ganar nada (esos flujos nunca leen
+  // slug/precio-base/displayOrder, solo name/description/categoryId/searchKeywords).
+  seedCategory(category: { id: string; organizationId: string; name: string; slug?: string; displayOrder?: number }): void {
+    this.categories.set(category.id, { id: category.id, organizationId: category.organizationId, name: category.name, slug: category.slug ?? slugify(category.name), displayOrder: category.displayOrder ?? 0 });
   }
 
-  seedProduct(product: StoredProduct): void {
-    this.products.set(product.id, product);
+  seedProduct(product: {
+    id: string;
+    organizationId: string;
+    categoryId: string | null;
+    name: string;
+    description: string | null;
+    searchKeywords: readonly string[];
+    price?: number;
+    imageUrl?: string | null;
+    isPopular?: boolean;
+    isAvailable?: boolean;
+    displayOrder?: number;
+  }): void {
+    this.products.set(product.id, {
+      id: product.id,
+      organizationId: product.organizationId,
+      categoryId: product.categoryId,
+      name: product.name,
+      description: product.description,
+      searchKeywords: product.searchKeywords,
+      price: product.price ?? 0,
+      imageUrl: product.imageUrl ?? null,
+      isPopular: product.isPopular ?? false,
+      isAvailable: product.isAvailable ?? true,
+      displayOrder: product.displayOrder ?? 0,
+    });
   }
 
   seedBranchProduct(entry: StoredBranchProduct): void {
@@ -772,4 +846,240 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     row.lastErrorClass = errorClass.slice(0, 120);
     row.claimedAt = null;
   }
+
+  // ---- Fase 5 — back-office CORE (ver diseño §1) ----
+
+  async findBranchById(organizationId: string, propertyId: string): Promise<Branch | null> {
+    const branch = this.branches.get(propertyId);
+    return branch && branch.organizationId === organizationId ? branch : null;
+  }
+
+  async listBranchesForOrganizationAdmin(organizationId: string): Promise<readonly Branch[]> {
+    return [...this.branches.values()].filter((b) => b.organizationId === organizationId).sort((a, b) => a.name.localeCompare(b.name, "es-MX"));
+  }
+
+  async updateBranchDetail(
+    organizationId: string,
+    propertyId: string,
+    patch: { readonly phone?: string | null; readonly address?: string | null; readonly lat?: number | null; readonly lng?: number | null; readonly slug?: string; readonly displayOrder?: number },
+  ): Promise<Branch | null> {
+    void patch.displayOrder; // no modelado en `StoredBranch` (equivalente en memoria de branch_detail.display_order) — solo afecta orden de listado, no hay caso de prueba que lo requiera todavía.
+    const existing = this.branches.get(propertyId);
+    if (!existing || existing.organizationId !== organizationId) return null;
+    const updated: Branch = {
+      ...existing,
+      phone: patch.phone !== undefined ? patch.phone : existing.phone,
+      address: patch.address !== undefined ? patch.address : existing.address,
+      lat: patch.lat !== undefined ? patch.lat : existing.lat,
+      lng: patch.lng !== undefined ? patch.lng : existing.lng,
+      slug: patch.slug !== undefined ? patch.slug : existing.slug,
+    };
+    this.branches.set(propertyId, updated);
+    return updated;
+  }
+
+  async listCategories(organizationId: string): Promise<readonly Category[]> {
+    return [...this.categories.values()]
+      .filter((c) => c.organizationId === organizationId)
+      .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name, "es-MX"))
+      .map((c) => ({ ...c }));
+  }
+
+  async createCategory(organizationId: string, input: NewCategoryInput): Promise<Category> {
+    const created: StoredCategory = { id: randomUUID(), organizationId, name: input.name, slug: input.slug, displayOrder: input.displayOrder ?? 0 };
+    this.categories.set(created.id, created);
+    return { ...created };
+  }
+
+  async updateCategory(organizationId: string, categoryId: string, patch: CategoryPatch): Promise<Category | null> {
+    const existing = this.categories.get(categoryId);
+    if (!existing || existing.organizationId !== organizationId) return null;
+    const updated: StoredCategory = {
+      ...existing,
+      name: patch.name ?? existing.name,
+      slug: patch.slug ?? existing.slug,
+      displayOrder: patch.displayOrder ?? existing.displayOrder,
+    };
+    this.categories.set(categoryId, updated);
+    return { ...updated };
+  }
+
+  private toProduct(stored: StoredProduct): Product {
+    const category = stored.categoryId ? this.categories.get(stored.categoryId) : undefined;
+    return {
+      id: stored.id,
+      organizationId: stored.organizationId,
+      categoryId: stored.categoryId,
+      categoryName: category?.name ?? null,
+      name: stored.name,
+      description: stored.description,
+      price: stored.price,
+      imageUrl: stored.imageUrl,
+      isPopular: stored.isPopular,
+      isAvailable: stored.isAvailable,
+      displayOrder: stored.displayOrder,
+      searchKeywords: stored.searchKeywords,
+    };
+  }
+
+  async listProducts(organizationId: string): Promise<readonly Product[]> {
+    return [...this.products.values()]
+      .filter((p) => p.organizationId === organizationId)
+      .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name, "es-MX"))
+      .map((p) => this.toProduct(p));
+  }
+
+  async findProduct(organizationId: string, productId: string): Promise<Product | null> {
+    const product = this.products.get(productId);
+    return product && product.organizationId === organizationId ? this.toProduct(product) : null;
+  }
+
+  async createProduct(organizationId: string, input: NewProductInput): Promise<Product> {
+    const created: StoredProduct = {
+      id: randomUUID(),
+      organizationId,
+      categoryId: input.categoryId ?? null,
+      name: input.name,
+      description: input.description ?? null,
+      searchKeywords: input.searchKeywords ?? [],
+      price: input.price,
+      imageUrl: input.imageUrl ?? null,
+      isPopular: input.isPopular ?? false,
+      isAvailable: input.isAvailable ?? true,
+      displayOrder: input.displayOrder ?? 0,
+    };
+    this.products.set(created.id, created);
+    return this.toProduct(created);
+  }
+
+  async updateProduct(organizationId: string, productId: string, patch: ProductPatch): Promise<Product | null> {
+    const existing = this.products.get(productId);
+    if (!existing || existing.organizationId !== organizationId) return null;
+    const updated: StoredProduct = {
+      ...existing,
+      categoryId: patch.categoryId !== undefined ? patch.categoryId : existing.categoryId,
+      name: patch.name ?? existing.name,
+      description: patch.description !== undefined ? patch.description : existing.description,
+      price: patch.price ?? existing.price,
+      imageUrl: patch.imageUrl !== undefined ? patch.imageUrl : existing.imageUrl,
+      isPopular: patch.isPopular ?? existing.isPopular,
+      isAvailable: patch.isAvailable ?? existing.isAvailable,
+      displayOrder: patch.displayOrder ?? existing.displayOrder,
+      searchKeywords: patch.searchKeywords ?? existing.searchKeywords,
+    };
+    this.products.set(productId, updated);
+    return this.toProduct(updated);
+  }
+
+  async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
+    const entry = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    return entry ? { propertyId: entry.propertyId, productId: entry.productId, price: entry.price, isAvailable: entry.isAvailable } : null;
+  }
+
+  async upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState> {
+    const existing = this.branchProducts.find((bp) => bp.propertyId === propertyId && bp.productId === productId);
+    if (existing) {
+      existing.price = price;
+      existing.isAvailable = isAvailable;
+      return { propertyId, productId, price, isAvailable };
+    }
+    this.branchProducts.push({ propertyId, productId, price, isAvailable });
+    return { propertyId, productId, price, isAvailable };
+  }
+
+  async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
+    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId);
+    return order ?? null;
+  }
+
+  async listOrders(organizationId: string, filter: OrderListFilter): Promise<OrderListPage> {
+    const scope = filter.propertyIds ? new Set(filter.propertyIds) : null;
+    const fromMs = filter.dateFrom ? filter.dateFrom.getTime() : null;
+    const toMs = filter.dateTo ? filter.dateTo.getTime() : null;
+    const cursorBoundary = decodeCursor(filter.cursor);
+
+    let matching = this.orders.filter((o) => {
+      if (o.organizationId !== organizationId) return false;
+      if (scope !== null && !scope.has(o.propertyId)) return false;
+      if (filter.status !== undefined && o.status !== filter.status) return false;
+      const createdMs = Date.parse(o.createdAt);
+      if (fromMs !== null && createdMs < fromMs) return false;
+      if (toMs !== null && createdMs >= toMs) return false;
+      return true;
+    });
+    matching = matching.sort((a, b) => (a.createdAt === b.createdAt ? b.id.localeCompare(a.id) : b.createdAt.localeCompare(a.createdAt)));
+
+    if (cursorBoundary) {
+      matching = matching.filter((o) => isBeforeCursor(o, cursorBoundary));
+    }
+
+    const page = matching.slice(0, filter.limit);
+    const nextCursor = matching.length > filter.limit ? encodeCursor(page[page.length - 1]!) : null;
+    return { orders: page, nextCursor };
+  }
+
+  async updateOrderStatus(organizationId: string, orderId: string, status: OrderStatus): Promise<Order | null> {
+    const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId);
+    if (index === -1) return null;
+    const existing = this.orders[index]!;
+    const updated: Order = { ...existing, status };
+    this.orders[index] = updated;
+    return updated;
+  }
+
+  async findCustomerById(organizationId: string, customerId: string): Promise<Customer | null> {
+    const customer = this.customers.get(customerId);
+    return customer && customer.organizationId === organizationId ? customer : null;
+  }
+
+  async listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage> {
+    const search = filter.search?.trim().toLowerCase();
+    let matching = [...this.customers.values()].filter((c) => {
+      if (c.organizationId !== organizationId) return false;
+      if (search && !(c.name?.toLowerCase().includes(search) || c.phone.includes(search))) return false;
+      return true;
+    });
+    // Orden por `id asc` — mismo criterio (y mismo formato de cursor: el último id
+    // visto) que PostgresRestaurantesRepository.listCustomers, para que ambos
+    // adaptadores paginen de forma idéntica (ver comentario de ese método).
+    matching = matching.sort((a, b) => a.id.localeCompare(b.id));
+
+    const cursorBoundary = filter.cursor;
+    if (cursorBoundary) {
+      matching = matching.filter((c) => c.id > cursorBoundary);
+    }
+
+    const page = matching.slice(0, filter.limit);
+    const nextCursor = matching.length > filter.limit ? page[page.length - 1]!.id : null;
+    return { customers: page, nextCursor };
+  }
+}
+
+interface OrderCursorBoundary {
+  readonly createdAt: string;
+  readonly id: string;
+}
+
+function encodeCursor(order: Order): string {
+  return Buffer.from(`${order.createdAt}|${order.id}`, "utf8").toString("base64url");
+}
+
+function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
+  if (!cursor) return null;
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    const separatorIndex = decoded.lastIndexOf("|");
+    if (separatorIndex === -1) return null;
+    return { createdAt: decoded.slice(0, separatorIndex), id: decoded.slice(separatorIndex + 1) };
+  } catch {
+    return null;
+  }
+}
+
+/** El listado real está ordenado `createdAt desc, id desc` (ver `listOrders`) — un
+ * pedido queda "después" del cursor (se incluye en la página siguiente) cuando su
+ * clave compuesta es estrictamente MENOR que la del cursor bajo ese mismo orden. */
+function isBeforeCursor(order: Order, boundary: OrderCursorBoundary): boolean {
+  if (order.createdAt !== boundary.createdAt) return order.createdAt < boundary.createdAt;
+  return order.id < boundary.id;
 }

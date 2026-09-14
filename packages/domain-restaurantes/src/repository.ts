@@ -6,7 +6,30 @@
 // las migraciones de migrations/001-004). Ninguna función de negocio de
 // customers.ts/orders.ts/whatsapp/* toca SQL directamente — todas pasan por aquí,
 // así que el mismo código de negocio corre igual en tests y en producción.
-import type { Branch, BranchSummary, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, NearestBranchMatch, Order, PersistedOrderItem } from "./types.ts";
+import type {
+  Branch,
+  BranchProductState,
+  BranchSummary,
+  CallbackRequest,
+  CallbackRequestInput,
+  Category,
+  CategoryPatch,
+  Customer,
+  CustomerAddress,
+  CustomerListFilter,
+  CustomerListPage,
+  CustomerTier,
+  NearestBranchMatch,
+  NewCategoryInput,
+  NewProductInput,
+  Order,
+  OrderListFilter,
+  OrderListPage,
+  OrderStatus,
+  PersistedOrderItem,
+  Product,
+  ProductPatch,
+} from "./types.ts";
 
 export interface SearchableProduct {
   readonly id: string;
@@ -197,6 +220,64 @@ export interface RestaurantesRepository {
   markMessagingOutboxSent(id: string): Promise<void>;
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
+
+  // ---- Fase 5 — back-office CORE (ver diseño §1) ----
+
+  /** Sucursal completa (activa o inactiva) por id — a diferencia de `findBranch`
+   * (busca por slug/name, solo usado hoy por el flujo de pedido/agente), esta es
+   * la que necesita la ficha de edición del panel: nunca oculta una sucursal
+   * inactiva (el staff SÍ necesita poder verla/reactivarla). */
+  findBranchById(organizationId: string, propertyId: string): Promise<Branch | null>;
+  /** Todas las sucursales de la organización (activas e inactivas) para el listado
+   * de administración — a diferencia de `listBranchesForOrganization` (solo
+   * activas, para el bloque del prompt del agente). */
+  listBranchesForOrganizationAdmin(organizationId: string): Promise<readonly Branch[]>;
+  /** Edita SOLO los campos que vive `restaurantes.branch_detail` (teléfono/
+   * dirección/coordenadas/slug/orden) — `core.property.status`/`name` no son
+   * editables por staff todavía: ese esquema es compartido por TODAS las
+   * verticales y hoy solo `service_role` tiene GRANT de escritura sobre él (ver
+   * migrations/007, comentario de cabecera). Activar/desactivar una sucursal o
+   * crear una nueva requeriría un cambio de política a nivel de `core`, fuera de
+   * alcance de esta fase de un solo vertical. */
+  updateBranchDetail(
+    organizationId: string,
+    propertyId: string,
+    patch: { readonly phone?: string | null; readonly address?: string | null; readonly lat?: number | null; readonly lng?: number | null; readonly slug?: string; readonly displayOrder?: number },
+  ): Promise<Branch | null>;
+
+  listCategories(organizationId: string): Promise<readonly Category[]>;
+  createCategory(organizationId: string, input: NewCategoryInput): Promise<Category>;
+  updateCategory(organizationId: string, categoryId: string, patch: CategoryPatch): Promise<Category | null>;
+
+  /** Catálogo completo organization-wide (todos los productos, disponibles o no) —
+   * para el listado de administración. `listAvailableProductsForBranch` (arriba)
+   * sigue siendo la única fuente que consulta el flujo real de pedido/agente. */
+  listProducts(organizationId: string): Promise<readonly Product[]>;
+  findProduct(organizationId: string, productId: string): Promise<Product | null>;
+  createProduct(organizationId: string, input: NewProductInput): Promise<Product>;
+  updateProduct(organizationId: string, productId: string, patch: ProductPatch): Promise<Product | null>;
+
+  /** Precio/disponibilidad de un producto en una sucursal específica — `null`
+   * cuando el producto nunca se dio de alta ahí. */
+  getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null>;
+  /** Alta/edición real de precio/disponibilidad en `branch_products` — la ÚNICA
+   * forma de que un producto aparezca (o deje de aparecer) en
+   * `listAvailableProductsForBranch`, y por tanto en búsqueda/cotización real. */
+  upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState>;
+
+  findOrderById(organizationId: string, orderId: string): Promise<Order | null>;
+  /** Sirve tanto "pedidos en operación" (filtro por status, sin rango de fechas)
+   * como "historial de órdenes" (rango de fechas + paginación) — mismos datos,
+   * mismo filtro compuesto, ver diseño §1.3/§1.4: fragmentarlo en dos endpoints
+   * solo duplicaría la misma query. */
+  listOrders(organizationId: string, filter: OrderListFilter): Promise<OrderListPage>;
+  /** Persiste el nuevo estado (y `delivered_at` cuando aplica) — la validación de
+   * qué transición es válida vive en el dominio (order-lifecycle.ts), nunca aquí:
+   * este método NUNCA valida, solo persiste lo que ya se decidió válido. */
+  updateOrderStatus(organizationId: string, orderId: string, status: OrderStatus): Promise<Order | null>;
+
+  findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
+  listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo

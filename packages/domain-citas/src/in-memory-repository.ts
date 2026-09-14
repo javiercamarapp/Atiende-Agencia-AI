@@ -20,17 +20,26 @@ import type {
 } from "./types.ts";
 import type {
   AppointmentSyncRow,
+  CalendarProviderSyncStatus,
   CancelResult,
   CitasRepository,
+  ConnectProviderCalComAccountInput,
+  ConnectProviderCalDavAccountInput,
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
   CustomerPage,
+  EmailOutboxJobRow,
+  EmergencyEscalationInput,
+  EmergencyEscalationRecord,
   MessagingOutboxRow,
   NewAppointmentInput,
+  ProviderCalComAccountRecord,
+  ProviderCalDavAccountRecord,
   ReassignResult,
   RescheduleResult,
   ReminderCandidateRow,
+  TenantConfigRecord,
   WaitlistCandidateRow,
 } from "./repository.ts";
 
@@ -119,6 +128,9 @@ interface InMemoryOutboxRow {
   claimedAt: number | null;
   nextAttemptAt: number;
   lastErrorClass: string | null;
+  /** Fase 6 §3 — dispatcher de email (migrations/009): columna separada de
+   *  `lastErrorClass` (WhatsApp), mismo criterio que el SQL real. */
+  lastError: string | null;
 }
 
 export class InMemoryCitasRepository implements CitasRepository {
@@ -139,6 +151,14 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly whatsappPhoneNumberIdByOrg = new Map<string, string>();
   private readonly phoneNumberIdToOrg = new Map<string, string>();
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
+  // ---- Fase 6 §1 — guardia de crisis ----
+  private readonly tenantConfigs = new Map<string, TenantConfigRecord>();
+  private readonly emergencyEscalations: EmergencyEscalationRecord[] = [];
+  // ---- Fase 6 §2 — Cal.com/CalDAV por proveedor ----
+  private readonly calcomAccounts = new Map<string, ProviderCalComAccountRecord>(); // por providerId
+  private readonly calcomApiKeys = new Map<string, string>(); // por providerId
+  private readonly caldavAccounts = new Map<string, ProviderCalDavAccountRecord>(); // por providerId
+  private readonly caldavPasswords = new Map<string, string>(); // por providerId
   private readonly waitlist = new Map<string, StoredWaitlistRow>();
   // ---- Fase 3 — Google Calendar (ver diseño §3/§4) ----
   private readonly calendarAccounts = new Map<string, ProviderCalendarAccountRecord>(); // por providerId
@@ -227,8 +247,18 @@ export class InMemoryCitasRepository implements CitasRepository {
     }
   }
 
-  getOutbox(): readonly { organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: string; attempts: number }[] {
+  getOutbox(): readonly { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: unknown; status: string; attempts: number }[] {
     return [...this.outbox.values()];
+  }
+
+  /** Solo para tests: seedea `citas.tenant_config` (rubro + teléfono de aviso) sin
+   * pasar por ninguna ruta de panel — equivalente a un INSERT manual. */
+  seedTenantConfig(config: { organizationId: string; rubro?: string; ownerNotificationPhone?: string | null }): void {
+    this.tenantConfigs.set(config.organizationId, {
+      organizationId: config.organizationId,
+      rubro: config.rubro ?? "otro",
+      ownerNotificationPhone: config.ownerNotificationPhone ?? null,
+    });
   }
 
   getWaitlistEntry(id: string): StoredWaitlistRow | undefined {
@@ -610,7 +640,7 @@ export class InMemoryCitasRepository implements CitasRepository {
       return;
     }
     const id = randomUUID();
-    this.outbox.set(id, { id, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0, claimedAt: null, nextAttemptAt: 0, lastErrorClass: null });
+    this.outbox.set(id, { id, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0, claimedAt: null, nextAttemptAt: 0, lastErrorClass: null, lastError: null });
   }
 
   async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
@@ -889,5 +919,129 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void> {
     this.updateAppointmentSyncFields(appointmentId, { googleSyncStatus: "error", googleSyncAttempts: attempts, googleSyncError: error, googleSyncNextRetryAt: null });
+  }
+
+  // ============================================================================
+  // Fase 6 §1 — guardia de crisis
+  // ============================================================================
+
+  async findTenantConfig(organizationId: string): Promise<TenantConfigRecord | null> {
+    return this.tenantConfigs.get(organizationId) ?? null;
+  }
+
+  async insertEmergencyEscalation(input: EmergencyEscalationInput): Promise<EmergencyEscalationRecord> {
+    const record: EmergencyEscalationRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      customerPhone: input.customerPhone,
+      channel: input.channel,
+      keywordMatched: input.keywordMatched,
+      messageExcerpt: input.messageExcerpt,
+      createdAt: new Date().toISOString(),
+    };
+    this.emergencyEscalations.push(record);
+    return record;
+  }
+
+  /** Solo para tests: lee las escalaciones registradas (equivalente a un SELECT
+   * manual contra `citas.emergency_escalations`). */
+  getEmergencyEscalations(): readonly EmergencyEscalationRecord[] {
+    return this.emergencyEscalations;
+  }
+
+  async findOrganizationById(organizationId: string): Promise<{ readonly id: string; readonly name: string } | null> {
+    const org = this.organizations.get(organizationId);
+    return org ? { id: org.id, name: org.name } : null;
+  }
+
+  // ============================================================================
+  // Fase 6 §2 — Cal.com/CalDAV por proveedor
+  // ============================================================================
+
+  async findProviderCalComAccount(providerId: string): Promise<ProviderCalComAccountRecord | null> {
+    return this.calcomAccounts.get(providerId) ?? null;
+  }
+
+  async connectProviderCalComAccount(input: ConnectProviderCalComAccountInput): Promise<ProviderCalComAccountRecord> {
+    const existing = this.calcomAccounts.get(input.providerId);
+    const now = new Date().toISOString();
+    const record: ProviderCalComAccountRecord = {
+      id: existing?.id ?? randomUUID(),
+      organizationId: input.organizationId,
+      providerId: input.providerId,
+      calcomEventTypeId: input.calcomEventTypeId,
+      syncStatus: "connected",
+      syncError: null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.calcomAccounts.set(input.providerId, record);
+    this.calcomApiKeys.set(input.providerId, input.apiKey);
+    return record;
+  }
+
+  async disconnectProviderCalComAccount(providerId: string): Promise<void> {
+    const existing = this.calcomAccounts.get(providerId);
+    if (!existing) return;
+    this.calcomAccounts.set(providerId, { ...existing, syncStatus: "disconnected" as CalendarProviderSyncStatus, syncError: null, updatedAt: new Date().toISOString() });
+  }
+
+  async resolveProviderCalComApiKey(providerId: string): Promise<string | null> {
+    return this.calcomApiKeys.get(providerId) ?? null;
+  }
+
+  async findProviderCalDavAccount(providerId: string): Promise<ProviderCalDavAccountRecord | null> {
+    return this.caldavAccounts.get(providerId) ?? null;
+  }
+
+  async connectProviderCalDavAccount(input: ConnectProviderCalDavAccountInput): Promise<ProviderCalDavAccountRecord> {
+    const existing = this.caldavAccounts.get(input.providerId);
+    const now = new Date().toISOString();
+    const record: ProviderCalDavAccountRecord = {
+      id: existing?.id ?? randomUUID(),
+      organizationId: input.organizationId,
+      providerId: input.providerId,
+      calendarCollectionUrl: input.calendarCollectionUrl,
+      username: input.username,
+      syncStatus: "connected",
+      syncError: null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.caldavAccounts.set(input.providerId, record);
+    this.caldavPasswords.set(input.providerId, input.password);
+    return record;
+  }
+
+  async disconnectProviderCalDavAccount(providerId: string): Promise<void> {
+    const existing = this.caldavAccounts.get(providerId);
+    if (!existing) return;
+    this.caldavAccounts.set(providerId, { ...existing, syncStatus: "disconnected" as CalendarProviderSyncStatus, syncError: null, updatedAt: new Date().toISOString() });
+  }
+
+  async resolveProviderCalDavPassword(providerId: string): Promise<string | null> {
+    return this.caldavPasswords.get(providerId) ?? null;
+  }
+
+  // ============================================================================
+  // Fase 6 §3 — dispatcher de correo (channel='email' de messaging_outbox)
+  // ============================================================================
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const claimable = [...this.outbox.values()]
+      .filter((o) => o.channel === "email" && (o.status === "pending" || o.status === "failed") && o.attempts < 5)
+      .slice(0, Math.max(limit, 0));
+    for (const job of claimable) {
+      job.status = "processing";
+      job.attempts += 1;
+    }
+    return claimable.map((job) => ({ id: job.id, organizationId: job.organizationId, attempts: job.attempts, payload: (job.payload ?? {}) as Record<string, unknown> }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    const job = this.outbox.get(id);
+    if (!job || job.channel !== "email") return;
+    job.status = status;
+    job.lastError = error === null ? null : error.slice(0, 500);
   }
 }

@@ -1,0 +1,230 @@
+{
+  "generar_diot_agrupado": {
+    "entrada": [
+      {
+        "uuid": "11111111-1111-1111-1111-111111111111",
+        "rfc_emisor": "PROV010101AAA",
+        "subtotal": 1000.0,
+        "iva": 160.0,
+        "proporcionalidad": 1.0
+      },
+      {
+        "uuid": "22222222-2222-2222-2222-222222222222",
+        "rfc_emisor": "PROV010101AAA",
+        "subtotal": 2000.0,
+        "iva": 320.0,
+        "proporcionalidad": 1.0
+      },
+      {
+        "uuid": "33333333-3333-3333-3333-333333333333",
+        "rfc_emisor": "PROV020202BBB",
+        "subtotal": 1600.0,
+        "iva": 256.0,
+        "proporcionalidad": 0.5
+      }
+    ],
+    "resultado": [
+      {
+        "rfc_tercero": "PROV010101AAA",
+        "tipo_operacion": "03",
+        "monto_neto": 3000.0,
+        "iva_trasladado": 480.0,
+        "iva_acreditable": 480.0,
+        "folios_fiscales": [
+          "11111111-1111-1111-1111-111111111111",
+          "22222222-2222-2222-2222-222222222222"
+        ]
+      },
+      {
+        "rfc_tercero": "PROV020202BBB",
+        "tipo_operacion": "03",
+        "monto_neto": 1600.0,
+        "iva_trasladado": 256.0,
+        "iva_acreditable": 128.0,
+        "folios_fiscales": [
+          "33333333-3333-3333-3333-333333333333"
+        ]
+      }
+    ]
+  },
+  "iva_efectivamente_pagado_sin_rep": {
+    "entrada": {
+      "iva": 160.0,
+      "proporcionalidad": 0.5,
+      "referencia_complemento_pago": null
+    },
+    "resultado": 0.0
+  },
+  "iva_efectivamente_pagado_con_rep": {
+    "entrada": {
+      "iva": 160.0,
+      "proporcionalidad": 0.5,
+      "referencia_complemento_pago": "bbbbbbbb-0000-0000-0000-000000000002"
+    },
+    "resultado": 80.0
+  },
+  "conciliar_facturas_diot": {
+    "resultado": [
+      {
+        "factura_uuid": "cccccccc-0000-0000-0000-000000000001",
+        "diot_match": true,
+        "status": "match"
+      },
+      {
+        "factura_uuid": "cccccccc-0000-0000-0000-000000000002",
+        "diot_match": true,
+        "status": "mismatch"
+      },
+      {
+        "factura_uuid": "cccccccc-0000-0000-0000-000000000003",
+        "diot_match": false,
+        "status": "mismatch"
+      }
+    ]
+  },
+  "conciliar_diot_declaracion_match": {
+    "resultado": [
+      {
+        "diot_iva_total": 8000.0,
+        "declaracion_iva_acreditable": 8000.0,
+        "diferencia": 0.0,
+        "status": "match"
+      }
+    ]
+  },
+  "conciliar_diot_declaracion_mismatch": {
+    "resultado": [
+      {
+        "diot_iva_total": 8000.0,
+        "declaracion_iva_acreditable": 5000.0,
+        "diferencia": 3000.0,
+        "status": "mismatch"
+      }
+    ]
+  },
+  "conciliar_diot_declaracion_ambos_cero": {
+    "resultado": [
+      {
+        "status": "match"
+      }
+    ]
+  },
+  "conciliar_declaracion_saldo_consistente": {
+    "total_saldo_favor_declared": 3000.0,
+    "total_saldo_contra_declared": 0.0,
+    "saldo_neto_declaraciones": 3000.0,
+    "saldo_a_favor_solicitado": 3000.0,
+    "diferencia": 0.0,
+    "consistente": true
+  },
+  "conciliar_declaracion_saldo_inconsistente": {
+    "total_saldo_favor_declared": 3000.0,
+    "total_saldo_contra_declared": 0.0,
+    "saldo_neto_declaraciones": 3000.0,
+    "saldo_a_favor_solicitado": 5000.0,
+    "diferencia": 2000.0,
+    "consistente": false
+  },
+  "calcular_saldo_favor_multiple": 5500.0,
+  "calcular_monto_devolucion": {
+    "saldo_favor_original": 10000.0,
+    "total_saldo_favor_declaraciones": 10000.0,
+    "factor_actualizacion": 1.0,
+    "monto_actualizado": 10000.0,
+    "monto_devolucion_sugerido": 10000.0,
+    "periodo_mas_antiguo": "2026-01",
+    "prescripcion_verificada": true
+  },
+  "calcular_monto_devolucion_multi_periodo": {
+    "saldo_favor_original": 5500.0,
+    "total_saldo_favor_declaraciones": 5500.0,
+    "factor_actualizacion": 1.0,
+    "monto_actualizado": 5500.0,
+    "monto_devolucion_sugerido": 5500.0,
+    "periodo_mas_antiguo": "2025-01",
+    "prescripcion_verificada": true
+  },
+  "congruencia_congruente": {
+    "periodo": "2026-03",
+    "diot_existe": true,
+    "declaracion_existe": true,
+    "total_cfdi_iva_acreditable": 160.0,
+    "total_diot_iva_acreditable": 160.0,
+    "total_declaracion_iva_pagado": 160.0,
+    "diferencia_cfdi_diot": 0.0,
+    "diferencia_diot_declaracion": 0.0,
+    "diferencia_maxima": 0.0,
+    "tolerancia": 1.0,
+    "congruente": true
+  },
+  "congruencia_sin_diot": {
+    "periodo": "2026-03",
+    "diot_existe": false,
+    "declaracion_existe": true,
+    "total_cfdi_iva_acreditable": 160.0,
+    "total_diot_iva_acreditable": 0,
+    "total_declaracion_iva_pagado": 160.0,
+    "diferencia_cfdi_diot": 160.0,
+    "diferencia_diot_declaracion": 160.0,
+    "diferencia_maxima": 160.0,
+    "tolerancia": 1.0,
+    "congruente": false
+  },
+  "congruencia_incongruente": {
+    "periodo": "2026-03",
+    "diot_existe": true,
+    "declaracion_existe": true,
+    "total_cfdi_iva_acreditable": 160.0,
+    "total_diot_iva_acreditable": 160.0,
+    "total_declaracion_iva_pagado": 500.0,
+    "diferencia_cfdi_diot": 0.0,
+    "diferencia_diot_declaracion": 340.0,
+    "diferencia_maxima": 340.0,
+    "tolerancia": 1.0,
+    "congruente": false
+  },
+  "clabe_valida": {
+    "clabe": "014180655208094807",
+    "error": null
+  },
+  "clabe_digito_invalido": {
+    "clabe": "014180655208094809",
+    "error": "CLABE con dígito verificador inválido: Dígito verificador inválido. Esperado: 7"
+  },
+  "clabe_longitud_invalida": {
+    "clabe": "1234",
+    "error": "CLABE debe tener 18 dígitos, tiene 4."
+  },
+  "clabe_no_numerica": {
+    "clabe": "01418065520809480X",
+    "error": "CLABE solo debe contener dígitos."
+  },
+  "dias_habiles_desde_jueves": {
+    "entrada": {
+      "fecha_inicio": "2026-01-08",
+      "dias": 40
+    },
+    "resultado": "2026-03-06"
+  },
+  "fecha_limite_resolucion_sin_dictamen": {
+    "entrada": {
+      "fecha_presentacion": "2026-01-08",
+      "hay_dictamen": false
+    },
+    "resultado": "2026-03-06"
+  },
+  "fecha_limite_resolucion_con_dictamen": {
+    "entrada": {
+      "fecha_presentacion": "2026-01-08",
+      "hay_dictamen": true
+    },
+    "resultado": "2026-02-06"
+  },
+  "dias_habiles_cruza_feriado": {
+    "entrada": {
+      "fecha_inicio": "2026-04-27",
+      "dias": 5
+    },
+    "resultado": "2026-05-05"
+  }
+}

@@ -1,0 +1,154 @@
+{
+  "balance_cuadrada_ok": {
+    "type": "balance_cuadrada",
+    "passed": true,
+    "message": "Balanza cuadrada",
+    "details": {
+      "total_debe": 100000.0,
+      "total_haber": 100000.5,
+      "diferencia": 0.5,
+      "tolerancia": 1.0
+    }
+  },
+  "balance_cuadrada_fail": {
+    "type": "balance_cuadrada",
+    "passed": false,
+    "message": "Balanza NO cuadrada — diferencia $500.00",
+    "details": {
+      "total_debe": 1000.0,
+      "total_haber": 1500.0,
+      "diferencia": 500.0,
+      "tolerancia": 1.0
+    }
+  },
+  "balance_cuadrada_limite_exacto": {
+    "type": "balance_cuadrada",
+    "passed": true,
+    "message": "Balanza cuadrada",
+    "details": {
+      "total_debe": 1000.0,
+      "total_haber": 1001.0,
+      "diferencia": 1.0,
+      "tolerancia": 1.0
+    }
+  },
+  "polizas_cuadradas_ok": {
+    "type": "polizas_cuadradas",
+    "passed": true,
+    "message": "2 pólizas cuadradas",
+    "details": {
+      "total_polizas": 2,
+      "errors": []
+    }
+  },
+  "polizas_cuadradas_fail": {
+    "type": "polizas_cuadradas",
+    "passed": false,
+    "message": "1 pólizas con desfase",
+    "details": {
+      "total_polizas": 1,
+      "errors": [
+        "Póliza p1: debe $100.0 ≠ haber $90.0"
+      ]
+    }
+  },
+  "nomina_cuadrada_ok": {
+    "type": "nomina_cuadrada",
+    "passed": true,
+    "message": "1 nóminas cuadradas",
+    "details": {
+      "total_nominas": 1,
+      "errors": []
+    }
+  },
+  "nomina_cuadrada_fail": {
+    "type": "nomina_cuadrada",
+    "passed": false,
+    "message": "1 nóminas con desfase",
+    "details": {
+      "total_nominas": 1,
+      "errors": [
+        "Nómina #1: bruto $10000.0 - deducciones $2000.0 = $8000.0, neto reportado $7000.0"
+      ]
+    }
+  },
+  "iva_conciliado_ok": {
+    "type": "iva_conciliado",
+    "passed": true,
+    "message": "IVA conciliado correctamente",
+    "details": {
+      "iva_trasladado": 50000.0,
+      "iva_acreditable": 30000.0,
+      "expected": 20000.0,
+      "iva_provisionado": 20000.0,
+      "diferencia": 0.0
+    }
+  },
+  "iva_conciliado_fail": {
+    "type": "iva_conciliado",
+    "passed": false,
+    "message": "IVA NO conciliado — diferencia $5,000.00",
+    "details": {
+      "iva_trasladado": 50000.0,
+      "iva_acreditable": 30000.0,
+      "expected": 20000.0,
+      "iva_provisionado": 15000.0,
+      "diferencia": 5000.0
+    }
+  },
+  "isr_sin_utilidad": {
+    "type": "isr_provisionado",
+    "passed": true,
+    "message": "ISR no aplica — sin utilidad fiscal",
+    "details": {
+      "utilidad_fiscal": -5000.0,
+      "isr_provision": 0.0
+    }
+  },
+  "isr_ok": {
+    "type": "isr_provisionado",
+    "passed": true,
+    "message": "ISR provisionado correctamente",
+    "details": {
+      "utilidad_fiscal": 100000.0,
+      "expected": 30000.0,
+      "isr_provision": 30000.0,
+      "diferencia": 0.0,
+      "tasa": 0.3
+    }
+  },
+  "isr_fail": {
+    "type": "isr_provisionado",
+    "passed": false,
+    "message": "ISR provision insuficiente — esperado $30,000.00, actual $10,000.00, diferencia $20,000.00",
+    "details": {
+      "utilidad_fiscal": 100000.0,
+      "expected": 30000.0,
+      "isr_provision": 10000.0,
+      "diferencia": 20000.0,
+      "tasa": 0.3
+    }
+  },
+  "bancos_ok_fraccion": {
+    "type": "bancos_conciliados",
+    "passed": true,
+    "message": "Bancos conciliados al 95.0%",
+    "details": {
+      "match_rate": 0.95,
+      "total_movements": 100,
+      "matched": 95,
+      "threshold": 0.8
+    }
+  },
+  "bancos_fail_fraccion": {
+    "type": "bancos_conciliados",
+    "passed": false,
+    "message": "Bancos insuficientemente conciliados: 50.0% (mínimo 80%)",
+    "details": {
+      "match_rate": 0.5,
+      "total_movements": 100,
+      "matched": 50,
+      "threshold": 0.8
+    }
+  }
+}

@@ -178,3 +178,62 @@ export type {
   PersistedTenderVersion,
 } from "./tender-version-registry.ts";
 export type { TenderChangeNotificationRecord, RecordTenderVersionResult } from "./repository.ts";
+
+// ---- Fase 6: seguimiento post-adjudicación (REQ-051..055) ----
+export { CONTRACT_STATES, CONTRACT_INITIAL_STATUS, CONTRACT_TERMINAL_STATES, CONTRACT_TRANSITIONS, CONTRACT_ALERT_STATES, CONTRACT_DECISION_TRANSITIONS, isContractStatus, checkTransition } from "./contract-lifecycle.ts";
+export type { ContractStatus, TransitionCheckResult } from "./contract-lifecycle.ts";
+
+export { addBusinessDays, daysBetween as businessDaysBetween, CALENDAR_LIMITATION_NOTE } from "./business-days.ts";
+
+export {
+  LAASSP_ART_73_PAYMENT_TERM_BUSINESS_DAYS,
+  LAASSP_ART_73_LEGAL_REFERENCE,
+  computePaymentDueDate,
+  classifyInvoiceStatus,
+  summarizeReceivables,
+} from "./contract-billing.ts";
+export type { PaymentDeadlineResult, ContractInvoiceStatus, InvoiceStatusInput, ReceivableLineInput, ReceivablesTotals } from "./contract-billing.ts";
+
+export { CONTRACT_FIELD_KEYS, extractContractFields } from "./contract-extraction.ts";
+export type { ContractFieldKey, ExtractedContractField, ContractFieldPageText } from "./contract-extraction.ts";
+
+export {
+  INCONFORMIDAD_DISCLAIMER,
+  LAASSP_ART_95_INCONFORMIDAD_BUSINESS_DAYS,
+  LAASSP_ART_95_INCONFORMIDAD_TRATADOS_BUSINESS_DAYS,
+  LAASSP_ART_95_LEGAL_REFERENCE,
+  computeInconformidadDeadline,
+  buildInconformidadContent,
+} from "./inconformidad.ts";
+export type { InconformidadFundamento, InconformidadViability, InconformidadDeadlineResult, InconformidadContentInput, InconformidadContent } from "./inconformidad.ts";
+
+export { NO_DISPONIBLE, OWN_PROPOSAL_STATUSES, isOwnProposalStatus, normalizeOrNoDisponible, sanitizeCriteriaComparison } from "./fallo-autopsy.ts";
+export type { OwnProposalStatus, CriteriaComparisonItem } from "./fallo-autopsy.ts";
+
+export { DEFAULT_RENEWAL_LEAD_DAYS, daysBetween as renewalDaysBetween, computeRenewalAlertCandidates, urgencyForLeadDays, computeUpcomingRenewals } from "./renewal-radar.ts";
+export type { RenewalCandidateContract, RenewalAlertCandidate, RenewalUrgency, RenewalUpcomingCandidate } from "./renewal-radar.ts";
+
+export { INCONFORMIDAD_REVIEW_ROLES } from "./roles.ts";
+export { ContractTransitionRejectedError } from "./errors.ts";
+
+export type {
+  ContractRecord,
+  ContractStatusHistoryRecord,
+  ContractMetadataUpdateInput,
+  ContractTransitionInput,
+  ContractDocumentRecord,
+  ContractExtractedFieldRecord,
+  AddContractDocumentInput,
+  ConfirmContractExtractedFieldInput,
+  ContractInvoiceRecord,
+  CreateContractInvoiceInput,
+  ReceivablesSummary,
+  InconformidadDraftRecord,
+  CreateInconformidadDraftInput,
+  FalloAutopsyRecord,
+  CreateFalloAutopsyInput,
+  CompanyLessonLearnedRecord,
+  RenewalAlertRecord,
+  ScanRenewalAlertsInput,
+  ScanRenewalAlertsResult,
+} from "./repository.ts";

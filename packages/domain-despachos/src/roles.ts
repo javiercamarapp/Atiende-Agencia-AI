@@ -47,6 +47,31 @@ export const CONCILIACION_ROLES: readonly DespachosRole[] = ["admin", "contador"
 export const MIGRACION_CATALOGO_ROLES: readonly DespachosRole[] = ["admin", "contador"];
 export const DECIDIR_MAPEO_MIGRACION_ROLES: readonly DespachosRole[] = ["admin", "contador"];
 
+/** Quién puede correr el papel de trabajo de devolución de IVA (Fase 6) —
+ * mismo criterio que DECLARACIONES_ROLES/CONCILIACION_ROLES: son los mismos
+ * operadores que preparan obligaciones fiscales del cliente. */
+export const DEVOLUCION_IVA_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
+/** Quién puede correr el auto-clasificador de pólizas / generar pólizas
+ * (Fase 6) — mismo criterio. */
+export const BOOKKEEPING_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
+/** Quién puede ver el checklist/estado de un período de cierre — `auditor`
+ * SÍ puede ver (es lectura de un proceso ya corrido, mismo criterio que
+ * MIGRACION_CATALOGO_ROLES para lectura de clasificación). */
+export const VER_CIERRE_MENSUAL_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor"];
+
+/** Quién puede abrir un período, completar tareas o correr auto-check —
+ * mismo criterio que DECLARACIONES_ROLES. */
+export const GESTIONAR_CIERRE_MENSUAL_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
+/** Quién puede CERRAR (o, en una fase futura, reabrir) un período — acción
+ * irreversible en esta fase (sin reapertura implementada, ver
+ * cierre-mensual/engine.ts): reservada a `admin`, ni siquiera `contador`,
+ * mismo criterio de separación de funciones que ADMIN_ROLES ya aplica en
+ * otras acciones de alto impacto de esta vertical. */
+export const CERRAR_PERIODO_ROLES: readonly DespachosRole[] = ["admin"];
+
 export const ADMIN_ROLES: readonly DespachosRole[] = ["admin"];
 
 /**

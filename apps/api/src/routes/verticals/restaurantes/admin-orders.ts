@@ -1,0 +1,125 @@
+// Fase 5 restaurantes — back-office CORE: pedidos en operación + historial de
+// órdenes (ver diseño §1.3/§1.4). Un solo endpoint de listado (`GET
+// .../admin/orders`) sirve ambas vistas del origen (PedidosSection.tsx —
+// pendientes/en curso, filtro por status, sin rango de fechas — y su historial
+// completo con filtro de fecha/sucursal/status): son la MISMA query compuesta
+// (organización + alcance de sucursal + filtros opcionales), fragmentarla en dos
+// rutas solo duplicaría el mismo código de paginación por cursor. El cambio de
+// estado (`PATCH .../orders/:orderId/status`) usa la máquina de estados real de
+// `@atiende/domain-restaurantes::order-lifecycle.ts` — nunca acepta un string
+// crudo sin validar la transición.
+import { Hono } from "hono";
+import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError } from "@atiende/domain-restaurantes";
+import type { Order } from "@atiende/domain-restaurantes";
+import { Errors } from "../../../errors.ts";
+import { readJsonCapped } from "../../../http-security.ts";
+import type { AppDeps } from "../../../deps.ts";
+import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
+
+function serializeOrder(o: Order) {
+  return {
+    id: o.id,
+    propertyId: o.propertyId,
+    branch: o.branch,
+    customerId: o.customerId,
+    customerName: o.customerName,
+    customerPhone: o.customerPhone,
+    customerAddress: o.customerAddress,
+    total: o.total,
+    status: o.status,
+    items: o.items,
+    source: o.source,
+    notes: o.notes,
+    paymentMethod: o.paymentMethod,
+    createdAt: o.createdAt,
+  };
+}
+
+function parseLimit(raw: string | undefined): number {
+  if (raw === undefined) return 30;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 100) throw Errors.validation("limit: se esperaba un entero entre 1 y 100.");
+  return n;
+}
+
+function parseDate(raw: string | undefined, field: string): Date | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) throw Errors.validation(`${field}: se esperaba una fecha ISO 8601 válida.`);
+  return parsed;
+}
+
+function parseStatus(raw: string | undefined) {
+  if (raw === undefined || raw === "") return undefined;
+  if (!isOrderStatus(raw)) throw Errors.validation("status: valor de estado desconocido.");
+  return raw;
+}
+
+interface StatusBody {
+  readonly status?: unknown;
+}
+
+export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
+  const app = new Hono<CoreAuthHonoEnv>();
+
+  app.use("/v1/restaurantes/:propertyId/admin/orders", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/v1/restaurantes/:propertyId/admin/orders/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+
+  // Sirve tanto "pedidos en operación" (?status=pending, sin fechas) como
+  // "historial" (?dateFrom=&dateTo=&cursor=), ver comentario de cabecera.
+  app.get("/v1/restaurantes/:propertyId/admin/orders", async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const branchId = parseBranchId(c.req.query("branchId"));
+    const propertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, branchId);
+    const status = parseStatus(c.req.query("status"));
+    const dateFrom = parseDate(c.req.query("dateFrom"), "dateFrom");
+    const dateTo = parseDate(c.req.query("dateTo"), "dateTo");
+    const limit = parseLimit(c.req.query("limit"));
+    const cursor = c.req.query("cursor") || undefined;
+
+    const page = await repo.listOrders(organizationId, { propertyIds, status, dateFrom, dateTo, limit, cursor });
+    return c.json({ orders: page.orders.map(serializeOrder), nextCursor: page.nextCursor });
+  });
+
+  app.get("/v1/restaurantes/:propertyId/admin/orders/:orderId", async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const order = await repo.findOrderById(organizationId, c.req.param("orderId"));
+    if (!order) throw Errors.notFound("Pedido no encontrado.");
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
+    return c.json({ order: serializeOrder(order) });
+  });
+
+  app.patch("/v1/restaurantes/:propertyId/admin/orders/:orderId/status", async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const orderId = c.req.param("orderId");
+
+    const order = await repo.findOrderById(organizationId, orderId);
+    if (!order) throw Errors.notFound("Pedido no encontrado.");
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
+
+    const raw = await readJsonCapped<StatusBody>(c.req.raw, 2 * 1024);
+    if (typeof raw.status !== "string" || !isOrderStatus(raw.status)) {
+      throw Errors.validation("status: valor de estado desconocido.");
+    }
+
+    try {
+      const updated = await changeOrderStatus(repo, organizationId, order, raw.status);
+      return c.json({ order: serializeOrder(updated) });
+    } catch (err) {
+      if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
+      throw err;
+    }
+  });
+
+  return app;
+}
