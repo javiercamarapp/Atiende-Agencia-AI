@@ -9,8 +9,11 @@ import { buildCitasTestContext } from "./citas-fixtures.ts";
 import { authedJson } from "./hoteles-fixtures.ts";
 import { jsonRequestInit } from "./fixtures.ts";
 
-const MONDAY_10AM_MERIDA = "2026-09-14T16:00:00.000Z"; // 10:00 hora de Mérida (UTC-6)
-const MONDAY_1030AM_MERIDA = "2026-09-14T16:30:00.000Z";
+// Date-rot: debe seguir siendo una fecha futura respecto al reloj real de la
+// suite (ver el mismo patrón ya corregido en packages/domain-citas/tests/appointments.spec.ts).
+// 2027-09-13 es lunes, igual que 2026-09-14 — mismo día de la semana, un año después.
+const MONDAY_10AM_MERIDA = "2027-09-13T16:00:00.000Z"; // 10:00 hora de Mérida (UTC-6)
+const MONDAY_1030AM_MERIDA = "2027-09-13T16:30:00.000Z";
 
 describe("POST /v1/citas/:orgSlug/appointments — crear cita", () => {
   it("un cliente web crea una cita real en un slot válido", async () => {
@@ -63,7 +66,7 @@ describe("POST /v1/citas/:orgSlug/appointments — crear cita", () => {
     const app = buildApp(ctx.deps);
     const res = await app.request(
       "/v1/citas/clinica-dental-sonrisas/appointments",
-      jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ana", customer_phone: "9991112233", starts_at: "2026-09-14T09:00:00.000Z", source: "web" }), // 3am Mérida
+      jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ana", customer_phone: "9991112233", starts_at: "2027-09-13T09:00:00.000Z", source: "web" }), // 3am Mérida
     );
     expect(res.status).toBe(409);
   });
@@ -133,7 +136,7 @@ describe("cancelar/reagendar vía el agente (x-atiende-tool-secret)", () => {
 
     const res = await app.request(
       `/v1/citas/clinica-dental-sonrisas/appointments/${appointmentId}/reschedule`,
-      jsonRequestInit({ new_starts_at: "2026-09-14T09:00:00.000Z" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }), // 3am Mérida
+      jsonRequestInit({ new_starts_at: "2027-09-13T09:00:00.000Z" }, { "x-atiende-tool-secret": ctx.deps.env.voiceToolSecret }), // 3am Mérida
     );
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string; alternative_slots: { starts_at: string; ends_at: string }[] };

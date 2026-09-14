@@ -58,15 +58,17 @@ los invocan viven en
   `licitaciones.messaging_outbox` (`channel='email'`) vía Resend
   (`dispatchPendingEmailJobs`).
 
-Las 4 gateadas por `x-atiende-internal-secret`, pensadas para un cron
-EXTERNO (Vercel Cron/Supabase Cron) — **este monorepo no configura todavía
-esa entrada de cron en `vercel.json`** (mismo estado que
-`citasRemindersRoutes`/`hotelesNightAuditRoutes`: la ruta HTTP existe y
-funciona invocada manualmente/por curl, pero el disparo periódico real es
-responsabilidad de la capa de despliegue, fuera del alcance de código de
-esta fase — gap declarado, no silenciado. Esto aplica IGUAL a las 2 rutas de
-Fase 10: el código de despacho es real y probado, pero sin una entrada de
-cron real apuntándole, nadie las llama todavía en producción).
+Las 4 gateadas por `internalOrCronSecretMatches` (`x-atiende-internal-secret`
+o `Authorization: Bearer`, ver `apps/api/src/http-security.ts`), pensadas
+para un cron EXTERNO (Vercel Cron/Supabase Cron).
+
+**Actualizado (Fase 12, cierre del hallazgo ALTA "sin cron configurado")**:
+`vercel.json` (raíz del repo) ya declara `crons` reales apuntando a las 4 --
+ver `apps/api/src/routes/verticals/licitaciones/README.md` sección "Fase 12"
+para el detalle completo del mecanismo (GET vs POST, `CRON_SECRET` de Vercel,
+límites del plan Hobby). Este gap YA NO aplica aquí; sigue aplicando IGUAL
+que antes a `citasRemindersRoutes`/`hotelesNightAuditRoutes` (otras
+verticales, fuera de alcance de esta fase).
 
 ## Gaps declarados y pendientes (para no fingir que esta fase es 100% completa)
 

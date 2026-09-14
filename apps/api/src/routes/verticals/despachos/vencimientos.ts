@@ -11,6 +11,7 @@ import {
   calcularVencimientosDelPeriodo,
   diasHasta,
   decidirEscalamiento,
+  tryEnqueueEscalationEmail,
 } from "@atiende/domain-despachos";
 import type { FiscalDeadlineRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
@@ -109,7 +110,24 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const escalation = await repo.insertEscalation(deadlineId, decision.level, new Date().toISOString(), decision.notes);
     await repo.updateDeadlineEstado(deadlineId, "escalado");
 
-    return c.json({ escalamiento: { id: escalation.id, nivel: escalation.level, enviadoEn: escalation.sentAt, notas: escalation.notes }, requiereRevisionHumana: decision.requiresHumanReview, motivoRevisionHumana: decision.humanReviewReason }, 201);
+    // Hallazgo de auditoría (severidad ALTA): hasta esta fase, escalar un
+    // vencimiento solo insertaba la fila en BD sin notificar a nadie. Aviso
+    // real por correo (best-effort, ver email-notifications.ts) al staff
+    // owner/admin de la organización -- el escalamiento en sí YA quedó
+    // registrado con éxito arriba, así que un fallo al notificar nunca
+    // convierte esta respuesta en un error.
+    const organization = await repo.findOrganizationById(deadline.organizationId);
+    const notificacion = await tryEnqueueEscalationEmail(repo, deadline, decision, organization?.name ?? "tu despacho", dias);
+
+    return c.json(
+      {
+        escalamiento: { id: escalation.id, nivel: escalation.level, enviadoEn: escalation.sentAt, notas: escalation.notes },
+        requiereRevisionHumana: decision.requiresHumanReview,
+        motivoRevisionHumana: decision.humanReviewReason,
+        notificacion: { destinatarios: notificacion?.recipients ?? 0, correosEncolados: notificacion?.enqueued ?? 0 },
+      },
+      201,
+    );
   });
 
   return app;

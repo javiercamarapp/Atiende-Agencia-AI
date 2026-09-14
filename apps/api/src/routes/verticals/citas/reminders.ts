@@ -1,19 +1,27 @@
-// Flujo 3 — POST /internal/citas/confirmacion-cita (recordatorio 24h, == el agente
-// agente-recordatorio-citas del origen). Ruta interna, gateada por secreto
+// Flujo 3 — POST/GET /internal/citas/confirmacion-cita (recordatorio 24h, == el
+// agente agente-recordatorio-citas del origen). Ruta interna, gateada por secreto
 // compartido (x-atiende-internal-secret, análogo a CRON_SECRET), pensada para ser
-// invocada por un scheduler externo (Vercel Cron / Supabase cron) — no un job de
-// apps/worker (ninguna fase anterior lo construyó, ver diseño Fase 1 citas §0.4).
+// invocada por un scheduler externo — no un job de apps/worker (ninguna fase
+// anterior lo construyó, ver diseño Fase 1 citas §0.4).
+//
+// Wiring real del scheduler (cierra el hallazgo "nunca se disparan" del
+// auditor): `vercel.json::crons` invoca este mismo path por GET una vez al día
+// (plan Hobby de Vercel solo permite frecuencia diaria — cadencia razonable de
+// por sí para un recordatorio "24h antes") con `Authorization: Bearer
+// <CRON_SECRET>`. `internalOrCronSecretMatches` acepta esa forma además del header
+// manual `x-atiende-internal-secret` que ya usaban los tests/invocaciones
+// manuales — mismo secreto (`INTERNAL_SECRET`), dos formas de mandarlo.
 import { Hono } from "hono";
 import { runConfirmacionCitaCore } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
-import { secretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function citasRemindersRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
-  app.post("/internal/citas/confirmacion-cita", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
+  app.on(["GET", "POST"], "/internal/citas/confirmacion-cita", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`) para todo el barrido, igual que documenta

@@ -39,16 +39,16 @@ comentario de cabecera de `despachos.invoice` (migración 001) ya declaraba que
   generado y de las respuestas del deudor (`etapa = 'respuesta'`); alimenta el score
   de cobrabilidad como historial.
 
-**Límite deliberado, heredado del origen (no una omisión silenciosa de esta fase):**
-el `CollectionsManager` original nunca envía mensajes reales — su propio docstring lo
+**Límite heredado del origen, RESUELTO en la Fase 12 (ver más abajo):** el
+`CollectionsManager` original nunca envía mensajes reales — su propio docstring lo
 dice: "NO envía mensajes reales: solo genera el contenido y, opcionalmente, lo
 registra... El envío real queda a cargo del canal de notificaciones del cliente."
-Este port respeta ese límite exacto: `construirRecordatorioCobranza` genera el
-contenido (subject/body o texto de WhatsApp) y `insertCollectionEvent` deja el rastro
-de auditoría, pero **no hay integración con un canal de envío real** (`messaging_
-outbox`/`whatsapp-gateway`/email) en esta fase. Conectar el contenido generado a un
-canal real (con aprobación humana antes de enviar, mismo patrón que
-`domain-rentas`/`mensajeria` y `domain-citas`) es trabajo de una fase futura.
+Este port respetó ese límite exacto en esta fase: `construirRecordatorioCobranza`
+generaba el contenido (subject/body o texto de WhatsApp) y `insertCollectionEvent`
+dejaba el rastro de auditoría, pero **no había integración con un canal de envío
+real** (`messaging_outbox`/`whatsapp-gateway`/email). La Fase 12 (hallazgo de
+auditoría, severidad ALTA) conecta el contenido generado a `despachos.messaging_
+outbox` vía correo real — ver esa sección para el detalle completo.
 
 Migración nueva: `migrations/004_cobranza_schema.sql`.
 
@@ -98,3 +98,74 @@ valor del módulo de dominio en sí — ver el comentario actualizado de cabecer
 
 Sin migración nueva (este módulo no persiste nada — las sugerencias/aprobaciones
 viajan en memoria dentro de la misma corrida, igual que `conciliarMovimientos`).
+
+## Fase 12 — infraestructura de correo real (hallazgo de auditoría, severidad ALTA)
+
+Gap real verificado antes de esta fase: `grep -rn "email\|outbox\|whatsapp"
+packages/domain-despachos/src apps/api/src/routes/verticals/despachos` solo
+encontraba `cobranza/templates.ts` (5 plantillas de recordatorio en **texto
+plano**, sin HTML ni layout) y el propio README (sección de Fase 10, arriba)
+admitiendo "no hay integración con un canal de envío real ... en esta fase".
+`packages/domain-despachos/migrations/` no tenía ninguna tabla de outbox
+(`004_cobranza_schema.sql` lo difería explícitamente a "fase futura").
+`POST /despachos/:propertyId/vencimientos/:deadlineId/escalar`
+(`apps/api/src/routes/verticals/despachos/vencimientos.ts`) solo insertaba el
+escalamiento en BD y marcaba `estado='escalado'` — nunca notificaba a nadie.
+`apps/worker/src/jobs` no tenía ninguna carpeta `despachos/` (a diferencia de
+citas/hoteles/licitaciones/rentas/restaurantes). Mientras tanto, citas
+(migración 009)/rentas (migración 011)/licitaciones (migración 018) ya tenían
+las 3 piezas completas: outbox real, plantilla HTML de marca "atiende", y
+dispatcher vía Resend.
+
+Esta fase porta EXACTAMENTE ese mismo patrón, sin inventar uno nuevo:
+
+- `src/emails/layout.ts` — el mismo marco visual HTML (tabla compatible
+  Outlook/Gmail/Apple Mail, wordmark de texto "atiende" — **nunca un logo de
+  imagen embebido**, ninguna vertical del monorepo lo usa) que
+  `domain-citas`/`domain-rentas`/`domain-licitaciones`, sin cambios de
+  paleta ni de estructura.
+- `migrations/005_email_outbox_and_notificaciones.sql` — `despachos.messaging_
+  outbox` (organization-scoped, `channel` acotado a `'email'` únicamente:
+  despachos tampoco tiene WhatsApp, mismo caso que licitaciones) +
+  `enqueue_messaging_outbox`/`claim_email_outbox_batch`/
+  `complete_email_outbox_job` (mismo patrón/nombres que citas/rentas/
+  licitaciones) + `despachos.organization_notification_recipients(org_id)`
+  (staff `owner`/`admin` vía `core.membership`/`core.staff_user`) + 2 columnas
+  NULLABLE nuevas en `despachos.receivable` (`cliente_nombre`/`cliente_email`
+  — el CFDI nunca trajo un correo de contacto del deudor utilizable, gap real
+  independiente que esta fase también cierra).
+- `src/email-dispatch.ts` — `sendEmailOutboxJob`/`dispatchPendingEmailJobs`,
+  port literal de `domain-citas/domain-licitaciones` sobre `DespachosRepository`.
+  Fail-closed real: sin `RESEND_API_KEY`, nunca finge éxito. Expuesto vía
+  `POST /internal/despachos/email-dispatch`
+  (`apps/api/src/routes/verticals/despachos/notifications.ts`).
+- **Escalamiento de vencimientos** (aviso INTERNO al despacho, nunca al
+  contribuyente): `src/emails/vencimiento-templates.ts` +
+  `src/vencimientos/email-notifications.ts` — al escalar un vencimiento
+  (`POST .../vencimientos/:id/escalar`), ahora se encola un correo real a
+  todo el staff owner/admin de la organización
+  (`repo.listOrganizationNotificationRecipients`), best-effort: un fallo al
+  notificar nunca revierte el escalamiento, que ya quedó registrado.
+- **Recordatorios de cobranza** (aviso a un tercero externo, el deudor):
+  `src/cobranza/email-templates.ts` (envuelve el MISMO texto ya verificado de
+  `cobranza/templates.ts` en el layout HTML compartido, sin cambiar
+  redacción) + `src/cobranza/email-notifications.ts`
+  (`tryEnqueueCollectionReminderEmail`, encola el correo SI la cuenta por
+  cobrar tiene `clienteEmail` capturado, y SIEMPRE deja el registro de
+  auditoría en `collection_event` aunque no haya correo) +
+  `@atiende/worker::runCobranzaReminderSweep`
+  (`apps/worker/src/jobs/despachos/cobranza-reminders.ts`, primer job real de
+  este vertical): barrido transversal de toda la cartera pendiente de todas
+  las organizaciones/properties activas, decidiendo con el motor puro ya
+  existente (`etapaRecordatorioCobranzaHoy`) si hoy toca recordatorio.
+  Expuesto vía `POST /internal/despachos/cobranza-reminders`.
+
+**Límite deliberado de esta fase:** no se agregó ningún endpoint HTTP nuevo
+para crear/listar/pagar cuentas por cobrar (`registerReceivable`/
+`listReceivables`/`markReceivablePaid` seguían sin ruta HTTP propia antes de
+esta fase, y siguen sin ella después) — ese es un gap de superficie CRUD
+independiente del hallazgo de esta fase (ausencia de infraestructura de
+correo), y agregarlo hubiera sido alcance no pedido. `cliente_nombre`/
+`cliente_email` se capturan hoy solo vía el repositorio directo (tests /
+futura pantalla de captura); sin ellos, el recordatorio de esa cuenta
+simplemente no se envía por correo (comportamiento honesto, no un error).

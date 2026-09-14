@@ -60,20 +60,18 @@ del lado web.
 ## Fase 10 — despacho proactivo real de alertas (gap: "nadie las consulta")
 
 **`alertNotifications.ts`** (archivo nuevo): 2 rutas internas, mismo patrón
-gateado por `x-atiende-internal-secret` que `discover.ts` (Fase 8) --
-pensadas para un scheduler externo (Vercel Cron/Supabase Cron), este
-monorepo TODAVÍA no configura esa entrada en `vercel.json` (mismo estado que
-`discover.ts`/`citasRemindersRoutes`/`hotelesNightAuditRoutes` -- gap
-declarado, no silenciado, ver `apps/worker/src/jobs/licitaciones/README.md`):
+gateado por `internalOrCronSecretMatches` (`x-atiende-internal-secret` o
+`Authorization: Bearer`, ver `../../../http-security.ts`) que `discover.ts`
+(Fase 8) -- pensadas para un scheduler externo (Vercel Cron/Supabase Cron).
 
-- **`POST /internal/licitaciones/alert-notifications`** -- el barrido real
-  (`@atiende/worker::runAlertNotificationSweep`): por cada organización
+- **`GET`/`POST /internal/licitaciones/alert-notifications`** -- el barrido
+  real (`@atiende/worker::runAlertNotificationSweep`): por cada organización
   activa, escanea `tender_deadline_reminder` (Fase 8) + `renewal_alert`
   (Fase 6) + facturas vencidas de `contract_invoice` (Fase 6) y ENCOLA un
   correo real por cada alerta nueva al responsable (`owner`/`admin`) de la
-  organización -- antes de esta fase, las 3 eran solo registros que alguien
+  organización -- antes de Fase 10, las 3 eran solo registros que alguien
   debía abrir el panel para consultar.
-- **`POST /internal/licitaciones/email-dispatch`** -- drena
+- **`GET`/`POST /internal/licitaciones/email-dispatch`** -- drena
   `licitaciones.messaging_outbox` (`channel='email'`, migración 018) vía
   Resend, MISMO motor real (`dispatchPendingEmailJobs`) que
   `../citas/email-dispatch.ts`/`../rentas/email-dispatch.ts`, nunca
@@ -84,3 +82,46 @@ Licitaciones NO es una de las 3 verticales con agente de WhatsApp
 paquete), así que correo es el ÚNICO canal real disponible aquí; ver
 `packages/domain-licitaciones/src/alert-notifications.ts` para el detalle
 completo de esa decisión.
+
+## Fase 12 — cierre del hallazgo ALTA "sin cron configurado" (las 4 rutas internas)
+
+Hasta Fase 11, estas 2 rutas y las 2 de `discover.ts` (Fase 8) existían y
+funcionaban invocadas a mano (curl/tests), pero `vercel.json` no tenía
+ninguna entrada `crons` apuntándoles -- el pipeline de correo (barrido +
+outbox + dispatcher por Resend) quedaba probado pero nunca disparado en
+producción, así que ningún responsable recibía nada (ver
+`apps/worker/src/jobs/licitaciones/README.md` para el gap tal como estaba
+declarado antes de esta fase).
+
+Cerrado así:
+
+1. **`vercel.json`** ahora declara `crons` reales para las 4 rutas (una
+   entrada por hora, 05:00-08:00 UTC, en el orden
+   discover-tenders→deadline-reminders→alert-notifications→email-dispatch --
+   la separación de una hora entre cada una es intencional: da margen a que
+   la corrida anterior termine, dado que el plan Hobby de Vercel no
+   garantiza precisión de minuto, solo la hora exacta ±59min, ver
+   `docs/DEPLOY.md`).
+2. Vercel Cron dispara SIEMPRE con `GET` y no permite headers custom en su
+   configuración -- por eso las 4 rutas (2 aquí + 2 en `discover.ts`) ahora
+   se registran con `app.on(["GET", "POST"], ...)` en vez de solo
+   `app.post(...)`. `POST` con el header `x-atiende-internal-secret` sigue
+   funcionando exactamente igual que antes (curl manual, los tests de
+   integración existentes no cambiaron su forma de invocar).
+3. El secreto que Vercel Cron manda automáticamente en esa request `GET` es
+   `Authorization: Bearer $CRON_SECRET` (env var propia de Vercel, **solo**
+   si existe en el proyecto -- Vercel nunca la inventa). `internalOrCronSecretMatches`
+   (`../../../http-security.ts`) acepta esa forma ADEMÁS del header custom de
+   siempre, ambas verificadas contra el mismo `INTERNAL_SECRET`/`ApiEnv.internalSecret`
+   -- **requiere que el operador dé de alta `CRON_SECRET` en el dashboard de
+   Vercel con el MISMO valor que `INTERNAL_SECRET`** (documentado en
+   `.env.example`); sin ese paso de configuración externa (fuera de alcance
+   de este cambio de código, igual que pegar cualquier otra env var real en
+   Vercel) el cron dispara pero cada corrida recibe 401.
+
+**Sigue sin resolver, declarado honestamente:** el plan Hobby de Vercel limita
+cron jobs a una corrida diaria por ruta (ver `docs/DEPLOY.md`), así que en ese
+plan el correo de alerta puede tardar hasta ~24h en despacharse desde que se
+crea la alerta -- para despacho casi en tiempo real (cada minuto) hace falta
+plan Pro, cambio de infraestructura/costo fuera de alcance de este cambio de
+código.

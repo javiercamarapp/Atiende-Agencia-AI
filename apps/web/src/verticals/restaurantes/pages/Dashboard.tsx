@@ -1,34 +1,17 @@
-// Dashboard mínimo de KPIs (Fase 3) — cierra el callejón sin salida real que ya existía
-// hoy: `decideLandingPath()` (auth-client.ts) devuelve `/restaurantes/${slug}` tras
-// login con 1 sola organización, pero esa ruta no existía en App.tsx. Mismo estilo que
-// Login.tsx: React simple, estilos inline, sin traer un design system nuevo — esta
-// fase es de agregación de backend, no de rediseño visual. Sin sesión persistida ->
-// redirige a /restaurantes/login.
-//
-// Deliberadamente NO incluye (ver diseño §3): selector de sucursal visual (el filtro
-// `branchId` ya queda listo en el backend), exportar PDF, ni "Ver más" navegando a
-// sub-secciones.
+// Dashboard de KPIs (Fase 3, montado dentro de RestaurantesShell desde Fase 5.1) —
+// landing post-login real: `decideLandingPath()` (auth-client.ts) manda aquí tras
+// login con 1 sola organización. Vive DENTRO de RestaurantesShell (ver App.tsx),
+// igual que Productos/Sucursales/Pedidos/Historial/Clientes, así el manager que
+// entra al producto tiene la nav lateral completa (incluye el link "Panel (KPIs)"
+// de vuelta a esta misma página) en vez de quedar en un callejón sin salida donde
+// solo se podía llegar al back-office tecleando la URL a mano. Sesión/sucursal ya
+// las resuelve el Shell una sola vez — este componente solo consume el contexto,
+// mismo patrón que el resto de páginas de este vertical.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { readPersistedSession } from "../../../lib/auth-client.ts";
-import type { LoginSession } from "../../../lib/auth-client.ts";
-import {
-  fetchBranches,
-  fetchDashboardData,
-  formatDays,
-  formatInt,
-  formatMoney,
-  formatPct,
-  formatSignedPct,
-  PERIOD_OPTIONS,
-} from "../dashboard-client.ts";
-import type { BranchOption, DashboardData, StatsPeriod } from "../dashboard-client.ts";
-
-export interface DashboardPageProps {
-  readonly apiBaseUrl: string;
-  readonly orgSlug: string;
-  readonly onRequireLogin: () => void;
-}
+import { fetchDashboardData, formatDays, formatInt, formatMoney, formatPct, formatSignedPct, PERIOD_OPTIONS } from "../dashboard-client.ts";
+import type { DashboardData, StatsPeriod } from "../dashboard-client.ts";
+import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const TIER_META: Record<"BLACK" | "PLATINUM" | "GOLD" | "BLUE", { label: string; glyph: string; bg: string; fg: string }> = {
   BLACK: { label: "Black", glyph: "♛", bg: "#18181b", fg: "#fafafa" },
@@ -71,41 +54,17 @@ function Sparkline({ points, color }: { points: readonly number[]; color: string
   );
 }
 
-export function RestaurantesDashboardPage({ apiBaseUrl, orgSlug, onRequireLogin }: DashboardPageProps) {
-  const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
-  const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
+export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
   const [period, setPeriod] = useState<StatsPeriod>("30");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const s = readPersistedSession(window.localStorage);
-    setSession(s);
-    if (!s) onRequireLogin();
-  }, [onRequireLogin]);
-
-  useEffect(() => {
-    if (!session) return;
-    let cancelado = false;
-    (async () => {
-      try {
-        const list = await fetchBranches(fetch, apiBaseUrl, session.token, orgSlug);
-        if (!cancelado) setBranches(list);
-      } catch (err) {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudieron cargar las sucursales.");
-      }
-    })();
-    return () => {
-      cancelado = true;
-    };
-  }, [session, apiBaseUrl, orgSlug]);
-
-  async function loadKpis(propertyId: string, p: StatsPeriod) {
+  async function loadKpis(p: StatsPeriod) {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchDashboardData(fetch, apiBaseUrl, session!.token, propertyId, p);
+      const result = await fetchDashboardData(fetch, apiBaseUrl, token, propertyId, p);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudieron cargar los KPIs.");
@@ -114,19 +73,15 @@ export function RestaurantesDashboardPage({ apiBaseUrl, orgSlug, onRequireLogin 
     }
   }
 
-  // `loadKpis` se recrea cada render (depende de `session`, ya estable) — no está en
-  // el arreglo de dependencias a propósito, mismo patrón que fetchData/dateFilterRef
-  // en AdminDashboard.tsx: el efecto reacciona SOLO a `branches`/`period` reales, no a
-  // la identidad de la función. Este proyecto no tiene configurado
+  // `loadKpis` se recrea cada render (depende de `token`/`apiBaseUrl`/`propertyId`,
+  // todos estables mientras el Shell no cambie de sesión/sucursal) — no está en el
+  // arreglo de dependencias a propósito, mismo patrón que el resto de páginas de este
+  // vertical (ver Productos.tsx). Este proyecto no tiene configurado
   // eslint-plugin-react-hooks (no hay otro `// eslint-disable` de esa regla en
   // apps/web), así que no hace falta silenciar nada.
   useEffect(() => {
-    if (!branches || branches.length === 0) return;
-    void loadKpis(branches[0]!.propertyId, period);
-  }, [branches, period]);
-
-  if (session === undefined) return null; // resolviendo sesión persistida
-  if (!session) return null; // onRequireLogin ya disparó la redirección
+    void loadKpis(period);
+  }, [apiBaseUrl, token, propertyId, period]);
 
   return (
     <main style={{ maxWidth: 1000, margin: "0 auto", padding: 24, fontFamily: "system-ui, sans-serif", display: "flex", flexDirection: "column", gap: 20 }}>
@@ -151,8 +106,8 @@ export function RestaurantesDashboardPage({ apiBaseUrl, orgSlug, onRequireLogin 
             </button>
           ))}
           <button
-            onClick={() => branches && branches[0] && void loadKpis(branches[0].propertyId, period)}
-            disabled={loading || !branches?.length}
+            onClick={() => void loadKpis(period)}
+            disabled={loading}
             style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 12, cursor: "pointer" }}
           >
             {loading ? "Actualizando…" : "Actualizar"}

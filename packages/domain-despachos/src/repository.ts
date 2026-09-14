@@ -34,6 +34,11 @@ export interface DespachosRepository {
   // ese propertyId — era el primer eslabón faltante antes que cualquier pantalla
   // nueva de esta fase (ver GET /v1/despachos/:orgSlug/admin/branches, admin.ts). */
   findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null>;
+  /** Resuelve el nombre real de la organización por id -- necesario para el correo
+   * de escalamiento de vencimientos (`vencimientos/email-notifications.ts`), que solo
+   * conoce el `organizationId` del `FiscalDeadlineRecord`, nunca su slug. Mismo rol
+   * EXACTO que `CitasRepository.findOrganizationById`. */
+  findOrganizationById(organizationId: string): Promise<{ readonly id: string; readonly name: string } | null>;
   /** Despacho opera como property singleton por organización (mismo criterio que
    * licitaciones/citas §2.1), pero el panel igual lee la lista completa — nunca
    * asumir cardinalidad en el cliente. */
@@ -128,6 +133,51 @@ export interface DespachosRepository {
    * rastro que después alimenta `scoreCobrabilidadCartera` como historial. */
   insertCollectionEvent(input: NewCollectionEventInput): Promise<CollectionEventRecord>;
   listCollectionEvents(propertyId: string, receivableId: string): Promise<readonly CollectionEventRecord[]>;
+
+  // ---- Infraestructura de correo (hallazgo de auditoría, severidad ALTA: "despachos
+  // no tiene ninguna infraestructura de correo, mientras citas/rentas/licitaciones sí
+  // la tienen") — mismo patrón EXACTO que `LicitacionesRepository` (leído primero
+  // como plantilla): `messaging_outbox` organization-scoped, acotado a channel='email'
+  // (migración 005), + resolución del "responsable" de la organización para avisos
+  // internos (escalamiento de vencimientos fiscales). ----
+
+  /** Organizaciones `despachos` activas — insumo del barrido transversal de cobranza
+   * (`@atiende/worker::runCobranzaReminderSweep`), mismo rol que
+   * `LicitacionesRepository.listActiveOrganizations`. */
+  listActiveOrganizations(): Promise<readonly { id: string }[]>;
+  /** Staff `owner`/`admin` de la organización — a quién se le manda el correo de
+   * escalamiento de un vencimiento fiscal (aviso INTERNO al despacho, nunca al
+   * contribuyente/cliente final). Ver `despachos.organization_notification_recipients`
+   * (migración 005). */
+  listOrganizationNotificationRecipients(organizationId: string): Promise<readonly OrganizationNotificationRecipient[]>;
+  /** Encola (`channel='email'`) el envío real -- mismo rol que
+   * `CitasRepository.enqueueMessagingOutbox`/`LicitacionesRepository.enqueueMessagingOutbox`.
+   * `channel` se deja como parámetro (en vez de fijarlo en la firma) por SIMETRÍA con
+   * el resto del monorepo -- este vertical hoy solo implementa 'email' (ver migración
+   * 005, sin `despachos.whatsapp_config`); pasar cualquier otro valor lanza. */
+  enqueueMessagingOutbox(organizationId: string, channel: "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
+  /** Reclama hasta `limit` jobs `channel='email'` pendientes/fallidos -- ver
+   * `despachos.claim_email_outbox_batch` (migración 005). */
+  claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
+  completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
+}
+
+/** Staff `owner`/`admin` real de una organización — el "responsable" al que se le
+ * manda un correo de aviso interno (ver `listOrganizationNotificationRecipients`).
+ * Mismo shape que `OrganizationNotificationRecipient` de domain-licitaciones. */
+export interface OrganizationNotificationRecipient {
+  readonly email: string;
+  readonly fullName: string;
+}
+
+/** Fila de `despachos.messaging_outbox` reclamada para despacho real (ver
+ * `email-dispatch.ts` y `despachos.claim_email_outbox_batch`, migración 005). Mismo
+ * shape que `EmailOutboxJobRow` de domain-citas/domain-licitaciones. */
+export interface EmailOutboxJobRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly attempts: number;
+  readonly payload: Record<string, unknown>;
 }
 
 export type { InvoiceRecord, InvoiceReviewRecord, FiscalDeadlineRecord, DeadlineEscalationRecord, ReceivableRecord, CollectionEventRecord } from "./types.ts";

@@ -385,9 +385,26 @@ export type {
   NewCollectionEventInput,
 } from "./types.ts";
 
-export type { DespachosRepository } from "./repository.ts";
+export type { DespachosRepository, OrganizationNotificationRecipient, EmailOutboxJobRow } from "./repository.ts";
 export { InMemoryDespachosRepository } from "./in-memory-repository.ts";
 export { PostgresDespachosRepository } from "./postgres-repository.ts";
+
+// ---- Infraestructura de correo (hallazgo de auditoría, severidad ALTA:
+// "despachos no tiene ninguna infraestructura de correo, mientras
+// citas/rentas/licitaciones sí la tienen") — mismo patrón EXACTO que
+// domain-citas/domain-licitaciones (leídos primero como plantilla). ----
+export { escapeHtml, renderCorreo } from "./emails/layout.ts";
+export type { EtiquetaPlantilla, FilaPlantilla, SeccionPlantilla } from "./emails/layout.ts";
+export { correoEscalamientoVencimiento } from "./emails/vencimiento-templates.ts";
+export type { EscalamientoVencimientoCorreo, Correo as CorreoVencimiento } from "./emails/vencimiento-templates.ts";
+export { enqueueEscalationEmailCore, tryEnqueueEscalationEmail } from "./vencimientos/email-notifications.ts";
+export type { EscalationEmailEnqueueResult } from "./vencimientos/email-notifications.ts";
+export { construirCorreoCobranza } from "./cobranza/email-templates.ts";
+export type { Correo as CorreoCobranza } from "./cobranza/email-templates.ts";
+export { enqueueCollectionReminderEmailCore, tryEnqueueCollectionReminderEmail } from "./cobranza/email-notifications.ts";
+export type { CollectionReminderEmailResult, FacturaCobranza } from "./cobranza/email-notifications.ts";
+export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "./email-dispatch.ts";
+export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 
 // ---- Cobranza automatizada (Fase 10) — puerto de b2b_ai/services/
 // collections.py + collections_report.py + collections_templates.py ----

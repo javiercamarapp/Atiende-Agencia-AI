@@ -3,25 +3,35 @@
 // (`@atiende/worker::runAlertNotificationSweep`) y el dispatcher de correo
 // que de verdad drena `licitaciones.messaging_outbox` vía Resend
 // (`@atiende/domain-licitaciones::dispatchPendingEmailJobs`). Rutas
-// INTERNAS, gateadas por secreto compartido (`x-atiende-internal-secret`,
-// análogo a CRON_SECRET), pensadas para ser invocadas por un scheduler
-// externo (Vercel Cron/Supabase Cron) — MISMO patrón EXACTO que
+// INTERNAS, gateadas por secreto compartido (`x-atiende-internal-secret` o
+// `Authorization: Bearer`, ver `internalOrCronSecretMatches`, análogo a
+// CRON_SECRET), pensadas para ser invocadas por un scheduler externo (Vercel
+// Cron/Supabase Cron) — MISMO patrón EXACTO que
 // `./discover.ts` (recordatorios de plazo/ingesta, Fase 8) y
 // `../rentas/email-dispatch.ts`/`../citas/email-dispatch.ts` (leídos primero
 // como plantilla): sin `authMiddleware`/`dbSession`, abren su propia sesión
 // de sistema (`userId: null`) para todo el barrido.
+//
+// Fase 12 (cierre del hallazgo ALTA "sin cron configurado: los correos de
+// alerta nunca se despachan en producción") — `vercel.json` (raíz del repo)
+// ya declara `crons` reales apuntando a estas 2 rutas (más las 2 de
+// `./discover.ts`). Vercel Cron dispara SIEMPRE con GET (no permite headers
+// custom en la config), por eso cada ruta se registra con
+// `app.on(["GET", "POST"], ...)`: GET es lo que el cron real usa, POST sigue
+// funcionando igual que antes para curl/tests manuales — misma lógica,
+// mismo gate de secreto, sin duplicar el handler.
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-licitaciones";
 import { runAlertNotificationSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
-import { secretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
-  app.post("/internal/licitaciones/alert-notifications", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
+  app.on(["GET", "POST"], "/internal/licitaciones/alert-notifications", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.licitacionesRepo(db);
@@ -55,8 +65,8 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
     });
   });
 
-  app.post("/internal/licitaciones/email-dispatch", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
+  app.on(["GET", "POST"], "/internal/licitaciones/email-dispatch", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por

@@ -77,3 +77,52 @@ describe("POST /internal/licitaciones/email-dispatch", () => {
     expect(job?.status).toBe("failed");
   });
 });
+
+// Fase 12 (cierre del hallazgo ALTA "sin cron configurado") — `vercel.json` ya
+// declara `crons` reales para estas 2 rutas. Vercel Cron dispara SIEMPRE con GET
+// y solo puede mandar el secreto vía `Authorization: Bearer $CRON_SECRET` (no
+// permite headers custom en su config) — estos tests cubren esa forma nueva de
+// invocación sin tocar la existente (POST + header custom) de arriba.
+describe("GET /internal/licitaciones/alert-notifications (invocación real de Vercel Cron)", () => {
+  it("rechaza sin ningún secreto", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/licitaciones/alert-notifications", { method: "GET" });
+    expect(res.status).toBe(401);
+  });
+
+  it("con Authorization: Bearer <INTERNAL_SECRET> (lo que Vercel Cron manda automáticamente cuando CRON_SECRET está alineado), barre y encola igual que el POST manual", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp, { submissionDeadline: null });
+    const app = buildApp(ctx.deps);
+    ctx.repo.seedNotificationRecipient(ctx.organizationId, { email: ctx.staff.owner.email, fullName: "Owner" });
+    const soon = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    ctx.repo.seedTender({ id: randomUUID(), organizationId: ctx.organizationId, title: "Vence pronto (cron)", submissionDeadline: soon, updatedAt: new Date().toISOString() });
+
+    const res = await app.request("/internal/licitaciones/alert-notifications", { method: "GET", headers: { authorization: `Bearer ${ctx.deps.env.internalSecret}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; emails_enqueued: number };
+    expect(body.ok).toBe(true);
+    expect(body.emails_enqueued).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("GET /internal/licitaciones/email-dispatch (invocación real de Vercel Cron)", () => {
+  it("rechaza sin ningún secreto", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/licitaciones/email-dispatch", { method: "GET" });
+    expect(res.status).toBe(401);
+  });
+
+  it("con Authorization: Bearer <INTERNAL_SECRET>, drena el outbox igual que el POST manual", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    await ctx.repo.enqueueMessagingOutbox(ctx.organizationId, "email", "tender.deadline_reminder", "dedupe-test-cron-1", { to: "owner@empresa.mx", subject: "Asunto", html: "<p>hola</p>", text: "hola" });
+
+    const res = await app.request("/internal/licitaciones/email-dispatch", { method: "GET", headers: { authorization: `Bearer ${ctx.deps.env.internalSecret}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { processed: number; sent: number; failed: number };
+    expect(body.processed).toBe(1);
+    expect(body.failed).toBe(1);
+  });
+});

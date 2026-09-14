@@ -5,7 +5,7 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { HallazgoCfdi } from "@atiende/billing";
 import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
-import type { DespachosRepository } from "./repository.ts";
+import type { DespachosRepository, EmailOutboxJobRow, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CategoriaContable,
   CollectionEventChannel,
@@ -75,6 +75,8 @@ interface ReceivableRawRow {
   fecha_vencimiento: string;
   monto_pagado: string | null;
   pagado_en: string | null;
+  cliente_nombre: string | null;
+  cliente_email: string | null;
   created_at: string;
 }
 
@@ -87,6 +89,8 @@ function mapReceivable(row: ReceivableRawRow): ReceivableRecord {
     fechaVencimiento: row.fecha_vencimiento,
     montoPagado: row.monto_pagado === null ? null : Number(row.monto_pagado),
     pagadoEn: row.pagado_en,
+    clienteNombre: row.cliente_nombre,
+    clienteEmail: row.cliente_email,
     createdAt: row.created_at,
   };
 }
@@ -318,6 +322,12 @@ export class PostgresDespachosRepository implements DespachosRepository {
     );
     const row = rows[0];
     return row ? { id: row.id, name: row.name, slug: row.slug, isActive: row.status === "active" } : null;
+  }
+
+  async findOrganizationById(organizationId: string): Promise<{ readonly id: string; readonly name: string } | null> {
+    const { rows } = await this.db.query<{ id: string; name: string }>(`select id, name from core.organization where id = $1;`, [organizationId]);
+    const row = rows[0];
+    return row ? { id: row.id, name: row.name } : null;
   }
 
   async listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]> {
@@ -631,9 +641,9 @@ export class PostgresDespachosRepository implements DespachosRepository {
   async registerReceivable(input: NewReceivableInput): Promise<ReceivableRecord> {
     try {
       const { rows } = await this.db.query<ReceivableRawRow>(
-        `insert into despachos.receivable (organization_id, property_id, invoice_id, fecha_vencimiento)
-         values ($1, $2, $3, $4) returning *;`,
-        [input.organizationId, input.propertyId, input.invoiceId, input.fechaVencimiento],
+        `insert into despachos.receivable (organization_id, property_id, invoice_id, fecha_vencimiento, cliente_nombre, cliente_email)
+         values ($1, $2, $3, $4, $5, $6) returning *;`,
+        [input.organizationId, input.propertyId, input.invoiceId, input.fechaVencimiento, input.clienteNombre ?? null, input.clienteEmail ?? null],
       );
       return mapReceivable(rows[0]!);
     } catch (err) {
@@ -694,5 +704,34 @@ export class PostgresDespachosRepository implements DespachosRepository {
       [propertyId, receivableId],
     );
     return rows.map(mapCollectionEvent);
+  }
+
+  // ============================================================================
+  // Infraestructura de correo (migración 005) — outbox real acotado a
+  // channel='email', mismo patrón EXACTO que PostgresCitasRepository/
+  // PostgresLicitacionesRepository (leídos primero como plantilla).
+  // ============================================================================
+
+  async listActiveOrganizations(): Promise<readonly { id: string }[]> {
+    const { rows } = await this.db.query<{ id: string }>(`select id from core.organization where vertical = 'despachos' and status = 'active';`);
+    return rows.map((r) => ({ id: r.id }));
+  }
+
+  async listOrganizationNotificationRecipients(organizationId: string): Promise<readonly OrganizationNotificationRecipient[]> {
+    const { rows } = await this.db.query<{ email: string; full_name: string }>(`select email, full_name from despachos.organization_notification_recipients($1);`, [organizationId]);
+    return rows.map((r) => ({ email: r.email, fullName: r.full_name }));
+  }
+
+  async enqueueMessagingOutbox(organizationId: string, channel: "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    await this.db.query(`select despachos.enqueue_messaging_outbox($1, $2, $3, $4, $5::jsonb);`, [organizationId, channel, eventType, dedupeKey, JSON.stringify(payload)]);
+  }
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string; attempts: number; payload: Record<string, unknown> }>(`select id, organization_id, attempts, payload from despachos.claim_email_outbox_batch($1);`, [limit]);
+    return rows.map((r) => ({ id: r.id, organizationId: r.organization_id, attempts: r.attempts, payload: r.payload ?? {} }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    await this.db.query(`select despachos.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
   }
 }
