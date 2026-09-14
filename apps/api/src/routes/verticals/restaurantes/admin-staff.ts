@@ -35,8 +35,8 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { canInviteStaff } from "@atiende/core-authz";
 import type { PlatformRole } from "@atiende/core-tenancy";
-import { isRestaurantesRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-restaurantes";
-import type { StaffInviteRow } from "@atiende/db";
+import { isRestaurantesRole, MANAGER_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-restaurantes";
+import type { OrganizationMemberRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -66,13 +66,37 @@ function serializeInvite(invite: StaffInviteRow) {
   };
 }
 
+// Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido no
+// tiene UI"): un miembro YA ACEPTADO (`core.membership`), a diferencia de
+// `serializeInvite` de arriba (una invitación PENDIENTE, sin `userId` real todavía) —
+// esto es justo lo que el selector de `PATCH .../admin/orders/:orderId/assign-
+// repartidor` (admin-orders.ts) necesita: a QUIÉN se le puede despachar un pedido.
+function serializeMember(member: OrganizationMemberRow) {
+  return {
+    id: member.userId,
+    email: member.email,
+    fullName: member.fullName,
+    propertyIds: member.propertyIds,
+  };
+}
+
 export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const collectionPath = "/v1/restaurantes/:propertyId/admin/staff/invitaciones";
   const itemPath = "/v1/restaurantes/:propertyId/admin/staff/invitaciones/:inviteId";
+  // Fase 12 — ver comentario de `serializeMember`/el describe de abajo: miembros YA
+  // aceptados con `verticalRole === "repartidor"`, para el selector real de
+  // `assign-repartidor`. Ruta separada de `collectionPath`/`itemPath` (invitaciones) a
+  // propósito -- son dos recursos distintos (invitación pendiente vs. membership ya
+  // aceptada) y `STAFF_INVITE_ROLES` (solo owner/admin) es deliberadamente MÁS angosto
+  // que `MANAGER_ROLES` (owner/admin/staff, quien de verdad despacha pedidos día a
+  // día) -- gatearla con `STAFF_INVITE_ROLES` le negaría el selector a un manager
+  // "staff" que SÍ puede despachar vía admin-orders.ts.
+  const repartidoresPath = "/v1/restaurantes/:propertyId/admin/staff/repartidores";
 
   app.use(collectionPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(itemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(repartidoresPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(collectionPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
@@ -147,6 +171,22 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
     if (!revoked) throw Errors.notFound("Invitación no encontrada, ya fue usada, o ya estaba revocada.");
     return c.json({ ok: true });
+  });
+
+  // Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
+  // no tiene UI: el panel de repartidor siempre estará vacío"). `MANAGER_ROLES`
+  // (owner/admin/staff), no `STAFF_INVITE_ROLES` -- ver comentario de
+  // `repartidoresPath` arriba. Usa `deps.coreStaffRepo(c.get("db"))` (fábrica
+  // por-request, `auth.uid()` real de este mismo staff autenticado) + la función
+  // `security definer` `core.list_org_members_by_vertical_role` (ver
+  // `packages/db/migrations/0004_list_org_members_by_vertical_role.sql`) -- MISMO
+  // mecanismo que usa ahora `admin-orders.ts::assign-repartidor` para su propia
+  // validación (antes rota en producción real, ver el comentario de esa migración).
+  app.get(repartidoresPath, async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const organizationId = c.get("organizationId");
+    const members = await deps.coreStaffRepo(c.get("db")).listMembersByVerticalRole(organizationId, "repartidor");
+    return c.json({ repartidores: members.map(serializeMember) });
   });
 
   return app;

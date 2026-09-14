@@ -20,6 +20,7 @@ import type {
   CoreStaffRepository,
   CreateStaffInviteInput,
   MembershipRow,
+  OrganizationMemberRow,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffInviteStatus,
@@ -59,6 +60,13 @@ interface StaffInviteRawRow {
   readonly accepted_at: string | null;
   readonly accepted_by: string | null;
   readonly created_at: string;
+}
+
+interface OrganizationMemberRawRow {
+  readonly user_id: string;
+  readonly email: string;
+  readonly full_name: string;
+  readonly property_ids: readonly string[] | null;
 }
 
 interface AcceptStaffInviteRawRow {
@@ -174,6 +182,32 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       [id, organizationId],
     );
     return rows.length > 0;
+  }
+
+  // Fase 12 — hallazgo de auditoría ("asignar repartidor a un pedido no tiene UI"):
+  // `core.membership` restringe SELECT a `user_id = auth.uid()` (política "staff ve su
+  // propia membership", `0001_core_schema.sql`) -- una query directa aquí NUNCA vería
+  // las filas de OTRO miembro, aunque este método SÍ corra sobre la sesión real
+  // por-request (`auth.uid()` = el staff autenticado que llama, a diferencia de
+  // `findMembershipsByUserId` de arriba cuando lo invoca `ProductionCoreRepository` en
+  // sesión de sistema). Por eso usa la función `security definer`
+  // `core.list_org_members_by_vertical_role` (`0004_list_org_members_by_vertical_
+  // role.sql`, mismo patrón exacto que `core.has_property_access`/
+  // `core.accept_staff_invite`): valida DENTRO de la función que quien llama
+  // (`auth.uid()`) es TAMBIÉN miembro de esa misma organización -- defensa en
+  // profundidad real, no una promesa de la capa TS -- y solo entonces devuelve
+  // id/email/nombre/propertyIds de los miembros con el `vertical_role` exacto pedido.
+  async listMembersByVerticalRole(organizationId: string, verticalRole: string): Promise<readonly OrganizationMemberRow[]> {
+    const { rows } = await this.db.query<OrganizationMemberRawRow>(
+      `select user_id, email, full_name, property_ids from core.list_org_members_by_vertical_role($1, $2);`,
+      [organizationId, verticalRole],
+    );
+    return rows.map((row) => ({
+      userId: row.user_id,
+      email: row.email,
+      fullName: row.full_name,
+      propertyIds: row.property_ids,
+    }));
   }
 
   // ---- CoreRepository — sesión de sistema (igual que login), ver comentario de

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchOrders, NEXT_STATUSES, updateOrderStatus } from "../src/verticals/restaurantes/lib/orders-client.ts";
+import { assignRepartidor, fetchOrders, NEXT_STATUSES, updateOrderStatus } from "../src/verticals/restaurantes/lib/orders-client.ts";
 
 const ORDER_ROW = {
   id: "order-1",
@@ -55,5 +55,33 @@ describe("NEXT_STATUSES", () => {
   it("cancelado y completado son terminales", () => {
     expect(NEXT_STATUSES.cancelado).toEqual([]);
     expect(NEXT_STATUSES.completado).toEqual([]);
+  });
+});
+
+// Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido no
+// tiene UI"): cliente real de PATCH .../assign-repartidor (admin-orders.ts).
+describe("assignRepartidor", () => {
+  it("hace PATCH real al endpoint de assign-repartidor con el repartidorId elegido", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/v1/restaurantes/prop-1/admin/orders/order-1/assign-repartidor");
+      expect(init?.method).toBe("PATCH");
+      expect(JSON.parse(init!.body as string)).toEqual({ repartidorId: "repartidor-1" });
+      return new Response(JSON.stringify({ order: { ...ORDER_ROW, assignedRepartidorId: "repartidor-1" } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const result = await assignRepartidor(fetchImpl, "http://api.local", "tok", "prop-1", "order-1", "repartidor-1");
+    expect(result.assignedRepartidorId).toBe("repartidor-1");
+  });
+
+  it("incluye estimatedDeliveryAt solo cuando se pasa explícitamente", async () => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(JSON.parse(init!.body as string)).toEqual({ repartidorId: "repartidor-1", estimatedDeliveryAt: "2026-09-14T20:00:00.000Z" });
+      return new Response(JSON.stringify({ order: ORDER_ROW }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await assignRepartidor(fetchImpl, "http://api.local", "tok", "prop-1", "order-1", "repartidor-1", "2026-09-14T20:00:00.000Z");
+  });
+
+  it("un uuid que no es repartidor de esta organización -> error real (400 del servidor)", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "repartidorId no corresponde a un repartidor de esta organización." }), { status: 400 })) as unknown as typeof fetch;
+    await expect(assignRepartidor(fetchImpl, "http://api.local", "tok", "prop-1", "order-1", "no-es-repartidor")).rejects.toThrow(/no corresponde a un repartidor/i);
   });
 });

@@ -186,6 +186,48 @@ describe("InMemoryCoreRepository — invitación de staff (Fase 10)", () => {
     await expect(repo.acceptStaffInvite({ tokenHash: "hash-token-4", fullName: "Tarde", passwordHash: "h" })).rejects.toThrow(StaffInviteInvalidError);
   });
 
+  // Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
+  // no tiene UI"): a diferencia de `createStaffInvite`/`listPendingStaffInvites`
+  // (invitaciones PENDIENTES, sin membership real todavía), esto lista miembros YA
+  // ACEPTADOS -- el selector real de `assign-repartidor` necesita esto, no invitaciones.
+  it("listMembersByVerticalRole trae solo los miembros YA aceptados con ese vertical_role exacto de esa organización", async () => {
+    const repo = new InMemoryCoreRepository();
+    repo.addOrganization({ id: "org-1", slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
+    repo.addOrganization({ id: "org-2", slug: "otro", name: "Otro Restaurante", vertical: "restaurantes" });
+    seedOwner(repo);
+    repo.addStaff({ id: "rep-1", email: "rep1@x.mx", fullName: "Repartidor Uno", passwordHash: "h", createdVia: "invite", emailVerifiedAt: "2026-01-01T00:00:00.000Z" });
+    repo.addMembership({ userId: "rep-1", organizationId: "org-1", platformRole: "member", verticalRole: "repartidor", propertyIds: ["prop-1"] });
+    repo.addStaff({ id: "staff-a", email: "staff-a@x.mx", fullName: "Staff A", passwordHash: "h", createdVia: "seed", emailVerifiedAt: null });
+    repo.addMembership({ userId: "staff-a", organizationId: "org-1", platformRole: "member", verticalRole: "staff", propertyIds: null });
+    repo.addStaff({ id: "rep-otra-org", email: "rep-otra@x.mx", fullName: "Repartidor de otra org", passwordHash: "h", createdVia: "seed", emailVerifiedAt: null });
+    repo.addMembership({ userId: "rep-otra-org", organizationId: "org-2", platformRole: "member", verticalRole: "repartidor", propertyIds: null });
+
+    const repartidores = await repo.listMembersByVerticalRole("org-1", "repartidor");
+    expect(repartidores).toHaveLength(1);
+    expect(repartidores[0]).toMatchObject({ userId: "rep-1", email: "rep1@x.mx", fullName: "Repartidor Uno", propertyIds: ["prop-1"] });
+
+    // Ni el "staff" de gestión de la misma org, ni el repartidor de OTRA org, aparecen.
+    expect(repartidores.map((m) => m.userId)).not.toContain("staff-a");
+    expect(repartidores.map((m) => m.userId)).not.toContain("rep-otra-org");
+  });
+
+  it("listMembersByVerticalRole -- una invitación todavía 'pending' (sin aceptar) nunca cuenta como miembro", async () => {
+    const repo = new InMemoryCoreRepository();
+    seedOwner(repo);
+    await repo.createStaffInvite({
+      email: "pendiente@x.mx",
+      organizationId: "org-1",
+      platformRole: "member",
+      verticalRole: "repartidor",
+      propertyIds: null,
+      tokenHash: "hash-pendiente",
+      invitedBy: "owner-1",
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    expect(await repo.listMembersByVerticalRole("org-1", "repartidor")).toEqual([]);
+  });
+
   it("revokeStaffInvite marca 'revoked' y ya no aparece en listPendingStaffInvites; devuelve false si no existe/no es de esa org", async () => {
     const repo = new InMemoryCoreRepository();
     seedOwner(repo);

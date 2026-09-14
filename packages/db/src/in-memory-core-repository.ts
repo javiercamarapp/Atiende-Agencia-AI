@@ -21,6 +21,7 @@ import type {
   CoreStaffRepository,
   CreateStaffInviteInput,
   MembershipRow,
+  OrganizationMemberRow,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
@@ -137,6 +138,20 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     if (!invite || invite.organizationId !== organizationId || invite.status !== "pending") return false;
     this.invitesById.set(id, { ...invite, status: "revoked" });
     return true;
+  }
+
+  // Fase 12 — ver el contrato completo (y el gap de RLS real que este método existe
+  // para corregir) en `core-repository.ts`/`postgres-core-repository.ts`. En memoria
+  // no hay ninguna sesión/RLS que emular (mismo criterio que el resto de este
+  // archivo): solo filtra `this.memberships` por organización + vertical_role exacto.
+  async listMembersByVerticalRole(organizationId: string, verticalRole: string): Promise<readonly OrganizationMemberRow[]> {
+    return this.memberships
+      .filter((m) => m.organizationId === organizationId && m.verticalRole === verticalRole)
+      .map((m) => {
+        const staff = this.staffById.get(m.userId);
+        if (!staff) throw new Error(`membership apunta a staff_user inexistente "${m.userId}"`);
+        return { userId: staff.id, email: staff.email, fullName: staff.fullName, propertyIds: m.propertyIds };
+      });
   }
 
   // ---- CoreRepository (sesión de sistema, igual que login) ----
