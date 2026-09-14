@@ -164,6 +164,7 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
+    coreStaffRepo: (_db) => coreRepo,
     engine: new InMemoryTenancyEngine(),
     restaurantesRepo: (_db) => restaurantesRepo,
     turnHandler,
@@ -344,6 +345,7 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
     const deps: AppDeps = {
       env: TEST_ENV,
       coreRepo,
+      coreStaffRepo: (_db) => coreRepo,
       engine: new InMemoryTenancyEngine(),
       restaurantesRepo: (_db) => restaurantesRepo,
       turnHandler,

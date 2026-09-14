@@ -137,6 +137,7 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
+    coreStaffRepo: (_db) => coreRepo,
     engine,
     restaurantesRepo: (_db) => restaurantesRepo,
     turnHandler: acknowledgeOnlyTurnHandler(restaurantesRepo),

@@ -5,6 +5,7 @@ export {
   PLATFORM_ROLE_HIERARCHY,
   hasPlatformRole,
   hasAnyPlatformRole,
+  canInviteStaff,
   hasFeature,
   requireFeature,
   FeatureNotAvailableError,

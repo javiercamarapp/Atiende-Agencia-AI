@@ -60,7 +60,7 @@ import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RentasRepository } from "@atiende/domain-rentas";
 import { PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
-import { openManagedPostgres } from "@atiende/db";
+import { openManagedPostgres, PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import { loadApiEnv } from "../env.ts";
@@ -180,6 +180,13 @@ export function buildProductionDeps(): AppDeps {
     env,
     engine,
     coreRepo: new ProductionCoreRepository(engine),
+    // Fase 10 — a diferencia de `coreRepo` (sesión de sistema, sin `auth.uid()`),
+    // esta SÍ es la fábrica por-request real (`(db) => new
+    // PostgresCoreRepository(db)`, mismo patrón que `restaurantesRepo` etc. abajo):
+    // el `db` que le pasa cada ruta es la sesión ya abierta por `dbSession(engine)`
+    // con `auth.uid()` = el staff autenticado que invita, para que la policy RLS de
+    // `core.staff_invite` (owner/admin de la organización) sea la autoridad real.
+    coreStaffRepo: (db) => new PostgresCoreRepository(db),
     restaurantesRepo: (db) => new PostgresRestaurantesRepository(db),
     turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),

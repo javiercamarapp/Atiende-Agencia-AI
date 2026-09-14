@@ -54,6 +54,21 @@ export function hasAnyPlatformRole(role: PlatformRole, allowed: readonly Platfor
   return allowed.includes(role);
 }
 
+/**
+ * Regla genérica de "quién puede invitar a quién" (Fase 10 — mecanismo de alta de
+ * staff, ver `@atiende/db::CoreStaffRepository`), compartida por las 6 verticales:
+ * solo owner/admin invitan (nunca member/viewer, sin importar lo que el
+ * `verticalRole` concreto de cada dominio permita gestionar — ese filtro más fino
+ * vive en el propio `domain-<vertical>`, ej. `STAFF_INVITE_ROLES` de
+ * `domain-restaurantes/src/roles.ts`), y nadie puede invitar a un `platformRole` de
+ * jerarquía MAYOR que el propio (un admin nunca da de alta a otro owner) — mismo
+ * principio de "nunca ensanchar el alcance de quien invita" que ya aplica
+ * `resolveEffectivePropertyIds` en las rutas admin de restaurantes.
+ */
+export function canInviteStaff(inviterRole: PlatformRole, targetRole: PlatformRole): boolean {
+  return hasPlatformRole(inviterRole, "admin") && PLATFORM_ROLE_HIERARCHY[inviterRole] >= PLATFORM_ROLE_HIERARCHY[targetRole];
+}
+
 /** Se lanza cuando la ORGANIZACIÓN no tiene la feature contratada — distinto
  * de `InsufficientPlatformRoleError` (core-tenancy): ahí el rol no alcanza,
  * aquí el rol SÍ alcanza pero el plan no incluye la feature. Separar los dos

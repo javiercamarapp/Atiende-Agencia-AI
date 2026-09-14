@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (67 migraciones, timestamps 20240101000001 .. 20240101000067)
+## Orden actual (68 migraciones, timestamps 20240101000001 .. 20240101000068)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -58,6 +58,7 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 65. `packages/domain-hoteles/migrations/011_revenue_engine_gate.sql` — Fase 9 hoteles (REQ-REV-003, P0/GOB): motor de revenue management (pricing) — máquina de estados real shadow/propone/autopilot (`hoteles.revenue_engine_gate`) con su autoridad en un trigger de Postgres (nunca un flag de aplicación: exige 90 días mínimos en shadow, un backtest walk-forward vigente que pase, y una aprobación explícita del rol `owner` registrada en un UPDATE previo antes de habilitar autopilot pleno) + historial inmutable de corridas de backtest (`hoteles.revenue_backtest_run`). Gap real verificado contra el original (`packages/db/migrations/0082_revenue_engine_gate.sql`): domain-hoteles no tenía ninguna carpeta `revenue/` antes de esta fase. Diferencia deliberada documentada en la cabecera del propio archivo SQL: usa una aprobación de "owner" en vez del "founder_reserved_category" del original, que fusion no ha portado.
 66. `packages/domain-rentas/migrations/011_rentas_email_outbox.sql` — Fase 9 rentas: correo transaccional real al huésped (confirmación de reserva al crearla + recordatorio de check-in 24-48h antes, ambos deterministas/sin IA, distintos del borrador con aprobación humana de la migración 59). Agrega `rentas.messaging_outbox` (mismo shape que `hoteles.messaging_outbox`, partición por `property_id`) + `rentas.claim_email_outbox_batch`/`rentas.complete_email_outbox_job` (mismo patrón acotado a `channel='email'` que la migración 51 de citas) + `rentas.ocupacion.recordatorio_checkin_enviado_en` (belt-and-suspenders sobre el dedupe_key real del outbox, mismo criterio que `citas.appointments.reminder_24h_sent_at`).
 67. `packages/domain-restaurantes/migrations/009_order_notifications.sql` — Fase 9 restaurantes: notificaciones reales de cambio de estado de pedido — cliente por WhatsApp real vía `restaurantes.messaging_outbox` (ya existente desde la migración 54, sin tabla nueva) cuando el pedido pasa a preparando/en_camino/entregado/cancelado, y `restaurantes.staff_order_notification` (bandeja nueva, consultable por polling del panel admin — sin push real disponible en este monorepo, mismo criterio "honesto" que `licitaciones.tender_change_notification`) para pedido nuevo/incidencia/asignación a repartidor.
+68. `packages/db/migrations/0002_staff_invite_schema.sql` — Fase 10 restaurantes: gap real detectado en la Fase 8 (rol "repartidor") — ninguna vertical tenía forma de dar de alta staff adicional desde el producto (`core.staff_user.created_via='invite'` existía en el CHECK desde la migración 1 sin ningún método que lo produjera). Genérico (vive en `core`, no en `restaurantes.*`): `core.staff_invite` (token hasheado + expiración, RLS real de owner/admin de la organización) + `core.accept_staff_invite()` (función `security definer` que crea/vincula el `core.staff_user`/`core.membership` del invitado de forma atómica, sin depender de `service_role`). Solo restaurantes expone la ruta HTTP en esta fase (`apps/api/src/routes/verticals/restaurantes/admin-staff.ts`); el mecanismo queda listo para las otras 5 verticales sin cambios de esquema.
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
@@ -66,8 +67,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000067`; usa
-   `20240101000068`, luego `...069`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000068`; usa
+   `20240101000069`, luego `...070`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el

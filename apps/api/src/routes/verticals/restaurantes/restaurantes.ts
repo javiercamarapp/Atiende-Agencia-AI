@@ -10,6 +10,7 @@ import { restaurantesAdminCatalogRoutes } from "./admin-catalog.ts";
 import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
 import { restaurantesAdminOrdersRoutes } from "./admin-orders.ts";
 import { restaurantesAdminCustomersRoutes } from "./admin-customers.ts";
+import { restaurantesAdminStaffRoutes } from "./admin-staff.ts";
 import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -23,5 +24,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 8 — superficie real del rol "repartidor" (ver domain-restaurantes/src/
   // roles.ts::REPARTIDOR_ROLES), acotada a SU propio pedido — nunca gestión.
   app.route("/", restaurantesRepartidorOrdersRoutes(deps));
+  // Fase 10 — alta/gestión de cuentas de staff (invitar/listar/revocar), ver el
+  // comentario de cabecera de admin-staff.ts para la decisión de diseño completa.
+  app.route("/", restaurantesAdminStaffRoutes(deps));
   return app;
 }

@@ -31,6 +31,20 @@ export const MANAGER_ROLES: readonly RestaurantesRole[] = ["owner", "admin", "st
  */
 export const REPARTIDOR_ROLES: readonly RestaurantesRole[] = ["repartidor"];
 
+/**
+ * Fase 10 — quién puede invitar staff nuevo (ver diseño del gap en
+ * `packages/db/migrations/0002_staff_invite_schema.sql` y
+ * `apps/api/src/routes/verticals/restaurantes/admin-staff.ts`): solo owner/admin,
+ * NUNCA "staff" ni "repartidor" — deliberadamente más angosto que MANAGER_ROLES
+ * (que sí incluye "staff" para gestión de catálogo/sucursales/clientes, una
+ * superficie distinta y de menor riesgo que crear una cuenta con acceso al
+ * negocio). El techo real de a QUIÉN puede invitar cada uno (ej. admin no puede
+ * invitar a otro owner) lo resuelve `@atiende/core-authz::canInviteStaff` sobre el
+ * `platformRole` mapeado — esta lista es solo el primer filtro (quién llega
+ * siquiera a la ruta), mismo patrón de dos capas que MANAGER_ROLES/REPARTIDOR_ROLES.
+ */
+export const STAFF_INVITE_ROLES: readonly RestaurantesRole[] = ["owner", "admin"];
+
 export function isRestaurantesRole(value: string): value is RestaurantesRole {
   return (RESTAURANTES_ROLES as readonly string[]).includes(value);
 }

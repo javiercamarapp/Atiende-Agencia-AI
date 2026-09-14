@@ -127,9 +127,11 @@ function buildCitasAgentRepo() {
 }
 
 function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: WhatsAppTurnHandler): AppDeps {
+  const coreRepo = new InMemoryCoreRepository();
   return {
     env: TEST_ENV,
-    coreRepo: new InMemoryCoreRepository(),
+    coreRepo,
+    coreStaffRepo: (_db) => coreRepo,
     engine: new InMemoryTenancyEngine(),
     restaurantesRepo: (_db) => new InMemoryRestaurantesRepository(),
     turnHandler: acknowledgeOnlyRestaurantesTurnHandler(new InMemoryRestaurantesRepository()),

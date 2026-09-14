@@ -106,6 +106,7 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
+    coreStaffRepo: (_db) => coreRepo,
     engine,
     restaurantesRepo: (_db) => restaurantesRepoUnused,
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),

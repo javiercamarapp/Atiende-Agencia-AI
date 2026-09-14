@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FeatureNotAvailableError,
+  canInviteStaff,
   hasAnyPlatformRole,
   hasFeature,
   hasPlatformRole,
@@ -27,6 +28,27 @@ describe("hasAnyPlatformRole (lista explícita, no jerarquía)", () => {
   it("permite un subconjunto no contiguo, ej. auditor de solo lectura owner+viewer", () => {
     expect(hasAnyPlatformRole("viewer", ["owner", "viewer"])).toBe(true);
     expect(hasAnyPlatformRole("admin", ["owner", "viewer"])).toBe(false);
+  });
+});
+
+describe("canInviteStaff (Fase 10 — quién puede invitar a quién)", () => {
+  it("owner invita a cualquier rol, incluido otro owner", () => {
+    expect(canInviteStaff("owner", "owner")).toBe(true);
+    expect(canInviteStaff("owner", "admin")).toBe(true);
+    expect(canInviteStaff("owner", "member")).toBe(true);
+    expect(canInviteStaff("owner", "viewer")).toBe(true);
+  });
+
+  it("admin invita hasta su propio techo, nunca a un owner", () => {
+    expect(canInviteStaff("admin", "admin")).toBe(true);
+    expect(canInviteStaff("admin", "member")).toBe(true);
+    expect(canInviteStaff("admin", "owner")).toBe(false);
+  });
+
+  it("member/viewer nunca invitan (no alcanzan 'admin' en la jerarquía)", () => {
+    expect(canInviteStaff("member", "member")).toBe(false);
+    expect(canInviteStaff("member", "viewer")).toBe(false);
+    expect(canInviteStaff("viewer", "viewer")).toBe(false);
   });
 });
 
