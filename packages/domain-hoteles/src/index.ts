@@ -187,6 +187,9 @@ export type {
 } from "./night-audit/engine.ts";
 export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";
 
+// ---- Fase 7 — descubrimiento de organización/property para el panel web de staff ----
+export type { HotelOrganizationSummary, PropertySummary } from "./types.ts";
+
 // ---- Fase 6 — REQ-HK-008: turnos de camaristas/lavandería (LFT, puro) ----
 export {
   classifyShiftType,

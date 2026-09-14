@@ -16,6 +16,7 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HotelOrganizationSummary,
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
   MaintenanceTicketStatus,
@@ -30,6 +31,7 @@ import type {
   NewReservationInput,
   NightAuditRunRecord,
   NightlyRateRecord,
+  PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
   TaxConfigRecord,
@@ -239,6 +241,18 @@ export interface HotelesRepository {
   listCfdiEmisiones(propertyId: string, filter?: { readonly folioId?: string }): Promise<readonly CfdiEmisionRecord[]>;
   updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void>;
 
+  // ---- Fase 7 — descubrimiento de organización/property para el panel web de staff ----
+
+  /** `null` si no existe una organización de vertical 'hoteles' con ese slug — mismo
+   *  contrato que `RestaurantesRepository.findOrganizationBySlug` (domain-restaurantes),
+   *  ver types.ts::HotelOrganizationSummary para por qué existe. */
+  findOrganizationBySlug(slug: string): Promise<HotelOrganizationSummary | null>;
+  /** Properties ACTIVAS de una organización de hoteles — a diferencia de
+   *  `listActiveHotelProperties()` (Fase 6, global, sin nombre, insumo del barrido
+   *  interno), esta SÍ trae el nombre real y SÍ está acotada a una sola
+   *  organización — insumo del selector de property del panel de staff. */
+  listPropertiesForOrganization(organizationId: string): Promise<readonly PropertySummary[]>;
+
   // ---- Fase 6 — H5/REQ-REV-013: night audit propio ----
 
   /** Properties de hoteles activas -- insumo de la ruta interna de barrido
@@ -353,6 +367,7 @@ export type { ReservationRecord, NewReservationInput, CancellationPolicyRecord }
 export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
 export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";
 export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";
+export type { HotelOrganizationSummary, PropertySummary } from "./types.ts";
 export type {
   MaintenanceTicketRecord,
   MaintenanceTicketOrigin,

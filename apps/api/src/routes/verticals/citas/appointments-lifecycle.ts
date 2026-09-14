@@ -1,16 +1,23 @@
-// Flujo 2 — gestión de cita existente: cancelar + reagendar + modificar (Fase 4).
-// Distintas entradas de autenticación, como en el origen (ver diseño Fase 1
-// citas §5.2) y como Fase 4 extiende el mismo criterio a "modificar-cita":
+// Flujo 2 — gestión de cita existente: cancelar + reagendar + modificar (Fase 4) +
+// confirmar/completar/no-show (Fase 7). Distintas entradas de autenticación, como
+// en el origen (ver diseño Fase 1 citas §5.2) y como Fase 4/7 extienden el mismo
+// criterio:
 //
 //   POST /v1/citas/:orgSlug/appointments/:appointmentId/cancel            (agente, x-atiende-tool-secret)
 //   POST /v1/citas/:orgSlug/appointments/:appointmentId/reschedule        (agente, x-atiende-tool-secret)
 //   POST /v1/citas/:orgSlug/appointments/:appointmentId/reassign          (agente, x-atiende-tool-secret) — Fase 4
-//   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/cancel  (staff panel, JWT)
+//   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/cancel    (staff panel, JWT)
+//   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/confirm   (staff panel, JWT) — Fase 7
+//   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/complete  (staff panel, JWT) — Fase 7
+//   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/no-show   (staff panel, JWT) — Fase 7
 //
-// La ruta de staff SÍ ejercita requirePropertyMembership("propertyId") de
-// core-auth — SIN allowedRoles (el origen no restringe por rol quién cancela desde
-// el panel, ver domain-citas/src/roles.ts). El panel no tiene botón de reagendar ni
-// de reasignar en el origen — solo el agente ejecuta esas dos hoy.
+// Las 4 rutas de staff SÍ ejercitan requirePropertyMembership("propertyId") de
+// core-auth — SIN allowedRoles (el origen no restringe por rol quién opera el
+// panel, ver domain-citas/src/roles.ts). El panel no tiene botón de reagendar ni
+// de reasignar en el origen — solo el agente ejecuta esas dos hoy; confirmar/
+// completar/no-show, al revés, son acciones SOLO del panel (el agente de voz/
+// WhatsApp nunca las ejecuta — ver AgendaSection.tsx del repo original, único
+// lugar que las tenía: confirmarCita/completarCita + update directo a no_show).
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
@@ -22,7 +29,10 @@ import {
   AppointmentValidationError,
   cancelAppointment,
   cancelAppointmentFromPanel,
+  completeAppointmentFromPanel,
+  confirmAppointmentFromPanel,
   consumeRateLimit,
+  markAppointmentNoShowFromPanel,
   notifyWaitlistAfterReschedule,
   reassignAppointment,
   rescheduleAppointment,
@@ -247,6 +257,76 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.cancelled", appointment.id);
       // Fase 3 §5 — mismo best-effort que la cancelación del agente.
       await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+      return c.json({ appointment: serializeAppointment(appointment) });
+    } catch (err) {
+      return mapErrorToHttp(err, c);
+    }
+  });
+
+  // ---- Staff panel: confirmar/completar/marcar no-show — Fase 7. Gap real que
+  // esta fase cierra: sin estas 3 rutas una cita nunca salía de 'pending'/
+  // 'confirmed' aunque el cliente hubiera asistido (ver cabecera del archivo).
+  // Ninguna cambia starts_at/ends_at ni provider_id/service_id, así que — a
+  // diferencia de cancelar/reagendar/reasignar — no hay ningún hueco de horario
+  // que liberar para la lista de espera y ningún evento de Google Calendar que
+  // re-sincronizar (el horario del evento ya sincronizado sigue siendo válido).
+  // Sin notificación por correo a propósito: el origen (AgendaSection.tsx) nunca
+  // la tuvo para estas 3 transiciones tampoco — agregar plantillas nuevas de
+  // correo queda fuera del alcance real de este gap (ver resumen de la fase).
+  app.use(
+    "/v1/citas/properties/:propertyId/appointments/:appointmentId/confirm",
+    authMiddleware(deps.env),
+    dbSession(deps.engine),
+    requirePropertyMembership("propertyId"),
+  );
+  app.post("/v1/citas/properties/:propertyId/appointments/:appointmentId/confirm", async (c) => {
+    const organizationId = c.get("organizationId");
+    const appointmentId = c.req.param("appointmentId");
+    const userId = c.get("userId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    try {
+      const appointment = await confirmAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
+      return c.json({ appointment: serializeAppointment(appointment) });
+    } catch (err) {
+      return mapErrorToHttp(err, c);
+    }
+  });
+
+  app.use(
+    "/v1/citas/properties/:propertyId/appointments/:appointmentId/complete",
+    authMiddleware(deps.env),
+    dbSession(deps.engine),
+    requirePropertyMembership("propertyId"),
+  );
+  app.post("/v1/citas/properties/:propertyId/appointments/:appointmentId/complete", async (c) => {
+    const organizationId = c.get("organizationId");
+    const appointmentId = c.req.param("appointmentId");
+    const userId = c.get("userId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    try {
+      const appointment = await completeAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
+      return c.json({ appointment: serializeAppointment(appointment) });
+    } catch (err) {
+      return mapErrorToHttp(err, c);
+    }
+  });
+
+  app.use(
+    "/v1/citas/properties/:propertyId/appointments/:appointmentId/no-show",
+    authMiddleware(deps.env),
+    dbSession(deps.engine),
+    requirePropertyMembership("propertyId"),
+  );
+  app.post("/v1/citas/properties/:propertyId/appointments/:appointmentId/no-show", async (c) => {
+    const organizationId = c.get("organizationId");
+    const appointmentId = c.req.param("appointmentId");
+    const userId = c.get("userId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    try {
+      const appointment = await markAppointmentNoShowFromPanel(citasRepo, organizationId, appointmentId, userId);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
