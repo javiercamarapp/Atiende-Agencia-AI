@@ -23,6 +23,7 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
       const organizations = await citasRepo.listActiveOrganizations();
       let processed = 0;
       let sent = 0;
+      let sentEmail = 0;
       const failures: { organization_id: string; error: string }[] = [];
 
       // Un tenant con datos raros nunca tumba la corrida completa de los demás — se
@@ -32,12 +33,13 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
           const summary = await runConfirmacionCitaCore(citasRepo, org.id);
           processed += summary.processed;
           sent += summary.sent;
+          sentEmail += summary.sentEmail;
         } catch (err) {
           failures.push({ organization_id: org.id, error: err instanceof Error ? err.message : String(err) });
         }
       }
 
-      return c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, failures });
+      return c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, failures });
     });
   });
 

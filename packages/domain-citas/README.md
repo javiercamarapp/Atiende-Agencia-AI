@@ -71,3 +71,62 @@ que no sea Google, el receptor de webhooks de Google (watch channels quedan sin
 consumidor — opción A del diseño §7), el panel visual de conexión en `apps/web`, y
 habilitar Vault/pgsodium en el proyecto Supabase real (paso de infraestructura de
 despliegue, no de este código).
+
+## Fase 6 — guardia de crisis + Cal.com/CalDAV + notificaciones por correo
+
+Tres piezas independientes, ninguna reescribe lo ya construido en Fases 1-5.
+
+### §1 — guardia de crisis + FAQs por rubro
+
+Capa DETERMINISTA (nunca delegada al LLM) que intercepta un mensaje de crisis real
+(autolesión/suicidio) en un rubro de salud (`citas.tenant_config.rubro` en
+medico/dental/psicologo/veterinaria) ANTES de que el agente de WhatsApp llame al
+LLM: registra `citas.emergency_escalations` (`migrations/007_crisis_guardrail.sql`)
+y avisa al dueño por WhatsApp si configuró `owner_notification_phone` — ver
+`vertical-config.ts` (rubros, palabras clave, FAQs canónicas) y
+`crisis-guardrail.ts` (`runCrisisGuardrail`, conectado en
+`whatsapp/inbound.ts` antes de `turnHandler.handleInboundMessage`). Las FAQs
+canónicas del rubro se agregan como grounding al prompt del agente
+(`whatsapp/llm-turn-handler.ts::verticalFaqsBlock`) — solo aplica hoy al canal de
+WhatsApp, igual que el origen.
+
+### §2 — CalendarSyncPort genérico + Cal.com + CalDAV
+
+`calendar-sync-port.ts` generaliza el contrato de Fase 3 (Google sigue exactamente
+igual, `GoogleCalendarSyncAdapter` solo lo envuelve) para que Cal.com
+(`calcom-port.ts`, API v2 real) y CalDAV (`caldav-port.ts` + `caldav-ics.ts`,
+RFC 4791/5545 real — Apple/iCloud, Fastmail, Nextcloud) puedan tratarse de forma
+uniforme. Simuladores HTTP reales (`tests/calcom-sim.ts`, `tests/caldav-sim.ts`,
+mismo patrón que `FakeGoogleCalendarPort` pero a nivel HTTP) prueban los
+adaptadores REALES sin cuenta/credenciales reales de ninguna de las dos
+plataformas. Conexión por proveedor vía
+`migrations/008_calendar_provider_accounts.sql` (`provider_calcom_accounts`/
+`provider_caldav_accounts`, reutilizando el Vault genérico de Fase 3) y
+`POST/.../calcom|caldav/connect|disconnect` en
+`apps/api/src/routes/verticals/citas/calendar-providers.ts` (staff panel, sin
+flujo OAuth — ninguna de las dos plataformas lo necesita). Explícitamente fuera de
+esta fase: rewirear `calendar-sync.ts`/`google_sync_*` para soportar Cal.com/CalDAV
+en el mismo motor de reconciliación (Google sigue siendo el único conectado al
+ciclo de vida real de la cita); esto sí deja el contrato + adaptadores + conexión
+completos y probados para que ese rewiring futuro no tenga que construir nada de
+protocolo desde cero.
+
+### §3 — notificaciones por correo
+
+Motor de envío real y fail-closed: `email-dispatch.ts::sendEmailOutboxJob` lanza
+SIEMPRE sin `RESEND_API_KEY` real (nunca finge éxito) — port de
+`email-dispatch-core.ts` del origen. `appointment-email-notifications.ts` arma el
+correo real (to/subject/html vía `emails/appointment-templates.ts` +
+`emails/layout.ts`) a partir de solo un `appointmentId`, y se encola SIEMPRE por
+`citas.messaging_outbox` (`channel='email'`, ya existente desde Fase 1) — cierra un
+hueco real que ya traían las rutas de citas desde antes de esta fase: creaban/
+cancelaban/reagendaban una cita y encolaban un job de correo con solo
+`{appointment_id}`, sin contenido real que ningún dispatcher pudiera enviar
+(`modificar-cita` ni siquiera encolaba nada). `migrations/009_email_outbox_dispatch.sql`
+agrega `attempts`/`last_error` + `claim_email_outbox_batch`/`complete_email_outbox_job`,
+acotados a `channel='email'` (nunca tocan una fila `channel='whatsapp'` — ese
+dispatcher es un problema de plataforma compartido que se construye por separado).
+`POST /internal/citas/email-dispatch` (mismo patrón que el cron de Google Calendar)
+drena el lote real. El recordatorio 24h (`reminders.ts::runConfirmacionCitaCore`)
+ahora manda WhatsApp Y correo como canales independientes — un negocio sin
+WhatsApp configurado ya no se queda sin ningún recordatorio.

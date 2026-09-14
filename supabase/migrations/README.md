@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (48 migraciones, timestamps 20240101000001 .. 20240101000048)
+## Orden actual (51 migraciones, timestamps 20240101000001 .. 20240101000051)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -39,6 +39,9 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 41. `packages/domain-restaurantes/migrations/007_admin_backoffice_grants_and_policies.sql` — Fase 5 restaurantes (back-office CORE: GRANTs + policies de staff para catálogo/sucursales/pedidos que antes eran de solo lectura).
 42–47. `packages/domain-licitaciones/migrations/011..016_*.sql` — Fase 6 licitaciones, seguimiento post-adjudicación (REQ-051..055): máquina de estados del contrato + historial (011), extracción determinista del contrato firmado (012), cobranza/facturas (013), redactor de inconformidades (014), autopsia del fallo + lecciones aprendidas (015), radar de renovaciones (016).
 48. `packages/domain-despachos/migrations/003_cierre_mensual_schema.sql` — Fase 6 despachos (checklist de cierre mensual: `despachos.periodo_cierre`/`periodo_cierre_tarea`).
+49. `packages/domain-citas/migrations/007_crisis_guardrail.sql` — Fase 6 §1 citas (guardia de crisis: `citas.emergency_escalations`).
+50. `packages/domain-citas/migrations/008_calendar_provider_accounts.sql` — Fase 6 §2 citas (cuentas Cal.com/CalDAV por proveedor).
+51. `packages/domain-citas/migrations/009_email_outbox_dispatch.sql` — Fase 6 §3 citas (dispatcher de correo: `attempts`/`last_error` + claim/complete acotados a channel='email').
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
@@ -47,8 +50,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000048`; usa
-   `20240101000049`, luego `...050`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000051`; usa
+   `20240101000052`, luego `...053`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el

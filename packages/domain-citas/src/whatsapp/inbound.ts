@@ -10,6 +10,7 @@
 // como uno de los 3 verticales con el bug de doble-booking por mensajes
 // casi-simultáneos que ese paquete existe para resolver.
 import { ConversationStateMachine, DEFAULT_BOOKING_TRANSITIONS, InMemoryLockStore, InMemoryStateStore, withConversationLock, type BookingState, type LockStore } from "@atiende/core-conversation";
+import { runCrisisGuardrail } from "../crisis-guardrail.ts";
 import { lookupCitasCustomer } from "../customers.ts";
 import { actorHash } from "../rate-limit.ts";
 import type { CitasRepository, ConversationMessage } from "../repository.ts";
@@ -84,8 +85,16 @@ export async function handleInboundWhatsAppMessage(
         const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
         const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
-        const customer = await lookupCitasCustomer(repo, organizationId, phone);
-        const turn = await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer });
+        // Fase 6 §1 — guardia de crisis: capa DETERMINISTA que corre ANTES de
+        // llamar al LLM. Un mensaje real de crisis en un rubro de salud nunca sigue
+        // la conversación normal — se responde con el mensaje de crisis TAL CUAL
+        // (nunca reformulado/resumido por el agente) y la escalación humana ya
+        // quedó registrada, sin importar qué haría el turn handler con ese mismo
+        // mensaje.
+        const crisisCheck = await runCrisisGuardrail(repo, organizationId, phone, body);
+        const turn = crisisCheck.triggered
+          ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
+          : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
 
         const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
         await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.appointmentId ? "completed" : "active", turn.appointmentId, turn.propertyId);
