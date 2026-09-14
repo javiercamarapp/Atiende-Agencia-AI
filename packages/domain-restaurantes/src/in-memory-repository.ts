@@ -680,6 +680,9 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         dedupeFingerprint,
         idempotencyKey,
         createdAt: new Date().toISOString(),
+        assignedRepartidorId: null,
+        estimatedDeliveryAt: null,
+        incidentNote: null,
       };
       this.orders.push(created);
       if (order.customerId) {
@@ -1023,6 +1026,39 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (index === -1) return null;
     const existing = this.orders[index]!;
     const updated: Order = { ...existing, status };
+    this.orders[index] = updated;
+    return updated;
+  }
+
+  // ---- Fase 8 — superficie real del rol "repartidor" (ver repository.ts para el
+  // contrato completo de cada método; mismo criterio de scoping que el adaptador de
+  // Postgres, ver postgres-repository.ts). ----
+
+  async assignRepartidorToOrder(organizationId: string, orderId: string, repartidorId: string, estimatedDeliveryAt: string | null): Promise<Order | null> {
+    const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId);
+    if (index === -1) return null;
+    const updated: Order = { ...this.orders[index]!, assignedRepartidorId: repartidorId, estimatedDeliveryAt };
+    this.orders[index] = updated;
+    return updated;
+  }
+
+  async listOrdersForRepartidor(organizationId: string, repartidorId: string): Promise<readonly Order[]> {
+    return this.orders
+      .filter((o) => o.organizationId === organizationId && o.assignedRepartidorId === repartidorId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 200);
+  }
+
+  async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
+    const order = this.orders.find((o) => o.id === orderId && o.organizationId === organizationId && o.assignedRepartidorId === repartidorId);
+    return order ?? null;
+  }
+
+  async updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, status: OrderStatus, incidentNote: string | null): Promise<Order | null> {
+    const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId && o.assignedRepartidorId === repartidorId);
+    if (index === -1) return null;
+    const existing = this.orders[index]!;
+    const updated: Order = { ...existing, status, incidentNote: status === "problema" ? incidentNote : existing.incidentNote };
     this.orders[index] = updated;
     return updated;
   }

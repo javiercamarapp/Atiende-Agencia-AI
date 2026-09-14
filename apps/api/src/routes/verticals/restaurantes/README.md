@@ -31,6 +31,40 @@ Fase 5 agrega el back-office CORE (CRUD real, con `authMiddleware` +
 - `admin-customers.ts` — listado/búsqueda (`GET .../admin/customers`) y ficha
   (`GET .../admin/customers/:customerId`, mismo shape que `lookupCustomer`).
 
-`repartidores`, cuentas/accesos de staff, notificaciones, promociones/marketing,
-panel de superadmin, "pregunta a tus datos" y configuración del agente de voz/
-WhatsApp quedan explícitamente fuera de esta fase — ver el brief de Fase 5.
+Cuentas/accesos de staff, notificaciones, promociones/marketing, panel de
+superadmin, "pregunta a tus datos" y configuración del agente de voz/WhatsApp
+quedan explícitamente fuera de esta fase — ver el brief de Fase 5.
+
+Fase 8 agrega la superficie real del rol `repartidor` (ver
+`domain-restaurantes/src/roles.ts::REPARTIDOR_ROLES` — hasta esta fase el rol
+existía en el enum pero `assertVerticalRole(MANAGER_ROLES)` lo excluía de TODA
+ruta de este vertical por diseño, sin ninguna alternativa):
+
+- `repartidor-orders.ts` — acotado a SUS PROPIOS pedidos asignados, nunca
+  gestión: `GET .../repartidor/orders` (lista, sin paginación — ver comentario
+  de `listOrdersForRepartidor`), `GET .../repartidor/orders/:orderId` (ficha,
+  404 uniforme si el pedido no existe o no es suyo — nunca distingue ambos
+  casos), `PATCH .../repartidor/orders/:orderId/status` (solo
+  en_camino/entregado/problema, vía
+  `@atiende/domain-restaurantes::order-lifecycle.ts::changeAssignedOrderStatus`
+  — `incidentNote` obligatorio si y solo si el nuevo estado es "problema").
+  Usa `assertVerticalRole(c, REPARTIDOR_ROLES)`, nunca `MANAGER_ROLES`.
+- `admin-orders.ts` — se agrega `PATCH
+  .../admin/orders/:orderId/assign-repartidor` (MANAGER_ROLES): el ÚNICO
+  lugar que despacha un pedido (escribe `assigned_repartidor_id`/
+  `estimated_delivery_at`), validando que `repartidorId` sea staff real de
+  esta organización con `verticalRole === "repartidor"` antes de escribir.
+  `serializeOrder` ahora también expone `assignedRepartidorId`/
+  `estimatedDeliveryAt`/`incidentNote` en las vistas de operación/historial
+  existentes.
+
+Pendiente, fuera de alcance de esta fase (documentado, no fingido): alta de
+cuentas de repartidor (el origen lo resuelve con la Edge Function
+`crear-repartidor` + `repartidor_perfil` — fusion no tiene TODAVÍA un mecanismo
+genérico de invitación/alta de staff para NINGÚN rol de NINGUNA vertical, no es
+un hueco específico de restaurantes) y el panel visual completo del origen
+(RepartidorDashboard.tsx: stats del día, perfil con datos operativos del
+repartidor, centro de ayuda, nav móvil) — `apps/web` sí agrega una página
+mínima y real (`RepartidorPedidosPage`, ver `apps/web/src/verticals/
+restaurantes/README.md` si existe o `pages/Repartidor.tsx`) para no dejar el
+endpoint sin ningún consumidor de UI, pero no reconstruye esa riqueza visual.

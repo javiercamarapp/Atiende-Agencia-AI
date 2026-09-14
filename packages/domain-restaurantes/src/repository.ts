@@ -278,6 +278,35 @@ export interface RestaurantesRepository {
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
+
+  // ---- Fase 8 — superficie real del rol "repartidor" (ver diseño, domain-restaurantes/
+  // src/roles.ts::REPARTIDOR_ROLES). Todos estos métodos acotan la consulta a
+  // `assigned_repartidor_id` — nunca a la organización completa como MANAGER_ROLES — ver
+  // migrations/008_repartidor_order_assignment.sql. ----
+
+  /** Dispatch real (MANAGER_ROLES, ver admin-orders.ts): asigna un repartidor a un pedido
+   * y captura `estimated_delivery_at` (ambos escritos por el mismo staff que despacha,
+   * nunca por el repartidor). `repartidorId` se valida ANTES de llamar aquí (es
+   * `core.staff_user.id` con membership vertical_role='repartidor' de esta organización —
+   * ver admin-orders.ts, nunca confiado a ciegas). null en `orderId` inexistente/fuera de
+   * la organización, igual que `updateOrderStatus`. */
+  assignRepartidorToOrder(organizationId: string, orderId: string, repartidorId: string, estimatedDeliveryAt: string | null): Promise<Order | null>;
+  /** Pedidos asignados a ESTE repartidor, más recientes primero — nunca los de otro
+   * repartidor ni el resto de la organización. Sin paginación por cursor a propósito: el
+   * origen (RepartidorDashboard.tsx) nunca pagina esta lista (es inherentemente pequeña,
+   * lo asignado a una sola persona); un límite fijo generoso evita igual un fetch
+   * accidentalmente ilimitado. */
+  listOrdersForRepartidor(organizationId: string, repartidorId: string): Promise<readonly Order[]>;
+  /** Ficha de un pedido — null si no existe, no es de esta organización, O no está
+   * asignado a ESTE repartidor (un repartidor NUNCA puede leer el pedido de otro,
+   * a diferencia de `findOrderById`, que solo acota por organización/property). */
+  findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null>;
+  /** Persiste la transición + `incident_note` (la validación de cuál es válida vive en
+   * `order-lifecycle.ts::changeAssignedOrderStatus`, nunca aquí). El UPDATE real SIEMPRE
+   * acota por `assigned_repartidor_id = repartidorId` (defensa en profundidad, igual que
+   * `update_assigned_order_status()` del origen) — null si el pedido no existe, no es de
+   * esta organización, o ya no está asignado a este repartidor. */
+  updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, status: OrderStatus, incidentNote: string | null): Promise<Order | null>;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo

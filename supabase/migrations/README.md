@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (59 migraciones, timestamps 20240101000001 .. 20240101000059)
+## Orden actual (60 migraciones, timestamps 20240101000001 .. 20240101000060)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -50,6 +50,7 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 57. `packages/domain-rentas/migrations/008_ical_sync_schema.sql` — Fase 5 rentas: sincronización de calendario por canal (feeds iCal externos de Airbnb/Booking.com/VRBO, bookkeeping de versión/anti-eco, cuarentena).
 58. `packages/domain-citas/migrations/010_appointment_status_transitions.sql` — Fase 7 citas: transición de estado confirmar/completar/no-show desde el panel de staff (`confirm_appointment_from_panel`/`complete_appointment_from_panel`/`mark_appointment_no_show_from_panel`), con evento de auditoría propio (`appointment_audit_events.event_type` ampliado a 'confirmed'/'completed'/'no_show').
 59. `packages/domain-rentas/migrations/009_rentas_mensajeria_schema.sql` — Fase 7 rentas: mensajería con huésped (borrador de IA + aprobación humana obligatoria) — `rentas.conversacion`/`rentas.mensaje`/`rentas.borrador_mensaje` (property-scoped) + `rentas.plantilla_mensaje` (organization-scoped).
+60. `packages/domain-restaurantes/migrations/008_repartidor_order_assignment.sql` — Fase 8 restaurantes: superficie real del rol "repartidor" — `restaurantes.orders.assigned_repartidor_id`/`estimated_delivery_at`/`incident_note` (dispatch real de un pedido a un repartidor + la incidencia que reporta), sin policies nuevas de RLS a propósito (ver comentario de cabecera del propio archivo SQL: la autorización fina vive en la capa TS, igual que el resto de este vertical).
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.

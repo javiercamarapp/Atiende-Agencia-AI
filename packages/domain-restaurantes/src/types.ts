@@ -166,6 +166,19 @@ export interface Order {
   readonly dedupeFingerprint: string | null;
   readonly idempotencyKey: string | null;
   readonly createdAt: string;
+  // ---- Fase 8 — superficie real del rol "repartidor" (ver roles.ts, migrations/008) ----
+  /** `core.staff_user.id` del repartidor despachado a este pedido por un
+   * MANAGER_ROLES (nunca lo pone el repartidor mismo) — null hasta que se
+   * despache. Puerto de `orders.assigned_repartidor_id` del origen. */
+  readonly assignedRepartidorId: string | null;
+  /** Capturada al despachar (ver `assignRepartidorToOrder`) — puerto literal de
+   * `orders.estimated_delivery_at` del origen, usada ahí para calcular la
+   * condición "Demorado" en el panel de repartidor. */
+  readonly estimatedDeliveryAt: string | null;
+  /** Nota libre de la incidencia que el repartidor reportó (status="problema") —
+   * puerto literal de `orders.incident_note` del origen. null salvo cuando el
+   * pedido está (o estuvo) en "problema". */
+  readonly incidentNote: string | null;
 }
 
 export interface PersistedOrderItem {
