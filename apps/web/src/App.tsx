@@ -12,6 +12,11 @@ import { PedidosPage } from "./verticals/restaurantes/pages/Pedidos.tsx";
 import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
 import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
+import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
+import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
+import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
+import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
+import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
 import { CitasShell } from "./verticals/citas/CitasShell.tsx";
@@ -21,6 +26,10 @@ import { ServicioFichaPage, ServiciosListPage } from "./verticals/citas/pages/Se
 import { ClienteFichaPage, ClientesListPage } from "./verticals/citas/pages/Clientes.tsx";
 import { DisponibilidadPage } from "./verticals/citas/pages/Disponibilidad.tsx";
 import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
+import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
+import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
+import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
+import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -120,6 +129,58 @@ function HotelesLoginRoute() {
       apiBaseUrl={API_BASE_URL}
       onLoggedIn={(_session, landingPath) => navigate(landingPath)}
     />
+  );
+}
+
+/** Redirección al abrir `/hoteles/:orgSlug` a secas — Reservas es la landing real
+ * del panel (mismo criterio que CitasRootRedirect: la agenda/reservas es lo primero
+ * que necesita ver recepción al entrar). */
+function HotelesRootRedirect() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  return <Navigate to={`/hoteles/${orgSlug}/reservas`} replace />;
+}
+
+function HotelesReservasRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <ReservasPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
+function HotelesFolioRoute() {
+  const navigate = useNavigate();
+  const { orgSlug, folioId } = useParams<{ orgSlug: string; folioId: string }>();
+  if (!orgSlug || !folioId) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <FolioPage {...ctx} folioId={folioId} />}
+    </HotelesShell>
+  );
+}
+
+function HotelesMantenimientoRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <MantenimientoPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
+function HotelesFraudeRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <FraudePage {...ctx} />}
+    </HotelesShell>
   );
 }
 
@@ -245,6 +306,41 @@ function CitasConfiguracionRoute() {
   );
 }
 
+function LicitacionesLoginRoute() {
+  const navigate = useNavigate();
+  return <LicitacionesLoginPage apiBaseUrl={API_BASE_URL} onLoggedIn={(_session, landingPath) => navigate(landingPath)} />;
+}
+
+/** Redirección al abrir `/licitaciones/:orgSlug` a secas — convocatorias es la
+ * landing real del panel (Fase 7, mismo criterio que CitasRootRedirect: aún no
+ * hay dashboard de KPIs para este vertical). */
+function LicitacionesRootRedirect() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  return <Navigate to={`/licitaciones/${orgSlug}/convocatorias`} replace />;
+}
+
+function LicitacionesConvocatoriasRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <ConvocatoriasPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
+function LicitacionesConvocatoriaDetalleRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <ConvocatoriaDetallePage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -258,6 +354,11 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/clientes" element={<RestaurantesClientesRoute />} />
         <Route path="/restaurantes/:orgSlug/clientes/:customerId" element={<RestaurantesClienteFichaRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
+        <Route path="/hoteles/:orgSlug" element={<HotelesRootRedirect />} />
+        <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
+        <Route path="/hoteles/:orgSlug/folios/:folioId" element={<HotelesFolioRoute />} />
+        <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
+        <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
         <Route path="/citas/:orgSlug" element={<CitasRootRedirect />} />
@@ -270,6 +371,10 @@ export function App() {
         <Route path="/citas/:orgSlug/clientes/:customerId" element={<CitasClienteFichaRoute />} />
         <Route path="/citas/:orgSlug/disponibilidad" element={<CitasDisponibilidadRoute />} />
         <Route path="/citas/:orgSlug/configuracion" element={<CitasConfiguracionRoute />} />
+        <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
+        <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

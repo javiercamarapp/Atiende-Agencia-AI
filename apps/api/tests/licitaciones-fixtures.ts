@@ -14,7 +14,7 @@ import type { LicitacionesRole } from "@atiende/domain-licitaciones";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
@@ -59,6 +59,11 @@ export async function buildLicitacionesTestContext(
   const propertyId = randomUUID(); // property singleton por organización (§2.1 del diseño)
   coreRepo.addOrganization({ id: organizationId, slug: "empresa-de-prueba", name: "Empresa de Prueba S.A. de C.V.", vertical: "licitaciones" });
   engine.seedProperty({ id: propertyId, organizationId });
+  // Fase 7 pieza 1 — mismo doble-seed que citas-fixtures.ts (coreRepo/engine PARA
+  // auth/RLS + repo PARA que `GET /v1/licitaciones/:orgSlug/admin/branches`
+  // resuelva algo real, ver InMemoryLicitacionesRepository.findOrganizationBySlug).
+  repo.seedOrganization({ id: organizationId, slug: "empresa-de-prueba", name: "Empresa de Prueba S.A. de C.V." });
+  repo.seedLicitacionesProperty({ id: propertyId, organizationId, name: "Sede principal" });
 
   async function seedStaff(role: LicitacionesRole, label: string) {
     const id = randomUUID();
@@ -105,6 +110,7 @@ export async function buildLicitacionesTestContext(
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
     rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
+    rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: options.llmGateway,
   };

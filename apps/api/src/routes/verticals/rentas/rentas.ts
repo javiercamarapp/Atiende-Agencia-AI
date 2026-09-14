@@ -16,6 +16,10 @@ import { rentasOwnerPortalRoutes } from "./owner-portal.ts";
 import { rentasIcalSyncRoutes } from "./ical-sync.ts";
 import { rentasIcalFeedPublicoRoutes } from "./ical-feed-publico.ts";
 import { rentasIcalSyncCronRoutes } from "./ical-sync-cron.ts";
+import { rentasMensajeriaConversacionesRoutes } from "./mensajeria-conversaciones.ts";
+import { rentasMensajeriaBorradoresRoutes } from "./mensajeria-borradores.ts";
+import { rentasMensajeriaPlantillasRoutes } from "./mensajeria-plantillas.ts";
+import { rentasMensajeriaPoliticasRoutes } from "./mensajeria-politicas.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -56,5 +60,13 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Cron interno (Fase 5) -- mismo patrón que citas/google-calendar-sync.ts: sin
   // requirePropertyMembership, guardado por x-atiende-internal-secret.
   app.route("/", rentasIcalSyncCronRoutes(deps));
+
+  // Fase 7 -- mensajería con huésped: borrador de IA + aprobación humana obligatoria
+  // ("un agente redacta la respuesta al huésped -- y esa respuesta no sale hasta que
+  // alguien la aprueba"). Ver packages/domain-rentas/src/mensajeria/*, src/agentes/*.
+  app.route("/", rentasMensajeriaConversacionesRoutes(deps));
+  app.route("/", rentasMensajeriaBorradoresRoutes(deps));
+  app.route("/", rentasMensajeriaPlantillasRoutes(deps));
+  app.route("/", rentasMensajeriaPoliticasRoutes(deps));
   return app;
 }

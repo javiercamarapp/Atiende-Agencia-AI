@@ -1,4 +1,4 @@
-// Lógica de datos de la Agenda (Fase 5) — separada de pages/Agenda.tsx a
+// Lógica de datos de la Agenda (Fase 5/7) — separada de pages/Agenda.tsx a
 // propósito, mismo motivo que el resto de lib/*.ts de este panel: probarla con
 // vitest en entorno "node" sin DOM. Llama a
 // GET /v1/citas/properties/:propertyId/appointments (listado real, Fase 5 —
@@ -6,6 +6,8 @@
 // POST /v1/citas/properties/:propertyId/appointments/:appointmentId/cancel, que YA
 // existía desde Fase 1 (appointments-lifecycle.ts) — el panel nunca reagenda ni
 // reasigna (esas dos solo las ejecuta el agente hoy, ver ese mismo archivo).
+// Fase 7 agrega confirm/complete/no-show — mismas 3 rutas de panel, mismo shape de
+// respuesta ({ appointment }) que cancel.
 import { fetchJson, postJson } from "./admin-client.ts";
 
 export type AppointmentStatus = "pending" | "confirmed" | "completed" | "cancelled" | "no_show";
@@ -88,5 +90,20 @@ export async function fetchAppointments(fetchImpl: typeof fetch, apiBaseUrl: str
 
 export async function cancelAppointment(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, appointmentId: string): Promise<AppointmentSummary> {
   const body = await postJson<{ appointment: AppointmentApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments/${appointmentId}/cancel`, token);
+  return mapAppointmentRow(body.appointment);
+}
+
+export async function confirmAppointment(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, appointmentId: string): Promise<AppointmentSummary> {
+  const body = await postJson<{ appointment: AppointmentApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments/${appointmentId}/confirm`, token);
+  return mapAppointmentRow(body.appointment);
+}
+
+export async function completeAppointment(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, appointmentId: string): Promise<AppointmentSummary> {
+  const body = await postJson<{ appointment: AppointmentApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments/${appointmentId}/complete`, token);
+  return mapAppointmentRow(body.appointment);
+}
+
+export async function markAppointmentNoShow(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, appointmentId: string): Promise<AppointmentSummary> {
+  const body = await postJson<{ appointment: AppointmentApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments/${appointmentId}/no-show`, token);
   return mapAppointmentRow(body.appointment);
 }

@@ -62,6 +62,13 @@ export const CITAS_WHATSAPP_AGENT_ESCALATED_ROLE = "citas:whatsapp_agent_escalat
  *  (`DEFAULT_ROLE` en domain-licitaciones/src/llm-requirement-extractor.ts) —
  *  nunca se inventa un nombre nuevo aquí. */
 export const LICITACIONES_REQUIREMENT_EXTRACTOR_ROLE = "licitaciones:requirement_extractor";
+/** Fase 7 -- borrador de mensajería al huésped respaldado por IA (ver
+ *  @atiende/domain-rentas::agentes/generadorBorradorIA.ts::GeneradorBorradorIAOptions.role).
+ *  Sin rol *_escalated propio a propósito: a diferencia del loop de varios turnos de
+ *  un agente de WhatsApp, un borrador es UNA sola invocación (nunca hay "turno
+ *  siguiente" dentro de la misma llamada) -- la escalera de fallback entre
+ *  proveedores del propio gateway ya cubre el caso de que el primer proveedor falle. */
+export const RENTAS_MENSAJERIA_AGENT_ROLE = "rentas:mensajeria_agent";
 
 const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_WHATSAPP_AGENT_ROLE,
@@ -71,6 +78,7 @@ const ALL_PRODUCTION_ROLES: readonly string[] = [
   CITAS_WHATSAPP_AGENT_ROLE,
   CITAS_WHATSAPP_AGENT_ESCALATED_ROLE,
   LICITACIONES_REQUIREMENT_EXTRACTOR_ROLE,
+  RENTAS_MENSAJERIA_AGENT_ROLE,
 ];
 
 /** Topes conservadores de defensa en profundidad, no una promesa de costo real
@@ -107,10 +115,10 @@ function buildProviderLadder(env: ApiEnv): LlmProvider[] {
 }
 
 /**
- * Devuelve el `LlmGateway` real con las 7 escaleras (4 roles default/escalated
- * de WhatsApp + 1 de licitaciones) registradas contra la MISMA lista de
- * proveedores configurados, o `undefined` si NINGÚN proveedor tiene API key +
- * modelo configurados — fail-closed explícito, nunca un gateway que finge
+ * Devuelve el `LlmGateway` real con las 8 escaleras (3 pares default/escalated de
+ * WhatsApp + 1 de licitaciones + 1 de mensajería de rentas) registradas contra la
+ * MISMA lista de proveedores configurados, o `undefined` si NINGÚN proveedor tiene
+ * API key + modelo configurados — fail-closed explícito, nunca un gateway que finge
  * funcionar sin credenciales reales detrás.
  */
 export function buildProductionLlmGateway(env: ApiEnv): LlmGateway | undefined {

@@ -69,6 +69,8 @@ export {
   FINANZAS_ESCRITURA_ROLES,
   FINANZAS_LECTURA_ROLES,
   isRentasVerticalRole,
+  MENSAJERIA_ESCRITURA_ROLES,
+  MENSAJERIA_PLANTILLA_APROBACION_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
   PRICING_ESCRITURA_ROLES,
   RENTAS_VERTICAL_ROLES,
@@ -176,3 +178,16 @@ export type { RentasCalendarSyncRepository } from "./sync/repository.ts";
 export type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./sync/tipos.ts";
 export { InMemoryRentasCalendarSyncRepository } from "./sync/in-memory-repository.ts";
 export { PostgresRentasCalendarSyncRepository } from "./sync/postgres-repository.ts";
+
+// ---------------------------------------------------------------------------
+// Mensajería con huésped + automatización agéntica (Fase 7) -- ver src/mensajeria/*,
+// src/agentes/*. "Un agente redacta la respuesta al huésped -- y esa respuesta no
+// sale hasta que alguien la aprueba": ./mensajeria/colaAprobacion.ts es la garantía
+// de dominio de esa frase (ninguna función del paquete transiciona
+// pendiente_aprobacion -> enviado sin pasar por un clic humano), ./agentes/* es la
+// lógica de negocio específica de rentas (matriz de tools por rol, generador de
+// borrador respaldado por @atiende/agent-core::LlmGateway) que le falta a la
+// primitiva genérica de agentes del monorepo para poder generar ese borrador.
+// ---------------------------------------------------------------------------
+export * from "./mensajeria/index.ts";
+export * from "./agentes/index.ts";

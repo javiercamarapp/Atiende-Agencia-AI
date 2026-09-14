@@ -7,7 +7,7 @@ import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDe
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -123,6 +123,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     rentasRepo: (_db) => rentasRepo,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepo,
     rentasCalendarSyncRepo: (_db) => rentasCalendarSyncRepo,
+    rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
   };

@@ -156,6 +156,11 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly lessonsLearned = new Map<string, CompanyLessonLearnedRecord[]>(); // orgId -> lecciones (historial, más reciente al final)
   private readonly renewalAlerts = new Map<string, RenewalAlertRecord[]>(); // orgId -> alertas (historial, más reciente al final)
 
+  // ---- Fase 7 pieza 1: organización/property (panel web) ----
+  private readonly organizations = new Map<string, { id: string; name: string; slug: string; isActive: boolean }>();
+  private readonly organizationIdBySlug = new Map<string, string>();
+  private readonly licitacionesProperties = new Map<string, { propertyId: string; organizationId: string; name: string }>(); // propertyId -> registro
+
   constructor(options: { storageDir?: string } = {}) {
     this.storageDir = options.storageDir ?? mkdtempSync(join(tmpdir(), "licitaciones-test-"));
   }
@@ -164,6 +169,18 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   seedTender(tender: TenderRecord): void {
     this.tenders.set(tender.id, tender);
+  }
+
+  /** Mismo rol que `InMemoryCitasRepository.seedOrganization`. */
+  seedOrganization(org: { id: string; slug: string; name: string; isActive?: boolean }): void {
+    this.organizations.set(org.id, { id: org.id, name: org.name, slug: org.slug, isActive: org.isActive ?? true });
+    this.organizationIdBySlug.set(org.slug, org.id);
+  }
+
+  /** Mismo rol que `InMemoryCitasRepository.seedCitasProperty` — property singleton
+   * por organización (§2.1), pero el mapa acepta 2+ por si un test futuro lo necesita. */
+  seedLicitacionesProperty(property: { id: string; organizationId: string; name: string }): void {
+    this.licitacionesProperties.set(property.id, { propertyId: property.id, organizationId: property.organizationId, name: property.name });
   }
 
   seedRequiredAnnexes(organizationId: string, tenderId: string, annexes: readonly RequiredAnnexItem[]): void {
@@ -195,6 +212,21 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     const map = this.proposalSections.get(proposalId) ?? new Map<string, StoredProposalSection>();
     map.set(section.sectionKey, section);
     this.proposalSections.set(proposalId, map);
+  }
+
+  // ---- Fase 7 pieza 1: organización/property (panel web) ----
+
+  async findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null> {
+    const id = this.organizationIdBySlug.get(slug);
+    if (!id) return null;
+    return this.organizations.get(id) ?? null;
+  }
+
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]> {
+    return [...this.licitacionesProperties.values()]
+      .filter((p) => p.organizationId === organizationId)
+      .map((p) => ({ propertyId: p.propertyId, name: p.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   // ---- Convocatoria / expediente (transversal) ----

@@ -45,6 +45,8 @@ export type {
   PayrollPeriod,
   PayrollPeriodInput,
 } from "./nomina/types.ts";
+export { generarXmlCfdiNomina, TIPOS_NOMINA } from "./nomina/xml-nomina.ts";
+export type { DatosEmisorNominaXml, DatosReceptorNominaXml, DatosPeriodoNominaXml, TipoNomina } from "./nomina/xml-nomina.ts";
 
 export type {
   IsrResultado,
