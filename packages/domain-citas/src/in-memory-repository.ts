@@ -14,8 +14,12 @@ import type {
   BusyInterval,
   CustomerRecord,
   GoogleSyncStatus,
+  NewProviderInput,
+  NewServiceInput,
   ProviderCalendarAccountRecord,
+  ProviderPatch,
   ProviderRecord,
+  ServicePatch,
   ServiceRecord,
 } from "./types.ts";
 import type {
@@ -42,6 +46,7 @@ import type {
   ReassignResult,
   RescheduleResult,
   ReminderCandidateRow,
+  TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
 } from "./repository.ts";
@@ -254,12 +259,13 @@ export class InMemoryCitasRepository implements CitasRepository {
     return [...this.outbox.values()];
   }
 
-  /** Solo para tests: seedea `citas.tenant_config` (rubro + teléfono de aviso) sin
-   * pasar por ninguna ruta de panel — equivalente a un INSERT manual. */
-  seedTenantConfig(config: { organizationId: string; rubro?: string; ownerNotificationPhone?: string | null }): void {
+  /** Solo para tests: seedea `citas.tenant_config` (rubro + timezone + teléfono de
+   * aviso) sin pasar por ninguna ruta de panel — equivalente a un INSERT manual. */
+  seedTenantConfig(config: { organizationId: string; rubro?: string; defaultTimezone?: string; ownerNotificationPhone?: string | null }): void {
     this.tenantConfigs.set(config.organizationId, {
       organizationId: config.organizationId,
       rubro: config.rubro ?? "otro",
+      defaultTimezone: config.defaultTimezone ?? "America/Mexico_City",
       ownerNotificationPhone: config.ownerNotificationPhone ?? null,
     });
   }
@@ -289,7 +295,16 @@ export class InMemoryCitasRepository implements CitasRepository {
       const tz = this.propertyTimezones.get(propertyId);
       if (tz) return tz;
     }
-    return this.organizations.get(organizationId)?.defaultTimezone ?? "America/Mexico_City";
+    // Fase 8 — en Postgres, `citas.tenant_config.default_timezone` es la MISMA
+    // columna que edita `upsertTenantConfig` y la que lee esta función (ver
+    // postgres-repository.ts); aquí en memoria son dos mapas históricamente
+    // separados (`tenantConfigs` seedeado por `seedTenantConfig`/panel,
+    // `organizations` seedeado por `seedOrganization`) — se prioriza
+    // `tenantConfigs` cuando existe para que editar el timezone desde el panel
+    // (Fase 8) sí cambie qué slots calcula `findPropertyTimezone`, con el seed de
+    // `seedOrganization` como fallback de compatibilidad para los tests que nunca
+    // llamaron `seedTenantConfig`.
+    return this.tenantConfigs.get(organizationId)?.defaultTimezone ?? this.organizations.get(organizationId)?.defaultTimezone ?? "America/Mexico_City";
   }
 
   async findProvider(organizationId: string, providerId: string): Promise<ProviderRecord | null> {
@@ -306,6 +321,70 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async providerOffersService(providerId: string, serviceId: string): Promise<boolean> {
     return this.providerServices.has(`${providerId}:${serviceId}`);
+  }
+
+  async createProvider(input: NewProviderInput): Promise<ProviderRecord> {
+    const created: ProviderRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId ?? null,
+      displayName: input.displayName,
+      roleLabel: input.roleLabel ?? "Proveedor",
+      isActive: input.isActive ?? true,
+    };
+    this.providers.set(created.id, created);
+    return created;
+  }
+
+  async updateProvider(organizationId: string, providerId: string, patch: ProviderPatch): Promise<ProviderRecord | null> {
+    const existing = this.providers.get(providerId);
+    if (!existing || existing.organizationId !== organizationId) return null;
+    const updated: ProviderRecord = {
+      ...existing,
+      displayName: patch.displayName ?? existing.displayName,
+      roleLabel: patch.roleLabel ?? existing.roleLabel,
+      propertyId: patch.propertyId !== undefined ? patch.propertyId : existing.propertyId,
+      isActive: patch.isActive ?? existing.isActive,
+    };
+    this.providers.set(providerId, updated);
+    return updated;
+  }
+
+  async setProviderServiceOffering(providerId: string, serviceId: string, offered: boolean): Promise<void> {
+    const key = `${providerId}:${serviceId}`;
+    if (offered) this.providerServices.add(key);
+    else this.providerServices.delete(key);
+  }
+
+  async createService(input: NewServiceInput): Promise<ServiceRecord> {
+    const created: ServiceRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      name: input.name,
+      durationMinutes: input.durationMinutes,
+      bufferMinutesBefore: input.bufferMinutesBefore ?? 0,
+      bufferMinutesAfter: input.bufferMinutesAfter ?? 0,
+      priceCents: input.priceCents ?? null,
+      isActive: input.isActive ?? true,
+    };
+    this.services.set(created.id, created);
+    return created;
+  }
+
+  async updateService(organizationId: string, serviceId: string, patch: ServicePatch): Promise<ServiceRecord | null> {
+    const existing = this.services.get(serviceId);
+    if (!existing || existing.organizationId !== organizationId) return null;
+    const updated: ServiceRecord = {
+      ...existing,
+      name: patch.name ?? existing.name,
+      durationMinutes: patch.durationMinutes ?? existing.durationMinutes,
+      bufferMinutesBefore: patch.bufferMinutesBefore ?? existing.bufferMinutesBefore,
+      bufferMinutesAfter: patch.bufferMinutesAfter ?? existing.bufferMinutesAfter,
+      priceCents: patch.priceCents !== undefined ? patch.priceCents : existing.priceCents,
+      isActive: patch.isActive ?? existing.isActive,
+    };
+    this.services.set(serviceId, updated);
+    return updated;
   }
 
   async loadAvailabilityRules(providerId: string): Promise<readonly AvailabilityRule[]> {
@@ -980,6 +1059,18 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async findTenantConfig(organizationId: string): Promise<TenantConfigRecord | null> {
     return this.tenantConfigs.get(organizationId) ?? null;
+  }
+
+  async upsertTenantConfig(organizationId: string, patch: TenantConfigPatch): Promise<TenantConfigRecord> {
+    const existing = this.tenantConfigs.get(organizationId) ?? { organizationId, rubro: "otro", defaultTimezone: "America/Mexico_City", ownerNotificationPhone: null };
+    const updated: TenantConfigRecord = {
+      organizationId,
+      rubro: patch.rubro ?? existing.rubro,
+      defaultTimezone: patch.defaultTimezone ?? existing.defaultTimezone,
+      ownerNotificationPhone: patch.ownerNotificationPhone !== undefined ? patch.ownerNotificationPhone : existing.ownerNotificationPhone,
+    };
+    this.tenantConfigs.set(organizationId, updated);
+    return updated;
   }
 
   async insertEmergencyEscalation(input: EmergencyEscalationInput): Promise<EmergencyEscalationRecord> {

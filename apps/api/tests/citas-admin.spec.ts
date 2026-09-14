@@ -1,6 +1,8 @@
 // Fase 5 — test de integración end-to-end real de las rutas de lectura del panel
 // de administración visual (agenda/proveedores/servicios/clientes) sobre la app
 // Hono real, con InMemoryCitasRepository. Mismo estilo que citas-appointments.spec.ts.
+// Fase 8 agrega las rutas de ESCRITURA real (crear/editar proveedores/servicios,
+// checkbox de provider_services, tenant-config) — ver admin.ts para el detalle.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createAppointment } from "@atiende/domain-citas";
@@ -216,5 +218,240 @@ describe("GET /v1/citas/properties/:propertyId/customers(/:customerId) — clien
     const app = buildApp(ctx.deps);
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/customers/${randomUUID()}`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
     expect(res.status).toBe(404);
+  });
+});
+
+// ============================================================================
+// Fase 8 — CRUD real de proveedores/servicios + citas.tenant_config.
+// ============================================================================
+
+describe("POST/PATCH /v1/citas/properties/:propertyId/providers(/:providerId) — Fase 8", () => {
+  it("crea un proveedor real con los defaults reales cuando el body no trae role_label/is_active", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ display_name: "Dr. Juan Pérez" }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { provider: { id: string; display_name: string; role_label: string; is_active: boolean } };
+    expect(body.provider.display_name).toBe("Dr. Juan Pérez");
+    expect(body.provider.role_label).toBe("Proveedor");
+    expect(body.provider.is_active).toBe(true);
+
+    // El nuevo proveedor de verdad quedó en la organización — aparece en el listado.
+    const list = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    const listBody = (await list.json()) as { providers: readonly { id: string }[] };
+    expect(listBody.providers.some((p) => p.id === body.provider.id)).toBe(true);
+  });
+
+  it("400 si display_name viene vacío", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ display_name: "  " }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("400 si property_id no es una sucursal real de esta organización", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ display_name: "Nuevo", property_id: randomUUID() }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("edita un proveedor real — un campo ausente del patch no lo toca", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ role_label: "Odontóloga en jefe" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provider: { display_name: string; role_label: string } };
+    expect(body.provider.role_label).toBe("Odontóloga en jefe");
+    expect(body.provider.display_name).toBe("Dra. Fernanda López");
+  });
+
+  it("404 al editar un proveedor que no existe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${randomUUID()}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ is_active: false }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("la ficha de un proveedor trae offered_service_ids reales", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    const body = (await res.json()) as { offered_service_ids: readonly string[] };
+    expect(body.offered_service_ids).toEqual([ctx.serviceId]); // seed de citas-fixtures.ts ya lo asigna
+  });
+});
+
+describe("PUT /v1/citas/properties/:propertyId/providers/:providerId/services/:serviceId — checkbox real (Fase 8)", () => {
+  it("offered:false quita la asignación real, offered:true (default) la vuelve a poner", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const off = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/services/${ctx.serviceId}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ offered: false }),
+    });
+    expect(off.status).toBe(200);
+    expect(await ctx.citasRepo.providerOffersService(ctx.providerId, ctx.serviceId)).toBe(false);
+
+    const on = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/services/${ctx.serviceId}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(on.status).toBe(200);
+    expect(await ctx.citasRepo.providerOffersService(ctx.providerId, ctx.serviceId)).toBe(true);
+  });
+
+  it("404 si el servicio no existe (nunca asigna un id ajeno a ciegas)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/services/${randomUUID()}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ offered: true }),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST/PATCH /v1/citas/properties/:propertyId/services(/:serviceId) — Fase 8", () => {
+  it("crea un servicio real con los defaults reales", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/services`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Limpieza dental", duration_minutes: 45 }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { service: { name: string; duration_minutes: number; price_cents: number | null; is_active: boolean } };
+    expect(body.service.name).toBe("Limpieza dental");
+    expect(body.service.duration_minutes).toBe(45);
+    expect(body.service.price_cents).toBeNull();
+    expect(body.service.is_active).toBe(true);
+  });
+
+  it("400 si duration_minutes no es un entero positivo", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/services`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ name: "Servicio inválido", duration_minutes: 0 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("edita un servicio real — price_cents:null explícito sí quita el precio fijo", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/services/${ctx.serviceId}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ price_cents: null }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { service: { price_cents: number | null; duration_minutes: number } };
+    expect(body.service.price_cents).toBeNull();
+    expect(body.service.duration_minutes).toBe(30); // no tocado por el patch
+  });
+
+  it("404 al editar un servicio que no existe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/services/${randomUUID()}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ name: "hackeado" }),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET/PATCH /v1/citas/properties/:propertyId/tenant-config — Fase 8", () => {
+  it("GET nunca 404: sin fila todavía, devuelve los defaults reales de la columna", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/tenant-config`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { tenant_config: { rubro: string; default_timezone: string; owner_notification_phone: string | null } };
+    expect(body.tenant_config).toEqual({ rubro: "otro", default_timezone: "America/Mexico_City", owner_notification_phone: null, organization_id: ctx.organizationId });
+  });
+
+  it("PATCH edita el rubro real — el mismo campo que usa la guardia de crisis (vertical-config.ts)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/tenant-config`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ rubro: "psicologo", default_timezone: "America/Tijuana", owner_notification_phone: "5599998888" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { tenant_config: { rubro: string; default_timezone: string; owner_notification_phone: string | null } };
+    expect(body.tenant_config.rubro).toBe("psicologo");
+    expect(body.tenant_config.default_timezone).toBe("America/Tijuana");
+    expect(body.tenant_config.owner_notification_phone).toBe("5599998888");
+
+    // Un patch parcial posterior conserva lo ya guardado.
+    const partial = await app.request(`/v1/citas/properties/${ctx.propertyId}/tenant-config`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ rubro: "dental" }),
+    });
+    const partialBody = (await partial.json()) as { tenant_config: { rubro: string; default_timezone: string; owner_notification_phone: string | null } };
+    expect(partialBody.tenant_config.rubro).toBe("dental");
+    expect(partialBody.tenant_config.default_timezone).toBe("America/Tijuana"); // no tocado
+    expect(partialBody.tenant_config.owner_notification_phone).toBe("5599998888"); // no tocado
+  });
+
+  it("400 si rubro no es uno de los 14 valores reales", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/tenant-config`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ rubro: "inventado" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("400 si default_timezone no es un IANA timezone real", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/tenant-config`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ default_timezone: "no-es-un-timezone" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("403 rechaza a un staff que no pertenece a esa property", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${randomUUID()}/tenant-config`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(res.status).toBe(403);
   });
 });
