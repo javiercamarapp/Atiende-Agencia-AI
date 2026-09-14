@@ -42,6 +42,7 @@ import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx
 import { CierreMensualDetallePage } from "./verticals/despachos/pages/CierreMensualDetalle.tsx";
 import { CfdiPage } from "./verticals/despachos/pages/Cfdi.tsx";
 import { CfdiDetallePage } from "./verticals/despachos/pages/CfdiDetalle.tsx";
+import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -469,6 +470,17 @@ function DespachosCfdiDetalleRoute() {
   );
 }
 
+function DespachosCobranzaRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <CobranzaPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -517,6 +529,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/cierre-mensual/:periodoId" element={<DespachosCierreMensualDetalleRoute />} />
         <Route path="/despachos/:orgSlug/cfdi" element={<DespachosCfdiRoute />} />
         <Route path="/despachos/:orgSlug/cfdi/:invoiceId" element={<DespachosCfdiDetalleRoute />} />
+        <Route path="/despachos/:orgSlug/cobranza" element={<DespachosCobranzaRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

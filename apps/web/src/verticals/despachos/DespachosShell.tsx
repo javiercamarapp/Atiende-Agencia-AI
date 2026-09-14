@@ -41,6 +41,7 @@ export interface DespachosShellProps {
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "cierre-mensual", label: "Cierre mensual" },
   { to: "cfdi", label: "CFDI" },
+  { to: "cobranza", label: "Cobranza" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
