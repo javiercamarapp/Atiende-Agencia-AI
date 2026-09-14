@@ -18,6 +18,9 @@ import type {
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
+import { construirTareasDesdePlantilla } from "./cierre-mensual/engine.ts";
+import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
+import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
 export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly invoices = new Map<string, InvoiceRecord>();
@@ -26,6 +29,8 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly deadlines = new Map<string, FiscalDeadlineRecord>();
   private readonly escalations = new Map<string, DeadlineEscalationRecord[]>(); // key: deadlineId
   private readonly mapeosMigracion = new Map<string, MapeoMigracionCuenta>();
+  private readonly periodosCierre = new Map<string, ClosePeriod>();
+  private readonly tareasCierre = new Map<string, CloseTask[]>(); // key: periodoId
 
   // ---- CFDI ----
 
@@ -210,5 +215,80 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     if (!this.mapeosMigracion.has(mapeo.id)) throw new Error(`Mapeo de migración ${mapeo.id} no encontrado.`);
     this.mapeosMigracion.set(mapeo.id, mapeo);
     return mapeo;
+  }
+
+  // ---- Cierre mensual (Fase 6) ----
+
+  async insertPeriodoCierre(input: NewPeriodoCierreInput): Promise<{ readonly periodo: ClosePeriod; readonly tareas: readonly CloseTask[] }> {
+    const nuevas = construirTareasDesdePlantilla(input.anio, input.mes, input.template);
+    const periodoId = randomUUID();
+    const now = new Date().toISOString();
+    const periodo: ClosePeriod = {
+      id: periodoId,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      year: input.anio,
+      month: input.mes,
+      status: "open",
+      openedAt: now,
+      closedAt: null,
+      closedBy: null,
+    };
+
+    const keyToId = new Map<string, string>();
+    const conId = nuevas.map((t) => {
+      const id = randomUUID();
+      if (t.key) keyToId.set(t.key, id);
+      return { id, ...t };
+    });
+    const tareas: CloseTask[] = conId.map((t) => ({
+      id: t.id,
+      periodId: periodoId,
+      title: t.title,
+      description: t.description,
+      category: t.category,
+      status: t.status,
+      dependsOn: t.dependsOnKeys.map((k) => keyToId.get(k)).filter((x): x is string => x !== undefined),
+      dueDate: t.dueDate,
+      autoCheckQuery: t.autoCheckQuery,
+      required: t.required,
+      completedAt: null,
+      completedBy: null,
+    }));
+
+    this.periodosCierre.set(periodoId, periodo);
+    this.tareasCierre.set(periodoId, tareas);
+    return { periodo, tareas };
+  }
+
+  async findPeriodoCierre(propertyId: string, periodoId: string): Promise<ClosePeriod | null> {
+    const p = this.periodosCierre.get(periodoId);
+    return p && p.propertyId === propertyId ? p : null;
+  }
+
+  async findPeriodoCierrePorAnioMes(propertyId: string, anio: number, mes: number): Promise<ClosePeriod | null> {
+    return [...this.periodosCierre.values()].find((p) => p.propertyId === propertyId && p.year === anio && p.month === mes) ?? null;
+  }
+
+  async listPeriodosCierre(propertyId: string): Promise<readonly ClosePeriod[]> {
+    return [...this.periodosCierre.values()]
+      .filter((p) => p.propertyId === propertyId)
+      .sort((a, b) => (a.year !== b.year ? b.year - a.year : b.month - a.month));
+  }
+
+  async listTareasCierre(periodoId: string): Promise<readonly CloseTask[]> {
+    return this.tareasCierre.get(periodoId) ?? [];
+  }
+
+  async updatePeriodoCierre(periodo: ClosePeriod): Promise<ClosePeriod> {
+    if (!this.periodosCierre.has(periodo.id)) throw new Error(`Período de cierre ${periodo.id} no encontrado.`);
+    this.periodosCierre.set(periodo.id, periodo);
+    return periodo;
+  }
+
+  async replaceTareasCierre(periodoId: string, tareas: readonly CloseTask[]): Promise<readonly CloseTask[]> {
+    const copia = [...tareas];
+    this.tareasCierre.set(periodoId, copia);
+    return copia;
   }
 }

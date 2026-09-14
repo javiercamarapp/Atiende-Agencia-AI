@@ -30,6 +30,14 @@ export const DECISION_ROLES: readonly LicitacionesRole[] = ["owner", "admin", "a
 // vertical.
 export const GO_NO_GO_ROLES: readonly LicitacionesRole[] = [...DECISION_ROLES, "reviewer"];
 
+// Fase 6 (REQ-053) -- port literal del criterio del origen
+// (apps/api/src/modules/expediente/inconformidad.routes.ts::REVIEW_ROLES):
+// marcar un borrador de inconformidad como "revisado por abogado" exige
+// owner/admin/reviewer -- deliberadamente SIN "analyst" (a diferencia de
+// GO_NO_GO_ROLES) porque certificar la revisión legal de un escrito es un
+// rol distinto de decidir ir/no ir a una licitación.
+export const INCONFORMIDAD_REVIEW_ROLES: readonly LicitacionesRole[] = ["owner", "admin", "reviewer"];
+
 /**
  * platformRole = techo común que core-auth entiende sin saber nada de
  * licitaciones. owner->owner, admin->admin, analyst/writer/reviewer->member

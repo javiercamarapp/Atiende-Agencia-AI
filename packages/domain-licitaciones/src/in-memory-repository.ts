@@ -8,8 +8,37 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IdempotencyConflictError } from "./errors.ts";
+import { ContractTransitionRejectedError, IdempotencyConflictError } from "./errors.ts";
 import type { GoNoGoDecisionCreateInput, IdempotencyParams, IdempotentResult, LicitacionesRepository, MatchingProfileUpsertInput, TenderUpsertInput, TenderUpsertResult } from "./repository.ts";
+import type {
+  AddContractDocumentInput,
+  CompanyLessonLearnedRecord,
+  ConfirmContractExtractedFieldInput,
+  ContractDocumentRecord,
+  ContractExtractedFieldRecord,
+  ContractInvoiceRecord,
+  ContractMetadataUpdateInput,
+  ContractRecord,
+  ContractStatusHistoryRecord,
+  ContractTransitionInput,
+  CreateContractInvoiceInput,
+  CreateFalloAutopsyInput,
+  CreateInconformidadDraftInput,
+  FalloAutopsyRecord,
+  InconformidadDraftRecord,
+  ReceivablesSummary,
+  RenewalAlertRecord,
+  ScanRenewalAlertsInput,
+  ScanRenewalAlertsResult,
+} from "./repository.ts";
+import { CONTRACT_INITIAL_STATUS, checkTransition, isContractStatus } from "./contract-lifecycle.ts";
+import type { ContractStatus } from "./contract-lifecycle.ts";
+import { extractContractFields } from "./contract-extraction.ts";
+import { classifyInvoiceStatus, computePaymentDueDate, summarizeReceivables } from "./contract-billing.ts";
+import { buildInconformidadContent, INCONFORMIDAD_DISCLAIMER } from "./inconformidad.ts";
+import { normalizeOrNoDisponible } from "./fallo-autopsy.ts";
+import { computeRenewalAlertCandidates, DEFAULT_RENEWAL_LEAD_DAYS } from "./renewal-radar.ts";
+import type { RenewalCandidateContract } from "./renewal-radar.ts";
 import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
@@ -116,6 +145,16 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly tenderChangeNotifications = new Map<string, TenderChangeNotificationRecord[]>(); // orgId -> notificaciones (historial, más reciente al final)
   // ---- Fase 5 pieza 1: andamiaje de ingesta ----
   private readonly sourceRuns = new Map<string, SourceRunRecord[]>(); // orgId -> corridas (historial, más reciente al final)
+  // ---- Fase 6: seguimiento post-adjudicación (REQ-051..055) ----
+  private readonly contracts = new Map<string, ContractRecord>(); // tenderId -> contrato (a lo más uno por tender)
+  private readonly contractStatusHistory = new Map<string, ContractStatusHistoryRecord[]>(); // contractId -> historial (más antigua primero)
+  private readonly contractDocuments = new Map<string, ContractDocumentRecord[]>(); // contractId -> documentos
+  private readonly contractExtractedFields = new Map<string, ContractExtractedFieldRecord[]>(); // contractDocumentId -> campos
+  private readonly contractInvoices = new Map<string, ContractInvoiceRecord[]>(); // contractId -> facturas
+  private readonly inconformidadDrafts = new Map<string, InconformidadDraftRecord[]>(); // `${orgId}:${tenderId}` -> versiones (historial completo)
+  private readonly falloAutopsies = new Map<string, FalloAutopsyRecord[]>(); // `${orgId}:${tenderId}` -> autopsias (historial)
+  private readonly lessonsLearned = new Map<string, CompanyLessonLearnedRecord[]>(); // orgId -> lecciones (historial, más reciente al final)
+  private readonly renewalAlerts = new Map<string, RenewalAlertRecord[]>(); // orgId -> alertas (historial, más reciente al final)
 
   constructor(options: { storageDir?: string } = {}) {
     this.storageDir = options.storageDir ?? mkdtempSync(join(tmpdir(), "licitaciones-test-"));
@@ -868,6 +907,411 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       this.idempotency.set(key, { requestHash, response: result });
       return result;
     });
+  }
+
+  // ---------------------------------------------------------------------
+  // Fase 6 -- seguimiento post-adjudicación (REQ-051..055).
+  // ---------------------------------------------------------------------
+
+  private requireTenderRecord(organizationId: string, tenderId: string): void {
+    const tender = this.tenders.get(tenderId);
+    if (!tender || tender.organizationId !== organizationId) {
+      throw new Error(`Tender "${tenderId}" no encontrado para la organización "${organizationId}".`);
+    }
+  }
+
+  private requireContract(organizationId: string, tenderId: string): ContractRecord {
+    const contract = this.contracts.get(tenderId);
+    if (!contract || contract.organizationId !== organizationId) {
+      throw new Error(`No existe contrato registrado para la convocatoria "${tenderId}" en la organización "${organizationId}".`);
+    }
+    return contract;
+  }
+
+  private invoicesWithStatus(contractId: string, todayIsoDate: string = new Date().toISOString().slice(0, 10)): ContractInvoiceRecord[] {
+    return (this.contractInvoices.get(contractId) ?? [])
+      .map((inv) => ({ ...inv, status: classifyInvoiceStatus(inv, todayIsoDate) }))
+      .sort((a, b) => a.invoiceVerifiedOn.localeCompare(b.invoiceVerifiedOn));
+  }
+
+  async createContract(organizationId: string, tenderId: string, actorId: string): Promise<ContractRecord> {
+    this.requireTenderRecord(organizationId, tenderId);
+    const existing = this.contracts.get(tenderId);
+    if (existing && existing.organizationId === organizationId) {
+      throw new Error("Ya existe un contrato registrado para esta convocatoria.");
+    }
+    const now = new Date().toISOString();
+    const record: ContractRecord = {
+      id: randomUUID(),
+      organizationId,
+      tenderId,
+      status: CONTRACT_INITIAL_STATUS,
+      endDate: null,
+      contractNumber: null,
+      hasRenewalOption: false,
+      renewalOptionNotes: null,
+      createdBy: actorId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.contracts.set(tenderId, record);
+    const historyEntry: ContractStatusHistoryRecord = {
+      id: randomUUID(),
+      contractId: record.id,
+      fromStatus: null,
+      toStatus: CONTRACT_INITIAL_STATUS,
+      reason: "Alta del contrato tras adjudicación.",
+      actorId,
+      evidenceRef: null,
+      createdAt: now,
+    };
+    this.contractStatusHistory.set(record.id, [historyEntry]);
+    return record;
+  }
+
+  async findContractByTender(organizationId: string, tenderId: string): Promise<ContractRecord | null> {
+    const contract = this.contracts.get(tenderId);
+    return contract && contract.organizationId === organizationId ? contract : null;
+  }
+
+  async updateContractMetadata(organizationId: string, tenderId: string, input: ContractMetadataUpdateInput): Promise<ContractRecord> {
+    const contract = this.requireContract(organizationId, tenderId);
+    const updated: ContractRecord = {
+      ...contract,
+      endDate: "endDate" in input ? (input.endDate ?? null) : contract.endDate,
+      contractNumber: "contractNumber" in input ? (input.contractNumber ?? null) : contract.contractNumber,
+      hasRenewalOption: "hasRenewalOption" in input ? Boolean(input.hasRenewalOption) : contract.hasRenewalOption,
+      renewalOptionNotes: "renewalOptionNotes" in input ? (input.renewalOptionNotes ?? null) : contract.renewalOptionNotes,
+      updatedAt: new Date().toISOString(),
+    };
+    this.contracts.set(tenderId, updated);
+    return updated;
+  }
+
+  async transitionContract(organizationId: string, tenderId: string, input: ContractTransitionInput): Promise<ContractRecord> {
+    const contract = this.requireContract(organizationId, tenderId);
+    const fromStatus = contract.status;
+    if (!isContractStatus(input.toStatus)) {
+      throw new Error(`Estado de contrato desconocido: "${input.toStatus}".`);
+    }
+    const toStatus = input.toStatus as ContractStatus;
+    const check = checkTransition(fromStatus, toStatus);
+    if (!check.valid) {
+      throw new ContractTransitionRejectedError(fromStatus, toStatus, check.allowedNextStates);
+    }
+    const now = new Date().toISOString();
+    const updated: ContractRecord = { ...contract, status: toStatus, updatedAt: now };
+    this.contracts.set(tenderId, updated);
+    const historyEntry: ContractStatusHistoryRecord = {
+      id: randomUUID(),
+      contractId: contract.id,
+      fromStatus,
+      toStatus,
+      reason: input.reason,
+      actorId: input.actorId,
+      evidenceRef: input.evidenceRef,
+      createdAt: now,
+    };
+    const list = this.contractStatusHistory.get(contract.id) ?? [];
+    this.contractStatusHistory.set(contract.id, [...list, historyEntry]);
+    return updated;
+  }
+
+  async listContractStatusHistory(organizationId: string, tenderId: string): Promise<readonly ContractStatusHistoryRecord[]> {
+    const contract = this.requireContract(organizationId, tenderId);
+    return this.contractStatusHistory.get(contract.id) ?? [];
+  }
+
+  async addContractDocument(
+    organizationId: string,
+    tenderId: string,
+    input: AddContractDocumentInput,
+  ): Promise<{ document: ContractDocumentRecord; fields: readonly ContractExtractedFieldRecord[] }> {
+    const contract = this.requireContract(organizationId, tenderId);
+    const documentId = randomUUID();
+    const document: ContractDocumentRecord = {
+      id: documentId,
+      contractId: contract.id,
+      documentLabel: input.documentLabel,
+      pageCount: input.pages.length,
+      uploadedBy: input.actorId,
+      createdAt: new Date().toISOString(),
+    };
+    const docs = this.contractDocuments.get(contract.id) ?? [];
+    this.contractDocuments.set(contract.id, [...docs, document]);
+
+    const extracted = extractContractFields(input.pages);
+    const now = new Date().toISOString();
+    const fields: ContractExtractedFieldRecord[] = extracted.map((f) => ({
+      id: randomUUID(),
+      contractDocumentId: documentId,
+      fieldKey: f.fieldKey,
+      extractedValue: f.value,
+      sourcePage: f.sourcePage,
+      sourceClause: f.sourceClause,
+      confidence: f.confidence,
+      status: "sugerido",
+      confirmedValue: null,
+      confirmedBy: null,
+      confirmedAt: null,
+      createdAt: now,
+    }));
+    this.contractExtractedFields.set(documentId, fields);
+    return { document, fields };
+  }
+
+  async listContractDocuments(organizationId: string, tenderId: string): Promise<readonly ContractDocumentRecord[]> {
+    const contract = this.requireContract(organizationId, tenderId);
+    return this.contractDocuments.get(contract.id) ?? [];
+  }
+
+  async listContractExtractedFields(organizationId: string, tenderId: string, documentId: string): Promise<readonly ContractExtractedFieldRecord[]> {
+    const contract = this.requireContract(organizationId, tenderId);
+    const docs = this.contractDocuments.get(contract.id) ?? [];
+    if (!docs.some((d) => d.id === documentId)) {
+      throw new Error(`Documento de contrato "${documentId}" no encontrado.`);
+    }
+    return this.contractExtractedFields.get(documentId) ?? [];
+  }
+
+  async confirmContractExtractedField(
+    organizationId: string,
+    tenderId: string,
+    fieldId: string,
+    input: ConfirmContractExtractedFieldInput,
+  ): Promise<ContractExtractedFieldRecord> {
+    const contract = this.requireContract(organizationId, tenderId);
+    const docs = this.contractDocuments.get(contract.id) ?? [];
+    const docIds = new Set(docs.map((d) => d.id));
+    if (input.action === "correct" && (!input.correctedValue || input.correctedValue.trim().length === 0)) {
+      throw new Error('correctedValue es obligatorio y no vacío cuando action="correct".');
+    }
+    for (const [documentId, fields] of this.contractExtractedFields) {
+      if (!docIds.has(documentId)) continue;
+      const idx = fields.findIndex((f) => f.id === fieldId);
+      if (idx === -1) continue;
+      const existing = fields[idx]!;
+      const updated: ContractExtractedFieldRecord = {
+        ...existing,
+        status: input.action === "confirm" ? "confirmado" : "corregido",
+        confirmedValue: input.action === "confirm" ? existing.extractedValue : input.correctedValue,
+        confirmedBy: input.actorId,
+        confirmedAt: new Date().toISOString(),
+      };
+      const newFields = [...fields];
+      newFields[idx] = updated;
+      this.contractExtractedFields.set(documentId, newFields);
+      return updated;
+    }
+    throw new Error(`Campo extraído "${fieldId}" no encontrado para el contrato de la convocatoria "${tenderId}".`);
+  }
+
+  async createContractInvoice(organizationId: string, tenderId: string, input: CreateContractInvoiceInput): Promise<ContractInvoiceRecord> {
+    const contract = this.requireContract(organizationId, tenderId);
+    const due = computePaymentDueDate(input.invoiceVerifiedOn);
+    const record: ContractInvoiceRecord = {
+      id: randomUUID(),
+      contractId: contract.id,
+      concepto: input.concepto,
+      amount: input.amount,
+      invoiceVerifiedOn: input.invoiceVerifiedOn,
+      dueDate: due.dueDate,
+      legalReference: due.legalReference,
+      paidAt: null,
+      status: "pendiente",
+      createdBy: input.actorId,
+      createdAt: new Date().toISOString(),
+    };
+    const list = this.contractInvoices.get(contract.id) ?? [];
+    this.contractInvoices.set(contract.id, [...list, record]);
+    return { ...record, status: classifyInvoiceStatus(record) };
+  }
+
+  async listContractInvoices(organizationId: string, tenderId: string): Promise<readonly ContractInvoiceRecord[]> {
+    const contract = this.requireContract(organizationId, tenderId);
+    return this.invoicesWithStatus(contract.id);
+  }
+
+  async markContractInvoicePaid(organizationId: string, tenderId: string, invoiceId: string, _actorId: string): Promise<ContractInvoiceRecord> {
+    const contract = this.requireContract(organizationId, tenderId);
+    const list = this.contractInvoices.get(contract.id) ?? [];
+    const idx = list.findIndex((i) => i.id === invoiceId);
+    if (idx === -1) throw new Error(`Factura "${invoiceId}" no encontrada para el contrato de la convocatoria "${tenderId}".`);
+    const updated: ContractInvoiceRecord = { ...list[idx]!, paidAt: new Date().toISOString(), status: "pagada" };
+    const newList = [...list];
+    newList[idx] = updated;
+    this.contractInvoices.set(contract.id, newList);
+    return updated;
+  }
+
+  async receivablesSummary(organizationId: string, tenderId: string): Promise<ReceivablesSummary> {
+    const contract = this.requireContract(organizationId, tenderId);
+    const today = new Date().toISOString().slice(0, 10);
+    const invoices = this.invoicesWithStatus(contract.id, today);
+    const totals = summarizeReceivables(
+      invoices.map((inv) => ({ amount: inv.amount, dueDate: inv.dueDate, paidAt: inv.paidAt })),
+      today,
+    );
+    return { asOfDate: today, totalPending: totals.totalPending, totalOverdue: totals.totalOverdue, countPending: totals.countPending, countOverdue: totals.countOverdue, invoices };
+  }
+
+  async createInconformidadDraft(organizationId: string, tenderId: string, input: CreateInconformidadDraftInput): Promise<InconformidadDraftRecord> {
+    this.requireTenderRecord(organizationId, tenderId);
+    const key = `${organizationId}:${tenderId}`;
+    const existingVersions = this.inconformidadDrafts.get(key) ?? [];
+    const version = existingVersions.length + 1;
+    const content = buildInconformidadContent({
+      falloNotifiedOn: input.falloNotifiedOn,
+      bajoTratados: input.bajoTratados,
+      hechos: input.hechos,
+      agravios: input.agravios,
+      pruebas: input.pruebas,
+    });
+    const record: InconformidadDraftRecord = {
+      id: randomUUID(),
+      organizationId,
+      tenderId,
+      version,
+      status: "borrador",
+      contentHash: content.contentHash,
+      hechos: input.hechos,
+      agravios: input.agravios,
+      pruebas: input.pruebas,
+      fundamentos: content.fundamentos,
+      falloNotifiedOn: input.falloNotifiedOn,
+      bajoTratados: input.bajoTratados,
+      businessDays: content.plazo.businessDays,
+      dueDate: content.plazo.dueDate,
+      legalReference: content.plazo.legalReference,
+      viability: content.viability,
+      viabilityRecommendation: content.viabilityRecommendation,
+      disclaimer: INCONFORMIDAD_DISCLAIMER,
+      reviewedBy: null,
+      reviewedAt: null,
+      createdBy: input.actorId,
+      createdAt: new Date().toISOString(),
+    };
+    this.inconformidadDrafts.set(key, [...existingVersions, record]);
+    return record;
+  }
+
+  async listInconformidadDrafts(organizationId: string, tenderId: string): Promise<readonly InconformidadDraftRecord[]> {
+    return this.inconformidadDrafts.get(`${organizationId}:${tenderId}`) ?? [];
+  }
+
+  async markInconformidadReviewed(organizationId: string, tenderId: string, draftId: string, actorId: string): Promise<InconformidadDraftRecord> {
+    const key = `${organizationId}:${tenderId}`;
+    const list = this.inconformidadDrafts.get(key) ?? [];
+    const idx = list.findIndex((d) => d.id === draftId);
+    if (idx === -1) throw new Error(`Borrador de inconformidad "${draftId}" no encontrado.`);
+    if (list[idx]!.status === "revisado") {
+      throw new Error("Este borrador ya fue marcado como revisado.");
+    }
+    const updated: InconformidadDraftRecord = { ...list[idx]!, status: "revisado", reviewedBy: actorId, reviewedAt: new Date().toISOString() };
+    const newList = [...list];
+    newList[idx] = updated;
+    this.inconformidadDrafts.set(key, newList);
+    return updated;
+  }
+
+  async createFalloAutopsy(
+    organizationId: string,
+    tenderId: string,
+    input: CreateFalloAutopsyInput,
+  ): Promise<{ autopsy: FalloAutopsyRecord; lessons: readonly CompanyLessonLearnedRecord[] }> {
+    this.requireTenderRecord(organizationId, tenderId);
+    const key = `${organizationId}:${tenderId}`;
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const record: FalloAutopsyRecord = {
+      id,
+      organizationId,
+      tenderId,
+      ownProposalStatus: input.ownProposalStatus,
+      disqualificationReason: normalizeOrNoDisponible(input.disqualificationReason),
+      ownScore: input.ownScore,
+      winnerScore: input.winnerScore,
+      ownPrice: input.ownPrice,
+      winnerPrice: input.winnerPrice,
+      winnerName: normalizeOrNoDisponible(input.winnerName),
+      criteriaComparison: input.criteriaComparison,
+      createdBy: input.actorId,
+      createdAt: now,
+    };
+    const list = this.falloAutopsies.get(key) ?? [];
+    this.falloAutopsies.set(key, [...list, record]);
+
+    const lessons: CompanyLessonLearnedRecord[] = input.lessons.map((lessonText) => ({
+      id: randomUUID(),
+      organizationId,
+      falloAutopsyId: id,
+      tenderId,
+      lessonText,
+      createdAt: now,
+    }));
+    const orgLessons = this.lessonsLearned.get(organizationId) ?? [];
+    this.lessonsLearned.set(organizationId, [...orgLessons, ...lessons]);
+
+    return { autopsy: record, lessons };
+  }
+
+  async listFalloAutopsies(organizationId: string, tenderId: string): Promise<readonly FalloAutopsyRecord[]> {
+    return this.falloAutopsies.get(`${organizationId}:${tenderId}`) ?? [];
+  }
+
+  async listLessonsLearned(organizationId: string): Promise<readonly CompanyLessonLearnedRecord[]> {
+    return [...(this.lessonsLearned.get(organizationId) ?? [])].reverse();
+  }
+
+  async scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
+    const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
+    const today = input.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const candidates: RenewalCandidateContract[] = [...this.contracts.values()]
+      .filter((c) => c.organizationId === organizationId && c.endDate !== null && c.status !== "cerrado" && c.status !== "rescindido")
+      .map((c) => ({ contractId: c.id, tenderId: c.tenderId, endDate: c.endDate! }));
+
+    const alertCandidates = computeRenewalAlertCandidates(candidates, today, thresholds);
+    const existing = this.renewalAlerts.get(organizationId) ?? [];
+    const existingKeySet = new Set(existing.map((a) => `${a.contractId}:${a.leadDays}`));
+
+    const created: RenewalAlertRecord[] = [];
+    for (const candidate of alertCandidates) {
+      const dedupeKey = `${candidate.contractId}:${candidate.leadDays}`;
+      if (existingKeySet.has(dedupeKey)) continue;
+      const record: RenewalAlertRecord = {
+        id: randomUUID(),
+        organizationId,
+        contractId: candidate.contractId,
+        tenderId: candidate.tenderId,
+        predictedDate: candidate.predictedDate,
+        leadDays: candidate.leadDays,
+        confidence: candidate.confidence,
+        status: "pendiente",
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+        createdAt: new Date().toISOString(),
+      };
+      created.push(record);
+      existingKeySet.add(dedupeKey);
+    }
+    this.renewalAlerts.set(organizationId, [...existing, ...created]);
+
+    return { evaluatedContracts: candidates.length, alertsCreated: created.length, alerts: created };
+  }
+
+  async listRenewalAlerts(organizationId: string): Promise<readonly RenewalAlertRecord[]> {
+    return [...(this.renewalAlerts.get(organizationId) ?? [])].reverse();
+  }
+
+  async acknowledgeRenewalAlert(organizationId: string, alertId: string, actorId: string): Promise<RenewalAlertRecord> {
+    const list = this.renewalAlerts.get(organizationId) ?? [];
+    const idx = list.findIndex((a) => a.id === alertId);
+    if (idx === -1) throw new Error(`Alerta de renovación "${alertId}" no encontrada.`);
+    const updated: RenewalAlertRecord = { ...list[idx]!, status: "reconocida", acknowledgedAt: new Date().toISOString(), acknowledgedBy: actorId };
+    const newList = [...list];
+    newList[idx] = updated;
+    this.renewalAlerts.set(organizationId, newList);
+    return updated;
   }
 
   private assertProposalOwnership(organizationId: string, proposalId: string): ProposalRecord {
