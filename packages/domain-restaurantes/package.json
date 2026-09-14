@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@atiende/agent-core": "*",
-    "@atiende/core-tenancy": "*"
+    "@atiende/core-tenancy": "*",
+    "@atiende/whatsapp-gateway": "*"
   }
 }

@@ -7,7 +7,7 @@
 // Protección real: originAllowed() (CORS) para source="web", x-atiende-tool-secret
 // para source="voice"|"whatsapp" (agente), rate-limit distinto por canal.
 import { Hono } from "hono";
-import { consumeRateLimit, createAppointment, tryTriggerGoogleSync, AppointmentConflictError, AppointmentValidationError } from "@atiende/domain-citas";
+import { consumeRateLimit, createAppointment, tryEnqueueAppointmentEmail, tryTriggerGoogleSync, AppointmentConflictError, AppointmentValidationError } from "@atiende/domain-citas";
 import type { CitasRepository, CreateAppointmentPayload } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
@@ -97,9 +97,10 @@ export function citasAppointmentsRoutes(deps: AppDeps): Hono {
       try {
         const appointment = await createAppointment(citasRepo, input);
         // Best-effort, nunca bloquea la respuesta si falla (ver diseño §5.1 paso 3).
-        citasRepo
-          .enqueueMessagingOutbox(org.id, "email", "appointment.created", `appointment-created:${appointment.id}`, { appointment_id: appointment.id })
-          .catch((err) => console.error("citas: enqueueMessagingOutbox(appointment.created) best-effort falló:", err));
+        // Fase 6 §3 — arma el correo real (to/subject/html) a partir de la cita ya
+        // creada; antes de esta fase el payload encolado aquí solo traía
+        // {appointment_id}, sin contenido real que un dispatcher pudiera enviar.
+        await tryEnqueueAppointmentEmail(citasRepo, org.id, "appointment.created", appointment.id);
         // Fase 3 §5 — intento inmediato de sincronizar con Google Calendar. La fila
         // ya quedó en google_sync_status='pending' de forma atómica dentro de
         // create_appointment_idempotent; tryTriggerGoogleSync absorbe cualquier

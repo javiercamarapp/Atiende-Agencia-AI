@@ -11,12 +11,36 @@
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { OrderConflictError } from "./errors.ts";
-import type { Branch, BranchSummary, CallbackRequest, CallbackRequestInput, Customer, CustomerAddress, CustomerTier, NearestBranchMatch, Order, PersistedOrderItem } from "./types.ts";
+import type {
+  Branch,
+  BranchProductState,
+  BranchSummary,
+  CallbackRequest,
+  CallbackRequestInput,
+  Category,
+  CategoryPatch,
+  Customer,
+  CustomerAddress,
+  CustomerListFilter,
+  CustomerListPage,
+  CustomerTier,
+  NearestBranchMatch,
+  NewCategoryInput,
+  NewProductInput,
+  Order,
+  OrderListFilter,
+  OrderListPage,
+  OrderStatus,
+  PersistedOrderItem,
+  Product,
+  ProductPatch,
+} from "./types.ts";
 import type {
   ChannelStatsRow,
   ConversationMessage,
   CustomerOverviewRow,
   KpiDateRange,
+  MessagingOutboxRow,
   NewOrderRecord,
   RestaurantesRepository,
   SalesBucketRow,
@@ -123,6 +147,64 @@ function mapOrder(row: OrderRow): Order {
     idempotencyKey: row.idempotency_key,
     createdAt: row.created_at,
   };
+}
+
+interface CategoryRow {
+  readonly id: string;
+  readonly organization_id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly display_order: number;
+}
+
+function mapCategory(row: CategoryRow): Category {
+  return { id: row.id, organizationId: row.organization_id, name: row.name, slug: row.slug, displayOrder: row.display_order };
+}
+
+interface AdminProductRow {
+  readonly id: string;
+  readonly organization_id: string;
+  readonly category_id: string | null;
+  readonly category_name: string | null;
+  readonly name: string;
+  readonly description: string | null;
+  readonly price: string;
+  readonly image_url: string | null;
+  readonly is_popular: boolean;
+  readonly is_available: boolean;
+  readonly display_order: number;
+  readonly search_keywords: readonly string[];
+}
+
+function mapAdminProduct(row: AdminProductRow): Product {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    categoryId: row.category_id,
+    categoryName: row.category_name,
+    name: row.name,
+    description: row.description,
+    price: Number(row.price),
+    imageUrl: row.image_url,
+    isPopular: row.is_popular,
+    isAvailable: row.is_available,
+    displayOrder: row.display_order,
+    searchKeywords: row.search_keywords,
+  };
+}
+
+const ADMIN_PRODUCT_COLUMNS = `pr.id, pr.organization_id, pr.category_id, c.name as category_name, pr.name, pr.description, pr.price, pr.image_url, pr.is_popular, pr.is_available, pr.display_order, pr.search_keywords`;
+const ADMIN_PRODUCT_FROM = `from restaurantes.products pr left join restaurantes.categories c on c.id = pr.category_id`;
+
+interface BranchProductRow {
+  readonly property_id: string;
+  readonly product_id: string;
+  readonly price: string;
+  readonly is_available: boolean;
+}
+
+function mapBranchProductState(row: BranchProductRow): BranchProductState {
+  return { propertyId: row.property_id, productId: row.product_id, price: Number(row.price), isAvailable: row.is_available };
 }
 
 export class PostgresRestaurantesRepository implements RestaurantesRepository {
@@ -410,6 +492,29 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
   }
 
+  // ---- Dispatcher real de messaging_outbox (migrations/007) ----
+
+  async enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    await this.db.query(`select restaurantes.enqueue_messaging_outbox($1, $2, $3, $4, $5::jsonb);`, [organizationId, channel, eventType, dedupeKey, JSON.stringify(payload)]);
+  }
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const { rows } = await this.db.query<{ id: string; attempts: number; payload: unknown }>(`select id, attempts, payload from restaurantes.claim_messaging_outbox_batch($1, $2);`, [limit, leaseSeconds]);
+    return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    await this.db.query(`select restaurantes.complete_messaging_outbox_sent($1);`, [id]);
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    await this.db.query(`select restaurantes.complete_messaging_outbox_retry($1, $2, $3, $4);`, [id, attempts, errorClass, nextAttemptAtIso]);
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    await this.db.query(`select restaurantes.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
+  }
+
   // ---- KPIs de admin (Fase 3 — ver migrations/006_kpi_aggregates.sql) ----
 
   async getSalesBucketedStats(organizationId: string, propertyIds: readonly string[] | null, buckets: readonly KpiDateRange[]): Promise<readonly SalesBucketRow[]> {
@@ -509,5 +614,309 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       blue: Number(row.blue),
       withoutTier: Number(row.without_tier),
     };
+  }
+
+  // ---- Fase 5 — back-office CORE (ver migrations/007_admin_backoffice_grants_and_policies.sql) ----
+
+  async findBranchById(organizationId: string, propertyId: string): Promise<Branch | null> {
+    const { rows } = await this.db.query<BranchRow>(
+      `select p.id as property_id, p.organization_id, p.name, bd.slug, p.status, bd.phone, bd.address, bd.lat, bd.lng
+       from core.property p
+       join restaurantes.branch_detail bd on bd.property_id = p.id
+       where p.organization_id = $1 and p.id = $2
+       limit 1;`,
+      [organizationId, propertyId],
+    );
+    return rows[0] ? mapBranch(rows[0]) : null;
+  }
+
+  async listBranchesForOrganizationAdmin(organizationId: string): Promise<readonly Branch[]> {
+    const { rows } = await this.db.query<BranchRow>(
+      `select p.id as property_id, p.organization_id, p.name, bd.slug, p.status, bd.phone, bd.address, bd.lat, bd.lng
+       from core.property p
+       join restaurantes.branch_detail bd on bd.property_id = p.id
+       where p.organization_id = $1
+       order by bd.display_order asc, p.name asc;`,
+      [organizationId],
+    );
+    return rows.map(mapBranch);
+  }
+
+  async updateBranchDetail(
+    organizationId: string,
+    propertyId: string,
+    patch: { readonly phone?: string | null; readonly address?: string | null; readonly lat?: number | null; readonly lng?: number | null; readonly slug?: string; readonly displayOrder?: number },
+  ): Promise<Branch | null> {
+    // Solo escribe `restaurantes.branch_detail` — `core.property.status`/`name` no
+    // tienen GRANT de escritura para `authenticated` (ver comentario de
+    // `RestaurantesRepository.updateBranchDetail`), así que ni se intentan tocar
+    // aquí. `coalesce` deja intacto cualquier campo que el caller no mandó.
+    const { rows } = await this.db.query<{ exists: boolean }>(`select exists(select 1 from core.property where id = $1 and organization_id = $2) as exists;`, [propertyId, organizationId]);
+    if (!rows[0]?.exists) return null;
+
+    await this.db.query(
+      `update restaurantes.branch_detail
+       set phone = case when $3::boolean then $4 else phone end,
+           address = case when $5::boolean then $6 else address end,
+           lat = case when $7::boolean then $8 else lat end,
+           lng = case when $9::boolean then $10 else lng end,
+           slug = coalesce($11, slug),
+           display_order = coalesce($12, display_order)
+       where property_id = $1 and organization_id = $2;`,
+      [
+        propertyId,
+        organizationId,
+        patch.phone !== undefined,
+        patch.phone ?? null,
+        patch.address !== undefined,
+        patch.address ?? null,
+        patch.lat !== undefined,
+        patch.lat ?? null,
+        patch.lng !== undefined,
+        patch.lng ?? null,
+        patch.slug ?? null,
+        patch.displayOrder ?? null,
+      ],
+    );
+    return this.findBranchById(organizationId, propertyId);
+  }
+
+  async listCategories(organizationId: string): Promise<readonly Category[]> {
+    const { rows } = await this.db.query<CategoryRow>(
+      `select id, organization_id, name, slug, display_order from restaurantes.categories where organization_id = $1 order by display_order asc, name asc;`,
+      [organizationId],
+    );
+    return rows.map(mapCategory);
+  }
+
+  async createCategory(organizationId: string, input: NewCategoryInput): Promise<Category> {
+    const { rows } = await this.db.query<CategoryRow>(
+      `insert into restaurantes.categories (organization_id, name, slug, display_order)
+       values ($1, $2, $3, $4)
+       returning id, organization_id, name, slug, display_order;`,
+      [organizationId, input.name, input.slug, input.displayOrder ?? 0],
+    );
+    return mapCategory(rows[0]!);
+  }
+
+  async updateCategory(organizationId: string, categoryId: string, patch: CategoryPatch): Promise<Category | null> {
+    const { rows } = await this.db.query<CategoryRow>(
+      `update restaurantes.categories
+       set name = coalesce($3, name), slug = coalesce($4, slug), display_order = coalesce($5, display_order)
+       where id = $1 and organization_id = $2
+       returning id, organization_id, name, slug, display_order;`,
+      [categoryId, organizationId, patch.name ?? null, patch.slug ?? null, patch.displayOrder ?? null],
+    );
+    return rows[0] ? mapCategory(rows[0]) : null;
+  }
+
+  async listProducts(organizationId: string): Promise<readonly Product[]> {
+    const { rows } = await this.db.query<AdminProductRow>(
+      `select ${ADMIN_PRODUCT_COLUMNS} ${ADMIN_PRODUCT_FROM} where pr.organization_id = $1 order by pr.display_order asc, pr.name asc;`,
+      [organizationId],
+    );
+    return rows.map(mapAdminProduct);
+  }
+
+  async findProduct(organizationId: string, productId: string): Promise<Product | null> {
+    const { rows } = await this.db.query<AdminProductRow>(`select ${ADMIN_PRODUCT_COLUMNS} ${ADMIN_PRODUCT_FROM} where pr.organization_id = $1 and pr.id = $2;`, [organizationId, productId]);
+    return rows[0] ? mapAdminProduct(rows[0]) : null;
+  }
+
+  async createProduct(organizationId: string, input: NewProductInput): Promise<Product> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into restaurantes.products (organization_id, category_id, name, description, price, image_url, is_popular, is_available, display_order, search_keywords)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       returning id;`,
+      [
+        organizationId,
+        input.categoryId ?? null,
+        input.name,
+        input.description ?? null,
+        input.price,
+        input.imageUrl ?? null,
+        input.isPopular ?? false,
+        input.isAvailable ?? true,
+        input.displayOrder ?? 0,
+        input.searchKeywords ? [...input.searchKeywords] : [],
+      ],
+    );
+    return (await this.findProduct(organizationId, rows[0]!.id))!;
+  }
+
+  async updateProduct(organizationId: string, productId: string, patch: ProductPatch): Promise<Product | null> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `update restaurantes.products
+       set category_id = case when $3::boolean then $4::uuid else category_id end,
+           name = coalesce($5, name),
+           description = case when $6::boolean then $7 else description end,
+           price = coalesce($8, price),
+           image_url = case when $9::boolean then $10 else image_url end,
+           is_popular = coalesce($11, is_popular),
+           is_available = coalesce($12, is_available),
+           display_order = coalesce($13, display_order),
+           search_keywords = coalesce($14, search_keywords),
+           updated_at = now()
+       where id = $1 and organization_id = $2
+       returning id;`,
+      [
+        productId,
+        organizationId,
+        patch.categoryId !== undefined,
+        patch.categoryId ?? null,
+        patch.name ?? null,
+        patch.description !== undefined,
+        patch.description ?? null,
+        patch.imageUrl !== undefined,
+        patch.imageUrl ?? null,
+        patch.price ?? null,
+        patch.isPopular ?? null,
+        patch.isAvailable ?? null,
+        patch.displayOrder ?? null,
+        patch.searchKeywords ? [...patch.searchKeywords] : null,
+      ],
+    );
+    if (!rows[0]) return null;
+    return this.findProduct(organizationId, rows[0].id);
+  }
+
+  async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
+    const { rows } = await this.db.query<BranchProductRow>(`select property_id, product_id, price, is_available from restaurantes.branch_products where property_id = $1 and product_id = $2;`, [
+      propertyId,
+      productId,
+    ]);
+    return rows[0] ? mapBranchProductState(rows[0]) : null;
+  }
+
+  async upsertBranchProductState(propertyId: string, productId: string, price: number, isAvailable: boolean): Promise<BranchProductState> {
+    const { rows } = await this.db.query<BranchProductRow>(
+      `insert into restaurantes.branch_products (property_id, product_id, price, is_available)
+       values ($1, $2, $3, $4)
+       on conflict (property_id, product_id) do update set price = excluded.price, is_available = excluded.is_available, updated_at = now()
+       returning property_id, product_id, price, is_available;`,
+      [propertyId, productId, price, isAvailable],
+    );
+    return mapBranchProductState(rows[0]!);
+  }
+
+  async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
+    const { rows } = await this.db.query<OrderRow>(
+      `select id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at
+       from restaurantes.orders where id = $1 and organization_id = $2;`,
+      [orderId, organizationId],
+    );
+    return rows[0] ? mapOrder(rows[0]) : null;
+  }
+
+  async listOrders(organizationId: string, filter: OrderListFilter): Promise<OrderListPage> {
+    const conditions: string[] = [`organization_id = $1`];
+    const params: unknown[] = [organizationId];
+
+    if (filter.propertyIds !== null) {
+      params.push([...filter.propertyIds]);
+      conditions.push(`property_id = any($${params.length}::uuid[])`);
+    }
+    if (filter.status !== undefined) {
+      params.push(filter.status);
+      conditions.push(`status = $${params.length}`);
+    }
+    if (filter.dateFrom !== undefined) {
+      params.push(filter.dateFrom.toISOString());
+      conditions.push(`created_at >= $${params.length}::timestamptz`);
+    }
+    if (filter.dateTo !== undefined) {
+      params.push(filter.dateTo.toISOString());
+      conditions.push(`created_at < $${params.length}::timestamptz`);
+    }
+
+    const cursor = decodeCursor(filter.cursor);
+    if (cursor) {
+      params.push(cursor.createdAt, cursor.id);
+      conditions.push(`(created_at, id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`);
+    }
+
+    params.push(filter.limit + 1);
+    const { rows } = await this.db.query<OrderRow>(
+      `select id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at
+       from restaurantes.orders
+       where ${conditions.join(" and ")}
+       order by created_at desc, id desc
+       limit $${params.length};`,
+      params,
+    );
+
+    const hasMore = rows.length > filter.limit;
+    const page = rows.slice(0, filter.limit).map(mapOrder);
+    const nextCursor = hasMore ? encodeCursor(page[page.length - 1]!) : null;
+    return { orders: page, nextCursor };
+  }
+
+  async updateOrderStatus(organizationId: string, orderId: string, status: OrderStatus): Promise<Order | null> {
+    const { rows } = await this.db.query<OrderRow>(
+      `update restaurantes.orders
+       set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
+       where id = $1 and organization_id = $2
+       returning id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at;`,
+      [orderId, organizationId, status],
+    );
+    return rows[0] ? mapOrder(rows[0]) : null;
+  }
+
+  async findCustomerById(organizationId: string, customerId: string): Promise<Customer | null> {
+    const { rows } = await this.db.query<CustomerRow>(
+      `select id, organization_id, phone, name, order_count from restaurantes.customers where organization_id = $1 and id = $2;`,
+      [organizationId, customerId],
+    );
+    return rows[0] ? mapCustomer(rows[0]) : null;
+  }
+
+  async listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage> {
+    const conditions: string[] = [`organization_id = $1`];
+    const params: unknown[] = [organizationId];
+
+    const search = filter.search?.trim();
+    if (search) {
+      params.push(`%${search}%`);
+      conditions.push(`(name ilike $${params.length} or phone ilike $${params.length})`);
+    }
+    if (filter.cursor) {
+      params.push(filter.cursor);
+      conditions.push(`id > $${params.length}`);
+    }
+
+    params.push(filter.limit + 1);
+    const { rows } = await this.db.query<CustomerRow>(
+      `select id, organization_id, phone, name, order_count from restaurantes.customers
+       where ${conditions.join(" and ")}
+       order by id asc
+       limit $${params.length};`,
+      params,
+    );
+
+    const hasMore = rows.length > filter.limit;
+    const page = rows.slice(0, filter.limit).map(mapCustomer);
+    const nextCursor = hasMore ? page[page.length - 1]!.id : null;
+    return { customers: page, nextCursor };
+  }
+}
+
+interface OrderCursorBoundary {
+  readonly createdAt: string;
+  readonly id: string;
+}
+
+function encodeCursor(order: Order): string {
+  return Buffer.from(`${order.createdAt}|${order.id}`, "utf8").toString("base64url");
+}
+
+function decodeCursor(cursor: string | undefined): OrderCursorBoundary | null {
+  if (!cursor) return null;
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    const separatorIndex = decoded.lastIndexOf("|");
+    if (separatorIndex === -1) return null;
+    return { createdAt: decoded.slice(0, separatorIndex), id: decoded.slice(separatorIndex + 1) };
+  } catch {
+    return null;
   }
 }

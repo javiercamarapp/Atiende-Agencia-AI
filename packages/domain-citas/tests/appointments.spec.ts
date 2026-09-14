@@ -9,8 +9,14 @@ import { zonedTimeToUtc } from "../src/availability.ts";
 import { buildCitasFixture } from "./fixtures.ts";
 import type { CreateAppointmentPayload } from "../src/types.ts";
 
-const MONDAY_10AM_MERIDA = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();
-const MONDAY_1030AM_MERIDA = zonedTimeToUtc("2026-09-14", "10:30", "America/Merida").toISOString();
+// Fecha fija a propósito un año hacia el futuro (mismo día de la semana, lunes)
+// respecto a cuando se escribió este test: el motor de alternativas usa
+// `now = new Date()` real por defecto y filtra slots ya pasados -- una fecha
+// que "ya era futuro" cuando se escribió pero coincide con el reloj real deja
+// de serlo apenas el calendario la alcanza (date-rot, ya visto varias veces en
+// esta suite -- ver los commits "barrido completo de date-rot").
+const MONDAY_10AM_MERIDA = zonedTimeToUtc("2027-09-13", "10:00", "America/Merida").toISOString();
+const MONDAY_1030AM_MERIDA = zonedTimeToUtc("2027-09-13", "10:30", "America/Merida").toISOString();
 
 function basePayload(fixture: ReturnType<typeof buildCitasFixture>, overrides: Partial<CreateAppointmentPayload> = {}): CreateAppointmentPayload {
   return {
@@ -40,7 +46,7 @@ describe("createAppointment", () => {
 
   it("rechaza un horario fuera de la disponibilidad real (3am, aunque nadie más lo tenga ocupado)", async () => {
     const fixture = buildCitasFixture();
-    const madrugada = zonedTimeToUtc("2026-09-14", "03:00", "America/Merida").toISOString();
+    const madrugada = zonedTimeToUtc("2027-09-13", "03:00", "America/Merida").toISOString();
     await expect(createAppointment(fixture.repo, basePayload(fixture, { startsAt: madrugada }))).rejects.toThrow(AppointmentConflictError);
   });
 
@@ -120,7 +126,7 @@ describe("rescheduleAppointment", () => {
   it("reagendar a un horario fuera de disponibilidad real trae alternativas REALES calculadas con el mismo motor", async () => {
     const fixture = buildCitasFixture();
     const appointment = await createAppointment(fixture.repo, basePayload(fixture));
-    const madrugada = zonedTimeToUtc("2026-09-14", "03:00", "America/Merida").toISOString();
+    const madrugada = zonedTimeToUtc("2027-09-13", "03:00", "America/Merida").toISOString();
     let caught: unknown;
     try {
       await rescheduleAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id, newStartsAt: madrugada });

@@ -1,0 +1,220 @@
+{
+  "get_mapping_servicios_profesionales": {
+    "cargo": "6020100",
+    "abono": "2010000",
+    "iva_cargo": "2600300",
+    "iva_abono": null,
+    "poliza_type": "egreso"
+  },
+  "get_mapping_venta_servicios": {
+    "cargo": "1050000",
+    "abono": "4080000",
+    "iva_cargo": null,
+    "iva_abono": "2600400",
+    "poliza_type": "ingreso"
+  },
+  "get_mapping_desconocido": null,
+  "generate_poliza_servicios_profesionales": {
+    "tipo": "egreso",
+    "total_debe": 11600.0,
+    "total_haber": 11600.0,
+    "cuadrada": true,
+    "lineas": [
+      {
+        "cuenta": "6020100",
+        "concepto": "Servicios profesionales - Honorarios enero",
+        "debe": 10000.0,
+        "haber": 0.0,
+        "tipo": "cargo"
+      },
+      {
+        "cuenta": "2010000",
+        "concepto": "Proveedores nacionales",
+        "debe": 0.0,
+        "haber": 10000.0,
+        "tipo": "abono"
+      },
+      {
+        "cuenta": "2600300",
+        "concepto": "IVA acreditable - IVA acreditable",
+        "debe": 1600.0,
+        "haber": 0.0,
+        "tipo": "cargo"
+      },
+      {
+        "cuenta": "2010000",
+        "concepto": "IVA trasladado - Proveedores nacionales",
+        "debe": 0.0,
+        "haber": 1600.0,
+        "tipo": "abono"
+      }
+    ]
+  },
+  "generate_poliza_sin_iva": {
+    "tipo": "egreso",
+    "total_debe": 5000.0,
+    "total_haber": 5000.0,
+    "cuadrada": true,
+    "lineas": [
+      {
+        "cuenta": "6030100",
+        "concepto": "Intereses bancarios - Interes",
+        "debe": 5000.0,
+        "haber": 0.0,
+        "tipo": "cargo"
+      },
+      {
+        "cuenta": "1020000",
+        "concepto": "Bancos",
+        "debe": 0.0,
+        "haber": 5000.0,
+        "tipo": "abono"
+      }
+    ]
+  },
+  "generate_poliza_venta_servicios": {
+    "tipo": "ingreso",
+    "total_debe": 23200.0,
+    "total_haber": 23200.0,
+    "cuadrada": true,
+    "lineas": [
+      {
+        "cuenta": "1050000",
+        "concepto": "Clientes - Proyecto X",
+        "debe": 20000.0,
+        "haber": 0.0,
+        "tipo": "cargo"
+      },
+      {
+        "cuenta": "4080000",
+        "concepto": "Ingresos por servicios",
+        "debe": 0.0,
+        "haber": 20000.0,
+        "tipo": "abono"
+      },
+      {
+        "cuenta": "1050000",
+        "concepto": "IVA trasladado cobrado",
+        "debe": 3200.0,
+        "haber": 0.0,
+        "tipo": "cargo"
+      },
+      {
+        "cuenta": "2600400",
+        "concepto": "IVA trasladado - IVA trasladado",
+        "debe": 0.0,
+        "haber": 3200.0,
+        "tipo": "abono"
+      }
+    ]
+  },
+  "generate_poliza_sin_mapeo": null,
+  "validate_poliza_balanceada": [],
+  "validate_poliza_desbalanceada": [
+    "Póliza desbalanceada: debe=10000.0, haber=8000.0"
+  ],
+  "validate_poliza_cuenta_inexistente": [
+    "Cuenta 9999999 no existe en catálogo SAT",
+    "Cuenta 9999998 no existe en catálogo SAT"
+  ],
+  "generate_adjustment": {
+    "tipo": "diario",
+    "total_debe": 5000.0,
+    "total_haber": 5000.0,
+    "cuadrada": true,
+    "lineas": [
+      {
+        "cuenta": "6020300",
+        "concepto": "gasto",
+        "debe": 5000.0,
+        "haber": 0.0,
+        "tipo": "cargo"
+      },
+      {
+        "cuenta": "1020000",
+        "concepto": "banco",
+        "debe": 0.0,
+        "haber": 5000.0,
+        "tipo": "abono"
+      }
+    ]
+  },
+  "generate_depreciation_entry": {
+    "tipo": "diario",
+    "total_debe": 833.33,
+    "total_haber": 833.33,
+    "cuadrada": true,
+    "lineas": [
+      {
+        "cuenta": "6020300",
+        "concepto": "Depreciación mensual - Maquinaria y equipo",
+        "debe": 833.33,
+        "haber": 0.0,
+        "tipo": "cargo"
+      },
+      {
+        "cuenta": "1540100",
+        "concepto": "Depreciación acumulada",
+        "debe": 0.0,
+        "haber": 833.33,
+        "tipo": "abono"
+      }
+    ]
+  },
+  "rule_based_predict_servicios_profesionales_claro": {
+    "entrada": {
+      "descripcion": "honorarios de consultoría profesional",
+      "tipo_cfdi": "I"
+    },
+    "categoria": "servicios_profesionales",
+    "confidence": 0.8
+  },
+  "rule_based_predict_renta_oficina": {
+    "entrada": {
+      "descripcion": "renta de oficina mensual, alquiler local comercial",
+      "tipo_cfdi": "I"
+    },
+    "categoria": "renta_oficina",
+    "confidence": 0.95
+  },
+  "rule_based_predict_sin_match": {
+    "entrada": {
+      "descripcion": "xyz sin ninguna palabra clave reconocible",
+      "tipo_cfdi": "I"
+    },
+    "categoria": "otros",
+    "confidence": 0.3
+  },
+  "rule_based_predict_venta_servicios_egreso": {
+    "entrada": {
+      "descripcion": "servicio de consultoría y desarrollo de proyecto",
+      "tipo_cfdi": "E"
+    },
+    "categoria": "venta_servicios",
+    "confidence": 0.95
+  },
+  "rule_based_predict_empate_primer_patron_gana": {
+    "entrada": {
+      "descripcion": "renta arrendamiento",
+      "tipo_cfdi": "I"
+    },
+    "categoria": "renta_oficina",
+    "confidence": 0.8
+  },
+  "override_exacto_rfc": {
+    "rfc": "RFC12345",
+    "categoria": "nomina",
+    "confidence": 1.0
+  },
+  "rfc_category_feedback_mayoria": "nomina",
+  "suggestions_for_retraining": [
+    {
+      "rfc": "RFC_STRONG",
+      "suggested_categoria": "nomina",
+      "override_count": 5,
+      "total_corrections": 5,
+      "confidence": 1.0
+    }
+  ],
+  "suggestions_for_retraining_empate_no_sugiere": []
+}

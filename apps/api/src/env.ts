@@ -10,6 +10,15 @@ export interface ApiEnv {
   readonly voiceToolSecret: string;
   readonly whatsappVerifyToken: string;
   readonly whatsappAppSecret: string;
+  /** Token de acceso real de la Meta App de plataforma para ENVIAR mensajes de
+   *  WhatsApp vía Graph API (`Authorization: Bearer`, ver
+   *  @atiende/whatsapp-gateway::MetaGraphWhatsAppClient) — a diferencia de
+   *  `whatsappVerifyToken`/`whatsappAppSecret` (verificación del webhook
+   *  ENTRANTE), esta es la pieza que faltaba para el envío SALIENTE real. `null`
+   *  cuando no está configurada (mismo criterio honesto que `googleOAuth`): la
+   *  ruta `POST /internal/whatsapp/dispatch` responde 503 explícito, nunca finge
+   *  un envío sin ella. */
+  readonly whatsappAccessToken: string | null;
   /** Secreto compartido para rutas internas invocadas por un scheduler externo
    * (header `x-atiende-internal-secret`, análogo a CRON_SECRET del origen) — ver
    * diseño Fase 1 citas §0.4/§5.3: el recordatorio 24h de citas es el primer
@@ -26,6 +35,15 @@ export interface ApiEnv {
    * (`google-calendar-factory.ts`: "if (!clientId || !clientSecret) return null").
    */
   readonly googleOAuth: { readonly clientId: string; readonly clientSecret: string; readonly redirectBaseUrl: string } | null;
+  /**
+   * Fase 6 §3 citas — credenciales de plataforma para el dispatcher real de
+   * correo (Resend, ver domain-citas/src/email-dispatch.ts::sendEmailOutboxJob).
+   * `apiKey: null` cuando no está configurada todavía (estado real de este
+   * entorno de desarrollo) — fail-closed explícito: sin ella, cada job de correo
+   * falla al enviarse (nunca finge éxito), mismo criterio honesto que
+   * `googleOAuth` de arriba.
+   */
+  readonly resend: { readonly apiKey: string | null; readonly from: string };
   /** Secreto de firma DISTINTO al de staff (`jwtSecret`) para el JWT del portal de
    * propietario de rentas (Fase 3) -- ver diseño Fase 3 rentas §1.2/§3: defensa en
    * profundidad barata, un token de propietario nunca verifica bajo el secreto de
@@ -83,12 +101,14 @@ export function loadApiEnv(): ApiEnv {
     voiceToolSecret: requireEnv("VOICE_TOOL_SECRET"),
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
+    whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,
     internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
     googleOAuth:
       process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL
         ? { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET, redirectBaseUrl: process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL }
         : null,
+    resend: { apiKey: process.env.RESEND_API_KEY ?? null, from: process.env.RESEND_FROM_EMAIL ?? "atiende <notificaciones@atiende.ai>" },
     rentasOwnerJwtSecret: requireEnv("RENTAS_OWNER_JWT_SECRET"),
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
     rentasOwnerRefreshTokenTtlSeconds: Number(process.env.RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),

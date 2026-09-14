@@ -5,7 +5,7 @@
 // Sirve para tests determinísticos y como fallback dev/CI sin Postgres real — mismo
 // rol que InMemoryRestaurantesRepository.
 import { createHash, randomUUID } from "node:crypto";
-import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
+import type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 import type {
   ActiveHotelProperty,
   CancellationPolicyRecord,
@@ -116,6 +116,23 @@ interface StoredConversation {
   fnbOrderId: string | null;
 }
 
+/** Espejo en memoria de `hoteles.messaging_outbox` (migrations/008) — mismo
+ * idioma de claim-con-lease-reclamable que `StoredWhatsAppEvent`/`StoredLease`. */
+interface InMemoryOutboxRow {
+  id: string;
+  propertyId: string;
+  organizationId: string;
+  channel: "whatsapp" | "email";
+  eventType: string;
+  dedupeKey: string;
+  payload: unknown;
+  status: "pending" | "processing" | "sent" | "failed" | "dead";
+  attempts: number;
+  claimedAt: number | null;
+  nextAttemptAt: number;
+  lastErrorClass: string | null;
+}
+
 interface StoredReservation {
   id: string;
   organizationId: string;
@@ -174,6 +191,7 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly whatsappLeases = new Map<string, StoredLease>();
   private readonly whatsappConversations = new Map<string, StoredConversation>(); // key: propertyId:phone
   private readonly contactosNoOperativos = new Map<string, ContactoNoOperativoRecord>();
+  private readonly outbox = new Map<string, InMemoryOutboxRow>();
 
   // ---- Fase 5 — H16-014/REQ-REC-014 fraude interno + H5 CFDI de hospedaje ----
   private readonly fraudAlerts = new Map<string, FraudAlertRecord>();
@@ -778,6 +796,66 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     void errorClass;
     const event = this.whatsappEvents.get(messageId);
     if (event) event.status = "failed";
+  }
+
+  // ---- Dispatcher real de messaging_outbox (migrations/008) ----
+
+  getOutbox(): readonly InMemoryOutboxRow[] {
+    return [...this.outbox.values()];
+  }
+
+  async enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    const existing = [...this.outbox.values()].find((o) => o.propertyId === propertyId && o.channel === channel && o.dedupeKey === dedupeKey);
+    if (existing) {
+      if (existing.status === "pending" || existing.status === "failed") {
+        existing.eventType = eventType;
+        existing.payload = payload;
+      }
+      return;
+    }
+    const id = randomUUID();
+    this.outbox.set(id, { id, propertyId, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0, claimedAt: null, nextAttemptAt: 0, lastErrorClass: null });
+  }
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const now = Date.now();
+    const eligible = [...this.outbox.values()]
+      .filter(
+        (o) =>
+          o.channel === "whatsapp" &&
+          ((o.status === "pending" && o.nextAttemptAt <= now) || (o.status === "processing" && (o.claimedAt ?? 0) < now - leaseSeconds * 1000)),
+      )
+      .slice(0, limit);
+    for (const row of eligible) {
+      row.status = "processing";
+      row.claimedAt = now;
+    }
+    return eligible.map((row) => ({ id: row.id, attempts: row.attempts, payload: row.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "sent";
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "pending";
+    row.attempts = attempts;
+    row.lastErrorClass = errorClass.slice(0, 120);
+    row.nextAttemptAt = Date.parse(nextAttemptAtIso);
+    row.claimedAt = null;
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "dead";
+    row.attempts = attempts;
+    row.lastErrorClass = errorClass.slice(0, 120);
+    row.claimedAt = null;
   }
 
   async insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord> {

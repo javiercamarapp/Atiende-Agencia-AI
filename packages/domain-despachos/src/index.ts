@@ -92,6 +92,11 @@ export {
   CONCILIACION_ROLES,
   MIGRACION_CATALOGO_ROLES,
   DECIDIR_MAPEO_MIGRACION_ROLES,
+  DEVOLUCION_IVA_ROLES,
+  BOOKKEEPING_ROLES,
+  VER_CIERRE_MENSUAL_ROLES,
+  GESTIONAR_CIERRE_MENSUAL_ROLES,
+  CERRAR_PERIODO_ROLES,
   ADMIN_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
 } from "./roles.ts";
@@ -195,7 +200,99 @@ export type { ClasificacionCuentaOrigen } from "./migracion-catalogo/matching.ts
 export type { LineaMigrada, MigracionPolizaResultado, DecisionMapeoOpciones } from "./migracion-catalogo/migrador.ts";
 export type { ParCuadreSaldo, DiscrepanciaCuadreSaldo, DiscrepanciaBalancePoliza, InputCierreMigracion } from "./migracion-catalogo/verificacion.ts";
 
-export { IdempotencyConflictError, InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError } from "./errors.ts";
+export {
+  IdempotencyConflictError,
+  InvoiceAlreadyExistsError,
+  InvoiceReviewAlreadyResolvedError,
+  PeriodoCerradoError,
+  PeriodoYaAbiertoError,
+  CierreValidacionError,
+  TareaCierreEstadoInvalidoError,
+} from "./errors.ts";
+
+// ---- Devolución de IVA (Fase 6) ----
+export {
+  recopilarFacturas,
+  clasificarIva,
+  ivaAcreditableEfectivamentePagado,
+  generarDiotDevolucionIva,
+  validarRfc as validarRfcDevolucionIva,
+  validarTasaIva,
+  validarDiot,
+  conciliarFacturasDiot,
+  conciliarDiotDeclaracion,
+  conciliarDeclaracionSaldo,
+  calcularSaldoFavor,
+  calcularMontoDevolucion,
+  validarCongruenciaDiotCfdiDeclaracion,
+  UMBRAL_CONGRUENCIA_MONTO,
+  TOLERANCIA_CONGRUENCIA_MXN,
+  digitoVerificadorClabe,
+  validarClabe,
+  prepararSolicitud,
+  DIAS_HABILES_PLAZO_RESOLUCION,
+  DIAS_HABILES_PLAZO_RESOLUCION_CON_DICTAMEN_O_GARANTIA,
+  MEXICO_HOLIDAYS_2026,
+  sumarDiasHabiles,
+  calcularFechaLimiteResolucion,
+} from "./devolucion-iva/calculo.ts";
+export { generarPapelTrabajo, ADVERTENCIA_ART_59_FRACC_III } from "./devolucion-iva/workpaper.ts";
+export type {
+  TipoFacturaIva,
+  ClasificacionIva,
+  EstatusConciliacionIva,
+  EstatusDevolucion,
+  EstadoEnvioSolicitud,
+  FacturaCfdiIva,
+  DiotFacturaDetalleIva,
+  DiotEntryIva,
+  DeclaracionMensualIva,
+  ConciliacionFacturaDiot,
+  ConciliacionDiotDeclaracion,
+  ConciliacionDeclaracionSaldo,
+  MontoDevolucion,
+  CongruenciaDiotCfdiDeclaracion,
+  SolicitudDevolucion,
+} from "./devolucion-iva/types.ts";
+export type { ClasificacionIvaResultado, SaldoDevolucionInput } from "./devolucion-iva/calculo.ts";
+export type { PapelTrabajoDevolucionIva } from "./devolucion-iva/workpaper.ts";
+
+// ---- Bookkeeping / auto-clasificador de pólizas (Fase 6) ----
+export { CATALOGO_CUENTAS_SAT, DEFAULT_MAPPINGS, mappingKey } from "./bookkeeping/catalogo.ts";
+export { getMapping, getAccountName, validateAccount, generatePoliza, getAllCategories, generateAdjustment, generateDepreciationEntry, generateProvisionEntry, validatePoliza } from "./bookkeeping/rules-engine.ts";
+export { SYNTHETIC_PATTERNS, clasificarPorReglas, sugerirCategoria, predecirCategoria, necesitaRevisionHumana } from "./bookkeeping/clasificador.ts";
+export { CONFIDENCE_FLOOR, CONFIDENCE_MEDIUM, CONFIDENCE_HIGH, DEFAULT_CONFIDENCE_THRESHOLD } from "./bookkeeping/confianza.ts";
+export { getRfcCategoryFeedback, getAllRfcFeedback, getSuggestionsForRetraining } from "./bookkeeping/overrides.ts";
+export type { TipoCfdiBookkeeping, PolizaType, LineaTipo, CfdiClassification, LineaPoliza, PolizaContable, AccountMapping, OverrideRecord, SuggestionRetraining } from "./bookkeeping/types.ts";
+export type { MapeosCustom, EntradaManual, ActivoDepreciacion } from "./bookkeeping/rules-engine.ts";
+export type { PrediccionCategoria } from "./bookkeeping/clasificador.ts";
+
+// ---- Cierre mensual (Fase 6) ----
+export { DEFAULT_MONTHLY_CLOSE_TEMPLATE, getTemplate } from "./cierre-mensual/templates.ts";
+export {
+  construirTareasDesdePlantilla,
+  verificarPeriodoNoDuplicado,
+  completarTarea,
+  autoCheckTareas,
+  recomputeOverdue,
+  calcularEstadoPeriodo,
+  evaluarCierre,
+  cerrarPeriodo,
+  generarReporteCierre,
+  estaPeriodoCerrado,
+} from "./cierre-mensual/engine.ts";
+export {
+  validateBalanceCuadrada,
+  validatePolizasCuadradas,
+  validateNominaCuadrada,
+  validateIvaConciliado,
+  validateIsrProvisionado,
+  validateBancosConciliados,
+} from "./cierre-mensual/validaciones.ts";
+export type { ClosePeriodStatus, TaskStatus, TaskCategory, CloseTask, ClosePeriod, CloseTemplateTask, CloseTemplate } from "./cierre-mensual/types.ts";
+export type { NuevaTareaCierre, AutoCheckResultado, EstadoPeriodoCierre, DecisionCierre, ReporteCierre } from "./cierre-mensual/engine.ts";
+export type { ValidationResult as ValidacionCierreResult } from "./cierre-mensual/validaciones.ts";
+export type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
 
 export type {
   TipoComprobante,

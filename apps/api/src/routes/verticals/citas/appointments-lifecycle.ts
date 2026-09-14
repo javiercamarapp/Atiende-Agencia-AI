@@ -26,6 +26,7 @@ import {
   notifyWaitlistAfterReschedule,
   reassignAppointment,
   rescheduleAppointment,
+  tryEnqueueAppointmentEmail,
   tryNotifyWaitlistOfFreedSlot,
   tryTriggerGoogleSync,
 } from "@atiende/domain-citas";
@@ -79,11 +80,9 @@ async function tryNotifyWaitlistAndEmail(citasRepo: CitasRepository, organizatio
   } catch (err) {
     console.error("citas: notifyWaitlistAfterReschedule best-effort falló:", err);
   }
-  try {
-    await citasRepo.enqueueMessagingOutbox(organizationId, "email", "appointment.rescheduled", `appointment-rescheduled:${appointmentId}:${newStartsAt}`, { appointment_id: appointmentId, previous_starts_at: previousStartsAt, new_starts_at: newStartsAt });
-  } catch (err) {
-    console.error("citas: enqueueMessagingOutbox(appointment.rescheduled) best-effort falló:", err);
-  }
+  // Fase 6 §3 — arma el correo real (to/subject/html) a partir de la cita ya
+  // reagendada; ya es best-effort internamente (tryEnqueueAppointmentEmail).
+  await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.rescheduled", appointmentId, { previousStartsAt });
 }
 
 /** Best-effort: cancelar SIEMPRE libera el horario de la cita — a diferencia de
@@ -95,14 +94,6 @@ async function tryNotifyWaitlistAfterCancel(citasRepo: CitasRepository, organiza
     await tryNotifyWaitlistOfFreedSlot(citasRepo, organizationId, timeZone, { providerId: appointment.providerId, serviceId: appointment.serviceId, startsAt: appointment.startsAt });
   } catch (err) {
     console.error("citas: aviso de lista de espera tras cancelar falló (best-effort):", err);
-  }
-}
-
-async function tryNotifyCancelledEmail(citasRepo: CitasRepository, organizationId: string, appointmentId: string) {
-  try {
-    await citasRepo.enqueueMessagingOutbox(organizationId, "email", "appointment.cancelled", `appointment-cancelled:${appointmentId}`, { appointment_id: appointmentId });
-  } catch (err) {
-    console.error("citas: enqueueMessagingOutbox(appointment.cancelled) best-effort falló:", err);
   }
 }
 
@@ -144,7 +135,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       try {
         const appointment = await cancelAppointment(citasRepo, { organizationId: org.id, appointmentId });
         await tryNotifyWaitlistAfterCancel(citasRepo, org.id, appointment);
-        await tryNotifyCancelledEmail(citasRepo, org.id, appointment.id);
+        await tryEnqueueAppointmentEmail(citasRepo, org.id, "appointment.cancelled", appointment.id);
         // Fase 3 §5 — la fila ya quedó en 'pending_cancel'/'skipped' de forma atómica
         // dentro de cancel_appointment_idempotent; best-effort real, nunca puede
         // convertir esta respuesta 200 en un error.
@@ -221,6 +212,11 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
         } catch (err) {
           console.error("citas: aviso de lista de espera tras modificar-cita falló (best-effort):", err);
         }
+        // Fase 6 §3 — GAP que esta fase cierra: modificar-cita nunca encolaba
+        // ningún correo (a diferencia de crear/cancelar/reagendar, que sí lo
+        // hacían aunque fuera con el payload incompleto). El cliente ahora sí se
+        // entera si le cambiaron el proveedor/servicio de su cita.
+        await tryEnqueueAppointmentEmail(citasRepo, org.id, "appointment.modified", appointment.id);
         // Fase 3 §5 — reassign_appointment_idempotent ya dejó 'pending' (si había
         // google_event_id) de forma atómica; best-effort real.
         await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
@@ -248,7 +244,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
     try {
       const appointment = await cancelAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryNotifyWaitlistAfterCancel(citasRepo, organizationId, appointment);
-      await tryNotifyCancelledEmail(citasRepo, organizationId, appointment.id);
+      await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.cancelled", appointment.id);
       // Fase 3 §5 — mismo best-effort que la cancelación del agente.
       await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });

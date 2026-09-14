@@ -47,4 +47,7 @@ export const Errors = {
   // formado nunca se envía a un PAC real -- se rechaza ANTES de intentar timbrar.
   cfdiHospedajeInvalido: (codigos: readonly string[]) =>
     new ApiError(422, "cfdi_hospedaje_invalido", `El CFDI de hospedaje no pasó la validación fiscal previa al timbrado: ${codigos.join(", ")}.`),
+  // ---- despachos (cierre mensual, Fase 6 -- bloqueo de edición de movimientos ya cerrados) ----
+  despachosPeriodoCerrado: (periodo: string) =>
+    new ApiError(409, "periodo_cerrado", `El periodo ${periodo} ya está cerrado; no se pueden ingestar nuevos CFDI con fecha en ese periodo. Reabra el periodo primero.`),
 };

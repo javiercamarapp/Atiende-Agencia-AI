@@ -58,7 +58,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       const repo = deps.restaurantesRepo(db);
       const phoneNumberId = extractMetaPhoneNumberId(payload);
       const organizationId = phoneNumberId ? await repo.resolveOrganizationByPhoneNumberId(phoneNumberId) : null;
-      if (!organizationId) {
+      if (!phoneNumberId || !organizationId) {
         // Número no configurado en la plataforma: ack silencioso, no reintento.
         return c.json({ ok: true });
       }
@@ -75,12 +75,13 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           messageId: message.id,
           phone: `+${message.from}`,
           body: message.text.body,
+          phoneNumberId,
         });
-        // El envío real de `outcome.reply` vía Graph API es responsabilidad del
-        // dispatcher de apps/worker (messaging_outbox), fuera de las 3 rutas críticas
-        // de esta fase (ver diseño §1, fila messaging_outbox) — aquí solo se procesa y
-        // persiste la conversación/pedido, exactamente la plomería que sí es de esta
-        // fase.
+        // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
+        // `handleInboundWhatsAppMessage` lo encola en `restaurantes.messaging_outbox`
+        // (ver whatsapp/inbound.ts) y `POST /internal/whatsapp/dispatch`
+        // (@atiende/whatsapp-gateway::WhatsAppOutboundDispatcher) lo drena de
+        // verdad vía Graph API.
         if (outcome.retryable) hadRetryableFailure = true;
       }
 

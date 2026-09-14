@@ -141,7 +141,7 @@ export type {
   CancellationPolicyRecord,
 } from "./types.ts";
 
-export type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
+export type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 export { InMemoryHotelesRepository } from "./in-memory-repository.ts";
 export { PostgresHotelesRepository } from "./postgres-repository.ts";
 
@@ -158,6 +158,7 @@ export type { HotelesWhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export { handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
+export { createHotelesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export {
   createLlmHotelesWhatsAppTurnHandler,
   TOOLS as WHATSAPP_HOTELES_TOOLS,

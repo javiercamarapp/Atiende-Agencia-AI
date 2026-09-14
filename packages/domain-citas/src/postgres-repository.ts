@@ -24,16 +24,26 @@ import type {
 } from "./types.ts";
 import type {
   AppointmentSyncRow,
+  CalendarProviderSyncStatus,
   CancelResult,
   CitasRepository,
+  ConnectProviderCalComAccountInput,
+  ConnectProviderCalDavAccountInput,
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
   CustomerPage,
+  EmailOutboxJobRow,
+  EmergencyEscalationInput,
+  EmergencyEscalationRecord,
+  MessagingOutboxRow,
   NewAppointmentInput,
+  ProviderCalComAccountRecord,
+  ProviderCalDavAccountRecord,
   ReassignResult,
   RescheduleResult,
   ReminderCandidateRow,
+  TenantConfigRecord,
   WaitlistCandidateRow,
 } from "./repository.ts";
 
@@ -493,6 +503,25 @@ export class PostgresCitasRepository implements CitasRepository {
     await this.db.query(`select citas.enqueue_messaging_outbox($1, $2, $3, $4, $5::jsonb);`, [organizationId, channel, eventType, dedupeKey, JSON.stringify(payload)]);
   }
 
+  // ---- Dispatcher real de messaging_outbox (migrations/007) ----
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const { rows } = await this.db.query<{ id: string; attempts: number; payload: unknown }>(`select id, attempts, payload from citas.claim_messaging_outbox_batch($1, $2);`, [limit, leaseSeconds]);
+    return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    await this.db.query(`select citas.complete_messaging_outbox_sent($1);`, [id]);
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    await this.db.query(`select citas.complete_messaging_outbox_retry($1, $2, $3, $4);`, [id, attempts, errorClass, nextAttemptAtIso]);
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    await this.db.query(`select citas.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
+  }
+
   async loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {
     const { rows } = await this.db.query<{
       id: string;
@@ -731,5 +760,166 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void> {
     await this.db.query(`update citas.appointments set google_sync_status = 'error', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, error]);
+  }
+
+  // ============================================================================
+  // Fase 6 §1 — guardia de crisis (ver migración 007_crisis_guardrail.sql)
+  // ============================================================================
+
+  async findTenantConfig(organizationId: string): Promise<TenantConfigRecord | null> {
+    const { rows } = await this.db.query<{ organization_id: string; rubro: string; owner_notification_phone: string | null }>(
+      `select organization_id, rubro, owner_notification_phone from citas.tenant_config where organization_id = $1;`,
+      [organizationId],
+    );
+    const row = rows[0];
+    return row ? { organizationId: row.organization_id, rubro: row.rubro, ownerNotificationPhone: row.owner_notification_phone } : null;
+  }
+
+  async insertEmergencyEscalation(input: EmergencyEscalationInput): Promise<EmergencyEscalationRecord> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string; customer_phone: string; channel: "whatsapp" | "voice"; keyword_matched: string; message_excerpt: string; created_at: string }>(
+      `insert into citas.emergency_escalations (organization_id, customer_phone, channel, keyword_matched, message_excerpt)
+       values ($1, $2, $3, $4, $5)
+       returning id, organization_id, customer_phone, channel, keyword_matched, message_excerpt, created_at;`,
+      [input.organizationId, input.customerPhone, input.channel, input.keywordMatched, input.messageExcerpt],
+    );
+    const row = rows[0]!;
+    return { id: row.id, organizationId: row.organization_id, customerPhone: row.customer_phone, channel: row.channel, keywordMatched: row.keyword_matched, messageExcerpt: row.message_excerpt, createdAt: row.created_at };
+  }
+
+  async findOrganizationById(organizationId: string): Promise<{ readonly id: string; readonly name: string } | null> {
+    const { rows } = await this.db.query<{ id: string; name: string }>(`select id, name from core.organization where id = $1;`, [organizationId]);
+    const row = rows[0];
+    return row ? { id: row.id, name: row.name } : null;
+  }
+
+  // ============================================================================
+  // Fase 6 §2 — Cal.com/CalDAV por proveedor (ver migración
+  // 008_calendar_provider_accounts.sql) — reutiliza las mismas funciones de Vault
+  // genéricas de Fase 3 (citas.set_provider_calendar_refresh_token/
+  // citas.get_provider_calendar_refresh_token), ver comentario de esa migración.
+  // ============================================================================
+
+  private mapCalComAccount(row: { id: string; organization_id: string; provider_id: string; calcom_event_type_id: string; sync_status: CalendarProviderSyncStatus; sync_error: string | null; created_at: string; updated_at: string }): ProviderCalComAccountRecord {
+    return { id: row.id, organizationId: row.organization_id, providerId: row.provider_id, calcomEventTypeId: row.calcom_event_type_id, syncStatus: row.sync_status, syncError: row.sync_error, createdAt: row.created_at, updatedAt: row.updated_at };
+  }
+
+  async findProviderCalComAccount(providerId: string): Promise<ProviderCalComAccountRecord | null> {
+    const { rows } = await this.db.query<Parameters<PostgresCitasRepository["mapCalComAccount"]>[0]>(
+      `select id, organization_id, provider_id, calcom_event_type_id, sync_status, sync_error, created_at, updated_at from citas.provider_calcom_accounts where provider_id = $1;`,
+      [providerId],
+    );
+    return rows[0] ? this.mapCalComAccount(rows[0]) : null;
+  }
+
+  async connectProviderCalComAccount(input: ConnectProviderCalComAccountInput): Promise<ProviderCalComAccountRecord> {
+    const { rows: existingRows } = await this.db.query<{ calcom_api_key_secret_id: string | null }>(`select calcom_api_key_secret_id from citas.provider_calcom_accounts where provider_id = $1;`, [input.providerId]);
+    const existingSecretId = existingRows[0]?.calcom_api_key_secret_id ?? null;
+    const { rows: secretRows } = await this.db.query<{ set_provider_calendar_refresh_token: string }>(`select citas.set_provider_calendar_refresh_token($1, $2) as set_provider_calendar_refresh_token;`, [existingSecretId, input.apiKey]);
+    const secretId = secretRows[0]!.set_provider_calendar_refresh_token;
+
+    const { rows } = await this.db.query<Parameters<PostgresCitasRepository["mapCalComAccount"]>[0]>(
+      `insert into citas.provider_calcom_accounts (organization_id, provider_id, calcom_event_type_id, calcom_api_key_secret_id, sync_status, sync_error)
+       values ($1, $2, $3, $4, 'connected', null)
+       on conflict (provider_id) do update set
+         calcom_event_type_id = excluded.calcom_event_type_id,
+         calcom_api_key_secret_id = excluded.calcom_api_key_secret_id,
+         sync_status = 'connected',
+         sync_error = null,
+         updated_at = now()
+       returning id, organization_id, provider_id, calcom_event_type_id, sync_status, sync_error, created_at, updated_at;`,
+      [input.organizationId, input.providerId, input.calcomEventTypeId, secretId],
+    );
+    return this.mapCalComAccount(rows[0]!);
+  }
+
+  async disconnectProviderCalComAccount(providerId: string): Promise<void> {
+    await this.db.query(`update citas.provider_calcom_accounts set sync_status = 'disconnected', sync_error = null, updated_at = now() where provider_id = $1;`, [providerId]);
+  }
+
+  async resolveProviderCalComApiKey(providerId: string): Promise<string | null> {
+    const { rows: accountRows } = await this.db.query<{ calcom_api_key_secret_id: string | null }>(`select calcom_api_key_secret_id from citas.provider_calcom_accounts where provider_id = $1;`, [providerId]);
+    const secretId = accountRows[0]?.calcom_api_key_secret_id ?? null;
+    if (!secretId) return null;
+    try {
+      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+      return rows[0]?.get_provider_calendar_refresh_token ?? null;
+    } catch (err) {
+      console.warn("resolveProviderCalComApiKey: Vault no disponible todavía:", err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+
+  private mapCalDavAccount(row: { id: string; organization_id: string; provider_id: string; caldav_calendar_collection_url: string; caldav_username: string; sync_status: CalendarProviderSyncStatus; sync_error: string | null; created_at: string; updated_at: string }): ProviderCalDavAccountRecord {
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      providerId: row.provider_id,
+      calendarCollectionUrl: row.caldav_calendar_collection_url,
+      username: row.caldav_username,
+      syncStatus: row.sync_status,
+      syncError: row.sync_error,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  async findProviderCalDavAccount(providerId: string): Promise<ProviderCalDavAccountRecord | null> {
+    const { rows } = await this.db.query<Parameters<PostgresCitasRepository["mapCalDavAccount"]>[0]>(
+      `select id, organization_id, provider_id, caldav_calendar_collection_url, caldav_username, sync_status, sync_error, created_at, updated_at from citas.provider_caldav_accounts where provider_id = $1;`,
+      [providerId],
+    );
+    return rows[0] ? this.mapCalDavAccount(rows[0]) : null;
+  }
+
+  async connectProviderCalDavAccount(input: ConnectProviderCalDavAccountInput): Promise<ProviderCalDavAccountRecord> {
+    const { rows: existingRows } = await this.db.query<{ caldav_password_secret_id: string | null }>(`select caldav_password_secret_id from citas.provider_caldav_accounts where provider_id = $1;`, [input.providerId]);
+    const existingSecretId = existingRows[0]?.caldav_password_secret_id ?? null;
+    const { rows: secretRows } = await this.db.query<{ set_provider_calendar_refresh_token: string }>(`select citas.set_provider_calendar_refresh_token($1, $2) as set_provider_calendar_refresh_token;`, [existingSecretId, input.password]);
+    const secretId = secretRows[0]!.set_provider_calendar_refresh_token;
+
+    const { rows } = await this.db.query<Parameters<PostgresCitasRepository["mapCalDavAccount"]>[0]>(
+      `insert into citas.provider_caldav_accounts (organization_id, provider_id, caldav_calendar_collection_url, caldav_username, caldav_password_secret_id, sync_status, sync_error)
+       values ($1, $2, $3, $4, $5, 'connected', null)
+       on conflict (provider_id) do update set
+         caldav_calendar_collection_url = excluded.caldav_calendar_collection_url,
+         caldav_username = excluded.caldav_username,
+         caldav_password_secret_id = excluded.caldav_password_secret_id,
+         sync_status = 'connected',
+         sync_error = null,
+         updated_at = now()
+       returning id, organization_id, provider_id, caldav_calendar_collection_url, caldav_username, sync_status, sync_error, created_at, updated_at;`,
+      [input.organizationId, input.providerId, input.calendarCollectionUrl, input.username, secretId],
+    );
+    return this.mapCalDavAccount(rows[0]!);
+  }
+
+  async disconnectProviderCalDavAccount(providerId: string): Promise<void> {
+    await this.db.query(`update citas.provider_caldav_accounts set sync_status = 'disconnected', sync_error = null, updated_at = now() where provider_id = $1;`, [providerId]);
+  }
+
+  async resolveProviderCalDavPassword(providerId: string): Promise<string | null> {
+    const { rows: accountRows } = await this.db.query<{ caldav_password_secret_id: string | null }>(`select caldav_password_secret_id from citas.provider_caldav_accounts where provider_id = $1;`, [providerId]);
+    const secretId = accountRows[0]?.caldav_password_secret_id ?? null;
+    if (!secretId) return null;
+    try {
+      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+      return rows[0]?.get_provider_calendar_refresh_token ?? null;
+    } catch (err) {
+      console.warn("resolveProviderCalDavPassword: Vault no disponible todavía:", err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+
+  // ============================================================================
+  // Fase 6 §3 — dispatcher de correo (ver migración 009_email_outbox_dispatch.sql)
+  // ============================================================================
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string; attempts: number; payload: Record<string, unknown> }>(`select id, organization_id, attempts, payload from citas.claim_email_outbox_batch($1);`, [limit]);
+    return rows.map((r) => ({ id: r.id, organizationId: r.organization_id, attempts: r.attempts, payload: r.payload ?? {} }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    await this.db.query(`select citas.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
   }
 }

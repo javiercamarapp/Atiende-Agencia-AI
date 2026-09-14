@@ -10,6 +10,7 @@
 // como uno de los 3 verticales con el bug de doble-booking por mensajes
 // casi-simultáneos que ese paquete existe para resolver.
 import { ConversationStateMachine, DEFAULT_BOOKING_TRANSITIONS, InMemoryLockStore, InMemoryStateStore, withConversationLock, type BookingState, type LockStore } from "@atiende/core-conversation";
+import { runCrisisGuardrail } from "../crisis-guardrail.ts";
 import { lookupCitasCustomer } from "../customers.ts";
 import { actorHash } from "../rate-limit.ts";
 import type { CitasRepository, ConversationMessage } from "../repository.ts";
@@ -68,9 +69,9 @@ export async function handleInboundWhatsAppMessage(
   repo: CitasRepository,
   turnHandler: WhatsAppTurnHandler,
   guard: CitasConversationGuard,
-  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string },
+  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly phoneNumberId: string },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, body } = args;
+  const { organizationId, messageId, phone, body, phoneNumberId } = args;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
@@ -84,11 +85,31 @@ export async function handleInboundWhatsAppMessage(
         const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
         const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
-        const customer = await lookupCitasCustomer(repo, organizationId, phone);
-        const turn = await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer });
+        // Fase 6 §1 — guardia de crisis: capa DETERMINISTA que corre ANTES de
+        // llamar al LLM. Un mensaje real de crisis en un rubro de salud nunca sigue
+        // la conversación normal — se responde con el mensaje de crisis TAL CUAL
+        // (nunca reformulado/resumido por el agente) y la escalación humana ya
+        // quedó registrada, sin importar qué haría el turn handler con ese mismo
+        // mensaje.
+        const crisisCheck = await runCrisisGuardrail(repo, organizationId, phone, body);
+        const turn = crisisCheck.triggered
+          ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
+          : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
 
         const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
         await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.appointmentId ? "completed" : "active", turn.appointmentId, turn.propertyId);
+
+        // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
+        // solo se guardaba en el historial de la conversación y nunca llegaba de
+        // verdad al cliente (ver @atiende/whatsapp-gateway/README.md). `dedupeKey`
+        // por `messageId` hace este encolado idempotente ante un reintento at-least-once
+        // de Meta: `claimWhatsAppMessage` ya bloquea el reproceso, pero esta clave es
+        // una segunda capa por si algún día este método se llama fuera de ese guard.
+        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
+          to: phone,
+          phone_number_id: phoneNumberId,
+          body: turn.reply,
+        });
         return turn;
       },
     );
