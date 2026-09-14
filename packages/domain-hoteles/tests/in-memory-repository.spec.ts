@@ -290,3 +290,84 @@ describe("InMemoryHotelesRepository -- insertReservation / ensurePrimaryFolio", 
     expect(folio?.isPrimary).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fix hallazgo ALTA — catálogos de solo lectura para el formulario de "crear
+// reserva" (listRoomTypes/searchGuests). Ver domain-hoteles/src/types.ts
+// (RoomTypeSummary/GuestSummary) y apps/api/src/routes/verticals/hoteles/
+// reservas.ts (GET /tipos-habitacion, GET /huespedes).
+// ---------------------------------------------------------------------------
+describe("InMemoryHotelesRepository.listRoomTypes", () => {
+  it("devuelve solo los tipos de habitación DE ESTA property, ordenados por nombre", async () => {
+    const repo = new InMemoryHotelesRepository();
+    repo.seedRoomType(PROPERTY, "rt-zebra", { name: "Suite Zebra", maxOccupancy: 4 });
+    repo.seedRoomType(PROPERTY, "rt-alfa", { name: "Habitación Alfa", maxOccupancy: 2 });
+    repo.seedRoomType("otra-property", "rt-ajena", { name: "No debe aparecer" });
+
+    const tipos = await repo.listRoomTypes(PROPERTY);
+    expect(tipos).toEqual([
+      { id: "rt-alfa", name: "Habitación Alfa", maxOccupancy: 2 },
+      { id: "rt-zebra", name: "Suite Zebra", maxOccupancy: 4 },
+    ]);
+  });
+
+  it("una property sin ningún tipo de habitación sembrado devuelve lista vacía, nunca lanza", async () => {
+    const repo = new InMemoryHotelesRepository();
+    await expect(repo.listRoomTypes(PROPERTY)).resolves.toEqual([]);
+  });
+
+  it("seedRoomType sin nombre explícito usa un default -- no rompe los tests preexistentes que ya llamaban seedRoomType(property, id)", async () => {
+    const repo = new InMemoryHotelesRepository();
+    repo.seedRoomType(PROPERTY, ROOM_TYPE);
+    const [tipo] = await repo.listRoomTypes(PROPERTY);
+    expect(tipo).toMatchObject({ id: ROOM_TYPE, maxOccupancy: 2 });
+    expect(tipo!.name.length).toBeGreaterThan(0);
+  });
+});
+
+describe("InMemoryHotelesRepository.searchGuests", () => {
+  function repoWithGuests(): InMemoryHotelesRepository {
+    const repo = new InMemoryHotelesRepository();
+    repo.seedGuest({ id: "g-ana", propertyId: PROPERTY, fullName: "Ana Torres", email: "ana@example.com", phone: "5511112222" });
+    repo.seedGuest({ id: "g-beto", propertyId: PROPERTY, fullName: "Beto Ramírez", email: null, phone: "5533334444" });
+    repo.seedGuest({ id: "g-ajeno", propertyId: "otra-property", fullName: "Ana Ajena" });
+    return repo;
+  }
+
+  it("sin query devuelve TODOS los huéspedes de la property, ordenados por nombre, nunca los de otra property", async () => {
+    const repo = repoWithGuests();
+    const huespedes = await repo.searchGuests(PROPERTY, null);
+    expect(huespedes.map((g) => g.id)).toEqual(["g-ana", "g-beto"]);
+  });
+
+  it("filtra por nombre, insensible a mayúsculas (contains)", async () => {
+    const repo = repoWithGuests();
+    const huespedes = await repo.searchGuests(PROPERTY, "toRRes");
+    expect(huespedes.map((g) => g.id)).toEqual(["g-ana"]);
+  });
+
+  it("filtra por teléfono", async () => {
+    const repo = repoWithGuests();
+    const huespedes = await repo.searchGuests(PROPERTY, "3334444");
+    expect(huespedes.map((g) => g.id)).toEqual(["g-beto"]);
+  });
+
+  it("un huésped con email null nunca lanza al filtrar por texto (no revienta el .includes)", async () => {
+    const repo = repoWithGuests();
+    await expect(repo.searchGuests(PROPERTY, "ramirez")).resolves.toBeDefined();
+  });
+
+  it("sin match devuelve lista vacía, nunca lanza", async () => {
+    const repo = repoWithGuests();
+    await expect(repo.searchGuests(PROPERTY, "nadie-existe-xyz")).resolves.toEqual([]);
+  });
+
+  it("respeta el `limit`", async () => {
+    const repo = new InMemoryHotelesRepository();
+    for (let i = 0; i < 5; i += 1) {
+      repo.seedGuest({ id: `g-${i}`, propertyId: PROPERTY, fullName: `Huésped ${i}` });
+    }
+    const huespedes = await repo.searchGuests(PROPERTY, null, 3);
+    expect(huespedes).toHaveLength(3);
+  });
+});

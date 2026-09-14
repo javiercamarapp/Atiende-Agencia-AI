@@ -137,6 +137,29 @@ export interface GuestIdentity {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Fix hallazgo ALTA (hoteles/Reservas.tsx) — catálogos de solo lectura que le
+// faltaban al flujo de creación de reservas: hasta ahora `POST .../reservas` exigía
+// `roomTypeId`/`guestId` como UUID de memoria (sin ningún GET para descubrirlos), así
+// que recepción no podía crear una reserva real sin copiar un UUID desde otro lado
+// (SQL/otra pestaña). Ambos tipos son proyecciones de solo lectura de
+// `hoteles.room_type`/`hoteles.guest` (migrations/001_hoteles_schema.sql) — mismo
+// criterio que `PropertySummary`/`HotelOrganizationSummary` (Fase 7): un tipo NUEVO y
+// mínimo para el catálogo, nunca el registro completo de la tabla.
+// ─────────────────────────────────────────────────────────────────────────
+export interface RoomTypeSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly maxOccupancy: number;
+}
+
+export interface GuestSummary {
+  readonly id: string;
+  readonly fullName: string;
+  readonly email: string | null;
+  readonly phone: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Fase 3 — máquina de estados de reservas (H02, ver diseño Fase 3 §1/§3.3). El
 // `status` de una fila real siempre es un `ReservationStatus` (enum en Postgres desde
 // migrations/005_reservas_estado.sql) — la validez de una TRANSICIÓN concreta la decide

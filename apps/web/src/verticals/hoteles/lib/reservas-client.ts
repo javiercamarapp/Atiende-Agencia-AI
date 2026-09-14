@@ -56,6 +56,39 @@ export interface ReservationSummary {
   readonly creadaEn: string;
 }
 
+// Fix hallazgo ALTA — catálogos de solo lectura que consume el formulario de "crear
+// reserva" (antes de esto, roomTypeId/guestId eran texto libre sin ningún GET que los
+// respaldara, ver apps/api/src/routes/verticals/hoteles/reservas.ts, comentario de
+// cabecera de GET /tipos-habitacion y GET /huespedes). Nombres de campo en español
+// (nombre/capacidadMaxima/nombreCompleto/telefono) porque así serializa el servidor
+// -- mismo criterio que `ReservationSummary` arriba (estado/montoTotal/etc.), nunca
+// se reinterpreta a inglés en el cliente.
+export interface RoomTypeOption {
+  readonly id: string;
+  readonly nombre: string;
+  readonly capacidadMaxima: number;
+}
+
+export interface GuestOption {
+  readonly id: string;
+  readonly nombreCompleto: string;
+  readonly email: string | null;
+  readonly telefono: string | null;
+}
+
+export async function fetchRoomTypes(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly RoomTypeOption[]> {
+  return fetchJson<readonly RoomTypeOption[]>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/tipos-habitacion`, token);
+}
+
+/** `query` vacío/omitido trae el catálogo completo (orden alfabético) -- mismo
+ * comportamiento que el servidor documenta para `?q=` ausente, insumo de un
+ * autocomplete recién abierto antes de que el staff escriba nada. */
+export async function searchGuests(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, query?: string): Promise<readonly GuestOption[]> {
+  const trimmed = query?.trim() ?? "";
+  const qs = trimmed.length > 0 ? `?q=${encodeURIComponent(trimmed)}` : "";
+  return fetchJson<readonly GuestOption[]>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/huespedes${qs}`, token);
+}
+
 export interface CreateReservationInput {
   readonly roomTypeId: string;
   readonly checkInDate: string;

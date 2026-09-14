@@ -49,6 +49,8 @@ import type {
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  RoomTypeSummary,
+  GuestSummary,
   StaffScheduleRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
@@ -804,6 +806,34 @@ export class PostgresHotelesRepository implements HotelesRepository {
       closedToArrival: r.closed_to_arrival,
       closedToDeparture: r.closed_to_departure,
     }));
+  }
+
+  // ---- HotelesRepository: Fix hallazgo ALTA — catálogos para "crear reserva" ----
+
+  async listRoomTypes(propertyId: string): Promise<readonly RoomTypeSummary[]> {
+    const { rows } = await this.db.query<{ id: string; name: string; max_occupancy: number }>(
+      `select id, name, max_occupancy from hoteles.room_type where property_id = $1 order by name asc;`,
+      [propertyId],
+    );
+    return rows.map((r) => ({ id: r.id, name: r.name, maxOccupancy: r.max_occupancy }));
+  }
+
+  async searchGuests(propertyId: string, query: string | null, limit = 20): Promise<readonly GuestSummary[]> {
+    const needle = query?.trim() ?? "";
+    // `ilike` insensible a mayúsculas, mismo criterio de "contains" que el adaptador
+    // en memoria -- `%needle%` vacío (`%%`) matchea cualquier fila, así que una
+    // búsqueda sin texto simplemente devuelve las primeras `limit` en orden
+    // alfabético (insumo de un autocomplete recién abierto, antes de que el staff
+    // escriba nada).
+    const { rows } = await this.db.query<{ id: string; full_name: string; email: string | null; phone: string | null }>(
+      `select id, full_name, email, phone
+       from hoteles.guest
+       where property_id = $1 and (full_name ilike $2 or email ilike $2 or phone ilike $2)
+       order by full_name asc
+       limit $3;`,
+      [propertyId, `%${needle}%`, limit],
+    );
+    return rows.map((r) => ({ id: r.id, fullName: r.full_name, email: r.email, phone: r.phone }));
   }
 
   // ---- HotelesRepository: Fase 3 — máquina de estados de reservas (H02) ----
