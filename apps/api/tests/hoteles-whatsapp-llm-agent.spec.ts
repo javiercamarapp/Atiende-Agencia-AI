@@ -21,7 +21,7 @@ import { InMemoryCitasRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyC
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
@@ -132,6 +132,7 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
     rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
+    rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
   };
@@ -263,6 +264,7 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
       rentasRepo: (_db) => new InMemoryRentasRepository(),
       rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),
       rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
+      rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
       rentasIcalFeedPort: new FakeIcalFeedPort(),
       llmGateway: undefined,
     };

@@ -7,7 +7,7 @@ import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
-import type { CalendarSyncPort, RentasCalendarSyncRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
+import type { CalendarSyncPort, RentasCalendarSyncRepository, RentasMensajeriaRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { ApiEnv } from "./env.ts";
@@ -136,6 +136,14 @@ export interface AppDeps {
    * producción es `RealIcalFeedPort` real (SSRF-safe), en tests un
    * `FakeIcalFeedPort` compartido. */
   readonly rentasIcalFeedPort: CalendarSyncPort;
+  /** Fase 7 -- mensajería con huésped (borrador de IA + aprobación humana obligatoria,
+   * ver @atiende/domain-rentas::mensajeria/*, agentes/*). Puerto separado de
+   * `rentasRepo` a propósito, mismo criterio que `rentasOwnerPortalRepo`/
+   * `rentasCalendarSyncRepo`: tablas nuevas (`rentas.conversacion`/`rentas.mensaje`/
+   * `rentas.borrador_mensaje`/`rentas.plantilla_mensaje`, ver
+   * migrations/009_rentas_mensajeria_schema.sql), sin depender del repositorio
+   * gigante de calendario/pricing/finanzas para leerse/probarse. */
+  readonly rentasMensajeriaRepo: (db: TenantDbSession) => RentasMensajeriaRepository;
   /** Gateway LLM real compartido (packages/agent-core::LlmGateway), construido por
    * `production/llm-gateway.ts::buildProductionLlmGateway` SOLO SI al menos un
    * proveedor (Anthropic/OpenAI/OpenRouter) tiene API key configurada -- ver ese

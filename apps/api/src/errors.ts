@@ -50,4 +50,13 @@ export const Errors = {
   // ---- despachos (cierre mensual, Fase 6 -- bloqueo de edición de movimientos ya cerrados) ----
   despachosPeriodoCerrado: (periodo: string) =>
     new ApiError(409, "periodo_cerrado", `El periodo ${periodo} ya está cerrado; no se pueden ingestar nuevos CFDI con fecha en ese periodo. Reabra el periodo primero.`),
+  // ---- rentas (mensajería con huésped, Fase 7 -- borrador de IA + aprobación humana obligatoria) ----
+  rentasMensajeAprobacionRequerida: (message: string) => new ApiError(409, "aprobacion_requerida", message),
+  rentasMensajeExcedeLimite: (message: string) => new ApiError(422, "mensaje_excede_limite", message),
+  rentasMensajeContenidoNoPermitido: (message: string) => new ApiError(422, "contenido_no_permitido", message),
+  rentasMensajeTransicionInvalida: (message: string) => new ApiError(409, "transicion_no_permitida", message),
+  rentasMensajeriaAgentesDeshabilitado: () =>
+    new ApiError(503, "agentes_deshabilitado", "No hay un proveedor de IA configurado para este ambiente (LlmGateway ausente) — usa el generador determinista (usarIa:false) o configura un proveedor."),
+  rentasMensajeriaSinPropuesta: (message: string) => new ApiError(422, "sin_propuesta_ia", message),
+  rentasPlantillaNoAprobada: (message: string) => new ApiError(409, "plantilla_no_aprobada", message),
 };
