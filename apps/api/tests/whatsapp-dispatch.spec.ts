@@ -13,7 +13,7 @@ import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDe
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
 import { FakeWhatsAppGraphClient, WhatsAppOutboundDispatcher, WhatsAppSendError } from "@atiende/whatsapp-gateway";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
@@ -59,6 +59,7 @@ function buildDispatchTestContext(opts: { readonly withDispatcher: boolean; read
   const despachosRepoUnused = new InMemoryDespachosRepository();
   const rentasRepoUnused = new InMemoryRentasRepository();
   const rentasOwnerPortalRepoUnused = new InMemoryRentasOwnerPortalRepository();
+  const rentasCalendarSyncRepoUnused = new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore());
 
   const deps: AppDeps = {
     env: TEST_ENV,
@@ -83,6 +84,8 @@ function buildDispatchTestContext(opts: { readonly withDispatcher: boolean; read
     despachosAuditSink: new InMemoryAuditSink(),
     rentasRepo: (_db) => rentasRepoUnused,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepoUnused,
+    rentasCalendarSyncRepo: (_db) => rentasCalendarSyncRepoUnused,
+    rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
     whatsAppDispatcher,
   };
