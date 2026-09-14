@@ -14,7 +14,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ApiError } from "@atiende/core-auth";
-import { CANCELAR_ROLES, cancelarOcupacion, crearReservaConfirmada, ESCRITURA_CALENDARIO_ROLES, modificarFechasReserva, RentasDomainError } from "@atiende/domain-rentas";
+import { CANCELAR_ROLES, cancelarOcupacion, crearReservaConfirmada, ESCRITURA_CALENDARIO_ROLES, modificarFechasReserva, RentasDomainError, tryEnqueueReservaEmail } from "@atiende/domain-rentas";
 import type { RangoFechas } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -139,13 +139,18 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         throw Errors.rentasUnidadNoDisponible(resultado.conflicto.conflictoId);
       }
 
-      // El envío de correo de confirmación al huésped (best-effort) se difiere a
-      // Fase 2 — no hay motor de correo migrado a atiende-fusion todavía (ver
-      // diseño Fase 1 rentas §4, Flujo 1).
       if (huespedNombre || huespedContacto) {
         const guest = await repo.insertGuestMinimo({ organizationId, propertyId, nombre: huespedNombre, contacto: huespedContacto });
         await repo.attachGuestToOcupacion(resultado.ocupacionId, guest.id);
       }
+
+      // Fase 9 — correo de confirmación real al huésped (best-effort: nunca
+      // convierte en error una reserva que ya se creó con éxito). Encola vía
+      // rentas.messaging_outbox (channel='email'); el envío real por Resend lo hace
+      // el dispatcher de POST /internal/rentas/email-dispatch. Sin correo real en
+      // huespedContacto (o sin huésped adjunto) simplemente no encola nada — ver
+      // @atiende/domain-rentas::enqueueReservaEmailCore.
+      await tryEnqueueReservaEmail(repo, organizationId, "reserva.creada", resultado.ocupacionId);
 
       return c.json({ id: resultado.ocupacionId, conflictosCapaCruzada: resultado.conflictosCapaCruzada.length }, 201);
     } catch (err) {

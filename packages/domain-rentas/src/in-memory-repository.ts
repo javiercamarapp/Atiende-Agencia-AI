@@ -32,6 +32,8 @@ import type {
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
+  EmailOutboxJobRow,
+  MessagingOutboxChannel,
   MovimientoFinancieroReserva,
   NewDescuentoDuracionInput,
   NewGuestMinimoInput,
@@ -42,6 +44,7 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,
   OwnerRecord,
@@ -51,6 +54,7 @@ import type {
   ReglaCanal,
   ReglaMinStayRecord,
   ReservaParaStatement,
+  ReservaProximaCheckIn,
   TemporadaRecord,
   UltimaVersionOwnerStatement,
   UnidadRecord,
@@ -123,6 +127,20 @@ interface StoredOwnerStatement {
   generadoEn: string;
 }
 
+/** Fase 9 -- espejo en memoria de una fila `rentas.messaging_outbox`, mismo shape que
+ *  `hoteles.messaging_outbox` (particiona por `propertyId`, ver migrations/011). */
+interface StoredMessagingOutboxRow {
+  id: string;
+  propertyId: string;
+  organizationId: string;
+  channel: MessagingOutboxChannel;
+  eventType: string;
+  dedupeKey: string;
+  payload: unknown;
+  status: "pending" | "processing" | "sent" | "failed" | "dead";
+  attempts: number;
+}
+
 interface StoredPayout {
   id: string;
   propertyId: string;
@@ -169,6 +187,13 @@ export class InMemoryRentasRepository implements RentasRepository {
   private readonly ownerStatements: StoredOwnerStatement[] = [];
   private readonly payouts = new Map<string, StoredPayout>();
 
+  // ---- Correo transaccional al huésped (Fase 9) ----
+  /** `organization.name` -- no vive en el calendar store (no es un concepto de
+   *  calendario), mismo criterio que `domain-citas::InMemoryCitasRepository.
+   *  organizations`. */
+  private readonly organizaciones = new Map<string, { name: string }>();
+  private readonly messagingOutbox = new Map<string, StoredMessagingOutboxRow>();
+
   constructor(private readonly calendarStore: InMemoryRentasCalendarStore = new InMemoryRentasCalendarStore()) {}
 
   // ---- seeding ----
@@ -179,6 +204,18 @@ export class InMemoryRentasRepository implements RentasRepository {
 
   seedOwner(owner: OwnerRecord): void {
     this.owners.set(owner.id, owner);
+  }
+
+  /** Fase 9 -- nombre del tenant para el correo transaccional (`tenantNombre`, ver
+   *  findOcupacionParaCorreo). Sin seed, cae a "atiende" (nunca lanza). */
+  seedOrganizacion(organizationId: string, name: string): void {
+    this.organizaciones.set(organizationId, { name });
+  }
+
+  /** Solo para tests -- inspecciona el outbox de correo encolado (mismo rol que
+   *  `domain-citas::InMemoryCitasRepository.getOutbox`). */
+  getMessagingOutbox(): readonly StoredMessagingOutboxRow[] {
+    return [...this.messagingOutbox.values()];
   }
 
   /** Compatibilidad con la fixture de Fase 1 (`rentas-fixtures.ts`): descompone el
@@ -530,5 +567,52 @@ export class InMemoryRentasRepository implements RentasRepository {
     const fila = this.reservasFinancieroPorOcupacion.get(ocupacionId);
     if (!fila || fila.propertyId !== propertyId) return null;
     return fila.movimiento;
+  }
+
+  // ---- RentasRepository: correo transaccional al huésped (Fase 9) ----
+
+  async findOcupacionParaCorreo(organizationId: string, ocupacionId: string): Promise<OcupacionParaCorreo | null> {
+    const datos = this.calendarStore.findOcupacionParaCorreoDatos(organizationId, ocupacionId);
+    if (!datos) return null;
+    return { ...datos, tenantNombre: this.organizaciones.get(organizationId)?.name ?? "atiende" };
+  }
+
+  async listReservasProximasACheckIn(desdeFecha: string, hastaFecha: string): Promise<readonly ReservaProximaCheckIn[]> {
+    return this.calendarStore.listReservasProximasACheckIn(desdeFecha, hastaFecha).map((r) => ({ ocupacionId: r.id, organizationId: r.organizationId }));
+  }
+
+  async marcarRecordatorioCheckInEnviado(ocupacionId: string, enviadoEnIso: string): Promise<void> {
+    this.calendarStore.marcarRecordatorioCheckInEnviado(ocupacionId, enviadoEnIso);
+  }
+
+  async enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: MessagingOutboxChannel, eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    const existente = [...this.messagingOutbox.values()].find((o) => o.propertyId === propertyId && o.channel === channel && o.dedupeKey === dedupeKey);
+    if (existente) {
+      // Mismo criterio que `rentas.enqueue_messaging_outbox` real: un reintento sobre
+      // una fila ya 'sent'/'processing'/'dead' nunca pisa el payload -- solo
+      // 'pending'/'failed' se actualizan.
+      if (existente.status === "pending" || existente.status === "failed") {
+        existente.payload = payload;
+        existente.eventType = eventType;
+      }
+      return;
+    }
+    const id = randomUUID();
+    this.messagingOutbox.set(id, { id, propertyId, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0 });
+  }
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const claimable = [...this.messagingOutbox.values()].filter((o) => o.channel === "email" && (o.status === "pending" || o.status === "failed") && o.attempts < 5).slice(0, limit);
+    for (const job of claimable) {
+      job.status = "processing";
+      job.attempts += 1;
+    }
+    return claimable.map((o) => ({ id: o.id, propertyId: o.propertyId, organizationId: o.organizationId, attempts: o.attempts, payload: (o.payload ?? {}) as Record<string, unknown> }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", _error: string | null): Promise<void> {
+    const job = this.messagingOutbox.get(id);
+    if (!job || job.channel !== "email") return;
+    job.status = status;
   }
 }

@@ -84,6 +84,9 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
   coreRepo.addOrganization({ id: organizationId, slug: "rentas-de-prueba", name: "Rentas de Prueba", vertical: "rentas" });
   engine.seedProperty({ id: propertyId, organizationId });
   rentasOwnerPortalRepo.seedOrganization({ id: organizationId, name: "Rentas de Prueba", slug: "rentas-de-prueba" });
+  // Fase 9 -- nombre del tenant para el correo transaccional al huésped (ver
+  // findOcupacionParaCorreo/InMemoryRentasRepository.seedOrganizacion).
+  rentasRepo.seedOrganizacion(organizationId, "Rentas de Prueba");
 
   async function seedStaff(role: RentasVerticalRole, label: string, platformRole: "owner" | "admin" | "member" | "viewer") {
     const id = randomUUID();
@@ -101,7 +104,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
   const contadorSeed = await seedStaff("contador", "contador", "viewer");
 
   const unidadId = randomUUID();
-  rentasRepo.seedUnidad({ id: unidadId, organizationId, propertyId, duracionMinimaNoches: 1 });
+  rentasRepo.seedUnidad({ id: unidadId, organizationId, propertyId, duracionMinimaNoches: 1, name: "Depa de Prueba" });
   rentasRepo.seedPricingContext(unidadId, {
     unidadId,
     moneda: "MXN",

@@ -21,6 +21,8 @@ import type {
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
+  EmailOutboxJobRow,
+  MessagingOutboxChannel,
   MovimientoFinancieroReserva,
   NewDescuentoDuracionInput,
   NewGuestMinimoInput,
@@ -31,6 +33,7 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,
   OwnerRecord,
@@ -40,6 +43,7 @@ import type {
   ReglaCanal,
   ReglaMinStayRecord,
   ReservaParaStatement,
+  ReservaProximaCheckIn,
   TemporadaRecord,
   UltimaVersionOwnerStatement,
   UnidadRecord,
@@ -104,6 +108,24 @@ export interface RentasRepository {
   findCandidatasConciliacion(propertyId: string, canalId: string): Promise<CandidataConciliacion[]>;
   insertPayout(input: NewPayoutInput): Promise<{ id: string; creadoEn: string }>;
   findPayoutDetalle(propertyId: string, payoutId: string): Promise<PayoutDetalle | null>;
+
+  // ---- Correo transaccional al huésped (Fase 9) — ver
+  // reserva-email-notifications.ts/email-dispatch.ts/checkin-reminders.ts ----
+  /** Defensa en profundidad: `organizationId` acota la búsqueda (mismo criterio que
+   *  `domain-citas::findAppointmentForOrganization`) — nunca resuelve una ocupación de
+   *  otro tenant a partir de solo el id. */
+  findOcupacionParaCorreo(organizationId: string, ocupacionId: string): Promise<OcupacionParaCorreo | null>;
+  /** Reservas directas `capa='reserva' AND estado='confirmado'` cuyo check-in cae en
+   *  `[desdeFecha, hastaFecha]` (ambos extremos inclusivos, `YYYY-MM-DD`) y que
+   *  todavía no recibieron el recordatorio (`recordatorio_checkin_enviado_en IS
+   *  NULL`) — barrido GLOBAL de la plataforma (sin loop por organización, mismo
+   *  criterio que `rentasIcalSyncCronRoutes::listFeedsActivos`), nunca acotado a un
+   *  solo tenant. */
+  listReservasProximasACheckIn(desdeFecha: string, hastaFecha: string): Promise<readonly ReservaProximaCheckIn[]>;
+  marcarRecordatorioCheckInEnviado(ocupacionId: string, enviadoEnIso: string): Promise<void>;
+  enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: MessagingOutboxChannel, eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
+  claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
+  completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
 }
 
 export type {
@@ -112,6 +134,8 @@ export type {
   ConfiguracionComisionCanal,
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
+  EmailOutboxJobRow,
+  MessagingOutboxChannel,
   MovimientoFinancieroReserva,
   NewDescuentoDuracionInput,
   NewGuestMinimoInput,
@@ -122,6 +146,7 @@ export type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,
   OwnerRecord,
@@ -131,6 +156,7 @@ export type {
   ReglaCanal,
   ReglaMinStayRecord,
   ReservaParaStatement,
+  ReservaProximaCheckIn,
   TemporadaRecord,
   UltimaVersionOwnerStatement,
   UnidadRecord,

@@ -15,6 +15,8 @@ import type {
   ContextoPricingUnidad,
   DescuentoDuracion,
   DescuentoDuracionRecord,
+  EmailOutboxJobRow,
+  MessagingOutboxChannel,
   MovimientoFinancieroReserva,
   NewDescuentoDuracionInput,
   NewGuestMinimoInput,
@@ -25,6 +27,7 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,
   OwnerRecord,
@@ -35,6 +38,7 @@ import type {
   ReglaMinStay,
   ReglaMinStayRecord,
   ReservaParaStatement,
+  ReservaProximaCheckIn,
   TemporadaRecord,
   TemporadaTarifa,
   UltimaVersionOwnerStatement,
@@ -674,5 +678,84 @@ export class PostgresRentasRepository implements RentasRepository {
       },
       lineas,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Correo transaccional al huésped (Fase 9) -- ver
+  // migrations/011_rentas_email_outbox.sql.
+  // ---------------------------------------------------------------------------
+
+  async findOcupacionParaCorreo(organizationId: string, ocupacionId: string): Promise<OcupacionParaCorreo | null> {
+    const { rows } = await this.db.query<{
+      ocupacion_id: string;
+      property_id: string;
+      organization_id: string;
+      capa: "reserva" | "bloqueo";
+      estado: OcupacionParaCorreo["estado"];
+      inicio: string;
+      fin: string;
+      unidad_nombre: string;
+      tenant_nombre: string;
+      huesped_nombre: string | null;
+      huesped_contacto: string | null;
+    }>(
+      `select o.id as ocupacion_id, o.property_id, o.organization_id, o.capa, o.estado,
+              lower(o.rango)::text as inicio, upper(o.rango)::text as fin,
+              coalesce(u.name, 'tu alojamiento') as unidad_nombre,
+              org.name as tenant_nombre,
+              g.nombre as huesped_nombre, g.contacto as huesped_contacto
+       from rentas.ocupacion o
+       join rentas.unidad u on u.id = o.unidad_id
+       join core.organization org on org.id = o.organization_id
+       left join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+       where o.id = $2 and o.organization_id = $1;`,
+      [organizationId, ocupacionId],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      ocupacionId: row.ocupacion_id,
+      propertyId: row.property_id,
+      organizationId: row.organization_id,
+      capa: row.capa,
+      estado: row.estado,
+      rango: { inicio: row.inicio, fin: row.fin },
+      unidadNombre: row.unidad_nombre,
+      tenantNombre: row.tenant_nombre,
+      huespedNombre: row.huesped_nombre,
+      huespedContacto: row.huesped_contacto,
+    };
+  }
+
+  async listReservasProximasACheckIn(desdeFecha: string, hastaFecha: string): Promise<readonly ReservaProximaCheckIn[]> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string }>(
+      `select id, organization_id from rentas.ocupacion
+       where capa = 'reserva' and estado = 'confirmado'
+         and recordatorio_checkin_enviado_en is null
+         and lower(rango) >= $1 and lower(rango) <= $2
+       order by lower(rango) asc;`,
+      [desdeFecha, hastaFecha],
+    );
+    return rows.map((r) => ({ ocupacionId: r.id, organizationId: r.organization_id }));
+  }
+
+  async marcarRecordatorioCheckInEnviado(ocupacionId: string, enviadoEnIso: string): Promise<void> {
+    await this.db.query(`update rentas.ocupacion set recordatorio_checkin_enviado_en = $2 where id = $1;`, [ocupacionId, enviadoEnIso]);
+  }
+
+  async enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: MessagingOutboxChannel, eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    await this.db.query(`select rentas.enqueue_messaging_outbox($1, $2, $3, $4, $5, $6::jsonb);`, [propertyId, organizationId, channel, eventType, dedupeKey, JSON.stringify(payload)]);
+  }
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const { rows } = await this.db.query<{ id: string; property_id: string; organization_id: string; attempts: number; payload: Record<string, unknown> }>(
+      `select id, property_id, organization_id, attempts, payload from rentas.claim_email_outbox_batch($1);`,
+      [limit],
+    );
+    return rows.map((r) => ({ id: r.id, propertyId: r.property_id, organizationId: r.organization_id, attempts: r.attempts, payload: r.payload ?? {} }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    await this.db.query(`select rentas.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
   }
 }
