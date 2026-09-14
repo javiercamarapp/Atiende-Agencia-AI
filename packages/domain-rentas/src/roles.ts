@@ -46,6 +46,25 @@ export const FINANZAS_LECTURA_ROLES: readonly RentasVerticalRole[] = ["admin_ges
 export const SYNC_CALENDARIO_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
 export const SYNC_CALENDARIO_LECTURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario"];
 
+// Mensajería al huésped (Fase 7, packages/domain-rentas/src/mensajeria + src/agentes):
+// generar/aprobar/rechazar un borrador es una acción sobre la conversación con el
+// huésped, mismo criterio de "quién puede tocar mensajería" que el propio nombre del
+// rol ya declara (`operador:calendario_mensajeria`) -- el conjunto de roles coincide
+// hoy con ESCRITURA_CALENDARIO_ROLES pero se declara aparte, a propósito, porque son
+// conceptos de negocio DISTINTOS (calendario vs. mensajería) que solo comparten
+// alcance por ahora; que un tenant futuro separe estos dos permisos no debe requerir
+// tocar la constante de calendario. `contador`/`limpieza`/`operador:solo_calendario`
+// nunca generan/aprueban/rechazan un borrador -- mismo principio que D-006 del origen
+// (aprobación humana obligatoria, restringida a quien puede escribir la conversación).
+export const MENSAJERIA_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
+
+// Plantillas de mensajería (H-056): la APROBACIÓN de una plantilla para programación
+// automática es una decisión de negocio a nivel de tenant, acotada a `admin_gestora`
+// (mismo criterio que PRICING_ESCRITURA_ROLES) -- un operador puede proponer/editar el
+// cuerpo de una plantilla (MENSAJERIA_ESCRITURA_ROLES) pero nunca marcarla
+// `aprobadaPorTenant: true` él mismo.
+export const MENSAJERIA_PLANTILLA_APROBACION_ROLES: readonly RentasVerticalRole[] = ["admin_gestora"];
+
 // Pricing (Fase 2, Flujo 4): mismo criterio que ROLES_ADMIN del origen
 // (`exigirRol(auth, ...ROLES_ADMIN)` en las 5 rutas de pricing.ts) recortado a
 // `admin_gestora` -- `superadmin` está fuera de fase (depende de

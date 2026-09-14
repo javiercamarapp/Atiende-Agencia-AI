@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (57 migraciones, timestamps 20240101000001 .. 20240101000057)
+## Orden actual (58 migraciones, timestamps 20240101000001 .. 20240101000058)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -48,6 +48,7 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 55. `packages/domain-hoteles/migrations/008_night_audit.sql` — Fase 6 hoteles (night audit propio, REQ-REV-013).
 56. `packages/domain-hoteles/migrations/009_housekeeping_mantenimiento_turnos.sql` — Fase 6 hoteles (tickets de mantenimiento + turnos de camaristas, REQ-HK-008/011).
 57. `packages/domain-rentas/migrations/008_ical_sync_schema.sql` — Fase 5 rentas: sincronización de calendario por canal (feeds iCal externos de Airbnb/Booking.com/VRBO, bookkeeping de versión/anti-eco, cuarentena).
+58. `packages/domain-rentas/migrations/009_rentas_mensajeria_schema.sql` — Fase 7 rentas: mensajería con huésped (borrador de IA + aprobación humana obligatoria) — `rentas.conversacion`/`rentas.mensaje`/`rentas.borrador_mensaje` (property-scoped) + `rentas.plantilla_mensaje` (organization-scoped).
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.

@@ -59,7 +59,7 @@ import type { DespachosRepository } from "@atiende/domain-despachos";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RentasRepository } from "@atiende/domain-rentas";
-import { PostgresRentasRepository, PostgresRentasCalendarSyncRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
+import { PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
 import { openManagedPostgres } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
@@ -232,6 +232,9 @@ export function buildProductionDeps(): AppDeps {
     // plataforma pendiente.
     rentasCalendarSyncRepo: (db) => new PostgresRentasCalendarSyncRepository(db),
     rentasIcalFeedPort: new RealIcalFeedPort(),
+    // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS
+    // por-request real, ningún stub (ver migrations/009_rentas_mensajeria_schema.sql).
+    rentasMensajeriaRepo: (db) => new PostgresRentasMensajeriaRepository(db),
     // Los 5 métodos de solo lectura del portal SÍ quedan reales aquí (sesión RLS
     // por-request, igual que el resto). Los otros 3 (credenciales/invitaciones)
     // requieren una sesión de `service_role` que este monorepo no aprovisiona

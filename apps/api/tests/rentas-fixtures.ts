@@ -11,12 +11,13 @@ import { hashPassword, InMemoryCoreRepository } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
 import type { RentasVerticalRole } from "@atiende/domain-rentas";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
+import type { LlmGateway } from "@atiende/agent-core";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -43,6 +44,9 @@ export interface RentasTestContext {
   /** Fase 5 -- doble en memoria del canal externo (Airbnb/Booking/...), para que un
    * test configure escenarios (`definirEscenario`) sin tocar la red. */
   readonly rentasIcalFeedPort: FakeIcalFeedPort;
+  /** Fase 7 -- referencia tipada al repositorio de mensajería (conversaciones/
+   * mensajes/borradores/plantillas), mismo criterio que `rentasRepo` arriba. */
+  readonly rentasMensajeriaRepo: InMemoryRentasMensajeriaRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly unidadId: string;
@@ -65,7 +69,7 @@ async function signInAndGetToken(app: TestApp, email: string, password: string):
   return body.token;
 }
 
-export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<RentasTestContext> {
+export async function buildRentasTestContext(buildApp: BuildAppFn, options: { llmGateway?: LlmGateway } = {}): Promise<RentasTestContext> {
   const coreRepo = new InMemoryCoreRepository();
   const calendarStore = new InMemoryRentasCalendarStore();
   const engine = new InMemoryRentasTenancyEngine(calendarStore);
@@ -73,6 +77,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
   const rentasOwnerPortalRepo = new InMemoryRentasOwnerPortalRepository();
   const rentasCalendarSyncRepo = new InMemoryRentasCalendarSyncRepository(calendarStore);
   const rentasIcalFeedPort = new FakeIcalFeedPort();
+  const rentasMensajeriaRepo = new InMemoryRentasMensajeriaRepository();
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
@@ -123,7 +128,8 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepo,
     rentasCalendarSyncRepo: (_db) => rentasCalendarSyncRepo,
     rentasIcalFeedPort: rentasIcalFeedPort,
-    llmGateway: undefined,
+    rentasMensajeriaRepo: (_db) => rentasMensajeriaRepo,
+    llmGateway: options.llmGateway,
     citasRepo: (_db) => new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
@@ -153,6 +159,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
     rentasOwnerPortalRepo,
     rentasCalendarSyncRepo,
     rentasIcalFeedPort,
+    rentasMensajeriaRepo,
     organizationId,
     propertyId,
     unidadId,
