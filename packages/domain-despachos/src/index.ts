@@ -142,6 +142,26 @@ export type {
 export type { ClasificacionDeposito, ResultadoClasificacionDeposito, CasoDepositoSospechoso, BalanceIva } from "./conciliacion/classification.ts";
 export type { ResultadoVerificacionSpei, VerificadorSpeiExternoPort, ConsultaSpeiInput, ConsultaSpeiResultado } from "./conciliacion/spei-matching.ts";
 
+// ---- Conciliación bancaria — nivel 4 asistido por LLM (Fase 11) ----
+export {
+  DEFAULT_DESPACHOS_CONCILIACION_LLM_ROLE,
+  TOKEN_PRE_FILTER_THRESHOLD as TOKEN_PRE_FILTER_THRESHOLD_CONCILIACION_LLM,
+  sugerirMatchesLLM,
+  aprobarSugerenciaLLM,
+  resolverIndiceOriginal,
+  ActorSinPermisoParaConciliacionLLMError,
+  SugerenciaLLMFallidaError,
+  RespuestaLLMInvalidaError,
+  AprobacionSugerenciaLLMRechazadaError,
+} from "./conciliacion/llm-matching-agent.ts";
+export type {
+  SugerenciaMatchLLM,
+  CoincidenciaConciliacionLLM,
+  MovimientoSinSugerenciaLLM,
+  ResultadoSugerenciasLLM,
+  SugerirMatchesLLMOptions,
+} from "./conciliacion/llm-matching-agent.ts";
+
 // ---- Migración de catálogo contable (Fase 5) ----
 export {
   normalizarTexto as normalizarTextoCatalogo,

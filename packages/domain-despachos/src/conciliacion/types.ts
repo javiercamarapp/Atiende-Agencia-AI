@@ -5,8 +5,11 @@
 // establecida en `nomina/`/`declaraciones/` (Spanish-first para conceptos nuevos).
 
 /** Nivel del algoritmo de matching que produjo una coincidencia — `MatchLevel` en el
- * origen. "llm" se mantiene en el vocabulario por paridad de tipos aunque esta fase
- * no lo implementa (ver `matching-engine.ts`, nivel 4 documentado como no portado). */
+ * origen. "llm" es el nivel 4 (asistido por IA con aprobación humana obligatoria, ver
+ * `llm-matching-agent.ts`) — a diferencia de niveles 1-3 (`matching-engine.ts`, 100%
+ * deterministas), un `CoincidenciaConciliacion` con `level: "llm"` SOLO puede
+ * construirse vía `aprobarSugerenciaLLM()`, nunca directamente desde la respuesta del
+ * modelo. */
 export type NivelCoincidencia = "exacto" | "fuzzy" | "multi_linea" | "llm" | "manual";
 
 export type SeveridadAlerta = "info" | "warning" | "critical";
@@ -73,8 +76,13 @@ export interface ResultadoConciliacion {
 
 /** Parámetros del motor — `MatchingEngine.__init__` / `UploadRequest` en el origen.
  * Los defaults son EXACTOS a los del origen (`date_tolerance_days=3`,
- * `monto_tolerance_pct=5.0`, `fuzzy_threshold=80`). El nivel 4 (LLM) del origen no se
- * porta en esta fase (ver `matching-engine.ts`, cabecera). */
+ * `monto_tolerance_pct=5.0`, `fuzzy_threshold=80`). Cubre SOLO niveles 1-3
+ * (deterministas, `conciliarMovimientos`) — el nivel 4 (LLM, `sugerirMatchesLLM` en
+ * `llm-matching-agent.ts`) es una capacidad aparte con su propio adaptador y opciones
+ * (`SugerirMatchesLLMOptions`), invocada explícitamente sobre `unmatchedBank`/
+ * `unmatchedBooks` del resultado de este motor — nunca mezclada en
+ * `OpcionesMatchingEngine` ni en el motor determinístico mismo (ver cabecera de
+ * `matching-engine.ts` y de `llm-matching-agent.ts`). */
 export interface OpcionesMatchingEngine {
   readonly dateToleranceDays?: number; // default 3
   readonly montoTolerancePct?: number; // default 5.0
