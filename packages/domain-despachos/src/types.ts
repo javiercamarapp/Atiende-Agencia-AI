@@ -5,6 +5,7 @@
 import type { HallazgoCfdi } from "@atiende/billing";
 import type { DiotResult } from "./cfdi/reglas-fiscales-avanzadas.ts";
 import type { EstadoVencimiento, NivelEscalamiento, PrioridadVencimiento, TipoVencimiento } from "./vencimientos/engine.ts";
+import type { CobranzaReminderStage } from "./cobranza/templates.ts";
 
 export type TipoComprobante = "I" | "E" | "T" | "P" | "N";
 
@@ -113,4 +114,61 @@ export interface DeadlineEscalationRecord {
   readonly level: NivelEscalamiento;
   readonly sentAt: string;
   readonly notes: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cobranza (Fase 10) — puerto de b2b_ai/services/collections.py. Una cuenta
+// por cobrar arranca el reloj de cobranza sobre un invoice tipo 'I' ya
+// ingerido (`despachos.invoice`, ver `cfdi/`) al registrarle una fecha de
+// vencimiento; deliberadamente NO se agrega esa fecha al invoice mismo
+// (`InvoiceRecord`/`NewInvoiceInput` no cambian en esta fase) para no romper
+// la superficie ya estable de ingesta/validación CFDI — un invoice puede
+// ingerirse sin que exista todavía (o nunca) una cuenta por cobrar asociada.
+// ---------------------------------------------------------------------------
+export interface ReceivableRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly invoiceId: string;
+  readonly fechaVencimiento: string; // "YYYY-MM-DD"
+  readonly montoPagado: number | null;
+  readonly pagadoEn: string | null; // ISO 8601, null = todavía pendiente
+  readonly createdAt: string;
+}
+
+export interface NewReceivableInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly invoiceId: string;
+  readonly fechaVencimiento: string;
+}
+
+/** Etapa de un evento de cobranza — las 5 etapas de la secuencia de
+ * recordatorios (ver `cobranza/templates.ts`) más 'respuesta' (port de
+ * `register_response`, cuando el deudor contesta fuera de la secuencia
+ * automática). */
+export type CollectionEventStage = CobranzaReminderStage | "respuesta";
+export type CollectionEventChannel = "email" | "whatsapp";
+
+/** Registro de auditoría de un recordatorio generado (o de una respuesta del
+ * deudor) — port de `collection_events`. Alimenta `scoreCobrabilidadCartera`
+ * (ver `cobranza/engine.ts`) como historial. */
+export interface CollectionEventRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly receivableId: string;
+  readonly etapa: CollectionEventStage;
+  readonly canal: CollectionEventChannel;
+  readonly respuesta: string | null; // p.ej. 'pagado' | 'promesa_pago', null si aún sin respuesta
+  readonly createdAt: string;
+}
+
+export interface NewCollectionEventInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly receivableId: string;
+  readonly etapa: CollectionEventStage;
+  readonly canal: CollectionEventChannel;
+  readonly respuesta: string | null;
 }
