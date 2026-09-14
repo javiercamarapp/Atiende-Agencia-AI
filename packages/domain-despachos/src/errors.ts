@@ -60,3 +60,21 @@ export class TareaCierreEstadoInvalidoError extends Error {
     this.name = "TareaCierreEstadoInvalidoError";
   }
 }
+
+// ---- Contabilidad electrónica SAT — catálogo/balanza/paquete (cierre de gap
+// "Motor de contabilidad electrónica SAT", ver
+// `contabilidad-electronica/paquete.ts`) ----
+
+/** Puerto de los `ValueError` que lanzan `marcar_timbrado`/`marcar_enviado`
+ * del origen (`contabilidad_electronica.py`) al transicionar desde un
+ * estado que no lo permite. `marcarListoParaTimbrar` en este puerto TAMBIÉN
+ * valida (ver nota de fidelidad en `paquete.ts`: el original no valida esa
+ * transición, se trata como un bug del origen, corregido y documentado —
+ * mismo criterio ya establecido por `cierre-mensual/engine.ts::cerrarPeriodo`
+ * para el bug análogo de re-cerrar un período `closed`). */
+export class TransicionPaqueteContabilidadInvalidaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TransicionPaqueteContabilidadInvalidaError";
+  }
+}
