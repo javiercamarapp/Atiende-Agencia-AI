@@ -99,6 +99,8 @@ export {
   VER_CIERRE_MENSUAL_ROLES,
   GESTIONAR_CIERRE_MENSUAL_ROLES,
   CERRAR_PERIODO_ROLES,
+  VER_COBRANZA_ROLES,
+  GESTIONAR_COBRANZA_ROLES,
   ADMIN_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
 } from "./roles.ts";
@@ -211,6 +213,8 @@ export {
   CierreValidacionError,
   TareaCierreEstadoInvalidoError,
   TransicionPaqueteContabilidadInvalidaError,
+  ReceivableAlreadyExistsError,
+  ReceivableAlreadyPaidError,
 } from "./errors.ts";
 
 // ---- Contabilidad electrónica SAT — catálogo/balanza/paquete Anexo 24
@@ -353,8 +357,47 @@ export type {
   FiscalDeadlineRecord,
   NewFiscalDeadlineInput,
   DeadlineEscalationRecord,
+  ReceivableRecord,
+  NewReceivableInput,
+  CollectionEventStage,
+  CollectionEventChannel,
+  CollectionEventRecord,
+  NewCollectionEventInput,
 } from "./types.ts";
 
 export type { DespachosRepository } from "./repository.ts";
 export { InMemoryDespachosRepository } from "./in-memory-repository.ts";
 export { PostgresDespachosRepository } from "./postgres-repository.ts";
+
+// ---- Cobranza automatizada (Fase 10) — puerto de b2b_ai/services/
+// collections.py + collections_report.py + collections_templates.py ----
+export {
+  COBRANZA_AGE_BUCKETS,
+  cobranzaAgeBucket,
+  diasVencidoCartera,
+  etapaRecordatorioCobranzaHoy,
+  scoreCobrabilidadCartera,
+  analizarCarteraCobranza,
+  reporteAntiguedadCartera,
+  proyeccionCobranza,
+  resumenCobranza,
+  construirRecordatorioCobranza,
+  COBRANZA_REMINDER_SEQUENCE,
+  COBRANZA_STAGE_OFFSET_DAYS,
+} from "./cobranza/engine.ts";
+export type {
+  CobranzaAgeBucket,
+  CuentaPorCobrarInput,
+  CuentaPorCobrarAnalizada,
+  CuentaPorCobrarConScore,
+  BucketCartera,
+  CarteraAnalizada,
+  ReporteAntiguedadCartera,
+  ProyeccionCobranza as ProyeccionCobranzaResultado,
+  ResumenCobranza as ResumenCobranzaResultado,
+  TopMontoCartera,
+  HistorialCobranzaEntry,
+  RecordatorioCobranza,
+  CobranzaReminderStage,
+} from "./cobranza/engine.ts";
+export { formatMontoCobranza, renderRecordatorioCobranza, renderAsuntoRecordatorioCobranza } from "./cobranza/templates.ts";
