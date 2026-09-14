@@ -12,3 +12,16 @@ export { runDiscoverTendersForOrganization, runDiscoverTendersSweep, DEFAULT_DIS
 export type { DiscoverTendersSourceResult, DiscoverTendersSweepResult, RunDiscoverTendersOptions } from "./jobs/licitaciones/discover-tenders.ts";
 export { runDeadlineReminderSweep } from "./jobs/licitaciones/deadline-reminders.ts";
 export type { DeadlineReminderSweepResult, RunDeadlineRemindersOptions } from "./jobs/licitaciones/deadline-reminders.ts";
+
+// Fase 10 licitaciones — despacho proactivo real (correo) de recordatorios de
+// plazo/alertas de renovación/facturas vencidas (ver
+// jobs/licitaciones/README.md).
+export { runRenewalAlertSweep, runCollectionAlertSweep, runAlertNotificationSweep } from "./jobs/licitaciones/alert-notifications.ts";
+export type {
+  RenewalAlertSweepResult,
+  RunRenewalAlertSweepOptions,
+  CollectionAlertSweepResult,
+  RunCollectionAlertSweepOptions,
+  AlertNotificationSweepResult,
+  RunAlertNotificationSweepOptions,
+} from "./jobs/licitaciones/alert-notifications.ts";

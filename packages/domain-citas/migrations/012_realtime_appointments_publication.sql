@@ -1,0 +1,34 @@
+-- Fase 10 citas — Supabase Realtime real para el panel admin (Agenda.tsx): cuando
+-- un miembro del staff cambia una cita, el panel de TODOS debe actualizarse sin
+-- refrescar a mano — gap real verificado contra el origen
+-- (citas-reservaciones/src/components/admin/AgendaSection.tsx:
+-- `.channel(agenda-${tenantId})` + `.on("postgres_changes", ...)`), que hasta esta
+-- migración no existía en ninguna forma en este monorepo (ver
+-- apps/web/src/verticals/citas/lib/realtime-client.ts).
+--
+-- Esta migración es la única pieza puramente aditiva/de configuración que hacía
+-- falta a nivel de base de datos: `citas.appointments` YA tenía RLS habilitado y
+-- la policy correcta desde 001_citas_schema.sql ("staff ve citas de su
+-- organización" using auth.uid() contra core.membership, con GRANT SELECT a
+-- `authenticated`) — Realtime reevalúa esa MISMA policy para decidir qué filas
+-- entrega por el socket, así que no hace falta ninguna policy nueva. Lo único que
+-- faltaba es agregar la tabla a la publicación lógica `supabase_realtime`
+-- (creada vacía por default en todo proyecto/stack de Supabase): sin esto,
+-- Postgres nunca emite el evento de replicación lógica que Realtime necesita para
+-- empezar, sin importar qué tan correcta sea la policy de RLS.
+--
+-- BLOQUEO REAL que esta migración NO resuelve (documentado, no fingido — ver
+-- cabecera completa de realtime-client.ts): para que la policy de arriba
+-- autorice de verdad al socket abierto desde el browser, el proyecto Supabase
+-- real tiene que verificar JWT HS256 firmados con el MISMO secreto que usa
+-- `signAccessToken` de @atiende/core-auth (env JWT_SECRET) — este monorepo nunca
+-- usa Supabase Auth, el panel abre sesión con un JWT propio (ver jwt.ts) y llama
+-- `client.realtime.setAuth(accessToken)` con ESE token. Esa alineación de
+-- secretos es una configuración del proyecto Supabase real (dashboard/API,
+-- "verify custom JWTs"), fuera del alcance de este repo y sin credenciales de
+-- administración de ese proyecto disponibles en esta rama. Sin ella, `auth.uid()`
+-- nunca resuelve para la conexión de Realtime y la policy ya existente deniega
+-- todo por default — falla cerrado, sin fuga de datos entre organizaciones; el
+-- panel sigue funcionando igual que antes (fetch manual tras cada acción propia)
+-- hasta que esa alineación exista.
+alter publication supabase_realtime add table citas.appointments;

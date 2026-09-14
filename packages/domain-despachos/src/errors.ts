@@ -78,3 +78,21 @@ export class TransicionPaqueteContabilidadInvalidaError extends Error {
     this.name = "TransicionPaqueteContabilidadInvalidaError";
   }
 }
+
+// ---- Cobranza (Fase 10) ----
+
+/** Port del criterio de idempotencia de `InvoiceAlreadyExistsError`: un
+ * mismo invoice nunca arranca el reloj de cobranza dos veces. */
+export class ReceivableAlreadyExistsError extends Error {
+  constructor(invoiceId: string) {
+    super(`Ya existe una cuenta por cobrar registrada para el invoice "${invoiceId}".`);
+    this.name = "ReceivableAlreadyExistsError";
+  }
+}
+
+export class ReceivableAlreadyPaidError extends Error {
+  constructor(message = "Esta cuenta por cobrar ya fue marcada como pagada.") {
+    super(message);
+    this.name = "ReceivableAlreadyPaidError";
+  }
+}

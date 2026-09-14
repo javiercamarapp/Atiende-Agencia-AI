@@ -14,6 +14,7 @@ import { hotelesNightAuditRoutes } from "./night-audit.ts";
 import { hotelesHousekeepingRoutes } from "./housekeeping.ts";
 import { hotelesAdminDiscoveryRoutes } from "./admin-discovery.ts";
 import { hotelesAsistenciaRoutes } from "./asistencia.ts";
+import { hotelesPlRoutes } from "./pl.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -31,5 +32,7 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesAdminDiscoveryRoutes(deps));
   // Fase 8 — REQ-BO-024 (LFT art.132 fr.XXXIV): checador de asistencia inalterable.
   app.route("/", hotelesAsistenciaRoutes(deps));
+  // Fase 10 — REQ-BO-010 (P0): back-office financiero, P&L USALI + punto de equilibrio dinámico.
+  app.route("/", hotelesPlRoutes(deps));
   return app;
 }

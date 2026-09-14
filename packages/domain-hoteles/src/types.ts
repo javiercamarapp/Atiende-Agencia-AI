@@ -5,6 +5,7 @@ import type { ChargeConcept } from "./folioEngine.ts";
 import type { AllergyDeclaredVia } from "./fnbAllergyGuard.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import type { FraudPattern } from "./fraude/deteccion.ts";
+import type { UsaliDepartment, UsaliExpenseCategory, UsaliRevenueDepartment } from "./pl/usaliPL.ts";
 
 export type FolioStatus = "abierto" | "cerrado";
 export type FolioCloseReason = "saldo_cero" | "cuenta_por_cobrar";
@@ -593,4 +594,68 @@ export interface NewStaffScheduleInput {
   readonly scheduledStart: string;
   readonly scheduledEnd: string;
   readonly authorizedOvertimeMinutes: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 10 — REQ-BO-010 (P0): back-office financiero, P&L USALI + punto de equilibrio
+// dinámico. `ExpenseEntryRecord` es la fila cruda de `hoteles.expense_entry`
+// (migrations/012_pl_usali.sql) -- el lado de GASTOS reales por departamento que
+// `packages/domain-hoteles/src/pl/usaliPL.ts` (capa pura) necesita para armar el
+// Summary Operating Statement; el lado de INGRESOS ya existe vía `ChargeRecord.
+// concept` (no requiere un tipo nuevo). Append-only (mismo criterio que
+// `ChargeRecord`/REQ-REC-004): un gasto registrado no se edita ni se borra, se
+// corrige con una contrapartida nueva.
+// ─────────────────────────────────────────────────────────────────────────
+export interface ExpenseEntryRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly department: UsaliDepartment;
+  readonly category: UsaliExpenseCategory;
+  readonly description: string;
+  readonly amount: number;
+  readonly expenseDate: string;
+  readonly createdBy: string | null;
+  readonly createdAt: string;
+}
+
+export interface NewExpenseEntryInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly department: UsaliDepartment;
+  readonly category: UsaliExpenseCategory;
+  readonly description: string;
+  readonly amount: number;
+  readonly expenseDate: string;
+  readonly createdBy: string | null;
+}
+
+/** Una fila de ingreso YA resuelta a departamento USALI para un `fecha` -- ver
+ *  `HotelesRepository.loadRevenueByDepartmentAndDateForPl` (`hoteles.charge`, con
+ *  `reverses_charge_id` resuelto al departamento del cargo ORIGINAL, 'propina'
+ *  excluida -- mismo mapeo que documenta migrations/012_pl_usali.sql). */
+export interface PlRevenueByDateRow {
+  readonly fecha: string;
+  readonly department: UsaliRevenueDepartment;
+  readonly revenue: number;
+}
+
+/** Una fila de gasto YA agregada por fecha desde `hoteles.expense_entry` -- ver
+ *  `HotelesRepository.loadExpensesByDepartmentAndDateForPl`. `department` cubre el
+ *  universo completo de `UsaliDepartment` (operados + no distribuidos + debajo de
+ *  GOP), a diferencia de `PlRevenueByDateRow` que solo cubre los operados. */
+export interface PlExpenseByDateRow {
+  readonly fecha: string;
+  readonly department: UsaliDepartment;
+  readonly category: UsaliExpenseCategory;
+  readonly amount: number;
+}
+
+/** Habitaciones-noche REALMENTE ocupadas y cobradas de un `fecha` (`hoteles.charge`
+ *  con `concept='hospedaje'` y `reversed_by is null`, agrupado por `stay_date`) -- ver
+ *  `HotelesRepository.loadOccupiedRoomNightsByDateForPl`. */
+export interface PlOccupiedRoomNightsByDateRow {
+  readonly fecha: string;
+  readonly roomNights: number;
+  readonly revenue: number;
 }

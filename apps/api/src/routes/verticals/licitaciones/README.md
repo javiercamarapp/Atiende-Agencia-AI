@@ -13,7 +13,7 @@ Archivos: `contracts.ts` (REQ-050/051, máquina de estados del contrato + metada
 - **Step-up/2FA real**: el repo original protegía las transiciones sensibles del contrato (rescindir/penalizar/marcar en inconformidad/modificar) y "marcar revisado" de una inconformidad con verificación en dos pasos (`lib/step-up.ts`). Este monorepo fusionado no tiene esa infraestructura para ningún vertical todavía -- el equivalente de esta fase es exigir `DECISION_ROLES`/`INCONFORMIDAD_REVIEW_ROLES` (más estrictos que `WRITE_ROLES`) en su lugar, documentado como un control más débil que 2FA real.
 - **REQ-054 "ronda 7" del origen** (análisis automatizado de causas de no adjudicación contra la matriz de requisitos, y el enlace automático autopsia→inconformidad vía `sourceAutopsyId`): no portado -- es valor agregado sobre el REQ-054 base (registrar la autopsia + lecciones aprendidas), no el requisito mismo.
 - **REQ-055 "convocatorias históricas de la misma entidad"**: el repo original enriquecía cada alerta de renovación con hasta 5 convocatorias previas de la misma `contracting_body` como contexto de apoyo. Esta fase detecta alertas únicamente a partir de `contracts.end_date` propio, sin ese enriquecimiento.
-- **Sin cola de trabajos (`jobs`)**: a diferencia del repo original, este monorepo no tiene un sistema de colas genérico para ningún vertical -- las "alertas" de cobranza (facturas vencidas) se calculan en vivo en cada lectura (`GET .../contract/receivables`), y las alertas de renovación se persisten directamente como filas consultables (`GET .../renewals/alerts`), nunca como un job encolado para un worker que no existe.
+- **Sin cola de trabajos (`jobs`)**: a diferencia del repo original, este monorepo no tiene un sistema de colas genérico para ningún vertical -- las "alertas" de cobranza (facturas vencidas) se calculan en vivo en cada lectura (`GET .../contract/receivables`), y las alertas de renovación se persisten directamente como filas consultables (`GET .../renewals/alerts`). **Actualizado en Fase 10** (ver sección propia abajo): ambas, más `tender_deadline_reminder` (Fase 8), ya tienen un barrido periódico real que las despacha proactivamente por correo -- lo que seguía faltando no era una cola de trabajos genérica (ese patrón de "ruta interna + scheduler externo" ya existía desde Fase 8), sino el DESPACHO -- que alguien tuviera que abrir el panel y consultarlas a mano.
 
 ## Fase 7 — endpoints nuevos para el backoffice web (gap: "el panel casi no existe")
 
@@ -56,3 +56,31 @@ Ningún endpoint de escritura nuevo en esta fase. El resto del panel visual
 de documentos, contratos/cobranza/inconformidades/autopsia/renovación) sigue
 sin pantalla -- ver la sección "Explícitamente fuera de esta fase" del README
 del lado web.
+
+## Fase 10 — despacho proactivo real de alertas (gap: "nadie las consulta")
+
+**`alertNotifications.ts`** (archivo nuevo): 2 rutas internas, mismo patrón
+gateado por `x-atiende-internal-secret` que `discover.ts` (Fase 8) --
+pensadas para un scheduler externo (Vercel Cron/Supabase Cron), este
+monorepo TODAVÍA no configura esa entrada en `vercel.json` (mismo estado que
+`discover.ts`/`citasRemindersRoutes`/`hotelesNightAuditRoutes` -- gap
+declarado, no silenciado, ver `apps/worker/src/jobs/licitaciones/README.md`):
+
+- **`POST /internal/licitaciones/alert-notifications`** -- el barrido real
+  (`@atiende/worker::runAlertNotificationSweep`): por cada organización
+  activa, escanea `tender_deadline_reminder` (Fase 8) + `renewal_alert`
+  (Fase 6) + facturas vencidas de `contract_invoice` (Fase 6) y ENCOLA un
+  correo real por cada alerta nueva al responsable (`owner`/`admin`) de la
+  organización -- antes de esta fase, las 3 eran solo registros que alguien
+  debía abrir el panel para consultar.
+- **`POST /internal/licitaciones/email-dispatch`** -- drena
+  `licitaciones.messaging_outbox` (`channel='email'`, migración 018) vía
+  Resend, MISMO motor real (`dispatchPendingEmailJobs`) que
+  `../citas/email-dispatch.ts`/`../rentas/email-dispatch.ts`, nunca
+  reinventado.
+
+Licitaciones NO es una de las 3 verticales con agente de WhatsApp
+(`@atiende/whatsapp-gateway` -- solo citas/hoteles/restaurantes, ver ese
+paquete), así que correo es el ÚNICO canal real disponible aquí; ver
+`packages/domain-licitaciones/src/alert-notifications.ts` para el detalle
+completo de esa decisión.

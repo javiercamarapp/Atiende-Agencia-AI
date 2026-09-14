@@ -271,3 +271,17 @@ export type { CsvRowEvent, CsvDataRow, CsvRowError, CsvParseResult } from "./con
 export { assertLegitimateCsvBody } from "./connectors/response-classifier.ts";
 export type { LicitacionesSourceConnector, TenderSourceIngestCandidate, DiscoverParams, ConnectorContext, ConnectorLogger, DroppedRowInfo } from "./connectors/types.ts";
 export type { TenderSourceIngestResult, TenderDeadlineReminderRecord, ScanDeadlineRemindersInput, ScanDeadlineRemindersResult } from "./repository.ts";
+
+// ---- Fase 10: despacho proactivo real (correo) de alertas ----
+export type { EmailOutboxJobRow, OrganizationNotificationRecipient, OverdueContractInvoiceAlert } from "./repository.ts";
+export { sendEmailOutboxJob, dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS } from "./email-dispatch.ts";
+export type { ResendConfig, EmailDispatchSummary } from "./email-dispatch.ts";
+export {
+  enqueueDeadlineReminderEmailsCore,
+  enqueueRenewalAlertEmailsCore,
+  enqueueOverdueInvoiceEmailsCore,
+  tryEnqueueDeadlineReminderEmails,
+  tryEnqueueRenewalAlertEmails,
+  tryEnqueueOverdueInvoiceEmails,
+} from "./alert-notifications.ts";
+export type { AlertEmailEnqueueResult } from "./alert-notifications.ts";

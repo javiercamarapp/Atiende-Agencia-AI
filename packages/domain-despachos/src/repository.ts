@@ -4,14 +4,18 @@
 // adaptador real de Postgres (sobre TenantDbSession, contra migrations/001). Ninguna
 // función de negocio de las rutas de apps/api toca SQL directamente.
 import type {
+  CollectionEventRecord,
   DeadlineEscalationRecord,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
   InvoiceReviewStatus,
+  NewCollectionEventInput,
   NewFiscalDeadlineInput,
   NewInvoiceInput,
   NewInvoiceReviewInput,
+  NewReceivableInput,
+  ReceivableRecord,
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
@@ -100,7 +104,31 @@ export interface DespachosRepository {
    * `engine.ts` (`completarTarea`/`autoCheckTareas`) devuelven la lista
    * COMPLETA recalculada, no un diff. */
   replaceTareasCierre(periodoId: string, tareas: readonly CloseTask[]): Promise<readonly CloseTask[]>;
+
+  // ---- Cobranza (Fase 10, REQ de paridad "agente de cobranza") ----
+  /** Arranca el reloj de cobranza de un invoice tipo 'I' ya ingerido.
+   * Lanza `ReceivableAlreadyExistsError` si ese invoice ya tiene una cuenta
+   * por cobrar registrada — mismo criterio de idempotencia que
+   * `insertInvoice`/`InvoiceAlreadyExistsError`. */
+  registerReceivable(input: NewReceivableInput): Promise<ReceivableRecord>;
+  findReceivable(propertyId: string, receivableId: string): Promise<ReceivableRecord | null>;
+  findReceivableByInvoice(propertyId: string, invoiceId: string): Promise<ReceivableRecord | null>;
+  /** `filter.pendiente=true` -> solo cuentas sin `pagadoEn` — la cartera
+   * vigente que alimenta `analizarCarteraCobranza`/aging/recordatorios (ver
+   * `cobranza/engine.ts`). Sin filtro, devuelve toda la cartera (incluida la
+   * ya pagada) para reportes históricos. */
+  listReceivables(propertyId: string, filter?: { readonly pendiente?: boolean }): Promise<readonly ReceivableRecord[]>;
+  /** Lanza `ReceivableAlreadyPaidError` si `pagadoEn` ya estaba fijado — una
+   * cuenta por cobrar se marca pagada una sola vez (mismo criterio de
+   * "transición de un solo sentido" que `InvoiceReviewAlreadyResolvedError`). */
+  markReceivablePaid(propertyId: string, receivableId: string, paidAtIso: string, montoPagado: number | null): Promise<ReceivableRecord>;
+  /** Registra un recordatorio generado (o una respuesta del deudor, etapa
+   * 'respuesta') para auditoría — el CONTENIDO del recordatorio lo genera
+   * `construirRecordatorioCobranza` (puro, sin DB); esto solo deja el
+   * rastro que después alimenta `scoreCobrabilidadCartera` como historial. */
+  insertCollectionEvent(input: NewCollectionEventInput): Promise<CollectionEventRecord>;
+  listCollectionEvents(propertyId: string, receivableId: string): Promise<readonly CollectionEventRecord[]>;
 }
 
-export type { InvoiceRecord, InvoiceReviewRecord, FiscalDeadlineRecord, DeadlineEscalationRecord } from "./types.ts";
+export type { InvoiceRecord, InvoiceReviewRecord, FiscalDeadlineRecord, DeadlineEscalationRecord, ReceivableRecord, CollectionEventRecord } from "./types.ts";
 export type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";

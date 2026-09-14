@@ -4,18 +4,24 @@
 // esquema `despachos` de migrations/001 (RLS real vía `core.has_property_access`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { HallazgoCfdi } from "@atiende/billing";
-import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError } from "./errors.ts";
+import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import type { DespachosRepository } from "./repository.ts";
 import type {
   CategoriaContable,
+  CollectionEventChannel,
+  CollectionEventRecord,
+  CollectionEventStage,
   DeadlineEscalationRecord,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
   InvoiceReviewStatus,
+  NewCollectionEventInput,
   NewFiscalDeadlineInput,
   NewInvoiceInput,
   NewInvoiceReviewInput,
+  NewReceivableInput,
+  ReceivableRecord,
   TipoComprobante,
 } from "./types.ts";
 import type { DiotResult } from "./cfdi/reglas-fiscales-avanzadas.ts";
@@ -58,6 +64,54 @@ function mapMapeoMigracion(row: MapeoMigracionRawRow): MapeoMigracionCuenta {
     estrategiaConciliacionSaldos: row.estrategia_conciliacion_saldos,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+interface ReceivableRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  invoice_id: string;
+  fecha_vencimiento: string;
+  monto_pagado: string | null;
+  pagado_en: string | null;
+  created_at: string;
+}
+
+function mapReceivable(row: ReceivableRawRow): ReceivableRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    invoiceId: row.invoice_id,
+    fechaVencimiento: row.fecha_vencimiento,
+    montoPagado: row.monto_pagado === null ? null : Number(row.monto_pagado),
+    pagadoEn: row.pagado_en,
+    createdAt: row.created_at,
+  };
+}
+
+interface CollectionEventRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  receivable_id: string;
+  etapa: CollectionEventStage;
+  canal: CollectionEventChannel;
+  respuesta: string | null;
+  created_at: string;
+}
+
+function mapCollectionEvent(row: CollectionEventRawRow): CollectionEventRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    receivableId: row.receivable_id,
+    etapa: row.etapa,
+    canal: row.canal,
+    respuesta: row.respuesta,
+    createdAt: row.created_at,
   };
 }
 
@@ -570,5 +624,75 @@ export class PostgresDespachosRepository implements DespachosRepository {
       if (rows[0]) out.push(mapTareaCierre(rows[0]));
     }
     return out;
+  }
+
+  // ---- Cobranza (Fase 10) ----
+
+  async registerReceivable(input: NewReceivableInput): Promise<ReceivableRecord> {
+    try {
+      const { rows } = await this.db.query<ReceivableRawRow>(
+        `insert into despachos.receivable (organization_id, property_id, invoice_id, fecha_vencimiento)
+         values ($1, $2, $3, $4) returning *;`,
+        [input.organizationId, input.propertyId, input.invoiceId, input.fechaVencimiento],
+      );
+      return mapReceivable(rows[0]!);
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ReceivableAlreadyExistsError(input.invoiceId);
+      throw err;
+    }
+  }
+
+  async findReceivable(propertyId: string, receivableId: string): Promise<ReceivableRecord | null> {
+    const { rows } = await this.db.query<ReceivableRawRow>(`select * from despachos.receivable where id = $1 and property_id = $2;`, [receivableId, propertyId]);
+    return rows[0] ? mapReceivable(rows[0]) : null;
+  }
+
+  async findReceivableByInvoice(propertyId: string, invoiceId: string): Promise<ReceivableRecord | null> {
+    const { rows } = await this.db.query<ReceivableRawRow>(`select * from despachos.receivable where invoice_id = $1 and property_id = $2;`, [invoiceId, propertyId]);
+    return rows[0] ? mapReceivable(rows[0]) : null;
+  }
+
+  async listReceivables(propertyId: string, filter?: { readonly pendiente?: boolean }): Promise<readonly ReceivableRecord[]> {
+    if (filter?.pendiente) {
+      const { rows } = await this.db.query<ReceivableRawRow>(
+        `select * from despachos.receivable where property_id = $1 and pagado_en is null order by fecha_vencimiento asc;`,
+        [propertyId],
+      );
+      return rows.map(mapReceivable);
+    }
+    const { rows } = await this.db.query<ReceivableRawRow>(`select * from despachos.receivable where property_id = $1 order by fecha_vencimiento asc;`, [propertyId]);
+    return rows.map(mapReceivable);
+  }
+
+  async markReceivablePaid(propertyId: string, receivableId: string, paidAtIso: string, montoPagado: number | null): Promise<ReceivableRecord> {
+    const { rows } = await this.db.query<ReceivableRawRow>(
+      `update despachos.receivable set pagado_en = $1, monto_pagado = $2
+       where id = $3 and property_id = $4 and pagado_en is null
+       returning *;`,
+      [paidAtIso, montoPagado, receivableId, propertyId],
+    );
+    if (!rows[0]) {
+      const existing = await this.findReceivable(propertyId, receivableId);
+      if (!existing) throw new Error(`Cuenta por cobrar ${receivableId} no encontrada.`);
+      throw new ReceivableAlreadyPaidError();
+    }
+    return mapReceivable(rows[0]);
+  }
+
+  async insertCollectionEvent(input: NewCollectionEventInput): Promise<CollectionEventRecord> {
+    const { rows } = await this.db.query<CollectionEventRawRow>(
+      `insert into despachos.collection_event (organization_id, property_id, receivable_id, etapa, canal, respuesta)
+       values ($1, $2, $3, $4, $5, $6) returning *;`,
+      [input.organizationId, input.propertyId, input.receivableId, input.etapa, input.canal, input.respuesta],
+    );
+    return mapCollectionEvent(rows[0]!);
+  }
+
+  async listCollectionEvents(propertyId: string, receivableId: string): Promise<readonly CollectionEventRecord[]> {
+    const { rows } = await this.db.query<CollectionEventRawRow>(
+      `select * from despachos.collection_event where property_id = $1 and receivable_id = $2 order by created_at asc;`,
+      [propertyId, receivableId],
+    );
+    return rows.map(mapCollectionEvent);
   }
 }
