@@ -1,18 +1,28 @@
-// Agenda del panel de citas (Fase 5/7) — vista mes/semana de citas REALES (GET
+// Agenda del panel de citas (Fase 5/7/10) — vista mes/semana de citas REALES (GET
 // /v1/citas/properties/:propertyId/appointments, Fase 5 — admin.ts), agrupadas por
 // día. Fase 5 solo ofrecía cancelar (appointments-lifecycle.ts); Fase 7 agrega
 // confirmar/completar/marcar no-show — mismo patrón de botón condicionado por
 // estado. El panel sigue sin reagendar ni reasignar hoy (esas dos solo las
-// ejecuta el agente, ver ese mismo archivo) y sigue sin tiempo real: la agenda se
-// vuelve a pedir tras cada acción de escritura (`load()`), nunca vía suscripción
-// (gap conocido y documentado, ver resumen de la fase — Supabase Realtime del
-// origen no se portó).
+// ejecuta el agente, ver ese mismo archivo).
+//
+// Fase 10 — tiempo real: además del refetch tras cada acción propia (`load()`,
+// sin cambios), la agenda ahora se suscribe a Supabase Realtime
+// (`subscribeToAppointmentChanges`, ver realtime-client.ts) sobre
+// `citas.appointments` filtrado por `organization_id`, para que un cambio hecho
+// por OTRO miembro del staff dispare el mismo `load()` sin que haga falta
+// refrescar a mano — puerto real del patrón del origen
+// (AgendaSection.tsx: `.channel(agenda-${tenantId})` + nonce). Ver la cabecera de
+// realtime-client.ts para el bloqueo real documentado (alineación del secreto
+// JWT del proyecto Supabase, fuera del alcance de este repo) — sin esa
+// alineación la suscripción no entrega eventos (falla cerrado) y este `load()`
+// tras acción propia sigue siendo, en la práctica, el único refresco real.
 import { useEffect, useMemo, useState } from "react";
 import { cancelAppointment, completeAppointment, confirmAppointment, fetchAppointments, markAppointmentNoShow } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
 import type { ProviderSummary } from "../lib/providers-client.ts";
 import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatTimeRange } from "../lib/format.ts";
+import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 type ViewMode = "month" | "week";
@@ -66,7 +76,7 @@ const NO_SHOW_STATUSES = new Set(["pending", "confirmed"]);
 
 type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show";
 
-export function AgendaPage({ apiBaseUrl, token, propertyId }: CitasShellContext) {
+export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellContext) {
   const [view, setView] = useState<ViewMode>("month");
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
@@ -77,6 +87,10 @@ export function AgendaPage({ apiBaseUrl, token, propertyId }: CitasShellContext)
   // Una sola acción de ciclo de vida en vuelo a la vez, por cita — mismo criterio
   // que el `cancellingId` original, generalizado a las 4 acciones del panel.
   const [pendingAction, setPendingAction] = useState<{ id: string; action: LifecycleAction } | null>(null);
+  // Fase 10 — se incrementa cuando Realtime avisa un cambio ajeno; entra al
+  // arreglo de dependencias del efecto de `load()` de abajo para disparar el
+  // mismo refetch, mismo patrón que el `recargarNonce` del origen.
+  const [realtimeNonce, setRealtimeNonce] = useState(0);
 
   const range = useMemo(() => computeRange(anchor, view), [anchor, view]);
 
@@ -103,9 +117,19 @@ export function AgendaPage({ apiBaseUrl, token, propertyId }: CitasShellContext)
     // `load` se recrea cada render (depende de `providerFilter`, ya en el arreglo
     // de dependencias) — mismo criterio que Dashboard.tsx de restaurantes: este
     // proyecto no tiene configurado eslint-plugin-react-hooks, así que no hace
-    // falta silenciar nada.
+    // falta silenciar nada. `realtimeNonce` dispara el mismo `load()` cuando
+    // Realtime avisa un cambio ajeno (Fase 10, ver efecto de abajo).
     void load();
-  }, [apiBaseUrl, token, propertyId, range.fromIso, range.toIso, providerFilter]);
+  }, [apiBaseUrl, token, propertyId, range.fromIso, range.toIso, providerFilter, realtimeNonce]);
+
+  useEffect(() => {
+    // Fase 10 — Realtime nunca es la fuente de datos (ver cabecera de
+    // realtime-client.ts): el callback ignora el payload del evento y solo
+    // dispara el mismo refetch autenticado de siempre incrementando el nonce.
+    // Sin `orgId` (organización aún no resuelta) no hay nada a qué suscribirse.
+    if (!orgId) return;
+    return subscribeToAppointmentChanges(orgId, token, () => setRealtimeNonce((n) => n + 1));
+  }, [orgId, token]);
 
   async function runLifecycleAction(appointmentId: string, action: LifecycleAction, confirmMessage: string | null, run: () => Promise<AppointmentSummary>, errorFallback: string) {
     if (confirmMessage && !window.confirm(confirmMessage)) return;
