@@ -63,6 +63,11 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const propertyId = randomUUID();
   coreRepo.addOrganization({ id: organizationId, slug: "hotel-de-prueba", name: "Hotel de Prueba", vertical: "hoteles" });
   engine.seedProperty({ id: propertyId, organizationId });
+  // Fase 7 — espejo de solo-lectura para GET /v1/hoteles/:orgSlug/admin/propiedades
+  // (ver domain-hoteles/src/in-memory-repository.ts, comentario de cabecera de
+  // `organizations`/`properties`: no comparte almacenamiento con `coreRepo`/`engine`).
+  hotelesRepo.seedOrganization({ id: organizationId, slug: "hotel-de-prueba", name: "Hotel de Prueba" });
+  hotelesRepo.seedPropertySummary(organizationId, { propertyId, name: "Hotel de Prueba — Matriz" });
 
   async function seedStaff(role: "owner" | "gm" | "frontdesk" | "reservations" | "housekeeping" | "maintenance" | "fnb" | "accountant", label: string) {
     const id = randomUUID();
