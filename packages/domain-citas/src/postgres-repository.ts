@@ -27,6 +27,8 @@ import type {
   CalendarProviderSyncStatus,
   CancelResult,
   CitasRepository,
+  CompleteResult,
+  ConfirmResult,
   ConnectProviderCalComAccountInput,
   ConnectProviderCalDavAccountInput,
   ConnectProviderCalendarAccountInput,
@@ -38,6 +40,7 @@ import type {
   EmergencyEscalationRecord,
   MessagingOutboxRow,
   NewAppointmentInput,
+  NoShowResult,
   ProviderCalComAccountRecord,
   ProviderCalDavAccountRecord,
   ReassignResult,
@@ -425,6 +428,50 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async cancelAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<CancelResult> {
     return this.runCancelRpc("cancel_appointment_from_panel", organizationId, appointmentId);
+  }
+
+  // ---- Fase 7 -- confirmar/completar/marcar no-show desde el panel de staff
+  // (migrations/010_appointment_status_transitions.sql). Mismo patrón EXACTO que
+  // runCancelRpc: RPC atómica real, AT404/AT409 mapeados a valores discriminados,
+  // nunca excepciones crudas de Postgres saliendo del adaptador. ----
+
+  async confirmAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<ConfirmResult> {
+    try {
+      const { rows } = await this.db.query<{ result: AppointmentRow }>(`select citas.confirm_appointment_from_panel($1, $2) as result;`, [organizationId, appointmentId]);
+      const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
+      return { outcome: appointment.status === "confirmed" ? "confirmed" : "already_confirmed", appointment };
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+      if (code === "AT404") return { outcome: "not_found" };
+      if (code === "AT409") return { outcome: "conflict_invalid_status", status: "completed" };
+      throw err;
+    }
+  }
+
+  async completeAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<CompleteResult> {
+    try {
+      const { rows } = await this.db.query<{ result: AppointmentRow }>(`select citas.complete_appointment_from_panel($1, $2) as result;`, [organizationId, appointmentId]);
+      const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
+      return { outcome: appointment.status === "completed" ? "completed" : "already_completed", appointment };
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+      if (code === "AT404") return { outcome: "not_found" };
+      if (code === "AT409") return { outcome: "conflict_invalid_status", status: "cancelled" };
+      throw err;
+    }
+  }
+
+  async markAppointmentNoShowFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<NoShowResult> {
+    try {
+      const { rows } = await this.db.query<{ result: AppointmentRow }>(`select citas.mark_appointment_no_show_from_panel($1, $2) as result;`, [organizationId, appointmentId]);
+      const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
+      return { outcome: appointment.status === "no_show" ? "marked_no_show" : "already_no_show", appointment };
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+      if (code === "AT404") return { outcome: "not_found" };
+      if (code === "AT409") return { outcome: "conflict_invalid_status", status: "cancelled" };
+      throw err;
+    }
   }
 
   async rescheduleAppointmentIdempotent(organizationId: string, appointmentId: string, newStartsAt: string, newEndsAt: string, actorChannel: AppointmentActorChannel, actorNote: string | null): Promise<RescheduleResult> {

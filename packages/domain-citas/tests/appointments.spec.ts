@@ -3,7 +3,7 @@
 // domain-restaurantes/tests/orders.spec.ts.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { cancelAppointment, cancelAppointmentFromPanel, createAppointment, reassignAppointment, rescheduleAppointment } from "../src/appointments.ts";
+import { cancelAppointment, cancelAppointmentFromPanel, completeAppointmentFromPanel, confirmAppointmentFromPanel, createAppointment, markAppointmentNoShowFromPanel, reassignAppointment, rescheduleAppointment } from "../src/appointments.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "../src/errors.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { buildCitasFixture } from "./fixtures.ts";
@@ -106,6 +106,99 @@ describe("cancelAppointment / cancelAppointmentFromPanel", () => {
     const appointment = await createAppointment(fixture.repo, basePayload(fixture));
     const cancelled = await cancelAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
     expect(cancelled.status).toBe("cancelled");
+  });
+});
+
+// Fase 7 — gap real: ninguna función de negocio escribía 'confirmed'/'completed'/
+// 'no_show' aunque el esquema (001_citas_schema.sql) siempre los permitió — ver
+// cabecera de appointments.ts.
+describe("confirmAppointmentFromPanel / completeAppointmentFromPanel / markAppointmentNoShowFromPanel", () => {
+  it("confirmar una cita pending real la marca confirmed", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    const confirmed = await confirmAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    expect(confirmed.status).toBe("confirmed");
+  });
+
+  it("confirmar una cita ya confirmed es un no-op idempotente (nunca error)", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await confirmAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    const second = await confirmAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    expect(second.status).toBe("confirmed");
+  });
+
+  it("confirmar una cita ya cancelada es un conflicto real, nunca la revive en silencio", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await cancelAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id });
+    await expect(confirmAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID())).rejects.toThrow(AppointmentConflictError);
+  });
+
+  it("confirmar una cita de OTRA organización nunca se encuentra (scope real, nunca solo por id)", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await expect(confirmAppointmentFromPanel(fixture.repo, randomUUID(), appointment.id, randomUUID())).rejects.toThrow(AppointmentNotFoundError);
+  });
+
+  it("completar una cita pending (sin pasar por confirmed) la marca completed", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    const completed = await completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    expect(completed.status).toBe("completed");
+  });
+
+  it("completar una cita confirmed la marca completed", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await confirmAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    const completed = await completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    expect(completed.status).toBe("completed");
+  });
+
+  it("completar una cita ya completed es un no-op idempotente", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    const second = await completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    expect(second.status).toBe("completed");
+  });
+
+  it("completar una cita ya cancelada es un conflicto real", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await cancelAppointment(fixture.repo, { organizationId: fixture.organizationId, appointmentId: appointment.id });
+    await expect(completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID())).rejects.toThrow(AppointmentConflictError);
+  });
+
+  it("marcar no-show una cita pending la marca no_show", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    const noShow = await markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    expect(noShow.status).toBe("no_show");
+  });
+
+  it("marcar no-show una cita ya no_show es un no-op idempotente", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    const second = await markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    expect(second.status).toBe("no_show");
+  });
+
+  it("marcar no-show una cita ya completed es un conflicto real", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    await expect(markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID())).rejects.toThrow(AppointmentConflictError);
+  });
+
+  it("no-show libera el horario del proveedor: otra cita puede reservarse en el mismo slot (fuera del EXCLUDE using gist)", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    const rebooked = await createAppointment(fixture.repo, basePayload(fixture, { customerPhone: "9998887777" }));
+    expect(rebooked.startsAt).toBe(MONDAY_10AM_MERIDA);
   });
 });
 

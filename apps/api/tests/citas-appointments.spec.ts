@@ -246,3 +246,76 @@ describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/canc
     expect(res.status).toBe(403);
   });
 });
+
+// Fase 7 — gap real cerrado por esta fase: el panel de staff no tenía ninguna ruta
+// para confirmar/completar/marcar no-show una cita (ver cabecera de
+// appointments-lifecycle.ts). Mismo fixture/patrón de auth que el describe de
+// "cancel — panel de staff" de arriba.
+describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/{confirm,complete,no-show} — panel de staff", () => {
+  async function createRealAppointmentFromWeb(ctx: Awaited<ReturnType<typeof buildCitasTestContext>>, app: ReturnType<typeof buildApp>) {
+    const res = await app.request(
+      "/v1/citas/clinica-dental-sonrisas/appointments",
+      jsonRequestInit({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Ana", customer_phone: "9991112233", starts_at: MONDAY_10AM_MERIDA, source: "web" }),
+    );
+    const { appointment } = (await res.json()) as { appointment: { id: string } };
+    return appointment.id;
+  }
+
+  it("un staff autenticado confirma una cita pending real", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const appointmentId = await createRealAppointmentFromWeb(ctx, app);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/confirm`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { appointment: { status: string } };
+    expect(body.appointment.status).toBe("confirmed");
+  });
+
+  it("un staff autenticado completa una cita real (pending, sin pasar por confirmed)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const appointmentId = await createRealAppointmentFromWeb(ctx, app);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/complete`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { appointment: { status: string } };
+    expect(body.appointment.status).toBe("completed");
+  });
+
+  it("un staff autenticado marca una cita real como no-show", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const appointmentId = await createRealAppointmentFromWeb(ctx, app);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/no-show`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { appointment: { status: string } };
+    expect(body.appointment.status).toBe("no_show");
+  });
+
+  it("completar una cita ya cancelada da 409 (conflicto real, nunca la resucita en silencio)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const appointmentId = await createRealAppointmentFromWeb(ctx, app);
+    await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/cancel`, authedJson(ctx.staff.owner.token, {}));
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/complete`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(409);
+  });
+
+  it("rechaza confirmar sin JWT (401)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${randomUUID()}/confirm`, { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  it("rechaza a un staff que no pertenece a esa property (403)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const otraPropertyId = randomUUID();
+    const res = await app.request(`/v1/citas/properties/${otraPropertyId}/appointments/${randomUUID()}/no-show`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(403);
+  });
+});
