@@ -52,6 +52,29 @@ export async function login(fetchImpl: typeof fetch, apiBaseUrl: string, email: 
   return (await res.json()) as LoginSession;
 }
 
+/** Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+ * hoteles"): antes de esta pieza ningún vertical tenía forma de decirle al SERVIDOR
+ * "esta sesión terminó" — `clearHotelesSession`/`clearSession` solo borraban
+ * localStorage del navegador que hizo clic, sin invalidar nada del lado de
+ * `apps/api` (ver POST /auth/logout, nuevo en esta misma pasada). Best-effort A
+ * PROPÓSITO: si la red falla o la API no responde, el logout local (borrar
+ * localStorage + volver a la pantalla de login) debe seguir funcionando igual — un
+ * staff de recepción cerrando turno no puede quedarse atorado en el panel porque el
+ * POST de logout no llegó. El caller (Login/Shell de cada vertical) SIEMPRE debe
+ * llamar `clearSession`/`clearHotelesSession` después, pase lo que pase aquí. */
+export async function logout(fetchImpl: typeof fetch, apiBaseUrl: string, refreshToken: string): Promise<void> {
+  try {
+    await fetchImpl(`${apiBaseUrl}/auth/logout`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    // Sin red, API caída, lo que sea — el logout LOCAL (borrar la sesión del
+    // navegador) no depende de que este POST haya llegado, ver comentario de arriba.
+  }
+}
+
 /** A dónde navegar tras un login exitoso — mismo criterio que hoteles (multi-org
  * pide elegir), generalizado: 0 organizaciones (staff invitado sin asignar todavía),
  * exactamente 1 (entra directo), o 2+ (selector, ver POST /auth/select-org). */

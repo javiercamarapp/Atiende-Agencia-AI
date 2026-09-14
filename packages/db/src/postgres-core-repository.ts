@@ -20,6 +20,7 @@ import type {
   CoreStaffRepository,
   CreateStaffInviteInput,
   MembershipRow,
+  RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffInviteStatus,
   StaffUserRow,
@@ -216,5 +217,21 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       if (code === "P0001") throw new StaffInviteInvalidError();
       throw err;
     }
+  }
+
+  // ---- Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+  // hoteles") — sesión de sistema (igual que login/accept-invite arriba). Ambas rutas
+  // pasan por funciones SQL `security definer` (`migrations/0003_refresh_token_
+  // revocation.sql`) por el MISMO motivo que `core.accept_staff_invite`: el rol
+  // `authenticated` sin `auth.uid()` (sesión de sistema) no tiene ningún GRANT directo
+  // sobre `core.revoked_refresh_token`. ----
+
+  async revokeRefreshToken(input: RevokeRefreshTokenInput): Promise<void> {
+    await this.db.query(`select core.revoke_refresh_token($1, $2, $3);`, [input.jti, input.userId, input.expiresAt]);
+  }
+
+  async isRefreshTokenRevoked(jti: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ revoked: boolean }>(`select core.is_refresh_token_revoked($1) as revoked;`, [jti]);
+    return rows[0]?.revoked ?? false;
   }
 }

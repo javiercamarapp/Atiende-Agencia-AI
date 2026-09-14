@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { clearSession, decideLandingPath, login, LoginError, persistSession, readPersistedSession, validateLoginForm } from "../src/lib/auth-client.ts";
+import { clearSession, decideLandingPath, login, logout, LoginError, persistSession, readPersistedSession, validateLoginForm } from "../src/lib/auth-client.ts";
 import type { LoginSession, SessionStorageLike } from "../src/lib/auth-client.ts";
 
 function fakeStorage(): SessionStorageLike {
@@ -50,6 +50,31 @@ describe("login", () => {
     const fetchImpl = fakeFetch(200, {});
     await expect(login(fetchImpl, "http://api.local", "", "x")).rejects.toThrow(LoginError);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+// Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+// hoteles") — ver POST /auth/logout en apps/api/src/routes/auth.ts.
+describe("logout", () => {
+  it("llama POST /auth/logout con el refreshToken en el body", async () => {
+    const fetchImpl = fakeFetch(200, { ok: true });
+    await logout(fetchImpl, "http://api.local", "un-refresh-token");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://api.local/auth/logout",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "un-refresh-token" }) }),
+    );
+  });
+
+  it("best-effort: nunca lanza aunque la red falle (el logout local no puede depender de este POST)", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+    await expect(logout(fetchImpl, "http://api.local", "un-refresh-token")).resolves.toBeUndefined();
+  });
+
+  it("best-effort: nunca lanza aunque el servidor responda con error", async () => {
+    const fetchImpl = fakeFetch(500, { code: "internal_error" });
+    await expect(logout(fetchImpl, "http://api.local", "un-refresh-token")).resolves.toBeUndefined();
   });
 });
 

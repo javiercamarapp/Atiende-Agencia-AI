@@ -112,6 +112,21 @@ export interface AcceptStaffInviteResult {
   readonly propertyIds: readonly string[] | null;
 }
 
+/** Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+ *  hoteles"): input de `CoreRepository.revokeRefreshToken` — persiste el `jti` del
+ *  refresh token (nunca el JWT completo, mismo criterio que un password/token de
+ *  invitación) en `core.revoked_refresh_token`. `expiresAt` es la expiración NATURAL
+ *  del propio refresh token (su claim `exp`), no cuándo se revocó — sirve para que un
+ *  futuro job de limpieza pueda purgar filas de tokens que de todas formas ya
+ *  expiraron por sí solos, sin tener que decodificar cada JWT de nuevo. */
+export interface RevokeRefreshTokenInput {
+  readonly jti: string;
+  readonly userId: string;
+  /** ISO 8601 — expiración natural del refresh token (su claim `exp`), no la fecha de
+   *  revocación (esa es `revoked_at`, con default `now()` en la tabla). */
+  readonly expiresAt: string;
+}
+
 export interface CoreRepository {
   findStaffByEmail(email: string): Promise<StaffUserRow | null>;
   findStaffById(id: string): Promise<StaffUserRow | null>;
@@ -129,6 +144,19 @@ export interface CoreRepository {
    *  `postgres-core-repository.ts`/`in-memory-core-repository.ts` para el código de
    *  error exacto que cada adaptador usa). */
   acceptStaffInvite(input: AcceptStaffInviteInput): Promise<AcceptStaffInviteResult>;
+  /** POST /auth/logout — revoca UN refresh token concreto por su `jti` (nunca todos
+   *  los del usuario, nunca el JWT completo). Idempotente: revocar dos veces el mismo
+   *  `jti` no lanza (mismo criterio de idempotencia que ya usa `readPersistedSession`
+   *  al limpiar una sesión corrupta, pero aquí no hace falta devolver `boolean` porque
+   *  logout siempre "tiene éxito" desde el punto de vista del staff, nunca es un 404). */
+  revokeRefreshToken(input: RevokeRefreshTokenInput): Promise<void>;
+  /** Usado por `/auth/refresh` ANTES de reemitir sesión: si el `jti` del refresh token
+   *  presentado ya fue revocado (el staff cerró sesión con él), la re-emisión debe
+   *  fallar aunque el JWT en sí siga siendo criptográficamente válido y no haya
+   *  expirado todavía — sin este chequeo, logout solo borraría el localStorage del
+   *  navegador que lo pidió, sin impedir que ESE MISMO refresh token (ya copiado o
+   *  interceptado) siga sirviendo para sacar access tokens nuevos. */
+  isRefreshTokenRevoked(jti: string): Promise<boolean>;
 }
 
 /** Ver el comentario de cabecera del archivo para por qué esta interfaz vive

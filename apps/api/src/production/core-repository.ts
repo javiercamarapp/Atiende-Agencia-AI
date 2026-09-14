@@ -10,7 +10,7 @@
 // (nunca reutiliza una conexión entre requests, correcto para el `pg.Pool` de
 // `ManagedPostgresEngine`) y delega en un `PostgresCoreRepository` construido sobre esa
 // sesión efímera.
-import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, MembershipRow, StaffInviteRow, StaffUserRow } from "@atiende/db";
+import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, MembershipRow, RevokeRefreshTokenInput, StaffInviteRow, StaffUserRow } from "@atiende/db";
 import { PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -50,5 +50,17 @@ export class ProductionCoreRepository implements CoreRepository {
 
   acceptStaffInvite(input: AcceptStaffInviteInput): Promise<AcceptStaffInviteResult> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).acceptStaffInvite(input));
+  }
+
+  // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+  // hoteles") — sesión de sistema igual que el resto de este archivo: /auth/logout
+  // y /auth/refresh corren ANTES/SIN depender de `auth.uid()` (el actor se identifica
+  // por el `sub`/`jti` del refresh token mismo, no por un Bearer ya verificado).
+  revokeRefreshToken(input: RevokeRefreshTokenInput): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).revokeRefreshToken(input));
+  }
+
+  isRefreshTokenRevoked(jti: string): Promise<boolean> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).isRefreshTokenRevoked(jti));
   }
 }
