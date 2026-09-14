@@ -85,6 +85,9 @@ export {
   REVENUE_AUTOPILOT_APPROVAL_ROLES,
   REVENUE_BACKTEST_ROLES,
   PL_ROLES,
+  REPUTACION_SUBMIT_ROLES,
+  REPUTACION_VIEW_ROLES,
+  REPUTACION_ACTION_RESOLVE_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
 
@@ -354,4 +357,58 @@ export type {
   PlRevenueByDateRow,
   PlExpenseByDateRow,
   PlOccupiedRoomNightsByDateRow,
+} from "./types.ts";
+
+// ---- Fase 11 — REQ-CRM-002/003 (P1/F): reputación/CRM. Clasificador de reseñas por
+// tema + sentimiento (dominio puro, ninguna dependencia de Google/Booking API -- ver
+// header de reputacion/clasificador.ts), decisión de acción reglada (ticket de
+// mantenimiento / mensaje proactivo / compensación reglada), e índice de reputación
+// agregado (reputacion/indice.ts). Modelo de datos en migrations/013_reputacion.sql.
+// Ingesta automática real desde Google/Booking/TripAdvisor y la orquestación de
+// `apps/api` que ejecutaría cada acción quedan deliberadamente FUERA de esta fase
+// (ver README.md §Fase 11 y el comentario de cabecera de la migración). ----
+export {
+  KNOWN_REVIEW_TOPICS,
+  TOPIC_KEYWORDS,
+  TICKET_TOPICS,
+  COMPENSATION_CATALOG,
+  normalizar as normalizarTextoResena,
+  detectarTemas,
+  analizarSentimiento,
+  decidirAcciones,
+  clasificarResena,
+} from "./reputacion/clasificador.ts";
+export type {
+  KnownReviewTopic,
+  ReviewTopicId,
+  TopicMatch,
+  SentimentLabel,
+  SentimentResult,
+  StayState,
+  CompensacionPropuesta,
+  AccionReputacion,
+  DecidirAccionesInput,
+  ClasificarResenaInput,
+  ResultadoClasificacion,
+} from "./reputacion/clasificador.ts";
+
+export { SENTIMENT_LABELS, calcularIndiceReputacion } from "./reputacion/indice.ts";
+export type {
+  ResenaClasificadaParaIndice,
+  TemaAgregado,
+  IndiceReputacion,
+  CalcularIndiceReputacionOptions,
+} from "./reputacion/indice.ts";
+
+export type {
+  GuestReviewSource,
+  GuestReviewStayState,
+  GuestReviewSentiment,
+  GuestReviewTopicRecord,
+  GuestReviewRecord,
+  NewGuestReviewInput,
+  GuestReviewActionType,
+  GuestReviewActionStatus,
+  GuestReviewActionRecord,
+  NewGuestReviewActionInput,
 } from "./types.ts";
