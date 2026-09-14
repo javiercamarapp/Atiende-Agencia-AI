@@ -21,6 +21,16 @@ export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<RestaurantesRole, "owner" | 
 /** == can_manage_restaurant() del origen: gestión de catálogo/sucursales/clientes. */
 export const MANAGER_ROLES: readonly RestaurantesRole[] = ["owner", "admin", "staff"];
 
+/**
+ * Fase 8 — el único verticalRole autorizado en las rutas `.../repartidor/*` (ver
+ * apps/api/.../restaurantes/repartidor-orders.ts). Deliberadamente disjunto de
+ * MANAGER_ROLES: un repartidor nunca gana acceso de gestión, y MANAGER_ROLES nunca
+ * gana el acceso acotado-a-lo-propio de un repartidor (son dos superficies HTTP
+ * distintas, cada una con su propio `assertVerticalRole`) — mismo principio que ya
+ * documenta el comentario de cabecera de este archivo.
+ */
+export const REPARTIDOR_ROLES: readonly RestaurantesRole[] = ["repartidor"];
+
 export function isRestaurantesRole(value: string): value is RestaurantesRole {
   return (RESTAURANTES_ROLES as readonly string[]).includes(value);
 }

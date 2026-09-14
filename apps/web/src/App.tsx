@@ -11,6 +11,7 @@ import { SucursalesPage } from "./verticals/restaurantes/pages/Sucursales.tsx";
 import { PedidosPage } from "./verticals/restaurantes/pages/Pedidos.tsx";
 import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
 import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
+import { RepartidorPedidosPage } from "./verticals/restaurantes/pages/Repartidor.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
@@ -353,6 +354,10 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/historial" element={<RestaurantesHistorialRoute />} />
         <Route path="/restaurantes/:orgSlug/clientes" element={<RestaurantesClientesRoute />} />
         <Route path="/restaurantes/:orgSlug/clientes/:customerId" element={<RestaurantesClienteFichaRoute />} />
+        {/* Fase 8 — panel real del rol "repartidor" (ver domain-restaurantes/src/
+            roles.ts::REPARTIDOR_ROLES), deliberadamente FUERA del nav de
+            RestaurantesShell (ver comentario de cabecera de Repartidor.tsx). */}
+        <Route path="/restaurantes/:orgSlug/repartidor" element={<RepartidorPedidosPage />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesRootRedirect />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />

@@ -39,6 +39,9 @@ function makeOrder(overrides: Partial<Order> & { organizationId: string; propert
     dedupeFingerprint: null,
     idempotencyKey: null,
     createdAt: new Date().toISOString(),
+    assignedRepartidorId: null,
+    estimatedDeliveryAt: null,
+    incidentNote: null,
     ...overrides,
   };
 }

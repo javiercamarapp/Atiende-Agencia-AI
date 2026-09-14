@@ -123,6 +123,9 @@ interface OrderRow {
   readonly dedupe_fingerprint: string | null;
   readonly idempotency_key: string | null;
   readonly created_at: string;
+  readonly assigned_repartidor_id: string | null;
+  readonly estimated_delivery_at: string | null;
+  readonly incident_note: string | null;
 }
 
 function mapOrder(row: OrderRow): Order {
@@ -146,8 +149,18 @@ function mapOrder(row: OrderRow): Order {
     dedupeFingerprint: row.dedupe_fingerprint,
     idempotencyKey: row.idempotency_key,
     createdAt: row.created_at,
+    // Fase 8 — `create_order_idempotent()` (migrations/003) devuelve `to_jsonb(v_order)`
+    // de `restaurantes.orders%rowtype`, así que estas 3 columnas nuevas ya viajan solas
+    // (null) en CUALQUIER OrderRow, incluido el de creación de pedido — nunca hace falta
+    // tocar esa función SQL para que este mapeo sea correcto.
+    assignedRepartidorId: row.assigned_repartidor_id,
+    estimatedDeliveryAt: row.estimated_delivery_at,
+    incidentNote: row.incident_note,
   };
 }
+
+const ORDER_COLUMNS =
+  "id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at, assigned_repartidor_id, estimated_delivery_at, incident_note";
 
 interface CategoryRow {
   readonly id: string;
@@ -801,7 +814,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   async findOrderById(organizationId: string, orderId: string): Promise<Order | null> {
     const { rows } = await this.db.query<OrderRow>(
-      `select id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at
+      `select ${ORDER_COLUMNS}
        from restaurantes.orders where id = $1 and organization_id = $2;`,
       [orderId, organizationId],
     );
@@ -837,7 +850,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
     params.push(filter.limit + 1);
     const { rows } = await this.db.query<OrderRow>(
-      `select id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at
+      `select ${ORDER_COLUMNS}
        from restaurantes.orders
        where ${conditions.join(" and ")}
        order by created_at desc, id desc
@@ -856,8 +869,57 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       `update restaurantes.orders
        set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
        where id = $1 and organization_id = $2
-       returning id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at;`,
+       returning ${ORDER_COLUMNS};`,
       [orderId, organizationId, status],
+    );
+    return rows[0] ? mapOrder(rows[0]) : null;
+  }
+
+  // ---- Fase 8 — superficie real del rol "repartidor" (ver repository.ts para el
+  // contrato completo de cada método). ----
+
+  async assignRepartidorToOrder(organizationId: string, orderId: string, repartidorId: string, estimatedDeliveryAt: string | null): Promise<Order | null> {
+    const { rows } = await this.db.query<OrderRow>(
+      `update restaurantes.orders
+       set assigned_repartidor_id = $3, estimated_delivery_at = $4
+       where id = $1 and organization_id = $2
+       returning ${ORDER_COLUMNS};`,
+      [orderId, organizationId, repartidorId, estimatedDeliveryAt],
+    );
+    return rows[0] ? mapOrder(rows[0]) : null;
+  }
+
+  async listOrdersForRepartidor(organizationId: string, repartidorId: string): Promise<readonly Order[]> {
+    const { rows } = await this.db.query<OrderRow>(
+      `select ${ORDER_COLUMNS}
+       from restaurantes.orders
+       where organization_id = $1 and assigned_repartidor_id = $2
+       order by created_at desc
+       limit 200;`,
+      [organizationId, repartidorId],
+    );
+    return rows.map(mapOrder);
+  }
+
+  async findAssignedOrderById(organizationId: string, repartidorId: string, orderId: string): Promise<Order | null> {
+    const { rows } = await this.db.query<OrderRow>(
+      `select ${ORDER_COLUMNS}
+       from restaurantes.orders
+       where id = $1 and organization_id = $2 and assigned_repartidor_id = $3;`,
+      [orderId, organizationId, repartidorId],
+    );
+    return rows[0] ? mapOrder(rows[0]) : null;
+  }
+
+  async updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, status: OrderStatus, incidentNote: string | null): Promise<Order | null> {
+    const { rows } = await this.db.query<OrderRow>(
+      `update restaurantes.orders
+       set status = $4,
+           delivered_at = case when $4 = 'entregado' then now() else delivered_at end,
+           incident_note = case when $4 = 'problema' then $5 else incident_note end
+       where id = $1 and organization_id = $2 and assigned_repartidor_id = $3
+       returning ${ORDER_COLUMNS};`,
+      [orderId, organizationId, repartidorId, status, incidentNote],
     );
     return rows[0] ? mapOrder(rows[0]) : null;
   }

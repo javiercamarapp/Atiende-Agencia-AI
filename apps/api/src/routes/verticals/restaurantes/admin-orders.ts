@@ -11,7 +11,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, REPARTIDOR_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError } from "@atiende/domain-restaurantes";
 import type { Order } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -34,6 +34,12 @@ function serializeOrder(o: Order) {
     notes: o.notes,
     paymentMethod: o.paymentMethod,
     createdAt: o.createdAt,
+    // Fase 8 — ver domain-restaurantes/src/roles.ts::REPARTIDOR_ROLES. El admin
+    // necesita ver a quién despachó un pedido (y la incidencia, si la hay) desde
+    // esta MISMA vista de operación/historial -- nunca un endpoint aparte.
+    assignedRepartidorId: o.assignedRepartidorId,
+    estimatedDeliveryAt: o.estimatedDeliveryAt,
+    incidentNote: o.incidentNote,
   };
 }
 
@@ -59,6 +65,11 @@ function parseStatus(raw: string | undefined) {
 
 interface StatusBody {
   readonly status?: unknown;
+}
+
+interface AssignRepartidorBody {
+  readonly repartidorId?: unknown;
+  readonly estimatedDeliveryAt?: unknown;
 }
 
 export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -119,6 +130,48 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
       throw err;
     }
+  });
+
+  // Fase 8 — dispatch real: el ÚNICO lugar que escribe `assigned_repartidor_id`/
+  // `estimated_delivery_at` (ver domain-restaurantes/src/roles.ts::REPARTIDOR_ROLES,
+  // "nunca lo pone el repartidor mismo"). `repartidorId` se valida contra
+  // `core.membership` ANTES de escribir -- nunca se confía a ciegas en un uuid
+  // recibido por body (mismo criterio que `resolveEffectivePropertyIds` ya aplica
+  // para `branchId`): debe ser staff REAL de ESTA organización con
+  // `verticalRole === "repartidor"`, nunca cualquier uuid (evita asignar un pedido a
+  // un owner/admin/staff por error, o a un usuario de otra organización).
+  app.patch("/v1/restaurantes/:propertyId/admin/orders/:orderId/assign-repartidor", async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const orderId = c.req.param("orderId");
+
+    const order = await repo.findOrderById(organizationId, orderId);
+    if (!order) throw Errors.notFound("Pedido no encontrado.");
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    if (scope !== null && !scope.includes(order.propertyId)) throw Errors.forbidden("No tienes acceso a este pedido.");
+
+    const raw = await readJsonCapped<AssignRepartidorBody>(c.req.raw, 2 * 1024);
+    if (typeof raw.repartidorId !== "string" || raw.repartidorId.length === 0) {
+      throw Errors.validation("repartidorId es obligatorio.");
+    }
+    let estimatedDeliveryAt: string | null = null;
+    if (raw.estimatedDeliveryAt !== undefined && raw.estimatedDeliveryAt !== null) {
+      if (typeof raw.estimatedDeliveryAt !== "string" || Number.isNaN(new Date(raw.estimatedDeliveryAt).getTime())) {
+        throw Errors.validation("estimatedDeliveryAt: se esperaba una fecha ISO 8601 válida.");
+      }
+      estimatedDeliveryAt = new Date(raw.estimatedDeliveryAt).toISOString();
+    }
+
+    const memberships = await deps.coreRepo.findMembershipsByUserId(raw.repartidorId);
+    const esRepartidorDeEstaOrg = memberships.some((m) => m.organizationId === organizationId && m.verticalRole === "repartidor");
+    if (!esRepartidorDeEstaOrg) {
+      throw Errors.validation("repartidorId no corresponde a un repartidor de esta organización.");
+    }
+
+    const updated = await repo.assignRepartidorToOrder(organizationId, orderId, raw.repartidorId, estimatedDeliveryAt);
+    if (!updated) throw Errors.notFound("Pedido no encontrado.");
+    return c.json({ order: serializeOrder(updated) });
   });
 
   return app;
