@@ -69,6 +69,8 @@ export {
   FINANZAS_ESCRITURA_ROLES,
   FINANZAS_LECTURA_ROLES,
   isRentasVerticalRole,
+  LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES,
+  LIMPIEZA_OPERACION_ROLES,
   MENSAJERIA_ESCRITURA_ROLES,
   MENSAJERIA_PLANTILLA_APROBACION_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
@@ -191,3 +193,11 @@ export { PostgresRentasCalendarSyncRepository } from "./sync/postgres-repository
 // ---------------------------------------------------------------------------
 export * from "./mensajeria/index.ts";
 export * from "./agentes/index.ts";
+
+// ---------------------------------------------------------------------------
+// Limpieza/mantenimiento (Fase 8) -- ver src/limpieza/*. Cierra el gap identificado
+// por auditoría: "limpieza" existía únicamente como valor de `Razon` (BUFFER_LIMPIEZA,
+// desde la Fase 1) sin ningún módulo que creara tareas, checklists, inventario o
+// incidencias -- ver README de este paquete.
+// ---------------------------------------------------------------------------
+export * from "./limpieza/index.ts";

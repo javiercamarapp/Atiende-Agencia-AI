@@ -80,6 +80,21 @@ export const PRICING_ESCRITURA_ROLES: readonly RentasVerticalRole[] = ["admin_ge
  * distinción fina la hace SIEMPRE `assertVerticalRole()` con RENTAS_VERTICAL_ROLES,
  * nunca `platformRole` — mismo principio que domain-hoteles::PLATFORM_ROLE_BY_VERTICAL_ROLE.
  */
+// Limpieza/mantenimiento (Fase 8, packages/domain-rentas/src/limpieza/*): operar
+// tareas (asignar, completar checklist/tarea, registrar incidencia) queda abierto al
+// rol `limpieza` -- justo el rol que ya existía en RENTAS_VERTICAL_ROLES desde la
+// Fase 1 sin que ningún módulo lo usara todavía (el gap que cierra esta fase) --
+// además de quien ya puede escribir calendario. `contador`/`operador:solo_calendario`
+// nunca operan tareas de limpieza (mismo criterio que MENSAJERIA_ESCRITURA_ROLES).
+export const LIMPIEZA_OPERACION_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "limpieza"];
+
+// Confirmar el bloqueo de mantenimiento propuesto por una incidencia GRAVE (H-055,
+// REQ-118) es una acción de calendario real (inserta un bloqueo bloqueante) -- mismo
+// criterio de rol que ESCRITURA_CALENDARIO_ROLES, NUNCA abierto a `limpieza` (quien
+// reporta la incidencia no es quien decide bloquear disponibilidad -- separación de
+// funciones deliberada, ver ../limpieza/incidencias.ts).
+export const LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
+
 export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<RentasVerticalRole, "owner" | "admin" | "member" | "viewer"> = {
   admin_gestora: "owner",
   "operador:acceso_total": "member",

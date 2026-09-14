@@ -10,7 +10,16 @@ export type RentasErrorCode =
   | "unidad_no_encontrada"
   | "ocupacion_no_encontrada"
   | "reserva_no_directa"
-  | "transicion_no_permitida";
+  | "transicion_no_permitida"
+  // ---- limpieza/mantenimiento (Fase 8, ver ./limpieza/aplicacion/tareas.ts) ----
+  | "tarea_no_encontrada"
+  | "checklist_item_no_encontrado"
+  | "checklist_incompleto"
+  | "item_inventario_no_encontrado"
+  | "incidencia_no_encontrada"
+  | "bloqueo_mantenimiento_no_aplicable"
+  | "bloqueo_mantenimiento_ya_confirmado"
+  | "bloqueo_mantenimiento_sin_rango";
 
 export class RentasDomainError extends Error {
   readonly code: RentasErrorCode;

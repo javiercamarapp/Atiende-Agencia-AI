@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (59 migraciones, timestamps 20240101000001 .. 20240101000059)
+## Orden actual (60 migraciones, timestamps 20240101000001 .. 20240101000060)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -50,6 +50,7 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 57. `packages/domain-rentas/migrations/008_ical_sync_schema.sql` — Fase 5 rentas: sincronización de calendario por canal (feeds iCal externos de Airbnb/Booking.com/VRBO, bookkeeping de versión/anti-eco, cuarentena).
 58. `packages/domain-citas/migrations/010_appointment_status_transitions.sql` — Fase 7 citas: transición de estado confirmar/completar/no-show desde el panel de staff (`confirm_appointment_from_panel`/`complete_appointment_from_panel`/`mark_appointment_no_show_from_panel`), con evento de auditoría propio (`appointment_audit_events.event_type` ampliado a 'confirmed'/'completed'/'no_show').
 59. `packages/domain-rentas/migrations/009_rentas_mensajeria_schema.sql` — Fase 7 rentas: mensajería con huésped (borrador de IA + aprobación humana obligatoria) — `rentas.conversacion`/`rentas.mensaje`/`rentas.borrador_mensaje` (property-scoped) + `rentas.plantilla_mensaje` (organization-scoped).
+60. `packages/domain-rentas/migrations/010_rentas_limpieza_schema.sql` — Fase 8 rentas: módulo operativo de limpieza/mantenimiento (tareas, checklist, inventario, incidencias) — cierra el gap donde "limpieza" solo existía como valor del enum `razon` de `rentas.ocupacion` (`BUFFER_LIMPIEZA`). Agrega `rentas.tarea_operativa`/`rentas.item_inventario`/`rentas.incidencia_mantenimiento` (property-scoped) + `rentas.checklist_item_tarea`/`rentas.foto_checklist_item`/`rentas.movimiento_inventario`/`rentas.notificacion_tarea` (hijas, RLS vía join) + 3 columnas nuevas de buffer/SLA sobre `rentas.property_config` (ya existente desde la Fase 1, nunca una tabla de configuración propia).
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
