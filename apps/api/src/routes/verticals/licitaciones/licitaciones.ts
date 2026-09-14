@@ -22,6 +22,7 @@ import { licitacionesInconformidadRoutes } from "./inconformidad.ts";
 import { licitacionesFalloAutopsyRoutes } from "./falloAutopsy.ts";
 import { licitacionesRenewalRadarRoutes } from "./renewalRadar.ts";
 import { licitacionesAdminRoutes } from "./admin.ts";
+import { licitacionesAlertNotificationsRoutes } from "./alertNotifications.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -54,5 +55,8 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de este directorio: la Fase 1 solo construyó el login, sin este endpoint el
   // panel no tenía ningún camino real para entrar a ninguna pantalla).
   app.route("/", licitacionesAdminRoutes(deps));
+  // Fase 10 — despacho proactivo real (correo) de recordatorios de plazo +
+  // alertas de renovación + facturas vencidas de cobranza.
+  app.route("/", licitacionesAlertNotificationsRoutes(deps));
   return app;
 }

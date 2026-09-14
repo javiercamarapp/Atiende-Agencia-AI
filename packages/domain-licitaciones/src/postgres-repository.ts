@@ -22,8 +22,11 @@ import type {
   CreateContractInvoiceInput,
   CreateFalloAutopsyInput,
   CreateInconformidadDraftInput,
+  EmailOutboxJobRow,
   FalloAutopsyRecord,
   InconformidadDraftRecord,
+  OrganizationNotificationRecipient,
+  OverdueContractInvoiceAlert,
   ReceivablesSummary,
   RenewalAlertRecord,
   ScanRenewalAlertsInput,
@@ -2103,5 +2106,51 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     );
     if (rows.length === 0) throw new Error(`Alerta de renovación "${alertId}" no encontrada.`);
     return mapRenewalAlert(rows[0]!);
+  }
+
+  // ==========================================================================
+  // Fase 10 -- despacho proactivo real (correo) de deadline reminders/renewal
+  // alerts/facturas vencidas (ver migrations/018_alert_notifications.sql).
+  // ==========================================================================
+
+  async listOrganizationNotificationRecipients(organizationId: string): Promise<readonly OrganizationNotificationRecipient[]> {
+    const { rows } = await this.db.query<{ email: string; full_name: string }>(`select email, full_name from licitaciones.organization_notification_recipients($1);`, [organizationId]);
+    return rows.map((r) => ({ email: r.email, fullName: r.full_name }));
+  }
+
+  async listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]> {
+    const today = todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const { rows } = await this.db.query<{ id: string; contract_id: string; tender_id: string; concepto: string; amount: string; due_date: string; days_overdue: number }>(
+      `select i.id, i.contract_id, c.tender_id, i.concepto, i.amount::text as amount, i.due_date::text as due_date,
+              ($2::date - i.due_date)::int as days_overdue
+       from licitaciones.contract_invoice i
+       join licitaciones.contract c on c.id = i.contract_id
+       where i.organization_id = $1 and i.paid_at is null and i.due_date < $2::date
+       order by i.due_date asc;`,
+      [organizationId, today],
+    );
+    return rows.map((r) => ({
+      organizationId,
+      invoiceId: r.id,
+      contractId: r.contract_id,
+      tenderId: r.tender_id,
+      concepto: r.concepto,
+      amount: r.amount,
+      dueDate: r.due_date,
+      daysOverdue: r.days_overdue,
+    }));
+  }
+
+  async enqueueMessagingOutbox(organizationId: string, channel: "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    await this.db.query(`select licitaciones.enqueue_messaging_outbox($1, $2, $3, $4, $5::jsonb);`, [organizationId, channel, eventType, dedupeKey, JSON.stringify(payload)]);
+  }
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string; attempts: number; payload: Record<string, unknown> }>(`select id, organization_id, attempts, payload from licitaciones.claim_email_outbox_batch($1);`, [limit]);
+    return rows.map((r) => ({ id: r.id, organizationId: r.organization_id, attempts: r.attempts, payload: r.payload ?? {} }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    await this.db.query(`select licitaciones.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
   }
 }

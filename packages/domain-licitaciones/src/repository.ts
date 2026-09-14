@@ -400,6 +400,41 @@ export interface ScanRenewalAlertsResult {
   readonly alerts: readonly RenewalAlertRecord[];
 }
 
+// ---------------------------------------------------------------------------
+// Fase 10 -- despacho proactivo real de las 3 alertas de arriba
+// (tender_deadline_reminder, renewal_alert, contract_invoice vencida) vía
+// correo (ver src/alert-notifications.ts, src/email-dispatch.ts,
+// migrations/018_alert_notifications.sql). Mismo shape de tipos que
+// domain-citas/domain-rentas (`EmailOutboxJobRow`), sin `whatsapp` en la
+// unión de canal -- este vertical no tiene ese canal (ver comentario de
+// cabecera de la migración 018).
+// ---------------------------------------------------------------------------
+
+export interface EmailOutboxJobRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly attempts: number;
+  readonly payload: Record<string, unknown>;
+}
+
+/** El "responsable de la organización" al que se le manda el correo de alerta -- staff con `platform_role` `owner`/`admin` (ver `licitaciones.organization_notification_recipients`, migración 018). Puede ser una lista vacía (organización sin owner/admin -- ver comentario de `enqueueAlertEmailsCore` en alert-notifications.ts para qué pasa en ese caso: nunca lanza, simplemente no hay a quién avisar). */
+export interface OrganizationNotificationRecipient {
+  readonly email: string;
+  readonly fullName: string;
+}
+
+/** Factura vencida (`ContractInvoiceStatus === 'vencida'`) de CUALQUIER contrato de la organización -- a diferencia de `listContractInvoices`/`receivablesSummary` (acotados a un `tenderId`), este método barre TODOS los contratos de la organización de una sola vez, lo que necesita un barrido periódico transversal (ver `apps/worker/src/jobs/licitaciones/alert-notifications.ts::runCollectionAlertSweep`). `daysOverdue` SIEMPRE >= 1 (por construcción: solo incluye status 'vencida', que exige `today > dueDate`). */
+export interface OverdueContractInvoiceAlert {
+  readonly organizationId: string;
+  readonly invoiceId: string;
+  readonly contractId: string;
+  readonly tenderId: string;
+  readonly concepto: string;
+  readonly amount: DecimalString;
+  readonly dueDate: string;
+  readonly daysOverdue: number;
+}
+
 export interface LicitacionesRepository {
   // ---- Fase 7 pieza 1: resolución de organización/property para el panel web ----
   /** Mismo rol que `CitasRepository.findOrganizationBySlug` — el panel solo conoce
@@ -670,6 +705,20 @@ export interface LicitacionesRepository {
   /** Bandeja de alertas, más recientes primero. */
   listRenewalAlerts(organizationId: string): Promise<readonly RenewalAlertRecord[]>;
   acknowledgeRenewalAlert(organizationId: string, alertId: string, actorId: string): Promise<RenewalAlertRecord>;
+
+  // ---------------------------------------------------------------------
+  // Fase 10 -- despacho proactivo real (correo) de las alertas de arriba.
+  // ---------------------------------------------------------------------
+
+  /** Staff `owner`/`admin` de la organización, el "responsable" al que se le manda el correo de alerta (ver `OrganizationNotificationRecipient`). */
+  listOrganizationNotificationRecipients(organizationId: string): Promise<readonly OrganizationNotificationRecipient[]>;
+  /** Barre TODOS los contratos de la organización (no uno solo, a diferencia de `listContractInvoices`) buscando facturas `vencida` -- insumo directo del barrido de cobranza (`runCollectionAlertSweep`). `todayIsoDate` inyectable SOLO para pruebas deterministas, por defecto la fecha real de hoy. */
+  listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]>;
+  /** Encola (`channel='email'`) el envío real -- mismo rol que `CitasRepository.enqueueMessagingOutbox`/`RentasRepository.enqueueMessagingOutbox`. `channel` se deja como parámetro (en vez de fijarlo a 'email' en la firma) por SIMETRÍA con el resto del monorepo -- este vertical hoy solo implementa 'email' (ver migración 018), pasar cualquier otro valor lanza. */
+  enqueueMessagingOutbox(organizationId: string, channel: "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
+  /** Reclama hasta `limit` jobs `channel='email'` pendientes/fallidos -- ver `licitaciones.claim_email_outbox_batch` (migración 018). */
+  claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
+  completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
 }
 
 export type {
