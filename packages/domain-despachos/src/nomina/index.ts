@@ -2,9 +2,16 @@
 // cfdi/reglas-fiscales-avanzadas.ts (Fase 1/2): un consumidor de más arriba
 // alimenta `validarCfdiDespachos({ ..., nomina: { totalPercepciones } })` con
 // la salida de `procesarNomina`, pero eso vive fuera de domain-despachos
-// (diseño §3). Fuera de alcance de este módulo: generación/timbrado de XML
-// del complemento Nómina 1.2, FIEL, RPA a portales SAT/IMSS, y persistencia
-// de periodos de nómina (diseño §6).
+// (diseño §3).
+//
+// Fase 7 (cierre de gap de auditoría): `generarXmlCfdiNomina` (ver
+// xml-nomina.ts) cierra "Sin generación/timbrado del XML de complemento
+// Nómina 1.2" — genera el XML bien formado (comprobante + complemento
+// nomina12:Nomina) SIN sellar, listo para que una capa externa lo selle con
+// la FIEL/CSD real y lo timbre vía `CfdiPort` (packages/mcp-servers/cfdi).
+// Sigue, y seguirá, fuera de alcance de este módulo: el SELLADO real
+// (FIEL/CSD), el TIMBRADO ante un PAC, RPA a portales SAT/IMSS, y
+// persistencia de periodos de nómina (diseño §6 — ningún cambio aquí).
 export { ISR_NOMINA_MENSUAL_2026, ISR_NOMINA_ANUAL_2026 } from "./isr-nomina-tablas.ts";
 export { calcularIsrNomina } from "./isr-nomina-engine.ts";
 
@@ -36,3 +43,6 @@ export type {
   PayrollPeriod,
   PayrollPeriodInput,
 } from "./types.ts";
+
+export { generarXmlCfdiNomina, TIPOS_NOMINA } from "./xml-nomina.ts";
+export type { DatosEmisorNominaXml, DatosReceptorNominaXml, DatosPeriodoNominaXml, TipoNomina } from "./xml-nomina.ts";

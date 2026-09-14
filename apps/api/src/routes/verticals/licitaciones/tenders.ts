@@ -55,8 +55,39 @@ function parseOptionalNonNegativeNumber(raw: unknown, field: string): number | n
 export function licitacionesTendersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const base = "/licitaciones/:propertyId/tenders";
+  // Restringido a forma de UUID (regex de Hono en el propio segmento) -- sin esto,
+  // esta ruta capturaría también `/tenders/matching` (matching.ts, ruta estática
+  // de UN segmento igual que ésta) tratando "matching" como un tenderId literal,
+  // ambigüedad real de enrutamiento entre dos sub-apps montadas en "/" (orden de
+  // registro, no especificidad, decide qué handler gana en este Hono). El resto
+  // de rutas de :tenderId del vertical (go-no-go.ts, checklist.ts) no tienen este
+  // problema porque agregan un segmento más después del id.
+  const detailBase = "/licitaciones/:propertyId/tenders/:tenderId{[0-9a-fA-F-]{36}}";
 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(detailBase, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+
+  // Fase 7 — GET base/lectura: el panel web (backoffice) necesita el `TenderRecord`
+  // completo (título, fecha límite, entidad, etc.) para pintar la lista y el
+  // detalle de una convocatoria -- `GET base/tenders/matching` (matching.ts) solo
+  // trae `MatchResult` (score/elegibilidad), sin título. Cualquier miembro de la
+  // organización puede leer (mismo criterio que matching.ts: ver el listado no es
+  // una decisión, decidir go/no-go sí lo es).
+  app.get(base, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const tenders = await repo.listTenders(organizationId);
+    return c.json({ tenders });
+  });
+
+  app.get(detailBase, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const tenderId = c.req.param("tenderId");
+    const tender = await repo.findTender(organizationId, tenderId);
+    if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
+    return c.json(tender);
+  });
 
   app.post(base, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));

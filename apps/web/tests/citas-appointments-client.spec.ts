@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { cancelAppointment, fetchAppointments } from "../src/verticals/citas/lib/appointments-client.ts";
+import { cancelAppointment, completeAppointment, confirmAppointment, fetchAppointments, markAppointmentNoShow } from "../src/verticals/citas/lib/appointments-client.ts";
 
 const APPOINTMENT_ROW = {
   id: "apt-1",
@@ -74,5 +74,44 @@ describe("cancelAppointment", () => {
   it("un conflicto (409) propaga el error real", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "La cita ya está cancelada." }), { status: 409 })) as unknown as typeof fetch;
     await expect(cancelAppointment(fetchImpl, "http://api.local", "tok", "prop-1", "apt-1")).rejects.toThrow("La cita ya está cancelada.");
+  });
+});
+
+// Fase 7 — mismo shape de respuesta ({ appointment }, sin enriquecer) que cancel.
+describe("confirmAppointment / completeAppointment / markAppointmentNoShow", () => {
+  it("confirmAppointment hace POST a .../confirm y mapea la respuesta", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/v1/citas/properties/prop-1/appointments/apt-1/confirm");
+      expect(init?.method).toBe("POST");
+      return new Response(JSON.stringify({ appointment: { ...APPOINTMENT_ROW, status: "confirmed", provider_name: undefined, service_name: undefined, customer_name: undefined, customer_phone: undefined } }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await confirmAppointment(fetchImpl, "http://api.local", "tok", "prop-1", "apt-1");
+    expect(result.status).toBe("confirmed");
+  });
+
+  it("completeAppointment hace POST a .../complete y mapea la respuesta", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe("http://api.local/v1/citas/properties/prop-1/appointments/apt-1/complete");
+      return new Response(JSON.stringify({ appointment: { ...APPOINTMENT_ROW, status: "completed", provider_name: undefined, service_name: undefined, customer_name: undefined, customer_phone: undefined } }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await completeAppointment(fetchImpl, "http://api.local", "tok", "prop-1", "apt-1");
+    expect(result.status).toBe("completed");
+  });
+
+  it("markAppointmentNoShow hace POST a .../no-show y mapea la respuesta", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe("http://api.local/v1/citas/properties/prop-1/appointments/apt-1/no-show");
+      return new Response(JSON.stringify({ appointment: { ...APPOINTMENT_ROW, status: "no_show", provider_name: undefined, service_name: undefined, customer_name: undefined, customer_phone: undefined } }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await markAppointmentNoShow(fetchImpl, "http://api.local", "tok", "prop-1", "apt-1");
+    expect(result.status).toBe("no_show");
+  });
+
+  it("un conflicto (409) al completar propaga el error real", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No se puede completar una cita en estado 'cancelled'." }), { status: 409 })) as unknown as typeof fetch;
+    await expect(completeAppointment(fetchImpl, "http://api.local", "tok", "prop-1", "apt-1")).rejects.toThrow("No se puede completar una cita en estado 'cancelled'.");
   });
 });

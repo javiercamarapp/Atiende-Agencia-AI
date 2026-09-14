@@ -59,6 +59,11 @@ export async function buildLicitacionesTestContext(
   const propertyId = randomUUID(); // property singleton por organización (§2.1 del diseño)
   coreRepo.addOrganization({ id: organizationId, slug: "empresa-de-prueba", name: "Empresa de Prueba S.A. de C.V.", vertical: "licitaciones" });
   engine.seedProperty({ id: propertyId, organizationId });
+  // Fase 7 pieza 1 — mismo doble-seed que citas-fixtures.ts (coreRepo/engine PARA
+  // auth/RLS + repo PARA que `GET /v1/licitaciones/:orgSlug/admin/branches`
+  // resuelva algo real, ver InMemoryLicitacionesRepository.findOrganizationBySlug).
+  repo.seedOrganization({ id: organizationId, slug: "empresa-de-prueba", name: "Empresa de Prueba S.A. de C.V." });
+  repo.seedLicitacionesProperty({ id: propertyId, organizationId, name: "Sede principal" });
 
   async function seedStaff(role: LicitacionesRole, label: string) {
     const id = randomUUID();
