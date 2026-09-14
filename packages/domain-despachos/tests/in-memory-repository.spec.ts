@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemoryDespachosRepository } from "../src/in-memory-repository.ts";
-import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError } from "../src/errors.ts";
+import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "../src/errors.ts";
 import type { NewInvoiceInput } from "../src/types.ts";
 import { DEFAULT_MONTHLY_CLOSE_TEMPLATE } from "../src/cierre-mensual/templates.ts";
 import { completarTarea } from "../src/cierre-mensual/engine.ts";
@@ -152,5 +152,71 @@ describe("InMemoryDespachosRepository — cierre mensual (Fase 6)", () => {
     const periodos = await repo.listPeriodosCierre("prop-1");
     expect(periodos).toHaveLength(1);
     expect(periodos[0]!.propertyId).toBe("prop-1");
+  });
+});
+
+describe("InMemoryDespachosRepository — cobranza (Fase 10)", () => {
+  it("registra una cuenta por cobrar sobre un invoice ya ingerido y la encuentra por invoice", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const invoice = await repo.insertInvoice(invoiceInput());
+    const receivable = await repo.registerReceivable({ organizationId: invoice.organizationId, propertyId: invoice.propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-03-01" });
+    expect(receivable.pagadoEn).toBeNull();
+    expect(await repo.findReceivable(invoice.propertyId, receivable.id)).toEqual(receivable);
+    expect(await repo.findReceivableByInvoice(invoice.propertyId, invoice.id)).toEqual(receivable);
+  });
+
+  it("REQ: un mismo invoice nunca arranca el reloj de cobranza dos veces", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const invoice = await repo.insertInvoice(invoiceInput());
+    await repo.registerReceivable({ organizationId: invoice.organizationId, propertyId: invoice.propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-03-01" });
+    await expect(repo.registerReceivable({ organizationId: invoice.organizationId, propertyId: invoice.propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-03-15" })).rejects.toThrow(
+      ReceivableAlreadyExistsError,
+    );
+  });
+
+  it("listReceivables con pendiente:true excluye las ya pagadas", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const i1 = await repo.insertInvoice(invoiceInput());
+    const i2 = await repo.insertInvoice(invoiceInput());
+    const r1 = await repo.registerReceivable({ organizationId: i1.organizationId, propertyId: i1.propertyId, invoiceId: i1.id, fechaVencimiento: "2026-01-01" });
+    await repo.registerReceivable({ organizationId: i2.organizationId, propertyId: i2.propertyId, invoiceId: i2.id, fechaVencimiento: "2026-02-01" });
+    await repo.markReceivablePaid(i1.propertyId, r1.id, new Date().toISOString(), 1160);
+
+    const todas = await repo.listReceivables("prop-1");
+    expect(todas).toHaveLength(2);
+    const pendientes = await repo.listReceivables("prop-1", { pendiente: true });
+    expect(pendientes).toHaveLength(1);
+    expect(pendientes[0]!.invoiceId).toBe(i2.id);
+  });
+
+  it("markReceivablePaid es de un solo sentido — marcar pagada dos veces lanza ReceivableAlreadyPaidError", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const invoice = await repo.insertInvoice(invoiceInput());
+    const receivable = await repo.registerReceivable({ organizationId: invoice.organizationId, propertyId: invoice.propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-01-01" });
+    const pagada = await repo.markReceivablePaid(invoice.propertyId, receivable.id, "2026-01-05T00:00:00Z", 1160);
+    expect(pagada.pagadoEn).toBe("2026-01-05T00:00:00Z");
+    expect(pagada.montoPagado).toBe(1160);
+    await expect(repo.markReceivablePaid(invoice.propertyId, receivable.id, new Date().toISOString(), 1160)).rejects.toThrow(ReceivableAlreadyPaidError);
+  });
+
+  it("insertCollectionEvent registra el historial de recordatorios/respuestas de una cuenta por cobrar", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const invoice = await repo.insertInvoice(invoiceInput());
+    const receivable = await repo.registerReceivable({ organizationId: invoice.organizationId, propertyId: invoice.propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-01-01" });
+
+    await repo.insertCollectionEvent({ organizationId: invoice.organizationId, propertyId: invoice.propertyId, receivableId: receivable.id, etapa: "recordatorio_formal", canal: "email", respuesta: null });
+    const respuesta = await repo.insertCollectionEvent({ organizationId: invoice.organizationId, propertyId: invoice.propertyId, receivableId: receivable.id, etapa: "respuesta", canal: "whatsapp", respuesta: "promesa_pago" });
+
+    const eventos = await repo.listCollectionEvents(invoice.propertyId, receivable.id);
+    expect(eventos).toHaveLength(2);
+    expect(eventos[1]).toEqual(respuesta);
+  });
+
+  it("una cuenta por cobrar de otra property nunca es visible (aislamiento por tenant)", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const invoice = await repo.insertInvoice(invoiceInput({ propertyId: "prop-1" }));
+    const receivable = await repo.registerReceivable({ organizationId: invoice.organizationId, propertyId: "prop-1", invoiceId: invoice.id, fechaVencimiento: "2026-01-01" });
+    expect(await repo.findReceivable("prop-2", receivable.id)).toBeNull();
+    expect(await repo.findReceivableByInvoice("prop-2", invoice.id)).toBeNull();
   });
 });
