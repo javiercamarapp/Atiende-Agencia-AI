@@ -5,7 +5,7 @@
 // (hoteles, restaurantes, rentas, citas, licitaciones) hacia cualquier
 // proveedor de modelo. Sustituye los tres motores que existían por separado:
 //   - atiende.ai: circuit breaker respaldado en Redis (src/lib/llm/circuit-breaker.ts).
-//   - Likida:     escalera de fallback cross-provider (src/lib/llm/openrouter.ts)
+//   - proyecto origen: escalera de fallback cross-provider (src/lib/llm/openrouter.ts)
 //                 y presupuesto con reserva-antes-de-gastar (src/lib/llm/budget.ts).
 //   - licitaciones: gate de residencia EE.UU. configurable, nunca hardcodeado
 //                 a un proveedor (packages/agents/src/llm/router.ts + provider.ts).
@@ -13,7 +13,7 @@
 
 /** Carril de gasto: decide qué techo de presupuesto frena la llamada y si
  *  compite por la reserva protegida del camino interactivo. Mismo concepto
- *  que `PropositoIa` en Likida (interactivo/ocr_lote/fondo), renombrado a
+ *  que `PropositoIa` en el proyecto origen (interactivo/ocr_lote/fondo), renombrado a
  *  inglés porque este paquete es compartido entre 5 verticales, no solo la
  *  de origen. */
 export type LlmLane = 'interactive' | 'batch' | 'background';
@@ -98,5 +98,5 @@ export interface LlmProvider {
 /** Estimador de costo previo a la llamada, para poder RESERVAR antes de
  *  gastar (no se puede reservar sobre un costo que solo se conoce después
  *  de que el proveedor responde). Mismo rol que `calcCost` + `cotaEntradaEnTokens`
- *  en Likida budget.ts/openrouter.ts. */
+ *  en proyecto-origen/budget.ts y openrouter.ts. */
 export type LlmCostEstimator = (provider: LlmProvider, req: LlmCompletionRequest) => number;

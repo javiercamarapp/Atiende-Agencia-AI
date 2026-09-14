@@ -1,8 +1,8 @@
 // LA COOKIE FIRMADA DE SELECCIÓN DE ORGANIZACIÓN — puerto generalizado del
-// patrón real de Likida: `firmarSeleccion`/`validarSeleccion` en
-// ~/likida.ai/src/lib/auth/admin-context.ts (formato `v1.<id>.<expira>.<hmac>`,
+// patrón real del proyecto origen: `firmarSeleccion`/`validarSeleccion` en
+// ~/proyecto-origen/src/lib/auth/admin-context.ts (formato `v1.<id>.<expira>.<hmac>`,
 // HMAC-SHA256, comparación en tiempo constante — el mismo criterio que
-// `verificarFirma` de ~/likida.ai/src/lib/correo/firma_entrante.ts).
+// `verificarFirma` de ~/proyecto-origen/src/lib/correo/firma_entrante.ts).
 //
 // POR QUÉ COOKIE Y NO QUERY STRING: un query param no es fuente de
 // autorización — se comparte en un link, se guarda en un bookmark, y nadie
@@ -27,7 +27,7 @@ export const IMPERSONATION_COOKIE_NAME = "atiende_impersonation_org";
  * TTL de una selección: 12 horas (una jornada de trabajo larga). Al expirar,
  * el superadmin vuelve a elegir explícitamente — el costo es un clic; el
  * beneficio es que "qué organización estoy mirando" nunca sea un residuo de
- * ayer. Mismo TTL que `TTL_SELECCION_MS` en admin-context.ts de Likida.
+ * ayer. Mismo TTL que `TTL_SELECCION_MS` en admin-context.ts del proyecto origen.
  */
 export const IMPERSONATION_TTL_MS = 12 * 60 * 60 * 1000;
 
@@ -36,7 +36,7 @@ export const IMPERSONATION_TTL_MS = 12 * 60 * 60 * 1000;
  * DEBE tener cuando `apps/api` la lea para construir el `secret` que se pasa
  * a `signImpersonationSelection`/`verifyImpersonationSelection`.
  *
- * Requisito NO NEGOCIABLE (mandato de la tarea, y AUDITORÍA 18-B13 de Likida
+ * Requisito NO NEGOCIABLE (mandato de la tarea, y AUDITORÍA 18-B13 del proyecto origen
  * como precedente real del error contrario): esta llave es DEDICADA a firmar
  * SOLO esta cookie. Nunca debe ser:
  *   - la service-role key de Supabase (ni de este monorepo ni de ningún
@@ -81,7 +81,7 @@ function hmacFor(organizationId: string, expiresAtMs: number, secret: string): s
  *
  * `nowMs` se inyecta (por default `Date.now()`) para poder probar los bordes
  * de expiración sin depender del reloj real — mismo criterio que `ahoraMs` en
- * `firmarSeleccion` de Likida.
+ * `firmarSeleccion` del proyecto origen.
  *
  * Lanza `ImpersonationSigningKeyMissingError` si no hay llave (fail-closed:
  * nunca produce una cookie "firmada" con una llave vacía) e
@@ -104,7 +104,7 @@ export function signImpersonationSelection(
  * firma no cuadra, expiró, el formato no es el esperado, o no hay llave con
  * qué validar. TODO camino dudoso es `null`: una selección ilegible es una
  * NO-selección (fail-closed), jamás una organización adivinada — mismo
- * criterio que `validarSeleccion` de Likida.
+ * criterio que `validarSeleccion` del proyecto origen.
  *
  * Deliberadamente NO lanza cuando falta la llave (a diferencia de firmar):
  * "no puedo validar nada ahora mismo" y "no hay selección" tienen el mismo

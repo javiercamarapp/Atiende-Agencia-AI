@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // Presupuesto con RESERVA-ANTES-DE-GASTAR, por tenant y por carril (lane).
 //
-// PUERTO de Likida/src/lib/llm/budget.ts. Mismo mecanismo de dos fases:
+// PUERTO de proyecto-origen/src/lib/llm/budget.ts. Mismo mecanismo de dos fases:
 //   1. `reserveBudget` ANTES de llamar al proveedor — si no hay presupuesto,
 //      se rechaza y NUNCA se paga la llamada.
 //   2. `settleBudget` DESPUÉS, con el costo real — la reserva era una cota
@@ -15,7 +15,7 @@
 // dejar sin servicio al huésped/cliente que está esperando una respuesta
 // AHORA en el canal interactivo".
 //
-// DIFERENCIA con el original: Likida reserva/liquida vía una RPC de
+// DIFERENCIA con el original: el proyecto origen reserva/liquida vía una RPC de
 // Postgres (`reservar_presupuesto_llm`/`liquidar_presupuesto_llm`) porque ya
 // tenía esa infraestructura. La Fase 0 de este monorepo fusionado aún no
 // define el store de persistencia del ledger — así que aquí el CONTRATO
@@ -30,7 +30,7 @@ import { GatewayBudgetExceededError } from './errors.js';
 import type { LlmLane } from './types.js';
 
 /** Qué fracción del techo diario del tenant queda reservada para el carril
- *  'interactive'. Igual que `fraccionReservaInteractivo` en Likida: 0.4 por
+ *  'interactive'. Igual que `fraccionReservaInteractivo` en el proyecto origen: 0.4 por
  *  defecto. */
 export const DEFAULT_INTERACTIVE_RESERVE_FRACTION = 0.4;
 
@@ -165,7 +165,7 @@ export class InMemoryBudgetLedgerStore implements BudgetLedgerStore {
  * Reserva antes de llamar al proveedor. Aplica los TRES topes en orden —
  * corrida, carril (si no es 'interactive'), tenant — y lanza
  * `GatewayBudgetExceededError` con el `scope` que frenó, igual que
- * `reserveLlmBudget` en Likida.
+ * `reserveLlmBudget` en el proyecto origen.
  */
 export async function reserveBudget(
   store: BudgetLedgerStore,
@@ -182,7 +182,7 @@ export async function reserveBudget(
   const spend = await store.reserve(budget.tenantId, id, budget.lane, amountUsd);
 
   // Carril de fondo/batch: no puede tocar la porción reservada para
-  // 'interactive'. Mismo criterio que `tope_proposito` en la RPC de Likida.
+  // 'interactive'. Mismo criterio que `tope_proposito` en la RPC del proyecto origen.
   if (budget.lane !== 'interactive') {
     const nonInteractiveCeiling = Math.max(0, budget.maxTenantDailyUsd - budget.interactiveReserveUsd);
     if (spend.nonInteractiveUsd > nonInteractiveCeiling + 1e-9) {

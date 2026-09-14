@@ -2,7 +2,7 @@
 // Adaptador OpenRouter — implementa `LlmProvider` contra la REST API real de
 // OpenRouter (https://openrouter.ai/api/v1/chat/completions).
 //
-// PUERTO de Likida/src/lib/llm/openrouter.ts: mismos headers
+// PUERTO de proyecto-origen/src/lib/llm/openrouter.ts: mismos headers
 // (`HTTP-Referer`/`X-Title`), mismo `provider: { data_collection: 'deny' }`
 // (no retener input — compliance de datos), mismo `usage: { include: true }`
 // para pedir el costo real reportado por el proveedor en vez de estimarlo.
@@ -101,7 +101,7 @@ export class OpenRouterProvider implements LlmProvider {
       tokensIn,
       tokensOut,
       // El costo REAL que reporta el proveedor si viene (ve nota `costoReal`
-      // en Likida openrouter.ts: la caché de prompt hace que estimar por
+      // en proyecto-origen/openrouter.ts: la caché de prompt hace que estimar por
       // tabla subestime o sobreestime el ahorro real).
       costUsd: typeof data.usage?.cost === 'number' ? data.usage.cost : 0,
     };

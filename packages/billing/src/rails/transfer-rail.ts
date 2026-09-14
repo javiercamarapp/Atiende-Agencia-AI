@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // RIEL DE TRANSFERENCIA / CLABE — puerto de
-// ~/likida.ai/src/lib/saas/transferencia.ts.
+// ~/proyecto-origen/src/lib/saas/transferencia.ts.
 //
 // Sin pasarela: el tenant transfiere a una cuenta real. UN BANCO NO MANDA
 // WEBHOOKS — no hay nada que "detecte" el pago solo. Alguien concilia a mano

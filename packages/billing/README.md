@@ -18,15 +18,15 @@ cierre original de este README) no bloquean su construcción ni su uso.
 
 | Módulo | Patrón real portado | Repo de referencia |
 |---|---|---|
-| `ledger.ts` | `marcarEvento`/`ordenAplicado`/`sellarOrden` — el ledger anti-reordenamiento por entidad (RES-11, BACK-C4-1) | `~/likida.ai/src/lib/saas/suscripcion.ts` |
+| `ledger.ts` | `marcarEvento`/`ordenAplicado`/`sellarOrden` — el ledger anti-reordenamiento por entidad (RES-11, BACK-C4-1) | `~/proyecto-origen/src/lib/saas/suscripcion.ts` |
 | `tenant-verification.ts` | "Defense-in-depth contra metadata-replay cross-tenant" — nunca confiar en el `tenant_id` del payload sin re-derivarlo | `~/GitHub-repos-backup/atiende.ai/atiende-ai/src/app/api/webhook/stripe/route.ts` |
 | `per-seat.ts` | Modelo per-doctor (1 seat = 1 suscripción/cobro), generalizado a cualquier vertical | `~/GitHub-repos-backup/atiende.ai/atiende-ai/src/lib/billing/per-doctor.ts` |
-| `iva.ts` | De qué lado del precio está el IVA (`desglosarPrecio`/`desgloseCuadra`) | `~/likida.ai/src/lib/saas/iva.ts` |
-| `rails/transfer-rail.ts` | CLABE (dígito verificador 3-7-1), referencia determinista, `conciliar` compare-and-set | `~/likida.ai/src/lib/saas/transferencia.ts` |
-| `rails/stripe-rail.ts` | Validación de price (recurrente/activo/MXN/>$0), checkout per-seat con metadata `tenant_id` | `~/likida.ai/src/lib/saas/suscripcion.ts` (`guardarPriceDePlan`) + patrón per-doctor de atiende.ai |
+| `iva.ts` | De qué lado del precio está el IVA (`desglosarPrecio`/`desgloseCuadra`) | `~/proyecto-origen/src/lib/saas/iva.ts` |
+| `rails/transfer-rail.ts` | CLABE (dígito verificador 3-7-1), referencia determinista, `conciliar` compare-and-set | `~/proyecto-origen/src/lib/saas/transferencia.ts` |
+| `rails/stripe-rail.ts` | Validación de price (recurrente/activo/MXN/>$0), checkout per-seat con metadata `tenant_id` | `~/proyecto-origen/src/lib/saas/suscripcion.ts` (`guardarPriceDePlan`) + patrón per-doctor de atiende.ai |
 | `cfdi/catalogs.ts`, `cfdi/rfc.ts` | Catálogos SAT (UsoCFDI, FormaPago, MetodoPago, TipoComprobante, RegimenFiscal) y regex de RFC | `~/Desktop/supabase/despachos/b2b_ai/cfdi/catalogs.py`, `.../b2b_ai/common/rfc.py` |
 | `cfdi/validator.ts` | Validación aritmética determinista (concepto, subtotal, IVA, total, tolerancia 2¢) | `~/Desktop/supabase/despachos/b2b_ai/cfdi/validator.py` |
-| `cfdi/issuer.ts` | Timbrado sin desglose = rechazo; reserva antes de llamar al PAC | `~/likida.ai/src/lib/saas/facturapi.ts` + `transferencia.ts` (`timbrarFactura`) |
+| `cfdi/issuer.ts` | Timbrado sin desglose = rechazo; reserva antes de llamar al PAC | `~/proyecto-origen/src/lib/saas/facturapi.ts` + `transferencia.ts` (`timbrarFactura`) |
 
 ## Las tres garantías que los tests ejercen
 

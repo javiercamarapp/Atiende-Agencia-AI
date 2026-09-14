@@ -7,7 +7,7 @@
 //   llama `logAdminAction` a mano DESPUÉS de ejecutar la acción admin. Un
 //   intento RECHAZADO (403) nunca pasaba por ahí: no hay rastro de quién
 //   intentó una acción de /admin sin permiso. Ningún repo de referencia
-//   (ni likida.ai ni atiende-ai) auditaba la denegación — ver reporte de la
+//   (ni proyecto-origen ni atiende-ai) auditaba la denegación — ver reporte de la
 //   fase.
 //
 //   Aquí `AuditSink.record` se llama desde `requireAdminAccess`
