@@ -55,6 +55,7 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 62. `packages/domain-licitaciones/migrations/017_source_ingestion_and_deadline_reminders.sql` — Fase 8 licitaciones: primer conector automatizado REAL (`compras_mx_historico`, histórico de contratos de ComprasMX vía datos.gob.mx) — agrega el id al CHECK de `source_run.source` + `licitaciones.tender_deadline_reminder` (recordatorios de vencimiento próximo, mismo patrón "sin canal de envío real" que `tender_change_notification`).
 63. `packages/domain-rentas/migrations/010_rentas_limpieza_schema.sql` — Fase 8 rentas: módulo operativo de limpieza/mantenimiento (tareas, checklist, inventario, incidencias) — cierra el gap donde "limpieza" solo existía como valor del enum `razon` de `rentas.ocupacion` (`BUFFER_LIMPIEZA`). Agrega `rentas.tarea_operativa`/`rentas.item_inventario`/`rentas.incidencia_mantenimiento` (property-scoped) + `rentas.checklist_item_tarea`/`rentas.foto_checklist_item`/`rentas.movimiento_inventario`/`rentas.notificacion_tarea` (hijas, RLS vía join) + 3 columnas nuevas de buffer/SLA sobre `rentas.property_config` (ya existente desde la Fase 1, nunca una tabla de configuración propia).
 64. `packages/domain-restaurantes/migrations/008_repartidor_order_assignment.sql` — Fase 8 restaurantes: superficie real del rol "repartidor" — `restaurantes.orders.assigned_repartidor_id`/`estimated_delivery_at`/`incident_note` (dispatch real de un pedido a un repartidor + la incidencia que reporta), sin policies nuevas de RLS a propósito (ver comentario de cabecera del propio archivo SQL: la autorización fina vive en la capa TS, igual que el resto de este vertical).
+65. `packages/domain-hoteles/migrations/011_revenue_engine_gate.sql` — Fase 9 hoteles (REQ-REV-003, P0/GOB): motor de revenue management (pricing) — máquina de estados real shadow/propone/autopilot (`hoteles.revenue_engine_gate`) con su autoridad en un trigger de Postgres (nunca un flag de aplicación: exige 90 días mínimos en shadow, un backtest walk-forward vigente que pase, y una aprobación explícita del rol `owner` registrada en un UPDATE previo antes de habilitar autopilot pleno) + historial inmutable de corridas de backtest (`hoteles.revenue_backtest_run`). Gap real verificado contra el original (`packages/db/migrations/0082_revenue_engine_gate.sql`): domain-hoteles no tenía ninguna carpeta `revenue/` antes de esta fase. Diferencia deliberada documentada en la cabecera del propio archivo SQL: usa una aprobación de "owner" en vez del "founder_reserved_category" del original, que fusion no ha portado.
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
@@ -63,8 +64,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000064`; usa
-   `20240101000065`, luego `...066`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000065`; usa
+   `20240101000066`, luego `...067`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
