@@ -226,7 +226,7 @@ export class InMemoryCitasRepository implements CitasRepository {
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
   }
 
-  seedWaitlistEntry(row: Omit<StoredWaitlistRow, "id" | "status" | "notifiedCount" | "createdAt" | "expiresAt"> & { id?: string; expiresAt?: string }): string {
+  seedWaitlistEntry(row: Omit<StoredWaitlistRow, "id" | "status" | "notifiedCount" | "createdAt" | "expiresAt"> & { id?: string; expiresAt?: string; createdAt?: string }): string {
     const id = row.id ?? randomUUID();
     this.waitlist.set(id, {
       id,
@@ -241,7 +241,10 @@ export class InMemoryCitasRepository implements CitasRepository {
       status: "active",
       notifiedCount: 0,
       expiresAt: row.expiresAt ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      createdAt: new Date().toISOString(),
+      // Override real para tests determinísticos de orden FIFO
+      // (runListaEsperaCore/runOptimizadorCore) — dos entradas seedeadas en el
+      // mismo tick de reloj tendrían el mismo `Date.now()` de otro modo.
+      createdAt: row.createdAt ?? new Date().toISOString(),
     });
     return id;
   }
