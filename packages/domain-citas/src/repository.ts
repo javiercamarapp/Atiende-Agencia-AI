@@ -10,7 +10,23 @@
 // las lanza la capa de negocio (appointments.ts), nunca el adaptador. Esto reproduce
 // fielmente el mapeo real AT423->conflict / AT404->not_found / AT409->conflict del
 // origen sin acoplar el puerto a códigos de error de Postgres.
-import type { AppointmentActorChannel, AppointmentRecord, AppointmentSource, AvailabilityOverride, AvailabilityRule, BusyInterval, CustomerRecord, GoogleSyncStatus, ProviderCalendarAccountRecord, ProviderRecord, ServiceRecord } from "./types.ts";
+import type {
+  AppointmentActorChannel,
+  AppointmentRecord,
+  AppointmentSource,
+  AvailabilityOverride,
+  AvailabilityRule,
+  BusyInterval,
+  CustomerRecord,
+  GoogleSyncStatus,
+  NewProviderInput,
+  NewServiceInput,
+  ProviderCalendarAccountRecord,
+  ProviderPatch,
+  ProviderRecord,
+  ServicePatch,
+  ServiceRecord,
+} from "./types.ts";
 
 export interface NewAppointmentInput {
   readonly organizationId: string;
@@ -159,13 +175,33 @@ export interface CustomerPage {
 // Fase 6 §1 — guardia de crisis (ver diseño: vertical-config.ts + crisis-guardrail.ts).
 // ============================================================================
 
-/** `citas.tenant_config` (001_citas_schema.sql) — solo los dos campos que el
- * guardrail de crisis necesita: el rubro real (qué FAQs/guardrail aplican) y el
- * teléfono de aviso urgente al dueño, si lo configuró. */
+/** `citas.tenant_config` (001_citas_schema.sql) — el rubro real (qué FAQs/guardrail
+ * de crisis aplican), el timezone por defecto de la organización (usado por
+ * `findPropertyTimezone` cuando la cita/proveedor no tiene sucursal con timezone
+ * propio) y el teléfono de aviso urgente al dueño, si lo configuró.
+ * `defaultTimezone` se agregó en Fase 8 junto con `upsertTenantConfig` — antes de
+ * esa fase `findTenantConfig` (usado solo por el guardrail de crisis) no lo
+ * necesitaba, pero el panel de Configuración sí edita el mismo campo que ya lee
+ * `findPropertyTimezone` directo de la fila (ver postgres-repository.ts). */
 export interface TenantConfigRecord {
   readonly organizationId: string;
   readonly rubro: string;
+  readonly defaultTimezone: string;
   readonly ownerNotificationPhone: string | null;
+}
+
+/** Fase 8 — panel admin: edición real de `citas.tenant_config` (port de
+ * `ConfiguracionSection.tsx::guardar` del origen, acotado a los 3 campos que
+ * domain-citas modela — ver diseño Fase 8 §3). Patch parcial: un campo ausente deja
+ * el valor actual intacto; `ownerNotificationPhone: null` explícito sí lo quita.
+ * A propósito NO incluye `name`/`slug`/`status` del negocio (esos son
+ * `core.organization`, un recurso compartido por las 6 verticales que
+ * domain-citas no posee — ninguna otra vertical de este monorepo escribe
+ * `core.organization` tampoco; ver resumen de la fase). */
+export interface TenantConfigPatch {
+  readonly rubro?: string;
+  readonly defaultTimezone?: string;
+  readonly ownerNotificationPhone?: string | null;
 }
 
 export interface EmergencyEscalationInput {
@@ -269,6 +305,24 @@ export interface CitasRepository {
   findProvider(organizationId: string, providerId: string): Promise<ProviderRecord | null>;
   findService(organizationId: string, serviceId: string): Promise<ServiceRecord | null>;
   providerOffersService(providerId: string, serviceId: string): Promise<boolean>;
+  /** Fase 8 — panel admin: alta/edición real de proveedores/servicios (port de
+   * ProveedoresSection.tsx/ServiciosSection.tsx/FichaProveedor.tsx del origen —
+   * ver diseño Fase 8 §1/§2). `createProvider`/`createService` devuelven el
+   * registro completo ya creado; `updateProvider`/`updateService` devuelven `null`
+   * si `id` no existe o no pertenece a `organizationId` — NUNCA edita a ciegas un
+   * id de otra organización, mismo criterio que `updateProduct` de
+   * domain-restaurantes. `setProviderServiceOffering` es el equivalente real del
+   * checkbox de `FichaProveedor.tsx::toggleServicio`: `offered:true` inserta la
+   * fila de `citas.provider_services` (si no existía ya — idempotente), `false` la
+   * quita; el caller (admin.ts) ya validó que `providerId`/`serviceId` pertenecen a
+   * la organización vía `findProvider`/`findService` antes de llamar aquí, mismo
+   * motivo por el que `providerOffersService` de arriba tampoco pide
+   * `organizationId`. */
+  createProvider(input: NewProviderInput): Promise<ProviderRecord>;
+  updateProvider(organizationId: string, providerId: string, patch: ProviderPatch): Promise<ProviderRecord | null>;
+  setProviderServiceOffering(providerId: string, serviceId: string, offered: boolean): Promise<void>;
+  createService(input: NewServiceInput): Promise<ServiceRecord>;
+  updateService(organizationId: string, serviceId: string, patch: ServicePatch): Promise<ServiceRecord | null>;
   loadAvailabilityRules(providerId: string): Promise<readonly AvailabilityRule[]>;
   loadAvailabilityOverride(providerId: string, dateStr: string): Promise<AvailabilityOverride | null>;
   loadBusyIntervals(providerId: string, dayStartUtc: string, dayEndUtc: string, excludeAppointmentId?: string): Promise<readonly BusyInterval[]>;
@@ -427,6 +481,16 @@ export interface CitasRepository {
   // ---- Fase 6 §1 — guardia de crisis ----
   findTenantConfig(organizationId: string): Promise<TenantConfigRecord | null>;
   insertEmergencyEscalation(input: EmergencyEscalationInput): Promise<EmergencyEscalationRecord>;
+  /** Fase 8 — panel admin: edición real de `citas.tenant_config` (port de
+   * ConfiguracionSection.tsx del origen, ver TenantConfigPatch). Upsert real (no
+   * solo update): a diferencia de providers/services, una organización de citas
+   * puede no tener fila en `tenant_config` todavía (la migración solo le pone
+   * defaults a nivel columna, ningún flujo de aprovisionamiento en este repo
+   * inserta la fila — ver diseño Fase 8 §3) — la primera vez que el dueño abre
+   * Configuración y guarda, esta llamada CREA la fila con sus defaults reales
+   * (rubro='otro', default_timezone='America/Mexico_City') más el patch pedido,
+   * nunca falla con "not found". Devuelve la fila completa ya escrita. */
+  upsertTenantConfig(organizationId: string, patch: TenantConfigPatch): Promise<TenantConfigRecord>;
 
   // ---- Fase 6 §2/§3 — nombre de la organización para plantillas de correo
   // (ver appointment-email-notifications.ts) ----

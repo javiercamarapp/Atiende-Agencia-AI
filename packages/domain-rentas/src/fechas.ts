@@ -88,3 +88,10 @@ export function rangosSeSuperponen(a: RangoFechas, b: RangoFechas): boolean {
 export function diaDeLaSemana(fecha: FechaLocal): number {
   return new Date(aDiasEpoca(fecha) * MS_POR_DIA).getUTCDay();
 }
+
+/** Suma (o resta, con `dias` negativo) un número entero de días de calendario a una
+ * `FechaLocal` — usado por `./limpieza/buffer.ts` para calcular `checkout + n noches`
+ * sin introducir ninguna dependencia nueva (mismo `Date.UTC` DST-safe de arriba). */
+export function sumarDias(fecha: FechaLocal, dias: number): FechaLocal {
+  return desdeDiasEpoca(aDiasEpoca(fecha) + dias);
+}

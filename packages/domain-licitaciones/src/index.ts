@@ -237,3 +237,11 @@ export type {
   ScanRenewalAlertsInput,
   ScanRenewalAlertsResult,
 } from "./repository.ts";
+
+// ---- Fase 8: ingesta automática real (compras_mx_historico) + recordatorios de plazo ----
+export { createComprasMxHistoricoConnector, mapComprasMxHistoricoRow, COMPRAS_MX_HISTORICO_ID } from "./connectors/compras-mx-historico.ts";
+export { streamCsvRows, parseCsv } from "./connectors/csv.ts";
+export type { CsvRowEvent, CsvDataRow, CsvRowError, CsvParseResult } from "./connectors/csv.ts";
+export { assertLegitimateCsvBody } from "./connectors/response-classifier.ts";
+export type { LicitacionesSourceConnector, TenderSourceIngestCandidate, DiscoverParams, ConnectorContext, ConnectorLogger, DroppedRowInfo } from "./connectors/types.ts";
+export type { TenderSourceIngestResult, TenderDeadlineReminderRecord, ScanDeadlineRemindersInput, ScanDeadlineRemindersResult } from "./repository.ts";

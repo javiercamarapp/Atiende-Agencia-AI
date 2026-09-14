@@ -30,6 +30,7 @@ import type { ContractInvoiceStatus } from "./contract-billing.ts";
 import type { DecimalString } from "./money.ts";
 import type { InconformidadFundamento, InconformidadViability } from "./inconformidad.ts";
 import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
+import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -133,6 +134,47 @@ export interface TenderChangeNotificationRecord {
   readonly createdAt: string;
   readonly acknowledgedAt: string | null;
   readonly acknowledgedBy: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 8 -- ingesta automática real (compras_mx_historico) + recordatorios
+// automáticos de plazo (REQ-004/146..150 + el gap de la auditoría: "worker
+// no invoca ningún conector, no hay recordatorios automáticos de plazo").
+// ---------------------------------------------------------------------------
+
+export interface TenderSourceIngestResult {
+  readonly created: number;
+  readonly updated: number;
+  readonly tenders: readonly TenderRecord[];
+}
+
+/** Recordatorio persistido de un vencimiento próximo (`submissionDeadline`) -- mismo criterio "honesto" que `TenderChangeNotificationRecord`: sin canal de envío real (email/SMS/WhatsApp), un registro consultable/reconocible (ver README del vertical para el gap declarado de integrar un canal real). */
+export interface TenderDeadlineReminderRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly tenderId: string;
+  readonly submissionDeadline: string;
+  /** Redondeado hacia arriba (`Math.ceil`) respecto del momento en que se generó el recordatorio -- puede ser 0 si el vencimiento es HOY. */
+  readonly daysRemaining: number;
+  readonly message: string;
+  readonly createdAt: string;
+  readonly acknowledgedAt: string | null;
+  readonly acknowledgedBy: string | null;
+}
+
+export interface ScanDeadlineRemindersInput {
+  /** Ventana de anticipación (días) para considerar un vencimiento "próximo". Por defecto 3 (mismo valor que el repo origen, `deadline-reminders.ts::DeadlineReminderOptions.windowDays`). */
+  readonly windowDays?: number;
+  /** Inyectable SOLO para pruebas deterministas -- por defecto el momento real de la corrida. */
+  readonly nowIso?: string;
+}
+
+export interface ScanDeadlineRemindersResult {
+  readonly scanned: number;
+  /** Cantidad de recordatorios REALMENTE creados en esta corrida (excluye los que ya existían -- dedupe por (tender, fecha calendario del vencimiento), mismo criterio que `enqueueUpcomingDeadlineReminders` del repo origen). */
+  readonly created: number;
+  /** Solo los recordatorios CREADOS en esta corrida (no el historial completo -- para eso ver `listTenderDeadlineReminders`). */
+  readonly reminders: readonly TenderDeadlineReminderRecord[];
 }
 
 export interface RecordTenderVersionResult {
@@ -549,6 +591,36 @@ export interface LicitacionesRepository {
   /** Frescura/obsolescencia por fuente REGISTRADA (REQ-149) -- incluye toda fuente del registro único aunque nunca haya corrido (frescura `stale: true` explícita, nunca oculta). */
   sourceFreshness(organizationId: string): Promise<readonly SourceFreshnessRecord[]>;
 
+  // ---- Fase 8: ingesta AUTOMÁTICA real + recordatorios de plazo ----
+  /**
+   * Upsert por `(organizationId, source, externalId)` -- MISMO mecanismo de
+   * dedupe/conflicto que `upsertTenderManual` (reutiliza el mismo índice
+   * único `tender_org_source_external_idx`), pero para un conector
+   * AUTOMATIZADO: `source` es SIEMPRE el id del conector invocante (lanza si
+   * se pasa `"manual"` -- ese camino de escritura sigue siendo
+   * `upsertTenderManual`, nunca este) y `created_by` queda `null` (sin actor
+   * humano detrás). A diferencia de `upsertTenderManual`, esta operación NO
+   * llama `recordTenderVersion` ni escribe en `tender_audit_log`: esa
+   * cascada de invalidación de aprobaciones y esa auditoría están
+   * pensadas para un cambio sobre una convocatoria que un humano ya está
+   * trabajando (`tender_audit_log.actor_id` es `NOT NULL` con FK a
+   * `core.staff_user`, que una ingesta automática no puede satisfacer
+   * honestamente sin inventar un actor). La evidencia de ESTA operación es
+   * responsabilidad del llamador vía `recordSourceRun` (ver
+   * `apps/worker/src/jobs/licitaciones/discover-tenders.ts`) -- mismo
+   * principio de REQ-147 que ya aplicaba a `upsertTenderManual`, solo que
+   * agregado por corrida completa en vez de por registro individual (un
+   * conector automatizado puede traer cientos de filas por corrida).
+   */
+  ingestTendersFromSource(organizationId: string, source: SourceConnectorId, records: readonly TenderSourceIngestCandidate[]): Promise<TenderSourceIngestResult>;
+  /** Organizaciones activas del vertical `licitaciones` -- mismo rol que `CitasRepository.listActiveOrganizations()`/`HotelesRepository.listActiveHotelProperties()` para el barrido de un scheduler externo (ver `apps/worker/src/jobs/licitaciones/discover-tenders.ts`, `deadline-reminders.ts`). */
+  listActiveOrganizations(): Promise<readonly { id: string }[]>;
+  /** Escanea `tender.submissionDeadline` de la organización y persiste un recordatorio nuevo por cada (convocatoria, fecha calendario de vencimiento) que no exista todavía -- idempotente: reescanear dentro de la misma ventana nunca duplica (mismo criterio que `scanRenewalAlerts`/`enqueueUpcomingDeadlineReminders` del repo origen). Excluye convocatorias en un estado terminal (`cancelled`/`lost`/`won`/`submitted`) -- ya no tiene sentido recordarles un plazo. */
+  scanUpcomingDeadlineReminders(organizationId: string, input?: ScanDeadlineRemindersInput): Promise<ScanDeadlineRemindersResult>;
+  /** Historial de recordatorios, más recientes primero. Sin `tenderId`, lista los de TODA la organización. */
+  listTenderDeadlineReminders(organizationId: string, tenderId?: string): Promise<readonly TenderDeadlineReminderRecord[]>;
+  acknowledgeTenderDeadlineReminder(organizationId: string, reminderId: string, actorId: string): Promise<TenderDeadlineReminderRecord>;
+
   // ---- Idempotencia (transversal) ----
   withIdempotency<T>(params: IdempotencyParams, run: () => Promise<IdempotentResult<T>>): Promise<IdempotentResult<T>>;
 
@@ -618,3 +690,4 @@ export type { ProposalVersion, ProposalInputRecord, PersistedProposalVersion } f
 export type { TenderVersion, PersistedTenderVersion, TenderVersionSnapshot, TenderFieldSnapshot, RequirementSnapshot, TenderVersionDiff, TenderFieldChange, TenderRequirementChange, TenderDiffStatus } from "./tender-version-registry.ts";
 export type { SourceConnectorId, SourceHealthState, SourceConnectorDescriptor } from "./connector-registry.ts";
 export type { SourceRunRecord, SourceRunInput, SourceRunEvidence, SourceFreshnessRecord } from "./source-run.ts";
+export type { TenderSourceIngestCandidate } from "./connectors/types.ts";

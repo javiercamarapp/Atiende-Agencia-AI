@@ -24,8 +24,17 @@ export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: 
 }
 
 export async function postJson<T>(fetchImpl: typeof fetch, url: string, token: string, payload: unknown = {}): Promise<T> {
+  return sendJson<T>(fetchImpl, url, token, "POST", payload);
+}
+
+/** Fase 8 — generalización de `postJson` a cualquier método de escritura (mismo
+ * nombre y firma que `sendJson` de restaurantes/admin-client.ts, ver
+ * catalog-client.ts de esa vertical): el panel de citas ahora también hace
+ * PATCH (editar proveedor/servicio/tenant-config) y PUT (checkbox de
+ * provider_services), no solo POST. */
+export async function sendJson<T>(fetchImpl: typeof fetch, url: string, token: string, method: "POST" | "PATCH" | "PUT", payload: unknown = {}): Promise<T> {
   const res = await fetchImpl(url, {
-    method: "POST",
+    method,
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify(payload),
   });

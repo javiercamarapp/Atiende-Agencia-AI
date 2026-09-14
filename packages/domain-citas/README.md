@@ -130,3 +130,34 @@ dispatcher es un problema de plataforma compartido que se construye por separado
 drena el lote real. El recordatorio 24h (`reminders.ts::runConfirmacionCitaCore`)
 ahora manda WhatsApp Y correo como canales independientes — un negocio sin
 WhatsApp configurado ya no se queda sin ningún recordatorio.
+
+## Fase 8 — panel admin: crear/editar proveedores, servicios y configuración del tenant
+
+Gap real de paridad con el origen (`FichaProveedor.tsx`/`ServiciosSection.tsx`/
+`ConfiguracionSection.tsx`): hasta esta fase, `CitasRepository` solo exponía
+`listActiveProviders`/`listActiveServices` — ningún método de escritura para
+proveedor/servicio/`tenant_config`, por lo que `apps/web/.../Proveedores.tsx`,
+`Servicios.tsx` y `Configuracion.tsx` eran explícitamente de solo lectura.
+
+- `createProvider`/`updateProvider` + `setProviderServiceOffering` (el checkbox
+  real de `provider_services` — `repository.ts::NewProviderInput`/`ProviderPatch`).
+- `createService`/`updateService` (`NewServiceInput`/`ServicePatch`) — `citas.services`
+  no tiene columnas `description`/`requirements` como el origen; agregarlas es una
+  migración/decisión de producto separada, fuera de esta fase (ver comentario en
+  `types.ts::NewServiceInput`).
+- `upsertTenantConfig` (`TenantConfigPatch`) edita `citas.tenant_config.rubro` —
+  el campo real que usa la guardia de crisis (`vertical-config.ts::requiresCrisisGuardrail`) —
+  más `default_timezone` (el mismo que ya leía `findPropertyTimezone`) y
+  `owner_notification_phone`. A propósito NO edita `name`/`slug`/`status` del
+  negocio (`core.organization`): ese schema es compartido por las 6 verticales y
+  ninguna otra edita esos 3 campos desde una ruta de staff todavía — ampliarlo es
+  una decisión de plataforma completa, no de esta vertical.
+- Rutas (`apps/api/src/routes/verticals/citas/admin.ts`, mismo guard JWT +
+  `requirePropertyMembership` sin `allowedRoles` que el resto del panel):
+  `POST providers`, `PATCH providers/:id`, `PUT providers/:id/services/:id`
+  (`{offered}`), `POST services`, `PATCH services/:id`, `GET`/`PATCH tenant-config`.
+- `migrations/011_citas_admin_backoffice_grants_and_policies.sql`: mismo gap y
+  arreglo que la Fase 5 de restaurantes — las policies `for all` de `providers`/
+  `services`/`tenant_config` (ya desde `migrations/001`) eran letra muerta sin el
+  GRANT de escritura al rol `authenticated`; `provider_services` ni siquiera tenía
+  policy de escritura.

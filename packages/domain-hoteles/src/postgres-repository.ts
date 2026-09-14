@@ -9,6 +9,7 @@ import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./erro
 import type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 import type {
   ActiveHotelProperty,
+  AttendanceEventRecord,
   CancellationPolicyRecord,
   CfdiEmisionRecord,
   ConversationMessage,
@@ -25,6 +26,7 @@ import type {
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
   MaintenanceTicketStatus,
+  NewAttendanceEventInput,
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
@@ -34,6 +36,7 @@ import type {
   NewMaintenanceTicketInput,
   NewPaymentInput,
   NewReservationInput,
+  NewStaffScheduleInput,
   NightAuditRunRecord,
   NightlyRateRecord,
   ChargeRecord,
@@ -41,6 +44,7 @@ import type {
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  StaffScheduleRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
@@ -409,6 +413,67 @@ function mapHousekeepingShift(row: HousekeepingShiftRawRow): HousekeepingShiftRe
     startTime: row.start_time,
     endTime: row.end_time,
     createdAt: row.created_at,
+  };
+}
+
+interface AttendanceEventRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  staff_user_id: string;
+  event_type: AttendanceEventRecord["eventType"];
+  recorded_at: string;
+  source: string;
+  note: string | null;
+  created_at: string;
+}
+
+const ATTENDANCE_EVENT_COLUMNS = `id, organization_id, property_id, staff_user_id, event_type,
+       recorded_at::text as recorded_at, source, note, created_at::text as created_at`;
+
+function mapAttendanceEvent(row: AttendanceEventRawRow): AttendanceEventRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    staffUserId: row.staff_user_id,
+    eventType: row.event_type,
+    recordedAt: row.recorded_at,
+    source: row.source,
+    note: row.note,
+    createdAt: row.created_at,
+  };
+}
+
+interface StaffScheduleRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  staff_user_id: string;
+  work_date: string;
+  scheduled_start: string;
+  scheduled_end: string;
+  authorized_overtime_minutes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+const STAFF_SCHEDULE_COLUMNS = `id, organization_id, property_id, staff_user_id, work_date::text as work_date,
+       scheduled_start::text as scheduled_start, scheduled_end::text as scheduled_end,
+       authorized_overtime_minutes, created_at::text as created_at, updated_at::text as updated_at`;
+
+function mapStaffSchedule(row: StaffScheduleRawRow): StaffScheduleRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    staffUserId: row.staff_user_id,
+    workDate: row.work_date,
+    scheduledStart: row.scheduled_start,
+    scheduledEnd: row.scheduled_end,
+    authorizedOvertimeMinutes: row.authorized_overtime_minutes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -1438,5 +1503,72 @@ export class PostgresHotelesRepository implements HotelesRepository {
       staffId ? [propertyId, fromDate, toDate, staffId] : [propertyId, fromDate, toDate],
     );
     return rows.map(mapHousekeepingShift);
+  }
+
+  // ---- HotelesRepository: Fase 8 — REQ-BO-024 checador de asistencia inalterable ----
+
+  async recordAttendanceEvent(input: NewAttendanceEventInput): Promise<AttendanceEventRecord> {
+    // `recorded_at` lo fija SIEMPRE `now()` de Postgres (default de columna, ver
+    // migrations/010_checador_asistencia.sql) -- ningún valor de `input` lo
+    // sobreescribe aquí a propósito. `hash`/`prev_hash`/`seq` los calcula el trigger
+    // `attendance_log_set_hash` (SECURITY DEFINER); este INSERT nunca los toca.
+    const { rows } = await this.db.query<AttendanceEventRawRow>(
+      `insert into hoteles.attendance_log (organization_id, property_id, staff_user_id, event_type, source, note)
+       values ($1, $2, $3, $4, $5, $6)
+       returning ${ATTENDANCE_EVENT_COLUMNS};`,
+      [input.organizationId, input.propertyId, input.staffUserId, input.eventType, input.source, input.note],
+    );
+    return mapAttendanceEvent(rows[0]!);
+  }
+
+  async listAttendanceEvents(
+    propertyId: string,
+    staffUserId: string,
+    range?: { readonly fromDate: string; readonly toDate: string },
+  ): Promise<readonly AttendanceEventRecord[]> {
+    const { rows } = await this.db.query<AttendanceEventRawRow>(
+      range
+        ? `select ${ATTENDANCE_EVENT_COLUMNS} from hoteles.attendance_log
+           where property_id = $1 and staff_user_id = $2
+             and recorded_at >= $3::date and recorded_at < ($4::date + interval '1 day')
+           order by recorded_at asc;`
+        : `select ${ATTENDANCE_EVENT_COLUMNS} from hoteles.attendance_log
+           where property_id = $1 and staff_user_id = $2
+           order by recorded_at asc;`,
+      range ? [propertyId, staffUserId, range.fromDate, range.toDate] : [propertyId, staffUserId],
+    );
+    return rows.map(mapAttendanceEvent);
+  }
+
+  async upsertStaffSchedule(input: NewStaffScheduleInput): Promise<StaffScheduleRecord> {
+    const { rows } = await this.db.query<StaffScheduleRawRow>(
+      `insert into hoteles.staff_schedule
+         (organization_id, property_id, staff_user_id, work_date, scheduled_start, scheduled_end, authorized_overtime_minutes)
+       values ($1, $2, $3, $4::date, $5::timestamptz, $6::timestamptz, $7)
+       on conflict (property_id, staff_user_id, work_date) do update set
+         scheduled_start = excluded.scheduled_start,
+         scheduled_end = excluded.scheduled_end,
+         authorized_overtime_minutes = excluded.authorized_overtime_minutes
+       returning ${STAFF_SCHEDULE_COLUMNS};`,
+      [
+        input.organizationId,
+        input.propertyId,
+        input.staffUserId,
+        input.workDate,
+        input.scheduledStart,
+        input.scheduledEnd,
+        input.authorizedOvertimeMinutes,
+      ],
+    );
+    return mapStaffSchedule(rows[0]!);
+  }
+
+  async findStaffSchedule(propertyId: string, staffUserId: string, workDate: string): Promise<StaffScheduleRecord | null> {
+    const { rows } = await this.db.query<StaffScheduleRawRow>(
+      `select ${STAFF_SCHEDULE_COLUMNS} from hoteles.staff_schedule
+       where property_id = $1 and staff_user_id = $2 and work_date = $3::date;`,
+      [propertyId, staffUserId, workDate],
+    );
+    return rows[0] ? mapStaffSchedule(rows[0]) : null;
   }
 }
