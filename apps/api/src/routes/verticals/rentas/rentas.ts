@@ -22,6 +22,7 @@ import { rentasMensajeriaPlantillasRoutes } from "./mensajeria-plantillas.ts";
 import { rentasMensajeriaPoliticasRoutes } from "./mensajeria-politicas.ts";
 import { rentasEmailDispatchRoutes } from "./email-dispatch.ts";
 import { rentasCheckInRecordatorioRoutes } from "./checkin-recordatorio.ts";
+import { rentasOnboardingRoutes } from "./onboarding.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -50,6 +51,12 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // requirePropertyMembership, así que montarla temprano evita cualquier ambigüedad
   // de forma con el patrón wildcard de las rutas de staff de abajo.
   app.route("/", rentasIcalFeedPublicoRoutes(deps));
+
+  // Fase 11 -- onboarding self-serve del tenant (POST /rentas/onboarding/registro,
+  // sin sesión, ver onboarding.ts) -- ruta literal, mismo criterio de orden que las
+  // dos de arriba: montarla antes de las rutas de staff evita cualquier ambigüedad
+  // de forma con el patrón wildcard `:propertyId` de abajo.
+  app.route("/", rentasOnboardingRoutes(deps));
 
   app.route("/", rentasReservasRoutes(deps));
   app.route("/", rentasBloqueosRoutes(deps));

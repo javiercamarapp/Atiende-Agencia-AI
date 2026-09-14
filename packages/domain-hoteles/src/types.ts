@@ -659,3 +659,100 @@ export interface PlOccupiedRoomNightsByDateRow {
   readonly roomNights: number;
   readonly revenue: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 11 — REQ-CRM-002/003: reputación/CRM. Espejo de aplicación de
+// `migrations/013_reputacion.sql` (`hoteles.guest_review`/
+// `hoteles.guest_review_action`) -- ver el comentario de cabecera de esa migración y
+// de `reputacion/clasificador.ts` para el alcance completo (incluyendo lo que
+// deliberadamente NO cubre esta fase: ingesta automática real de Google/Booking/
+// TripAdvisor, y la orquestación de `apps/api` que ejecutaría el ticket de
+// mantenimiento / enviaría el mensaje proactivo / aplicaría la compensación).
+// `GuestReviewRecord.topics`/`sentiment`/`sentimentScore` son la salida YA
+// persistida de `clasificarResena()` (packages/domain-hoteles/src/reputacion/
+// clasificador.ts), nunca recalculada al leer.
+// ─────────────────────────────────────────────────────────────────────────
+export type GuestReviewSource = "google" | "booking" | "tripadvisor" | "expedia" | "encuesta_propia" | "otro";
+export type GuestReviewStayState = "en_estancia" | "post_estancia" | "desconocido";
+export type GuestReviewSentiment = "muy_negativo" | "negativo" | "neutral" | "positivo" | "muy_positivo";
+
+export interface GuestReviewTopicRecord {
+  readonly topic: string;
+  readonly esConocido: boolean;
+  readonly menciones: number;
+  readonly palabrasClave: readonly string[];
+}
+
+export interface GuestReviewRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly guestId: string | null;
+  readonly folioId: string | null;
+  readonly source: GuestReviewSource;
+  /** Id de la reseña en la plataforma de origen -- `null` para una encuesta propia
+   *  capturada directamente (no tiene un id externo que deduplicar). Idempotencia
+   *  real vía índice único parcial (`hoteles.guest_review`, ver la migración): la
+   *  MISMA reseña externa nunca se clasifica ni se dispara dos veces. */
+  readonly externalId: string | null;
+  readonly texto: string;
+  readonly idioma: string;
+  readonly calificacion: number | null;
+  readonly stayState: GuestReviewStayState;
+  readonly isPublic: boolean;
+  readonly topics: readonly GuestReviewTopicRecord[];
+  readonly sentiment: GuestReviewSentiment;
+  readonly sentimentScore: number;
+  readonly createdBy: string | null;
+  readonly createdAt: string;
+}
+
+export interface NewGuestReviewInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly guestId: string | null;
+  readonly folioId: string | null;
+  readonly source: GuestReviewSource;
+  readonly externalId: string | null;
+  readonly texto: string;
+  readonly idioma: string;
+  readonly calificacion: number | null;
+  readonly stayState: GuestReviewStayState;
+  readonly isPublic: boolean;
+  readonly topics: readonly GuestReviewTopicRecord[];
+  readonly sentiment: GuestReviewSentiment;
+  readonly sentimentScore: number;
+  readonly createdBy: string | null;
+}
+
+export type GuestReviewActionType = "ticket_mantenimiento" | "mensaje_proactivo" | "compensacion_reglada";
+export type GuestReviewActionStatus = "pendiente" | "ejecutada" | "descartada";
+
+export interface GuestReviewActionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly reviewId: string;
+  readonly actionType: GuestReviewActionType;
+  readonly status: GuestReviewActionStatus;
+  /** Solo poblado para `ticket_mantenimiento` cuando la orquestación (fuera de esta
+   *  fase, ver comentario de cabecera de `migrations/013_reputacion.sql`) ya haya
+   *  creado el ticket real en `hoteles.maintenance_ticket`. */
+  readonly ticketId: string | null;
+  readonly detail: Readonly<Record<string, unknown>>;
+  readonly reason: string;
+  readonly resolvedBy: string | null;
+  readonly resolvedAt: string | null;
+  readonly createdAt: string;
+}
+
+export interface NewGuestReviewActionInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly reviewId: string;
+  readonly actionType: GuestReviewActionType;
+  readonly status: GuestReviewActionStatus;
+  readonly ticketId: string | null;
+  readonly detail: Readonly<Record<string, unknown>>;
+  readonly reason: string;
+}

@@ -1,15 +1,30 @@
 // Fase 6 pieza 2 (REQ-052) -- test de integración HTTP real de la subida +
-// extracción determinista del contrato firmado. El cuerpo del request trae
-// el texto YA EXTRAÍDO por página (mismo contrato que
-// POST .../requirements/extract) -- nunca bytes de un PDF, ver el límite
-// documentado en contract-extraction.ts.
+// extracción determinista del contrato firmado. El cuerpo del request admite
+// el texto YA EXTRAÍDO por página (mismo contrato original que
+// POST .../requirements/extract) O, desde Fase 11, los bytes reales del PDF
+// (`contentBase64`) -- ver el describe "Fase 11" al final de este archivo.
 import { describe, expect, it } from "vitest";
+import { PDFDocument } from "pdf-lib";
 import { buildApp } from "../src/app.ts";
 import { buildLicitacionesTestContext, authedJson } from "./licitaciones-fixtures.ts";
 
 async function createContract(app: ReturnType<typeof buildApp>, propertyId: string, tenderId: string, token: string) {
   const res = await app.request(`/licitaciones/${propertyId}/tenders/${tenderId}/contract`, { method: "POST", headers: { authorization: `Bearer ${token}` } });
   expect(res.status).toBe(201);
+}
+
+async function pdfWithText(text: string): Promise<string> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont("Helvetica");
+  const page = doc.addPage([500, 500]);
+  page.drawText(text, { x: 20, y: 460, size: 10, font, maxWidth: 460 });
+  return Buffer.from(await doc.save()).toString("base64");
+}
+
+async function scannedBlankPdfBase64(): Promise<string> {
+  const doc = await PDFDocument.create();
+  doc.addPage([400, 400]); // sin drawText: ninguna capa de texto -- "requires_ocr".
+  return Buffer.from(await doc.save()).toString("base64");
 }
 
 describe("Fase 6 pieza 2 (REQ-052) -- documentos y campos extraídos del contrato firmado", () => {
@@ -118,5 +133,52 @@ describe("Fase 6 pieza 2 (REQ-052) -- documentos y campos extraídos del contrat
     );
     expect(uploaded.status).toBe(201);
     expect(((await uploaded.json()) as { fields: unknown[] }).fields).toHaveLength(0);
+  });
+});
+
+// Fase 11 -- pipeline real de extracción de texto de PDF conectado también
+// a esta ruta: `contentBase64` (bytes reales) como alternativa a `pages`.
+describe("Fase 11 -- contract/documents con contentBase64 (bytes reales de PDF)", () => {
+  it("un PDF real del contrato firmado se extrae y alimenta extractContractFields -- nunca hace falta pegar texto a mano", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    await createContract(app, ctx.propertyId, ctx.tenderId, ctx.staff.owner.token);
+    const contentBase64 = await pdfWithText("Contrato numero: SABG-2026-999. Monto total $123,456.00 pesos.");
+
+    const uploaded = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/contract/documents`,
+      authedJson(ctx.staff.writer.token, { documentLabel: "Contrato firmado.pdf", contentBase64, mimeType: "application/pdf" }),
+    );
+    expect(uploaded.status).toBe(201);
+    const body = (await uploaded.json()) as { document: { pageCount: number }; fields: { fieldKey: string; status: string }[] };
+    expect(body.document.pageCount).toBe(1);
+    expect(body.fields.some((f) => f.fieldKey === "numero_contrato")).toBe(true);
+    for (const f of body.fields) expect(f.status).toBe("sugerido");
+  });
+
+  it("un PDF escaneado (sin capa de texto) -> 422 explícito, nunca se registra un documento con texto inventado", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    await createContract(app, ctx.propertyId, ctx.tenderId, ctx.staff.owner.token);
+    const scannedBase64 = await scannedBlankPdfBase64();
+
+    const uploaded = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/contract/documents`,
+      authedJson(ctx.staff.writer.token, { documentLabel: "Contrato escaneado.pdf", contentBase64: scannedBase64, mimeType: "application/pdf" }),
+    );
+    expect(uploaded.status).toBe(422);
+    const body = (await uploaded.json()) as { message: string };
+    expect(body.message).toContain("requires_ocr");
+
+    const listed = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/contract/documents`, authedJson(ctx.staff.viewer.token));
+    expect(((await listed.json()) as { documents: unknown[] }).documents).toHaveLength(0);
+  });
+
+  it("sin 'pages' NI 'contentBase64' -> 400 de validación", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    await createContract(app, ctx.propertyId, ctx.tenderId, ctx.staff.owner.token);
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/contract/documents`, authedJson(ctx.staff.writer.token, { documentLabel: "x" }));
+    expect(res.status).toBe(400);
   });
 });

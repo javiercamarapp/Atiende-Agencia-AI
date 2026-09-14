@@ -183,3 +183,65 @@ la orquestación que la alimenta con datos reales de negocio vive en fases futur
 de `apps/api`).
 
 Migración nueva: `migrations/011_revenue_engine_gate.sql`.
+
+## Fase 11 — reputación/CRM: clasificador de reseñas por tema + sentimiento + inbox unificado + índice agregado (REQ-CRM-002/003)
+
+Gap real verificado contra el original y contra el código de main antes de esta
+fase: ningún archivo bajo `packages/domain-hoteles` mencionaba reputación/reseñas/
+CRM, y este mismo README (ver "Explícitamente fuera de Fase 1" arriba) ya listaba
+"reputación" fuera de alcance, sin que ninguna fase posterior la retomara.
+
+- `reputacion/clasificador.ts` — port literal de
+  `hoteles/packages/domain-hotel/src/reputacion/clasificador.ts` (verificado regla
+  por regla contra el original: ninguna regla de negocio se cambió). Dominio puro
+  determinista, SIN LLM ni dependencia de ninguna API de Google/Booking/TripAdvisor
+  (clasifica CUALQUIER texto de reseña/encuesta que ya llegó al sistema, sin
+  importar el canal): `detectarTemas` (diccionario base de 12 temas + diccionario
+  propio configurable por hotel + descubrimiento heurístico de temas locales NUNCA
+  entrenados previamente, p.ej. una plaga o un olor específico de esa property),
+  `analizarSentimiento` (léxico ponderado español con negación e intensificadores,
+  combinable con una calificación de 1-5 estrellas), y `decidirAcciones`
+  (ticket de mantenimiento / mensaje proactivo / compensación reglada, cada una con
+  su propia condición determinista — ver comentarios del archivo).
+- `reputacion/indice.ts` — índice de reputación agregado (construcción NUEVA de esta
+  fase, sin equivalente 1:1 en el original — verificado por grep antes de
+  escribirse: el original nunca aisló este cálculo en un archivo propio). Dominio
+  puro determinista que agrega reseñas YA clasificadas (nunca vuelve a correr el
+  clasificador): distribución de sentimiento, promedio de calificación/puntaje,
+  un `puntajeIndice` 0-100 para tablero, y los temas más frecuentes/críticos
+  (mínimo de reseñas configurable para no confundir una queja aislada con un
+  problema sistémico).
+- Modelo de datos (`migrations/013_reputacion.sql`): `hoteles.guest_review` (la
+  reseña/encuesta + su clasificación) y `hoteles.guest_review_action` (cada acción
+  disparada), pensado para captura MANUAL (encuesta propia del staff) o un futuro
+  webhook — nunca para una ingesta automática real de Google/Booking/TripAdvisor
+  (REQ-CRM-001 en el original, "pendiente-credenciales" ahí también). RLS propia
+  (`hoteles.can_submit_reputacion`/`hoteles.can_view_reputacion`/
+  `hoteles.can_resolve_reputacion_accion`, espejo de `REPUTACION_SUBMIT_ROLES`/
+  `REPUTACION_VIEW_ROLES`/`REPUTACION_ACTION_RESOLVE_ROLES` en `roles.ts`).
+
+Deliberadamente FUERA de esta fase (mismo patrón que Fase 9 revenue: dominio puro +
+modelo de datos completo primero, la orquestación de negocio real vive en una fase
+futura de `apps/api`):
+
+- **Ingesta automática real** desde Google/Booking/TripAdvisor — requiere
+  credenciales de esas plataformas que este repo no tiene; `source`/`external_id`
+  quedan listos en el modelo de datos para cuando exista ese conector, pero no se
+  fabrica ni se simula aquí.
+- **La ruta HTTP de `apps/api`** que capturaría una reseña, correría
+  `clasificarResena()`, y persistiría el resultado (el original sí la tenía,
+  `apps/api/src/routes/reputacion.ts`) — esta fase deja el dominio y el esquema
+  listos, sin exponer el endpoint todavía.
+- **La orquestación que EJECUTA cada acción**: crear de verdad el ticket contra
+  `hoteles.maintenance_ticket` (el original sí lo hacía de inmediato, reusando su
+  tool de mantenimiento), enviar el mensaje proactivo (requiere una plantilla
+  aprobada de WhatsApp/Meta, mismo límite que ya documenta `whatsapp/
+  llm-turn-handler.ts` de Fase 2), o aplicar la compensación reglada (mueve dinero,
+  exige aprobación humana explícita, mismo criterio que `REVENUE_AUTOPILOT_
+  APPROVAL_ROLES`). `guest_review_action.ticket_id` por eso queda siempre `null` en
+  esta fase — el modelo de datos ya lo contempla, ninguna inserción lo puebla
+  todavía.
+- **Panel/UI de `apps/web`** para el inbox unificado y el tablero del índice
+  agregado.
+
+Migración nueva: `migrations/013_reputacion.sql`.

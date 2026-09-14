@@ -141,3 +141,19 @@ export const REVENUE_BACKTEST_ROLES: readonly HotelRole[] = ["owner", "gm", "acc
 // `hoteles.can_access_pl()` (migrations/012_pl_usali.sql) -- la RLS real es la
 // autoridad.
 export const PL_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+
+// Fase 11 (REQ-CRM-002/003, P1/F) — reputación/CRM: clasificación de reseñas +
+// inbox unificado + índice agregado. Capturar/clasificar una reseña (POST) es un
+// acto de front-of-house (mismo subconjunto que MANAGE_RESERVATIONS_ROLES, ya que
+// hoy típicamente lo hace frontdesk/reservations al mostrador o por WhatsApp,
+// mismo criterio que el origen: `REVIEW_SUBMIT_ROLES`). Verlas (inbox + índice) es
+// más amplio: se suma `accountant` porque una compensación reglada mueve dinero y
+// necesita poder ver el contexto completo antes de resolverla (mismo criterio que
+// `REVIEW_VIEW_ROLES` del origen). Resolver (marcar ejecutada/descartada) una
+// acción pendiente es MÁS estricto: mensaje proactivo y compensación son ejecución
+// humana fuera de este dominio puro, compensación en particular es dinero -- mismo
+// nivel que NIGHT_AUDIT_ROLES/FRAUD_RESOLVER_ROLES, nunca frontdesk/reservations
+// (mismo criterio que `REVIEW_ACTION_RESOLVE_ROLES` del origen).
+export const REPUTACION_SUBMIT_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
+export const REPUTACION_VIEW_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations", "accountant"];
+export const REPUTACION_ACTION_RESOLVE_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];

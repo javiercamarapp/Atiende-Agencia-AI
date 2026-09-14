@@ -19,7 +19,10 @@ export type RentasErrorCode =
   | "incidencia_no_encontrada"
   | "bloqueo_mantenimiento_no_aplicable"
   | "bloqueo_mantenimiento_ya_confirmado"
-  | "bloqueo_mantenimiento_sin_rango";
+  | "bloqueo_mantenimiento_sin_rango"
+  // ---- onboarding self-serve (Fase 11, ver ./onboarding/captura.ts) ----
+  | "onboarding_datos_invalidos"
+  | "onboarding_organizacion_duplicada";
 
 export class RentasDomainError extends Error {
   readonly code: RentasErrorCode;

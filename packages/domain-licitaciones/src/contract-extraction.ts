@@ -3,23 +3,27 @@
 // YA EXTRAÍDO por página -- port ~literal de las reglas regex del repo
 // original (`licitaciones/apps/api/src/lib/expediente/contract-extraction.ts`).
 //
-// LÍMITE DOCUMENTADO (honesto, no oculto -- ver instrucción de esta fase):
-// este monorepo fusionado NO tiene, en NINGÚN vertical, un pipeline de
-// texto-desde-PDF/OCR (ni siquiera para las bases de licitación mismas --
-// ver `requirement-matrix.ts::TenderDocumentText`/
-// `technicalProposal.ts::POST .../requirements/extract`, que YA reciben el
-// texto pre-extraído en el cuerpo del request, `{pages:[{page,text}]}`,
+// LÍMITE DOCUMENTADO -- CERRADO en Fase 11 (honesto, no oculto -- ver
+// instrucción de esa fase): hasta Fase 10 este monorepo fusionado no tenía,
+// en NINGÚN vertical, un pipeline de texto-desde-PDF/OCR (ni siquiera para
+// las bases de licitación mismas -- ver `requirement-matrix.ts::TenderDocumentText`/
+// `technicalProposal.ts::POST .../requirements/extract`, que solo aceptaban
+// el texto pre-extraído en el cuerpo del request, `{pages:[{page,text}]}`,
 // exactamente el mismo contrato que este módulo). El repo ORIGEN sí tenía un
 // motor propio (`extractDocumentText`, pdfjs-dist) que distinguía PDF con
-// capa de texto de un PDF escaneado y devolvía `requires_ocr` en ese
-// segundo caso -- esa pieza específica NUNCA se portó a este monorepo (Fase
-// 2 tampoco la portó para las bases) y sigue siendo trabajo pendiente
-// genuino: convertir los BYTES de un PDF firmado (nativo o escaneado) en
-// texto es responsabilidad de un paso externo al llamar a esta API (por
-// ahora, el propio usuario/back-office copia el texto ya extraído, o un
-// futuro pipeline compartido de texto-desde-PDF lo hace) -- este módulo, y
-// la ruta HTTP que lo expone, jamás fingen ejecutar ese paso: fail-closed
-// por diseño (nunca se inventa contenido a partir de bytes sin texto).
+// capa de texto de un PDF escaneado y devolvía `requires_ocr` en ese segundo
+// caso -- Fase 11 PORTA esa pieza ~literal a este monorepo
+// (`./text-extraction.ts`, mismo nombre de función) y la conecta en AMBAS
+// rutas: `contractDocuments.ts::POST .../contract/documents` (el consumidor
+// de este módulo) ahora acepta `contentBase64` (bytes reales del contrato
+// firmado) además de `pages`, y `technicalProposal.ts::POST
+// .../requirements/extract` igual para las bases. Este módulo
+// (`extractContractFields`) sigue operando SOLO sobre texto ya resuelto por
+// página -- la resolución bytes->texto vive en `text-extraction.ts`, nunca
+// aquí -- y sigue sin haber OCR real de imagen (ninguna librería/servicio
+// disponible): un PDF escaneado sin capa de texto sigue quedando
+// `"requires_ocr"` explícito, fail-closed por diseño (nunca se inventa
+// contenido a partir de bytes sin texto).
 //
 // Reglas deterministas (regex): cada campo detectado trae página
 // (heurística exacta, no proporcional -- ver `pageForIndex`), cláusula (si
