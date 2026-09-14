@@ -125,3 +125,58 @@ aunque `domain-citas` ya había traído el motor real (Resend, `messaging_outbox
   `x-atiende-internal-secret` que `ical-sync-cron.ts`; quién los dispara y cada
   cuánto es una decisión de infraestructura pendiente (mismo criterio que el resto de
   crons internos de este monorepo, ninguno tiene entrada en `vercel.json` todavía).
+
+## Onboarding self-serve del tenant (Fase 11)
+
+Cierra el gap identificado por auditoría: el repo original permite que un cliente
+nuevo (dueño de propiedades) se dé de alta a sí mismo como tenant desde el producto —
+organización + primera propiedad + admin + configuración inicial de rentas, un solo
+submit, sin intervención manual del equipo de Atiende (`onboarding_registrar_empresa`,
+`SECURITY DEFINER`, `rentas-standalone/packages/db/src/migrations/
+0121_onboarding_funciones.ts`). En atiende-fusion esto está **parcialmente
+construido, honestamente bloqueado en la porción que no es de este paquete**:
+
+- **`src/onboarding/captura.ts`** (`validarCapturaOnboardingRentas`) — validación y
+  normalización REAL de la captura completa (organización + primera propiedad + admin
+  + configuración inicial), sin ninguna dependencia de infraestructura: nombre no
+  vacío, `tipoOrganizacion` dentro del enum, zona horaria validada contra
+  `Intl.supportedValuesOf("timeZone")` (D-013 del origen, mismo criterio que
+  `rentas-standalone/packages/domain/src/fechas.ts::validarZonaHorariaIana`), moneda
+  ISO 4217, correo/contraseña del admin, slug derivado del nombre
+  (`slugificarNombreOrganizacion`).
+- **`src/onboarding/repository.ts`** + **`postgres-repository.ts`** — el puerto
+  `RentasOnboardingRepository` y su adaptador Postgres REAL (SQL correcto contra el
+  esquema ya migrado, resolución de colisión de slug con sufijo incremental, manejo de
+  correo de admin duplicado) — no es un stub ni un mock, es el código que correrá el
+  día que exista una sesión de privilegio para escribirlo.
+- **Bloqueado, por diseño, y documentado en detalle en `src/onboarding/repository.ts`**:
+  `core.organization`/`core.property`/`core.staff_user`/`core.membership` NUNCA
+  otorgan `insert`/`update`/`delete` a `authenticated`, solo a `service_role`
+  (`packages/db/migrations/0001_core_schema.sql`), y este monorepo no aprovisiona
+  `service_role` como conexión de aplicación (mismo gap ya documentado para 3 métodos
+  de `rentasOwnerPortalRepo`, aquí es el puerto ENTERO). La solución real ya tiene
+  precedente en este mismo monorepo — `core.accept_staff_invite`
+  (`packages/db/migrations/0002_staff_invite_schema.sql`, función `security definer`)
+  resuelve exactamente este tipo de problema sin necesitar `service_role` — y
+  `core.staff_user.created_via` ya reserva el valor `'registro_autoservicio'` desde la
+  migración 0001 sin que ningún método lo produjera hasta esta fase. Escribir esa
+  función (`core.register_tenant_onboarding`, o el nombre que se decida) es trabajo de
+  PLATAFORMA (esquema `core`, compartido por las 6 verticales), fuera del alcance de
+  este paquete de dominio.
+- **`InMemoryRentasOnboardingRepository`** — adaptador en memoria REAL (no un mock),
+  usado hoy por `apps/api/tests/rentas-onboarding.spec.ts` para ejercitar
+  `POST /rentas/onboarding/registro` de punta a punta; en producción,
+  `production/deps.ts` conecta el puerto completo a `notProductionReady` (ver
+  `apps/api/src/production/rentas-onboarding-repository.ts`) hasta que la función
+  `security definer` exista.
+- **Deliberadamente fuera de esta fase** (no fingido como completo): envío/consumo del
+  token de verificación de correo (el resultado ya declara
+  `requiereVerificacionCorreo: true` y `email_verified_at: null`, coherente con el
+  chequeo que ya hace `POST /auth/login` sobre `created_via='registro_autoservicio'`,
+  pero no hay infraestructura de envío de correo de verificación de STAFF en este
+  monorepo — `src/emails/*` de la Fase 9 es correo transaccional al HUÉSPED, un
+  concepto distinto), plan/facturación en la captura (`core.organization` no tiene
+  columna de plan a propósito, ver comentario de `Organization` en
+  `@atiende/core-tenancy::types.ts`: "Campos de plan/facturación deliberadamente
+  AUSENTES — ver packages/billing"), y cualquier rate limiting sobre la ruta pública
+  (mismo criterio que `POST /auth/login`, que tampoco lo tiene hoy en este monorepo).

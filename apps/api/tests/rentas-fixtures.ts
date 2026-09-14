@@ -11,7 +11,7 @@ import { hashPassword, InMemoryCoreRepository } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
 import type { RentasVerticalRole } from "@atiende/domain-rentas";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -47,6 +47,11 @@ export interface RentasTestContext {
   /** Fase 7 -- referencia tipada al repositorio de mensajería (conversaciones/
    * mensajes/borradores/plantillas), mismo criterio que `rentasRepo` arriba. */
   readonly rentasMensajeriaRepo: InMemoryRentasMensajeriaRepository;
+  /** Fase 11 -- referencia tipada al adaptador en memoria de onboarding self-serve,
+   * mismo criterio que `rentasRepo` arriba (para que un test pueda seguir
+   * inspeccionando lo que quedó registrado -- `findOrganizacionById`/
+   * `findStaffByEmail`/etc. -- después de un `POST /rentas/onboarding/registro`). */
+  readonly rentasOnboardingRepo: InMemoryRentasOnboardingRepository;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly unidadId: string;
@@ -78,6 +83,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
   const rentasCalendarSyncRepo = new InMemoryRentasCalendarSyncRepository(calendarStore);
   const rentasIcalFeedPort = new FakeIcalFeedPort();
   const rentasMensajeriaRepo = new InMemoryRentasMensajeriaRepository();
+  const rentasOnboardingRepo = new InMemoryRentasOnboardingRepository();
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
@@ -133,6 +139,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
     rentasCalendarSyncRepo: (_db) => rentasCalendarSyncRepo,
     rentasIcalFeedPort: rentasIcalFeedPort,
     rentasMensajeriaRepo: (_db) => rentasMensajeriaRepo,
+    rentasOnboardingRepo: (_db) => rentasOnboardingRepo,
     llmGateway: options.llmGateway,
     citasRepo: (_db) => new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
@@ -164,6 +171,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
     rentasCalendarSyncRepo,
     rentasIcalFeedPort,
     rentasMensajeriaRepo,
+    rentasOnboardingRepo,
     organizationId,
     propertyId,
     unidadId,
