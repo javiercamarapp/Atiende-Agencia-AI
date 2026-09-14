@@ -31,6 +31,35 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly mapeosMigracion = new Map<string, MapeoMigracionCuenta>();
   private readonly periodosCierre = new Map<string, ClosePeriod>();
   private readonly tareasCierre = new Map<string, CloseTask[]>(); // key: periodoId
+  private readonly organizations = new Map<string, { id: string; name: string; slug: string; isActive: boolean }>();
+  private readonly organizationIdBySlug = new Map<string, string>();
+  private readonly despachosProperties = new Map<string, { propertyId: string; organizationId: string; name: string }>();
+
+  // ---- Fase 9 — seeding (equivalente a INSERT manual contra las migraciones SQL),
+  // mismo rol EXACTO que InMemoryLicitacionesRepository.seedOrganization/
+  // seedLicitacionesProperty. ----
+
+  seedOrganization(org: { id: string; slug: string; name: string; isActive?: boolean }): void {
+    this.organizations.set(org.id, { id: org.id, name: org.name, slug: org.slug, isActive: org.isActive ?? true });
+    this.organizationIdBySlug.set(org.slug, org.id);
+  }
+
+  seedDespachosProperty(property: { id: string; organizationId: string; name: string }): void {
+    this.despachosProperties.set(property.id, { propertyId: property.id, organizationId: property.organizationId, name: property.name });
+  }
+
+  async findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null> {
+    const id = this.organizationIdBySlug.get(slug);
+    if (!id) return null;
+    return this.organizations.get(id) ?? null;
+  }
+
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]> {
+    return [...this.despachosProperties.values()]
+      .filter((p) => p.organizationId === organizationId)
+      .map((p) => ({ propertyId: p.propertyId, name: p.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   // ---- CFDI ----
 
