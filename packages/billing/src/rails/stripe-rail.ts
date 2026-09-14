@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // RIEL DE STRIPE — puerto de las validaciones reales de
-// ~/likida.ai/src/lib/saas/suscripcion.ts::guardarPriceDePlan y del patrón
+// ~/proyecto-origen/src/lib/saas/suscripcion.ts::guardarPriceDePlan y del patrón
 // per-seat de ~/GitHub-repos-backup/atiende.ai/.../billing/per-doctor.ts
 // (createDoctorCheckout), generalizado a cualquier vertical/seat.
 //
@@ -26,7 +26,7 @@ export class PriceStripeInvalido extends Error {
 }
 
 /**
- * Las mismas cuatro comprobaciones que `guardarPriceDePlan` en Likida, antes
+ * Las mismas cuatro comprobaciones que `guardarPriceDePlan` en el proyecto origen, antes
  * de aceptar un price de Stripe como el precio de un plan/seat:
  *   - tiene que ser recurrente (un pago único cobraría una vez y el tenant
  *     quedaría con el seat activo para siempre);

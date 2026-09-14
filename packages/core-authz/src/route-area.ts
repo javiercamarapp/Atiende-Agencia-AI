@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // MAPA EXPLÍCITO RUTA → ÁREA — generalización del patrón real de
-// likida.ai/src/lib/auth/visibilidad.ts (AREA_POR_RUTA / puedeVerRuta /
+// proyecto-origen/src/lib/auth/visibilidad.ts (AREA_POR_RUTA / puedeVerRuta /
 // areasDe), portado a un factory genérico porque core-authz sirve a las 5
 // verticales de este monorepo (hoteles/restaurantes/rentas/licitaciones/
 // citas) y no puede conocer los nombres de ruta de ninguna en particular —
@@ -9,7 +9,7 @@
 //
 // Cada app (apps/web, o cada domain-<vertical> que exponga sus propias
 // rutas admin) declara SU PROPIO mapa ruta→área con `createRouteAreaMap`,
-// igual que likida.ai declara el suyo en un solo archivo de app. Lo que
+// igual que proyecto-origen declara el suyo en un solo archivo de app. Lo que
 // vive aquí es el MECANISMO, no los datos.
 //
 // LA REGLA QUE SE PORTA TAL CUAL (es la que importa, ver visibilidad.ts

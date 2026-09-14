@@ -2,7 +2,7 @@
 // EL backend distribuido — el conteo es del SERVIDOR, no de la instancia.
 //
 // Portado del patrón de test real de
-// ~/likida.ai/src/lib/ratelimit_redis.test.ts (describe "backend Redis — el
+// ~/proyecto-origen/src/lib/ratelimit_redis.test.ts (describe "backend Redis — el
 // conteo es del servidor, no de la instancia", 11-sep-2026). Mismo doble de
 // la REST API de Upstash: SÍ hace lo que el script Lua promete (incrementa,
 // TTL solo la primera vez) sin interpretar Lua de verdad — representa lo que

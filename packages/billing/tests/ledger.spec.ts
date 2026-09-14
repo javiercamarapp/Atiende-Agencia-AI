@@ -25,7 +25,7 @@ describe('aplicarConLedger — el ledger nunca permite un cobro duplicado por re
   });
 
   it('un evento .updated viejo que llega DESPUÉS de un .deleted más nuevo no revive la entidad', async () => {
-    // El caso real de producción (Likida, RES-11): se cancela HOY y el
+    // El caso real de producción (proyecto origen, RES-11): se cancela HOY y el
     // reintento de un .updated de anteayer (backoff largo del proveedor)
     // NO debe volver a dejarla "activa" — el último en LLEGAR no es el
     // último en OCURRIR.

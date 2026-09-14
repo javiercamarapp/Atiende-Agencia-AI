@@ -2,7 +2,7 @@
 // existe para cerrar el incidente real: "un superadmin sin tenant
 // seleccionado caía a modo demo en silencio". Puerto generalizado de
 // `requireSessionTenant`/`resolverTenantEfectivo` en
-// ~/likida.ai/src/lib/auth/{guard.ts,tenant-efectivo.ts}.
+// ~/proyecto-origen/src/lib/auth/{guard.ts,tenant-efectivo.ts}.
 //
 // El superadmin de este monorepo (a diferencia de `Membership` en
 // core-tenancy) no pertenece a NINGUNA organización por diseño — es un actor
@@ -26,7 +26,7 @@ export interface ResolveImpersonatedOrganizationInput {
   readonly actor: SuperadminActor;
   /**
    * Selección explícita de ESTA petición puntual — el equivalente de
-   * `?tenant=<id>` en el flujo de "ver como" auditado de Likida
+   * `?tenant=<id>` en el flujo de "ver como" auditado del proyecto origen
    * (tenant-efectivo.ts). Tiene PRIORIDAD sobre la cookie: es una intención
    * todavía más explícita que una selección persistente de hace rato.
    * `apps/api` es quien decide si expone este parámetro y desde qué ruta

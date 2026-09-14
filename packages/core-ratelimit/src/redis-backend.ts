@@ -4,9 +4,9 @@
 // serverless: sin esto, cada instancia de Vercel/Lambda cuenta en su propio
 // Map y el techo real de un endpoint es N × instancias abiertas, no N.
 //
-// Portado de: ~/likida.ai/src/lib/ratelimit.ts — `SCRIPT_INCR_CON_TTL` +
+// Portado de: ~/proyecto-origen/src/lib/ratelimit.ts — `SCRIPT_INCR_CON_TTL` +
 // `intentarRedis` (líneas 158-213 al momento de portar, 11-sep-2026, HEAD de
-// likida.ai en ese commit: 6a2cdec "fix(tests): barrido completo de
+// proyecto-origen en ese commit: 6a2cdec "fix(tests): barrido completo de
 // date-rot..."). Mismo script Lua, mismo criterio de timeout y de "nunca
 // lanza", mismo formato de comando REST.
 //
@@ -31,13 +31,13 @@
 // protege contra abuso y ráfagas, no factura nada.
 //
 // ── POR QUÉ REST CRUDO Y NO EL SDK `@upstash/redis` ──────────────────────────
-// Es la decisión que se está PORTANDO, no una preferencia nueva: Likida la
-// tomó porque cuatro rutas y un HMAC no justifican una dependencia con su
+// Es la decisión que se está PORTANDO, no una preferencia nueva: el proyecto
+// origen la tomó porque cuatro rutas y un HMAC no justifican una dependencia con su
 // propio agente HTTP (mismo criterio que usó ahí para Stripe). Nota para
 // quien lea esto junto a `packages/core-conversation/src/lock/redis-lock-store.ts`,
 // que SÍ usa `@upstash/redis`: ese paquete ya traía la dependencia por su
 // propio patrón (SET NX EX + un Lua de una línea para el release) portado de
-// un ORIGEN DISTINTO (atiende.ai, no Likida). No hay conflicto en que este
+// un ORIGEN DISTINTO (atiende.ai, no el proyecto origen). No hay conflicto en que este
 // paquete conviva con esa dependencia en el mismo monorepo — cada adaptador
 // porta lo que su original real hacía. Nada impide migrar esto a
 // `@upstash/redis` después si el monorepo decide unificar clientes; no es
@@ -45,7 +45,7 @@
 //
 // Lo que NO se portó de la fuente: `redisConfigurado`, `avisarBackend`,
 // `categoria`, `clientIp`, `bodyExcede` y el aviso de arranque por instancia
-// fría — son utilidades de app (logging con el logger propio de Likida,
+// fría — son utilidades de app (logging con el logger propio del proyecto origen,
 // medición de body por content-length) fuera del alcance de "rate limiting
 // distribuido con Redis+Lua". La responsabilidad de logging/observabilidad
 // de ESTE paquete vive en `rate-limiter.ts` vía el callback `onEvent`, para

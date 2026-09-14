@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // DE QUÉ LADO DEL PRECIO ESTÁ EL IVA — puerto directo de
-// ~/likida.ai/src/lib/saas/iva.ts.
+// ~/proyecto-origen/src/lib/saas/iva.ts.
 //
-// El fallo que este archivo existe para cerrar (real, en producción de
-// Likida): un módulo guardaba el precio del plan como "lo que el cliente
+// El fallo que este archivo existe para cerrar (real, en producción del
+// proyecto origen): un módulo guardaba el precio del plan como "lo que el cliente
 // transfiere" (IVA incluido) y otro lo mandaba al PAC documentado como
 // "subtotal SIN IVA" (que el PAC le suma 16% encima). Con un plan de
 // $10,000 el cliente transfería $10,000 y el CFDI salía por $11,600 — y un
@@ -69,7 +69,7 @@ export function desglosarPrecio(precio: number, criterio: CriterioIva): Desglose
 }
 
 /** ¿El desglose guardado sigue cuadrando con el total cobrado? Tolerancia de
- *  un centavo más un margen de punto flotante (mismo criterio que Likida). */
+ *  un centavo más un margen de punto flotante (mismo criterio que el proyecto origen). */
 export function desgloseCuadra(total: number, subtotal: number, iva: number): boolean {
   return Math.abs(round2(total) - round2(subtotal + iva)) <= 0.01 + 1e-9;
 }

@@ -5,7 +5,7 @@
 // se degrada una llamada individual en fail-open acotado cuando Redis SÍ está
 // configurado pero un intento falla (ver rate-limiter.ts).
 //
-// Portado de: ~/likida.ai/src/lib/ratelimit.ts — `buckets`/`limiteLocal`/
+// Portado de: ~/proyecto-origen/src/lib/ratelimit.ts — `buckets`/`limiteLocal`/
 // `podar` (líneas 102-156 al momento de portar, 11-sep-2026 — commit
 // 6a2cdec era HEAD de ese repo entonces). Mismo algoritmo y mismo criterio de
 // poda (por CADUCIDAD primero, no por orden de inserción: ver el comentario

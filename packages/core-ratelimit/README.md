@@ -14,21 +14,21 @@ resuelve eso con un contador **en Redis**, incrementado atómicamente vía un sc
 ## De dónde viene el código (portado, no reinventado)
 
 Todo el algoritmo central de este paquete es un port directo de
-`~/likida.ai/src/lib/ratelimit.ts` (y su suite `ratelimit_redis.test.ts`), tal como estaban
+`~/proyecto-origen/src/lib/ratelimit.ts` (y su suite `ratelimit_redis.test.ts`), tal como estaban
 el 11-sep-2026 (HEAD de ese repo en el commit `6a2cdec`, "fix(tests): barrido completo de
 date-rot..."). Mapa de qué vino de dónde:
 
-| Este paquete | Portado de (Likida) | Qué cambió |
+| Este paquete | Portado de (proyecto origen) | Qué cambió |
 |---|---|---|
 | `src/redis-backend.ts` (`attemptRedisIncrement`, `SCRIPT_INCR_WITH_TTL`) | `intentarRedis`, `SCRIPT_INCR_CON_TTL` | Nombres en inglés; recibe `url`/`token`/`timeoutMs` por parámetro en vez de leer `process.env` directo — el algoritmo (EVAL, INCR + PEXPIRE solo en `n==1`, nunca lanza) es idéntico. |
 | `src/memory-window.ts` (`InMemoryWindowStore`) | `buckets` / `limiteLocal` / `podar` | Clase con estado propio en vez de `Map` de módulo (así cada `DistributedRateLimiter` — o cada test — tiene su propio estado aislado). Mismo algoritmo de sliding window y mismo criterio de poda (por caducidad primero, luego por antigüedad — ver el comentario original sobre el bug que corrigió esa poda). |
-| `src/rate-limiter.ts` (`DistributedRateLimiter.check`, `rateLimit()`) | `rateLimit()` | Misma decisión (Redis sano → conteo del servidor; sin credenciales → memoria; con credenciales pero avería → fail-open/closed). La fuente de la decisión fail-open/closed cambia: Likida usa una sola env var global (`RATELIMIT_REDIS_FALLA_CERRADO`) + opción por-llamada; aquí se generaliza a una **tabla por categoría de endpoint** (ver abajo) porque este monorepo sirve varios dominios de riesgo muy distinto, no ~4 endpoints de un solo producto. |
-| `src/endpoint-policy.ts` (`ENDPOINT_POLICIES`, `resolvePolicy`) | *(nuevo — no existe equivalente en Likida)* | Generalización explícita de la env var única de Likida a una tabla, requerida por este monorepo multi-dominio. |
+| `src/rate-limiter.ts` (`DistributedRateLimiter.check`, `rateLimit()`) | `rateLimit()` | Misma decisión (Redis sano → conteo del servidor; sin credenciales → memoria; con credenciales pero avería → fail-open/closed). La fuente de la decisión fail-open/closed cambia: el proyecto origen usa una sola env var global (`RATELIMIT_REDIS_FALLA_CERRADO`) + opción por-llamada; aquí se generaliza a una **tabla por categoría de endpoint** (ver abajo) porque este monorepo sirve varios dominios de riesgo muy distinto, no ~4 endpoints de un solo producto. |
+| `src/endpoint-policy.ts` (`ENDPOINT_POLICIES`, `resolvePolicy`) | *(nuevo — no existe equivalente en el proyecto origen)* | Generalización explícita de la env var única del proyecto origen a una tabla, requerida por este monorepo multi-dominio. |
 
 Lo que **no** se portó (fuera de alcance de "rate limiting distribuido"): `redisConfigurado`
 (aviso de arranque), `avisarBackend`, `categoria` (derivación de categoría desde la llave
-para logs), `clientIp`, `bodyExcede`. Son utilidades de app atadas al logger propio de
-Likida (`@/lib/logger`) y a Next.js/`Request`; este paquete es agnóstico de framework y deja
+para logs), `clientIp`, `bodyExcede`. Son utilidades de app atadas al logger propio del
+proyecto origen (`@/lib/logger`) y a Next.js/`Request`; este paquete es agnóstico de framework y deja
 la observabilidad al callback `onEvent` (ver más abajo) para no imponer una dependencia de
 logging que este monorepo todavía no tiene un equivalente compartido.
 
@@ -109,8 +109,8 @@ su razón documentada inline. Resumen:
 ¹ **"Abierto" en esta tabla nunca significa "sin límite"** — degrada al backend en memoria
 de la instancia, que sigue imponiendo el mismo tope. Para un webhook entrante en
 particular, además, "negar" no debe significar "descartar en silencio": el handler real
-debe responder con un código que provoque reintento (p. ej. 429), igual que la nota de
-Likida sobre su propio webhook de WhatsApp.
+debe responder con un código que provoque reintento (p. ej. 429), igual que la nota del
+proyecto origen sobre su propio webhook de WhatsApp.
 
 Para añadir una categoría nueva: agrégala a `ENDPOINT_POLICIES` con su `reason`. No dejes
 que un endpoint nuevo dependa del default — el default es la red de seguridad, no la

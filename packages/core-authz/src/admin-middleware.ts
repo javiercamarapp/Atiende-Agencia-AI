@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // GATEO DE /admin/* — las 3 piezas combinadas de esta fase:
-//   1. route-area.ts   (patrón likida.ai/src/lib/auth/visibilidad.ts)
+//   1. route-area.ts   (patrón proyecto-origen/src/lib/auth/visibilidad.ts)
 //   2. roles.ts         (patrón atiende-ai/src/lib/auth/current-staff.ts)
 //   3. audit.ts + rate-limiter.ts, aplicados AQUÍ sobre el intento DENEGADO
 //      (pieza que ningún repo de referencia tenía — ver cabecera de audit.ts)

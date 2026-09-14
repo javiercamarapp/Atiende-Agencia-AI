@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // TIMBRADO DE CFDI — puerto del patrón real de
-// ~/likida.ai/src/lib/saas/facturapi.ts (timbrarMensualidad/cancelarCfdi) y
-// ~/likida.ai/src/lib/saas/transferencia.ts (timbrarFactura: la reserva
+// ~/proyecto-origen/src/lib/saas/facturapi.ts (timbrarMensualidad/cancelarCfdi) y
+// ~/proyecto-origen/src/lib/saas/transferencia.ts (timbrarFactura: la reserva
 // compare-and-set ANTES de llamar al PAC).
 //
 // El proveedor concreto (Facturapi, u otro PAC) entra por `PacClient` — el

@@ -20,7 +20,7 @@ export class CircuitOpenError extends GatewayError {
   }
 }
 
-/** Puerto de `LlmBudgetExceededError` en Likida/src/lib/llm/budget.ts. */
+/** Puerto de `LlmBudgetExceededError` en proyecto-origen/src/lib/llm/budget.ts. */
 export class GatewayBudgetExceededError extends GatewayError {
   constructor(
     readonly scope: 'run' | 'tenant' | 'lane',
@@ -41,7 +41,7 @@ export class GatewayBudgetExceededError extends GatewayError {
 /**
  * Atraviesa la cadena de `cause` para reconocer un tope de presupuesto
  * aunque venga envuelto en otro error (p.ej. `AllProvidersFailedError`).
- * Mismo motivo que `esErrorDePresupuesto` en Likida budget.ts (auditoría 24,
+ * Mismo motivo que `esErrorDePresupuesto` en proyecto-origen/budget.ts (auditoría 24,
  * TC-N1): un `instanceof` desnudo se pierde en cuanto el error viaja
  * envuelto.
  */

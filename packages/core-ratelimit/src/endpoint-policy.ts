@@ -6,7 +6,7 @@
 // Esta tabla es el contrato que decide `DistributedRateLimiter.check()` vía
 // `opts.category` cuando la llamada no fuerza `failClosed` explícitamente
 // (ver rate-limiter.ts). Es EXPLÍCITA a propósito: la lección de
-// ~/likida.ai/src/lib/ratelimit.ts (auditoría 24, SEG-4) fue que un default
+// ~/proyecto-origen/src/lib/ratelimit.ts (auditoría 24, SEG-4) fue que un default
 // de fail-open que nadie recuerda configurar deja cuatro endpoints públicos
 // sin defensa real en cuanto el proveedor de Redis tiene un blip. Aquí ese
 // error estructural se cierra por diseño: una categoría SIN fila en
@@ -51,17 +51,17 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
   'auth:login': {
     failMode: 'closed',
     reason:
-      'Superficie NO autenticada de fuerza bruta (packages/core-auth). Mismo caso que login: en Likida tras la auditoría 24 (SEG-4) — negar es la defensa, no un efecto secundario.',
+      'Superficie NO autenticada de fuerza bruta (packages/core-auth). Mismo caso que login: en el proyecto origen tras la auditoría 24 (SEG-4) — negar es la defensa, no un efecto secundario.',
   },
   'auth:password-reset': {
     failMode: 'closed',
     reason:
-      'Superficie no autenticada — reenvío de link/código. Abrir sin freno es spam de correo/SMS hacia terceros que no pidieron nada, con el mismo mecanismo que el magic link de Likida.',
+      'Superficie no autenticada — reenvío de link/código. Abrir sin freno es spam de correo/SMS hacia terceros que no pidieron nada, con el mismo mecanismo que el magic link del proyecto origen.',
   },
   'auth:token-issue': {
     failMode: 'closed',
     reason:
-      'Emisión/canje de tokens (JWT, OAuth) vía packages/core-auth. Mismo criterio que /api/mcp/oauth/token en Likida: es la puerta, no un endpoint conveniente.',
+      'Emisión/canje de tokens (JWT, OAuth) vía packages/core-auth. Mismo criterio que /api/mcp/oauth/token en el proyecto origen: es la puerta, no un endpoint conveniente.',
   },
   'mcp:locks': {
     failMode: 'closed',
@@ -109,7 +109,7 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
   'conversation:inbound-webhook': {
     failMode: 'open',
     reason:
-      'ADVERTENCIA para quien use esta fila: un webhook entrante (WhatsApp u otro canal, vía packages/core-conversation) NO se resuelve solo con abrir/cerrar. "Abierto" aquí es la aproximación de ESTA tabla (nunca deja el conteo en cero), pero el handler real, ante una negativa, debe responder con un código que provoque reintento (p. ej. 429) en vez de aceptar sin límite o descartar en silencio — mismo matiz que la nota de Likida sobre su webhook de WhatsApp: "negar" no es "tirar".',
+      'ADVERTENCIA para quien use esta fila: un webhook entrante (WhatsApp u otro canal, vía packages/core-conversation) NO se resuelve solo con abrir/cerrar. "Abierto" aquí es la aproximación de ESTA tabla (nunca deja el conteo en cero), pero el handler real, ante una negativa, debe responder con un código que provoque reintento (p. ej. 429) en vez de aceptar sin límite o descartar en silencio — mismo matiz que la nota del proyecto origen sobre su webhook de WhatsApp: "negar" no es "tirar".',
   },
 };
 

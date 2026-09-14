@@ -4,7 +4,7 @@
 // de rate-limiter.ts y la tabla en endpoint-policy.ts para el criterio.
 //
 // Patrón portado de
-// ~/likida.ai/src/lib/ratelimit_redis.test.ts, describe "Redis configurado
+// ~/proyecto-origen/src/lib/ratelimit_redis.test.ts, describe "Redis configurado
 // pero el intento falla — nunca rompe la petición" (11-sep-2026): red caída
 // nunca lanza, y la respuesta por default niega salvo que se pida
 // explícitamente lo contrario. Generalizado aquí de una sola env var global

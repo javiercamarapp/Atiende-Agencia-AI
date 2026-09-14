@@ -9,9 +9,9 @@
 //      atiende.ai/llm/circuit-breaker.ts): si el proveedor en turno está
 //      OPEN, se salta sin gastar presupuesto.
 //   3. PRESUPUESTO reserva-antes-de-gastar (budget.ts, puerto de
-//      Likida/llm/budget.ts): se reserva el costo estimado ANTES de llamar
+//      proyecto-origen/llm/budget.ts): se reserva el costo estimado ANTES de llamar
 //      al proveedor; si no hay presupuesto, no se llama.
-//   4. ESCALERA DE FALLBACK (puerto de Likida/llm/openrouter.ts +
+//   4. ESCALERA DE FALLBACK (puerto de proyecto-origen/llm/openrouter.ts +
 //      atiende.ai/llm/orchestrator.ts): si el proveedor falla con un error
 //      reintentable, se reporta la falla al breaker, se libera la reserva y
 //      se intenta el SIGUIENTE proveedor de la escalera (ya filtrada por el
@@ -34,7 +34,7 @@ import type { LlmCompletionRequest, LlmCompletionResult, LlmCostEstimator, LlmLa
 /** Cota conservadora por defecto: ~1 token por 4 caracteres de entrada más
  *  el techo de salida solicitado, a $10/1M in + $30/1M out (tarifa cara
  *  genérica) — mismo espíritu que `cotaEntradaEnTokens`/`calcCost` en
- *  Likida: sobre-reservar es seguro, sub-reservar no. Un gateway real de
+ *  el proyecto origen: sobre-reservar es seguro, sub-reservar no. Un gateway real de
  *  producción pasaría un `LlmCostEstimator` propio por proveedor (con la
  *  tabla de precios real de cada modelo, como `PRICES` en el original). */
 export const defaultCostEstimator: LlmCostEstimator = (_provider, req) => {
@@ -148,7 +148,7 @@ export class LlmGateway {
         };
       } catch (err) {
         // El proveedor falló DESPUÉS de reservar: no se cobró nada real, se
-        // libera la reserva a $0 — mismo criterio que Likida en el catch de
+        // libera la reserva a $0 — mismo criterio que el proyecto origen en el catch de
         // `once()`/`attempt()` (BACKEND-19C2-1): no liquidar al monto
         // reservado en un error donde no hubo uso real.
         await settleBudget(this.budgetStore, budget, reservation, 0);

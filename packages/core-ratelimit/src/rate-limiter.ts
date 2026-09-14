@@ -5,11 +5,11 @@
 // está configurado pero un intento falla a media petición.
 //
 // Reproduce la decisión de `rateLimit()` en
-// ~/likida.ai/src/lib/ratelimit.ts (líneas 283-299 al portar): con Redis
+// ~/proyecto-origen/src/lib/ratelimit.ts (líneas 283-299 al portar): con Redis
 // configurado y sano, el conteo es del servidor (atómico entre instancias);
 // sin credenciales, cae al Map local; con credenciales pero el intento
 // fallando, decide fail-open/closed según opciones. La diferencia real con
-// el original es DE DÓNDE sale esa decisión: Likida la lee de una sola env
+// el original es DE DÓNDE sale esa decisión: el proyecto origen la lee de una sola env
 // var global (`RATELIMIT_REDIS_FALLA_CERRADO`) más una opción por-llamada.
 // Este paquete generaliza eso a una TABLA por categoría de endpoint
 // (`endpoint-policy.ts`) — necesario porque este monorepo sirve varios
@@ -35,7 +35,7 @@ export interface RateLimiterOptions {
   timeoutMs?: number;
   /** Observabilidad opcional: nunca recibe la llave completa (puede llevar
    *  IP o id de cliente), solo la categoría — mismo cuidado que `categoria()`
-   *  en el original ante la filtración SEG-4/reincidente-22 de Likida. */
+   *  en el original ante la filtración SEG-4/reincidente-22 del proyecto origen. */
   onEvent?: (event: RateLimitEvent) => void;
 }
 

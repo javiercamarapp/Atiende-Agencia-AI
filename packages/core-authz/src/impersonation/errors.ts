@@ -18,8 +18,8 @@ export class ImpersonationError extends Error {
  *
  * Nace de un incidente real: un superadmin sin tenant/organización
  * seleccionada caía a "modo demo" EN SILENCIO — mismo hallazgo que el #1 de
- * la auditoría externa de Likida (ver `admin-context.ts`/`guard.ts` en
- * ~/likida.ai/src/lib/auth). La corrección allá fue "nunca debería existir un
+ * la auditoría externa del proyecto origen (ver `admin-context.ts`/`guard.ts` en
+ * ~/proyecto-origen/src/lib/auth). La corrección allá fue "nunca debería existir un
  * tenant implícito": sin selección explícita (cookie firmada) NI un
  * parámetro explícito de la petición, la resolución de organización efectiva
  * (`resolveImpersonatedOrganization`) LANZA esto en vez de devolver
@@ -47,7 +47,7 @@ export class NoOrganizationSelectedError extends ImpersonationError {
  * La llave de firma HMAC vino vacía/ausente. Fail-closed: sin llave no se
  * firma NI se valida nada — nunca se cae a otro secreto ya usado para otra
  * cosa (ver comentario de `IMPERSONATION_COOKIE_SECRET_ENV_HINT` en cookie.ts
- * y AUDITORÍA 18-B13 de Likida: la llave de firma cayendo a la service-role
+ * y AUDITORÍA 18-B13 del proyecto origen: la llave de firma cayendo a la service-role
  * key fue exactamente el error que este paquete evita desde el diseño).
  */
 export class ImpersonationSigningKeyMissingError extends ImpersonationError {

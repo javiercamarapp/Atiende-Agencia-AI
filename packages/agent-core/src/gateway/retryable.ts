@@ -1,4 +1,4 @@
-// PUERTO de `isTransientError` en Likida/src/lib/llm/openrouter.ts —
+// PUERTO de `isTransientError` en proyecto-origen/src/lib/llm/openrouter.ts —
 // clasifica por TIPO/status antes que por texto (un SDK aplasta fallas de
 // red en un mensaje genérico "Connection error." y el detalle real vive en
 // `.cause`), y solo cae a regex de texto como último recurso, con el mismo

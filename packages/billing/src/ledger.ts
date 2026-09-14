@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// EL LEDGER ANTI-REORDENAMIENTO — puerto generalizado del patrón real de
-// Likida (~/likida.ai/src/lib/saas/suscripcion.ts, funciones `marcarEvento`,
+// EL LEDGER ANTI-REORDENAMIENTO — puerto generalizado del patrón real del
+// proyecto origen (~/proyecto-origen/src/lib/saas/suscripcion.ts, funciones `marcarEvento`,
 // `ordenAplicado`/`sellarOrden`, auditoría prod 22-ago-2026 RES-11 y
 // auditoría 18-c4 BACK-C4-1).
 //
@@ -88,7 +88,7 @@ export type ResultadoAplicacion<T> =
  * `aplicar()` solo se invoca si el evento es nuevo Y no está fuera de orden.
  * El sello de orden se escribe DESPUÉS de que `aplicar()` resuelve con éxito:
  * si `aplicar()` lanza, no se sella nada y un reintento puede volver a
- * intentar — igual que el original de Likida, que sella "al final" por la
+ * intentar — igual que el original del proyecto origen, que sella "al final" por la
  * misma razón.
  */
 export async function aplicarConLedger<T>(
