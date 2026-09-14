@@ -7,10 +7,15 @@
 // toda su sesión — cambiar de proveedor a medio de una conversación full-
 // duplex no tiene análogo razonable (a diferencia de un LLM, donde
 // reintentar el MISMO prompt en otro proveedor sí lo tiene).
+//
+// `gptlive` (GPT-Live-1, OpenAI) es un proveedor REAL desde el 12-sep-2026 —
+// se construye igual que `elevenlabs`, sin ningún bloqueo de selección. El
+// bloqueo duro (`assertAvailable()` lanzando siempre) que existía cuando
+// GPT-Live-1 no tenía API pública ya no aplica y se retiró de aquí.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { ElevenLabsVoiceProvider, type ElevenLabsVoiceProviderOptions } from './providers/elevenlabs-provider.js';
-import { GptLiveVoiceProvider } from './providers/gptlive-provider.js';
+import { GptLiveVoiceProvider, type GptLiveVoiceProviderOptions } from './providers/gptlive-provider.js';
 import { VoiceProviderConfigError } from './errors.js';
 import type { VoiceProvider } from './types.js';
 
@@ -20,16 +25,18 @@ export const DEFAULT_VOICE_PROVIDER: VoiceProviderId = 'elevenlabs';
 
 export interface VoiceProviderRouterOptions {
   elevenlabs: ElevenLabsVoiceProviderOptions;
+  /** Requerido solo cuando se selecciona `gptlive` — opcional en el tipo para
+   *  no romper llamadores existentes que solo usan ElevenLabs; si falta y se
+   *  pide `gptlive`, `selectVoiceProvider` lanza `VoiceProviderConfigError`
+   *  explícito en vez de un `undefined` silencioso. */
+  gptlive?: GptLiveVoiceProviderOptions;
 }
 
 /**
  * Selecciona el proveedor. Lee de config (env var `VOICE_PROVIDER`, o
  * override por tenant si la vertical lo pasa explícito — mismo patrón que
  * `residency` en `GatewayCallOptions`, que sobreescribe la policy por
- * llamada). Con `gptlive` seleccionado explícito, construye el proveedor
- * inerte y llama `assertAvailable()` DE INMEDIATO — la selección misma
- * falla, con el mensaje real, en vez de esperar al primer uso o (peor)
- * caer solo a ElevenLabs sin que el llamador lo haya pedido.
+ * llamada).
  */
 export function selectVoiceProvider(
   requested: VoiceProviderId | undefined,
@@ -42,9 +49,13 @@ export function selectVoiceProvider(
       return new ElevenLabsVoiceProvider(opts.elevenlabs);
 
     case 'gptlive': {
-      const provider = new GptLiveVoiceProvider();
-      provider.assertAvailable(); // lanza VoiceProviderNotActivatableError aquí mismo
-      return provider; // inalcanzable — assertAvailable siempre lanza
+      if (!opts.gptlive) {
+        throw new VoiceProviderConfigError(
+          'voice-gateway: se pidió "gptlive" pero falta `opts.gptlive` (apiKeyProvider/resolveSignedUrl) — ' +
+            'nunca se adivina la configuración de un proveedor pedido explícito.',
+        );
+      }
+      return new GptLiveVoiceProvider(opts.gptlive);
     }
 
     default:

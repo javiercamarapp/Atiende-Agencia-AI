@@ -24,6 +24,12 @@ import type { EligibilityStatus } from "./matching-engine.ts";
 import type { PersistedTenderVersion } from "./tender-version-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
 import type { SourceFreshnessRecord, SourceRunInput, SourceRunRecord } from "./source-run.ts";
+import type { ContractStatus } from "./contract-lifecycle.ts";
+import type { ContractFieldKey } from "./contract-extraction.ts";
+import type { ContractInvoiceStatus } from "./contract-billing.ts";
+import type { DecimalString } from "./money.ts";
+import type { InconformidadFundamento, InconformidadViability } from "./inconformidad.ts";
+import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -137,6 +143,219 @@ export interface RecordTenderVersionResult {
   readonly cascadedChanges: readonly ChangeDetected[];
   /** `null` únicamente cuando `created === false`. */
   readonly notification: TenderChangeNotificationRecord | null;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 6 -- seguimiento post-adjudicación (REQ-051..055). Mismo criterio de
+// forma que el resto de este archivo: uniones de string LITERALES en vez de
+// reimportar el enum del módulo de dominio cuando el tipo es simple (p. ej.
+// `InconformidadDraftRecord.status`), pero SÍ se importan los tipos "cerrado
+// por catálogo en código" (`ContractStatus`, `ContractFieldKey`) porque son
+// la fuente de verdad de una máquina de estados/extractor, no un enum trivial.
+// ---------------------------------------------------------------------------
+
+export interface ContractRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly tenderId: string;
+  readonly status: ContractStatus;
+  readonly endDate: string | null;
+  readonly contractNumber: string | null;
+  readonly hasRenewalOption: boolean;
+  readonly renewalOptionNotes: string | null;
+  readonly createdBy: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ContractStatusHistoryRecord {
+  readonly id: string;
+  readonly contractId: string;
+  readonly fromStatus: ContractStatus | null;
+  readonly toStatus: ContractStatus;
+  readonly reason: string;
+  readonly actorId: string;
+  readonly evidenceRef: string | null;
+  readonly createdAt: string;
+}
+
+export interface ContractMetadataUpdateInput {
+  readonly endDate?: string | null;
+  readonly contractNumber?: string | null;
+  readonly hasRenewalOption?: boolean;
+  readonly renewalOptionNotes?: string | null;
+}
+
+export interface ContractTransitionInput {
+  readonly toStatus: string;
+  readonly reason: string;
+  readonly evidenceRef: string | null;
+  readonly actorId: string;
+}
+
+export interface ContractDocumentRecord {
+  readonly id: string;
+  readonly contractId: string;
+  readonly documentLabel: string;
+  readonly pageCount: number;
+  readonly uploadedBy: string;
+  readonly createdAt: string;
+}
+
+export interface ContractExtractedFieldRecord {
+  readonly id: string;
+  readonly contractDocumentId: string;
+  readonly fieldKey: ContractFieldKey;
+  readonly extractedValue: string;
+  readonly sourcePage: number | null;
+  readonly sourceClause: string | null;
+  readonly confidence: number;
+  readonly status: "sugerido" | "confirmado" | "corregido";
+  readonly confirmedValue: string | null;
+  readonly confirmedBy: string | null;
+  readonly confirmedAt: string | null;
+  readonly createdAt: string;
+}
+
+export interface AddContractDocumentInput {
+  readonly documentLabel: string;
+  /** Texto YA EXTRAÍDO por página -- ver límite documentado en contract-extraction.ts (no hay pipeline de PDF/OCR en este monorepo). */
+  readonly pages: readonly { page: number; text: string }[];
+  readonly actorId: string;
+}
+
+export interface ConfirmContractExtractedFieldInput {
+  readonly action: "confirm" | "correct";
+  readonly correctedValue: string | null;
+  readonly actorId: string;
+}
+
+export interface ContractInvoiceRecord {
+  readonly id: string;
+  readonly contractId: string;
+  readonly concepto: string;
+  readonly amount: DecimalString;
+  readonly invoiceVerifiedOn: string;
+  readonly dueDate: string;
+  readonly legalReference: string;
+  readonly paidAt: string | null;
+  readonly status: ContractInvoiceStatus;
+  readonly createdBy: string;
+  readonly createdAt: string;
+}
+
+export interface CreateContractInvoiceInput {
+  readonly concepto: string;
+  readonly amount: DecimalString;
+  readonly invoiceVerifiedOn: string;
+  readonly actorId: string;
+}
+
+export interface ReceivablesSummary {
+  readonly asOfDate: string;
+  readonly totalPending: DecimalString;
+  readonly totalOverdue: DecimalString;
+  readonly countPending: number;
+  readonly countOverdue: number;
+  readonly invoices: readonly ContractInvoiceRecord[];
+}
+
+export interface InconformidadDraftRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly tenderId: string;
+  readonly version: number;
+  readonly status: "borrador" | "revisado";
+  readonly contentHash: string;
+  readonly hechos: readonly string[];
+  readonly agravios: readonly string[];
+  readonly pruebas: readonly string[];
+  readonly fundamentos: readonly InconformidadFundamento[];
+  readonly falloNotifiedOn: string;
+  readonly bajoTratados: boolean;
+  readonly businessDays: number;
+  readonly dueDate: string;
+  readonly legalReference: string;
+  readonly viability: InconformidadViability;
+  readonly viabilityRecommendation: string;
+  readonly disclaimer: string;
+  readonly reviewedBy: string | null;
+  readonly reviewedAt: string | null;
+  readonly createdBy: string;
+  readonly createdAt: string;
+}
+
+export interface CreateInconformidadDraftInput {
+  readonly hechos: readonly string[];
+  readonly agravios: readonly string[];
+  readonly pruebas: readonly string[];
+  readonly falloNotifiedOn: string;
+  readonly bajoTratados: boolean;
+  readonly actorId: string;
+}
+
+export interface FalloAutopsyRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly tenderId: string;
+  readonly ownProposalStatus: OwnProposalStatus;
+  readonly disqualificationReason: string;
+  readonly ownScore: number | null;
+  readonly winnerScore: number | null;
+  readonly ownPrice: number | null;
+  readonly winnerPrice: number | null;
+  readonly winnerName: string;
+  readonly criteriaComparison: readonly CriteriaComparisonItem[];
+  readonly createdBy: string;
+  readonly createdAt: string;
+}
+
+export interface CreateFalloAutopsyInput {
+  readonly ownProposalStatus: OwnProposalStatus;
+  readonly disqualificationReason: string | null;
+  readonly ownScore: number | null;
+  readonly winnerScore: number | null;
+  readonly ownPrice: number | null;
+  readonly winnerPrice: number | null;
+  readonly winnerName: string | null;
+  readonly criteriaComparison: readonly CriteriaComparisonItem[];
+  readonly lessons: readonly string[];
+  readonly actorId: string;
+}
+
+export interface CompanyLessonLearnedRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly falloAutopsyId: string;
+  readonly tenderId: string;
+  readonly lessonText: string;
+  readonly createdAt: string;
+}
+
+export interface RenewalAlertRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly contractId: string;
+  readonly tenderId: string;
+  readonly predictedDate: string;
+  readonly leadDays: number;
+  readonly confidence: number;
+  readonly status: "pendiente" | "reconocida";
+  readonly acknowledgedAt: string | null;
+  readonly acknowledgedBy: string | null;
+  readonly createdAt: string;
+}
+
+export interface ScanRenewalAlertsInput {
+  readonly leadDaysThresholds?: readonly number[];
+  /** Inyectable solo para pruebas deterministas -- por defecto la fecha real de hoy. */
+  readonly todayIsoDate?: string;
+}
+
+export interface ScanRenewalAlertsResult {
+  readonly evaluatedContracts: number;
+  readonly alertsCreated: number;
+  readonly alerts: readonly RenewalAlertRecord[];
 }
 
 export interface LicitacionesRepository {
@@ -321,6 +540,53 @@ export interface LicitacionesRepository {
 
   // ---- Idempotencia (transversal) ----
   withIdempotency<T>(params: IdempotencyParams, run: () => Promise<IdempotentResult<T>>): Promise<IdempotentResult<T>>;
+
+  // ---------------------------------------------------------------------
+  // Fase 6 -- seguimiento post-adjudicación (REQ-051..055).
+  // ---------------------------------------------------------------------
+
+  /** REQ-051: alta del contrato en estado inicial `CONTRACT_INITIAL_STATUS` + primera fila de historial (`fromStatus: null`). Lanza si ya existe un contrato para este `tenderId` (un tender tiene a lo más un contrato, mismo criterio que `licitaciones.tender`/`licitaciones.proposal`). */
+  createContract(organizationId: string, tenderId: string, actorId: string): Promise<ContractRecord>;
+  findContractByTender(organizationId: string, tenderId: string): Promise<ContractRecord | null>;
+  /** REQ-055: metadatos administrativos (fecha de fin/número de contrato/opción de renovación) -- NO es una transición de estado, no genera fila de historial; es el insumo directo del radar de renovaciones. */
+  updateContractMetadata(organizationId: string, tenderId: string, input: ContractMetadataUpdateInput): Promise<ContractRecord>;
+  /** Valida con `checkTransition` (contract-lifecycle.ts) -- lanza `ContractTransitionRejectedError` si `toStatus` no es alcanzable desde el estado actual, sin tocar ninguna fila. Si la transición es válida, actualiza `contracts.status` y agrega una fila a `contract_status_history` en la MISMA operación. */
+  transitionContract(organizationId: string, tenderId: string, input: ContractTransitionInput): Promise<ContractRecord>;
+  /** Historial COMPLETO e inmutable de transiciones, más antigua primero. */
+  listContractStatusHistory(organizationId: string, tenderId: string): Promise<readonly ContractStatusHistoryRecord[]>;
+
+  /** REQ-052: registra un documento de contrato con texto YA EXTRAÍDO por página y corre `extractContractFields` sobre él -- todo campo detectado entra como `status: 'sugerido'`, nunca confirmado automáticamente. */
+  addContractDocument(organizationId: string, tenderId: string, input: AddContractDocumentInput): Promise<{ document: ContractDocumentRecord; fields: readonly ContractExtractedFieldRecord[] }>;
+  listContractDocuments(organizationId: string, tenderId: string): Promise<readonly ContractDocumentRecord[]>;
+  listContractExtractedFields(organizationId: string, tenderId: string, documentId: string): Promise<readonly ContractExtractedFieldRecord[]>;
+  /** REQ-052: "el usuario confirma o corrige; nunca se dan por válidos sin confirmación" -- mueve el campo de `'sugerido'` a `'confirmado'`/`'corregido'`. */
+  confirmContractExtractedField(organizationId: string, tenderId: string, fieldId: string, input: ConfirmContractExtractedFieldInput): Promise<ContractExtractedFieldRecord>;
+
+  /** REQ-051 (cobranza): registra una factura contra el contrato -- el vencimiento SIEMPRE se calcula server-side (`contract-billing.ts::computePaymentDueDate`, Art. 73 LAASSP, 17 días hábiles), nunca lo declara el cliente. */
+  createContractInvoice(organizationId: string, tenderId: string, input: CreateContractInvoiceInput): Promise<ContractInvoiceRecord>;
+  /** `status` de cada factura se recalcula en cada lectura contra la fecha real de hoy (`classifyInvoiceStatus`) -- nunca se sirve un `status` persistido que pueda haber quedado obsoleto. */
+  listContractInvoices(organizationId: string, tenderId: string): Promise<readonly ContractInvoiceRecord[]>;
+  markContractInvoicePaid(organizationId: string, tenderId: string, invoiceId: string, actorId: string): Promise<ContractInvoiceRecord>;
+  /** Vista de negocio: totales pendiente/vencido (Decimal, nunca `number` flotante) + el detalle completo de facturas -- la "alerta" de cobranza de esta fase es este campo `status`/los totales, calculados en vivo (mismo criterio "sin cola de trabajos" que el resto de Fase 6, ver README del vertical). */
+  receivablesSummary(organizationId: string, tenderId: string): Promise<ReceivablesSummary>;
+
+  /** REQ-053: genera una VERSIÓN nueva del borrador (nunca edita una existente, ver migración de inconformidad_draft) -- el contenido (fundamentos/plazo/viabilidad) lo calcula `inconformidad.ts::buildInconformidadContent`, nunca el cliente. */
+  createInconformidadDraft(organizationId: string, tenderId: string, input: CreateInconformidadDraftInput): Promise<InconformidadDraftRecord>;
+  listInconformidadDrafts(organizationId: string, tenderId: string): Promise<readonly InconformidadDraftRecord[]>;
+  /** Única transición de estado posible: `'borrador'` -> `'revisado'` -- lanza si ya estaba revisado (mismo criterio "hecho histórico inmutable" que `go_no_go_decision`). */
+  markInconformidadReviewed(organizationId: string, tenderId: string, draftId: string, actorId: string): Promise<InconformidadDraftRecord>;
+
+  /** REQ-054: registra la autopsia del fallo + las lecciones aprendidas asociadas en la MISMA operación -- campos textuales ausentes se normalizan a `NO_DISPONIBLE` (`fallo-autopsy.ts`), nunca `null`/"" ambiguo. */
+  createFalloAutopsy(organizationId: string, tenderId: string, input: CreateFalloAutopsyInput): Promise<{ autopsy: FalloAutopsyRecord; lessons: readonly CompanyLessonLearnedRecord[] }>;
+  listFalloAutopsies(organizationId: string, tenderId: string): Promise<readonly FalloAutopsyRecord[]>;
+  /** Lecciones vinculadas al PERFIL DE EMPRESA (org-wide, no solo la convocatoria puntual) -- consultable sin filtrar por tender. */
+  listLessonsLearned(organizationId: string): Promise<readonly CompanyLessonLearnedRecord[]>;
+
+  /** REQ-055: escanea TODOS los contratos con `endDate` conocida de la organización (excepto `cerrado`/`rescindido`) y persiste una alerta nueva por cada (contrato, umbral) recién cruzado que no exista todavía -- idempotente: reescanear no duplica alertas ya emitidas para el mismo umbral. */
+  scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult>;
+  /** Bandeja de alertas, más recientes primero. */
+  listRenewalAlerts(organizationId: string): Promise<readonly RenewalAlertRecord[]>;
+  acknowledgeRenewalAlert(organizationId: string, alertId: string, actorId: string): Promise<RenewalAlertRecord>;
 }
 
 export type {

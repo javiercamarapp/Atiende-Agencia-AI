@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (41 migraciones, timestamps 20240101000001 .. 20240101000041)
+## Orden actual (48 migraciones, timestamps 20240101000001 .. 20240101000048)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -32,9 +32,13 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 15–23. `packages/domain-licitaciones/migrations/001..009_*.sql`
 24–30. `packages/domain-rentas/migrations/001..007_*.sql`
 31–36. `packages/domain-restaurantes/migrations/001..006_*.sql`
-37. `packages/domain-licitaciones/migrations/010_source_runs_and_tender_versions.sql` — Fase 5 (fuera de la secuencia interna 001-009 de licitaciones porque se agregó después de que rentas/restaurantes ya habían tomado los timestamps siguientes; ver regla de "siguiente timestamp libre" abajo).
-38–40. `002_despachos_migracion_catalogo_schema.sql` (Fase 5, despachos)/`006_cfdi_hospedaje.sql`/`007_fraude_alerta.sql`/`010_source_runs_and_tender_versions.sql` — **nota**: estos tres timestamps (38-40) ya existían al llegar a esta fase pero este README no se había actualizado para reflejarlos (drift preexistente, no introducido por esta fase — se documenta en vez de reescribir en silencio la sección "orden actual" de fases pasadas que no se auditaron aquí).
-41. `packages/domain-despachos/migrations/003_cierre_mensual_schema.sql` — Fase 6 (checklist de cierre mensual: `despachos.periodo_cierre`/`periodo_cierre_tarea`). Nota de numeración interna: la "002" de despachos (migración de catálogo contable, Fase 5) nunca se agregó a `packages/domain-despachos/migrations/` — solo su copia en el timestamp 38 de esta carpeta existe; esta migración de Fase 6 usa "003" como siguiente número libre de esa secuencia interna, documentado también en la cabecera del propio archivo SQL.
+37. `packages/domain-despachos/migrations/002_despachos_migracion_catalogo_schema.sql` — Fase 5 despachos.
+38. `packages/domain-hoteles/migrations/006_cfdi_hospedaje.sql` — Fase 5 hoteles.
+39. `packages/domain-hoteles/migrations/007_fraude_alerta.sql` — Fase 5 hoteles.
+40. `packages/domain-licitaciones/migrations/010_source_runs_and_tender_versions.sql` — Fase 5 licitaciones (andamiaje de ingesta + historial de versiones de convocatoria).
+41. `packages/domain-restaurantes/migrations/007_admin_backoffice_grants_and_policies.sql` — Fase 5 restaurantes (back-office CORE: GRANTs + policies de staff para catálogo/sucursales/pedidos que antes eran de solo lectura).
+42–47. `packages/domain-licitaciones/migrations/011..016_*.sql` — Fase 6 licitaciones, seguimiento post-adjudicación (REQ-051..055): máquina de estados del contrato + historial (011), extracción determinista del contrato firmado (012), cobranza/facturas (013), redactor de inconformidades (014), autopsia del fallo + lecciones aprendidas (015), radar de renovaciones (016).
+48. `packages/domain-despachos/migrations/003_cierre_mensual_schema.sql` — Fase 6 despachos (checklist de cierre mensual: `despachos.periodo_cierre`/`periodo_cierre_tarea`).
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
@@ -43,9 +47,15 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000036`; usa
-   `20240101000037`, luego `...038`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000048`; usa
+   `20240101000049`, luego `...050`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
-   que sean estrictamente crecientes respecto a los que ya existen aquí).
+   que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
+   siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
+   tuyo — esta sección de "orden actual" puede desactualizarse entre fases, y
+   **varias ramas construidas en paralelo pueden colisionar en el mismo número**
+   (ya pasó varias veces en esta sesión) — si al mergear encuentras dos archivos
+   con el mismo prefijo de timestamp, renumera uno de los dos antes de continuar,
+   nunca dejes una colisión sin resolver.
 3. No edites el contenido SQL al copiarlo: debe ser una copia exacta del original.
 4. Actualiza este README si cambia el conteo total o el orden de una vertical.

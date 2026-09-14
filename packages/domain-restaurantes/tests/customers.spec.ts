@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { lookupCustomer, vipNote } from "../src/customers.ts";
+import { getCustomerDetailById, lookupCustomer, vipNote } from "../src/customers.ts";
 import { createOrder } from "../src/orders.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 import type { CreateOrderInput } from "../src/types.ts";
@@ -78,6 +79,44 @@ describe("lookupCustomer — memoria real de cliente por teléfono", () => {
     const result = await lookupCustomer(fixture.repo, fixture.organizationId, phone);
     expect(result.isNew).toBe(false);
     expect(order.status).toBe("pending");
+  });
+});
+
+describe("getCustomerDetailById — Fase 5 back-office CORE (ficha de admin por id)", () => {
+  it("devuelve la MISMA memoria real que lookupCustomer, resuelta por id en vez de teléfono", async () => {
+    const fixture = buildRestaurantFixture();
+    const phone = "9993334444";
+    await createOrder(fixture.repo, {
+      organizationId: fixture.organizationId,
+      branchSlug: "fco-montejo",
+      customerName: "Gina",
+      customerPhone: phone,
+      customerAddress: "Calle 100 #50",
+      items: [{ productId: fixture.products.cocaCola, requestedQuantity: 2 }],
+      source: "web",
+    });
+    const byPhone = await lookupCustomer(fixture.repo, fixture.organizationId, phone);
+    expect(byPhone.isNew).toBe(false);
+
+    const customer = await fixture.repo.findCustomerByPhone(fixture.organizationId, phone);
+    const byId = await getCustomerDetailById(fixture.repo, fixture.organizationId, customer!.id);
+    expect(byId).toEqual(byPhone);
+  });
+
+  it("null cuando el id no existe", async () => {
+    const fixture = buildRestaurantFixture();
+    const result = await getCustomerDetailById(fixture.repo, fixture.organizationId, "00000000-0000-0000-0000-000000000000");
+    expect(result).toBeNull();
+  });
+
+  it("null (nunca el cliente ajeno) cuando el id pertenece a OTRA organización — mismo repositorio, dos tenants reales", async () => {
+    const fixture = buildRestaurantFixture();
+    const otherOrgId = randomUUID();
+    fixture.repo.seedOrganization({ id: otherOrgId, slug: "otro-restaurante", name: "Otro Restaurante" });
+    const otherCustomer = await fixture.repo.upsertCustomer(otherOrgId, "9995551234", "Cliente de otra organización");
+
+    const crossTenant = await getCustomerDetailById(fixture.repo, fixture.organizationId, otherCustomer.id);
+    expect(crossTenant).toBeNull();
   });
 });
 

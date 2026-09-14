@@ -1,0 +1,133 @@
+// Pedidos en operación (Fase 5) — lista por estado + cambio de estado real vía la
+// máquina de estados de order-lifecycle.ts (el servidor SIEMPRE re-valida la
+// transición; los botones ofrecidos aquí son solo un espejo de NEXT_STATUSES para
+// no mostrar una acción que el servidor rechazaría).
+import { useEffect, useState } from "react";
+import { fetchOrders, NEXT_STATUSES, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
+import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
+import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
+
+const OPERATIVE_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "problema"];
+
+function formatMoney(n: number): string {
+  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+  const [status, setStatus] = useState<OrderStatus | "todos">("todos");
+  const [orders, setOrders] = useState<readonly OrderSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [changingId, setChangingId] = useState<string | null>(null);
+
+  async function load() {
+    setError(null);
+    try {
+      if (status === "todos") {
+        const pages = await Promise.all(OPERATIVE_STATUSES.map((s) => fetchOrders(fetch, apiBaseUrl, token, propertyId, { status: s, limit: 50 })));
+        const merged = pages.flatMap((p) => p.orders).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setOrders(merged);
+      } else {
+        const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, { status, limit: 50 });
+        setOrders(page.orders);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudieron cargar los pedidos.");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [apiBaseUrl, token, propertyId, status]);
+
+  async function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
+    setChangingId(order.id);
+    setError(null);
+    try {
+      await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, nextStatus);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cambiar el estado del pedido.");
+    } finally {
+      setChangingId(null);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <h1 style={{ fontSize: 20, margin: 0 }}>Pedidos en operación</h1>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(["todos", ...OPERATIVE_STATUSES] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatus(s)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid #d1d5db",
+                background: status === s ? "#111827" : "#fff",
+                color: status === s ? "#fff" : "#111827",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {s === "todos" ? "Todos" : ORDER_STATUS_LABELS[s]}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {error && (
+        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
+          {error}
+        </p>
+      )}
+      {!orders && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {orders && orders.length === 0 && <p style={{ color: "#6b7280" }}>No hay pedidos en este filtro.</p>}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {orders?.map((o) => (
+          <div key={o.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <p style={{ margin: 0, fontWeight: 600 }}>
+                  {o.customerName} · {formatMoney(o.total)}
+                </p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
+                  {o.customerPhone} · {o.branch ?? "sin sucursal"} · {new Date(o.createdAt).toLocaleString("es-MX")}
+                </p>
+              </div>
+              <span
+                style={{
+                  alignSelf: "flex-start",
+                  fontSize: 12,
+                  padding: "3px 10px",
+                  borderRadius: 999,
+                  background: o.status === "problema" ? "#fee2e2" : "#f3f4f6",
+                  color: o.status === "problema" ? "#991b1b" : "#374151",
+                }}
+              >
+                {ORDER_STATUS_LABELS[o.status]}
+              </span>
+            </div>
+            <p style={{ margin: "8px 0 0", fontSize: 13, color: "#374151" }}>{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
+            {NEXT_STATUSES[o.status].length > 0 && (
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                {NEXT_STATUSES[o.status].map((next) => (
+                  <button
+                    key={next}
+                    onClick={() => void handleChangeStatus(o, next)}
+                    disabled={changingId === o.id}
+                    style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}
+                  >
+                    {changingId === o.id ? "…" : `Marcar ${ORDER_STATUS_LABELS[next]}`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
