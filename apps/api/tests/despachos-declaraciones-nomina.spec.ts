@@ -173,3 +173,82 @@ describe("POST /despachos/:propertyId/nomina/calcular", () => {
     expect(res.status).toBe(403);
   });
 });
+
+// Fase 7 (cierre de gap "Sin generación/timbrado del XML de complemento Nómina
+// 1.2"): wiring HTTP real de `generarXmlCfdiNomina` -- verifica que la ruta de
+// verdad produce el XML (no solo un 200 vacío) y que rechaza con 400 cuando
+// falta un dato fiscal obligatorio, en vez de dejarlo caer al 500 genérico de
+// apps/api/src/app.ts.
+function payloadXmlNomina(overrides: Record<string, unknown> = {}) {
+  return {
+    period: { month: 7, year: 2026, diasPagados: 30 },
+    employees: [
+      {
+        employeeId: "e1",
+        nombre: "Ana Pérez",
+        salarioBruto: 15000,
+        rfcReceptor: "PEAA850101ABC",
+        domicilioFiscalReceptor: "01000",
+        folio: "F0001",
+      },
+    ],
+    emisor: {
+      rfc: "DESP010101AB1",
+      nombre: "DESPACHO DE PRUEBA SA DE CV",
+      regimenFiscal: "601",
+      lugarExpedicion: "06600",
+    },
+    tenantId: null,
+    ...overrides,
+  };
+}
+
+describe("POST /despachos/:propertyId/nomina/generar-xml", () => {
+  it("genera el XML del complemento Nómina 1.2 para cada empleado del periodo, usando las cifras reales de procesarNomina", async () => {
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/generar-xml`, authedJson(ctx.staff.contador.token, payloadXmlNomina()));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { idempotencyKey: string; comprobantes: readonly { employeeId: string; folio: string; xml: string }[] };
+
+    expect(body.comprobantes).toHaveLength(1);
+    const comprobante = body.comprobantes[0]!;
+    expect(comprobante.employeeId).toBe("e1");
+    expect(comprobante.folio).toBe("F0001");
+    expect(comprobante.xml).toContain('<cfdi:Comprobante');
+    expect(comprobante.xml).toContain('xmlns:nomina12="http://www.sat.gob.mx/nomina12"');
+    expect(comprobante.xml).toContain('<nomina12:Nomina');
+    expect(comprobante.xml).toContain('Rfc="PEAA850101ABC"');
+
+    // Las cifras del XML vienen del MISMO motor que /calcular -- cruce directo.
+    const esperado = procesarNomina({ month: 7, year: 2026, diasPagados: 30 }, [{ employeeId: "e1", nombre: "Ana Pérez", salarioBruto: 15000 }], null);
+    expect(comprobante.xml).toContain(`TotalPercepciones="${esperado.employees[0]!.salarioBruto.toFixed(2)}"`);
+  });
+
+  it("falta domicilioFiscalReceptor de un empleado -> 400 (no genera un XML con un CP fabricado)", async () => {
+    const app = buildApp(ctx.deps);
+    const payload = payloadXmlNomina({
+      employees: [{ employeeId: "e1", nombre: "Ana Pérez", salarioBruto: 15000, rfcReceptor: "PEAA850101ABC", folio: "F0001" }],
+    });
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/generar-xml`, authedJson(ctx.staff.contador.token, payload));
+    expect(res.status).toBe(400);
+  });
+
+  it("RFC de emisor inválido -> 400, traducido desde el Error del dominio (no 500)", async () => {
+    const app = buildApp(ctx.deps);
+    const payload = payloadXmlNomina({ emisor: { rfc: "NO-VALIDO", nombre: "X", regimenFiscal: "601", lugarExpedicion: "06600" } });
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/generar-xml`, authedJson(ctx.staff.contador.token, payload));
+    expect(res.status).toBe(400);
+  });
+
+  it("employees no es arreglo -> 400", async () => {
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/generar-xml`, authedJson(ctx.staff.admin.token, payloadXmlNomina({ employees: "no-es-arreglo" })));
+    expect(res.status).toBe(400);
+  });
+
+  it("readonly/auditor no pueden generar el XML de nómina -- 403", async () => {
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/despachos/${ctx.propertyId}/nomina/generar-xml`, authedJson(ctx.staff.auditor.token, payloadXmlNomina()));
+    expect(res.status).toBe(403);
+  });
+});

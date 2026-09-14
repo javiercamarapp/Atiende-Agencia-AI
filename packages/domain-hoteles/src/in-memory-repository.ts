@@ -19,6 +19,7 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HotelOrganizationSummary,
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
   MaintenanceTicketStatus,
@@ -35,6 +36,7 @@ import type {
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
+  PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
   TaxConfigRecord,
@@ -204,6 +206,16 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly maintenanceTickets = new Map<string, MaintenanceTicketRecord>();
   private readonly housekeepingShifts = new Map<string, HousekeepingShiftRecord>();
 
+  // ---- Fase 7 — descubrimiento de organización/property para el panel web de staff
+  // (espejo de solo-lectura de `core.organization`/`core.property`, ver
+  // types.ts::HotelOrganizationSummary — mismo patrón de duplicación deliberada que
+  // `InMemoryRestaurantesRepository.organizations`, necesario porque este adaptador
+  // en memoria no comparte almacenamiento con `InMemoryCoreRepository`/
+  // `InMemoryTenancyEngine`; el adaptador de Postgres real (postgres-repository.ts)
+  // no duplica nada, consulta `core.organization`/`core.property` directo). ----
+  private readonly organizations = new Map<string, HotelOrganizationSummary>(); // key: organizationId
+  private readonly properties = new Map<string, PropertySummary & { organizationId: string }>(); // key: propertyId
+
   private readonly idempotencyLock = new KeyedMutex();
   private readonly whatsappLock = new KeyedMutex();
   private readonly fraudAlertLock = new KeyedMutex();
@@ -255,6 +267,18 @@ export class InMemoryHotelesRepository implements HotelesRepository {
    *  patrón que `InMemoryCitasRepository`'s organizaciones activas). */
   seedActiveHotelProperty(organizationId: string, propertyId: string): void {
     this.activeHotelProperties.set(propertyId, { organizationId, propertyId });
+  }
+
+  /** Fase 7 — equivalente en memoria de una fila de `core.organization` con
+   *  `vertical='hoteles'`, insumo de `findOrganizationBySlug()`. */
+  seedOrganization(org: HotelOrganizationSummary): void {
+    this.organizations.set(org.id, org);
+  }
+
+  /** Fase 7 — equivalente en memoria de una fila de `core.property` con
+   *  `status='active'`, insumo de `listPropertiesForOrganization()`. */
+  seedPropertySummary(organizationId: string, property: PropertySummary): void {
+    this.properties.set(property.propertyId, { ...property, organizationId });
   }
 
   seedRoomType(
@@ -1023,6 +1047,22 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     const record = this.cfdiEmisiones.get(cfdiId);
     if (!record) throw new Error(`CFDI ${cfdiId} no encontrado.`);
     this.cfdiEmisiones.set(cfdiId, { ...record, status, canceledAt: new Date().toISOString() });
+  }
+
+  // ---- HotelesRepository: Fase 7 — descubrimiento de organización/property ----
+
+  async findOrganizationBySlug(slug: string): Promise<HotelOrganizationSummary | null> {
+    for (const org of this.organizations.values()) {
+      if (org.slug === slug) return org;
+    }
+    return null;
+  }
+
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly PropertySummary[]> {
+    return [...this.properties.values()]
+      .filter((p) => p.organizationId === organizationId)
+      .map((p) => ({ propertyId: p.propertyId, name: p.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
