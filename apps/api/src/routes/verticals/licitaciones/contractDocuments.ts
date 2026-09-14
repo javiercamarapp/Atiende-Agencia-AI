@@ -1,18 +1,25 @@
 // Fase 6 pieza 2 (REQ-052) — licitacionesContractDocumentsRoutes: subida +
 // extracción determinista del contrato firmado.
 //
-// LÍMITE DOCUMENTADO (ver `@atiende/domain-licitaciones::extractContractFields`
-// y el README de este vertical): este monorepo NO tiene, en ningún vertical,
-// un pipeline de texto-desde-PDF/OCR -- exactamente el mismo contrato de
-// entrada que `POST .../requirements/extract` (technicalProposal.ts): el
-// cuerpo del request trae el texto YA EXTRAÍDO por página
-// (`{documentLabel, pages:[{page,text}]}`), nunca los bytes de un PDF. Subir
-// un PDF real (nativo o escaneado) y obtener ese texto sigue siendo trabajo
-// pendiente genuino, fuera de esta fase.
+// Fase 11 cerró el límite que este archivo documentaba ("este monorepo NO
+// tiene, en ningún vertical, un pipeline de texto-desde-PDF/OCR"): el cuerpo
+// de `POST .../contract/documents` ahora admite DOS formas de entrada,
+// resueltas por `resolveContractDocumentPages` --
+//  (a) `pages:[{page,text}]` — texto YA EXTRAÍDO (el contrato original de
+//      esta ruta, sin cambios de comportamiento para quien ya lo usa).
+//  (b) `contentBase64` (+ `mimeType`/`filename` opcionales) — los BYTES
+//      reales del contrato firmado subido (PDF o texto plano), resueltos vía
+//      `@atiende/domain-licitaciones::extractDocumentText` (motor real
+//      `pdfjs-dist`, ver `text-extraction.ts`). Un documento cuyo estado no
+//      sea `"extracted"` (PDF escaneado sin capa de texto -> `"requires_ocr"`;
+//      formato no soportado o corrupto -> `"failed"`) se rechaza explícito
+//      (422) -- nunca se inventa texto vacío para que `extractContractFields`
+//      corra sobre nada. Sigue sin haber OCR real de imagen en este
+//      monorepo -- ninguna librería/servicio está disponible.
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { WRITE_ROLES } from "@atiende/domain-licitaciones";
+import { WRITE_ROLES, extractDocumentText, decodeBase64Content, InvalidFileContentError } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -20,6 +27,9 @@ import type { AppDeps } from "../../../deps.ts";
 interface ContractDocumentUploadBody {
   readonly documentLabel?: unknown;
   readonly pages?: unknown;
+  readonly contentBase64?: unknown;
+  readonly mimeType?: unknown;
+  readonly filename?: unknown;
 }
 
 interface ContractFieldConfirmBody {
@@ -36,6 +46,39 @@ function parsePages(raw: unknown): { page: number; text: string }[] {
     if (typeof o.text !== "string") throw Errors.validation(`pages[${i}].text: se esperaba una cadena.`);
     return { page: o.page, text: o.text };
   });
+}
+
+/**
+ * Fase 11: resuelve el cuerpo de subida a `{page,text}[]` -- `pages` ya
+ * extraído pasa tal cual; `contentBase64` corre por `extractDocumentText`
+ * (bytes reales del contrato firmado). Nunca ambos a la vez: `pages` tiene
+ * prioridad si el caller manda los dos por error (compatibilidad hacia
+ * atrás explícita, no ambigua).
+ */
+async function resolveContractDocumentPages(raw: ContractDocumentUploadBody): Promise<{ page: number; text: string }[]> {
+  if (raw.pages !== undefined) return parsePages(raw.pages);
+
+  if (raw.contentBase64 === undefined) throw Errors.validation('Se esperaba "pages" (texto ya extraído) o "contentBase64" (bytes del archivo, Fase 11).');
+  if (typeof raw.contentBase64 !== "string" || raw.contentBase64.length === 0) throw Errors.validation("contentBase64: se esperaba texto base64 no vacío.");
+  if (raw.mimeType !== undefined && raw.mimeType !== null && typeof raw.mimeType !== "string") throw Errors.validation("mimeType: se esperaba texto.");
+  if (raw.filename !== undefined && raw.filename !== null && typeof raw.filename !== "string") throw Errors.validation("filename: se esperaba texto.");
+
+  let buffer: Buffer;
+  try {
+    buffer = decodeBase64Content(raw.contentBase64);
+  } catch (err) {
+    if (err instanceof InvalidFileContentError) throw Errors.validation(`contentBase64: ${err.message}`);
+    throw err;
+  }
+
+  const extraction = await extractDocumentText(buffer, {
+    mimeType: typeof raw.mimeType === "string" ? raw.mimeType : null,
+    filename: typeof raw.filename === "string" ? raw.filename : null,
+  });
+  if (extraction.status !== "extracted" || !extraction.pages) {
+    throw Errors.licitacionesNoExtractableDocuments([{ documentLabel: typeof raw.documentLabel === "string" ? raw.documentLabel : "contrato firmado", status: extraction.status === "extracted" ? "failed" : extraction.status }]);
+  }
+  return extraction.pages.map((p) => ({ page: p.page, text: p.text }));
 }
 
 export function licitacionesContractDocumentsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -62,10 +105,13 @@ export function licitacionesContractDocumentsRoutes(deps: AppDeps): Hono<CoreAut
     const organizationId = c.get("organizationId");
     const actorId = c.get("userId");
     const tenderId = c.req.param("tenderId");
-    const raw = await readJsonCapped<ContractDocumentUploadBody>(c.req.raw, 2 * 1024 * 1024);
+    // Fase 11: 30MB (antes 2MB) -- el cuerpo puede traer los bytes reales del
+    // PDF firmado en base64 (`contentBase64`), mismo cap que
+    // `technicalProposal.ts::requirements/extract`/`cierre.ts::submission/declare`.
+    const raw = await readJsonCapped<ContractDocumentUploadBody>(c.req.raw, 30 * 1024 * 1024);
 
     if (typeof raw.documentLabel !== "string" || raw.documentLabel.trim().length === 0) throw Errors.validation("documentLabel requerido.");
-    const pages = parsePages(raw.pages);
+    const pages = await resolveContractDocumentPages(raw);
 
     await requireContract(repo, organizationId, tenderId);
     const result = await repo.addContractDocument(organizationId, tenderId, { documentLabel: raw.documentLabel, pages, actorId });

@@ -223,6 +223,10 @@ export type { PaymentDeadlineResult, ContractInvoiceStatus, InvoiceStatusInput, 
 export { CONTRACT_FIELD_KEYS, extractContractFields } from "./contract-extraction.ts";
 export type { ContractFieldKey, ExtractedContractField, ContractFieldPageText } from "./contract-extraction.ts";
 
+// ---- Fase 11: pipeline real de extracción de texto de PDF (bases de licitación, propuestas, contrato firmado) ----
+export { extractDocumentText, splitPersistedTextIntoPages, PAGE_BREAK } from "./text-extraction.ts";
+export type { TextExtractionStatus, TextExtractionResult, ExtractedPageText, PdfBombLimit } from "./text-extraction.ts";
+
 export {
   INCONFORMIDAD_DISCLAIMER,
   LAASSP_ART_95_INCONFORMIDAD_BUSINESS_DAYS,

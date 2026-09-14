@@ -13,6 +13,10 @@
   "dependencies": {
     "@atiende/agent-core": "*",
     "@atiende/core-tenancy": "*",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "pdfjs-dist": "^4.9.155"
+  },
+  "devDependencies": {
+    "pdf-lib": "^1.17.1"
   }
 }
