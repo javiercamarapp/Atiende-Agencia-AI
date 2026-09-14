@@ -210,7 +210,53 @@ export {
   PeriodoYaAbiertoError,
   CierreValidacionError,
   TareaCierreEstadoInvalidoError,
+  TransicionPaqueteContabilidadInvalidaError,
 } from "./errors.ts";
+
+// ---- Contabilidad electrónica SAT — catálogo/balanza/paquete Anexo 24
+// (cierre de gap de auditoría) ----
+export {
+  NATURALEZAS_VALIDAS as CE_NATURALEZAS_VALIDAS,
+  CATALOGO_ANEXO24_BASE,
+  CATEGORIA_A_CUENTA_ANEXO24,
+  crearCatalogoBase,
+  findCuenta as findCuentaAnexo24,
+  erroresCatalogo as erroresCatalogoAnexo24,
+  validarCatalogo as validarCatalogoAnexo24,
+  mergeCuentas as mergeCuentasAnexo24,
+  asignarAutomatico as asignarAutomaticoAnexo24,
+  generarXmlCatalogo,
+  acumularAsientos,
+  generarBalanza,
+  resumenBalanza,
+  validarCuadratura,
+  detectarSaldosAnomalos,
+  generarXmlBalanza,
+  calcularHashSha1,
+  generarPaqueteContabilidadElectronica,
+  generarResumenMensual,
+  marcarListoParaTimbrar,
+  marcarTimbrado,
+  marcarEnviado,
+  ESTADOS_PAQUETE_CONTABILIDAD,
+  ESTADO_INICIAL_PAQUETE_CONTABILIDAD,
+} from "./contabilidad-electronica/index.ts";
+export type {
+  OpcionesXmlCatalogo,
+  TipoEnvioBalanza,
+  OpcionesXmlBalanza,
+  DatosGenerarPaquete,
+  NaturalezaCuenta as NaturalezaCuentaAnexo24,
+  CuentaAnexo24,
+  AsientoContable,
+  LineaBalanza,
+  LineaBalanzaAnomala,
+  ResumenBalanza,
+  EstadoPaqueteContabilidad,
+  ArchivoContabilidadElectronica,
+  PaqueteContabilidadElectronica,
+  ResumenMensualContabilidad,
+} from "./contabilidad-electronica/index.ts";
 
 // ---- Devolución de IVA (Fase 6) ----
 export {
