@@ -49,7 +49,10 @@ function RestaurantesLoginRoute() {
   return (
     <RestaurantesLoginPage
       apiBaseUrl={API_BASE_URL}
-      onLoggedIn={(_session, landingPath) => navigate(landingPath)}
+      // Ver comentario de cabecera de apps/web/src/shell/SinOrganizacion.tsx y
+      // SeleccionarOrganizacion.tsx: ninguna de las dos páginas genéricas puede
+      // adivinar por sí sola de qué vertical es la sesión recién persistida.
+      onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "restaurantes", email: session.email } })}
     />
   );
 }
@@ -136,7 +139,10 @@ function HotelesLoginRoute() {
   return (
     <HotelesLoginPage
       apiBaseUrl={API_BASE_URL}
-      onLoggedIn={(_session, landingPath) => navigate(landingPath)}
+      // Ver comentario de cabecera de apps/web/src/shell/SinOrganizacion.tsx y
+      // SeleccionarOrganizacion.tsx: ninguna de las dos páginas genéricas puede
+      // adivinar por sí sola de qué vertical es la sesión recién persistida.
+      onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "hoteles", email: session.email } })}
     />
   );
 }
@@ -225,7 +231,15 @@ function RentasDashboardRoute() {
 
 function CitasLoginRoute() {
   const navigate = useNavigate();
-  return <CitasLoginPage apiBaseUrl={API_BASE_URL} onLoggedIn={(_session, landingPath) => navigate(landingPath)} />;
+  return (
+    <CitasLoginPage
+      apiBaseUrl={API_BASE_URL}
+      // Ver comentario de cabecera de apps/web/src/shell/SinOrganizacion.tsx y
+      // SeleccionarOrganizacion.tsx: ninguna de las dos páginas genéricas puede
+      // adivinar por sí sola de qué vertical es la sesión recién persistida.
+      onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "citas", email: session.email } })}
+    />
+  );
 }
 
 /** Redirección al abrir `/citas/:orgSlug` a secas — la agenda es la landing real
@@ -337,7 +351,15 @@ function CitasConfiguracionRoute() {
 
 function LicitacionesLoginRoute() {
   const navigate = useNavigate();
-  return <LicitacionesLoginPage apiBaseUrl={API_BASE_URL} onLoggedIn={(_session, landingPath) => navigate(landingPath)} />;
+  return (
+    <LicitacionesLoginPage
+      apiBaseUrl={API_BASE_URL}
+      // Ver comentario de cabecera de apps/web/src/shell/SinOrganizacion.tsx y
+      // SeleccionarOrganizacion.tsx: ninguna de las dos páginas genéricas puede
+      // adivinar por sí sola de qué vertical es la sesión recién persistida.
+      onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "licitaciones", email: session.email } })}
+    />
+  );
 }
 
 /** Redirección al abrir `/licitaciones/:orgSlug` a secas — convocatorias es la
@@ -372,7 +394,15 @@ function LicitacionesConvocatoriaDetalleRoute() {
 
 function DespachosLoginRoute() {
   const navigate = useNavigate();
-  return <DespachosLoginPage apiBaseUrl={API_BASE_URL} onLoggedIn={(_session, landingPath) => navigate(landingPath)} />;
+  return (
+    <DespachosLoginPage
+      apiBaseUrl={API_BASE_URL}
+      // Ver comentario de cabecera de apps/web/src/shell/SinOrganizacion.tsx y
+      // SeleccionarOrganizacion.tsx: ninguna de las dos páginas genéricas puede
+      // adivinar por sí sola de qué vertical es la sesión recién persistida.
+      onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "despachos", email: session.email } })}
+    />
+  );
 }
 
 /** Redirección al abrir `/despachos/:orgSlug` a secas — cierre mensual es la

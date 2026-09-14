@@ -11,10 +11,10 @@
 // diseño) — el caso de "2+ organizaciones" del selector sigue existiendo
 // igual (un mismo usuario puede pertenecer a más de una empresa
 // participante), pero nunca a "2+ properties de la MISMA organización".
-import { login, LoginError, validateLoginForm } from "../../../lib/auth-client.ts";
+import { login, logout, LoginError, validateLoginForm } from "../../../lib/auth-client.ts";
 import type { LoginSession, SessionStorageLike } from "../../../lib/auth-client.ts";
 
-export { login, LoginError, validateLoginForm };
+export { login, logout, LoginError, validateLoginForm };
 export type { LoginSession, SessionStorageLike };
 
 export function decideLicitacionesLandingPath(session: LoginSession): string {

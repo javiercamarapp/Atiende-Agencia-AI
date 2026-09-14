@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
-import { readPersistedSession } from "../../lib/auth-client.ts";
+import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import type { LoginSession } from "../../lib/auth-client.ts";
 import { fetchBranches } from "./dashboard-client.ts";
 import type { BranchOption } from "./dashboard-client.ts";
@@ -45,16 +45,44 @@ const linkStyle = (isActive: boolean): CSSProperties => ({
   background: isActive ? "#111827" : "transparent",
 });
 
+const logoutButtonStyle: CSSProperties = {
+  marginTop: "auto",
+  padding: "8px 12px",
+  borderRadius: 8,
+  fontSize: 14,
+  textAlign: "left",
+  color: "#b91c1c",
+  background: "transparent",
+  border: "1px solid #fecaca",
+  cursor: "pointer",
+};
+
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
   const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Mismo hallazgo de auditoría que hoteles ("No existe botón ni flujo de 'Cerrar
+  // sesión' en ninguna pantalla de restaurantes"): /auth/logout ya existe en el
+  // backend (compartido entre verticales), solo faltaba el botón.
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const s = readPersistedSession(window.localStorage);
     setSession(s);
     if (!s) onRequireLogin();
   }, [onRequireLogin]);
+
+  async function handleLogout() {
+    if (!session) return;
+    setLoggingOut(true);
+    try {
+      await logout(fetch, apiBaseUrl, session.refreshToken);
+    } finally {
+      clearSession(window.localStorage);
+      setSession(null);
+      onRequireLogin();
+    }
+  }
 
   useEffect(() => {
     if (!session) return;
@@ -120,6 +148,9 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
             {item.label}
           </NavLink>
         ))}
+        <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
+          {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
+        </button>
       </nav>
       <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug })}</div>
     </div>

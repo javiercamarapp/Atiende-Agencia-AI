@@ -5,10 +5,10 @@
 // que es específico de despachos: la llave de sessionStorage/localStorage (para no
 // chocar con la sesión de otro vertical abierta en el mismo navegador) y el landing
 // path (`/despachos/:slug`).
-import { login, LoginError, validateLoginForm } from "../../../lib/auth-client.ts";
+import { login, logout, LoginError, validateLoginForm } from "../../../lib/auth-client.ts";
 import type { LoginSession, SessionStorageLike } from "../../../lib/auth-client.ts";
 
-export { login, LoginError, validateLoginForm };
+export { login, logout, LoginError, validateLoginForm };
 export type { LoginSession, SessionStorageLike };
 
 /** A dónde navegar tras un login exitoso: 0 organizaciones (staff invitado sin
