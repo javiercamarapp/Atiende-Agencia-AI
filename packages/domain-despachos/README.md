@@ -51,3 +51,50 @@ canal real (con aprobación humana antes de enviar, mismo patrón que
 `domain-rentas`/`mensajeria` y `domain-citas`) es trabajo de una fase futura.
 
 Migración nueva: `migrations/004_cobranza_schema.sql`.
+
+## Fase 11 — nivel 4 (LLM) de conciliación bancaria
+
+Gap real de auditoría de paridad: el motor de conciliación bancaria de 4 niveles
+(puerto de `~/Desktop/supabase/despachos/b2b_ai/services/bank_reconciliation.py`)
+ya estaba en `src/conciliacion/` desde Fase 5 — niveles 1 (exacto) y 3 (multi-línea)
+byte-exactos, nivel 2 (fuzzy) con `partialRatio` documentado como aproximación
+verificada — pero el nivel 4 (asistido por LLM, para los movimientos que ningún
+nivel determinista resolvió) quedó explícitamente NO portado (ver el comentario de
+cabecera de `matching-engine.ts` de esa fase). Esta fase lo cierra.
+
+- `src/conciliacion/llm-matching-agent.ts` — `sugerirMatchesLLM`/`aprobarSugerenciaLLM`.
+  Opera sobre `unmatchedBank`/`unmatchedBooks`, el resultado de `conciliarMovimientos`
+  (niveles 1-3) — nunca se mezcla con ese motor determinístico. Usa el mismo
+  `@atiende/agent-core::LlmGateway` que las otras 4 escaleras de producción (ver
+  `apps/api/src/production/llm-gateway.ts::DESPACHOS_CONCILIACION_LLM_ROLE`), con un
+  pre-filtro determinístico (overlap de tokens + proximidad de fecha, reutilizando
+  `text-similarity.ts`/`fechas.ts` ya verificados) para acotar la lista de candidatos
+  ofrecida al modelo por movimiento — mismo umbral (0.15) que
+  `_pass_ai.TOKEN_PRE_FILTER_THRESHOLD` del origen.
+
+**Diferencia de diseño DELIBERADA frente al origen:** `_pass_ai` del origen
+auto-aplica un match cuando `confianza >= 50` (`bank_reconciliation.py`, líneas
+801-806) — ningún humano lo revisa antes de conciliarse. Aquí **nunca** se
+auto-aplica, sin importar la confianza reportada: `sugerirMatchesLLM` solo produce
+`SugerenciaMatchLLM` con `status: "pendiente_aprobacion"`, y la única vía a algo con
+la forma de un match real (`CoincidenciaConciliacionLLM`, `level: "llm"`) es
+`aprobarSugerenciaLLM`, que exige un rol de `CONCILIACION_ROLES` (`admin`/
+`contador`). Mismo criterio de guardrails que `domain-rentas/src/agentes/
+generadorBorradorIA.ts` y `domain-licitaciones/src/technical-proposal-draft-agent.ts`
+(`approveDraft()` como única vía a un resultado definitivo). Además, un índice de
+candidato devuelto por el modelo se valida ESTRUCTURALMENTE contra la lista
+realmente ofrecida — un índice fuera de rango (alucinado) nunca se traduce en un
+`registroIdx` inventado, se registra como `respuesta_invalida` en `sinSugerencia` y
+el lote sigue con el siguiente movimiento.
+
+**Límite deliberado de esta fase:** no se agregó endpoint HTTP propio en
+`apps/api/src/routes/verticals/despachos/conciliacion.ts` — mismo estado que
+`TechnicalProposalDraftAgent` de licitaciones Fase 9 (domain module + rol de gateway
+registrado, sin ruta HTTP todavía). Conectarlo (`POST .../conciliacion/sugerir-llm`
++ `POST .../conciliacion/aprobar-llm`, recibiendo `unmatchedBank`/`unmatchedBooks`
+del resultado de `/matching`) es un incremento natural futuro, no bloqueante para el
+valor del módulo de dominio en sí — ver el comentario actualizado de cabecera de
+`conciliacion.ts` para el shape exacto propuesto.
+
+Sin migración nueva (este módulo no persiste nada — las sugerencias/aprobaciones
+viajan en memoria dentro de la misma corrida, igual que `conciliarMovimientos`).
