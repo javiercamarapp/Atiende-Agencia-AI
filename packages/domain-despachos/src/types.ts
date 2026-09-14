@@ -133,6 +133,16 @@ export interface ReceivableRecord {
   readonly fechaVencimiento: string; // "YYYY-MM-DD"
   readonly montoPagado: number | null;
   readonly pagadoEn: string | null; // ISO 8601, null = todavía pendiente
+  /** Contacto real del deudor (migración 005, gap de auditoría) — el CFDI
+   * nunca trae un correo de contacto utilizable (`rfc_receptor` es un dato
+   * fiscal, no de contacto), así que estos 2 campos son la única fuente real
+   * de a quién enviarle un recordatorio de cobranza por correo. `null` =
+   * cuenta sin contacto de correo capturado todavía — sigue siendo una cuenta
+   * por cobrar válida (mismo criterio "honesto" que `citas.customer.email is
+   * null`, ver `cobranza/email-notifications.ts`), simplemente no recibe
+   * recordatorio por correo hasta que alguien lo capture. */
+  readonly clienteNombre: string | null;
+  readonly clienteEmail: string | null;
   readonly createdAt: string;
 }
 
@@ -141,6 +151,9 @@ export interface NewReceivableInput {
   readonly propertyId: string;
   readonly invoiceId: string;
   readonly fechaVencimiento: string;
+  /** Opcionales (migración 005) — ver nota de `ReceivableRecord`. */
+  readonly clienteNombre?: string | null;
+  readonly clienteEmail?: string | null;
 }
 
 /** Etapa de un evento de cobranza — las 5 etapas de la secuencia de

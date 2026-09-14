@@ -153,8 +153,15 @@ describe("vencimientos fiscales — flujo 3", () => {
     expect(todos).toHaveLength(4); // no 8: la segunda llamada reutiliza las filas existentes
   });
 
-  it("escala un vencimiento vencido a nivel_4 y exige revisión humana (CFF art. 89)", async () => {
+  it("escala un vencimiento vencido a nivel_4, exige revisión humana (CFF art. 89) y notifica por correo real al staff owner/admin", async () => {
     const app = buildApp(ctx.deps);
+    // Hallazgo de auditoría (severidad ALTA), cierre de gap real: hasta esta fase,
+    // escalar un vencimiento solo insertaba la fila en BD sin notificar a nadie.
+    // Mismo criterio que licitaciones-alert-notifications.spec.ts: `despachosRepo`
+    // (el repo del DOMINIO) necesita su propio seed de destinatarios, aparte de
+    // coreRepo.addMembership que ya sembró buildDespachosTestContext.
+    ctx.despachosRepo.seedNotificationRecipient(ctx.organizationId, { email: ctx.staff.admin.email, fullName: "admin" });
+
     // Un período muy antiguo garantiza fecha_limite ya vencida sin importar cuándo
     // corra el test.
     await app.request(`/despachos/${ctx.propertyId}/vencimientos/calcular`, authedJson(ctx.staff.contador.token, { year: 2020, month: 1 }));
@@ -163,9 +170,13 @@ describe("vencimientos fiscales — flujo 3", () => {
 
     const escalar = await app.request(`/despachos/${ctx.propertyId}/vencimientos/${deadline!.id}/escalar`, authedJson(ctx.staff.contador.token, {}));
     expect(escalar.status).toBe(201);
-    const body = (await escalar.json()) as { escalamiento: { nivel: string }; requiereRevisionHumana: boolean };
+    const body = (await escalar.json()) as { escalamiento: { nivel: string }; requiereRevisionHumana: boolean; notificacion: { destinatarios: number; correosEncolados: number } };
     expect(body.escalamiento.nivel).toBe("nivel_4");
     expect(body.requiereRevisionHumana).toBe(true);
+    expect(body.notificacion).toEqual({ destinatarios: 1, correosEncolados: 1 });
+
+    const outbox = ctx.despachosRepo.getMessagingOutbox();
+    expect(outbox.some((j) => j.eventType === "vencimiento.escalado" && j.payload.to === ctx.staff.admin.email)).toBe(true);
   });
 
   it("marcar completado un vencimiento ya completado da 409 conflict", async () => {

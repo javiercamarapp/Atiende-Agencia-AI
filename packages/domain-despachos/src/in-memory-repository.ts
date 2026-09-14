@@ -5,7 +5,7 @@
 // que InMemoryHotelesRepository/InMemoryRestaurantesRepository.
 import { randomUUID } from "node:crypto";
 import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
-import type { DespachosRepository } from "./repository.ts";
+import type { DespachosRepository, EmailOutboxJobRow, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CollectionEventRecord,
   DeadlineEscalationRecord,
@@ -42,6 +42,14 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly receivableByInvoice = new Map<string, string>(); // key: invoiceId -> receivableId
   private readonly collectionEvents = new Map<string, CollectionEventRecord[]>(); // key: receivableId
 
+  // ---- Infraestructura de correo (migración 005) ----
+  private readonly notificationRecipients = new Map<string, OrganizationNotificationRecipient[]>(); // orgId -> staff owner/admin
+  private readonly messagingOutbox = new Map<
+    string,
+    { id: string; organizationId: string; channel: "email"; eventType: string; dedupeKey: string; payload: Record<string, unknown>; status: "pending" | "processing" | "sent" | "failed" | "dead"; attempts: number; lastError: string | null; createdAt: string }
+  >();
+  private readonly messagingOutboxDedupe = new Map<string, string>(); // key: orgId:channel:dedupeKey -> outbox id
+
   // ---- Fase 9 — seeding (equivalente a INSERT manual contra las migraciones SQL),
   // mismo rol EXACTO que InMemoryLicitacionesRepository.seedOrganization/
   // seedLicitacionesProperty. ----
@@ -55,10 +63,35 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     this.despachosProperties.set(property.id, { propertyId: property.id, organizationId: property.organizationId, name: property.name });
   }
 
+  /** Migración 005 — equivalente en memoria de
+   * `despachos.organization_notification_recipients` (staff `owner`/`admin` real vía
+   * `core.membership`/`core.staff_user` en Postgres): este repositorio en memoria no
+   * modela `core.*` (vive en `@atiende/db`, un paquete distinto), así que las pruebas
+   * siembran aquí directamente a quién debe llegarle el correo de escalamiento --
+   * mismo rol EXACTO que `InMemoryLicitacionesRepository.seedNotificationRecipient`.
+   * Sin sembrar nada, la organización simplemente no tiene destinatarios (mismo
+   * comportamiento honesto que una organización real sin ningún staff owner/admin
+   * todavía). */
+  seedNotificationRecipient(organizationId: string, recipient: OrganizationNotificationRecipient): void {
+    const list = this.notificationRecipients.get(organizationId) ?? [];
+    this.notificationRecipients.set(organizationId, [...list, recipient]);
+  }
+
+  /** Solo para pruebas -- inspecciona el outbox completo (mismo rol que
+   * `InMemoryCitasRepository.getOutbox()`/`InMemoryLicitacionesRepository.getMessagingOutbox()`). */
+  getMessagingOutbox(): readonly { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: Record<string, unknown>; status: string; attempts: number; lastError: string | null }[] {
+    return [...this.messagingOutbox.values()];
+  }
+
   async findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null> {
     const id = this.organizationIdBySlug.get(slug);
     if (!id) return null;
     return this.organizations.get(id) ?? null;
+  }
+
+  async findOrganizationById(organizationId: string): Promise<{ readonly id: string; readonly name: string } | null> {
+    const org = this.organizations.get(organizationId);
+    return org ? { id: org.id, name: org.name } : null;
   }
 
   async listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]> {
@@ -343,6 +376,8 @@ export class InMemoryDespachosRepository implements DespachosRepository {
       fechaVencimiento: input.fechaVencimiento,
       montoPagado: null,
       pagadoEn: null,
+      clienteNombre: input.clienteNombre ?? null,
+      clienteEmail: input.clienteEmail ?? null,
       createdAt: new Date().toISOString(),
     };
     this.receivables.set(id, record);
@@ -397,5 +432,69 @@ export class InMemoryDespachosRepository implements DespachosRepository {
 
   async listCollectionEvents(propertyId: string, receivableId: string): Promise<readonly CollectionEventRecord[]> {
     return (this.collectionEvents.get(receivableId) ?? []).filter((e) => e.propertyId === propertyId);
+  }
+
+  // ============================================================================
+  // Infraestructura de correo (migración 005) — outbox real acotado a
+  // channel='email', mismo patrón EXACTO que InMemoryCitasRepository/
+  // InMemoryLicitacionesRepository (leídos primero como plantilla).
+  // ============================================================================
+
+  async listActiveOrganizations(): Promise<readonly { id: string }[]> {
+    return [...this.organizations.values()].filter((o) => o.isActive).map((o) => ({ id: o.id }));
+  }
+
+  async listOrganizationNotificationRecipients(organizationId: string): Promise<readonly OrganizationNotificationRecipient[]> {
+    return [...(this.notificationRecipients.get(organizationId) ?? [])];
+  }
+
+  async enqueueMessagingOutbox(organizationId: string, channel: "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    if (channel !== "email") throw new Error("invalid outbox channel");
+    const dedupeMapKey = `${organizationId}:${channel}:${dedupeKey}`;
+    const existingId = this.messagingOutboxDedupe.get(dedupeMapKey);
+    if (existingId) {
+      const existing = this.messagingOutbox.get(existingId)!;
+      // Mismo criterio que `despachos.enqueue_messaging_outbox` real: un job ya
+      // 'sent'/'processing'/'dead' NUNCA se pisa -- solo 'pending'/'failed' se actualizan.
+      if (existing.status === "pending" || existing.status === "failed") {
+        this.messagingOutbox.set(existingId, { ...existing, payload: payload as Record<string, unknown>, eventType });
+      }
+      return;
+    }
+    const id = randomUUID();
+    this.messagingOutbox.set(id, {
+      id,
+      organizationId,
+      channel,
+      eventType,
+      dedupeKey,
+      payload: payload as Record<string, unknown>,
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+      createdAt: new Date().toISOString(),
+    });
+    this.messagingOutboxDedupe.set(dedupeMapKey, id);
+  }
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const claimable = [...this.messagingOutbox.values()]
+      .filter((j) => j.channel === "email" && (j.status === "pending" || j.status === "failed") && j.attempts < 5)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(0, Math.max(limit, 0));
+    const claimed: EmailOutboxJobRow[] = [];
+    for (const job of claimable) {
+      const updated = { ...job, status: "processing" as const, attempts: job.attempts + 1 };
+      this.messagingOutbox.set(job.id, updated);
+      claimed.push({ id: updated.id, organizationId: updated.organizationId, attempts: updated.attempts, payload: updated.payload });
+    }
+    return claimed;
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    if (!["sent", "failed", "dead"].includes(status)) throw new Error(`invalid email outbox completion status: ${status}`);
+    const job = this.messagingOutbox.get(id);
+    if (!job || job.channel !== "email") return;
+    this.messagingOutbox.set(id, { ...job, status, lastError: error ? error.slice(0, 500) : null });
   }
 }

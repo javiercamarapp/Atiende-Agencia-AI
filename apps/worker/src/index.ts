@@ -25,3 +25,9 @@ export type {
   AlertNotificationSweepResult,
   RunAlertNotificationSweepOptions,
 } from "./jobs/licitaciones/alert-notifications.ts";
+
+// Hallazgo de auditoría (severidad ALTA) — primer job real del vertical
+// despachos: despacho proactivo de recordatorios de cobranza (ver
+// jobs/despachos/README.md).
+export { runCobranzaReminderSweep } from "./jobs/despachos/cobranza-reminders.ts";
+export type { CobranzaReminderSweepResult, CobranzaReminderPropertyResult, RunCobranzaReminderSweepOptions } from "./jobs/despachos/cobranza-reminders.ts";
