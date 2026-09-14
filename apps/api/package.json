@@ -24,5 +24,8 @@
     "@atiende/worker": "*",
     "hono": "4.13.7",
     "jose": "6.2.12"
+  },
+  "devDependencies": {
+    "pdf-lib": "^1.17.1"
   }
 }
