@@ -114,6 +114,73 @@ export function correoCitaReagendada(c: CitaReagendadaCorreo): Correo {
   };
 }
 
+// ============================================================================
+// Fase 11 — plantillas para las 3 transiciones de estado del panel de staff
+// (confirmar/completar/no-show, Fase 7): el gap real que cierra esta fase es
+// que appointment-email-notifications.ts nunca tuvo plantilla para estos 3
+// eventos (Fase 6 §3 solo cubría created/reminder_24h/cancelled/rescheduled/
+// modified) — el origen (AgendaSection.tsx) tampoco las tenía, así que no hay
+// texto que portar; mismo tono, mismo marco (renderCorreo) y misma tabla de
+// detalle que las demás plantillas de este archivo.
+// ============================================================================
+
+export function correoCitaConfirmada(c: CitaCorreo): Correo {
+  const nombre = escapeHtml(c.clienteNombre);
+  const tenant = escapeHtml(c.tenantNombre);
+  const html = renderCorreo({
+    titulo: "Tu cita fue confirmada",
+    preheader: `${c.tenantNombre} confirmó tu cita — ${c.fechaHoraTexto}`,
+    etiqueta: { texto: "Confirmada", color: "#15803d" },
+    parrafosHtml: [`Hola ${nombre}, <strong>${tenant}</strong> confirmó tu cita. Aquí el detalle:`],
+    tabla: filasCita(c),
+    nota: "Si necesitas cambiar o cancelar tu cita, contáctanos por el mismo medio por el que la agendaste.",
+    piePorQueLlego: PIE_ESTANDAR(c.tenantNombre),
+  });
+  return {
+    asunto: `Cita confirmada · ${c.tenantNombre} · ${c.fechaHoraTexto}`,
+    html,
+    texto: `Hola ${c.clienteNombre}, ${c.tenantNombre} confirmó tu cita.\nServicio: ${c.servicioNombre}\nCon: ${c.proveedorNombre}\nFecha y hora: ${c.fechaHoraTexto}`,
+  };
+}
+
+export function correoCitaCompletada(c: CitaCorreo): Correo {
+  const nombre = escapeHtml(c.clienteNombre);
+  const tenant = escapeHtml(c.tenantNombre);
+  const html = renderCorreo({
+    titulo: "Gracias por tu visita",
+    preheader: `Tu cita en ${c.tenantNombre} quedó completada — ${c.fechaHoraTexto}`,
+    etiqueta: { texto: "Completada", color: "#1D4ED8" },
+    parrafosHtml: [`Hola ${nombre}, gracias por tu visita a <strong>${tenant}</strong>. Tu cita quedó registrada como completada:`],
+    tabla: filasCita(c),
+    nota: "Si necesitas agendar tu próxima cita, contáctanos por el mismo medio por el que agendaste esta.",
+    piePorQueLlego: PIE_ESTANDAR(c.tenantNombre),
+  });
+  return {
+    asunto: `Gracias por tu visita · ${c.tenantNombre} · ${c.fechaHoraTexto}`,
+    html,
+    texto: `Hola ${c.clienteNombre}, gracias por tu visita a ${c.tenantNombre}. Tu cita quedó completada.\nServicio: ${c.servicioNombre}\nCon: ${c.proveedorNombre}\nFecha y hora: ${c.fechaHoraTexto}`,
+  };
+}
+
+export function correoCitaNoShow(c: CitaCorreo): Correo {
+  const nombre = escapeHtml(c.clienteNombre);
+  const tenant = escapeHtml(c.tenantNombre);
+  const html = renderCorreo({
+    titulo: "No te vimos en tu cita",
+    preheader: `Marcamos tu cita en ${c.tenantNombre} como no asistida — ${c.fechaHoraTexto}`,
+    etiqueta: { texto: "No asistió", color: "#dc2626" },
+    parrafosHtml: [`Hola ${nombre}, no logramos verte en <strong>${tenant}</strong> a la hora de tu cita, así que la marcamos como no asistida:`],
+    tabla: filasCita(c),
+    nota: "Si fue un error o quieres agendar de nuevo, contáctanos por el mismo medio por el que agendaste.",
+    piePorQueLlego: PIE_ESTANDAR(c.tenantNombre),
+  });
+  return {
+    asunto: `No asististe a tu cita · ${c.tenantNombre} · ${c.fechaHoraTexto}`,
+    html,
+    texto: `Hola ${c.clienteNombre}, no te vimos en ${c.tenantNombre} a la hora de tu cita, así que la marcamos como no asistida.\nServicio: ${c.servicioNombre}\nCon: ${c.proveedorNombre}\nFecha y hora: ${c.fechaHoraTexto}`,
+  };
+}
+
 export function correoCitaModificada(c: CitaCorreo): Correo {
   const nombre = escapeHtml(c.clienteNombre);
   const tenant = escapeHtml(c.tenantNombre);

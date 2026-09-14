@@ -5,11 +5,26 @@
 // portado, generationReport.technical nunca existe todavía"). Dos rutas:
 //
 //  - POST .../requirements/extract (WRITE_ROLES): corre `RuleBasedExtractor`
-//    sobre el texto YA EXTRAÍDO de los documentos de bases que el cliente
-//    manda (esta fase no incluye un pipeline de OCR/parseo de PDF — el
-//    cuerpo del request trae `{documentId, documentLabel, pages:[{page,text}]}`,
-//    mismo espíritu que `checklist.ts` recibiendo METADATOS de archivos, no
-//    bytes). Persiste `RequirementItem[]` reales por primera vez.
+//    sobre el texto de los documentos de bases que el cliente manda. Cada
+//    documento admite DOS formas de entrada, resueltas por
+//    `resolveDocumentText` antes de tocar `RequirementMatrixBuilder`:
+//     (a) `pages:[{page,text}]` — texto YA EXTRAÍDO (el contrato original de
+//         esta ruta, sin cambios de comportamiento para quien ya lo usa).
+//     (b) `contentBase64` (+ `mimeType`/`filename` opcionales) — los BYTES
+//         reales del archivo subido (PDF o texto plano). Fase 11 cierra
+//         aquí el hueco que `contract-extraction.ts`/el README de este
+//         vertical documentaban ("este monorepo NO tiene, en NINGÚN
+//         vertical, un pipeline de texto-desde-PDF/OCR"): se corren por
+//         `@atiende/domain-licitaciones::extractDocumentText` (motor real
+//         `pdfjs-dist`, port del origen) ANTES de construir la matriz. Un
+//         documento cuyo estado no sea `"extracted"` (PDF escaneado sin
+//         capa de texto -> `"requires_ocr"`; formato no soportado o
+//         corrupto -> `"failed"`) NUNCA se inventa como texto vacío -- se
+//         excluye de la matriz y se reporta explícito en
+//         `skippedDocuments` de la respuesta (REQ-166: ausencia de dato
+//         nunca se traduce en "cumple"/"sin requisitos"). Sigue sin haber
+//         OCR real de imagen en este monorepo -- ninguna librería/servicio
+//         está disponible; ver `extractDocumentText` para el detalle.
 //
 //    `LlmRequirementExtractor` (domain-licitaciones) SÍ se suma a
 //    `RuleBasedExtractor` en cuanto `AppDeps.llmGateway` exista -- es decir, en
@@ -55,6 +70,9 @@ import {
   resolveExpedienteAsOfIso,
   SubmissionDeadlineUnknownError,
   WRITE_ROLES,
+  extractDocumentText,
+  decodeBase64Content,
+  InvalidFileContentError,
 } from "@atiende/domain-licitaciones";
 import type {
   CompanyCapability,
@@ -82,7 +100,28 @@ interface ExtractBody {
   readonly documents?: unknown;
 }
 
-function parseDocuments(raw: unknown): TenderDocumentText[] {
+/** `pages` ya extraído (contrato original de esta ruta) O `contentBase64` (bytes reales del archivo, Fase 11) -- nunca ambos requeridos, `parseDocuments` acepta cualquiera de los dos por documento. */
+interface RawDocumentPages {
+  readonly kind: "pages";
+  readonly documentId: string;
+  readonly documentLabel: string;
+  readonly publishedAt: string;
+  readonly pages: { page: number; text: string }[];
+}
+
+interface RawDocumentContent {
+  readonly kind: "content";
+  readonly documentId: string;
+  readonly documentLabel: string;
+  readonly publishedAt: string;
+  readonly buffer: Buffer;
+  readonly mimeType: string | null;
+  readonly filename: string | null;
+}
+
+type RawDocumentInput = RawDocumentPages | RawDocumentContent;
+
+function parseDocuments(raw: unknown): RawDocumentInput[] {
   if (!Array.isArray(raw) || raw.length === 0) throw Errors.validation("documents: se esperaba un arreglo no vacío.");
   return raw.map((d, i) => {
     if (typeof d !== "object" || d === null) throw Errors.validation(`documents[${i}]: se esperaba un objeto.`);
@@ -90,7 +129,35 @@ function parseDocuments(raw: unknown): TenderDocumentText[] {
     if (typeof o.documentId !== "string" || o.documentId.length === 0) throw Errors.validation(`documents[${i}].documentId requerido.`);
     if (typeof o.documentLabel !== "string" || o.documentLabel.length === 0) throw Errors.validation(`documents[${i}].documentLabel requerido.`);
     if (typeof o.publishedAt !== "string" || Number.isNaN(new Date(o.publishedAt).getTime())) throw Errors.validation(`documents[${i}].publishedAt: se esperaba una fecha ISO válida.`);
-    if (!Array.isArray(o.pages) || o.pages.length === 0) throw Errors.validation(`documents[${i}].pages: se esperaba un arreglo no vacío.`);
+
+    if (o.contentBase64 !== undefined) {
+      // Fase 11: bytes reales del archivo (PDF o texto plano) -- se resuelve a
+      // `pages` vía `extractDocumentText` en `resolveDocuments`, DESPUÉS de
+      // validar el resto del cuerpo (nunca antes: decodificar/parsear un PDF
+      // completo antes de validar el resto del payload sería trabajo
+      // desperdiciado en una request malformada).
+      if (typeof o.contentBase64 !== "string" || o.contentBase64.length === 0) throw Errors.validation(`documents[${i}].contentBase64: se esperaba texto base64 no vacío.`);
+      if (o.mimeType !== undefined && o.mimeType !== null && typeof o.mimeType !== "string") throw Errors.validation(`documents[${i}].mimeType: se esperaba texto.`);
+      if (o.filename !== undefined && o.filename !== null && typeof o.filename !== "string") throw Errors.validation(`documents[${i}].filename: se esperaba texto.`);
+      let buffer: Buffer;
+      try {
+        buffer = decodeBase64Content(o.contentBase64);
+      } catch (err) {
+        if (err instanceof InvalidFileContentError) throw Errors.validation(`documents[${i}].contentBase64: ${err.message}`);
+        throw err;
+      }
+      return {
+        kind: "content",
+        documentId: o.documentId,
+        documentLabel: o.documentLabel,
+        publishedAt: o.publishedAt,
+        buffer,
+        mimeType: typeof o.mimeType === "string" ? o.mimeType : null,
+        filename: typeof o.filename === "string" ? o.filename : null,
+      };
+    }
+
+    if (!Array.isArray(o.pages) || o.pages.length === 0) throw Errors.validation(`documents[${i}]: se esperaba "pages" (texto ya extraído) o "contentBase64" (bytes del archivo, Fase 11).`);
     const pages = o.pages.map((p, j) => {
       if (typeof p !== "object" || p === null) throw Errors.validation(`documents[${i}].pages[${j}]: se esperaba un objeto.`);
       const po = p as Record<string, unknown>;
@@ -98,8 +165,46 @@ function parseDocuments(raw: unknown): TenderDocumentText[] {
       if (typeof po.text !== "string") throw Errors.validation(`documents[${i}].pages[${j}].text: se esperaba texto.`);
       return { page: po.page, text: po.text };
     });
-    return { documentId: o.documentId, documentLabel: o.documentLabel, publishedAt: o.publishedAt, pages };
+    return { kind: "pages", documentId: o.documentId, documentLabel: o.documentLabel, publishedAt: o.publishedAt, pages };
   });
+}
+
+/** Documento excluido de la matriz porque su texto no se pudo extraer -- nunca se inventa contenido; el caller ve exactamente cuál documento y por qué (REQ-166). */
+export interface SkippedDocument {
+  readonly documentId: string;
+  readonly documentLabel: string;
+  readonly status: "requires_ocr" | "failed";
+  readonly detail: string | null;
+}
+
+/**
+ * Resuelve cada documento crudo a `TenderDocumentText` (texto por página
+ * real): los de `kind:"pages"` pasan tal cual; los de `kind:"content"`
+ * corren por `extractDocumentText` (Fase 11, `@atiende/domain-licitaciones`)
+ * -- un documento cuyo estado no sea `"extracted"` se EXCLUYE de la matriz y
+ * se reporta en `skipped`, nunca se inventa texto vacío para que pase.
+ */
+async function resolveDocuments(inputs: readonly RawDocumentInput[]): Promise<{ documents: TenderDocumentText[]; skipped: SkippedDocument[] }> {
+  const documents: TenderDocumentText[] = [];
+  const skipped: SkippedDocument[] = [];
+  for (const input of inputs) {
+    if (input.kind === "pages") {
+      documents.push({ documentId: input.documentId, documentLabel: input.documentLabel, publishedAt: input.publishedAt, pages: input.pages });
+      continue;
+    }
+    const extraction = await extractDocumentText(input.buffer, { mimeType: input.mimeType, filename: input.filename });
+    if (extraction.status !== "extracted" || !extraction.pages) {
+      skipped.push({
+        documentId: input.documentId,
+        documentLabel: input.documentLabel,
+        status: extraction.status === "extracted" ? "failed" : extraction.status,
+        detail: extraction.detail ?? null,
+      });
+      continue;
+    }
+    documents.push({ documentId: input.documentId, documentLabel: input.documentLabel, publishedAt: input.publishedAt, pages: extraction.pages });
+  }
+  return { documents, skipped };
 }
 
 function toRequirementItemRecord(item: RequirementItem): RequirementItemRecord {
@@ -214,14 +319,32 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
 
     const organizationId = c.get("organizationId");
     const tenderId = c.req.param("tenderId");
-    const raw = await readJsonCapped<ExtractBody>(c.req.raw, 8 * 1024 * 1024);
-    const documents = parseDocuments(raw.documents);
+    // Fase 11: el cuerpo puede traer bytes reales de archivo en base64
+    // (`contentBase64`) además de (o en vez de) `pages` ya extraído -- mismo
+    // límite ~22MB decodificado por archivo que `storage.ts::MAX_BASE64_LENGTH`
+    // (este cap acota el REQUEST completo, mismo criterio que
+    // `cierre.ts::submission/declare`, que también acepta un archivo en base64).
+    const raw = await readJsonCapped<ExtractBody>(c.req.raw, 30 * 1024 * 1024);
+    const rawDocuments = parseDocuments(raw.documents);
 
     const tender = await repo.findTender(organizationId, tenderId);
     if (!tender) throw Errors.notFound("Convocatoria no encontrada.");
 
+    // Fase 11: resuelve cada documento a texto por página REAL (motor
+    // `extractDocumentText`, `@atiende/domain-licitaciones`) ANTES de
+    // construir la matriz -- ver `resolveDocuments`. Corre FUERA de
+    // `withIdempotency` (determinista, no toca DB) para que el cuerpo
+    // hasheado por idempotencia siga siendo el payload crudo del cliente, no
+    // el resultado de un motor de extracción cuya versión podría cambiar.
+    // Un documento sin texto extraíble (PDF escaneado -> "requires_ocr";
+    // formato no soportado/corrupto -> "failed") se EXCLUYE de la matriz,
+    // nunca se inventa texto vacío para que pase -- si NINGÚN documento
+    // produjo texto, se rechaza explícito (REQ-166) sin persistir nada.
+    const { documents, skipped } = await resolveDocuments(rawDocuments);
+    if (documents.length === 0) throw Errors.licitacionesNoExtractableDocuments(skipped);
+
     try {
-      const result = await repo.withIdempotency({ organizationId, scope: "requirements.extract", key: idempotencyKey, body: { tenderId, documents } }, async () => {
+      const result = await repo.withIdempotency({ organizationId, scope: "requirements.extract", key: idempotencyKey, body: { tenderId, documents: raw.documents } }, async () => {
         // RuleBasedExtractor SIEMPRE corre. LlmRequirementExtractor se suma SOLO SI
         // `deps.llmGateway` existe (al menos una API key de proveedor configurada,
         // ver nota de cabecera del archivo) -- fail-closed explícito, nunca fingir
@@ -245,6 +368,11 @@ export function licitacionesTechnicalProposalRoutes(deps: AppDeps): Hono<CoreAut
           body: {
             items,
             conflicts: conflicts.map((conf) => ({ id: conf.id, kind: conf.kind, topicKey: conf.topicKey, description: conf.description, status: conf.status, itemIds: conf.items.map((i) => i.id) })),
+            // Fase 11: documentos subidos como bytes (`contentBase64`) que se
+            // excluyeron de esta extracción por no tener texto extraíble --
+            // vacío cuando todos los documentos eran `pages` ya extraído o
+            // todos se extrajeron con éxito.
+            skippedDocuments: skipped,
           },
         };
       });

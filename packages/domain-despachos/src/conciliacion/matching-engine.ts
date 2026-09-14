@@ -5,16 +5,25 @@
 //   3. Multi-línea — un pago bancario cubre varios registros contables (subset sum).
 //   4. LLM         — razonamiento de IA para casos ambiguos (`enable_llm`).
 //
-// Fase 5 (esta fase) porta los niveles 1-3 —lógica propia 100% determinística y
-// portable— y DELIBERADAMENTE NO porta el nivel 4: en el origen ya viene deshabilitado
-// por default (`enable_llm: bool = False`) y depende de un `LLMService` inyectado que
-// hace una llamada de IA generativa con un prompt libre; no es una regla de negocio
+// Fase 5 portó los niveles 1-3 —lógica propia 100% determinística y portable— y
+// DELIBERADAMENTE NO portó el nivel 4 en ese momento: no era una regla de negocio
 // verificable con un golden-set (no hay "resultado correcto" determinístico que
 // comparar byte a byte contra el intérprete Python — depende del proveedor de LLM que
-// se conecte). Portarlo aquí sin un contrato de verificación sería fingir paridad que
-// no se puede demostrar. Si se requiere en el futuro, debe entrar como una capacidad
-// aparte con su propio adaptador (mismo patrón fail-closed que el resto del
-// monorepo), nunca mezclada en este motor determinístico.
+// se conecte), y portarlo sin un contrato de verificación habría fingido paridad que
+// no se podía demostrar.
+//
+// El nivel 4 SÍ está portado ahora, como la capacidad aparte con su propio adaptador
+// que este comentario ya anticipaba: ver `llm-matching-agent.ts`
+// (`sugerirMatchesLLM`/`aprobarSugerenciaLLM`), que opera sobre `unmatchedBank`/
+// `unmatchedBooks` — el resultado de este motor determinístico — sin tocar ni
+// mezclarse con `conciliarMovimientos`. Mismo patrón fail-closed que el resto del
+// monorepo (`@atiende/agent-core::LlmGateway`, sin credenciales → `undefined`, ver
+// `apps/api/src/production/llm-gateway.ts`), y con una diferencia de diseño
+// DELIBERADA frente al `_pass_ai` del origen: el origen auto-aplica un match con
+// `confianza >= 50`; aquí NUNCA se auto-aplica — toda sugerencia del nivel 4 exige
+// aprobación humana explícita (`aprobarSugerenciaLLM`, rol en `CONCILIACION_ROLES`)
+// antes de convertirse en algo con la forma de un `CoincidenciaConciliacion` real
+// (ver cabecera de `llm-matching-agent.ts` para el detalle completo).
 //
 // Todas las tolerancias/umbrales numéricos son EXACTOS al origen (ver
 // `OpcionesMatchingEngine` en `types.ts`): dateToleranceDays=3, montoTolerancePct=5.0,

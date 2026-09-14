@@ -1,8 +1,15 @@
-// Fase 5 (conciliación bancaria): expone el motor de matching de 4 niveles (Fase 5
-// — niveles 1-3, ver @atiende/domain-despachos/conciliacion/matching-engine.ts;
-// nivel 4 LLM deliberadamente no portado, ver comentario de cabecera de ese
-// archivo) más las reglas de alerta (comisiones, movimientos grandes, aging,
-// duplicados). Mismo criterio que declaraciones.ts/nomina.ts: es un endpoint puro/
+// Fase 5 (conciliación bancaria): expone el motor de matching determinístico de
+// niveles 1-3 (ver @atiende/domain-despachos/conciliacion/matching-engine.ts) más
+// las reglas de alerta (comisiones, movimientos grandes, aging, duplicados). El
+// nivel 4 (LLM, asistido con aprobación humana obligatoria) SÍ está portado desde
+// Fase 11 (ver @atiende/domain-despachos/conciliacion/llm-matching-agent.ts::
+// sugerirMatchesLLM/aprobarSugerenciaLLM) pero, igual que
+// TechnicalProposalDraftAgent de licitaciones Fase 9, todavía no tiene endpoint
+// HTTP propio en este archivo -- es un incremento natural futuro (mismo patrón que
+// `/matching` de abajo: recibir `unmatchedBank`/`unmatchedBooks` del resultado de
+// `/matching`, invocar `sugerirMatchesLLM` con `deps.llmGateway`, y un segundo POST
+// para `aprobarSugerenciaLLM`), no bloqueante para el valor del motor de dominio.
+// Mismo criterio que declaraciones.ts/nomina.ts: es un endpoint puro/
 // calculadora — el cliente HTTP manda los movimientos bancarios ya parseados
 // (parsing de CSV/OFX/etc. queda fuera de esta fase, ver informe de auditoría) y el
 // motor los concilia contra los CFDI YA INGERIDOS de esta property

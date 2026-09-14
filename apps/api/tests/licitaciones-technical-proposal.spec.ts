@@ -7,11 +7,26 @@
 // mapeo requisito->dato de empresa -> generar la propuesta técnica -> ver el
 // resultado reflejado en la propuesta y en el ensamblado del paquete.
 import { describe, expect, it } from "vitest";
+import { PDFDocument } from "pdf-lib";
 import { buildApp } from "../src/app.ts";
 import { buildLicitacionesTestContext, authedJson } from "./licitaciones-fixtures.ts";
 
 const BASES_TEXT =
   "El licitante deberá presentar acta constitutiva original. El licitante deberá acreditar experiencia técnica mínima de 3 años en proyectos similares.";
+
+async function pdfWithText(text: string): Promise<string> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont("Helvetica");
+  const page = doc.addPage([500, 500]);
+  page.drawText(text, { x: 20, y: 460, size: 10, font, maxWidth: 460 });
+  return Buffer.from(await doc.save()).toString("base64");
+}
+
+async function scannedBlankPdfBase64(): Promise<string> {
+  const doc = await PDFDocument.create();
+  doc.addPage([400, 400]); // sin drawText: ninguna capa de texto -- "requires_ocr".
+  return Buffer.from(await doc.save()).toString("base64");
+}
 
 describe("Fase 2 pieza 3 -- requirements/extract + proposal/technical/generate", () => {
   it("extrae requisitos reales, los persiste, y GET .../requirements los expone", async () => {
@@ -165,5 +180,117 @@ describe("Fase 2 pieza 3 -- requirements/extract + proposal/technical/generate",
     // por "missing") habría sido indistinguible de este caso a este nivel --
     // la cobertura real de la distinción vive en el test de dominio de arriba.
     expect(generateBody.blockers).toBe(1);
+  });
+});
+
+// Fase 11 -- pipeline real de extracción de texto de PDF (bases de
+// licitación) conectado a esta misma ruta: cada documento admite
+// `contentBase64` (bytes reales) además de `pages` ya extraído.
+describe("Fase 11 -- requirements/extract con contentBase64 (bytes reales de PDF, sin OCR/parseo manual)", () => {
+  it("un PDF real con capa de texto se extrae y alimenta el mismo RequirementMatrixBuilder que 'pages' -- nunca hace falta pegar texto a mano", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const contentBase64 = await pdfWithText(BASES_TEXT);
+
+    const extractRes = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements/extract`,
+      authedJson(ctx.staff.writer.token, { documents: [{ documentId: "bases-pdf", documentLabel: "Bases.pdf", publishedAt: "2026-01-01T00:00:00-06:00", contentBase64, mimeType: "application/pdf" }] }, { "idempotency-key": "extract-pdf-1" }),
+    );
+    expect(extractRes.status).toBe(200);
+    const body = (await extractRes.json()) as { items: { type: string }[]; skippedDocuments: unknown[] };
+    expect(body.items.length).toBeGreaterThan(0);
+    expect(body.items.some((i) => i.type === "legal")).toBe(true);
+    expect(body.skippedDocuments).toEqual([]);
+  });
+
+  it("mezcla de un documento 'pages' ya extraído + un PDF real de bytes -- ambos alimentan la misma matriz", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const contentBase64 = await pdfWithText("El licitante deberá acreditar experiencia técnica mínima de 3 años en proyectos similares.");
+
+    const extractRes = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements/extract`,
+      authedJson(
+        ctx.staff.writer.token,
+        {
+          documents: [
+            { documentId: "bases-manual", documentLabel: "Bases (texto pegado)", publishedAt: "2026-01-01T00:00:00-06:00", pages: [{ page: 1, text: "El licitante deberá presentar acta constitutiva original." }] },
+            { documentId: "anexo-pdf", documentLabel: "Anexo.pdf", publishedAt: "2026-01-01T00:00:00-06:00", contentBase64, mimeType: "application/pdf" },
+          ],
+        },
+        { "idempotency-key": "extract-mix-1" },
+      ),
+    );
+    expect(extractRes.status).toBe(200);
+    const body = (await extractRes.json()) as { items: { source: { documentId: string } }[]; skippedDocuments: unknown[] };
+    expect(body.items.some((i) => i.source.documentId === "bases-manual")).toBe(true);
+    expect(body.items.some((i) => i.source.documentId === "anexo-pdf")).toBe(true);
+    expect(body.skippedDocuments).toEqual([]);
+  });
+
+  it("un PDF escaneado (sin capa de texto) se EXCLUYE de la matriz y se reporta en skippedDocuments -- nunca se inventa texto", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const scannedBase64 = await scannedBlankPdfBase64();
+    const contentBase64 = await pdfWithText(BASES_TEXT);
+
+    const extractRes = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements/extract`,
+      authedJson(
+        ctx.staff.writer.token,
+        {
+          documents: [
+            { documentId: "bases-ok", documentLabel: "Bases.pdf", publishedAt: "2026-01-01T00:00:00-06:00", contentBase64, mimeType: "application/pdf" },
+            { documentId: "anexo-escaneado", documentLabel: "Anexo escaneado.pdf", publishedAt: "2026-01-01T00:00:00-06:00", contentBase64: scannedBase64, mimeType: "application/pdf" },
+          ],
+        },
+        { "idempotency-key": "extract-scanned-1" },
+      ),
+    );
+    expect(extractRes.status).toBe(200);
+    const body = (await extractRes.json()) as { items: unknown[]; skippedDocuments: { documentId: string; status: string; detail: string | null }[] };
+    expect(body.items.length).toBeGreaterThan(0);
+    expect(body.skippedDocuments).toHaveLength(1);
+    expect(body.skippedDocuments[0]).toMatchObject({ documentId: "anexo-escaneado", status: "requires_ocr" });
+    expect(body.skippedDocuments[0]!.detail).toContain("OCR");
+  });
+
+  it("si TODOS los documentos son escaneados (ninguno produce texto) -> 422 explícito, nunca se persiste una matriz vacía", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const scannedBase64 = await scannedBlankPdfBase64();
+
+    const extractRes = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements/extract`,
+      authedJson(ctx.staff.writer.token, { documents: [{ documentId: "todo-escaneado", documentLabel: "Bases escaneadas.pdf", publishedAt: "2026-01-01T00:00:00-06:00", contentBase64: scannedBase64, mimeType: "application/pdf" }] }, { "idempotency-key": "extract-all-scanned-1" }),
+    );
+    expect(extractRes.status).toBe(422);
+    const body = (await extractRes.json()) as { message: string };
+    expect(body.message).toContain("requires_ocr");
+
+    const listRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements`, authedJson(ctx.staff.viewer.token));
+    expect(((await listRes.json()) as { items: unknown[] }).items).toEqual([]);
+  });
+
+  it("un PDF corrupto en contentBase64 -> 422 con detalle, nunca 500 sin capturar", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const corruptBase64 = Buffer.from("%PDF-1.4\n%%garbage not a real pdf structure at all\n").toString("base64");
+
+    const extractRes = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements/extract`,
+      authedJson(ctx.staff.writer.token, { documents: [{ documentId: "roto", documentLabel: "roto.pdf", publishedAt: "2026-01-01T00:00:00-06:00", contentBase64: corruptBase64, mimeType: "application/pdf" }] }, { "idempotency-key": "extract-corrupt-1" }),
+    );
+    expect(extractRes.status).toBe(422);
+  });
+
+  it("contentBase64 vacío -> 400 de validación", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}/requirements/extract`,
+      authedJson(ctx.staff.writer.token, { documents: [{ documentId: "vacio", documentLabel: "vacio.pdf", publishedAt: "2026-01-01T00:00:00-06:00", contentBase64: "" }] }, { "idempotency-key": "extract-empty-1" }),
+    );
+    expect(res.status).toBe(400);
   });
 });
