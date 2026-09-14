@@ -21,6 +21,21 @@ auditoría de paridad contra el repo origen).
 - **`deadline-reminders.ts`** — escanea `submissionDeadline` de todas las
   convocatorias activas y persiste un recordatorio (deduplicado) por cada
   vencimiento próximo, vía `LicitacionesRepository.scanUpcomingDeadlineReminders`.
+- **`alert-notifications.ts`** (Fase 10) — el gap que cerraba esta fase:
+  `deadline-reminders.ts` de arriba (Fase 8) y las alertas de renovación
+  (Fase 6, `scanRenewalAlerts`) creaban registros REALES, pero nada los
+  despachaba proactivamente ni las revisaba con un barrido periódico
+  transversal (renovación solo se disparaba a mano desde el panel, `POST
+  .../renewals/scan`); las facturas vencidas de cobranza (Fase 6) ni
+  siquiera tenían una lectura transversal, solo un `status` calculado en
+  vivo por contrato. Expone `runRenewalAlertSweep`/`runCollectionAlertSweep`
+  (los 2 barridos transversales nuevos) y `runAlertNotificationSweep` (el
+  orquestador real: las 3 fuentes + encola un correo por cada alerta al
+  responsable de la organización, vía
+  `@atiende/domain-licitaciones::alert-notifications.ts`/`email-dispatch.ts`
+  — el mismo motor de correo por Resend que citas/rentas ya tienen, nunca
+  reinventado; licitaciones no es una de las 3 verticales con WhatsApp, ver
+  `packages/whatsapp-gateway/README.md`).
 
 ## Cómo se invocan (sin scheduler en proceso)
 
@@ -28,20 +43,30 @@ Mismo patrón que `jobs/hoteles/night-audit.ts` (leído primero como
 plantilla): `apps/worker` no corre como proceso propio, así que estos
 archivos exponen solo la lógica de orquestación. Las rutas HTTP internas que
 los invocan viven en
-`apps/api/src/routes/verticals/licitaciones/discover.ts`:
+`apps/api/src/routes/verticals/licitaciones/discover.ts` y
+`.../alertNotifications.ts` (Fase 10):
 
 - `POST /internal/licitaciones/discover-tenders` — barrido de TODAS las
   organizaciones (`runDiscoverTendersSweep`).
 - `POST /internal/licitaciones/deadline-reminders` — barrido de recordatorios
   (`runDeadlineReminderSweep`).
+- `POST /internal/licitaciones/alert-notifications` (Fase 10) — el barrido
+  combinado real (`runAlertNotificationSweep`): recordatorios de plazo +
+  alertas de renovación + facturas vencidas, con ENCOLADO de correo real por
+  cada alerta nueva.
+- `POST /internal/licitaciones/email-dispatch` (Fase 10) — drena
+  `licitaciones.messaging_outbox` (`channel='email'`) vía Resend
+  (`dispatchPendingEmailJobs`).
 
-Ambas gateadas por `x-atiende-internal-secret`, pensadas para un cron
+Las 4 gateadas por `x-atiende-internal-secret`, pensadas para un cron
 EXTERNO (Vercel Cron/Supabase Cron) — **este monorepo no configura todavía
 esa entrada de cron en `vercel.json`** (mismo estado que
 `citasRemindersRoutes`/`hotelesNightAuditRoutes`: la ruta HTTP existe y
 funciona invocada manualmente/por curl, pero el disparo periódico real es
 responsabilidad de la capa de despliegue, fuera del alcance de código de
-esta fase — gap declarado, no silenciado).
+esta fase — gap declarado, no silenciado. Esto aplica IGUAL a las 2 rutas de
+Fase 10: el código de despacho es real y probado, pero sin una entrada de
+cron real apuntándole, nadie las llama todavía en producción).
 
 ## Gaps declarados y pendientes (para no fingir que esta fase es 100% completa)
 

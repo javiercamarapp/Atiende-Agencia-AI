@@ -24,8 +24,11 @@ import type {
   CreateContractInvoiceInput,
   CreateFalloAutopsyInput,
   CreateInconformidadDraftInput,
+  EmailOutboxJobRow,
   FalloAutopsyRecord,
   InconformidadDraftRecord,
+  OrganizationNotificationRecipient,
+  OverdueContractInvoiceAlert,
   ReceivablesSummary,
   RenewalAlertRecord,
   ScanRenewalAlertsInput,
@@ -175,6 +178,11 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly organizationIdBySlug = new Map<string, string>();
   private readonly licitacionesProperties = new Map<string, { propertyId: string; organizationId: string; name: string }>(); // propertyId -> registro
 
+  // ---- Fase 10: despacho proactivo real (correo) de alertas ----
+  private readonly notificationRecipients = new Map<string, OrganizationNotificationRecipient[]>(); // orgId -> staff owner/admin (ver seedNotificationRecipient)
+  private readonly messagingOutbox = new Map<string, { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: Record<string, unknown>; status: "pending" | "processing" | "sent" | "failed" | "dead"; attempts: number; lastError: string | null; createdAt: string }>(); // jobId -> job
+  private readonly messagingOutboxDedupe = new Map<string, string>(); // `${orgId}:${channel}:${dedupeKey}` -> jobId
+
   constructor(options: { storageDir?: string } = {}) {
     this.storageDir = options.storageDir ?? mkdtempSync(join(tmpdir(), "licitaciones-test-"));
   }
@@ -195,6 +203,24 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
    * por organización (§2.1), pero el mapa acepta 2+ por si un test futuro lo necesita. */
   seedLicitacionesProperty(property: { id: string; organizationId: string; name: string }): void {
     this.licitacionesProperties.set(property.id, { propertyId: property.id, organizationId: property.organizationId, name: property.name });
+  }
+
+  /** Fase 10 -- equivalente en memoria de `licitaciones.organization_notification_recipients`
+   * (staff `owner`/`admin` real vía `core.membership`/`core.staff_user` en Postgres): este
+   * repositorio en memoria no modela `core.*` (vive en `@atiende/db`, un paquete distinto,
+   * ver `apps/api/tests/licitaciones-fixtures.ts`), así que las pruebas siembran aquí
+   * directamente a quién debe llegarle el correo -- sin sembrar nada, la organización
+   * simplemente no tiene destinatarios (mismo comportamiento honesto que una organización
+   * real sin ningún staff `owner`/`admin` todavía). */
+  seedNotificationRecipient(organizationId: string, recipient: OrganizationNotificationRecipient): void {
+    const list = this.notificationRecipients.get(organizationId) ?? [];
+    this.notificationRecipients.set(organizationId, [...list, recipient]);
+  }
+
+  /** Solo para pruebas -- inspecciona el outbox completo (mismo rol que
+   * `InMemoryCitasRepository.getOutbox()`). */
+  getMessagingOutbox(): readonly { id: string; organizationId: string; channel: string; eventType: string; dedupeKey: string; payload: Record<string, unknown>; status: string; attempts: number; lastError: string | null }[] {
+    return [...this.messagingOutbox.values()];
   }
 
   seedRequiredAnnexes(organizationId: string, tenderId: string, annexes: readonly RequiredAnnexItem[]): void {
@@ -1481,6 +1507,92 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     newList[idx] = updated;
     this.renewalAlerts.set(organizationId, newList);
     return updated;
+  }
+
+  // ==========================================================================
+  // Fase 10 -- despacho proactivo real (correo) de deadline reminders/renewal
+  // alerts/facturas vencidas.
+  // ==========================================================================
+
+  async listOrganizationNotificationRecipients(organizationId: string): Promise<readonly OrganizationNotificationRecipient[]> {
+    return [...(this.notificationRecipients.get(organizationId) ?? [])];
+  }
+
+  async listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]> {
+    const today = todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const [todayY, todayM, todayD] = today.split("-").map(Number) as [number, number, number];
+    const todayMs = Date.UTC(todayY, todayM - 1, todayD);
+    const result: OverdueContractInvoiceAlert[] = [];
+    for (const contract of this.contracts.values()) {
+      if (contract.organizationId !== organizationId) continue;
+      for (const invoice of this.invoicesWithStatus(contract.id, today)) {
+        if (invoice.status !== "vencida") continue;
+        const [y, m, d] = invoice.dueDate.split("-").map(Number) as [number, number, number];
+        const dueMs = Date.UTC(y, m - 1, d);
+        const daysOverdue = Math.round((todayMs - dueMs) / (24 * 60 * 60 * 1000));
+        result.push({
+          organizationId,
+          invoiceId: invoice.id,
+          contractId: contract.id,
+          tenderId: contract.tenderId,
+          concepto: invoice.concepto,
+          amount: invoice.amount,
+          dueDate: invoice.dueDate,
+          daysOverdue,
+        });
+      }
+    }
+    return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }
+
+  async enqueueMessagingOutbox(organizationId: string, channel: "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    if (channel !== "email") throw new Error("invalid outbox channel");
+    const dedupeMapKey = `${organizationId}:${channel}:${dedupeKey}`;
+    const existingId = this.messagingOutboxDedupe.get(dedupeMapKey);
+    if (existingId) {
+      const existing = this.messagingOutbox.get(existingId)!;
+      // Mismo criterio que `enqueue_messaging_outbox` real (migración 018): un job ya
+      // 'sent'/'processing'/'dead' NUNCA se pisa -- solo 'pending'/'failed' se actualizan.
+      if (existing.status === "pending" || existing.status === "failed") {
+        this.messagingOutbox.set(existingId, { ...existing, payload: payload as Record<string, unknown>, eventType });
+      }
+      return;
+    }
+    const id = randomUUID();
+    this.messagingOutbox.set(id, {
+      id,
+      organizationId,
+      channel,
+      eventType,
+      dedupeKey,
+      payload: payload as Record<string, unknown>,
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+      createdAt: new Date().toISOString(),
+    });
+    this.messagingOutboxDedupe.set(dedupeMapKey, id);
+  }
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const claimable = [...this.messagingOutbox.values()]
+      .filter((j) => j.channel === "email" && (j.status === "pending" || j.status === "failed") && j.attempts < 5)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(0, Math.max(limit, 0));
+    const claimed: EmailOutboxJobRow[] = [];
+    for (const job of claimable) {
+      const updated = { ...job, status: "processing" as const, attempts: job.attempts + 1 };
+      this.messagingOutbox.set(job.id, updated);
+      claimed.push({ id: updated.id, organizationId: updated.organizationId, attempts: updated.attempts, payload: updated.payload });
+    }
+    return claimed;
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    if (!["sent", "failed", "dead"].includes(status)) throw new Error(`invalid email outbox completion status: ${status}`);
+    const job = this.messagingOutbox.get(id);
+    if (!job || job.channel !== "email") return;
+    this.messagingOutbox.set(id, { ...job, status, lastError: error ? error.slice(0, 500) : null });
   }
 
   private assertProposalOwnership(organizationId: string, proposalId: string): ProposalRecord {

@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (67 migraciones, timestamps 20240101000001 .. 20240101000067)
+## Orden actual (68 migraciones, timestamps 20240101000001 .. 20240101000068)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -59,6 +59,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 66. `packages/domain-rentas/migrations/011_rentas_email_outbox.sql` — Fase 9 rentas: correo transaccional real al huésped (confirmación de reserva al crearla + recordatorio de check-in 24-48h antes, ambos deterministas/sin IA, distintos del borrador con aprobación humana de la migración 59). Agrega `rentas.messaging_outbox` (mismo shape que `hoteles.messaging_outbox`, partición por `property_id`) + `rentas.claim_email_outbox_batch`/`rentas.complete_email_outbox_job` (mismo patrón acotado a `channel='email'` que la migración 51 de citas) + `rentas.ocupacion.recordatorio_checkin_enviado_en` (belt-and-suspenders sobre el dedupe_key real del outbox, mismo criterio que `citas.appointments.reminder_24h_sent_at`).
 67. `packages/domain-restaurantes/migrations/009_order_notifications.sql` — Fase 9 restaurantes: notificaciones reales de cambio de estado de pedido — cliente por WhatsApp real vía `restaurantes.messaging_outbox` (ya existente desde la migración 54, sin tabla nueva) cuando el pedido pasa a preparando/en_camino/entregado/cancelado, y `restaurantes.staff_order_notification` (bandeja nueva, consultable por polling del panel admin — sin push real disponible en este monorepo, mismo criterio "honesto" que `licitaciones.tender_change_notification`) para pedido nuevo/incidencia/asignación a repartidor.
 
+68. `packages/domain-licitaciones/migrations/018_alert_notifications.sql` — Fase 10 licitaciones: despacho proactivo real de `tender_deadline_reminder` (Fase 8) + `renewal_alert` (Fase 6) + facturas vencidas de `contract_invoice` (Fase 6) — hasta esta fase las 3 eran solo registros consultables manualmente. Agrega `licitaciones.messaging_outbox` (organization-scoped, `channel` acotado a `'email'` únicamente porque este vertical NO tiene WhatsApp, a diferencia de citas/hoteles/restaurantes) + `enqueue_messaging_outbox`/`claim_email_outbox_batch`/`complete_email_outbox_job` (mismo patrón exacto que la migración 51 de citas/66 de rentas) + `licitaciones.organization_notification_recipients(org_id)` (resuelve el staff `owner`/`admin` de la organización vía `core.membership`/`core.staff_user`, el "responsable" al que se le manda el correo).
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -66,8 +68,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000067`; usa
-   `20240101000068`, luego `...069`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000068`; usa
+   `20240101000069`, luego `...070`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
