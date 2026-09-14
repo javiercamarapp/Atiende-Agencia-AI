@@ -8,6 +8,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 import type {
   ActiveHotelProperty,
+  AttendanceEventRecord,
   CancellationPolicyRecord,
   CfdiEmisionRecord,
   ConversationMessage,
@@ -23,6 +24,7 @@ import type {
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
   MaintenanceTicketStatus,
+  NewAttendanceEventInput,
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
@@ -32,6 +34,7 @@ import type {
   NewMaintenanceTicketInput,
   NewPaymentInput,
   NewReservationInput,
+  NewStaffScheduleInput,
   NightAuditRunRecord,
   NightlyRateRecord,
   ChargeRecord,
@@ -39,6 +42,7 @@ import type {
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  StaffScheduleRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
@@ -205,6 +209,10 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly nightAuditRuns = new Map<string, NightAuditRunRecord>(); // key: propertyId:businessDate
   private readonly maintenanceTickets = new Map<string, MaintenanceTicketRecord>();
   private readonly housekeepingShifts = new Map<string, HousekeepingShiftRecord>();
+
+  // ---- Fase 8 — REQ-BO-024 checador de asistencia inalterable ----
+  private readonly attendanceEvents = new Map<string, AttendanceEventRecord>();
+  private readonly staffSchedules = new Map<string, StaffScheduleRecord>(); // key: propertyId:staffUserId:workDate
 
   // ---- Fase 7 — descubrimiento de organización/property para el panel web de staff
   // (espejo de solo-lectura de `core.organization`/`core.property`, ver
@@ -1285,5 +1293,78 @@ export class InMemoryHotelesRepository implements HotelesRepository {
           (staffId == null || s.staffId === staffId),
       )
       .sort((a, b) => (a.workDate < b.workDate ? -1 : 1));
+  }
+
+  // ---- HotelesRepository: Fase 8 — REQ-BO-024 checador de asistencia inalterable ----
+
+  /** SOLO para fixtures de prueba -- equivalente en memoria del `insert into
+   *  hoteles.attendance_log (..., recorded_at) values (..., $recordedAt)` que el
+   *  propio test adversarial del original usa para el caso (d) (cruce contra
+   *  horario): el checador real (`recordAttendanceEvent` abajo) SIEMPRE ignora
+   *  cualquier `recordedAt` externo -- el reloj del checador es el del servidor,
+   *  nunca el que mande el caller (ver comentario de `AttendanceEventRecord`,
+   *  types.ts). Esto existe únicamente para que una prueba pueda fijar timestamps
+   *  exactos sin esperar en tiempo real un turno de 8+ horas -- lo que se ejercita
+   *  end-to-end vía HTTP es la ruta de LECTURA (/cruce, /exportar-stps), no esta. */
+  seedAttendanceEvent(record: AttendanceEventRecord): void {
+    this.attendanceEvents.set(record.id, record);
+  }
+
+  async recordAttendanceEvent(input: NewAttendanceEventInput): Promise<AttendanceEventRecord> {
+    // `recordedAt` SIEMPRE lo fija este adaptador (equivalente en memoria de `now()`
+    // en Postgres) -- ningún input externo puede fijar cuándo "realmente" ocurrió el
+    // fichaje, ver types.ts::AttendanceEventRecord.
+    const record: AttendanceEventRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      staffUserId: input.staffUserId,
+      eventType: input.eventType,
+      recordedAt: new Date().toISOString(),
+      source: input.source,
+      note: input.note,
+      createdAt: new Date().toISOString(),
+    };
+    this.attendanceEvents.set(record.id, record);
+    return record;
+  }
+
+  async listAttendanceEvents(
+    propertyId: string,
+    staffUserId: string,
+    range?: { readonly fromDate: string; readonly toDate: string },
+  ): Promise<readonly AttendanceEventRecord[]> {
+    return [...this.attendanceEvents.values()]
+      .filter((e) => {
+        if (e.propertyId !== propertyId || e.staffUserId !== staffUserId) return false;
+        if (!range) return true;
+        const day = e.recordedAt.slice(0, 10);
+        return day >= range.fromDate && day <= range.toDate;
+      })
+      .sort((a, b) => (a.recordedAt < b.recordedAt ? -1 : 1));
+  }
+
+  async upsertStaffSchedule(input: NewStaffScheduleInput): Promise<StaffScheduleRecord> {
+    const key = `${input.propertyId}:${input.staffUserId}:${input.workDate}`;
+    const existing = this.staffSchedules.get(key);
+    const now = new Date().toISOString();
+    const record: StaffScheduleRecord = {
+      id: existing?.id ?? randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      staffUserId: input.staffUserId,
+      workDate: input.workDate,
+      scheduledStart: input.scheduledStart,
+      scheduledEnd: input.scheduledEnd,
+      authorizedOvertimeMinutes: input.authorizedOvertimeMinutes,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.staffSchedules.set(key, record);
+    return record;
+  }
+
+  async findStaffSchedule(propertyId: string, staffUserId: string, workDate: string): Promise<StaffScheduleRecord | null> {
+    return this.staffSchedules.get(`${propertyId}:${staffUserId}:${workDate}`) ?? null;
   }
 }

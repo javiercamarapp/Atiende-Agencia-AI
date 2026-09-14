@@ -102,3 +102,17 @@ export const MAINTENANCE_TICKET_MANAGE_ROLES: readonly HotelRole[] = ["owner", "
 // H6b del origen); cualquier miembro del staff de la property puede CONSULTAR el
 // cumplimiento (transparencia hacia la propia camarista sobre su propio horario).
 export const HOUSEKEEPING_SHIFT_PUBLISH_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk"];
+
+// Fase 8 (REQ-BO-024, LFT art.132 fr.XXXIV) — checador de asistencia inalterable.
+// Fichar (POST /asistencia/checar) NO tiene lista de roles: CUALQUIER miembro del
+// staff de la property registra su propio fichaje (checador de autoservicio, mismo
+// criterio que el origen: nadie ficha a nombre de otro, la ruta HTTP ignora
+// cualquier staffUserId del body y usa siempre el actor autenticado, con la misma
+// invariante reforzada por RLS -- `with check (staff_user_id = auth.uid())`, ver
+// migrations/010_checador_asistencia.sql). Programar horarios, consultar el cruce
+// de horas extra de OTRO empleado y exportar el CSV para la STPS sí son acciones de
+// administración/conciliación (mismo criterio que NIGHT_AUDIT_ROLES/
+// CFDI_HOSPEDAJE_ROLES: dinero/cumplimiento legal, nunca frontdesk/housekeeping/fnb/
+// accountant -- a diferencia de NIGHT_AUDIT_ROLES, `accountant` no se agrega aquí: la
+// nómina no es su función en esta fase, ver diseño Fase 8 §2).
+export const ATTENDANCE_ADMIN_ROLES: readonly HotelRole[] = ["owner", "gm"];

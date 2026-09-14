@@ -1,19 +1,41 @@
 // Fase 5 — panel de administración visual (ver README de esta fase y el diseño
-// Fase 5 citas §0). Estas rutas SOLO exponen/paginan lo que domain-citas ya
-// calculaba (mismo criterio que `listActiveServices`/`listActiveProviders` de
-// Fase 2 §1.2/§1.3) — ninguna regla de negocio nueva, ningún endpoint de
-// escritura nuevo. Las únicas escrituras que el panel ejerce (cancelar una cita,
-// conectar Google Calendar) ya existían: `appointments-lifecycle.ts` y
-// `google-calendar-oauth.ts`.
+// Fase 5 citas §0). La Fase 5 original solo exponía/paginaba lo que domain-citas
+// ya calculaba (ninguna regla de negocio nueva, ningún endpoint de escritura
+// nuevo salvo cancelar una cita/conectar Google Calendar, que ya existían en
+// appointments-lifecycle.ts/google-calendar-oauth.ts).
+//
+// Fase 8 — CIERRA ese gap real: el panel no tenía NINGUNA forma de crear/editar un
+// proveedor, un servicio, ni la configuración del negocio (`citas.tenant_config`,
+// incluido `rubro` — el campo que usa la guardia de crisis, ver vertical-config.ts)
+// aunque el repo original SÍ lo permitía (FichaProveedor.tsx/ServiciosSection.tsx/
+// ConfiguracionSection.tsx). Ver diseño Fase 8 §1-§3 y
+// packages/domain-citas/src/repository.ts (NewProviderInput/ProviderPatch/
+// NewServiceInput/ServicePatch/TenantConfigPatch) para el detalle de cada campo.
 //
 // Todas las rutas de aquí (salvo `admin/branches`) cuelgan del mismo guard que ya
 // usan cancelar/conectar: JWT + `requirePropertyMembership("propertyId")`, SIN
-// `allowedRoles` (igual que el resto del panel de citas).
+// `allowedRoles` (igual que el resto del panel de citas — ver roles.ts: citas
+// nunca distinguió quién del staff puede escribir, ni en el origen ni en las
+// fases ya construidas de esta vertical).
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import type { AppointmentRecord, CitasRepository, CustomerRecord, ProviderRecord, ServiceRecord } from "@atiende/domain-citas";
+import { ALL_VERTICALS } from "@atiende/domain-citas";
+import type {
+  AppointmentRecord,
+  CitasRepository,
+  CustomerRecord,
+  NewProviderInput,
+  NewServiceInput,
+  ProviderPatch,
+  ProviderRecord,
+  ServicePatch,
+  ServiceRecord,
+  TenantConfigPatch,
+  TenantConfigRecord,
+} from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
+import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const DEFAULT_APPOINTMENTS_LIMIT = 500;
@@ -39,6 +61,134 @@ function serializeService(service: ServiceRecord) {
 
 function serializeCustomer(customer: CustomerRecord) {
   return { id: customer.id, organization_id: customer.organizationId, full_name: customer.fullName, phone: customer.phone, email: customer.email };
+}
+
+function serializeTenantConfig(config: TenantConfigRecord) {
+  return { organization_id: config.organizationId, rubro: config.rubro, default_timezone: config.defaultTimezone, owner_notification_phone: config.ownerNotificationPhone };
+}
+
+// ============================================================================
+// Fase 8 — validación de los cuerpos de escritura (proveedores/servicios/
+// tenant_config). Mismo criterio y mismos helpers (nombre por nombre) que
+// apps/api/src/routes/verticals/restaurantes/admin-catalog.ts::requireNonEmptyString/
+// optionalNullableString/requirePrice — ambos archivos cierran el mismo tipo de
+// gap ("el panel no puede crear/editar su catálogo") y comparten el mismo
+// vocabulario de errores 400 para no inventar un estilo nuevo por vertical.
+// ============================================================================
+
+function requireNonEmptyString(value: unknown, field: string, maxLength: number): string {
+  if (typeof value !== "string" || value.trim().length === 0 || value.length > maxLength) {
+    throw Errors.validation(`${field}: se esperaba un texto no vacío de hasta ${maxLength} caracteres.`);
+  }
+  return value.trim();
+}
+
+function optionalNonEmptyString(value: unknown, field: string, maxLength: number): string | undefined {
+  if (value === undefined) return undefined;
+  return requireNonEmptyString(value, field, maxLength);
+}
+
+function requirePositiveInt(value: unknown, field: string, max: number): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0 || value > max) {
+    throw Errors.validation(`${field}: se esperaba un entero > 0 y <= ${max}.`);
+  }
+  return value;
+}
+
+function optionalPositiveInt(value: unknown, field: string, max: number): number | undefined {
+  if (value === undefined) return undefined;
+  return requirePositiveInt(value, field, max);
+}
+
+function optionalNonNegativeInt(value: unknown, field: string, max: number): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
+    throw Errors.validation(`${field}: se esperaba un entero >= 0 y <= ${max}.`);
+  }
+  return value;
+}
+
+/** `undefined` = campo ausente del patch (no tocar la columna); `null` explícito =
+ * sí quitar el precio fijo (servicio "a cotizar", mismo significado que el origen
+ * `price` vacío en ServiciosSection.tsx). */
+function optionalNullableNonNegativeInt(value: unknown, field: string, max: number): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
+    throw Errors.validation(`${field}: se esperaba un entero >= 0 y <= ${max}, o null.`);
+  }
+  return value;
+}
+
+function optionalBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw Errors.validation(`${field}: se esperaba true/false.`);
+  return value;
+}
+
+/** `seen` distingue "la llave no vino en el body" (`undefined`, no tocar la
+ * columna) de "vino explícitamente `null`" (sí desasignar la sucursal) — mismo
+ * criterio que `optionalCategoryId` de restaurantes/admin-catalog.ts. */
+function optionalNullablePropertyId(raw: unknown, seen: boolean, field = "property_id"): string | null | undefined {
+  if (!seen) return undefined;
+  if (raw === null) return null;
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 100) {
+    throw Errors.validation(`${field}: se esperaba un id de sucursal o null.`);
+  }
+  return raw;
+}
+
+/** Valida que `propertyId` (si no es null/undefined) sea una sucursal REAL de esta
+ * organización — nunca confía a ciegas en un id ajeno solo porque pasó por
+ * `optionalNullablePropertyId` (ver diseño Fase 8 §1: "el caller lo valida contra
+ * listPropertiesForOrganization"). */
+async function assertPropertyBelongsToOrganization(citasRepo: CitasRepository, organizationId: string, propertyId: string | null | undefined): Promise<void> {
+  if (propertyId === null || propertyId === undefined) return;
+  const branches = await citasRepo.listPropertiesForOrganization(organizationId);
+  if (!branches.some((b) => b.propertyId === propertyId)) {
+    throw Errors.validation(`property_id: "${propertyId}" no es una sucursal de este negocio.`);
+  }
+}
+
+/** El resto del motor (`zonedTimeToUtc`/`dayOfWeekInTimeZone`, ver availability.ts)
+ * confía ciegamente en que `default_timezone` es un IANA timezone real — un
+ * string basura ahí no truena aquí, truena silenciosamente al calcular slots de
+ * disponibilidad la próxima vez que alguien agende. Se valida con el mismo
+ * `Intl.DateTimeFormat` que ya usa availability.ts, ANTES de escribir la fila. */
+function optionalTimeZone(value: unknown, field = "default_timezone"): string | undefined {
+  const raw = optionalNonEmptyString(value, field, 100);
+  if (raw === undefined) return undefined;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: raw });
+  } catch {
+    throw Errors.validation(`${field}: "${raw}" no es un timezone IANA válido (ej. "America/Mexico_City").`);
+  }
+  return raw;
+}
+
+function requireRubro(value: unknown): string {
+  if (typeof value !== "string" || !(ALL_VERTICALS as readonly string[]).includes(value)) {
+    throw Errors.validation(`rubro: se esperaba uno de ${ALL_VERTICALS.join(", ")}.`);
+  }
+  return value;
+}
+
+function optionalRubro(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  return requireRubro(value);
+}
+
+/** Mismo check constraint real que `citas.tenant_config.owner_notification_phone`
+ * (001_citas_schema.sql: `length between 1 and 32`) — se valida aquí ANTES de
+ * llegar a Postgres para devolver 400 con un mensaje útil en vez de un 500 de
+ * constraint violation. */
+function optionalNullablePhone(value: unknown, field = "owner_notification_phone"): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length === 0 || value.length > 32) {
+    throw Errors.validation(`${field}: se esperaba un texto de 1 a 32 caracteres, o null.`);
+  }
+  return value;
 }
 
 function serializeAppointment(appointment: AppointmentRecord) {
@@ -134,11 +284,15 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const propertyScopedPaths = [
     "/v1/citas/properties/:propertyId/providers",
     "/v1/citas/properties/:propertyId/providers/:providerId",
+    // Fase 8 — el checkbox real de provider_services (ver FichaProveedor.tsx del origen).
+    "/v1/citas/properties/:propertyId/providers/:providerId/services/:serviceId",
     "/v1/citas/properties/:propertyId/services",
     "/v1/citas/properties/:propertyId/services/:serviceId",
     "/v1/citas/properties/:propertyId/appointments",
     "/v1/citas/properties/:propertyId/customers",
     "/v1/citas/properties/:propertyId/customers/:customerId",
+    // Fase 8 — citas.tenant_config (port de ConfiguracionSection.tsx del origen).
+    "/v1/citas/properties/:propertyId/tenant-config",
   ];
   for (const path of propertyScopedPaths) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -151,6 +305,37 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     return c.json({ providers: providers.map(serializeProvider) });
   });
 
+  interface ProviderBody {
+    readonly display_name?: unknown;
+    readonly role_label?: unknown;
+    readonly property_id?: unknown;
+    readonly is_active?: unknown;
+  }
+
+  // ---- Fase 8 — alta real de un proveedor (port de
+  // ProveedoresSection.tsx::guardar cuando `editando === null`). ----
+  app.post("/v1/citas/properties/:propertyId/providers", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<ProviderBody>(c.req.raw, 8 * 1024);
+
+    const displayName = requireNonEmptyString(raw.display_name, "display_name", 160);
+    const roleLabel = optionalNonEmptyString(raw.role_label, "role_label", 120);
+    const propertyId = optionalNullablePropertyId(raw.property_id, raw.property_id !== undefined);
+    const isActive = optionalBoolean(raw.is_active, "is_active");
+    await assertPropertyBelongsToOrganization(citasRepo, organizationId, propertyId);
+
+    const input: NewProviderInput = {
+      organizationId,
+      displayName,
+      ...(roleLabel !== undefined ? { roleLabel } : {}),
+      ...(propertyId !== undefined ? { propertyId } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    };
+    const created = await citasRepo.createProvider(input);
+    return c.json({ provider: serializeProvider(created) }, 201);
+  });
+
   app.get("/v1/citas/properties/:propertyId/providers/:providerId", async (c) => {
     const organizationId = c.get("organizationId");
     const providerId = c.req.param("providerId");
@@ -159,13 +344,76 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
 
-    const [rules, calendarAccount] = await Promise.all([citasRepo.loadAvailabilityRules(providerId), citasRepo.findProviderCalendarAccount(providerId)]);
+    // Fase 8 — checkbox real de servicios que este proveedor ofrece (ver
+    // FichaProveedor.tsx del origen). Acotado a servicios ACTIVOS de la
+    // organización — asignar un servicio ya desactivado desde el panel es un caso
+    // de borde fuera del alcance real de esta fase (el origen sí lo permitía vía
+    // un `select *`, pero domain-citas no expone "listar TODOS los servicios,
+    // activos o no" todavía; agregar ese método es una decisión de producto
+    // separada de "cerrar el gap de que no se puede ni asignar un servicio").
+    const [rules, calendarAccount, services] = await Promise.all([
+      citasRepo.loadAvailabilityRules(providerId),
+      citasRepo.findProviderCalendarAccount(providerId),
+      citasRepo.listActiveServices(organizationId),
+    ]);
+    const offeredServiceIds = (
+      await Promise.all(services.map(async (service) => ((await citasRepo.providerOffersService(providerId, service.id)) ? service.id : null)))
+    ).filter((id): id is string => id !== null);
 
     return c.json({
       provider: serializeProvider(provider),
       availability_rules: rules.map((r) => ({ id: r.id, day_of_week: r.dayOfWeek, start_time: r.startTime, end_time: r.endTime, is_active: r.isActive })),
       google_calendar: calendarAccount ? { connected: true, sync_status: calendarAccount.syncStatus, sync_error: calendarAccount.syncError } : { connected: false, sync_status: "disconnected" as const, sync_error: null },
+      offered_service_ids: offeredServiceIds,
     });
+  });
+
+  // ---- Fase 8 — edición real de un proveedor (port de
+  // ProveedoresSection.tsx::guardar cuando `editando !== null`). ----
+  app.patch("/v1/citas/properties/:propertyId/providers/:providerId", async (c) => {
+    const organizationId = c.get("organizationId");
+    const providerId = c.req.param("providerId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<ProviderBody>(c.req.raw, 8 * 1024);
+
+    const propertyIdSeen = raw.property_id !== undefined;
+    const propertyId = optionalNullablePropertyId(raw.property_id, propertyIdSeen);
+    if (propertyIdSeen) await assertPropertyBelongsToOrganization(citasRepo, organizationId, propertyId);
+
+    const patch: ProviderPatch = {
+      displayName: optionalNonEmptyString(raw.display_name, "display_name", 160),
+      roleLabel: optionalNonEmptyString(raw.role_label, "role_label", 120),
+      ...(propertyIdSeen ? { propertyId } : {}),
+      isActive: optionalBoolean(raw.is_active, "is_active"),
+    };
+    const updated = await citasRepo.updateProvider(organizationId, providerId, patch);
+    if (!updated) throw Errors.notFound("Proveedor no encontrado.");
+    return c.json({ provider: serializeProvider(updated) });
+  });
+
+  interface ProviderServiceBody {
+    readonly offered?: unknown;
+  }
+
+  // ---- Fase 8 — checkbox real de FichaProveedor.tsx::toggleServicio: marca/quita
+  // que este proveedor ofrezca `serviceId`. `offered` por default `true` (mismo
+  // criterio que "PUT = asignar" si el body viene vacío). ----
+  app.put("/v1/citas/properties/:propertyId/providers/:providerId/services/:serviceId", async (c) => {
+    const organizationId = c.get("organizationId");
+    const providerId = c.req.param("providerId");
+    const serviceId = c.req.param("serviceId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+    const service = await citasRepo.findService(organizationId, serviceId);
+    if (!service) throw Errors.notFound("Servicio no encontrado.");
+
+    const raw = await readJsonCapped<ProviderServiceBody>(c.req.raw, 1024);
+    const offered = optionalBoolean(raw.offered, "offered") ?? true;
+
+    await citasRepo.setProviderServiceOffering(providerId, serviceId, offered);
+    return c.json({ provider_id: providerId, service_id: serviceId, offered });
   });
 
   app.get("/v1/citas/properties/:propertyId/services", async (c) => {
@@ -175,6 +423,46 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     return c.json({ services: services.map(serializeService) });
   });
 
+  interface ServiceBody {
+    readonly name?: unknown;
+    readonly duration_minutes?: unknown;
+    readonly buffer_minutes_before?: unknown;
+    readonly buffer_minutes_after?: unknown;
+    readonly price_cents?: unknown;
+    readonly is_active?: unknown;
+  }
+
+  const MAX_DURATION_MINUTES = 24 * 60;
+  const MAX_BUFFER_MINUTES = 8 * 60;
+  const MAX_PRICE_CENTS = 100_000_000; // $1,000,000.00 MXN — techo defensivo, no un límite de negocio real
+
+  // ---- Fase 8 — alta real de un servicio (port de
+  // ServiciosSection.tsx::guardar cuando `editando === null`). ----
+  app.post("/v1/citas/properties/:propertyId/services", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<ServiceBody>(c.req.raw, 8 * 1024);
+
+    const name = requireNonEmptyString(raw.name, "name", 160);
+    const durationMinutes = requirePositiveInt(raw.duration_minutes, "duration_minutes", MAX_DURATION_MINUTES);
+    const bufferMinutesBefore = optionalNonNegativeInt(raw.buffer_minutes_before, "buffer_minutes_before", MAX_BUFFER_MINUTES);
+    const bufferMinutesAfter = optionalNonNegativeInt(raw.buffer_minutes_after, "buffer_minutes_after", MAX_BUFFER_MINUTES);
+    const priceCents = optionalNullableNonNegativeInt(raw.price_cents, "price_cents", MAX_PRICE_CENTS);
+    const isActive = optionalBoolean(raw.is_active, "is_active");
+
+    const input: NewServiceInput = {
+      organizationId,
+      name,
+      durationMinutes,
+      ...(bufferMinutesBefore !== undefined ? { bufferMinutesBefore } : {}),
+      ...(bufferMinutesAfter !== undefined ? { bufferMinutesAfter } : {}),
+      ...(priceCents !== undefined ? { priceCents } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    };
+    const created = await citasRepo.createService(input);
+    return c.json({ service: serializeService(created) }, 201);
+  });
+
   app.get("/v1/citas/properties/:propertyId/services/:serviceId", async (c) => {
     const organizationId = c.get("organizationId");
     const serviceId = c.req.param("serviceId");
@@ -182,6 +470,62 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const service = await citasRepo.findService(organizationId, serviceId);
     if (!service) throw Errors.notFound("Servicio no encontrado.");
     return c.json({ service: serializeService(service) });
+  });
+
+  // ---- Fase 8 — edición real de un servicio (port de
+  // ServiciosSection.tsx::guardar cuando `editando !== null`). ----
+  app.patch("/v1/citas/properties/:propertyId/services/:serviceId", async (c) => {
+    const organizationId = c.get("organizationId");
+    const serviceId = c.req.param("serviceId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<ServiceBody>(c.req.raw, 8 * 1024);
+
+    const patch: ServicePatch = {
+      name: optionalNonEmptyString(raw.name, "name", 160),
+      durationMinutes: optionalPositiveInt(raw.duration_minutes, "duration_minutes", MAX_DURATION_MINUTES),
+      bufferMinutesBefore: optionalNonNegativeInt(raw.buffer_minutes_before, "buffer_minutes_before", MAX_BUFFER_MINUTES),
+      bufferMinutesAfter: optionalNonNegativeInt(raw.buffer_minutes_after, "buffer_minutes_after", MAX_BUFFER_MINUTES),
+      priceCents: optionalNullableNonNegativeInt(raw.price_cents, "price_cents", MAX_PRICE_CENTS),
+      isActive: optionalBoolean(raw.is_active, "is_active"),
+    };
+    const updated = await citasRepo.updateService(organizationId, serviceId, patch);
+    if (!updated) throw Errors.notFound("Servicio no encontrado.");
+    return c.json({ service: serializeService(updated) });
+  });
+
+  interface TenantConfigBody {
+    readonly rubro?: unknown;
+    readonly default_timezone?: unknown;
+    readonly owner_notification_phone?: unknown;
+  }
+
+  // ---- Fase 8 — lee `citas.tenant_config` (port de ConfiguracionSection.tsx del
+  // origen). Nunca 404: una organización sin fila todavía (ver diseño Fase 8 §3)
+  // se ve como sus defaults reales — los MISMOS defaults de columna que
+  // 001_citas_schema.sql, no inventados aquí. ----
+  app.get("/v1/citas/properties/:propertyId/tenant-config", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const config = await citasRepo.findTenantConfig(organizationId);
+    return c.json({ tenant_config: config ? serializeTenantConfig(config) : { organization_id: organizationId, rubro: "otro", default_timezone: "America/Mexico_City", owner_notification_phone: null } });
+  });
+
+  // ---- Fase 8 — edita `citas.tenant_config` (port de
+  // ConfiguracionSection.tsx::guardar del origen, acotado a rubro/timezone/teléfono
+  // de aviso — ver TenantConfigPatch para por qué `name`/`slug`/`is_active` del
+  // negocio NO se editan aquí). Upsert real vía `upsertTenantConfig`: nunca 404. ----
+  app.patch("/v1/citas/properties/:propertyId/tenant-config", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<TenantConfigBody>(c.req.raw, 4 * 1024);
+
+    const patch: TenantConfigPatch = {
+      rubro: optionalRubro(raw.rubro),
+      defaultTimezone: optionalTimeZone(raw.default_timezone),
+      ownerNotificationPhone: optionalNullablePhone(raw.owner_notification_phone),
+    };
+    const updated = await citasRepo.upsertTenantConfig(organizationId, patch);
+    return c.json({ tenant_config: serializeTenantConfig(updated) });
   });
 
   // ---- Agenda (vista mes/semana) — GET .../appointments?from=<ISO>&to=<ISO>&provider_id=<uuid> ----

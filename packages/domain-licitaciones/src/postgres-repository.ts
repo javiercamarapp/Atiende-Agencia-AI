@@ -58,6 +58,8 @@ import { LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 import type { SourceConnectorId } from "./connector-registry.ts";
 import { evaluateSourceFreshness } from "./source-run.ts";
 import type { SourceFreshnessRecord, SourceRunInput, SourceRunRecord } from "./source-run.ts";
+import type { TenderSourceIngestResult, TenderDeadlineReminderRecord, ScanDeadlineRemindersInput, ScanDeadlineRemindersResult } from "./repository.ts";
+import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import type {
   ApprovedRateRecord,
   CompanyDocumentRecord,
@@ -123,6 +125,33 @@ function mapTender(row: TenderRow): TenderRecord {
     state: row.state,
     procedureTypeRaw: row.procedure_type_raw,
     status: row.status,
+  };
+}
+
+// Fase 8 -- `licitaciones.tender_deadline_reminder` (migración 017).
+interface DeadlineReminderRow {
+  id: string;
+  organization_id: string;
+  tender_id: string;
+  submission_deadline: string;
+  days_remaining: number;
+  message: string;
+  created_at: string;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+}
+
+function mapDeadlineReminder(row: DeadlineReminderRow): TenderDeadlineReminderRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    tenderId: row.tender_id,
+    submissionDeadline: row.submission_deadline,
+    daysRemaining: row.days_remaining,
+    message: row.message,
+    createdAt: row.created_at,
+    acknowledgedAt: row.acknowledged_at,
+    acknowledgedBy: row.acknowledged_by,
   };
 }
 
@@ -945,6 +974,127 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       const lastSuccess = lastSuccessResult.rows.find((r) => r.source === descriptor.id) ?? null;
       return evaluateSourceFreshness(descriptor.id, lastSuccess ? { state: "ok", finishedAt: lastSuccess.finished_at } : null, lastAny ? { state: lastAny.state! } : null, now);
     });
+  }
+
+  // ---- Fase 8: ingesta automática real (compras_mx_historico) + recordatorios de plazo ----
+
+  async ingestTendersFromSource(organizationId: string, source: SourceConnectorId, records: readonly TenderSourceIngestCandidate[]): Promise<TenderSourceIngestResult> {
+    if (source === "manual") {
+      throw new Error('ingestTendersFromSource: "source" no puede ser "manual" -- ese camino de escritura es upsertTenderManual(), nunca este.');
+    }
+    let created = 0;
+    let updated = 0;
+    const tenders: TenderRecord[] = [];
+
+    // Un `insert` por registro (en vez de un `insert ... select unnest(...)` masivo): correcto y simple para el
+    // tamaño de lote real que produce esta fase (el worker SIEMPRE pasa un `limit` acotado, ver
+    // `apps/worker/src/jobs/licitaciones/discover-tenders.ts`) -- no pretende ser la forma más eficiente posible
+    // para miles de filas por corrida (gap de rendimiento declarado, no un problema de corrección).
+    for (const rec of records) {
+      const { rows } = await this.db.query<TenderRow & { inserted: boolean }>(
+        `insert into licitaciones.tender (organization_id, title, submission_deadline, source, external_id, contracting_body, cpv_codes, budget_amount, currency, state, procedure_type_raw, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11, null)
+         on conflict (organization_id, source, external_id) where external_id is not null
+         do update set
+           title = excluded.title,
+           submission_deadline = excluded.submission_deadline,
+           contracting_body = excluded.contracting_body,
+           cpv_codes = excluded.cpv_codes,
+           budget_amount = excluded.budget_amount,
+           currency = excluded.currency,
+           state = excluded.state,
+           procedure_type_raw = excluded.procedure_type_raw,
+           updated_at = now()
+         returning ${TENDER_COLUMNS}, (xmax = 0) as inserted;`,
+        [organizationId, rec.title, rec.submissionDeadline, source, rec.externalId, rec.contractingBody, rec.cpvCodes, rec.budgetAmount, rec.currency, rec.state, rec.procedureTypeRaw],
+      );
+      const row = rows[0]!;
+      const tender = mapTender(row);
+      tenders.push(tender);
+      if (row.inserted) created += 1;
+      else updated += 1;
+    }
+
+    return { created, updated, tenders };
+  }
+
+  async listActiveOrganizations(): Promise<readonly { id: string }[]> {
+    const { rows } = await this.db.query<{ id: string }>(`select id from core.organization where vertical = 'licitaciones' and status = 'active';`);
+    return rows.map((r) => ({ id: r.id }));
+  }
+
+  async scanUpcomingDeadlineReminders(organizationId: string, input: ScanDeadlineRemindersInput = {}): Promise<ScanDeadlineRemindersResult> {
+    const windowDays = input.windowDays ?? 3;
+    const now = input.nowIso ? new Date(input.nowIso) : new Date();
+    const windowEnd = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+
+    const { rows } = await this.db.query<{ id: string; title: string; submission_deadline: string }>(
+      `select id, title, submission_deadline::text as submission_deadline
+       from licitaciones.tender
+       where organization_id = $1
+         and submission_deadline is not null
+         and submission_deadline > $2
+         and submission_deadline <= $3
+         and status not in ('cancelled', 'lost', 'won', 'submitted')
+       order by submission_deadline asc;`,
+      [organizationId, now.toISOString(), windowEnd.toISOString()],
+    );
+
+    let created = 0;
+    const createdReminders: TenderDeadlineReminderRecord[] = [];
+    for (const row of rows) {
+      const deadlineDateOnly = row.submission_deadline.slice(0, 10);
+      const daysRemaining = Math.ceil((new Date(row.submission_deadline).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+      const message = `La convocatoria "${row.title}" vence el ${row.submission_deadline}.`;
+      const { rows: insertedRows } = await this.db.query<{ id: string; created_at: string }>(
+        `insert into licitaciones.tender_deadline_reminder (organization_id, tender_id, submission_deadline, deadline_date, days_remaining, message)
+         values ($1, $2, $3, $4::date, $5, $6)
+         on conflict (tender_id, deadline_date) do nothing
+         returning id, created_at::text as created_at;`,
+        [organizationId, row.id, row.submission_deadline, deadlineDateOnly, daysRemaining, message],
+      );
+      const inserted = insertedRows[0];
+      if (inserted) {
+        created += 1;
+        createdReminders.push({
+          id: inserted.id,
+          organizationId,
+          tenderId: row.id,
+          submissionDeadline: row.submission_deadline,
+          daysRemaining,
+          message,
+          createdAt: inserted.created_at,
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+        });
+      }
+    }
+
+    return { scanned: rows.length, created, reminders: createdReminders };
+  }
+
+  async listTenderDeadlineReminders(organizationId: string, tenderId?: string): Promise<readonly TenderDeadlineReminderRecord[]> {
+    const { rows } = await this.db.query<DeadlineReminderRow>(
+      tenderId
+        ? `select id, organization_id, tender_id, submission_deadline::text as submission_deadline, days_remaining, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by
+           from licitaciones.tender_deadline_reminder where organization_id = $1 and tender_id = $2 order by created_at desc;`
+        : `select id, organization_id, tender_id, submission_deadline::text as submission_deadline, days_remaining, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by
+           from licitaciones.tender_deadline_reminder where organization_id = $1 order by created_at desc;`,
+      tenderId ? [organizationId, tenderId] : [organizationId],
+    );
+    return rows.map(mapDeadlineReminder);
+  }
+
+  async acknowledgeTenderDeadlineReminder(organizationId: string, reminderId: string, actorId: string): Promise<TenderDeadlineReminderRecord> {
+    const { rows } = await this.db.query<DeadlineReminderRow>(
+      `update licitaciones.tender_deadline_reminder set acknowledged_at = now(), acknowledged_by = $3
+       where organization_id = $1 and id = $2
+       returning id, organization_id, tender_id, submission_deadline::text as submission_deadline, days_remaining, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by;`,
+      [organizationId, reminderId, actorId],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`Recordatorio de vencimiento "${reminderId}" no encontrado para la organización "${organizationId}".`);
+    return mapDeadlineReminder(row);
   }
 
   // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----
