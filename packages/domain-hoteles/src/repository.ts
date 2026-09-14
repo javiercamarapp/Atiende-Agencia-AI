@@ -5,6 +5,7 @@
 // negocio de las rutas de apps/api toca SQL directamente — todas pasan por aquí.
 import type {
   ActiveHotelProperty,
+  AttendanceEventRecord,
   CancellationPolicyRecord,
   CfdiEmisionRecord,
   ConversationMessage,
@@ -20,6 +21,7 @@ import type {
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
   MaintenanceTicketStatus,
+  NewAttendanceEventInput,
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
@@ -29,11 +31,13 @@ import type {
   NewMaintenanceTicketInput,
   NewPaymentInput,
   NewReservationInput,
+  NewStaffScheduleInput,
   NightAuditRunRecord,
   NightlyRateRecord,
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  StaffScheduleRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
@@ -337,6 +341,32 @@ export interface HotelesRepository {
 
   listHousekeepingShifts(propertyId: string, fromDate: string, toDate: string, staffId?: string): Promise<readonly HousekeepingShiftRecord[]>;
 
+  // ---- Fase 8 — REQ-BO-024 (LFT art.132 fr.XXXIV): checador de asistencia
+  // inalterable + horario programado (staff_schedule). El caller (ruta HTTP) es
+  // responsable de que `input.staffUserId` en `recordAttendanceEvent` SIEMPRE sea el
+  // actor autenticado -- este puerto no lo revalida (la autoridad real de esa
+  // invariante es la RLS `with check (staff_user_id = auth.uid())` de
+  // migrations/010_checador_asistencia.sql, defensa en profundidad si un bug futuro
+  // de la ruta la violara). `recordedAt` NUNCA lo decide el input: lo fija el
+  // adaptador (`now()` real en Postgres, `new Date().toISOString()` en memoria).
+
+  recordAttendanceEvent(input: NewAttendanceEventInput): Promise<AttendanceEventRecord>;
+  /** Historial de fichaje de UN empleado, opcionalmente acotado a un rango de fechas
+   *  de negocio (`recordedAt`, YYYY-MM-DD inclusive en ambos extremos). */
+  listAttendanceEvents(
+    propertyId: string,
+    staffUserId: string,
+    range?: { readonly fromDate: string; readonly toDate: string },
+  ): Promise<readonly AttendanceEventRecord[]>;
+
+  /** Crea o reemplaza el horario programado de `(propertyId, staffUserId, workDate)`
+   *  -- un segundo upsert para la misma clave reemplaza el turno en vez de duplicarlo
+   *  (mismo criterio que `replaceHousekeepingShifts`). El caller ya validó que
+   *  `staffUserId` pertenece al staff de `propertyId` (ver ATTENDANCE_ADMIN_ROLES/
+   *  roles.ts) -- este puerto no repite esa validación de membership. */
+  upsertStaffSchedule(input: NewStaffScheduleInput): Promise<StaffScheduleRecord>;
+  findStaffSchedule(propertyId: string, staffUserId: string, workDate: string): Promise<StaffScheduleRecord | null>;
+
   // ---- Dispatcher real de messaging_outbox (migrations/008) — hoteles NO tenía
   // NINGÚN concepto de outbox antes de este cambio (a diferencia de citas, que ya
   // traía la tabla desde su Fase 1): `outcome.reply` del turn handler de WhatsApp
@@ -376,4 +406,11 @@ export type {
   NewMaintenanceTicketInput,
   HousekeepingShiftRecord,
   NewHousekeepingShiftInput,
+} from "./types.ts";
+export type {
+  AttendanceEventType,
+  AttendanceEventRecord,
+  NewAttendanceEventInput,
+  StaffScheduleRecord,
+  NewStaffScheduleInput,
 } from "./types.ts";
