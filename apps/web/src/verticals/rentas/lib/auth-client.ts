@@ -9,10 +9,10 @@
 // decideHotelesLandingPath/decideLandingPath — una empresa gestora que administra
 // propiedades de más de un anfitrión/tenant es justo el caso multi-organización real
 // de rentas).
-import { login, LoginError, validateLoginForm } from "../../../lib/auth-client.ts";
+import { login, logout, LoginError, validateLoginForm } from "../../../lib/auth-client.ts";
 import type { LoginSession, SessionStorageLike } from "../../../lib/auth-client.ts";
 
-export { login, LoginError, validateLoginForm };
+export { login, logout, LoginError, validateLoginForm };
 export type { LoginSession, SessionStorageLike };
 
 /** A dónde navegar tras un login exitoso: 0 organizaciones (staff invitado sin

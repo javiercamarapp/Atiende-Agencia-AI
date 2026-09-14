@@ -16,10 +16,10 @@
 // `POST /auth/set-initial-password` (no existe todavía) antes de poder cortar el
 // login viejo — ese flujo es trabajo genuino nuevo, no un port, y queda fuera de
 // esta fase de construcción hasta tener esa confirmación.
-import { login, LoginError, validateLoginForm } from "../../../lib/auth-client.ts";
+import { login, logout, LoginError, validateLoginForm } from "../../../lib/auth-client.ts";
 import type { LoginSession, SessionStorageLike } from "../../../lib/auth-client.ts";
 
-export { login, LoginError, validateLoginForm };
+export { login, logout, LoginError, validateLoginForm };
 export type { LoginSession, SessionStorageLike };
 
 /** A dónde navegar tras un login exitoso: 0 organizaciones (staff invitado sin
