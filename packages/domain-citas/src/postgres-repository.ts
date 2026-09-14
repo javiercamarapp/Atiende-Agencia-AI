@@ -14,10 +14,13 @@ import type {
   AppointmentActorChannel,
   AppointmentRecord,
   AvailabilityOverride,
+  AvailabilityOverrideInput,
   AvailabilityRule,
+  AvailabilityRulePatch,
   BusyInterval,
   CustomerRecord,
   GoogleSyncStatus,
+  NewAvailabilityRuleInput,
   NewProviderInput,
   NewServiceInput,
   ProviderCalendarAccountRecord,
@@ -77,6 +80,32 @@ interface ServiceRow {
   readonly buffer_minutes_after: number;
   readonly price_cents: number | null;
   readonly is_active: boolean;
+}
+
+interface AvailabilityRuleRow {
+  readonly id: string;
+  readonly provider_id: string;
+  readonly day_of_week: number;
+  readonly start_time: string;
+  readonly end_time: string;
+  readonly is_active: boolean;
+}
+
+function mapAvailabilityRule(row: AvailabilityRuleRow): AvailabilityRule {
+  return { id: row.id, providerId: row.provider_id, dayOfWeek: row.day_of_week, startTime: row.start_time, endTime: row.end_time, isActive: row.is_active };
+}
+
+interface AvailabilityOverrideRow {
+  readonly provider_id: string;
+  readonly override_date: string;
+  readonly is_closed: boolean;
+  readonly start_time: string | null;
+  readonly end_time: string | null;
+  readonly reason: string | null;
+}
+
+function mapAvailabilityOverride(row: AvailabilityOverrideRow): AvailabilityOverride {
+  return { providerId: row.provider_id, overrideDate: row.override_date, isClosed: row.is_closed, startTime: row.start_time, endTime: row.end_time, reason: row.reason };
 }
 
 function mapService(row: ServiceRow): ServiceRecord {
@@ -300,20 +329,84 @@ export class PostgresCitasRepository implements CitasRepository {
   }
 
   async loadAvailabilityRules(providerId: string): Promise<readonly AvailabilityRule[]> {
-    const { rows } = await this.db.query<{ id: string; provider_id: string; day_of_week: number; start_time: string; end_time: string; is_active: boolean }>(
-      `select id, provider_id, day_of_week, start_time, end_time, is_active from citas.availability_rules where provider_id = $1;`,
+    const { rows } = await this.db.query<AvailabilityRuleRow>(
+      `select id, provider_id, day_of_week, start_time, end_time, is_active from citas.availability_rules where provider_id = $1 order by day_of_week, start_time;`,
       [providerId],
     );
-    return rows.map((r) => ({ id: r.id, providerId: r.provider_id, dayOfWeek: r.day_of_week, startTime: r.start_time, endTime: r.end_time, isActive: r.is_active }));
+    return rows.map(mapAvailabilityRule);
   }
 
   async loadAvailabilityOverride(providerId: string, dateStr: string): Promise<AvailabilityOverride | null> {
-    const { rows } = await this.db.query<{ provider_id: string; override_date: string; is_closed: boolean; start_time: string | null; end_time: string | null }>(
-      `select provider_id, override_date, is_closed, start_time, end_time from citas.availability_overrides where provider_id = $1 and override_date = $2;`,
+    const { rows } = await this.db.query<AvailabilityOverrideRow>(
+      `select provider_id, override_date, is_closed, start_time, end_time, reason from citas.availability_overrides where provider_id = $1 and override_date = $2;`,
       [providerId, dateStr],
     );
     const row = rows[0];
-    return row ? { providerId: row.provider_id, overrideDate: row.override_date, isClosed: row.is_closed, startTime: row.start_time, endTime: row.end_time } : null;
+    return row ? mapAvailabilityOverride(row) : null;
+  }
+
+  async listAvailabilityOverrides(providerId: string, fromDateInclusive?: string): Promise<readonly AvailabilityOverride[]> {
+    const { rows } = await this.db.query<AvailabilityOverrideRow>(
+      fromDateInclusive
+        ? `select provider_id, override_date, is_closed, start_time, end_time, reason from citas.availability_overrides where provider_id = $1 and override_date >= $2 order by override_date;`
+        : `select provider_id, override_date, is_closed, start_time, end_time, reason from citas.availability_overrides where provider_id = $1 order by override_date;`,
+      fromDateInclusive ? [providerId, fromDateInclusive] : [providerId],
+    );
+    return rows.map(mapAvailabilityOverride);
+  }
+
+  // ---- Fase 10 — panel admin: CRUD real de horarios/excepciones (ver diseño Fase
+  // 10 §1/§2, repository.ts::NewAvailabilityRuleInput/AvailabilityRulePatch/
+  // AvailabilityOverrideInput para el porqué de cada campo). ----
+  async createAvailabilityRule(input: NewAvailabilityRuleInput): Promise<AvailabilityRule> {
+    const { rows } = await this.db.query<AvailabilityRuleRow>(
+      `insert into citas.availability_rules (provider_id, day_of_week, start_time, end_time, is_active)
+       values ($1, $2, $3, $4, $5)
+       returning id, provider_id, day_of_week, start_time, end_time, is_active;`,
+      [input.providerId, input.dayOfWeek, input.startTime, input.endTime, input.isActive ?? true],
+    );
+    return mapAvailabilityRule(rows[0]!);
+  }
+
+  async updateAvailabilityRule(providerId: string, ruleId: string, patch: AvailabilityRulePatch): Promise<AvailabilityRule | null> {
+    const { rows } = await this.db.query<AvailabilityRuleRow>(
+      `update citas.availability_rules
+       set day_of_week = coalesce($3, day_of_week),
+           start_time = coalesce($4, start_time),
+           end_time = coalesce($5, end_time),
+           is_active = coalesce($6, is_active)
+       where id = $1 and provider_id = $2
+       returning id, provider_id, day_of_week, start_time, end_time, is_active;`,
+      [ruleId, providerId, patch.dayOfWeek ?? null, patch.startTime ?? null, patch.endTime ?? null, patch.isActive ?? null],
+    );
+    return rows[0] ? mapAvailabilityRule(rows[0]) : null;
+  }
+
+  async deleteAvailabilityRule(providerId: string, ruleId: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ id: string }>(`delete from citas.availability_rules where id = $1 and provider_id = $2 returning id;`, [ruleId, providerId]);
+    return rows.length > 0;
+  }
+
+  async upsertAvailabilityOverride(input: AvailabilityOverrideInput): Promise<AvailabilityOverride> {
+    const startTime = input.isClosed ? null : (input.startTime ?? null);
+    const endTime = input.isClosed ? null : (input.endTime ?? null);
+    const { rows } = await this.db.query<AvailabilityOverrideRow>(
+      `insert into citas.availability_overrides (provider_id, override_date, is_closed, start_time, end_time, reason)
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (provider_id, override_date) do update
+         set is_closed = excluded.is_closed, start_time = excluded.start_time, end_time = excluded.end_time, reason = excluded.reason
+       returning provider_id, override_date, is_closed, start_time, end_time, reason;`,
+      [input.providerId, input.overrideDate, input.isClosed, startTime, endTime, input.reason ?? null],
+    );
+    return mapAvailabilityOverride(rows[0]!);
+  }
+
+  async deleteAvailabilityOverride(providerId: string, overrideDate: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ provider_id: string }>(
+      `delete from citas.availability_overrides where provider_id = $1 and override_date = $2 returning provider_id;`,
+      [providerId, overrideDate],
+    );
+    return rows.length > 0;
   }
 
   async loadBusyIntervals(providerId: string, dayStartUtc: string, dayEndUtc: string, excludeAppointmentId?: string): Promise<readonly BusyInterval[]> {

@@ -4,7 +4,7 @@
 // acción que la página seguía ofreciendo antes de Fase 8 era conectar Google
 // Calendar (Fase 3, google-calendar-oauth.ts) — este archivo sigue pidiendo la
 // `authorize_url` real ahí, sin cambios.
-import { fetchJson, sendJson } from "./admin-client.ts";
+import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
 
 export interface ProviderSummary {
   readonly id: string;
@@ -111,6 +111,141 @@ export async function fetchProviderDetail(fetchImpl: typeof fetch, apiBaseUrl: s
     googleCalendar: { connected: body.google_calendar.connected, syncStatus: body.google_calendar.sync_status, syncError: body.google_calendar.sync_error },
     offeredServiceIds: body.offered_service_ids,
   };
+}
+
+// ============================================================================
+// Fase 10 — CRUD real de horarios/excepciones (ver admin.ts::POST/PATCH/DELETE
+// .../availability-rules[/:ruleId] y .../availability-overrides[/:date]). Antes de
+// esta fase, `AvailabilityRuleSummary` (arriba) solo se leía desde
+// `fetchProviderDetail` — Disponibilidad.tsx era de solo lectura.
+// ============================================================================
+
+export interface NewAvailabilityRuleInput {
+  readonly dayOfWeek: number;
+  readonly startTime: string;
+  readonly endTime: string;
+  readonly isActive?: boolean;
+}
+
+export interface AvailabilityRulePatch {
+  readonly dayOfWeek?: number;
+  readonly startTime?: string;
+  readonly endTime?: string;
+  readonly isActive?: boolean;
+}
+
+interface AvailabilityRuleApiRow {
+  readonly id: string;
+  readonly day_of_week: number;
+  readonly start_time: string;
+  readonly end_time: string;
+  readonly is_active: boolean;
+}
+
+function mapAvailabilityRule(row: AvailabilityRuleApiRow): AvailabilityRuleSummary {
+  return { id: row.id, dayOfWeek: row.day_of_week, startTime: row.start_time, endTime: row.end_time, isActive: row.is_active };
+}
+
+export async function createAvailabilityRule(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  providerId: string,
+  input: NewAvailabilityRuleInput,
+): Promise<AvailabilityRuleSummary> {
+  const body = await sendJson<{ availability_rule: AvailabilityRuleApiRow }>(
+    fetchImpl,
+    `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/availability-rules`,
+    token,
+    "POST",
+    { day_of_week: input.dayOfWeek, start_time: input.startTime, end_time: input.endTime, is_active: input.isActive },
+  );
+  return mapAvailabilityRule(body.availability_rule);
+}
+
+export async function updateAvailabilityRule(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  providerId: string,
+  ruleId: string,
+  patch: AvailabilityRulePatch,
+): Promise<AvailabilityRuleSummary> {
+  const body = await sendJson<{ availability_rule: AvailabilityRuleApiRow }>(
+    fetchImpl,
+    `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/availability-rules/${ruleId}`,
+    token,
+    "PATCH",
+    { day_of_week: patch.dayOfWeek, start_time: patch.startTime, end_time: patch.endTime, is_active: patch.isActive },
+  );
+  return mapAvailabilityRule(body.availability_rule);
+}
+
+export async function deleteAvailabilityRule(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string, ruleId: string): Promise<void> {
+  await deleteJson(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/availability-rules/${ruleId}`, token);
+}
+
+export interface AvailabilityOverrideSummary {
+  readonly overrideDate: string;
+  readonly isClosed: boolean;
+  readonly startTime: string | null;
+  readonly endTime: string | null;
+  readonly reason: string | null;
+}
+
+export interface AvailabilityOverrideUpsertInput {
+  readonly isClosed: boolean;
+  readonly startTime?: string | null;
+  readonly endTime?: string | null;
+  readonly reason?: string | null;
+}
+
+interface AvailabilityOverrideApiRow {
+  readonly override_date: string;
+  readonly is_closed: boolean;
+  readonly start_time: string | null;
+  readonly end_time: string | null;
+  readonly reason: string | null;
+}
+
+function mapAvailabilityOverride(row: AvailabilityOverrideApiRow): AvailabilityOverrideSummary {
+  return { overrideDate: row.override_date, isClosed: row.is_closed, startTime: row.start_time, endTime: row.end_time, reason: row.reason };
+}
+
+/** Lista solo excepciones de hoy en adelante (ver admin.ts::GET
+ * .../availability-overrides) — el panel edita el futuro, nunca un cierre ya pasado. */
+export async function fetchAvailabilityOverrides(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<readonly AvailabilityOverrideSummary[]> {
+  const body = await fetchJson<{ availability_overrides: readonly AvailabilityOverrideApiRow[] }>(
+    fetchImpl,
+    `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/availability-overrides`,
+    token,
+  );
+  return body.availability_overrides.map(mapAvailabilityOverride);
+}
+
+export async function upsertAvailabilityOverride(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  providerId: string,
+  overrideDate: string,
+  input: AvailabilityOverrideUpsertInput,
+): Promise<AvailabilityOverrideSummary> {
+  const body = await sendJson<{ availability_override: AvailabilityOverrideApiRow }>(
+    fetchImpl,
+    `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/availability-overrides/${overrideDate}`,
+    token,
+    "PUT",
+    { is_closed: input.isClosed, start_time: input.startTime, end_time: input.endTime, reason: input.reason },
+  );
+  return mapAvailabilityOverride(body.availability_override);
+}
+
+export async function deleteAvailabilityOverride(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string, overrideDate: string): Promise<void> {
+  await deleteJson(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/availability-overrides/${overrideDate}`, token);
 }
 
 /** Pide la URL real de consentimiento de Google (Fase 3, ver google-calendar-oauth.ts)

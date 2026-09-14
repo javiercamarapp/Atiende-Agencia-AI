@@ -591,3 +591,236 @@ describe("POST /v1/citas/properties/:propertyId/waitlist/broadcast — Fase 9", 
     expect(res.status).toBe(403);
   });
 });
+
+describe("POST/PATCH/DELETE /v1/citas/properties/:propertyId/providers/:providerId/availability-rules(/:ruleId) — Fase 10", () => {
+  it("crea una regla real — aparece de inmediato en la ficha del proveedor", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-rules`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ day_of_week: 6, start_time: "10:00", end_time: "14:00" }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { availability_rule: { id: string; provider_id: string; day_of_week: number; start_time: string; end_time: string; is_active: boolean } };
+    expect(body.availability_rule).toEqual({ id: expect.any(String), provider_id: ctx.providerId, day_of_week: 6, start_time: "10:00", end_time: "14:00", is_active: true });
+
+    const detail = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    const detailBody = (await detail.json()) as { availability_rules: readonly { id: string }[] };
+    expect(detailBody.availability_rules.some((r) => r.id === body.availability_rule.id)).toBe(true);
+  });
+
+  it("400 si end_time no es posterior a start_time", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-rules`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ day_of_week: 1, start_time: "18:00", end_time: "09:00" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("400 si day_of_week está fuera de 0..6", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-rules`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ day_of_week: 7, start_time: "09:00", end_time: "10:00" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("404 al crear una regla para un proveedor que no existe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${randomUUID()}/availability-rules`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ day_of_week: 1, start_time: "09:00", end_time: "10:00" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("edita una regla real — un campo ausente del patch no la toca", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const [rule] = await ctx.citasRepo.loadAvailabilityRules(ctx.providerId);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-rules/${rule!.id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ end_time: "19:00" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { availability_rule: { start_time: string; end_time: string } };
+    expect(body.availability_rule.end_time).toBe("19:00");
+    expect(body.availability_rule.start_time).toBe(rule!.startTime);
+  });
+
+  it("400 si el patch combinado deja end_time <= start_time", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const [rule] = await ctx.citasRepo.loadAvailabilityRules(ctx.providerId); // 09:00-17:00
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-rules/${rule!.id}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ start_time: "18:00" }), // 18:00 > 17:00 (end_time actual)
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("404 al editar una regla que no existe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-rules/${randomUUID()}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ is_active: false }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("borra una regla real — deja de aparecer en la ficha", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const [rule] = await ctx.citasRepo.loadAvailabilityRules(ctx.providerId);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-rules/${rule!.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(res.status).toBe(200);
+    expect((await ctx.citasRepo.loadAvailabilityRules(ctx.providerId)).some((r) => r.id === rule!.id)).toBe(false);
+  });
+
+  it("404 al borrar una regla que ya no existe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-rules/${randomUUID()}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("403 rechaza a un staff que no pertenece a esa property", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${randomUUID()}/providers/${ctx.providerId}/availability-rules`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ day_of_week: 1, start_time: "09:00", end_time: "10:00" }),
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET/PUT/DELETE /v1/citas/properties/:propertyId/providers/:providerId/availability-overrides(/:overrideDate) — Fase 10", () => {
+  it("lista vacía cuando el proveedor no tiene ninguna excepción", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { availability_overrides: readonly unknown[] };
+    expect(body.availability_overrides).toEqual([]);
+  });
+
+  it("PUT crea una excepción de cierre real, con motivo — aparece en el GET", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const future = "2027-12-25";
+    const put = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides/${future}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ is_closed: true, reason: "Navidad" }),
+    });
+    expect(put.status).toBe(200);
+    const putBody = (await put.json()) as { availability_override: { override_date: string; is_closed: boolean; start_time: string | null; reason: string | null } };
+    expect(putBody.availability_override).toEqual({ provider_id: ctx.providerId, override_date: future, is_closed: true, start_time: null, end_time: null, reason: "Navidad" });
+
+    const list = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    const listBody = (await list.json()) as { availability_overrides: readonly { override_date: string }[] };
+    expect(listBody.availability_overrides.some((o) => o.override_date === future)).toBe(true);
+  });
+
+  it("PUT de un horario especial (no cerrado) exige start_time/end_time válidos", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const future = "2027-12-26";
+    const bad = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides/${future}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ is_closed: false, start_time: "14:00", end_time: "10:00" }),
+    });
+    expect(bad.status).toBe(400);
+
+    const ok = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides/${future}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ is_closed: false, start_time: "10:00", end_time: "14:00" }),
+    });
+    expect(ok.status).toBe(200);
+    const okBody = (await ok.json()) as { availability_override: { start_time: string | null; end_time: string | null } };
+    expect(okBody.availability_override).toEqual(expect.objectContaining({ start_time: "10:00", end_time: "14:00" }));
+  });
+
+  it("400 con una fecha mal formada en la URL", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides/no-es-fecha`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ is_closed: true }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("404 al hacer PUT/DELETE sobre un proveedor que no existe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${randomUUID()}/availability-overrides/2027-01-01`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ is_closed: true }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("DELETE quita una excepción real — deja de aparecer en el GET", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const future = "2027-11-11";
+    await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides/${future}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ is_closed: true }),
+    });
+
+    const del = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides/${future}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(del.status).toBe(200);
+
+    const list = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    const listBody = (await list.json()) as { availability_overrides: readonly { override_date: string }[] };
+    expect(listBody.availability_overrides.some((o) => o.override_date === future)).toBe(false);
+  });
+
+  it("404 al borrar una excepción que no existe", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/availability-overrides/2027-10-10`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("403 rechaza a un staff que no pertenece a esa property", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${randomUUID()}/providers/${ctx.providerId}/availability-overrides`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(res.status).toBe(403);
+  });
+});

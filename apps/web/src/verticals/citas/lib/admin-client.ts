@@ -84,6 +84,18 @@ export async function sendJson<T>(
   return (await res.json()) as T;
 }
 
+/** Fase 10 — borrar una regla/excepción de disponibilidad (ver
+ * providers-client.ts::deleteAvailabilityRule/deleteAvailabilityOverride). Sin
+ * cuerpo — ninguna ruta DELETE de este panel lo lee. */
+export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
+  const res = await fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new CitasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
 export interface BranchOption {
   readonly propertyId: string;
   readonly name: string;

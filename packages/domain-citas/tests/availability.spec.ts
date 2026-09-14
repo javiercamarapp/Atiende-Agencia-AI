@@ -63,7 +63,7 @@ describe("computeAvailableSlots", () => {
   });
 
   it("un override que cierra el día vence a las reglas recurrentes, sin ofrecer ningún slot", () => {
-    const override: AvailabilityOverride = { providerId: "p1", overrideDate: "2026-09-14", isClosed: true, startTime: null, endTime: null };
+    const override: AvailabilityOverride = { providerId: "p1", overrideDate: "2026-09-14", isClosed: true, startTime: null, endTime: null, reason: null };
     const slots = computeAvailableSlots({ dateStr: "2026-09-14", timeZone: "America/Merida", durationMinutes: 20, rules, override, busy: [] });
     expect(slots).toEqual([]);
   });
