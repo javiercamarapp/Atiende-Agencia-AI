@@ -21,6 +21,7 @@ import type {
   CoreStaffRepository,
   CreateStaffInviteInput,
   MembershipRow,
+  RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
 } from "./core-repository.ts";
@@ -48,6 +49,10 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   private readonly memberships: SeedMembership[] = [];
   private readonly invitesById = new Map<string, StaffInviteRow>();
   private readonly inviteIdByTokenHash = new Map<string, string>();
+  // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+  // hoteles") — jti -> revocado. Solo el `jti` se guarda, nunca el JWT completo
+  // (mismo criterio que un password/token de invitación); ver `revokeRefreshToken`.
+  private readonly revokedRefreshTokenJtis = new Set<string>();
 
   addStaff(staff: StaffUserRow): void {
     if (this.staffIdByEmail.has(staff.email)) {
@@ -186,5 +191,20 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
       verticalRole: invite.verticalRole,
       propertyIds: invite.propertyIds,
     };
+  }
+
+  // ---- Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+  // hoteles") — ver el comentario de `revokeRefreshToken`/`isRefreshTokenRevoked` en
+  // `core-repository.ts` para el contrato completo. `userId`/`expiresAt` no se
+  // guardan aquí (el Set solo necesita el `jti` para responder `isRefreshTokenRevoked`)
+  // — la versión Postgres sí los persiste, para auditoría y para un futuro job de
+  // limpieza por expiración natural. ----
+
+  async revokeRefreshToken(input: RevokeRefreshTokenInput): Promise<void> {
+    this.revokedRefreshTokenJtis.add(input.jti);
+  }
+
+  async isRefreshTokenRevoked(jti: string): Promise<boolean> {
+    return this.revokedRefreshTokenJtis.has(jti);
   }
 }

@@ -59,6 +59,34 @@ describe("InMemoryCoreRepository", () => {
   });
 });
 
+// Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+// hoteles") — ver packages/db/migrations/0003_refresh_token_revocation.sql.
+describe("InMemoryCoreRepository — revocación de refresh tokens (logout)", () => {
+  it("un jti no revocado responde false; tras revokeRefreshToken responde true", async () => {
+    const repo = new InMemoryCoreRepository();
+    expect(await repo.isRefreshTokenRevoked("jti-1")).toBe(false);
+
+    await repo.revokeRefreshToken({ jti: "jti-1", userId: "staff-1", expiresAt: new Date(Date.now() + 86_400_000).toISOString() });
+
+    expect(await repo.isRefreshTokenRevoked("jti-1")).toBe(true);
+  });
+
+  it("revocar dos veces el mismo jti no lanza (idempotente, igual que el logout real)", async () => {
+    const repo = new InMemoryCoreRepository();
+    const input = { jti: "jti-2", userId: "staff-1", expiresAt: new Date(Date.now() + 86_400_000).toISOString() };
+    await expect(repo.revokeRefreshToken(input)).resolves.toBeUndefined();
+    await expect(repo.revokeRefreshToken(input)).resolves.toBeUndefined();
+    expect(await repo.isRefreshTokenRevoked("jti-2")).toBe(true);
+  });
+
+  it("revocar un jti no afecta a otro jti distinto (revocación selectiva, no todo el usuario)", async () => {
+    const repo = new InMemoryCoreRepository();
+    await repo.revokeRefreshToken({ jti: "jti-a", userId: "staff-1", expiresAt: new Date().toISOString() });
+    expect(await repo.isRefreshTokenRevoked("jti-a")).toBe(true);
+    expect(await repo.isRefreshTokenRevoked("jti-b")).toBe(false);
+  });
+});
+
 describe("InMemoryCoreRepository — invitación de staff (Fase 10)", () => {
   function seedOwner(repo: InMemoryCoreRepository) {
     repo.addOrganization({ id: "org-1", slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });

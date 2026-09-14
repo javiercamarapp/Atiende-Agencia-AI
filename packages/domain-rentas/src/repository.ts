@@ -42,6 +42,8 @@ import type {
   PayoutDetalle,
   ReglaCanal,
   ReglaMinStayRecord,
+  RentasOrganizationSummary,
+  RentasPropertySummary,
   ReservaParaStatement,
   ReservaProximaCheckIn,
   TemporadaRecord,
@@ -126,6 +128,17 @@ export interface RentasRepository {
   enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: MessagingOutboxChannel, eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
   claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
   completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
+
+  // ---- Fase 12 — descubrimiento de organización/property para el panel web de staff ----
+
+  /** `null` si no existe una organización de vertical 'rentas' con ese slug — mismo
+   *  contrato que `HotelesRepository.findOrganizationBySlug` (domain-hoteles), ver
+   *  types.ts::RentasOrganizationSummary para por qué existe. */
+  findOrganizationBySlug(slug: string): Promise<RentasOrganizationSummary | null>;
+  /** Properties ACTIVAS de una organización de rentas — insumo del selector de
+   *  property del panel de staff (RentasShell.tsx), mismo criterio que
+   *  `HotelesRepository.listPropertiesForOrganization`. */
+  listPropertiesForOrganization(organizationId: string): Promise<readonly RentasPropertySummary[]>;
 }
 
 export type {
@@ -155,6 +168,8 @@ export type {
   PayoutDetalle,
   ReglaCanal,
   ReglaMinStayRecord,
+  RentasOrganizationSummary,
+  RentasPropertySummary,
   ReservaParaStatement,
   ReservaProximaCheckIn,
   TemporadaRecord,

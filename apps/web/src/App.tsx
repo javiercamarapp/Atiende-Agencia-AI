@@ -19,6 +19,10 @@ import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
+import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
+import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
+import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
+import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
 import { CitasShell } from "./verticals/citas/CitasShell.tsx";
 import { AgendaPage } from "./verticals/citas/pages/Agenda.tsx";
@@ -194,8 +198,28 @@ function RentasLoginRoute() {
   return (
     <RentasLoginPage
       apiBaseUrl={API_BASE_URL}
-      onLoggedIn={(_session, landingPath) => navigate(landingPath)}
+      // `state` alimenta las páginas genéricas /sin-organizacion y
+      // /seleccionar-organizacion (ver sus comentarios de cabecera en
+      // apps/web/src/shell/): ninguna de las dos puede adivinar por sí sola de qué
+      // vertical es la sesión que se acaba de persistir.
+      onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "rentas", email: session.email } })}
     />
+  );
+}
+
+/** Landing real del panel de rentas (Fase 12) — cierra el hallazgo "login de rentas
+ * redirige a /rentas/:slug, ruta que no existe en la SPA": a diferencia de
+ * hoteles/citas (que redirigen la raíz del orgSlug a una subruta como
+ * .../reservas), rentas aún no tiene subpáginas de negocio (ver README) — el
+ * dashboard de resumen ES la landing, sin redirect intermedio. */
+function RentasDashboardRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasDashboardPage {...ctx} />}
+    </RentasShell>
   );
 }
 
@@ -426,6 +450,9 @@ export function App() {
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
+        <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
+        <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
+        <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
         <Route path="/citas/:orgSlug" element={<CitasRootRedirect />} />
         <Route path="/citas/:orgSlug/agenda" element={<CitasAgendaRoute />} />

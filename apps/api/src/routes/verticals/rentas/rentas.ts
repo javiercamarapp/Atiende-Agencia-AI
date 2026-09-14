@@ -23,6 +23,7 @@ import { rentasMensajeriaPoliticasRoutes } from "./mensajeria-politicas.ts";
 import { rentasEmailDispatchRoutes } from "./email-dispatch.ts";
 import { rentasCheckInRecordatorioRoutes } from "./checkin-recordatorio.ts";
 import { rentasOnboardingRoutes } from "./onboarding.ts";
+import { rentasAdminDiscoveryRoutes } from "./admin-discovery.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -83,5 +84,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // x-atiende-internal-secret, mismo patrón que rentasIcalSyncCronRoutes arriba.
   app.route("/", rentasEmailDispatchRoutes(deps));
   app.route("/", rentasCheckInRecordatorioRoutes(deps));
+
+  // Fase 12 — descubrimiento de organización/property para el panel web de staff.
+  app.route("/", rentasAdminDiscoveryRoutes(deps));
   return app;
 }

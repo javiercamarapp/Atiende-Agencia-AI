@@ -8,6 +8,7 @@
 // login y la acción. Este es el MISMO principio que hoteles ya aplica hoy, solo que
 // generalizado (antes: `hotel_ids`, ahora: `property_ids`; se añade `vertical` porque
 // un token ahora puede corresponder a cualquiera de las 5 verticales, no solo hoteles).
+import { randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify, errors as joseErrors } from "jose";
 import type { Vertical } from "@atiende/core-tenancy";
 
@@ -26,6 +27,19 @@ export interface AccessTokenClaims {
 
 export interface RefreshTokenClaims {
   readonly sub: string;
+  /** Identificador único del token (RFC 7519 `jti`) — hallazgo de auditoría (severidad
+   * ALTA, "sin logout explícito en el panel de hoteles"): antes de esta pieza el
+   * refresh token no tenía ningún identificador con el que un endpoint de logout
+   * pudiera revocarlo de forma selectiva sin invalidar TODOS los refresh tokens del
+   * usuario. Se persiste en `core.revoked_refresh_token` (jti, no el JWT completo)
+   * cuando el staff cierra sesión — ver `apps/api/src/routes/auth.ts::/auth/logout`
+   * y `@atiende/db::CoreRepository.revokeRefreshToken`. */
+  readonly jti: string;
+  /** Epoch seconds (`exp` estándar de JWT) — jose ya lo agrega al payload por
+   * `setExpirationTime`; se declara aquí para que el caller de /auth/logout pueda
+   * calcular `expires_at` de la fila de revocación sin volver a decodificar el JWT a
+   * mano. */
+  readonly exp: number;
   readonly type: "refresh";
 }
 
@@ -55,6 +69,7 @@ export async function signRefreshToken(sub: string, secret: string, ttlSeconds: 
     .setIssuedAt()
     .setExpirationTime(`${ttlSeconds}s`)
     .setSubject(sub)
+    .setJti(randomUUID())
     .sign(secretKey(secret));
 }
 

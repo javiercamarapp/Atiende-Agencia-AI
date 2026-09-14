@@ -104,6 +104,8 @@ export type {
   OwnerStatementSummary,
   PayoutDetalle,
   ReglaMinStayRecord,
+  RentasOrganizationSummary,
+  RentasPropertySummary,
   ReservaProximaCheckIn,
   TemporadaRecord,
   UltimaVersionOwnerStatement,

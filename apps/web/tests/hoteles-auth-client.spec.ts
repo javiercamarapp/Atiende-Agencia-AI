@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { clearHotelesSession, decideHotelesLandingPath, persistHotelesSession, readPersistedHotelesSession } from "../src/verticals/hoteles/lib/auth-client.ts";
+import { describe, expect, it, vi } from "vitest";
+import { clearHotelesSession, decideHotelesLandingPath, logout, persistHotelesSession, readPersistedHotelesSession } from "../src/verticals/hoteles/lib/auth-client.ts";
 import type { LoginSession, SessionStorageLike } from "../src/verticals/hoteles/lib/auth-client.ts";
 
 function fakeStorage(): SessionStorageLike {
@@ -54,5 +54,19 @@ describe("persistHotelesSession / readPersistedHotelesSession / clearHotelesSess
     persistHotelesSession(storage, session);
     clearHotelesSession(storage);
     expect(readPersistedHotelesSession(storage)).toBeNull();
+  });
+});
+
+// Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+// hoteles") — re-exporta el `logout` genérico (POST /auth/logout), usado por el botón
+// nuevo de HotelesShell.tsx.
+describe("logout (re-exportado de ../../../lib/auth-client.ts)", () => {
+  it("llama POST /auth/logout con el refreshToken del hotel", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof fetch;
+    await logout(fetchImpl, "http://api.local", "refresh-de-hoteles");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://api.local/auth/logout",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "refresh-de-hoteles" }) }),
+    );
   });
 });

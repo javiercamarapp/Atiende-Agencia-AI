@@ -103,16 +103,77 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (typeof body.refreshToken !== "string" || !body.refreshToken) throw Errors.validation("refreshToken requerido");
 
     let sub: string;
+    let jti: string;
     try {
       const claims = await verifyRefreshToken(body.refreshToken, deps.env.jwtSecret);
       sub = claims.sub;
+      jti = claims.jti;
     } catch {
+      throw Errors.unauthorized("Refresh token inválido o expirado.");
+    }
+
+    // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+    // hoteles"): un refresh token cuyo `jti` ya fue revocado (el staff cerró sesión
+    // con él vía POST /auth/logout) no puede reemitir sesión, aunque el JWT en sí
+    // siga siendo criptográficamente válido y no haya expirado todavía — sin este
+    // chequeo, /auth/logout solo habría limpiado el localStorage de QUIEN pidió
+    // logout, sin impedir que ese mismo refresh token (copiado o interceptado antes)
+    // siguiera sirviendo para sacar access tokens nuevos indefinidamente.
+    if (await deps.coreRepo.isRefreshTokenRevoked(jti)) {
       throw Errors.unauthorized("Refresh token inválido o expirado.");
     }
 
     const staff = await deps.coreRepo.findStaffById(sub);
     if (!staff) throw Errors.unauthorized();
     return c.json(await issueSession(deps, staff.id, staff.email), 200);
+  });
+
+  // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+  // hoteles" — HotelesShell.tsx no renderizaba ningún botón de cerrar sesión, y hasta
+  // esta pieza tampoco había NADA del lado del servidor que ese botón pudiera
+  // invalidar de verdad; `clearHotelesSession` solo borraba localStorage). Revoca el
+  // refresh token presentado (por su `jti`, ver `core.revoked_refresh_token` en
+  // `packages/db/migrations/0003_refresh_token_revocation.sql`) — a partir de este
+  // punto ESE refresh token concreto ya no puede reemitir sesión vía /auth/refresh
+  // (chequeo justo arriba). El access token ya emitido sigue siendo válido hasta su
+  // propio `exp` (900s por defecto, `ACCESS_TOKEN_TTL_SECONDS`) — es JWT stateless
+  // por diseño (ver core-auth/src/jwt.ts), el mismo trade-off documentado en el header
+  // de la migración.
+  //
+  // Sin `authMiddleware`: mismo criterio que /auth/refresh — el actor se identifica
+  // por el refresh token mismo (su `sub`/`jti`), no por un Bearer access token ya
+  // verificado (cerrar sesión debe seguir funcionando aunque el access token ya haya
+  // expirado, que es exactamente el caso normal: el usuario deja el navegador abierto
+  // horas después del login). Idempotente y sin filtrar información: un refreshToken
+  // ya inválido/expirado/inexistente responde 200 igual que uno válido — no hay nada
+  // que revocar en ese caso, pero un 401 aquí le confirmaría a quien sea que el token
+  // que probó ya no sirve, información que un logout no necesita exponer.
+  app.post("/auth/logout", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { refreshToken?: unknown };
+    if (typeof body.refreshToken !== "string" || !body.refreshToken) throw Errors.validation("refreshToken requerido");
+
+    // Solo el paso de VERIFICAR se trata como "no hay nada que revocar" (idempotente,
+    // ver comentario de cabecera) — un fallo real de `revokeRefreshToken` (ej. la
+    // base de datos no responde) SÍ debe propagarse como 500: si no se pudo persistir
+    // la revocación, el refresh token sigue siendo válido y logout no puede fingir
+    // que "tuvo éxito" sin mentir.
+    let claims: Awaited<ReturnType<typeof verifyRefreshToken>> | null = null;
+    try {
+      claims = await verifyRefreshToken(body.refreshToken, deps.env.jwtSecret);
+    } catch {
+      // Ya inválido/expirado/con otro secreto — nada que revocar, logout de todas
+      // formas "tiene éxito" (ver comentario de cabecera de esta ruta).
+    }
+
+    if (claims) {
+      await deps.coreRepo.revokeRefreshToken({
+        jti: claims.jti,
+        userId: claims.sub,
+        expiresAt: new Date(claims.exp * 1000).toISOString(),
+      });
+    }
+
+    return c.json({ ok: true }, 200);
   });
 
   app.use("/auth/me", authMiddleware(deps.env));

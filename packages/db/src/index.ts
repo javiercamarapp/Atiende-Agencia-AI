@@ -9,6 +9,7 @@ export type {
   CreateStaffInviteInput,
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
+  RevokeRefreshTokenInput,
 } from "./core-repository.ts";
 export { StaffInviteInvalidError } from "./core-repository.ts";
 export { InMemoryCoreRepository } from "./in-memory-core-repository.ts";

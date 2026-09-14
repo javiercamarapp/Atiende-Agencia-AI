@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
-import { readPersistedHotelesSession } from "./lib/auth-client.ts";
+import { clearHotelesSession, logout, readPersistedHotelesSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
@@ -43,10 +43,28 @@ const linkStyle = (isActive: boolean): CSSProperties => ({
   background: isActive ? "#111827" : "transparent",
 });
 
+const logoutButtonStyle: CSSProperties = {
+  marginTop: "auto",
+  padding: "8px 12px",
+  borderRadius: 8,
+  fontSize: 14,
+  textAlign: "left",
+  color: "#b91c1c",
+  background: "transparent",
+  border: "1px solid #fecaca",
+  cursor: "pointer",
+};
+
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
   const [properties, setProperties] = useState<readonly PropertyOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+  // hoteles"): deshabilita el botón mientras el POST /auth/logout está en vuelo, para
+  // que un clic doble en un equipo compartido de recepción no dispare dos requests —
+  // `logout()` es best-effort (nunca lanza, ver su comentario de cabecera en
+  // apps/web/src/lib/auth-client.ts), así que esto es solo UX, no manejo de error.
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const s = readPersistedHotelesSession(window.localStorage);
@@ -69,6 +87,26 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       cancelado = true;
     };
   }, [session, apiBaseUrl, orgSlug]);
+
+  // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
+  // hoteles"): hasta esta pieza `clearHotelesSession` (lib/auth-client.ts) existía
+  // pero NINGÚN componente la llamaba — un staff de recepción no tenía forma de
+  // cerrar sesión en un equipo compartido. Revoca el refresh token del lado del
+  // servidor (best-effort, ver `logout()`), SIEMPRE limpia la sesión local, y
+  // SIEMPRE reusa `onRequireLogin` (la misma redirección a /hoteles/login que ya
+  // dispara el efecto de arriba cuando no hay sesión) — nunca deja al staff en un
+  // estado intermedio si el POST de red falla.
+  async function handleLogout() {
+    if (!session) return;
+    setLoggingOut(true);
+    try {
+      await logout(fetch, apiBaseUrl, session.refreshToken);
+    } finally {
+      clearHotelesSession(window.localStorage);
+      setSession(null);
+      onRequireLogin();
+    }
+  }
 
   if (session === undefined) return null; // resolviendo sesión persistida
   if (!session) return null; // onRequireLogin ya disparó la redirección
@@ -116,6 +154,9 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
             {item.label}
           </NavLink>
         ))}
+        <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
+          {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
+        </button>
       </nav>
       <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug })}</div>
     </div>

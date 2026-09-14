@@ -68,6 +68,21 @@ describe("refresh token", () => {
     expect(claims.type).toBe("refresh");
   });
 
+  it("cada refresh token trae un jti único (necesario para revocar UNO solo en logout, no todos los del usuario)", async () => {
+    const a = await verifyRefreshToken(await signRefreshToken("user-1", SECRET, 60), SECRET);
+    const b = await verifyRefreshToken(await signRefreshToken("user-1", SECRET, 60), SECRET);
+    expect(a.jti).toBeTruthy();
+    expect(b.jti).toBeTruthy();
+    expect(a.jti).not.toBe(b.jti);
+  });
+
+  it("expone `exp` (epoch seconds) para que /auth/logout calcule expires_at de la fila de revocación", async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const claims = await verifyRefreshToken(await signRefreshToken("user-1", SECRET, 60), SECRET);
+    expect(claims.exp).toBeGreaterThanOrEqual(before + 60);
+    expect(claims.exp).toBeLessThan(before + 65);
+  });
+
   it("rechaza un access token pasado a verifyRefreshToken (type mismatch)", async () => {
     const access = await signAccessToken(
       { sub: "user-1", org_id: "org-1", vertical: "hoteles", property_ids: null, email: "a@b.com" },

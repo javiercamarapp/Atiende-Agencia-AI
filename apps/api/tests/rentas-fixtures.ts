@@ -93,6 +93,12 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
   // Fase 9 -- nombre del tenant para el correo transaccional al huésped (ver
   // findOcupacionParaCorreo/InMemoryRentasRepository.seedOrganizacion).
   rentasRepo.seedOrganizacion(organizationId, "Rentas de Prueba");
+  // Fase 12 -- espejo de solo-lectura para GET /v1/rentas/:orgSlug/admin/propiedades
+  // (ver domain-rentas/src/in-memory-repository.ts, comentario de cabecera de
+  // `organizationsDiscovery`/`propertiesDiscovery`: no comparte almacenamiento con
+  // `coreRepo`/`engine`).
+  rentasRepo.seedOrganization({ id: organizationId, slug: "rentas-de-prueba", name: "Rentas de Prueba" });
+  rentasRepo.seedPropertySummary(organizationId, { propertyId, name: "Rentas de Prueba — Matriz" });
 
   async function seedStaff(role: RentasVerticalRole, label: string, platformRole: "owner" | "admin" | "member" | "viewer") {
     const id = randomUUID();
