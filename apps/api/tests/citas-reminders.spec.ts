@@ -40,7 +40,7 @@ describe("POST /internal/citas/confirmacion-cita", () => {
   // Wiring real del scheduler (vercel.json::crons): Vercel Cron SIEMPRE dispara
   // GET, nunca POST, y solo sabe mandar el secreto como
   // `Authorization: Bearer <CRON_SECRET>` — nunca el header custom
-  // `x-atiende-internal-secret`. Ver schedulerSecretMatches (http-security.ts).
+  // `x-atiende-internal-secret`. Ver internalOrCronSecretMatches (http-security.ts).
   it("GET con Authorization: Bearer <secreto> (forma real en que Vercel Cron invoca la ruta) también autentica", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);

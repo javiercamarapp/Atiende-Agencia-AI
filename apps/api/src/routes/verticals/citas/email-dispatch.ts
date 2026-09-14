@@ -10,7 +10,7 @@
 // `vercel.json::crons` invoca este mismo path por GET una vez al día (único
 // método/frecuencia que permite el plan Hobby de Vercel, ver
 // docs/DEPLOY.md#resumen-de-costo-por-plataforma) con
-// `Authorization: Bearer <CRON_SECRET>`. `schedulerSecretMatches` acepta esa
+// `Authorization: Bearer <CRON_SECRET>`. `internalOrCronSecretMatches` acepta esa
 // forma además del header manual `x-atiende-internal-secret` que ya usaban los
 // tests/invocaciones manuales — mismo secreto (`INTERNAL_SECRET`), dos formas
 // de mandarlo. Un barrido diario dista de "inmediato" para un correo de
@@ -20,14 +20,14 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
-import { schedulerSecretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function citasEmailDispatchRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
   app.on(["GET", "POST"], "/internal/citas/email-dispatch", async (c) => {
-    if (!schedulerSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por

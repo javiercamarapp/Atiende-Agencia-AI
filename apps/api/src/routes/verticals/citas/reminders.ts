@@ -8,20 +8,20 @@
 // auditor): `vercel.json::crons` invoca este mismo path por GET una vez al día
 // (plan Hobby de Vercel solo permite frecuencia diaria — cadencia razonable de
 // por sí para un recordatorio "24h antes") con `Authorization: Bearer
-// <CRON_SECRET>`. `schedulerSecretMatches` acepta esa forma además del header
+// <CRON_SECRET>`. `internalOrCronSecretMatches` acepta esa forma además del header
 // manual `x-atiende-internal-secret` que ya usaban los tests/invocaciones
 // manuales — mismo secreto (`INTERNAL_SECRET`), dos formas de mandarlo.
 import { Hono } from "hono";
 import { runConfirmacionCitaCore } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
-import { schedulerSecretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function citasRemindersRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
   app.on(["GET", "POST"], "/internal/citas/confirmacion-cita", async (c) => {
-    if (!schedulerSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`) para todo el barrido, igual que documenta

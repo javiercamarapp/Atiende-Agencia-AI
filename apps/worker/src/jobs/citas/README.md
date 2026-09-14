@@ -22,7 +22,7 @@ día (única frecuencia que permite el plan Hobby de Vercel — ver
 Vercel dispara un Cron Job con GET (nunca POST) y solo sabe mandar el secreto
 como `Authorization: Bearer <CRON_SECRET>` — las 3 rutas aceptan esa forma
 además del header manual `x-atiende-internal-secret` que ya usaban los tests
-(ver `apps/api/src/http-security.ts::schedulerSecretMatches`). Antes de un
+(ver `apps/api/src/http-security.ts::internalOrCronSecretMatches`). Antes de un
 deploy real hace falta configurar, en el dashboard de Vercel, la variable de
 entorno `CRON_SECRET` con el MISMO valor que `INTERNAL_SECRET` — sin eso Vercel
 sigue disparando el cron, pero la ruta responde 401 (fail-closed, nunca finge

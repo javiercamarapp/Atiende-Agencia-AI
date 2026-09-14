@@ -8,7 +8,7 @@
 // este mismo path por GET una vez al día (plan Hobby de Vercel solo permite
 // frecuencia diaria; el propio backoff con reintentos de `syncPendingAppointments`
 // ya tolera una cadencia de barrido espaciada) con `Authorization: Bearer
-// <CRON_SECRET>`. `schedulerSecretMatches` acepta esa forma además del header
+// <CRON_SECRET>`. `internalOrCronSecretMatches` acepta esa forma además del header
 // manual `x-atiende-internal-secret` que ya usaban los tests/invocaciones
 // manuales — mismo secreto (`INTERNAL_SECRET`), dos formas de mandarlo. Ídem
 // para el recordatorio 24h (`apps/worker/src/jobs/citas/README.md`, ya
@@ -16,14 +16,14 @@
 import { Hono } from "hono";
 import { syncPendingAppointments } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
-import { schedulerSecretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function citasGoogleCalendarSyncRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
   app.on(["GET", "POST"], "/internal/citas/google-calendar-sync", async (c) => {
-    if (!schedulerSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- misma sesión de
     // sistema que reminders.ts (barre TODA la plataforma, no una org concreta).

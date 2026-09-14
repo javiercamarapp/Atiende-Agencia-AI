@@ -27,24 +27,33 @@ export function secretMatches(req: Request, header: string, expected: string): b
 }
 
 /**
- * Variante de `secretMatches` para rutas internas que además deben aceptar un
- * disparo real de Vercel Cron (ver `vercel.json::crons` y
- * `routes/verticals/citas/{email-dispatch,reminders,google-calendar-sync}.ts`).
- * Vercel SIEMPRE invoca un Cron Job con GET y solo sabe mandar el secreto como
- * `Authorization: Bearer <CRON_SECRET>` (la variable de entorno `CRON_SECRET` del
- * dashboard de Vercel) — nunca puede mandar el header custom
- * `x-atiende-internal-secret` que usa una invocación manual/de test. En vez de
- * mantener dos secretos en paralelo, el operador configura `CRON_SECRET` en
- * Vercel con el MISMO valor que `INTERNAL_SECRET`; esta función acepta
- * cualquiera de las dos formas de mandar ese único secreto.
+ * Gate de rutas internas de scheduler que ahora aceptan DOS formas de probar el
+ * mismo secreto compartido (`expected`, el mismo valor que `ApiEnv.internalSecret`):
+ *
+ *   1. `x-atiende-internal-secret: <secreto>` — invocación manual/curl/tests, el
+ *      mecanismo que ya existía (ver `secretMatches` de arriba).
+ *   2. `Authorization: Bearer <secreto>` — Vercel Cron Jobs NO permiten configurar
+ *      headers custom en `vercel.json` (solo `path`/`schedule`); lo único que Vercel
+ *      agrega automáticamente a la request GET que dispara es
+ *      `Authorization: Bearer $CRON_SECRET` cuando esa env var existe en el proyecto
+ *      (ver https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs).
+ *      Por eso el operador debe configurar `CRON_SECRET` en Vercel con EL MISMO
+ *      valor que `INTERNAL_SECRET` — nunca se introduce un segundo secreto en
+ *      código, solo se acepta la forma en que el scheduler externo puede mandarlo.
+ *
+ * Ninguna de las dos formas se vuelve obligatoria: un curl manual sigue funcionando
+ * exactamente igual que antes con el header custom, sin tocar `Authorization`.
+ *
+ * Usada tanto por las rutas internas de citas (email-dispatch/reminders/
+ * google-calendar-sync) como por las de licitaciones (discover-tenders/
+ * deadline-reminders/alert-notifications/email-dispatch) — mismo problema,
+ * mismo secreto compartido, una sola función.
  */
-export function schedulerSecretMatches(req: Request, expected: string): boolean {
+export function internalOrCronSecretMatches(req: Request, expected: string): boolean {
   if (secretMatches(req, "x-atiende-internal-secret", expected)) return true;
-  const authorization = req.headers.get("authorization");
-  if (!authorization) return false;
-  const match = /^Bearer\s+(.+)$/i.exec(authorization);
-  if (!match) return false;
-  return constantTimeEqual(match[1], expected);
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return false;
+  return constantTimeEqual(auth.slice("Bearer ".length), expected);
 }
 
 /** El último salto de X-Forwarded-For evita que un prefijo controlado por el caller

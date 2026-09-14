@@ -76,3 +76,54 @@ describe("POST /internal/licitaciones/deadline-reminders", () => {
     expect(reminders.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+// Fase 12 (cierre del hallazgo ALTA "sin cron configurado") — `vercel.json` ya
+// declara `crons` reales para estas 2 rutas + las 2 de alertNotifications.ts.
+// Vercel Cron dispara SIEMPRE con GET y solo puede mandar el secreto vía
+// `Authorization: Bearer $CRON_SECRET` (no permite headers custom en su config) —
+// estos tests cubren esa forma nueva de invocación sin tocar la existente de arriba.
+describe("GET /internal/licitaciones/discover-tenders (invocación real de Vercel Cron)", () => {
+  it("rechaza sin ningún secreto", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/licitaciones/discover-tenders", { method: "GET" });
+    expect(res.status).toBe(401);
+  });
+
+  it("con Authorization: Bearer <INTERNAL_SECRET> (lo que Vercel Cron manda automáticamente cuando CRON_SECRET está alineado), ingesta igual que el POST manual", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const csv = csvFixture(["CTR-2,EXP-2,Prov,Contrato vía cron,,,,,,2000,MXN,2020-01-01,2020-06-01,,,"]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(csv, { status: 200 })));
+
+    const res = await app.request("/internal/licitaciones/discover-tenders", { method: "GET", headers: { authorization: `Bearer ${ctx.deps.env.internalSecret}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+
+    const tenders = await ctx.repo.listTenders(ctx.organizationId);
+    expect(tenders.some((t) => t.source === "compras_mx_historico" && t.externalId === "CTR-2")).toBe(true);
+  });
+});
+
+describe("GET /internal/licitaciones/deadline-reminders (invocación real de Vercel Cron)", () => {
+  it("rechaza sin ningún secreto", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/licitaciones/deadline-reminders", { method: "GET" });
+    expect(res.status).toBe(401);
+  });
+
+  it("con Authorization: Bearer <INTERNAL_SECRET>, crea el recordatorio igual que el POST manual", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const soon = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    ctx.repo.seedTender({ id: randomUUID(), organizationId: ctx.organizationId, title: "Vence pronto (cron)", submissionDeadline: soon, updatedAt: new Date().toISOString() });
+
+    const res = await app.request("/internal/licitaciones/deadline-reminders", { method: "GET", headers: { authorization: `Bearer ${ctx.deps.env.internalSecret}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; created: number };
+    expect(body.ok).toBe(true);
+    expect(body.created).toBeGreaterThanOrEqual(1);
+  });
+});

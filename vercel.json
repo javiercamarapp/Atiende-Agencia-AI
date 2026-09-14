@@ -20,6 +20,10 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
+    { "path": "/internal/licitaciones/discover-tenders", "schedule": "0 5 * * *" },
+    { "path": "/internal/licitaciones/deadline-reminders", "schedule": "0 6 * * *" },
+    { "path": "/internal/licitaciones/alert-notifications", "schedule": "0 7 * * *" },
+    { "path": "/internal/licitaciones/email-dispatch", "schedule": "0 8 * * *" },
     { "path": "/internal/citas/confirmacion-cita", "schedule": "0 14 * * *" },
     { "path": "/internal/citas/email-dispatch", "schedule": "5 14 * * *" },
     { "path": "/internal/citas/google-calendar-sync", "schedule": "10 14 * * *" }

@@ -13,7 +13,7 @@ Fase 1 construida — los 3 flujos elegidos (ver diseño Fase 1 citas):
   desde el panel) para el staff. Solo cancelar existe desde el panel; solo el agente
   reagenda hoy (igual que el origen).
 - `reminders.ts` — `GET`/`POST /internal/citas/confirmacion-cita`: recordatorio
-  24h, interna, gateada por `schedulerSecretMatches` (acepta
+  24h, interna, gateada por `internalOrCronSecretMatches` (acepta
   `x-atiende-internal-secret` o `Authorization: Bearer <CRON_SECRET>`), no un
   job de `apps/worker`. Scheduler real: `vercel.json::crons` (ver
   `apps/worker/src/jobs/citas/README.md` para el detalle completo).
@@ -30,7 +30,7 @@ Fase 3 agregó (ver diseño Fase 3 citas §4/§5):
   (pública — Google redirige el navegador aquí sin JWT) valida el `state` firmado,
   intercambia el código y conecta `provider_calendar_accounts`.
 - `google-calendar-sync.ts` — `GET`/`POST /internal/citas/google-calendar-sync`:
-  reconciliación por lote, misma gate `schedulerSecretMatches` que
+  reconciliación por lote, misma gate `internalOrCronSecretMatches` que
   `reminders.ts`.
 - `appointments.ts`/`appointments-lifecycle.ts` ganaron una llamada best-effort a
   `tryTriggerGoogleSync` justo después de que crear/cancelar/reagendar YA
