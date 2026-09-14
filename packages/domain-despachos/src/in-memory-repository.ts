@@ -4,17 +4,21 @@
 // para tests determinísticos y como fallback dev/CI sin Postgres real — mismo rol
 // que InMemoryHotelesRepository/InMemoryRestaurantesRepository.
 import { randomUUID } from "node:crypto";
-import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError } from "./errors.ts";
+import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import type { DespachosRepository } from "./repository.ts";
 import type {
+  CollectionEventRecord,
   DeadlineEscalationRecord,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
   InvoiceReviewStatus,
+  NewCollectionEventInput,
   NewFiscalDeadlineInput,
   NewInvoiceInput,
   NewInvoiceReviewInput,
+  NewReceivableInput,
+  ReceivableRecord,
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
@@ -34,6 +38,9 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly organizations = new Map<string, { id: string; name: string; slug: string; isActive: boolean }>();
   private readonly organizationIdBySlug = new Map<string, string>();
   private readonly despachosProperties = new Map<string, { propertyId: string; organizationId: string; name: string }>();
+  private readonly receivables = new Map<string, ReceivableRecord>();
+  private readonly receivableByInvoice = new Map<string, string>(); // key: invoiceId -> receivableId
+  private readonly collectionEvents = new Map<string, CollectionEventRecord[]>(); // key: receivableId
 
   // ---- Fase 9 — seeding (equivalente a INSERT manual contra las migraciones SQL),
   // mismo rol EXACTO que InMemoryLicitacionesRepository.seedOrganization/
@@ -319,5 +326,76 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     const copia = [...tareas];
     this.tareasCierre.set(periodoId, copia);
     return copia;
+  }
+
+  // ---- Cobranza (Fase 10) ----
+
+  async registerReceivable(input: NewReceivableInput): Promise<ReceivableRecord> {
+    if (this.receivableByInvoice.has(input.invoiceId)) {
+      throw new ReceivableAlreadyExistsError(input.invoiceId);
+    }
+    const id = randomUUID();
+    const record: ReceivableRecord = {
+      id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      invoiceId: input.invoiceId,
+      fechaVencimiento: input.fechaVencimiento,
+      montoPagado: null,
+      pagadoEn: null,
+      createdAt: new Date().toISOString(),
+    };
+    this.receivables.set(id, record);
+    this.receivableByInvoice.set(input.invoiceId, id);
+    return record;
+  }
+
+  async findReceivable(propertyId: string, receivableId: string): Promise<ReceivableRecord | null> {
+    const receivable = this.receivables.get(receivableId);
+    if (!receivable || receivable.propertyId !== propertyId) return null;
+    return receivable;
+  }
+
+  async findReceivableByInvoice(propertyId: string, invoiceId: string): Promise<ReceivableRecord | null> {
+    const id = this.receivableByInvoice.get(invoiceId);
+    if (!id) return null;
+    return this.findReceivable(propertyId, id);
+  }
+
+  async listReceivables(propertyId: string, filter?: { readonly pendiente?: boolean }): Promise<readonly ReceivableRecord[]> {
+    return [...this.receivables.values()]
+      .filter((r) => r.propertyId === propertyId)
+      .filter((r) => !filter?.pendiente || r.pagadoEn === null)
+      .sort((a, b) => (a.fechaVencimiento < b.fechaVencimiento ? -1 : 1));
+  }
+
+  async markReceivablePaid(propertyId: string, receivableId: string, paidAtIso: string, montoPagado: number | null): Promise<ReceivableRecord> {
+    const receivable = this.receivables.get(receivableId);
+    if (!receivable || receivable.propertyId !== propertyId) throw new Error(`Cuenta por cobrar ${receivableId} no encontrada.`);
+    if (receivable.pagadoEn !== null) throw new ReceivableAlreadyPaidError();
+    const updated: ReceivableRecord = { ...receivable, pagadoEn: paidAtIso, montoPagado };
+    this.receivables.set(receivableId, updated);
+    return updated;
+  }
+
+  async insertCollectionEvent(input: NewCollectionEventInput): Promise<CollectionEventRecord> {
+    const record: CollectionEventRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      receivableId: input.receivableId,
+      etapa: input.etapa,
+      canal: input.canal,
+      respuesta: input.respuesta,
+      createdAt: new Date().toISOString(),
+    };
+    const list = this.collectionEvents.get(input.receivableId) ?? [];
+    list.push(record);
+    this.collectionEvents.set(input.receivableId, list);
+    return record;
+  }
+
+  async listCollectionEvents(propertyId: string, receivableId: string): Promise<readonly CollectionEventRecord[]> {
+    return (this.collectionEvents.get(receivableId) ?? []).filter((e) => e.propertyId === propertyId);
   }
 }
