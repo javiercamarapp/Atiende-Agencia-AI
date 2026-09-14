@@ -26,6 +26,27 @@ export function secretMatches(req: Request, header: string, expected: string): b
   return constantTimeEqual(req.headers.get(header), expected);
 }
 
+/**
+ * Variante de `secretMatches` para rutas internas que además deben aceptar un
+ * disparo real de Vercel Cron (ver `vercel.json::crons` y
+ * `routes/verticals/citas/{email-dispatch,reminders,google-calendar-sync}.ts`).
+ * Vercel SIEMPRE invoca un Cron Job con GET y solo sabe mandar el secreto como
+ * `Authorization: Bearer <CRON_SECRET>` (la variable de entorno `CRON_SECRET` del
+ * dashboard de Vercel) — nunca puede mandar el header custom
+ * `x-atiende-internal-secret` que usa una invocación manual/de test. En vez de
+ * mantener dos secretos en paralelo, el operador configura `CRON_SECRET` en
+ * Vercel con el MISMO valor que `INTERNAL_SECRET`; esta función acepta
+ * cualquiera de las dos formas de mandar ese único secreto.
+ */
+export function schedulerSecretMatches(req: Request, expected: string): boolean {
+  if (secretMatches(req, "x-atiende-internal-secret", expected)) return true;
+  const authorization = req.headers.get("authorization");
+  if (!authorization) return false;
+  const match = /^Bearer\s+(.+)$/i.exec(authorization);
+  if (!match) return false;
+  return constantTimeEqual(match[1], expected);
+}
+
 /** El último salto de X-Forwarded-For evita que un prefijo controlado por el caller
  * fabrique un bucket nuevo por request; cf-connecting-ip (proxy confiable) tiene
  * prioridad cuando está presente. */

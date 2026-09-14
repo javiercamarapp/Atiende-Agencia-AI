@@ -18,5 +18,10 @@
     { "source": "/licitaciones/:path*", "destination": "/api" },
     { "source": "/rentas/:path*", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/internal/citas/confirmacion-cita", "schedule": "0 14 * * *" },
+    { "path": "/internal/citas/email-dispatch", "schedule": "5 14 * * *" },
+    { "path": "/internal/citas/google-calendar-sync", "schedule": "10 14 * * *" }
   ]
 }

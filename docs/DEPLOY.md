@@ -142,6 +142,15 @@ npx vercel link
 Project → Settings → Environment Variables. Vercel nunca lee tu `.env` local — hay
 que pegarlas a mano o con `vercel env add`.
 
+**Además, agrega `CRON_SECRET` con el MISMO valor que `INTERNAL_SECRET`.**
+`vercel.json::crons` (3 crons diarios, vertical citas — recordatorio 24h, dispatcher
+de correo, reconciliación de Google Calendar; ver
+`apps/worker/src/jobs/citas/README.md`) dispara un GET real a cada
+`/internal/citas/*` que Vercel autentica mandando
+`Authorization: Bearer $CRON_SECRET` — sin esa variable configurada, el cron sigue
+disparándose pero la ruta responde 401 (fail-closed, nunca despacha nada sin
+autenticarse).
+
 ### (g) `vercel --prod` — revisa esto antes de correrlo
 1. Ya hay `vercel.json` en esta rama — un build ahora mismo SÍ compila (`apps/web` +
    la función `api/index.ts`), a diferencia de la rama anterior.
