@@ -1,0 +1,126 @@
+// Shell del panel de licitaciones (Fase 7) — resuelve sesión + propertyId UNA vez
+// (mismo patrón de descubrimiento que CitasShell.tsx/restaurantes/Dashboard.tsx:
+// la sesión de login nunca trae un propertyId, solo se resuelve al entrar al
+// panel, vía GET /v1/licitaciones/:orgSlug/admin/branches) y le da a las páginas
+// del panel (Convocatorias/detalle) la misma nav lateral y el mismo `role` del
+// staff (para ocultar acciones que el servidor rechazaría igual, cosmético — el
+// enforcement real es SIEMPRE server-side, ver WRITE_ROLES/GO_NO_GO_ROLES).
+// Estilos inline, sin design system nuevo — mismo criterio que el resto de este
+// monorepo (ver README de este vertical).
+import { useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { NavLink } from "react-router-dom";
+import { readPersistedLicitacionesSession } from "./lib/auth-client.ts";
+import type { LoginSession } from "./lib/auth-client.ts";
+import { fetchBranches } from "./lib/admin-client.ts";
+import type { BranchOption } from "./lib/admin-client.ts";
+
+export interface LicitacionesShellContext {
+  readonly apiBaseUrl: string;
+  readonly token: string;
+  readonly propertyId: string;
+  readonly orgSlug: string;
+  /** Rol de la vertical del staff en ESTA organización (owner/admin/analyst/writer/reviewer/viewer,
+   * ver domain-licitaciones/src/roles.ts) — cosmético, para ocultar botones que el
+   * servidor rechazaría igual; nunca la única barrera. */
+  readonly role: string;
+}
+
+export interface LicitacionesShellProps {
+  readonly apiBaseUrl: string;
+  readonly orgSlug: string;
+  readonly onRequireLogin: () => void;
+  readonly children: (ctx: LicitacionesShellContext) => ReactNode;
+}
+
+const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [{ to: "convocatorias", label: "Convocatorias" }];
+
+const linkStyle = (isActive: boolean): CSSProperties => ({
+  display: "block",
+  padding: "8px 12px",
+  borderRadius: 8,
+  fontSize: 14,
+  textDecoration: "none",
+  color: isActive ? "#fff" : "#111827",
+  background: isActive ? "#111827" : "transparent",
+});
+
+export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: LicitacionesShellProps) {
+  const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
+  const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const s = readPersistedLicitacionesSession(window.localStorage);
+    setSession(s);
+    if (!s) onRequireLogin();
+  }, [onRequireLogin]);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const list = await fetchBranches(fetch, apiBaseUrl, session.token, orgSlug);
+        if (!cancelado) setBranches(list);
+      } catch (err) {
+        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar la organización.");
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [session, apiBaseUrl, orgSlug]);
+
+  if (session === undefined) return null; // resolviendo sesión persistida
+  if (!session) return null; // onRequireLogin ya disparó la redirección
+
+  if (error) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+        <p role="alert" style={{ color: "#b91c1c" }}>
+          {error}
+        </p>
+      </main>
+    );
+  }
+
+  if (!branches) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+        <p style={{ color: "#6b7280" }}>Cargando…</p>
+      </main>
+    );
+  }
+
+  if (branches.length === 0) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+        <p role="alert" style={{ color: "#b91c1c" }}>
+          Esta organización todavía no tiene ninguna property configurada.
+        </p>
+      </main>
+    );
+  }
+
+  // §2.1 del diseño Fase 1 — licitaciones opera como property singleton por
+  // organización (a diferencia de hoteles, multi-hotel bajo una sola cuenta): el
+  // panel usa la primera property, mismo criterio que CitasShell.tsx.
+  const propertyId = branches[0]!.propertyId;
+  const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "viewer";
+
+  return (
+    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
+      <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
+        <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Licitaciones · {orgSlug}</p>
+        {NAV_ITEMS.map((item) => (
+          <NavLink key={item.to} to={`/licitaciones/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
+            {item.label}
+          </NavLink>
+        ))}
+        <p style={{ fontSize: 11, color: "#9ca3af", margin: "16px 0 0" }}>Rol: {role}</p>
+      </nav>
+      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}</div>
+    </div>
+  );
+}

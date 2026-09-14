@@ -14,3 +14,45 @@ Archivos: `contracts.ts` (REQ-050/051, máquina de estados del contrato + metada
 - **REQ-054 "ronda 7" del origen** (análisis automatizado de causas de no adjudicación contra la matriz de requisitos, y el enlace automático autopsia→inconformidad vía `sourceAutopsyId`): no portado -- es valor agregado sobre el REQ-054 base (registrar la autopsia + lecciones aprendidas), no el requisito mismo.
 - **REQ-055 "convocatorias históricas de la misma entidad"**: el repo original enriquecía cada alerta de renovación con hasta 5 convocatorias previas de la misma `contracting_body` como contexto de apoyo. Esta fase detecta alertas únicamente a partir de `contracts.end_date` propio, sin ese enriquecimiento.
 - **Sin cola de trabajos (`jobs`)**: a diferencia del repo original, este monorepo no tiene un sistema de colas genérico para ningún vertical -- las "alertas" de cobranza (facturas vencidas) se calculan en vivo en cada lectura (`GET .../contract/receivables`), y las alertas de renovación se persisten directamente como filas consultables (`GET .../renewals/alerts`), nunca como un job encolado para un worker que no existe.
+
+## Fase 7 — endpoints nuevos para el backoffice web (gap: "el panel casi no existe")
+
+El panel web (`apps/web/src/verticals/licitaciones/`, ver su propio README)
+llegaba a Fase 6 con solo una pantalla de login SIN MONTAR en `App.tsx` -- ni
+siquiera el login era alcanzable, y todo lo de abajo (checklist/matching/
+go-no-go/contratos/...) solo era operable vía API cruda. Esta fase agrega los
+endpoints de LECTURA que faltaban para que el panel pudiera existir de verdad,
+sin inventar ninguna regla de negocio nueva -- solo exponer lo que
+`domain-licitaciones` ya calculaba:
+
+- **`admin.ts`** (archivo nuevo): `GET /v1/licitaciones/:orgSlug/admin/branches`
+  -- resuelve propertyId(s) desde el slug de la organización, mismo patrón
+  exacto que `GET /v1/citas/:orgSlug/admin/branches`. Requirió agregar
+  `findOrganizationBySlug`/`listPropertiesForOrganization` a
+  `LicitacionesRepository` (interfaz en `repository.ts`, implementación real
+  en `in-memory-repository.ts` y `postgres-repository.ts` -- esta última lee
+  directo de `core.organization`/`core.property`, sin tabla propia de
+  licitaciones y sin migración SQL nueva, esas tablas del núcleo ya existían
+  desde `0001_core_schema.sql`).
+- **`tenders.ts`** (2 rutas nuevas, mismo archivo ya existente): `GET
+  /licitaciones/:propertyId/tenders` (lista TODAS las convocatorias de la
+  organización con su `TenderRecord` completo) y `GET
+  /licitaciones/:propertyId/tenders/:tenderId` (detalle de una). Antes de esta
+  fase, `GET .../tenders/matching` (Fase 3, matching.ts) era el ÚNICO
+  endpoint de lectura de convocatorias y solo trae `MatchResult`
+  (score/elegibilidad), sin título ni fecha límite -- insuficiente para
+  pintar cualquier lista o ficha real en un panel. El segmento `:tenderId` de
+  la ruta de detalle está restringido a forma de UUID
+  (`:tenderId{[0-9a-fA-F-]{36}}`) porque, sin esa restricción, esta ruta
+  también capturaba `GET .../tenders/matching` tratando "matching" como un
+  tenderId literal -- dos sub-apps Hono montadas en "/" resuelven ambigüedades
+  de ruta por orden de registro, no por especificidad, en este proyecto.
+  Ambas rutas son de solo lectura, sin restricción de rol más allá de
+  membership (mismo criterio que matching.ts: ver el listado no es una
+  decisión).
+
+Ningún endpoint de escritura nuevo en esta fase. El resto del panel visual
+(propuesta técnica/económica, cierre, ejecución del checklist con carga real
+de documentos, contratos/cobranza/inconformidades/autopsia/renovación) sigue
+sin pantalla -- ver la sección "Explícitamente fuera de esta fase" del README
+del lado web.

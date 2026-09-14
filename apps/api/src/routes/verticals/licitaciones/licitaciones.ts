@@ -20,6 +20,7 @@ import { licitacionesContractBillingRoutes } from "./contractBilling.ts";
 import { licitacionesInconformidadRoutes } from "./inconformidad.ts";
 import { licitacionesFalloAutopsyRoutes } from "./falloAutopsy.ts";
 import { licitacionesRenewalRadarRoutes } from "./renewalRadar.ts";
+import { licitacionesAdminRoutes } from "./admin.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -46,5 +47,9 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", licitacionesInconformidadRoutes(deps));
   app.route("/", licitacionesFalloAutopsyRoutes(deps));
   app.route("/", licitacionesRenewalRadarRoutes(deps));
+  // Fase 7 — resolución de propertyId para el panel web de backoffice (§ README
+  // de este directorio: la Fase 1 solo construyó el login, sin este endpoint el
+  // panel no tenía ningún camino real para entrar a ninguna pantalla).
+  app.route("/", licitacionesAdminRoutes(deps));
   return app;
 }
