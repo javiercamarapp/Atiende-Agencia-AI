@@ -35,7 +35,10 @@ export interface LicitacionesShellProps {
   readonly children: (ctx: LicitacionesShellContext) => ReactNode;
 }
 
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [{ to: "convocatorias", label: "Convocatorias" }];
+const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
+  { to: "convocatorias", label: "Convocatorias" },
+  { to: "perfil-matching", label: "Perfil de matching" },
+];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
   display: "block",

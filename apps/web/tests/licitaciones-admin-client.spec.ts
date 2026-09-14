@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LicitacionesAdminError, fetchBranches, fetchJson, postJson } from "../src/verticals/licitaciones/lib/admin-client.ts";
+import { LicitacionesAdminError, fetchBranches, fetchJson, postJson, putJson } from "../src/verticals/licitaciones/lib/admin-client.ts";
 
 function fakeFetch(byUrl: Record<string, { status: number; body: unknown }>): typeof fetch {
   return vi.fn(async (input: string) => {
@@ -50,6 +50,23 @@ describe("postJson", () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof fetch;
     await postJson(fetchImpl, "http://api.local/x", "tok", { a: 1 }, { "idempotency-key": "k1" });
     expect(fetchImpl).toHaveBeenCalledWith("http://api.local/x", expect.objectContaining({ headers: expect.objectContaining({ "idempotency-key": "k1" }) }));
+  });
+});
+
+describe("putJson", () => {
+  it("manda PUT con content-type json y el body serializado", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof fetch;
+    const result = await putJson(fetchImpl, "http://api.local/matching-profile", "tok", { keywords: ["x"] });
+    expect(result).toEqual({ ok: true });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://api.local/matching-profile",
+      expect.objectContaining({ method: "PUT", headers: { authorization: "Bearer tok", "content-type": "application/json" }, body: JSON.stringify({ keywords: ["x"] }) }),
+    );
+  });
+
+  it("respuesta no-ok -> LicitacionesAdminError leyendo message o error", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No tienes permiso." }), { status: 403 })) as unknown as typeof fetch;
+    await expect(putJson(fetchImpl, "http://api.local/matching-profile", "tok", {})).rejects.toThrow("No tienes permiso.");
   });
 });
 

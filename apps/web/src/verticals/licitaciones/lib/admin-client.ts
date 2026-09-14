@@ -1,6 +1,7 @@
 // Cliente HTTP genérico del panel de licitaciones (Fase 7) — mismo rol exacto
-// que citas/lib/admin-client.ts: `fetchJson`/`postJson` inyectan `fetchImpl`
-// (nunca `globalThis.fetch` directo) para poder probarlos con vitest sin DOM, y
+// que citas/lib/admin-client.ts: `fetchJson`/`postJson`/`putJson` inyectan
+// `fetchImpl` (nunca `globalThis.fetch` directo) para poder probarlos con
+// vitest sin DOM, y
 // `fetchBranches` resuelve el propertyId real desde el slug de la organización
 // (la sesión de login, ../../../lib/auth-client.ts, solo trae
 // {id, slug, nombre, vertical, rol}, nunca un propertyId — ver
@@ -68,6 +69,19 @@ export async function postJson<T>(
       body: JSON.stringify(payload),
     }),
   );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new LicitacionesAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
+export async function putJson<T>(fetchImpl: typeof fetch, url: string, token: string, payload: unknown = {}, extraHeaders: Record<string, string> = {}): Promise<T> {
+  const res = await fetchImpl(url, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...extraHeaders },
+    body: JSON.stringify(payload),
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
     throw new LicitacionesAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);

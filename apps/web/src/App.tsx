@@ -35,6 +35,7 @@ import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx"
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
+import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
 import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
@@ -392,6 +393,17 @@ function LicitacionesConvocatoriaDetalleRoute() {
   );
 }
 
+function LicitacionesPerfilMatchingRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <PerfilMatchingPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 function DespachosLoginRoute() {
   const navigate = useNavigate();
   return (
@@ -498,6 +510,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
+        <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />

@@ -40,10 +40,30 @@ con datos reales de principio a fin (sin mocks fuera de los tests):
   integridad (`GET .../checklist`, L1 · Flujo 1).
 - `lib/*.ts` — un cliente HTTP tipado por dominio (`admin-client.ts` con los
   helpers compartidos + resolución de property, `tenders-client.ts`,
-  `matching-client.ts`, `go-no-go-client.ts`, `checklist-client.ts`,
-  `format.ts`), todos con `fetchImpl` inyectado (nunca `globalThis.fetch`
-  directo) para poder probarlos con vitest en entorno "node" — mismo criterio
-  que `citas/lib/*.ts`.
+  `matching-client.ts`, `matching-profile-client.ts`, `go-no-go-client.ts`,
+  `checklist-client.ts`, `format.ts`), todos con `fetchImpl` inyectado (nunca
+  `globalThis.fetch` directo) para poder probarlos con vitest en entorno
+  "node" — mismo criterio que `citas/lib/*.ts`.
+
+## Fase 8 — perfil de matching (gap ALTA de auditoría: "la columna Score/elegibilidad es inservible hasta hacer un PUT por curl")
+
+- `pages/PerfilMatching.tsx` — formulario de los 7 campos del perfil
+  (keywords, excludedKeywords, classifierCodes, entities, states, budgetMin,
+  budgetMax; `GET`/`PUT .../matching-profile`, Fase 3 pieza 2,
+  `matchingProfile.ts`). Antes de esta fase, `GET`/`PUT` ya existían en el
+  backend (el `PUT` ya restringido a `WRITE_ROLES`) pero eran alcanzables
+  SOLO por curl -- `MatchingEngine.score` (matching-engine.ts) depende de
+  este perfil como única fuente de esos criterios, así que sin esta pantalla
+  la columna "Score" de `Convocatorias.tsx` mostraba "No evaluable" para
+  TODAS las convocatorias de cualquier organización que no supiera hacer el
+  PUT a mano. Mismo criterio de gating cosmético que el resto del panel
+  (`WRITE_ROLES`, `Convocatorias.tsx`): el formulario se oculta (solo lectura)
+  para roles sin permiso, pero el servidor ya rechazaba el `PUT` igual.
+- `lib/matching-profile-client.ts` — `fetchMatchingProfile`/
+  `saveMatchingProfile`, y `putJson` nuevo en `admin-client.ts` (primer `PUT`
+  del panel; hasta esta fase solo existían `fetchJson`/`postJson`).
+- Ruta nueva `/licitaciones/:orgSlug/perfil-matching` en `App.tsx` + entrada
+  de nav en `LicitacionesShell.tsx`.
 
 **Backend nuevo que esta fase tuvo que agregar** (no existía ningún camino de
 lectura para esto, no es capricho de la UI):
@@ -83,10 +103,11 @@ lectura para esto, no es capricho de la UI):
 - **Propuesta técnica/económica y cierre del expediente** (Flujos 2/3,
   `proposalEconomic.ts`/`technicalProposal.ts`/`cierre.ts`) — sin pantalla
   todavía. Es la porción más grande de trabajo restante del panel completo
-  (perfil de matching, requisitos extraídos, secciones de propuesta,
-  aprobaciones, ensamblado del paquete ZIP, contratos/cobranza/
-  inconformidades/autopsia/renovación de Fase 6) — trabajo genuino de varias
-  fases más, no construido aquí. Esta fase deliberadamente completó el tramo
+  (requisitos extraídos, secciones de propuesta, aprobaciones, ensamblado del
+  paquete ZIP, contratos/cobranza/inconformidades/autopsia/renovación de Fase
+  6) — trabajo genuino de varias fases más, no construido aquí. El perfil de
+  matching (antes en esta lista) ya tiene pantalla real desde Fase 8, ver
+  arriba. Esta fase deliberadamente completó el tramo
   MÁS IMPORTANTE (convocatorias + matching + go/no-go, el punto de entrada de
   todo el flujo) de forma honesta y con datos reales de punta a punta, en vez
   de dejar 5 pantallas a medias.
