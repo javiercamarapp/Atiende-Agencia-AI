@@ -20,6 +20,8 @@ import { rentasMensajeriaConversacionesRoutes } from "./mensajeria-conversacione
 import { rentasMensajeriaBorradoresRoutes } from "./mensajeria-borradores.ts";
 import { rentasMensajeriaPlantillasRoutes } from "./mensajeria-plantillas.ts";
 import { rentasMensajeriaPoliticasRoutes } from "./mensajeria-politicas.ts";
+import { rentasEmailDispatchRoutes } from "./email-dispatch.ts";
+import { rentasCheckInRecordatorioRoutes } from "./checkin-recordatorio.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -68,5 +70,11 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasMensajeriaBorradoresRoutes(deps));
   app.route("/", rentasMensajeriaPlantillasRoutes(deps));
   app.route("/", rentasMensajeriaPoliticasRoutes(deps));
+
+  // Fase 9 -- correo transaccional real al huésped (confirmación al crear +
+  // recordatorio de check-in 24-48h antes). Cron interno guardado por
+  // x-atiende-internal-secret, mismo patrón que rentasIcalSyncCronRoutes arriba.
+  app.route("/", rentasEmailDispatchRoutes(deps));
+  app.route("/", rentasCheckInRecordatorioRoutes(deps));
   return app;
 }

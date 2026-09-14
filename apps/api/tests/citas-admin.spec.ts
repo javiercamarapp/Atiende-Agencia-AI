@@ -455,3 +455,139 @@ describe("GET/PATCH /v1/citas/properties/:propertyId/tenant-config — Fase 8", 
     expect(res.status).toBe(403);
   });
 });
+
+// ---- Fase 9 — agente "Lista de espera (simple)": GET de solo-lectura +
+// POST del broadcast manual (ver reminders.ts::runListaEsperaCore para la
+// regla de negocio real). ----
+describe("GET /v1/citas/properties/:propertyId/waitlist", () => {
+  it("lista la lista de espera viva EN ORDEN DE POSICIÓN (FIFO, el primero en anotarse primero)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const first = ctx.citasRepo.seedWaitlistEntry({
+      organizationId: ctx.organizationId,
+      customerPhone: "9990000001",
+      customerName: "Primero",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    });
+    const second = ctx.citasRepo.seedWaitlistEntry({
+      organizationId: ctx.organizationId,
+      customerPhone: "9990000002",
+      customerName: "Segundo",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T11:00:00.000Z",
+    });
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/waitlist`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { waitlist: readonly { id: string; position: number }[] };
+    expect(body.waitlist.map((w) => w.id)).toEqual([first, second]);
+    expect(body.waitlist.map((w) => w.position)).toEqual([1, 2]);
+  });
+
+  it("403 rechaza a un staff que no pertenece a esa property", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${randomUUID()}/waitlist`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /v1/citas/properties/:propertyId/waitlist/broadcast — Fase 9", () => {
+  it("dispara el broadcast manual: encola mensajes reales vía messaging_outbox, en orden de posición, respetando el límite pedido", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const first = ctx.citasRepo.seedWaitlistEntry({
+      organizationId: ctx.organizationId,
+      customerPhone: "9990000001",
+      customerName: "Primero en la fila",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    });
+    ctx.citasRepo.seedWaitlistEntry({
+      organizationId: ctx.organizationId,
+      customerPhone: "9990000002",
+      customerName: "Segundo en la fila",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T11:00:00.000Z",
+    });
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/waitlist/broadcast`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ limit: 1 }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { notified: number; candidates_considered: number; skipped_no_whatsapp_config: boolean };
+    expect(body).toEqual({ notified: 1, candidates_considered: 1, skipped_no_whatsapp_config: false });
+
+    const outbox = ctx.citasRepo.getOutbox();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]!.channel).toBe("whatsapp");
+    expect(outbox[0]!.eventType).toBe("waitlist.slot_available_broadcast");
+    expect(outbox[0]!.dedupeKey.startsWith(`waitlist-broadcast:${first}:`)).toBe(true);
+    expect(ctx.citasRepo.getWaitlistEntry(first)?.notifiedCount).toBe(1);
+  });
+
+  it("400 si limit excede el techo real MAX_LISTA_ESPERA_LIMIT (20)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/waitlist/broadcast`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ limit: 21 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("400 si provider_id no es un proveedor real de esta organización", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/waitlist/broadcast`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ provider_id: randomUUID() }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("con lista de espera vacía, responde 0 notificados sin lanzar", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/waitlist/broadcast`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { notified: number; candidates_considered: number };
+    expect(body).toEqual({ notified: 0, candidates_considered: 0, skipped_no_whatsapp_config: false });
+  });
+
+  it("403 rechaza a un staff que no pertenece a esa property", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/citas/properties/${randomUUID()}/waitlist/broadcast`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(res.status).toBe(403);
+  });
+});

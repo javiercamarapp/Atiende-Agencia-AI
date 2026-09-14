@@ -81,6 +81,9 @@ export {
   MAINTENANCE_TICKET_MANAGE_ROLES,
   HOUSEKEEPING_SHIFT_PUBLISH_ROLES,
   ATTENDANCE_ADMIN_ROLES,
+  REVENUE_GATE_MANAGE_ROLES,
+  REVENUE_AUTOPILOT_APPROVAL_ROLES,
+  REVENUE_BACKTEST_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
 
@@ -241,3 +244,74 @@ export type {
   StaffScheduleRecord,
   NewStaffScheduleInput,
 } from "./types.ts";
+
+// ---- Fase 9 — REQ-REV-003/004/005/007: motor de revenue management (pricing) ----
+export {
+  REVENUE_GATE_STATES,
+  MIN_SHADOW_DAYS,
+  PROPONE_VARIATION_PCT_MIN,
+  PROPONE_VARIATION_PCT_MAX,
+  RevenueGateError,
+  daysElapsed,
+  hasMetMinimumShadowPeriod,
+  isPromotion,
+  isDemotion,
+  evaluateGateTransition,
+  assertValidProponeVariationPct,
+  isPriceChangeWithinProponeLimit,
+  evaluateRevenueProposal,
+} from "./revenue/revenueEngineGate.ts";
+export type {
+  RevenueGateState,
+  PromotionContext,
+  GateTransitionEvaluation,
+  RevenueProposalCheck,
+} from "./revenue/revenueEngineGate.ts";
+
+export { buildWalkForwardWindows, evaluateWalkForwardBacktest } from "./revenue/walkForwardBacktest.ts";
+export type {
+  CounterfactualMethod,
+  DailyPricingRecord,
+  WalkForwardWindowSpec,
+  WalkForwardWindow,
+  WindowEvaluation,
+  WalkForwardBacktestInput,
+  WalkForwardBacktestResult,
+} from "./revenue/walkForwardBacktest.ts";
+
+export {
+  PriceExplanationError,
+  assertValidPriceRecommendationInput,
+  explainPriceRecommendation,
+} from "./revenue/priceRecommendationExplainer.ts";
+export type {
+  PickupFactor,
+  CompsetFactor,
+  EventoFactor,
+  TipoCambioFactor,
+  PriceFactor,
+  PriceFactorKind,
+  PriceRecommendationInput,
+  ExplainedFactor,
+  PriceDirection,
+  PriceRecommendationExplanation,
+} from "./revenue/priceRecommendationExplainer.ts";
+
+export {
+  PARITY_MODES,
+  ParityGuardError,
+  assertValidParityChannelConfig,
+  assertValidParityGuardConfig,
+  computeParityFloor,
+  evaluateParityGuard,
+} from "./revenue/parity-guard.ts";
+export type {
+  ParityMode,
+  ParityChannelConfig,
+  ParityGuardConfig,
+  ParityChannelViolation,
+  ParityCheckResult,
+} from "./revenue/parity-guard.ts";
+
+export { BenchmarkGuardError, assertBenchmarkQueryAllowed } from "./revenue/compsetGuard.ts";
+export type { BenchmarkQueryRequest } from "./revenue/compsetGuard.ts";

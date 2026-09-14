@@ -20,7 +20,7 @@
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { ALL_VERTICALS } from "@atiende/domain-citas";
+import { ALL_VERTICALS, DEFAULT_LISTA_ESPERA_LIMIT, MAX_LISTA_ESPERA_LIMIT, runListaEsperaCore, sortWaitlistByPosition } from "@atiende/domain-citas";
 import type {
   AppointmentRecord,
   CitasRepository,
@@ -33,6 +33,7 @@ import type {
   ServiceRecord,
   TenantConfigPatch,
   TenantConfigRecord,
+  WaitlistCandidateRow,
 } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -65,6 +66,29 @@ function serializeCustomer(customer: CustomerRecord) {
 
 function serializeTenantConfig(config: TenantConfigRecord) {
   return { organization_id: config.organizationId, rubro: config.rubro, default_timezone: config.defaultTimezone, owner_notification_phone: config.ownerNotificationPhone };
+}
+
+// ---- Gap real de paridad — agente "Lista de espera (simple)": el broadcast
+// MANUAL que el staff dispara desde el panel cuando libera un espacio "a mano"
+// (ver packages/domain-citas/src/reminders.ts::runListaEsperaCore para la regla
+// de negocio completa: FIFO por posición en la lista, tope real de 3
+// notificaciones por cliente, encola siempre vía citas.messaging_outbox). ----
+
+/** `position` es 1-based (posición humana en la fila, no índice de arreglo). */
+function serializeWaitlistCandidate(row: WaitlistCandidateRow, position: number) {
+  return {
+    id: row.id,
+    position,
+    customer_name: row.customerName,
+    customer_phone: row.customerPhone,
+    provider_id: row.providerId,
+    service_id: row.serviceId,
+    preferred_date_from: row.preferredDateFrom,
+    preferred_date_to: row.preferredDateTo,
+    preferred_time_window: row.preferredTimeWindow,
+    notified_count: row.notifiedCount,
+    created_at: row.createdAt,
+  };
 }
 
 // ============================================================================
@@ -293,6 +317,9 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     "/v1/citas/properties/:propertyId/customers/:customerId",
     // Fase 8 — citas.tenant_config (port de ConfiguracionSection.tsx del origen).
     "/v1/citas/properties/:propertyId/tenant-config",
+    // Fase 9 — agente "Lista de espera (simple)": ver GET/POST más abajo.
+    "/v1/citas/properties/:propertyId/waitlist",
+    "/v1/citas/properties/:propertyId/waitlist/broadcast",
   ];
   for (const path of propertyScopedPaths) {
     app.use(path, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
@@ -569,6 +596,75 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const upcoming = await citasRepo.listActiveAppointmentsForCustomer(organizationId, customerId, new Date().toISOString());
     const enriched = await enrichAppointments(citasRepo, organizationId, upcoming);
     return c.json({ customer: serializeCustomer(customer), upcoming_appointments: enriched });
+  });
+
+  // ---- Fase 9 — GET solo-lectura de la lista de espera viva, en el MISMO orden
+  // FIFO que `runListaEsperaCore` notifica de verdad (ver sortWaitlistByPosition)
+  // — para que el staff vea a quién le toca antes de decidir si dispara el
+  // broadcast. Filtros opcionales por proveedor/servicio, mismo criterio que el
+  // broadcast (provider_id/service_id null en la fila = "sin preferencia", nunca
+  // se excluye por eso). ----
+  app.get("/v1/citas/properties/:propertyId/waitlist", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const providerId = c.req.query("provider_id") || undefined;
+    const serviceId = c.req.query("service_id") || undefined;
+
+    const candidates = await citasRepo.loadLiveWaitlistCandidates(organizationId);
+    const filtered = sortWaitlistByPosition(
+      candidates
+        .filter((row) => !providerId || row.providerId === null || row.providerId === providerId)
+        .filter((row) => !serviceId || row.serviceId === null || row.serviceId === serviceId),
+    );
+    return c.json({ waitlist: filtered.map((row, i) => serializeWaitlistCandidate(row, i + 1)) });
+  });
+
+  interface WaitlistBroadcastBody {
+    readonly provider_id?: unknown;
+    readonly service_id?: unknown;
+    readonly limit?: unknown;
+  }
+
+  // ---- Fase 9 — CIERRA el gap real: hasta ahora `citas.appointment_waitlist`
+  // solo se leía/matcheaba AUTOMÁTICAMENTE al cancelar/reagendar
+  // (runOptimizadorCore, match fino, UN solo ganador) — no había ningún
+  // mecanismo de broadcast MANUAL disparado por el staff (ver
+  // packages/domain-citas/src/reminders.ts::runListaEsperaCore para la regla de
+  // negocio real: FIFO por posición en la lista, tope real de
+  // MAX_WAITLIST_NOTIFICATIONS por cliente, encola siempre vía
+  // citas.messaging_outbox — nunca habla directo con la API de WhatsApp). El
+  // staff decide "notificar a la lista de espera de este horario/servicio que
+  // se acaba de liberar" (ej. amplió su propio horario ese día, un caso que
+  // nunca pasa por cancelar-cita/reagendar-cita) y esta ruta encola los
+  // mensajes reales. ----
+  app.post("/v1/citas/properties/:propertyId/waitlist/broadcast", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<WaitlistBroadcastBody>(c.req.raw, 1024);
+
+    const providerId = optionalNonEmptyString(raw.provider_id, "provider_id", 100);
+    const serviceId = optionalNonEmptyString(raw.service_id, "service_id", 100);
+    // Límite razonable de destinatarios por corrida — validado aquí (400 claro
+    // para el staff si pide de más) Y recortado de nuevo dentro de
+    // runListaEsperaCore (defensa en profundidad para cualquier otro caller
+    // futuro que no pase por esta ruta).
+    const limit = optionalPositiveInt(raw.limit, "limit", MAX_LISTA_ESPERA_LIMIT) ?? DEFAULT_LISTA_ESPERA_LIMIT;
+
+    if (providerId !== undefined) {
+      const provider = await citasRepo.findProvider(organizationId, providerId);
+      if (!provider) throw Errors.validation(`provider_id: "${providerId}" no es un proveedor de este negocio.`);
+    }
+    if (serviceId !== undefined) {
+      const service = await citasRepo.findService(organizationId, serviceId);
+      if (!service) throw Errors.validation(`service_id: "${serviceId}" no es un servicio de este negocio.`);
+    }
+
+    const summary = await runListaEsperaCore(citasRepo, organizationId, { providerId, serviceId }, limit);
+    return c.json({
+      notified: summary.notified,
+      candidates_considered: summary.candidatesConsidered,
+      skipped_no_whatsapp_config: summary.skippedNoWhatsappConfig,
+    });
   });
 
   return app;

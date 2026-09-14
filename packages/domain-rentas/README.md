@@ -75,3 +75,53 @@ cabecera de `src/limpieza/aplicacion/tareas.ts`) para el detalle completo; resum
   queda vacío — sin dispatcher propio para este lote), endpoint de escritura de la
   configuración operativa por property (defaults de `CONFIGURACION_OPERATIVA_DEFECTO`
   vía `rentas.property_config`).
+
+## Correo transaccional al huésped (Fase 9)
+
+Cierra el gap identificado por auditoría: el repo original enviaba automáticamente 2
+correos reales al huésped (confirmación al crear la reserva, recordatorio 24-48h
+antes del check-in) — `apps/api/.../rentas/reservas.ts` documentaba explícitamente
+ese envío como diferido ("no hay motor de correo migrado a atiende-fusion todavía"),
+aunque `domain-citas` ya había traído el motor real (Resend, `messaging_outbox`
+`channel='email'`) en su propia Fase 6 §3. Esta fase lo porta a `rentas`:
+
+- **`rentas.messaging_outbox`** (migrations/011) — MISMO shape de fila que
+  `hoteles.messaging_outbox` (particiona por `property_id`, no por `organization_id`)
+  + `claim_email_outbox_batch`/`complete_email_outbox_job` acotados a `channel='email'`
+  (mismo patrón que `citas.claim_email_outbox_batch`).
+- **`src/emails/reserva-templates.ts`** (+ `layout.ts`, DUPLICADO deliberado del
+  layout de `domain-citas` — mismo criterio de aislamiento por paquete que el resto
+  del monorepo) — `correoReservaConfirmada`/`correoReservaRecordatorioCheckIn`.
+  Deliberadamente DISTINTAS de `src/mensajeria/plantillas.ts` (H-056, Fase 7): estos
+  dos correos son **transaccionales/deterministas** (una plantilla fija con los datos
+  reales de la reserva), **nunca pasan por `colaAprobacion.ts`** — a diferencia del
+  borrador de mensajería de canal (Airbnb/Vrbo/Booking, con o sin IA), que SIEMPRE
+  exige aprobación humana antes de salir.
+- **`src/reserva-email-notifications.ts`** — `enqueueReservaEmailCore`/
+  `tryEnqueueReservaEmail`, autosuficientes a partir de solo un `ocupacionId` (mismo
+  principio que `domain-citas::appointment-email-notifications.ts`). Solo encola para
+  una reserva DIRECTA `capa='reserva' AND estado='confirmado'` con un `contacto` de
+  huésped que calce un patrón de correo real — nunca para un bloqueo, nunca para una
+  `provisional`/`conflicto_pendiente`, nunca si el único dato de contacto es un
+  teléfono.
+- **`src/email-dispatch.ts`** — envío real fail-closed vía Resend (`fetch` nativo),
+  mismo criterio que `domain-citas::email-dispatch.ts`: sin `RESEND_API_KEY`
+  configurada, siempre lanza; un job JAMÁS se marca `'sent'` sin que Resend en verdad
+  lo haya aceptado.
+- **`src/checkin-reminders.ts`** — `runRecordatorioCheckInCore`, el cron de
+  recordatorio: como `rentas.ocupacion.rango` es una fecha de calendario (`YYYY-MM-DD`,
+  nunca un timestamp con hora — ver `fechas.ts`, README Fase 1 §1-#8), la ventana
+  "24-48h antes" se expresa como `[hoy+1, hoy+2]` en días de calendario, calculada con
+  el mismo `Date.UTC` puro del resto del paquete. `rentas.ocupacion.
+  recordatorio_checkin_enviado_en` (belt-and-suspenders sobre el dedupe_key real del
+  outbox, mismo criterio que `citas.appointments.reminder_24h_sent_at`) se marca SOLO
+  tras encolar con éxito — una reserva sin correo real del huésped se deja sin marcar
+  a propósito, para que una corrida futura la reintente si el dato cambia.
+- **Rutas HTTP**: `POST /rentas/:propertyId/unidades/:unidadId/reservas` llama
+  `tryEnqueueReservaEmail(..., "reserva.creada", ...)` tras crear la reserva
+  (best-effort real: nunca convierte en error una reserva que ya se creó con éxito).
+  `POST /internal/rentas/email-dispatch` (drena el outbox) y
+  `POST /internal/rentas/checkin-recordatorio` (corre el cron) — mismo patrón/guard
+  `x-atiende-internal-secret` que `ical-sync-cron.ts`; quién los dispara y cada
+  cuánto es una decisión de infraestructura pendiente (mismo criterio que el resto de
+  crons internos de este monorepo, ninguno tiene entrada en `vercel.json` todavía).
