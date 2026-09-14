@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { InMemoryDespachosRepository } from "../src/in-memory-repository.ts";
 import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError } from "../src/errors.ts";
 import type { NewInvoiceInput } from "../src/types.ts";
+import { DEFAULT_MONTHLY_CLOSE_TEMPLATE } from "../src/cierre-mensual/templates.ts";
+import { completarTarea } from "../src/cierre-mensual/engine.ts";
 
 function invoiceInput(overrides: Partial<NewInvoiceInput> = {}): NewInvoiceInput {
   return {
@@ -104,5 +106,51 @@ describe("InMemoryDespachosRepository — vencimientos fiscales", () => {
     const vencidos = await repo.listDeadlines("prop-1", { estado: "vencido" });
     expect(vencidos).toHaveLength(1);
     expect(vencidos[0]!.id).toBe(d1.id);
+  });
+});
+
+describe("InMemoryDespachosRepository — cierre mensual (Fase 6)", () => {
+  it("insertPeriodoCierre arma las 15 tareas de la plantilla con depends_on resueltos a IDs reales", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const { periodo, tareas } = await repo.insertPeriodoCierre({ organizationId: "org-1", propertyId: "prop-1", anio: 2026, mes: 3, template: DEFAULT_MONTHLY_CLOSE_TEMPLATE });
+    expect(periodo.status).toBe("open");
+    expect(tareas).toHaveLength(15);
+
+    const cfdiVerificado = tareas.find((t) => t.title === "Verificar CFDIs del mes procesados")!;
+    const folios = tareas.find((t) => t.title === "Validar folios fiscales y sellos")!;
+    expect(folios.status).toBe("blocked");
+    expect(folios.dependsOn).toEqual([cfdiVerificado.id]); // key "cfdi_verificado" resuelta a un UUID real, no la key en texto.
+
+    expect(await repo.findPeriodoCierre("prop-1", periodo.id)).toEqual(periodo);
+    expect(await repo.findPeriodoCierrePorAnioMes("prop-1", 2026, 3)).toEqual(periodo);
+    expect(await repo.listTareasCierre(periodo.id)).toEqual(tareas);
+  });
+
+  it("replaceTareasCierre persiste el resultado de completarTarea (desbloqueo incluido)", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const { periodo, tareas } = await repo.insertPeriodoCierre({ organizationId: "org-1", propertyId: "prop-1", anio: 2026, mes: 3, template: DEFAULT_MONTHLY_CLOSE_TEMPLATE });
+    const cfdiVerificado = tareas.find((t) => t.title === "Verificar CFDIs del mes procesados")!;
+    const actualizadas = completarTarea(tareas, cfdiVerificado.id, "user-1", new Date().toISOString());
+    const persistidas = await repo.replaceTareasCierre(periodo.id, actualizadas);
+    expect(await repo.listTareasCierre(periodo.id)).toEqual(persistidas);
+    const folios = persistidas.find((t) => t.title === "Validar folios fiscales y sellos")!;
+    expect(folios.status).toBe("pending");
+  });
+
+  it("updatePeriodoCierre persiste el cierre", async () => {
+    const repo = new InMemoryDespachosRepository();
+    const { periodo } = await repo.insertPeriodoCierre({ organizationId: "org-1", propertyId: "prop-1", anio: 2026, mes: 3, template: DEFAULT_MONTHLY_CLOSE_TEMPLATE });
+    const cerrado = { ...periodo, status: "closed" as const, closedAt: new Date().toISOString(), closedBy: "admin-1" };
+    await repo.updatePeriodoCierre(cerrado);
+    expect(await repo.findPeriodoCierre("prop-1", periodo.id)).toEqual(cerrado);
+  });
+
+  it("listPeriodosCierre solo devuelve los períodos de la property pedida", async () => {
+    const repo = new InMemoryDespachosRepository();
+    await repo.insertPeriodoCierre({ organizationId: "org-1", propertyId: "prop-1", anio: 2026, mes: 1, template: DEFAULT_MONTHLY_CLOSE_TEMPLATE });
+    await repo.insertPeriodoCierre({ organizationId: "org-1", propertyId: "prop-2", anio: 2026, mes: 1, template: DEFAULT_MONTHLY_CLOSE_TEMPLATE });
+    const periodos = await repo.listPeriodosCierre("prop-1");
+    expect(periodos).toHaveLength(1);
+    expect(periodos[0]!.propertyId).toBe("prop-1");
   });
 });

@@ -9,7 +9,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { validarCfdiDespachos, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES } from "@atiende/domain-despachos";
+import { validarCfdiDespachos, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
 import type { CategoriaContable, DatosCfdiDespachos, InvoiceRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -164,6 +164,26 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<IngestaCfdiBody>(c.req.raw, 64 * 1024);
     const { categoria, ...datos } = parseIngestaBody(raw);
+
+    // Fase 6 (cierre mensual) — bloqueo de edición de movimientos ya cerrados:
+    // funcionalidad NUEVA (ver domain-despachos/src/errors.ts,
+    // `PeriodoCerradoError`, y el comentario de cabecera de
+    // `cierre-mensual/engine.ts` — ni close_management ni monthly_close del
+    // origen Python implementan este bloqueo en ningún punto real de
+    // escritura). Se engancha aquí, en la ingesta de CFDI, porque es el único
+    // flujo de escritura de "movimientos" que ya existe en esta vertical; el
+    // período se resuelve por (property, año, mes) de la FECHA del propio
+    // CFDI (`datos.fecha`, "YYYY-MM-DD") — sin fecha no hay período que
+    // resolver, así que el chequeo se omite (no se inventa una fecha).
+    if (datos.fecha) {
+      const [anioStr, mesStr] = datos.fecha.split("-");
+      const anio = Number(anioStr);
+      const mes = Number(mesStr);
+      if (Number.isInteger(anio) && Number.isInteger(mes)) {
+        const periodo = await repo.findPeriodoCierrePorAnioMes(propertyId, anio, mes);
+        if (estaPeriodoCerrado(periodo)) throw Errors.despachosPeriodoCerrado(datos.fecha.slice(0, 7));
+      }
+    }
 
     const resultado = validarCfdiDespachos(datos);
 

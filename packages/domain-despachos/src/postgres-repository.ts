@@ -21,6 +21,9 @@ import type {
 import type { DiotResult } from "./cfdi/reglas-fiscales-avanzadas.ts";
 import type { EstadoVencimiento, NivelEscalamiento, PrioridadVencimiento, TipoVencimiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
+import { construirTareasDesdePlantilla } from "./cierre-mensual/engine.ts";
+import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
+import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
 interface MapeoMigracionRawRow {
   id: string;
@@ -184,6 +187,64 @@ interface EscalationRawRow {
 
 function mapEscalation(row: EscalationRawRow): DeadlineEscalationRecord {
   return { id: row.id, deadlineId: row.deadline_id, level: row.level, sentAt: row.sent_at, notes: row.notes };
+}
+
+interface PeriodoCierreRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  anio: number;
+  mes: number;
+  status: ClosePeriod["status"];
+  opened_at: string;
+  closed_at: string | null;
+  closed_by: string | null;
+}
+
+function mapPeriodoCierre(row: PeriodoCierreRawRow): ClosePeriod {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    year: row.anio,
+    month: row.mes,
+    status: row.status,
+    openedAt: row.opened_at,
+    closedAt: row.closed_at,
+    closedBy: row.closed_by,
+  };
+}
+
+interface TareaCierreRawRow {
+  id: string;
+  periodo_cierre_id: string;
+  title: string;
+  description: string;
+  category: CloseTask["category"];
+  status: CloseTask["status"];
+  depends_on: string[];
+  due_date: string | null;
+  auto_check_query: string | null;
+  required: boolean;
+  completed_at: string | null;
+  completed_by: string | null;
+}
+
+function mapTareaCierre(row: TareaCierreRawRow): CloseTask {
+  return {
+    id: row.id,
+    periodId: row.periodo_cierre_id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    status: row.status,
+    dependsOn: row.depends_on ?? [],
+    dueDate: row.due_date,
+    autoCheckQuery: row.auto_check_query,
+    required: row.required,
+    completedAt: row.completed_at,
+    completedBy: row.completed_by,
+  };
 }
 
 export class PostgresDespachosRepository implements DespachosRepository {
@@ -393,5 +454,97 @@ export class PostgresDespachosRepository implements DespachosRepository {
     );
     if (!rows[0]) throw new Error(`Mapeo de migración ${mapeo.id} no encontrado.`);
     return mapMapeoMigracion(rows[0]);
+  }
+
+  // ---- Cierre mensual (Fase 6) ----
+
+  async insertPeriodoCierre(input: NewPeriodoCierreInput): Promise<{ readonly periodo: ClosePeriod; readonly tareas: readonly CloseTask[] }> {
+    const nuevas = construirTareasDesdePlantilla(input.anio, input.mes, input.template);
+
+    const { rows: periodoRows } = await this.db.query<PeriodoCierreRawRow>(
+      `insert into despachos.periodo_cierre (organization_id, property_id, anio, mes)
+       values ($1, $2, $3, $4) returning *;`,
+      [input.organizationId, input.propertyId, input.anio, input.mes],
+    );
+    const periodo = mapPeriodoCierre(periodoRows[0]!);
+
+    // Inserta cada tarea SIN depends_on primero (para conocer sus IDs reales),
+    // luego actualiza depends_on resolviendo las keys de plantilla a esos IDs —
+    // mismo problema que `open_period` resuelve en memoria con `key_to_id`
+    // antes de construir los objetos; aquí se resuelve en dos pasadas de SQL
+    // porque las filas no existen hasta el insert.
+    const keyToId = new Map<string, string>();
+    const insertadas: TareaCierreRawRow[] = [];
+    for (const t of nuevas) {
+      const { rows } = await this.db.query<TareaCierreRawRow>(
+        `insert into despachos.periodo_cierre_tarea
+           (periodo_cierre_id, template_key, title, description, category, status, due_date, auto_check_query, required)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         returning *;`,
+        [periodo.id, t.key, t.title, t.description, t.category, t.status, t.dueDate, t.autoCheckQuery, t.required],
+      );
+      const row = rows[0]!;
+      insertadas.push(row);
+      if (t.key) keyToId.set(t.key, row.id);
+    }
+
+    const tareas: CloseTask[] = [];
+    for (let i = 0; i < nuevas.length; i++) {
+      const t = nuevas[i]!;
+      const row = insertadas[i]!;
+      const dependsOn = t.dependsOnKeys.map((k) => keyToId.get(k)).filter((x): x is string => x !== undefined);
+      if (dependsOn.length > 0) {
+        const { rows } = await this.db.query<TareaCierreRawRow>(`update despachos.periodo_cierre_tarea set depends_on = $1::uuid[] where id = $2 returning *;`, [dependsOn, row.id]);
+        tareas.push(mapTareaCierre(rows[0]!));
+      } else {
+        tareas.push(mapTareaCierre(row));
+      }
+    }
+
+    return { periodo, tareas };
+  }
+
+  async findPeriodoCierre(propertyId: string, periodoId: string): Promise<ClosePeriod | null> {
+    const { rows } = await this.db.query<PeriodoCierreRawRow>(`select * from despachos.periodo_cierre where id = $1 and property_id = $2;`, [periodoId, propertyId]);
+    return rows[0] ? mapPeriodoCierre(rows[0]) : null;
+  }
+
+  async findPeriodoCierrePorAnioMes(propertyId: string, anio: number, mes: number): Promise<ClosePeriod | null> {
+    const { rows } = await this.db.query<PeriodoCierreRawRow>(`select * from despachos.periodo_cierre where property_id = $1 and anio = $2 and mes = $3;`, [propertyId, anio, mes]);
+    return rows[0] ? mapPeriodoCierre(rows[0]) : null;
+  }
+
+  async listPeriodosCierre(propertyId: string): Promise<readonly ClosePeriod[]> {
+    const { rows } = await this.db.query<PeriodoCierreRawRow>(`select * from despachos.periodo_cierre where property_id = $1 order by anio desc, mes desc;`, [propertyId]);
+    return rows.map(mapPeriodoCierre);
+  }
+
+  async listTareasCierre(periodoId: string): Promise<readonly CloseTask[]> {
+    const { rows } = await this.db.query<TareaCierreRawRow>(`select * from despachos.periodo_cierre_tarea where periodo_cierre_id = $1;`, [periodoId]);
+    return rows.map(mapTareaCierre);
+  }
+
+  async updatePeriodoCierre(periodo: ClosePeriod): Promise<ClosePeriod> {
+    const { rows } = await this.db.query<PeriodoCierreRawRow>(
+      `update despachos.periodo_cierre set status = $1, closed_at = $2, closed_by = $3 where id = $4 returning *;`,
+      [periodo.status, periodo.closedAt, periodo.closedBy, periodo.id],
+    );
+    if (!rows[0]) throw new Error(`Período de cierre ${periodo.id} no encontrado.`);
+    return mapPeriodoCierre(rows[0]);
+  }
+
+  async replaceTareasCierre(periodoId: string, tareas: readonly CloseTask[]): Promise<readonly CloseTask[]> {
+    const out: CloseTask[] = [];
+    for (const t of tareas) {
+      const { rows } = await this.db.query<TareaCierreRawRow>(
+        `update despachos.periodo_cierre_tarea
+           set status = $1, depends_on = $2::uuid[], completed_at = $3, completed_by = $4
+         where id = $5 and periodo_cierre_id = $6
+         returning *;`,
+        [t.status, t.dependsOn, t.completedAt, t.completedBy, t.id, periodoId],
+      );
+      if (rows[0]) out.push(mapTareaCierre(rows[0]));
+    }
+    return out;
   }
 }
