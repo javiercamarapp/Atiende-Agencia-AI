@@ -59,6 +59,21 @@ export function mapRentasDomainError(err: RentasDomainError): ApiError {
       return Errors.conflict(err.message);
     case "reserva_no_directa":
       return Errors.rentasReservaNoDirecta();
+    // ---- limpieza/mantenimiento (Fase 8, ver ../../../../packages/domain-rentas/src/limpieza/aplicacion/tareas.ts)
+    // -- ningún HTTP route de este lote está montado todavía (ver README de
+    // domain-rentas, sección "Fuera de fase"); estos casos existen únicamente para
+    // que este switch exhaustivo siga compilando contra RentasErrorCode. ----
+    case "tarea_no_encontrada":
+    case "checklist_item_no_encontrado":
+    case "item_inventario_no_encontrado":
+    case "incidencia_no_encontrada":
+      return Errors.notFound(err.message);
+    case "checklist_incompleto":
+    case "bloqueo_mantenimiento_ya_confirmado":
+      return Errors.conflict(err.message);
+    case "bloqueo_mantenimiento_no_aplicable":
+    case "bloqueo_mantenimiento_sin_rango":
+      return Errors.validation(err.message);
     default: {
       // Exhaustividad: si RentasErrorCode gana un valor nuevo sin actualizar este
       // mapeo, TypeScript marca `err.code` aquí como no asignable a `never`.
