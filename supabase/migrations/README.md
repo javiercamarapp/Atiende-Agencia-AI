@@ -59,6 +59,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 66. `packages/domain-rentas/migrations/011_rentas_email_outbox.sql` — Fase 9 rentas: correo transaccional real al huésped (confirmación de reserva al crearla + recordatorio de check-in 24-48h antes, ambos deterministas/sin IA, distintos del borrador con aprobación humana de la migración 59). Agrega `rentas.messaging_outbox` (mismo shape que `hoteles.messaging_outbox`, partición por `property_id`) + `rentas.claim_email_outbox_batch`/`rentas.complete_email_outbox_job` (mismo patrón acotado a `channel='email'` que la migración 51 de citas) + `rentas.ocupacion.recordatorio_checkin_enviado_en` (belt-and-suspenders sobre el dedupe_key real del outbox, mismo criterio que `citas.appointments.reminder_24h_sent_at`).
 67. `packages/domain-restaurantes/migrations/009_order_notifications.sql` — Fase 9 restaurantes: notificaciones reales de cambio de estado de pedido — cliente por WhatsApp real vía `restaurantes.messaging_outbox` (ya existente desde la migración 54, sin tabla nueva) cuando el pedido pasa a preparando/en_camino/entregado/cancelado, y `restaurantes.staff_order_notification` (bandeja nueva, consultable por polling del panel admin — sin push real disponible en este monorepo, mismo criterio "honesto" que `licitaciones.tender_change_notification`) para pedido nuevo/incidencia/asignación a repartidor.
 
+68. `packages/domain-rentas/migrations/012_break_glass_audit.sql` — Fase 10 rentas: acceso auditado "romper cristal" de un Superadmin de plataforma a los datos de un tenant específico, fuera del flujo normal de RLS — `rentas.break_glass_access_log` (append-only, encadenado por hash POR ORGANIZACIÓN vía trigger SECURITY DEFINER, mismo patrón que la migración 60 de hoteles) con razón obligatoria (`check (char_length(btrim(reason)) >= 20)`) y `result_summary` (qué datos exactos se devolvieron) + `rentas.is_platform_superadmin()` (predicado DB-enforceable: un `core.staff_user` con cero filas de `core.membership`, el mismo invariante que ya documentaba `packages/core-authz/src/impersonation/resolve.ts`). Gap real verificado contra el código de main antes de construirse: el módulo genérico de impersonación (`packages/core-authz/src/impersonation/*`) ya resuelve "qué organización mira este superadmin" y lo anota en una bitácora, pero esa bitácora nunca captura una razón, es best-effort (nunca bloquea), tiene dedupe de una fila por día, y solo existe como adaptador en memoria (ninguna tabla Postgres) — lo opuesto de lo que un incidente de "romper cristal" necesita. Esta migración + `packages/domain-rentas/src/break-glass/*` (TS) reutilizan `SuperadminActor` de core-authz en vez de reinventarlo y cierran la parte que de verdad faltaba.
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -66,8 +68,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000067`; usa
-   `20240101000068`, luego `...069`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000068`; usa
+   `20240101000069`, luego `...070`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
