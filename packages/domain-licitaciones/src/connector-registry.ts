@@ -1,4 +1,11 @@
 // Fase 5 pieza 1 — andamiaje de ingesta (REQ-004/REQ-005/REQ-146..150).
+// Fase 8 agrega el primer conector automatizado REAL (`compras_mx_historico`,
+// ver import de abajo e `import type` circular documentado en
+// `connectors/compras-mx-historico.ts` -- seguro en ESM porque ningún módulo
+// de la cadena usa el valor circular a nivel de módulo, solo dentro de
+// funciones que se invocan después de que todo el grafo terminó de cargar).
+import { createComprasMxHistoricoConnector } from "./connectors/compras-mx-historico.ts";
+import type { LicitacionesSourceConnector } from "./connectors/types.ts";
 //
 // Port ADAPTADO (no literal) de `licitaciones/packages/sources/src/connectors/
 // registry.ts` + `connectors/types.ts` + `http/response-classifier.ts` +
@@ -31,11 +38,23 @@
 //    cada descriptor) en vez de una cadencia fija universal.
 //  - Verificación puntual documentada (REQ-150, tolerancia cero): ningún
 //    conector automatizado se declara `verified: true` sin evidencia real.
-//    Los 5 conectores automatizados de abajo son PLACEHOLDERS deliberados
-//    (`SourceNotConfiguredError` si algo intentara invocarlos) -- reservan su
-//    lugar en el registro único sin fingir una integración que no existe.
+//    5 de los 6 conectores automatizados de abajo siguen siendo PLACEHOLDERS
+//    deliberados (`SourceNotConfiguredError` si algo intentara invocarlos)
+//    -- reservan su lugar en el registro único sin fingir una integración
+//    que no existe. El sexto (`compras_mx_historico`, Fase 8) YA es una
+//    implementación real (ver `connectors/compras-mx-historico.ts`): hace
+//    una petición HTTP real contra el CSV histórico abierto de ComprasMX
+//    (`datos.gob.mx`) y parsea el resultado -- pero un intento real desde
+//    este entorno (2026-09-14) fue bloqueado (403 Access Denied, evidencia
+//    en `tests/fixtures/compras-mx-historico-access-denied.html`), así que
+//    también se registra `verified: false` (REQ-150 exige evidencia PROPIA
+//    de que la fuente responde, no solo código real). "Real pero no
+//    verificado todavía" es un estado válido y distinto de "placeholder sin
+//    implementación" -- por eso `SourceConnectorDescriptor.connector` (más
+//    abajo) está presente ÚNICAMENTE en este descriptor, ausente en los
+//    otros 5.
 
-export const SOURCE_CONNECTOR_IDS = ["manual", "comprasmx", "dof", "ocds_shcp", "pdn_s6", "state_portal"] as const;
+export const SOURCE_CONNECTOR_IDS = ["manual", "comprasmx", "dof", "ocds_shcp", "pdn_s6", "state_portal", "compras_mx_historico"] as const;
 export type SourceConnectorId = (typeof SOURCE_CONNECTOR_IDS)[number];
 
 export function isSourceConnectorId(value: string): value is SourceConnectorId {
@@ -52,29 +71,13 @@ export function isSourceConnectorId(value: string): value is SourceConnectorId {
 export const SOURCE_HEALTH_STATES = ["ok", "down", "captcha_detected", "interface_changed", "permission_missing", "rate_limited", "not_configured"] as const;
 export type SourceHealthState = (typeof SOURCE_HEALTH_STATES)[number];
 
-/** Lanzado por un conector automatizado que aún no tiene configuración/acceso real (REQ-150) -- `classifySourceFailure` (`source-run.ts`) lo mapea a `"not_configured"`, nunca a `"ok"`. */
-export class SourceNotConfiguredError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SourceNotConfiguredError";
-  }
-}
-
-/** Port de `CaptchaDetectedError` del origen -- disponible para que un futuro conector real lo lance sin reinventar la clase. */
-export class CaptchaDetectedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "CaptchaDetectedError";
-  }
-}
-
-/** Port de `InterfaceChangedError` del origen. */
-export class InterfaceChangedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InterfaceChangedError";
-  }
-}
+// Fase 8: `SourceNotConfiguredError`/`CaptchaDetectedError`/`InterfaceChangedError`
+// viven ahora en `connector-errors.ts` (sin imports propios, para romper un
+// ciclo real con `connectors/compras-mx-historico.ts` -- ver el comentario
+// de cabecera de ese archivo para el detalle completo). Se re-exportan aquí
+// tal cual para no romper ningún import existente (`source-run.ts`, tests,
+// `index.ts`).
+export { SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError } from "./connector-errors.ts";
 
 /** Cadencia declarada de una fuente (REQ-146): nunca una cifra universal, siempre documentada contra el límite real observado/recomendado de ESA fuente. */
 export interface SourceCadence {
@@ -92,15 +95,26 @@ export interface SourceLiveVerification {
 export type SourceConnectorKind = "manual" | "automated";
 
 /**
- * Descriptor de un conector registrado. Deliberadamente SIN `discover()`/
- * `fetchDetail()` en esta fase (a diferencia del origen): Fusion no tiene
- * todavía un worker de ingesta programada (ver `apps/worker`, hoy dedicado a
- * otros verticales) ni acceso autorizado a ningún portal real -- el registro
- * documenta la IDENTIDAD, cadencia y estado de verificación de cada fuente
- * (lo que REQ-004/146/150 exigen ya), y el día que exista una implementación
- * real, su función de ingesta se añade a este mismo descriptor sin tocar el
- * resto del registro ni ningún llamador (`kind` ya distingue "manual" de
- * "automated" para ese momento).
+ * Descriptor de un conector registrado. Hasta Fase 8, deliberadamente SIN
+ * `discover()`/`fetchDetail()` (a diferencia del origen): Fusion no tenía
+ * todavía un worker de ingesta programada (ver `apps/worker`) ni acceso
+ * autorizado a ningún portal real -- el registro documentaba solo la
+ * IDENTIDAD, cadencia y estado de verificación de cada fuente (lo que
+ * REQ-004/146/150 exigen ya).
+ *
+ * Fase 8 (`compras_mx_historico`) es el momento que este comentario
+ * anticipaba: "el día que exista una implementación real, su función de
+ * ingesta se añade a este mismo descriptor sin tocar el resto del registro
+ * ni ningún llamador". `connector` es ese campo -- OPCIONAL a nivel de tipo
+ * (los 5 placeholders restantes no lo traen) y presente únicamente en
+ * conectores con una implementación real de `discover()`/`fetchDetail()`
+ * (independientemente de si ya están `liveVerification.verified`, ver
+ * comentario más arriba). Cualquier llamador (el worker de ingesta,
+ * `apps/worker/src/jobs/licitaciones/discover-tenders.ts`) itera
+ * `.all().filter((d) => d.connector)` de forma GENÉRICA -- nunca compara
+ * `id === "compras_mx_historico"` a mano (eso violaría el mismo
+ * `no-provider-branching` que ya protege este archivo, ver
+ * `tests/connector-registry.spec.ts`).
  */
 export interface SourceConnectorDescriptor {
   readonly id: SourceConnectorId;
@@ -109,6 +123,7 @@ export interface SourceConnectorDescriptor {
   readonly termsNote: string;
   readonly cadence: SourceCadence;
   readonly liveVerification: SourceLiveVerification;
+  readonly connector?: LicitacionesSourceConnector;
 }
 
 /**
@@ -198,4 +213,29 @@ export const LICITACIONES_CONNECTOR_REGISTRY = new ConnectorRegistry()
     termsNote: "Cobertura de portales de compras estatales; sin URL/API única (cada estado publica distinto).",
     cadence: { minIntervalMinutes: 60, note: "60 min: se mantiene registrado con cadencia conservadora para que, en cuanto se identifique una URL real verificable, ya tenga cadencia declarada." },
     liveVerification: { verified: false, note: "No verificado: ningún portal estatal específico tiene todavía una URL/API localizada y confirmada." },
+  })
+  // Fase 8 — primer conector automatizado con una implementación REAL (ver
+  // `connectors/compras-mx-historico.ts` para el detalle completo, incluidas
+  // las desviaciones deliberadas respecto del repo origen). Distinto de
+  // "comprasmx" (arriba): ese sigue siendo el conector de convocatorias EN
+  // VIVO, bloqueado por reCAPTCHA; este es el dataset HISTÓRICO de contratos
+  // YA CONCLUIDOS, con su propio SourceId para que ningún consumidor los
+  // confunda (mismo criterio que el repo origen).
+  .register({
+    id: "compras_mx_historico",
+    kind: "automated",
+    label: "ComprasMX — histórico de contratos (CSV, datos.gob.mx)",
+    termsNote: "Dataset abierto CKAN de datos.gob.mx (SABG), documentado por el repo origen como sin reCAPTCHA/auth. Contratos YA CONCLUIDOS (no convocatorias abiertas) -- solo lectura (GET).",
+    cadence: {
+      minIntervalMinutes: 24 * 60,
+      note: "24 h: es un volcado histórico masivo (~950 MB documentados por el repo origen), no una fuente que publique convocatorias nuevas minuto a minuto -- correr más seguido no aporta nada y solo insiste contra un endpoint que hoy bloquea la petición (ver liveVerification).",
+    },
+    liveVerification: {
+      verified: false,
+      note:
+        "No verificado desde este entorno: intento real (HEAD y GET, con y sin User-Agent de navegador) el 2026-09-14 contra la URL del CSV histórico recibió 403 Access Denied (bloqueo de borde tipo Akamai) en ambos casos -- evidencia real capturada en " +
+        "packages/domain-licitaciones/tests/fixtures/compras-mx-historico-access-denied.html. El repo origen documentó `verified: true` con un HEAD real del 2026-09-05, pero REQ-150 exige evidencia PROPIA repetida en este entorno, no heredar la ajena -- " +
+        "el conector (`connectors/compras-mx-historico.ts`) SÍ es una implementación real y completa, y su propio `response-classifier.ts` detecta exactamente este tipo de bloqueo y lo reporta como corrida fallida (`state: 'captcha_detected'`), nunca como '0 registros'.",
+    },
+    connector: createComprasMxHistoricoConnector(),
   });

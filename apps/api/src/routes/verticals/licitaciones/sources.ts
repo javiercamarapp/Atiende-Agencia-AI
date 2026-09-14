@@ -11,9 +11,9 @@
 // una decisión, cualquier miembro de la organización (incluido "viewer")
 // puede leerlo.
 import { Hono } from "hono";
-import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
+import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { LICITACIONES_CONNECTOR_REGISTRY, isSourceConnectorId } from "@atiende/domain-licitaciones";
+import { LICITACIONES_CONNECTOR_REGISTRY, WRITE_ROLES, isSourceConnectorId } from "@atiende/domain-licitaciones";
 import type { SourceConnectorId } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -25,6 +25,9 @@ export function licitacionesSourcesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   app.use(base, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${base}/runs`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(`${base}/freshness`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  // Fase 8 — recordatorios de vencimiento (ver deadline-reminders.ts): mismo montaje doble que hotelesFraudeRoutes (Hono no matchea la ruta exacta con un `use(".../*")` solo).
+  app.use(`${base}/deadline-reminders`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(`${base}/deadline-reminders/*`, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   // Registro único de conectores (REQ-004): identidad, cadencia declarada
   // (REQ-146) y verificación puntual (REQ-150) de cada fuente -- constante de
@@ -57,6 +60,29 @@ export function licitacionesSourcesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const organizationId = c.get("organizationId");
     const freshness = await repo.sourceFreshness(organizationId);
     return c.json({ freshness });
+  });
+
+  // Fase 8 — recordatorios de vencimiento (REQ-051..055-equivalente para plazos de presentación): leer es un rol de cualquier miembro, reconocer ("ya lo vi") exige un rol de escritura (mismo criterio que acknowledgeTenderChangeNotification en tenderVersions.ts).
+  app.get(`${base}/deadline-reminders`, async (c) => {
+    const repo = deps.licitacionesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const tenderId = c.req.query("tenderId");
+    const reminders = await repo.listTenderDeadlineReminders(organizationId, tenderId);
+    return c.json({ reminders });
+  });
+
+  app.post(`${base}/deadline-reminders/:reminderId/ack`, async (c) => {
+    assertVerticalRole(c, WRITE_ROLES);
+    const repo = deps.licitacionesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const actorId = c.get("userId");
+    const reminderId = c.req.param("reminderId");
+    try {
+      const updated = await repo.acknowledgeTenderDeadlineReminder(organizationId, reminderId, actorId);
+      return c.json({ reminder: updated });
+    } catch {
+      throw Errors.notFound("Recordatorio de vencimiento no encontrado.");
+    }
   });
 
   return app;

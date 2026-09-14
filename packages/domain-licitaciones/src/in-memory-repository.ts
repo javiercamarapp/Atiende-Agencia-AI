@@ -49,7 +49,17 @@ import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-v
 import type { PersistedProposalVersion } from "./proposal-version-registry.ts";
 import { WRITE_ROLES } from "./roles.ts";
 import type { LicitacionesRole } from "./roles.ts";
-import type { RecordTenderVersionResult, RequirementFulfillmentMappingRecord, RequirementItemRecord, TenderChangeNotificationRecord } from "./repository.ts";
+import type {
+  RecordTenderVersionResult,
+  RequirementFulfillmentMappingRecord,
+  RequirementItemRecord,
+  TenderChangeNotificationRecord,
+  TenderSourceIngestResult,
+  TenderDeadlineReminderRecord,
+  ScanDeadlineRemindersInput,
+  ScanDeadlineRemindersResult,
+} from "./repository.ts";
+import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
 import { buildGoNoGoDecision } from "./go-no-go.ts";
 import { TenderVersionRegistry, computeTenderSnapshotHash, toRequirementSnapshot } from "./tender-version-registry.ts";
 import type { PersistedTenderVersion, TenderVersionSnapshot } from "./tender-version-registry.ts";
@@ -155,6 +165,10 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly falloAutopsies = new Map<string, FalloAutopsyRecord[]>(); // `${orgId}:${tenderId}` -> autopsias (historial)
   private readonly lessonsLearned = new Map<string, CompanyLessonLearnedRecord[]>(); // orgId -> lecciones (historial, más reciente al final)
   private readonly renewalAlerts = new Map<string, RenewalAlertRecord[]>(); // orgId -> alertas (historial, más reciente al final)
+  // ---- Fase 8: ingesta automática real + recordatorios de plazo ----
+  private readonly tenderBySourceExternalKey = new Map<string, string>(); // `${orgId}:${source}:${externalId}` -> tenderId (fuentes AUTOMATIZADAS -- "manual" sigue usando tenderByExternalKey arriba)
+  private readonly deadlineReminders = new Map<string, TenderDeadlineReminderRecord>(); // reminderId -> recordatorio
+  private readonly deadlineReminderDedupeKeys = new Set<string>(); // `${tenderId}:${fecha calendario del vencimiento}` -- ya se emitió un recordatorio para ese (tender, día)
 
   // ---- Fase 7 pieza 1: organización/property (panel web) ----
   private readonly organizations = new Map<string, { id: string; name: string; slug: string; isActive: boolean }>();
@@ -492,6 +506,129 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   /** Solo pruebas/inspección -- no forma parte de `LicitacionesRepository` (ningún endpoint de Fase 3 la expone, ver diseño §6/§9). */
   listTenderAuditLogForTests(tenderId: string): readonly { action: string; actorId: string; createdAt: string }[] {
     return this.tenderAuditLog.get(tenderId) ?? [];
+  }
+
+  // ---- Fase 8: ingesta automática real (compras_mx_historico) + recordatorios de plazo ----
+
+  async ingestTendersFromSource(organizationId: string, source: SourceConnectorId, records: readonly TenderSourceIngestCandidate[]): Promise<TenderSourceIngestResult> {
+    if (source === "manual") {
+      throw new Error('ingestTendersFromSource: "source" no puede ser "manual" -- ese camino de escritura es upsertTenderManual(), nunca este.');
+    }
+    let created = 0;
+    let updated = 0;
+    const tenders: TenderRecord[] = [];
+    const nowIso = new Date().toISOString();
+
+    for (const rec of records) {
+      const key = `${organizationId}:${source}:${rec.externalId}`;
+      const existingId = this.tenderBySourceExternalKey.get(key);
+      const existing = existingId ? this.tenders.get(existingId) : undefined;
+
+      if (existing) {
+        const updatedTender: TenderRecord = {
+          ...existing,
+          title: rec.title,
+          submissionDeadline: rec.submissionDeadline,
+          contractingBody: rec.contractingBody,
+          cpvCodes: [...rec.cpvCodes],
+          budgetAmount: rec.budgetAmount,
+          currency: rec.currency,
+          state: rec.state,
+          procedureTypeRaw: rec.procedureTypeRaw,
+          updatedAt: nowIso,
+        };
+        this.tenders.set(existing.id, updatedTender);
+        tenders.push(updatedTender);
+        updated += 1;
+        continue;
+      }
+
+      const createdTender: TenderRecord = {
+        id: randomUUID(),
+        organizationId,
+        title: rec.title,
+        submissionDeadline: rec.submissionDeadline,
+        updatedAt: nowIso,
+        source,
+        externalId: rec.externalId,
+        contractingBody: rec.contractingBody,
+        cpvCodes: [...rec.cpvCodes],
+        budgetAmount: rec.budgetAmount,
+        currency: rec.currency,
+        state: rec.state,
+        procedureTypeRaw: rec.procedureTypeRaw,
+        status: "discovered",
+      };
+      this.tenders.set(createdTender.id, createdTender);
+      this.tenderBySourceExternalKey.set(key, createdTender.id);
+      tenders.push(createdTender);
+      created += 1;
+    }
+
+    return { created, updated, tenders };
+  }
+
+  async listActiveOrganizations(): Promise<readonly { id: string }[]> {
+    return [...this.organizations.values()].filter((o) => o.isActive).map((o) => ({ id: o.id }));
+  }
+
+  private static readonly DEADLINE_REMINDER_EXCLUDED_STATUSES = new Set(["cancelled", "lost", "won", "submitted"]);
+
+  async scanUpcomingDeadlineReminders(organizationId: string, input: ScanDeadlineRemindersInput = {}): Promise<ScanDeadlineRemindersResult> {
+    const windowDays = input.windowDays ?? 3;
+    const now = input.nowIso ? new Date(input.nowIso) : new Date();
+    const windowEndMs = now.getTime() + windowDays * 24 * 60 * 60 * 1000;
+
+    const candidates = [...this.tenders.values()].filter((t) => {
+      if (t.organizationId !== organizationId) return false;
+      if (!t.submissionDeadline) return false;
+      const deadlineMs = new Date(t.submissionDeadline).getTime();
+      if (Number.isNaN(deadlineMs)) return false;
+      if (deadlineMs <= now.getTime() || deadlineMs > windowEndMs) return false;
+      const status = t.status ?? "discovered";
+      return !InMemoryLicitacionesRepository.DEADLINE_REMINDER_EXCLUDED_STATUSES.has(status);
+    });
+
+    let created = 0;
+    const createdReminders: TenderDeadlineReminderRecord[] = [];
+    for (const tender of candidates) {
+      const deadlineDateOnly = tender.submissionDeadline!.slice(0, 10);
+      const dedupeKey = `${tender.id}:${deadlineDateOnly}`;
+      if (this.deadlineReminderDedupeKeys.has(dedupeKey)) continue;
+      this.deadlineReminderDedupeKeys.add(dedupeKey);
+
+      const daysRemaining = Math.ceil((new Date(tender.submissionDeadline!).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+      const record: TenderDeadlineReminderRecord = {
+        id: randomUUID(),
+        organizationId,
+        tenderId: tender.id,
+        submissionDeadline: tender.submissionDeadline!,
+        daysRemaining,
+        message: `La convocatoria "${tender.title}" vence el ${tender.submissionDeadline}.`,
+        createdAt: new Date().toISOString(),
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+      };
+      this.deadlineReminders.set(record.id, record);
+      createdReminders.push(record);
+      created += 1;
+    }
+
+    return { scanned: candidates.length, created, reminders: createdReminders };
+  }
+
+  async listTenderDeadlineReminders(organizationId: string, tenderId?: string): Promise<readonly TenderDeadlineReminderRecord[]> {
+    return [...this.deadlineReminders.values()]
+      .filter((r) => r.organizationId === organizationId && (tenderId === undefined || r.tenderId === tenderId))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async acknowledgeTenderDeadlineReminder(organizationId: string, reminderId: string, actorId: string): Promise<TenderDeadlineReminderRecord> {
+    const existing = this.deadlineReminders.get(reminderId);
+    if (!existing || existing.organizationId !== organizationId) throw new Error(`Recordatorio de vencimiento "${reminderId}" no encontrado para la organización "${organizationId}".`);
+    const updated: TenderDeadlineReminderRecord = { ...existing, acknowledgedAt: new Date().toISOString(), acknowledgedBy: actorId };
+    this.deadlineReminders.set(reminderId, updated);
+    return updated;
   }
 
   // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----
