@@ -1,5 +1,5 @@
 // buildProductionLlmGateway — construye el `LlmGateway` REAL (packages/agent-core)
-// compartido por las 4 escaleras de producción que hoy lo necesitan:
+// compartido por las 5 escaleras de producción que hoy lo necesitan:
 //   - restaurantesTurnHandler / hotelesTurnHandler / citasTurnHandler (agentes de
 //     WhatsApp con tool-calling real, ver domain-{restaurantes,hoteles,citas}/src/
 //     whatsapp/llm-turn-handler.ts).
@@ -13,8 +13,12 @@
 //     anticorrupción/no-cifras-económicas/no-decisión-de-negocio y
 //     aprobación humana obligatoria, ver domain-licitaciones/src/
 //     technical-proposal-draft-agent.ts).
+//   - sugerirMatchesLLM (Fase 11 -- nivel 4 de conciliación bancaria de despachos:
+//     propone un match candidato sobre lo que niveles 1-3 deterministas no
+//     resolvieron, SIEMPRE con aprobación humana obligatoria antes de aplicarse,
+//     ver domain-despachos/src/conciliacion/llm-matching-agent.ts).
 //
-// Hasta este cambio, ninguna de las 4 escaleras tenía proveedores registrados —
+// Hasta el cambio original de este módulo, ninguna de las escaleras tenía proveedores registrados —
 // ese era el bloqueante real para "listo a producción, solo pegar API keys" que
 // dejó pendiente `production/deps.ts` (turnHandler/hotelesTurnHandler/
 // citasTurnHandler marcados `notProductionReady`) y `technicalProposal.ts`
@@ -38,7 +42,7 @@
 // `buildProductionDeps()`, que ya está cacheada a nivel de proceso — no hace
 // falta un segundo cache aquí (ver `../production/deps.ts::cached`).
 //
-// UNA escalera de proveedores compartida por las 4 (más el rol *_escalated de
+// UNA escalera de proveedores compartida por las 5 (más el rol *_escalated de
 // cada turn handler, que usa la MISMA escalera): hoy no hay una variable de
 // entorno que distinga un modelo "barato" (rol default) de uno "caro" (rol
 // escalado) — el fallback REAL entre proveedores (Anthropic → OpenAI →
@@ -88,6 +92,16 @@ export const RENTAS_MENSAJERIA_AGENT_ROLE = "rentas:mensajeria_agent";
  *  entre proveedores del propio gateway ya cubre que el primer proveedor
  *  falle. */
 export const LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE = "licitaciones:proposal_draft_agent";
+/** Fase 11 -- nivel 4 (LLM) de conciliación bancaria de despachos: propone un match
+ *  candidato sobre los movimientos que niveles 1-3 (deterministas) no pudieron
+ *  resolver, SIEMPRE pendiente de aprobación humana (ver
+ *  @atiende/domain-despachos::conciliacion/llm-matching-agent.ts::
+ *  DEFAULT_DESPACHOS_CONCILIACION_LLM_ROLE, que este nombre DEBE coincidir exacto --
+ *  mismo criterio que LICITACIONES_REQUIREMENT_EXTRACTOR_ROLE/
+ *  LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE arriba). Sin rol *_escalated propio, mismo
+ *  argumento que RENTAS_MENSAJERIA_AGENT_ROLE: una sugerencia de match es UNA sola
+ *  invocación por movimiento, nunca un loop de varios turnos. */
+export const DESPACHOS_CONCILIACION_LLM_ROLE = "despachos:conciliacion_llm_agent";
 
 const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_WHATSAPP_AGENT_ROLE,
@@ -99,6 +113,7 @@ const ALL_PRODUCTION_ROLES: readonly string[] = [
   LICITACIONES_REQUIREMENT_EXTRACTOR_ROLE,
   RENTAS_MENSAJERIA_AGENT_ROLE,
   LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE,
+  DESPACHOS_CONCILIACION_LLM_ROLE,
 ];
 
 /** Topes conservadores de defensa en profundidad, no una promesa de costo real
