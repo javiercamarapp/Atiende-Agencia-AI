@@ -14,6 +14,12 @@ import { licitacionesMatchingRoutes } from "./matching.ts";
 import { licitacionesGoNoGoRoutes } from "./goNoGo.ts";
 import { licitacionesSourcesRoutes } from "./sources.ts";
 import { licitacionesTenderVersionsRoutes } from "./tenderVersions.ts";
+import { licitacionesContractRoutes } from "./contracts.ts";
+import { licitacionesContractDocumentsRoutes } from "./contractDocuments.ts";
+import { licitacionesContractBillingRoutes } from "./contractBilling.ts";
+import { licitacionesInconformidadRoutes } from "./inconformidad.ts";
+import { licitacionesFalloAutopsyRoutes } from "./falloAutopsy.ts";
+import { licitacionesRenewalRadarRoutes } from "./renewalRadar.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -30,5 +36,15 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // versiones de convocatoria + diff + cascada de invalidación (REQ-017/041/151..155).
   app.route("/", licitacionesSourcesRoutes(deps));
   app.route("/", licitacionesTenderVersionsRoutes(deps));
+  // Fase 6 — seguimiento post-adjudicación (REQ-051..055): máquina de
+  // estados del contrato + cobranza, extracción determinista del contrato
+  // firmado, redactor de inconformidades, autopsia del fallo y radar de
+  // renovaciones.
+  app.route("/", licitacionesContractRoutes(deps));
+  app.route("/", licitacionesContractDocumentsRoutes(deps));
+  app.route("/", licitacionesContractBillingRoutes(deps));
+  app.route("/", licitacionesInconformidadRoutes(deps));
+  app.route("/", licitacionesFalloAutopsyRoutes(deps));
+  app.route("/", licitacionesRenewalRadarRoutes(deps));
   return app;
 }

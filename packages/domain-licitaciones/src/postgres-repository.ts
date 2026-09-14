@@ -6,8 +6,40 @@
 // `licitaciones.can_access_org`/`can_write_org`/`can_decide_org`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { IdempotencyConflictError } from "./errors.ts";
+import { ContractTransitionRejectedError, IdempotencyConflictError } from "./errors.ts";
 import type { GoNoGoDecisionCreateInput, IdempotencyParams, IdempotentResult, LicitacionesRepository, MatchingProfileUpsertInput, RecordTenderVersionResult, TenderChangeNotificationRecord, TenderUpsertInput, TenderUpsertResult } from "./repository.ts";
+import type {
+  AddContractDocumentInput,
+  CompanyLessonLearnedRecord,
+  ConfirmContractExtractedFieldInput,
+  ContractDocumentRecord,
+  ContractExtractedFieldRecord,
+  ContractInvoiceRecord,
+  ContractMetadataUpdateInput,
+  ContractRecord,
+  ContractStatusHistoryRecord,
+  ContractTransitionInput,
+  CreateContractInvoiceInput,
+  CreateFalloAutopsyInput,
+  CreateInconformidadDraftInput,
+  FalloAutopsyRecord,
+  InconformidadDraftRecord,
+  ReceivablesSummary,
+  RenewalAlertRecord,
+  ScanRenewalAlertsInput,
+  ScanRenewalAlertsResult,
+} from "./repository.ts";
+import { CONTRACT_INITIAL_STATUS, checkTransition, isContractStatus } from "./contract-lifecycle.ts";
+import type { ContractStatus } from "./contract-lifecycle.ts";
+import { extractContractFields } from "./contract-extraction.ts";
+import type { ContractFieldKey } from "./contract-extraction.ts";
+import { classifyInvoiceStatus, computePaymentDueDate, summarizeReceivables } from "./contract-billing.ts";
+import { buildInconformidadContent, INCONFORMIDAD_DISCLAIMER } from "./inconformidad.ts";
+import type { InconformidadFundamento } from "./inconformidad.ts";
+import { normalizeOrNoDisponible } from "./fallo-autopsy.ts";
+import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
+import { computeRenewalAlertCandidates, DEFAULT_RENEWAL_LEAD_DAYS } from "./renewal-radar.ts";
+import type { RenewalCandidateContract } from "./renewal-radar.ts";
 import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
@@ -207,6 +239,291 @@ function mapApproval(row: ApprovalRow): Approval {
     status: row.status,
     ...(row.invalidated_at !== null ? { invalidatedAt: row.invalidated_at } : {}),
     ...(row.invalidated_reason !== null ? { invalidatedReason: row.invalidated_reason } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fase 6 -- seguimiento post-adjudicación (REQ-051..055). Mismo patrón de
+// mapeo fila->record que el resto de este archivo (columnas explícitas,
+// nunca `select *`, para que un cambio de esquema se note en el tipo).
+// ---------------------------------------------------------------------------
+
+interface ContractRow {
+  id: string;
+  organization_id: string;
+  tender_id: string;
+  status: ContractStatus;
+  end_date: string | null;
+  contract_number: string | null;
+  has_renewal_option: boolean;
+  renewal_option_notes: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const CONTRACT_COLUMNS =
+  "id, organization_id, tender_id, status, end_date::text as end_date, contract_number, has_renewal_option, renewal_option_notes, created_by, created_at::text as created_at, updated_at::text as updated_at";
+
+function mapContract(row: ContractRow): ContractRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    tenderId: row.tender_id,
+    status: row.status,
+    endDate: row.end_date,
+    contractNumber: row.contract_number,
+    hasRenewalOption: row.has_renewal_option,
+    renewalOptionNotes: row.renewal_option_notes,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+interface ContractStatusHistoryRow {
+  id: string;
+  contract_id: string;
+  from_status: ContractStatus | null;
+  to_status: ContractStatus;
+  reason: string;
+  actor_id: string;
+  evidence_ref: string | null;
+  created_at: string;
+}
+
+function mapContractStatusHistory(row: ContractStatusHistoryRow): ContractStatusHistoryRecord {
+  return {
+    id: row.id,
+    contractId: row.contract_id,
+    fromStatus: row.from_status,
+    toStatus: row.to_status,
+    reason: row.reason,
+    actorId: row.actor_id,
+    evidenceRef: row.evidence_ref,
+    createdAt: row.created_at,
+  };
+}
+
+interface ContractDocumentRow {
+  id: string;
+  contract_id: string;
+  document_label: string;
+  page_count: number;
+  uploaded_by: string;
+  created_at: string;
+}
+
+function mapContractDocument(row: ContractDocumentRow): ContractDocumentRecord {
+  return { id: row.id, contractId: row.contract_id, documentLabel: row.document_label, pageCount: row.page_count, uploadedBy: row.uploaded_by, createdAt: row.created_at };
+}
+
+interface ContractExtractedFieldRow {
+  id: string;
+  contract_document_id: string;
+  field_key: ContractFieldKey;
+  extracted_value: string;
+  source_page: number | null;
+  source_clause: string | null;
+  confidence: string;
+  status: "sugerido" | "confirmado" | "corregido";
+  confirmed_value: string | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  created_at: string;
+}
+
+const CONTRACT_EXTRACTED_FIELD_COLUMNS =
+  "id, contract_document_id, field_key, extracted_value, source_page, source_clause, confidence::text as confidence, status, confirmed_value, confirmed_by, confirmed_at::text as confirmed_at, created_at::text as created_at";
+
+function mapContractExtractedField(row: ContractExtractedFieldRow): ContractExtractedFieldRecord {
+  return {
+    id: row.id,
+    contractDocumentId: row.contract_document_id,
+    fieldKey: row.field_key,
+    extractedValue: row.extracted_value,
+    sourcePage: row.source_page,
+    sourceClause: row.source_clause,
+    confidence: Number(row.confidence),
+    status: row.status,
+    confirmedValue: row.confirmed_value,
+    confirmedBy: row.confirmed_by,
+    confirmedAt: row.confirmed_at,
+    createdAt: row.created_at,
+  };
+}
+
+interface ContractInvoiceRow {
+  id: string;
+  contract_id: string;
+  concepto: string;
+  amount: string;
+  invoice_verified_on: string;
+  due_date: string;
+  legal_reference: string;
+  paid_at: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+const CONTRACT_INVOICE_COLUMNS =
+  "id, contract_id, concepto, amount::text as amount, invoice_verified_on::text as invoice_verified_on, due_date::text as due_date, legal_reference, paid_at::text as paid_at, created_by, created_at::text as created_at";
+
+function mapContractInvoice(row: ContractInvoiceRow): ContractInvoiceRecord {
+  const base = {
+    id: row.id,
+    contractId: row.contract_id,
+    concepto: row.concepto,
+    amount: row.amount,
+    invoiceVerifiedOn: row.invoice_verified_on,
+    dueDate: row.due_date,
+    legalReference: row.legal_reference,
+    paidAt: row.paid_at,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
+  return { ...base, status: classifyInvoiceStatus(base) };
+}
+
+interface InconformidadDraftRow {
+  id: string;
+  organization_id: string;
+  tender_id: string;
+  version: number;
+  status: "borrador" | "revisado";
+  content_hash: string;
+  hechos: string[];
+  agravios: string[];
+  pruebas: string[];
+  fundamentos: InconformidadFundamento[];
+  fallo_notified_on: string;
+  bajo_tratados: boolean;
+  business_days: number;
+  due_date: string;
+  legal_reference: string;
+  viability: InconformidadDraftRecord["viability"];
+  viability_recommendation: string;
+  disclaimer: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+const INCONFORMIDAD_DRAFT_COLUMNS =
+  "id, organization_id, tender_id, version, status, content_hash, hechos, agravios, pruebas, fundamentos, " +
+  "fallo_notified_on::text as fallo_notified_on, bajo_tratados, business_days, due_date::text as due_date, legal_reference, " +
+  "viability, viability_recommendation, disclaimer, reviewed_by, reviewed_at::text as reviewed_at, created_by, created_at::text as created_at";
+
+function mapInconformidadDraft(row: InconformidadDraftRow): InconformidadDraftRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    tenderId: row.tender_id,
+    version: row.version,
+    status: row.status,
+    contentHash: row.content_hash,
+    hechos: row.hechos,
+    agravios: row.agravios,
+    pruebas: row.pruebas,
+    fundamentos: row.fundamentos,
+    falloNotifiedOn: row.fallo_notified_on,
+    bajoTratados: row.bajo_tratados,
+    businessDays: row.business_days,
+    dueDate: row.due_date,
+    legalReference: row.legal_reference,
+    viability: row.viability,
+    viabilityRecommendation: row.viability_recommendation,
+    disclaimer: row.disclaimer,
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
+}
+
+interface FalloAutopsyRow {
+  id: string;
+  organization_id: string;
+  tender_id: string;
+  own_proposal_status: OwnProposalStatus;
+  disqualification_reason: string;
+  own_score: string | null;
+  winner_score: string | null;
+  own_price: string | null;
+  winner_price: string | null;
+  winner_name: string;
+  criteria_comparison: CriteriaComparisonItem[];
+  created_by: string;
+  created_at: string;
+}
+
+const FALLO_AUTOPSY_COLUMNS =
+  "id, organization_id, tender_id, own_proposal_status, disqualification_reason, own_score::text as own_score, winner_score::text as winner_score, " +
+  "own_price::text as own_price, winner_price::text as winner_price, winner_name, criteria_comparison, created_by, created_at::text as created_at";
+
+function mapFalloAutopsy(row: FalloAutopsyRow): FalloAutopsyRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    tenderId: row.tender_id,
+    ownProposalStatus: row.own_proposal_status,
+    disqualificationReason: row.disqualification_reason,
+    ownScore: row.own_score === null ? null : Number(row.own_score),
+    winnerScore: row.winner_score === null ? null : Number(row.winner_score),
+    ownPrice: row.own_price === null ? null : Number(row.own_price),
+    winnerPrice: row.winner_price === null ? null : Number(row.winner_price),
+    winnerName: row.winner_name,
+    criteriaComparison: row.criteria_comparison,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
+}
+
+interface CompanyLessonLearnedRow {
+  id: string;
+  organization_id: string;
+  fallo_autopsy_id: string;
+  tender_id: string;
+  lesson_text: string;
+  created_at: string;
+}
+
+function mapCompanyLessonLearned(row: CompanyLessonLearnedRow): CompanyLessonLearnedRecord {
+  return { id: row.id, organizationId: row.organization_id, falloAutopsyId: row.fallo_autopsy_id, tenderId: row.tender_id, lessonText: row.lesson_text, createdAt: row.created_at };
+}
+
+interface RenewalAlertRow {
+  id: string;
+  organization_id: string;
+  contract_id: string;
+  tender_id: string;
+  predicted_date: string;
+  lead_days: number;
+  confidence: string;
+  status: "pendiente" | "reconocida";
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+  created_at: string;
+}
+
+const RENEWAL_ALERT_COLUMNS =
+  "id, organization_id, contract_id, tender_id, predicted_date::text as predicted_date, lead_days, confidence::text as confidence, status, " +
+  "acknowledged_at::text as acknowledged_at, acknowledged_by, created_at::text as created_at";
+
+function mapRenewalAlert(row: RenewalAlertRow): RenewalAlertRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    contractId: row.contract_id,
+    tenderId: row.tender_id,
+    predictedDate: row.predicted_date,
+    leadDays: row.lead_days,
+    confidence: Number(row.confidence),
+    status: row.status,
+    acknowledgedAt: row.acknowledged_at,
+    acknowledgedBy: row.acknowledged_by,
+    createdAt: row.created_at,
   };
 }
 
@@ -1206,5 +1523,412 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     ]);
 
     return result;
+  }
+
+  // ---------------------------------------------------------------------
+  // Fase 6 -- seguimiento post-adjudicación (REQ-051..055).
+  // ---------------------------------------------------------------------
+
+  private async requireContractRow(organizationId: string, tenderId: string): Promise<ContractRow> {
+    const { rows } = await this.db.query<ContractRow>(`select ${CONTRACT_COLUMNS} from licitaciones.contract where organization_id = $1 and tender_id = $2;`, [organizationId, tenderId]);
+    const row = rows[0];
+    if (!row) throw new Error(`No existe contrato registrado para la convocatoria "${tenderId}" en la organización "${organizationId}".`);
+    return row;
+  }
+
+  async createContract(organizationId: string, tenderId: string, actorId: string): Promise<ContractRecord> {
+    const existing = await this.db.query<{ id: string }>(`select id from licitaciones.contract where organization_id = $1 and tender_id = $2;`, [organizationId, tenderId]);
+    if (existing.rows.length > 0) throw new Error("Ya existe un contrato registrado para esta convocatoria.");
+
+    const { rows } = await this.db.query<ContractRow>(
+      `insert into licitaciones.contract (organization_id, tender_id, status, created_by) values ($1, $2, $3, $4) returning ${CONTRACT_COLUMNS};`,
+      [organizationId, tenderId, CONTRACT_INITIAL_STATUS, actorId],
+    );
+    const contract = rows[0]!;
+    await this.db.query(
+      `insert into licitaciones.contract_status_history (organization_id, contract_id, from_status, to_status, reason, actor_id)
+       values ($1, $2, null, $3, $4, $5);`,
+      [organizationId, contract.id, CONTRACT_INITIAL_STATUS, "Alta del contrato tras adjudicación.", actorId],
+    );
+    return mapContract(contract);
+  }
+
+  async findContractByTender(organizationId: string, tenderId: string): Promise<ContractRecord | null> {
+    const { rows } = await this.db.query<ContractRow>(`select ${CONTRACT_COLUMNS} from licitaciones.contract where organization_id = $1 and tender_id = $2;`, [organizationId, tenderId]);
+    const row = rows[0];
+    return row ? mapContract(row) : null;
+  }
+
+  async updateContractMetadata(organizationId: string, tenderId: string, input: ContractMetadataUpdateInput): Promise<ContractRecord> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const { rows } = await this.db.query<ContractRow>(
+      `update licitaciones.contract set
+         end_date = case when $1::boolean then $2::date else end_date end,
+         contract_number = case when $3::boolean then $4 else contract_number end,
+         has_renewal_option = case when $5::boolean then $6::boolean else has_renewal_option end,
+         renewal_option_notes = case when $7::boolean then $8 else renewal_option_notes end,
+         updated_at = now()
+       where id = $9 and organization_id = $10
+       returning ${CONTRACT_COLUMNS};`,
+      [
+        "endDate" in input,
+        input.endDate ?? null,
+        "contractNumber" in input,
+        input.contractNumber ?? null,
+        "hasRenewalOption" in input,
+        input.hasRenewalOption ?? null,
+        "renewalOptionNotes" in input,
+        input.renewalOptionNotes ?? null,
+        contract.id,
+        organizationId,
+      ],
+    );
+    return mapContract(rows[0]!);
+  }
+
+  async transitionContract(organizationId: string, tenderId: string, input: ContractTransitionInput): Promise<ContractRecord> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const fromStatus = contract.status;
+    if (!isContractStatus(input.toStatus)) {
+      throw new Error(`Estado de contrato desconocido: "${input.toStatus}".`);
+    }
+    const toStatus = input.toStatus;
+    const check = checkTransition(fromStatus, toStatus);
+    if (!check.valid) {
+      throw new ContractTransitionRejectedError(fromStatus, toStatus, check.allowedNextStates);
+    }
+
+    // Mismo patrón de UPDATE condicionado sobre el estado leído que
+    // `upsertTenderManual`/`createGoNoGoDecision` de este archivo -- bajo
+    // READ COMMITTED, dos transiciones concurrentes que parten del MISMO
+    // `fromStatus` nunca pueden tener éxito ambas.
+    const updated = await this.db.query<ContractRow>(
+      `update licitaciones.contract set status = $1, updated_at = now() where id = $2 and organization_id = $3 and status = $4 returning ${CONTRACT_COLUMNS};`,
+      [toStatus, contract.id, organizationId, fromStatus],
+    );
+    if (updated.rows.length === 0) {
+      const current = await this.db.query<{ status: ContractStatus }>(`select status from licitaciones.contract where id = $1 and organization_id = $2;`, [contract.id, organizationId]);
+      const currentStatus = current.rows[0]?.status ?? fromStatus;
+      throw new ContractTransitionRejectedError(currentStatus, toStatus, checkTransition(currentStatus, toStatus).allowedNextStates);
+    }
+
+    await this.db.query(
+      `insert into licitaciones.contract_status_history (organization_id, contract_id, from_status, to_status, reason, actor_id, evidence_ref)
+       values ($1, $2, $3, $4, $5, $6, $7);`,
+      [organizationId, contract.id, fromStatus, toStatus, input.reason, input.actorId, input.evidenceRef],
+    );
+    return mapContract(updated.rows[0]!);
+  }
+
+  async listContractStatusHistory(organizationId: string, tenderId: string): Promise<readonly ContractStatusHistoryRecord[]> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const { rows } = await this.db.query<ContractStatusHistoryRow>(
+      `select id, contract_id, from_status, to_status, reason, actor_id, evidence_ref, created_at::text as created_at
+       from licitaciones.contract_status_history where organization_id = $1 and contract_id = $2 order by created_at asc;`,
+      [organizationId, contract.id],
+    );
+    return rows.map(mapContractStatusHistory);
+  }
+
+  async addContractDocument(
+    organizationId: string,
+    tenderId: string,
+    input: AddContractDocumentInput,
+  ): Promise<{ document: ContractDocumentRecord; fields: readonly ContractExtractedFieldRecord[] }> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const { rows } = await this.db.query<ContractDocumentRow>(
+      `insert into licitaciones.contract_document (organization_id, contract_id, document_label, page_count, uploaded_by)
+       values ($1, $2, $3, $4, $5)
+       returning id, contract_id, document_label, page_count, uploaded_by, created_at::text as created_at;`,
+      [organizationId, contract.id, input.documentLabel, input.pages.length, input.actorId],
+    );
+    const document = mapContractDocument(rows[0]!);
+
+    const extracted = extractContractFields(input.pages);
+    const fields: ContractExtractedFieldRecord[] = [];
+    for (const field of extracted) {
+      const inserted = await this.db.query<ContractExtractedFieldRow>(
+        `insert into licitaciones.contract_extracted_field
+           (organization_id, contract_document_id, field_key, extracted_value, source_page, source_clause, confidence, status)
+         values ($1, $2, $3, $4, $5, $6, $7, 'sugerido')
+         returning ${CONTRACT_EXTRACTED_FIELD_COLUMNS};`,
+        [organizationId, document.id, field.fieldKey, field.value, field.sourcePage, field.sourceClause, field.confidence],
+      );
+      fields.push(mapContractExtractedField(inserted.rows[0]!));
+    }
+    return { document, fields };
+  }
+
+  async listContractDocuments(organizationId: string, tenderId: string): Promise<readonly ContractDocumentRecord[]> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const { rows } = await this.db.query<ContractDocumentRow>(
+      `select id, contract_id, document_label, page_count, uploaded_by, created_at::text as created_at
+       from licitaciones.contract_document where organization_id = $1 and contract_id = $2 order by created_at asc;`,
+      [organizationId, contract.id],
+    );
+    return rows.map(mapContractDocument);
+  }
+
+  async listContractExtractedFields(organizationId: string, tenderId: string, documentId: string): Promise<readonly ContractExtractedFieldRecord[]> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const doc = await this.db.query<{ id: string }>(`select id from licitaciones.contract_document where id = $1 and organization_id = $2 and contract_id = $3;`, [
+      documentId,
+      organizationId,
+      contract.id,
+    ]);
+    if (doc.rows.length === 0) throw new Error(`Documento de contrato "${documentId}" no encontrado.`);
+    const { rows } = await this.db.query<ContractExtractedFieldRow>(
+      `select ${CONTRACT_EXTRACTED_FIELD_COLUMNS} from licitaciones.contract_extracted_field where organization_id = $1 and contract_document_id = $2 order by created_at asc;`,
+      [organizationId, documentId],
+    );
+    return rows.map(mapContractExtractedField);
+  }
+
+  async confirmContractExtractedField(
+    organizationId: string,
+    tenderId: string,
+    fieldId: string,
+    input: ConfirmContractExtractedFieldInput,
+  ): Promise<ContractExtractedFieldRecord> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    if (input.action === "correct" && (!input.correctedValue || input.correctedValue.trim().length === 0)) {
+      throw new Error('correctedValue es obligatorio y no vacío cuando action="correct".');
+    }
+    // El campo debe pertenecer a un documento del contrato de ESTE
+    // `tenderId`, no solo a la organización (mismo criterio de anidamiento
+    // real que el resto de este vertical).
+    const existing = await this.db.query<ContractExtractedFieldRow>(
+      `select f.id, f.contract_document_id, f.field_key, f.extracted_value, f.source_page, f.source_clause, f.confidence::text as confidence,
+              f.status, f.confirmed_value, f.confirmed_by, f.confirmed_at::text as confirmed_at, f.created_at::text as created_at
+       from licitaciones.contract_extracted_field f
+       join licitaciones.contract_document d on d.id = f.contract_document_id and d.organization_id = f.organization_id
+       where f.id = $1 and f.organization_id = $2 and d.contract_id = $3;`,
+      [fieldId, organizationId, contract.id],
+    );
+    if (existing.rows.length === 0) throw new Error(`Campo extraído "${fieldId}" no encontrado para el contrato de la convocatoria "${tenderId}".`);
+
+    const newStatus = input.action === "confirm" ? "confirmado" : "corregido";
+    const confirmedValue = input.action === "confirm" ? existing.rows[0]!.extracted_value : input.correctedValue;
+    const { rows } = await this.db.query<ContractExtractedFieldRow>(
+      `update licitaciones.contract_extracted_field set status = $1, confirmed_value = $2, confirmed_by = $3, confirmed_at = now()
+       where id = $4 and organization_id = $5
+       returning ${CONTRACT_EXTRACTED_FIELD_COLUMNS};`,
+      [newStatus, confirmedValue, input.actorId, fieldId, organizationId],
+    );
+    return mapContractExtractedField(rows[0]!);
+  }
+
+  async createContractInvoice(organizationId: string, tenderId: string, input: CreateContractInvoiceInput): Promise<ContractInvoiceRecord> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const due = computePaymentDueDate(input.invoiceVerifiedOn);
+    const { rows } = await this.db.query<ContractInvoiceRow>(
+      `insert into licitaciones.contract_invoice (organization_id, contract_id, concepto, amount, invoice_verified_on, due_date, legal_reference, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       returning ${CONTRACT_INVOICE_COLUMNS};`,
+      [organizationId, contract.id, input.concepto, input.amount, input.invoiceVerifiedOn, due.dueDate, due.legalReference, input.actorId],
+    );
+    return mapContractInvoice(rows[0]!);
+  }
+
+  async listContractInvoices(organizationId: string, tenderId: string): Promise<readonly ContractInvoiceRecord[]> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const { rows } = await this.db.query<ContractInvoiceRow>(
+      `select ${CONTRACT_INVOICE_COLUMNS} from licitaciones.contract_invoice where organization_id = $1 and contract_id = $2 order by invoice_verified_on asc;`,
+      [organizationId, contract.id],
+    );
+    return rows.map(mapContractInvoice);
+  }
+
+  async markContractInvoicePaid(organizationId: string, tenderId: string, invoiceId: string, _actorId: string): Promise<ContractInvoiceRecord> {
+    const contract = await this.requireContractRow(organizationId, tenderId);
+    const { rows } = await this.db.query<ContractInvoiceRow>(
+      `update licitaciones.contract_invoice set paid_at = now() where id = $1 and organization_id = $2 and contract_id = $3 returning ${CONTRACT_INVOICE_COLUMNS};`,
+      [invoiceId, organizationId, contract.id],
+    );
+    if (rows.length === 0) throw new Error(`Factura "${invoiceId}" no encontrada para el contrato de la convocatoria "${tenderId}".`);
+    return mapContractInvoice(rows[0]!);
+  }
+
+  async receivablesSummary(organizationId: string, tenderId: string): Promise<ReceivablesSummary> {
+    const invoices = await this.listContractInvoices(organizationId, tenderId);
+    const today = new Date().toISOString().slice(0, 10);
+    const totals = summarizeReceivables(
+      invoices.map((inv) => ({ amount: inv.amount, dueDate: inv.dueDate, paidAt: inv.paidAt })),
+      today,
+    );
+    return { asOfDate: today, totalPending: totals.totalPending, totalOverdue: totals.totalOverdue, countPending: totals.countPending, countOverdue: totals.countOverdue, invoices };
+  }
+
+  async createInconformidadDraft(organizationId: string, tenderId: string, input: CreateInconformidadDraftInput): Promise<InconformidadDraftRecord> {
+    const content = buildInconformidadContent({
+      falloNotifiedOn: input.falloNotifiedOn,
+      bajoTratados: input.bajoTratados,
+      hechos: input.hechos,
+      agravios: input.agravios,
+      pruebas: input.pruebas,
+    });
+    const versionRes = await this.db.query<{ next_version: number }>(
+      `select coalesce(max(version), 0) + 1 as next_version from licitaciones.inconformidad_draft where organization_id = $1 and tender_id = $2;`,
+      [organizationId, tenderId],
+    );
+    const version = versionRes.rows[0]!.next_version;
+
+    const { rows } = await this.db.query<InconformidadDraftRow>(
+      `insert into licitaciones.inconformidad_draft
+         (organization_id, tender_id, version, status, content_hash, hechos, agravios, pruebas, fundamentos,
+          fallo_notified_on, bajo_tratados, business_days, due_date, legal_reference, viability, viability_recommendation, disclaimer, created_by)
+       values ($1, $2, $3, 'borrador', $4, $5::text[], $6::text[], $7::text[], $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       returning ${INCONFORMIDAD_DRAFT_COLUMNS};`,
+      [
+        organizationId,
+        tenderId,
+        version,
+        content.contentHash,
+        input.hechos,
+        input.agravios,
+        input.pruebas,
+        JSON.stringify(content.fundamentos),
+        input.falloNotifiedOn,
+        input.bajoTratados,
+        content.plazo.businessDays,
+        content.plazo.dueDate,
+        content.plazo.legalReference,
+        content.viability,
+        content.viabilityRecommendation,
+        INCONFORMIDAD_DISCLAIMER,
+        input.actorId,
+      ],
+    );
+    return mapInconformidadDraft(rows[0]!);
+  }
+
+  async listInconformidadDrafts(organizationId: string, tenderId: string): Promise<readonly InconformidadDraftRecord[]> {
+    const { rows } = await this.db.query<InconformidadDraftRow>(
+      `select ${INCONFORMIDAD_DRAFT_COLUMNS} from licitaciones.inconformidad_draft where organization_id = $1 and tender_id = $2 order by version asc;`,
+      [organizationId, tenderId],
+    );
+    return rows.map(mapInconformidadDraft);
+  }
+
+  async markInconformidadReviewed(organizationId: string, tenderId: string, draftId: string, actorId: string): Promise<InconformidadDraftRecord> {
+    const existing = await this.db.query<{ status: string }>(`select status from licitaciones.inconformidad_draft where id = $1 and organization_id = $2 and tender_id = $3;`, [
+      draftId,
+      organizationId,
+      tenderId,
+    ]);
+    if (existing.rows.length === 0) throw new Error(`Borrador de inconformidad "${draftId}" no encontrado.`);
+    if (existing.rows[0]!.status === "revisado") throw new Error("Este borrador ya fue marcado como revisado.");
+
+    const { rows } = await this.db.query<InconformidadDraftRow>(
+      `update licitaciones.inconformidad_draft set status = 'revisado', reviewed_by = $1, reviewed_at = now()
+       where id = $2 and organization_id = $3 returning ${INCONFORMIDAD_DRAFT_COLUMNS};`,
+      [actorId, draftId, organizationId],
+    );
+    return mapInconformidadDraft(rows[0]!);
+  }
+
+  async createFalloAutopsy(
+    organizationId: string,
+    tenderId: string,
+    input: CreateFalloAutopsyInput,
+  ): Promise<{ autopsy: FalloAutopsyRecord; lessons: readonly CompanyLessonLearnedRecord[] }> {
+    const disqualificationReason = normalizeOrNoDisponible(input.disqualificationReason);
+    const winnerName = normalizeOrNoDisponible(input.winnerName);
+
+    const { rows } = await this.db.query<FalloAutopsyRow>(
+      `insert into licitaciones.fallo_autopsy
+         (organization_id, tender_id, own_proposal_status, disqualification_reason, own_score, winner_score, own_price, winner_price, winner_name, criteria_comparison, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)
+       returning ${FALLO_AUTOPSY_COLUMNS};`,
+      [
+        organizationId,
+        tenderId,
+        input.ownProposalStatus,
+        disqualificationReason,
+        input.ownScore,
+        input.winnerScore,
+        input.ownPrice,
+        input.winnerPrice,
+        winnerName,
+        JSON.stringify(input.criteriaComparison),
+        input.actorId,
+      ],
+    );
+    const autopsy = mapFalloAutopsy(rows[0]!);
+
+    const lessons: CompanyLessonLearnedRecord[] = [];
+    for (const lessonText of input.lessons) {
+      const inserted = await this.db.query<CompanyLessonLearnedRow>(
+        `insert into licitaciones.company_lesson_learned (organization_id, fallo_autopsy_id, tender_id, lesson_text)
+         values ($1, $2, $3, $4)
+         returning id, organization_id, fallo_autopsy_id, tender_id, lesson_text, created_at::text as created_at;`,
+        [organizationId, autopsy.id, tenderId, lessonText],
+      );
+      lessons.push(mapCompanyLessonLearned(inserted.rows[0]!));
+    }
+    return { autopsy, lessons };
+  }
+
+  async listFalloAutopsies(organizationId: string, tenderId: string): Promise<readonly FalloAutopsyRecord[]> {
+    const { rows } = await this.db.query<FalloAutopsyRow>(
+      `select ${FALLO_AUTOPSY_COLUMNS} from licitaciones.fallo_autopsy where organization_id = $1 and tender_id = $2 order by created_at asc;`,
+      [organizationId, tenderId],
+    );
+    return rows.map(mapFalloAutopsy);
+  }
+
+  async listLessonsLearned(organizationId: string): Promise<readonly CompanyLessonLearnedRecord[]> {
+    const { rows } = await this.db.query<CompanyLessonLearnedRow>(
+      `select id, organization_id, fallo_autopsy_id, tender_id, lesson_text, created_at::text as created_at
+       from licitaciones.company_lesson_learned where organization_id = $1 order by created_at desc;`,
+      [organizationId],
+    );
+    return rows.map(mapCompanyLessonLearned);
+  }
+
+  async scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
+    const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
+    const today = input.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+
+    const contractsRes = await this.db.query<{ id: string; tender_id: string; end_date: string }>(
+      `select id, tender_id, end_date::text as end_date from licitaciones.contract
+       where organization_id = $1 and end_date is not null and status not in ('cerrado', 'rescindido');`,
+      [organizationId],
+    );
+    const candidates: RenewalCandidateContract[] = contractsRes.rows.map((r) => ({ contractId: r.id, tenderId: r.tender_id, endDate: r.end_date }));
+    const alertCandidates = computeRenewalAlertCandidates(candidates, today, thresholds);
+
+    const created: RenewalAlertRecord[] = [];
+    for (const candidate of alertCandidates) {
+      const inserted = await this.db.query<RenewalAlertRow>(
+        `insert into licitaciones.renewal_alert (organization_id, contract_id, tender_id, predicted_date, lead_days, confidence)
+         values ($1, $2, $3, $4, $5, $6)
+         on conflict (organization_id, contract_id, lead_days) do nothing
+         returning ${RENEWAL_ALERT_COLUMNS};`,
+        [organizationId, candidate.contractId, candidate.tenderId, candidate.predictedDate, candidate.leadDays, candidate.confidence],
+      );
+      if (inserted.rows.length > 0) created.push(mapRenewalAlert(inserted.rows[0]!));
+    }
+
+    return { evaluatedContracts: candidates.length, alertsCreated: created.length, alerts: created };
+  }
+
+  async listRenewalAlerts(organizationId: string): Promise<readonly RenewalAlertRecord[]> {
+    const { rows } = await this.db.query<RenewalAlertRow>(
+      `select ${RENEWAL_ALERT_COLUMNS} from licitaciones.renewal_alert where organization_id = $1 order by created_at desc;`,
+      [organizationId],
+    );
+    return rows.map(mapRenewalAlert);
+  }
+
+  async acknowledgeRenewalAlert(organizationId: string, alertId: string, actorId: string): Promise<RenewalAlertRecord> {
+    const { rows } = await this.db.query<RenewalAlertRow>(
+      `update licitaciones.renewal_alert set status = 'reconocida', acknowledged_at = now(), acknowledged_by = $1
+       where id = $2 and organization_id = $3
+       returning ${RENEWAL_ALERT_COLUMNS};`,
+      [actorId, alertId, organizationId],
+    );
+    if (rows.length === 0) throw new Error(`Alerta de renovación "${alertId}" no encontrada.`);
+    return mapRenewalAlert(rows[0]!);
   }
 }

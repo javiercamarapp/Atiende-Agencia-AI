@@ -1,3 +1,16 @@
 # Vertical: licitaciones (api)
 
-Reservado para las rutas Hono de la vertical licitaciones, portadas de `licitaciones/apps/api/src/routes`. Aún no portado — ver `docs/REQUISITOS.md`.
+Rutas Hono de la vertical licitaciones, portadas de `licitaciones/apps/api/src/routes` — ver `docs/REQUISITOS.md` para el catálogo formal de requisitos (REQ-001..131).
+
+## Fase 6 — seguimiento post-adjudicación (REQ-051..055)
+
+Archivos: `contracts.ts` (REQ-050/051, máquina de estados del contrato + metadatos), `contractDocuments.ts` (REQ-052, extracción determinista del contrato firmado), `contractBilling.ts` (REQ-051, cobranza/facturas), `inconformidad.ts` (REQ-053, redactor de inconformidades), `falloAutopsy.ts` (REQ-054, autopsia del fallo + lecciones aprendidas) y `renewalRadar.ts` (REQ-055, radar de renovaciones). Lógica de dominio en `@atiende/domain-licitaciones` (`contract-lifecycle.ts`, `contract-extraction.ts`, `contract-billing.ts`, `business-days.ts`, `inconformidad.ts`, `fallo-autopsy.ts`, `renewal-radar.ts`).
+
+**Explícitamente fuera de esta fase (huecos honestos, no fingidos):**
+
+- **REQ-056** (calendario oficial de días inhábiles SABG): no construido -- requiere una fuente externa oficial. `business-days.ts` solo excluye sábados/domingos, más feriados que el llamador declare explícitamente (`holidays: string[]`); expuesto en cada respuesta como `calendarNote`/`CALENDAR_LIMITATION_NOTE` para que ningún cliente asuma un calendario oficial completo.
+- **OCR/texto-desde-PDF real**: este monorepo NO tiene, en NINGÚN vertical, un pipeline que convierta bytes de un PDF (nativo o escaneado) en texto -- ni para bases de licitación (`requirements/extract`, Fase 2) ni para el contrato firmado (`contract/documents`, Fase 6). Ambas rutas reciben el texto YA EXTRAÍDO por página en el cuerpo del request (`{pages:[{page,text}]}`); construir ese pipeline compartido (Docling/PyMuPDF + OCR por excepción, como en el repo original) es trabajo pendiente genuino, no inventado aquí.
+- **Step-up/2FA real**: el repo original protegía las transiciones sensibles del contrato (rescindir/penalizar/marcar en inconformidad/modificar) y "marcar revisado" de una inconformidad con verificación en dos pasos (`lib/step-up.ts`). Este monorepo fusionado no tiene esa infraestructura para ningún vertical todavía -- el equivalente de esta fase es exigir `DECISION_ROLES`/`INCONFORMIDAD_REVIEW_ROLES` (más estrictos que `WRITE_ROLES`) en su lugar, documentado como un control más débil que 2FA real.
+- **REQ-054 "ronda 7" del origen** (análisis automatizado de causas de no adjudicación contra la matriz de requisitos, y el enlace automático autopsia→inconformidad vía `sourceAutopsyId`): no portado -- es valor agregado sobre el REQ-054 base (registrar la autopsia + lecciones aprendidas), no el requisito mismo.
+- **REQ-055 "convocatorias históricas de la misma entidad"**: el repo original enriquecía cada alerta de renovación con hasta 5 convocatorias previas de la misma `contracting_body` como contexto de apoyo. Esta fase detecta alertas únicamente a partir de `contracts.end_date` propio, sin ese enriquecimiento.
+- **Sin cola de trabajos (`jobs`)**: a diferencia del repo original, este monorepo no tiene un sistema de colas genérico para ningún vertical -- las "alertas" de cobranza (facturas vencidas) se calculan en vivo en cada lectura (`GET .../contract/receivables`), y las alertas de renovación se persisten directamente como filas consultables (`GET .../renewals/alerts`), nunca como un job encolado para un worker que no existe.
