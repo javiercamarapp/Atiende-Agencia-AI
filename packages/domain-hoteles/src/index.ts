@@ -80,6 +80,7 @@ export {
   MAINTENANCE_TICKET_CREATE_ROLES,
   MAINTENANCE_TICKET_MANAGE_ROLES,
   HOUSEKEEPING_SHIFT_PUBLISH_ROLES,
+  ATTENDANCE_ADMIN_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
 
@@ -218,4 +219,25 @@ export type {
   MaintenanceTicketSeverity,
   MaintenanceTicketStatus,
   NewMaintenanceTicketInput,
+} from "./types.ts";
+
+// ---- Fase 8 — REQ-BO-024 (LFT art.132 fr.XXXIV): checador de asistencia
+// inalterable + cruce contra el horario programado, puro (sin I/O) ----
+export { pairAttendanceEvents, crossCheckAttendance, buildStpsAttendanceCsv } from "./checador/attendance.ts";
+export type {
+  AttendanceEventType,
+  AttendanceEvent,
+  AttendanceSchedule,
+  AttendanceShift,
+  AttendanceAnomaly,
+  AttendanceCrossCheckStatus,
+  AttendanceCrossCheckResult,
+  CrossCheckAttendanceInput,
+  StpsExportRow,
+} from "./checador/attendance.ts";
+export type {
+  AttendanceEventRecord,
+  NewAttendanceEventInput,
+  StaffScheduleRecord,
+  NewStaffScheduleInput,
 } from "./types.ts";

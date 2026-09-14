@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (60 migraciones, timestamps 20240101000001 .. 20240101000060)
+## Orden actual (61 migraciones, timestamps 20240101000001 .. 20240101000061)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -50,7 +50,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 57. `packages/domain-rentas/migrations/008_ical_sync_schema.sql` — Fase 5 rentas: sincronización de calendario por canal (feeds iCal externos de Airbnb/Booking.com/VRBO, bookkeeping de versión/anti-eco, cuarentena).
 58. `packages/domain-citas/migrations/010_appointment_status_transitions.sql` — Fase 7 citas: transición de estado confirmar/completar/no-show desde el panel de staff (`confirm_appointment_from_panel`/`complete_appointment_from_panel`/`mark_appointment_no_show_from_panel`), con evento de auditoría propio (`appointment_audit_events.event_type` ampliado a 'confirmed'/'completed'/'no_show').
 59. `packages/domain-rentas/migrations/009_rentas_mensajeria_schema.sql` — Fase 7 rentas: mensajería con huésped (borrador de IA + aprobación humana obligatoria) — `rentas.conversacion`/`rentas.mensaje`/`rentas.borrador_mensaje` (property-scoped) + `rentas.plantilla_mensaje` (organization-scoped).
-60. `packages/domain-citas/migrations/011_citas_admin_backoffice_grants_and_policies.sql` — Fase 8 citas: panel admin CRUD real de proveedores/servicios/tenant_config — mismo gap y mismo arreglo que la migración 41 (restaurantes): GRANTs de escritura a `authenticated` sobre `citas.providers`/`citas.services`/`citas.tenant_config` (sus policies `for all` de la migración 3 eran letra muerta sin el GRANT) + GRANT y policy de escritura nuevos para `citas.provider_services` (el checkbox real de asignar servicios a un proveedor), que no tenía ninguno de los dos.
+60. `packages/domain-hoteles/migrations/010_checador_asistencia.sql` — Fase 8 hoteles (REQ-BO-024, LFT art.132 fr.XXXIV): checador de asistencia inalterable (`hoteles.attendance_log`, append-only, encadenado por hash por empleado vía trigger SECURITY DEFINER) + horario programado (`hoteles.staff_schedule`) contra el que se cruza lo trabajado para marcar horas extra no autorizadas — gap real verificado contra el original (`packages/db/migrations/0118_attendance_log.sql`), que no existía en ninguna forma en domain-hoteles antes de esta fase (`housekeeping/turnos-lft.ts` valida la PLANTILLA de turnos, no registra fichaje real).
+61. `packages/domain-citas/migrations/011_citas_admin_backoffice_grants_and_policies.sql` — Fase 8 citas: panel admin CRUD real de proveedores/servicios/tenant_config — mismo gap y mismo arreglo que la migración 41 (restaurantes): GRANTs de escritura a `authenticated` sobre `citas.providers`/`citas.services`/`citas.tenant_config` (sus policies `for all` de la migración 3 eran letra muerta sin el GRANT) + GRANT y policy de escritura nuevos para `citas.provider_services` (el checkbox real de asignar servicios a un proveedor), que no tenía ninguno de los dos.
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
@@ -59,8 +60,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000059`; usa
-   `20240101000060`, luego `...061`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000061`; usa
+   `20240101000062`, luego `...063`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
