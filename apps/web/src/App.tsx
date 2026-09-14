@@ -55,11 +55,9 @@ function RestaurantesDashboardRoute() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
   return (
-    <RestaurantesDashboardPage
-      apiBaseUrl={API_BASE_URL}
-      orgSlug={orgSlug}
-      onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}
-    />
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <RestaurantesDashboardPage {...ctx} />}
+    </RestaurantesShell>
   );
 }
 

@@ -1,8 +1,9 @@
-// Shell del back-office CORE de restaurantes (Fase 5) — mismo patrón que
-// CitasShell.tsx (Fase 5 citas): resuelve sesión + propertyId UNA vez y le da a las
-// páginas nuevas (Productos/Sucursales/Pedidos/Historial/Clientes) la misma nav
-// lateral, además de un link de vuelta al Dashboard de KPIs (Fase 3, fuera de este
-// shell — ver Dashboard.tsx). Estilos inline, sin design system nuevo — mismo
+// Shell del back-office CORE de restaurantes (Fase 5, ahora también landing post-
+// login desde Fase 5.1) — mismo patrón que CitasShell.tsx (Fase 5 citas): resuelve
+// sesión + propertyId UNA vez y le da a todas las páginas (Panel de KPIs incluido,
+// ver Dashboard.tsx, más Productos/Sucursales/Pedidos/Historial/Clientes) la misma
+// nav lateral, así el manager que entra al producto siempre tiene camino de vuelta
+// al back-office y viceversa. Estilos inline, sin design system nuevo — mismo
 // criterio que el resto de este vertical.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
