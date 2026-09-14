@@ -132,3 +132,12 @@ export const REVENUE_AUTOPILOT_APPROVAL_ROLES: readonly HotelRole[] = ["owner"];
 // Correr/consultar un backtest walk-forward es una función de análisis/conciliación
 // de revenue, mismo criterio que NIGHT_AUDIT_ROLES: owner/gm/accountant.
 export const REVENUE_BACKTEST_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+
+// Fase 10 (REQ-BO-010, P0) — back-office financiero: P&L USALI + punto de equilibrio
+// dinámico. Ver/registrar el lado de GASTOS revela costos/nómina/márgenes del
+// negocio -- MÁS estricto que MONEY_ROLES (nunca frontdesk/reservations/fnb, que sí
+// pueden cobrar un folio pero no ver el P&L completo del hotel), mismo criterio que
+// FRAUD_VIEW_ROLES/NIGHT_AUDIT_ROLES: owner/gm/accountant. Espejo de aplicación de
+// `hoteles.can_access_pl()` (migrations/012_pl_usali.sql) -- la RLS real es la
+// autoridad.
+export const PL_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];

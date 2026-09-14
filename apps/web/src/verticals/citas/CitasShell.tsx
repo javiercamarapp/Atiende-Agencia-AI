@@ -19,6 +19,12 @@ export interface CitasShellContext {
   readonly token: string;
   readonly propertyId: string;
   readonly orgSlug: string;
+  /** UUID real de `core.organization` (Fase 10 — antes solo vivía embebido en el
+   * JWT/`session.organizations`, nunca expuesto al contexto). Lo necesita
+   * `realtime-client.ts` para el filtro `organization_id=eq.<orgId>` de la
+   * suscripción — mismo patrón ya usado para `role` en
+   * DespachosShell.tsx/LicitacionesShell.tsx: `session.organizations.find`. */
+  readonly orgId: string;
 }
 
 export interface CitasShellProps {
@@ -110,6 +116,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   // común"); el panel usa la primera hasta que un negocio real necesite elegir
   // entre varias (mismo criterio que restaurantes/pages/Dashboard.tsx).
   const propertyId = branches[0]!.propertyId;
+  const orgId = session.organizations.find((o) => o.slug === orgSlug)?.id ?? "";
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -121,7 +128,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
           </NavLink>
         ))}
       </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug })}</div>
+      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId })}</div>
     </div>
   );
 }
