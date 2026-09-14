@@ -6,6 +6,13 @@
 //   - LlmRequirementExtractor (extracción de requisitos de licitación vía
 //     tool-calling, ver domain-licitaciones/src/llm-requirement-extractor.ts),
 //     invocado desde la ruta POST .../requirements/extract (technicalProposal.ts).
+//   - GeneradorBorradorIA (borrador de mensajería de rentas respaldado por
+//     IA, ver domain-rentas/src/agentes/generadorBorradorIA.ts).
+//   - TechnicalProposalDraftAgent (Fase 9 -- asistente de redacción/revisión
+//     de texto de propuesta técnica de licitaciones con guardrails
+//     anticorrupción/no-cifras-económicas/no-decisión-de-negocio y
+//     aprobación humana obligatoria, ver domain-licitaciones/src/
+//     technical-proposal-draft-agent.ts).
 //
 // Hasta este cambio, ninguna de las 4 escaleras tenía proveedores registrados —
 // ese era el bloqueante real para "listo a producción, solo pegar API keys" que
@@ -69,6 +76,18 @@ export const LICITACIONES_REQUIREMENT_EXTRACTOR_ROLE = "licitaciones:requirement
  *  siguiente" dentro de la misma llamada) -- la escalera de fallback entre
  *  proveedores del propio gateway ya cubre el caso de que el primer proveedor falle. */
 export const RENTAS_MENSAJERIA_AGENT_ROLE = "rentas:mensajeria_agent";
+/** Fase 9 -- asistente de redacción/revisión de texto de propuesta técnica de
+ *  licitaciones, respaldado por IA con guardrails anticorrupción/no-cifras-
+ *  económicas/no-decisión-de-negocio hardcoded y aprobación humana obligatoria
+ *  (ver @atiende/domain-licitaciones::technical-proposal-draft-agent.ts::
+ *  DEFAULT_TECHNICAL_PROPOSAL_DRAFT_AGENT_ROLE, que este nombre DEBE
+ *  coincidir exacto -- mismo criterio que LICITACIONES_REQUIREMENT_EXTRACTOR_ROLE
+ *  arriba). Sin rol *_escalated propio, mismo argumento que
+ *  RENTAS_MENSAJERIA_AGENT_ROLE: una redacción/revisión es UNA sola
+ *  invocación, nunca un loop de varios turnos -- la escalera de fallback
+ *  entre proveedores del propio gateway ya cubre que el primer proveedor
+ *  falle. */
+export const LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE = "licitaciones:proposal_draft_agent";
 
 const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_WHATSAPP_AGENT_ROLE,
@@ -79,6 +98,7 @@ const ALL_PRODUCTION_ROLES: readonly string[] = [
   CITAS_WHATSAPP_AGENT_ESCALATED_ROLE,
   LICITACIONES_REQUIREMENT_EXTRACTOR_ROLE,
   RENTAS_MENSAJERIA_AGENT_ROLE,
+  LICITACIONES_PROPOSAL_DRAFT_AGENT_ROLE,
 ];
 
 /** Topes conservadores de defensa en profundidad, no una promesa de costo real

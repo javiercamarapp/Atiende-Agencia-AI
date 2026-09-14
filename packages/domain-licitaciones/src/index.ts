@@ -127,6 +127,32 @@ export type {
 export { LlmRequirementExtractor, LLM_EXTRACTOR_CONFIDENCE } from "./llm-requirement-extractor.ts";
 export type { LlmRequirementExtractorOptions } from "./llm-requirement-extractor.ts";
 
+// ---- Fase 9: runner de agentes de IA con guardrails anticorrupción/no-fabricación ----
+export {
+  TechnicalProposalDraftAgent,
+  DEFAULT_TECHNICAL_PROPOSAL_DRAFT_AGENT_ROLE,
+  scanForGuardrailViolations,
+  GuardrailBlockedError,
+  DraftAgentRoleNotAllowedError,
+  DraftAgentNoProposalError,
+  DraftAgentGenerationFailedError,
+  DraftApprovalRejectedError,
+} from "./technical-proposal-draft-agent.ts";
+export type {
+  GuardrailCategory,
+  GuardrailStage,
+  GuardrailMatch,
+  GuardrailScanResult,
+  GuardrailAuditEvent,
+  TechnicalProposalDraftAgentOptions,
+  DraftProposalTextRequest,
+  DraftSuggestion,
+  ReviewProposalTextRequest,
+  ReviewVerdict,
+  ReviewResult,
+  ApprovedDraft,
+} from "./technical-proposal-draft-agent.ts";
+
 export {
   TechnicalProposalBuilder,
   NOT_APPLICABLE_TITLE_PREFIX,
