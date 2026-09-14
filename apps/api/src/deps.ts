@@ -9,6 +9,7 @@ import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { CalendarSyncPort, RentasCalendarSyncRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
+import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { ApiEnv } from "./env.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
@@ -146,4 +147,19 @@ export interface AppDeps {
    * por-request para su propio repo (ver comentario de `turnHandler` arriba); ellos
    * reciben el mismo gateway ya cerrado en el closure que arma `production/deps.ts`. */
   readonly llmGateway: LlmGateway | undefined;
+  /** Dispatcher REAL compartido de WhatsApp saliente (@atiende/whatsapp-gateway) —
+   *  drena `messaging_outbox` de las 3 verticales (citas/hoteles/restaurantes) vía
+   *  Graph API real, consumido SOLO por `POST /internal/whatsapp/dispatch`
+   *  (routes/internal/whatsapp-dispatch.ts). `undefined` cuando
+   *  `WHATSAPP_ACCESS_TOKEN` no está configurado (ver `env.whatsappAccessToken`) —
+   *  esa ruta responde 503 explícito, nunca finge un envío.
+   *
+   *  A diferencia de `llmGateway` (que SÍ es `X | undefined` obligatorio en TODOS
+   *  los fixtures porque alimenta 3 turn handlers ya cableados en cada uno),
+   *  este campo es OPCIONAL (`?:`) a propósito: solo la ruta de dispatch lo lee, así
+   *  que ningún fixture existente necesita tocarse para seguir compilando — se
+   *  construye únicamente en los tests que ejercitan esa ruta
+   *  (apps/api/tests/whatsapp-dispatch.spec.ts) y en producción real
+   *  (production/deps.ts, cuando `WHATSAPP_ACCESS_TOKEN` está presente). */
+  readonly whatsAppDispatcher?: WhatsAppOutboundDispatcher;
 }

@@ -11,6 +11,8 @@ import { citasWhatsAppRoutes } from "./whatsapp.ts";
 import { citasGoogleCalendarOAuthRoutes } from "./google-calendar-oauth.ts";
 import { citasGoogleCalendarSyncRoutes } from "./google-calendar-sync.ts";
 import { citasAdminRoutes } from "./admin.ts";
+import { citasCalendarProvidersRoutes } from "./calendar-providers.ts";
+import { citasEmailDispatchRoutes } from "./email-dispatch.ts";
 
 export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -25,5 +27,9 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", citasGoogleCalendarSyncRoutes(deps));
   // Fase 5 — lecturas paginadas para el panel de administración visual.
   app.route("/", citasAdminRoutes(deps));
+  // Fase 6 §2 — conectar/desconectar Cal.com/CalDAV por proveedor.
+  app.route("/", citasCalendarProvidersRoutes(deps));
+  // Fase 6 §3 — dispatcher real del canal de correo (channel='email' del outbox).
+  app.route("/", citasEmailDispatchRoutes(deps));
   return app;
 }

@@ -190,4 +190,17 @@ export function authedGet(token: string): RequestInit {
   return { method: "GET", headers: { authorization: `Bearer ${token}` } };
 }
 
+// Fase 5 — back-office CORE (admin-catalog/admin-branches/admin-orders/
+// admin-customers): mismo helper `authedJson` que ya usan
+// despachos/hoteles/licitaciones/rentas-fixtures.ts, reusado aquí en vez de
+// reinventado, para las rutas HTTP nuevas que sí necesitan POST/PATCH.
+export function authedJson(token: string, body?: unknown, method?: "GET" | "POST" | "PATCH", extraHeaders: Record<string, string> = {}): RequestInit {
+  const headers: Record<string, string> = { authorization: `Bearer ${token}`, ...extraHeaders };
+  if (body === undefined) return { method: method ?? "GET", headers };
+  const raw = JSON.stringify(body);
+  headers["content-type"] = "application/json";
+  headers["content-length"] = String(new TextEncoder().encode(raw).byteLength);
+  return { method: method ?? "POST", body: raw, headers };
+}
+
 export { makeOrder };

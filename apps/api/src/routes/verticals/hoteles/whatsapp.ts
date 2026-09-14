@@ -61,7 +61,7 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
       const repo = deps.hotelesRepo(db);
       const phoneNumberId = extractMetaPhoneNumberId(payload);
       const route = phoneNumberId ? await resolvePropertyByPhoneNumberId(repo, phoneNumberId) : null;
-      if (!route) {
+      if (!phoneNumberId || !route) {
         // Número no configurado en la plataforma: ack silencioso, no reintento.
         return c.json({ ok: true });
       }
@@ -79,10 +79,13 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
           messageId: message.id,
           phone: `+${message.from}`,
           body: message.text.body,
+          phoneNumberId,
         });
-        // El envío real de `outcome.reply` vía Graph API es responsabilidad del
-        // dispatcher de apps/worker (messaging_outbox) — fuera de esta fase, igual
-        // criterio que restaurantes.
+        // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
+        // `handleInboundWhatsAppMessage` lo encola en `hoteles.messaging_outbox`
+        // (ver whatsapp/inbound.ts) y `POST /internal/whatsapp/dispatch`
+        // (@atiende/whatsapp-gateway::WhatsAppOutboundDispatcher) lo drena de
+        // verdad vía Graph API.
         if (outcome.retryable) hadRetryableFailure = true;
       }
 

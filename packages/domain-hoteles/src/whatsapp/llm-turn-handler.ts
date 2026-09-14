@@ -58,9 +58,16 @@ Eres el asistente de WhatsApp de ${config.hotelName}. Atiendes SOLO dos tipos de
    marca alergia_declarada:true si el huésped menciona cualquier alergia, intolerancia
    o restricción alimentaria — incluso si no estás seguro, marca true (sobre-marcar es
    aceptable, no marcar una alergia real no lo es).
-2. Cualquier otro mensaje (queja, facturación, pregunta general, algo que no sea pedir
-   comida/bebida): llama a registrar_contacto_no_operativo con el motivo y un resumen
-   breve, y dile al huésped que alguien del hotel le va a dar seguimiento.
+2. Reportes de un problema físico de la habitación/hotel (algo roto, con fuga, sin
+   funcionar: aire acondicionado, plomería, electricidad, cerradura, etc.): usa SIEMPRE
+   la herramienta crear_ticket_mantenimiento con un título breve, la descripción tal
+   cual la dio el huésped, su número de habitación si lo dio, y marca severidad "alta"
+   si suena urgente/inhabitable (fuga de agua, sin electricidad, puerta que no cierra)
+   o "media" en cualquier otro caso.
+3. Cualquier otro mensaje (queja no relacionada a mantenimiento, facturación, pregunta
+   general, algo que no sea comida/bebida ni un problema físico): llama a
+   registrar_contacto_no_operativo con el motivo y un resumen breve, y dile al huésped
+   que alguien del hotel le va a dar seguimiento.
 
 REGLAS DURAS (nunca las rompas):
 - NUNCA le digas al huésped que un platillo "es seguro" para su alergia o restricción
@@ -79,9 +86,12 @@ REGLAS DURAS (nunca las rompas):
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// TOOLS — catálogo reducido a 2 (diseño §5.2): las 3 restantes del origen real
-// (housekeeping, mantenimiento, plantillas de WhatsApp) no tienen dominio
-// construido en atiende-fusion todavía.
+// TOOLS — Fase 2 dejó 2 (§5.2, F&B + contacto no operativo); Fase 6 (REQ-HK-011)
+// suma `crear_ticket_mantenimiento` -- intake de tickets de mantenimiento por
+// WhatsApp, reutilizando DIRECTO esta misma plomería (llm-turn-handler.ts/
+// inbound.ts) en vez de un canal nuevo. La asignación automática de camaristas y la
+// inspección por foto/OCR siguen sin dominio construido (dependen de REQ-INT-001,
+// conector PMS real) -- fuera de esta tool a propósito.
 // ─────────────────────────────────────────────────────────────────────────
 
 export const TOOLS: readonly LlmToolDefinition[] = [
@@ -102,8 +112,27 @@ export const TOOLS: readonly LlmToolDefinition[] = [
     },
   },
   {
+    name: "crear_ticket_mantenimiento",
+    description:
+      "Registra un reporte de un problema físico de la habitación/hotel (algo roto, con fuga, sin " +
+      "funcionar). Usa SIEMPRE esta herramienta para ese tipo de reporte -- nunca prometas tú cuándo se " +
+      "va a arreglar, eso lo confirma el hotel por otro canal.",
+    parameters: {
+      type: "object",
+      properties: {
+        titulo: { type: "string", description: "Título breve del problema (p.ej. 'Aire acondicionado no enfría')." },
+        descripcion: { type: "string", description: "Descripción del problema, tal cual o resumida fielmente." },
+        habitacion: { type: "string", description: "Número de habitación, si el huésped lo dio." },
+        severidad: { type: "string", enum: ["alta", "media", "baja"], description: "'alta' si suena urgente/inhabitable, 'media' en cualquier otro caso." },
+      },
+      required: ["titulo", "descripcion"],
+    },
+  },
+  {
     name: "registrar_contacto_no_operativo",
-    description: "Para cualquier mensaje que NO sea una petición de alimentos/bebidas (queja, facturación, pregunta general, empleo, etc).",
+    description:
+      "Para cualquier mensaje que NO sea una petición de alimentos/bebidas NI un reporte de mantenimiento " +
+      "(queja, facturación, pregunta general, empleo, etc).",
     parameters: {
       type: "object",
       properties: {
@@ -160,6 +189,25 @@ async function executeToolCall(
           createdBy: null, // actor system:whatsapp — sin staff humano logueado (diseño §1).
         });
         return { result: { ticket: serializeFnbOrder(order) }, fnbOrderId: order.id };
+      }
+      case "crear_ticket_mantenimiento": {
+        const titulo = typeof input.titulo === "string" ? input.titulo.trim() : "";
+        const descripcion = typeof input.descripcion === "string" ? input.descripcion.trim() : "";
+        if (!titulo || !descripcion) return { result: { error: "titulo y descripcion son requeridos para registrar el ticket" }, fnbOrderId: null };
+        const habitacion = typeof input.habitacion === "string" && input.habitacion.trim() ? input.habitacion.trim() : null;
+        const severidad = input.severidad === "alta" || input.severidad === "media" || input.severidad === "baja" ? input.severidad : "media";
+        const ticket = await repo.insertMaintenanceTicket({
+          organizationId,
+          propertyId,
+          roomId: null, // el agente de WhatsApp no resuelve `roomCode` -> `room_id` (sin ese lookup en esta fase); `habitacion` declarada queda en la descripción, nunca inventada como FK.
+          title: titulo,
+          description: habitacion ? `${descripcion} (habitación declarada por el huésped vía WhatsApp: ${habitacion})` : descripcion,
+          origin: "huesped",
+          severity: severidad,
+          estimatedCost: 0,
+          createdBy: null, // actor system:whatsapp — sin staff humano logueado (mismo criterio que crear_ticket_huesped_fnb).
+        });
+        return { result: { ticket: { id: ticket.id, severidad: ticket.severity } }, fnbOrderId: null };
       }
       case "registrar_contacto_no_operativo": {
         const motivo = typeof input.motivo === "string" ? input.motivo.trim() : "";
@@ -268,7 +316,7 @@ export function createLlmHotelesWhatsAppTurnHandler(repo: HotelesRepository, gat
             result = executed.result;
             if (executed.fnbOrderId) fnbOrderId = executed.fnbOrderId;
           }
-          if (call.name === "crear_ticket_huesped_fnb" && isToolErrorResult(result)) {
+          if ((call.name === "crear_ticket_huesped_fnb" || call.name === "crear_ticket_mantenimiento") && isToolErrorResult(result)) {
             huboFalloDeHerramienta = true;
           }
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });

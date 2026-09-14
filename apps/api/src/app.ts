@@ -18,6 +18,7 @@ import { citasRoutes } from "./routes/verticals/citas/citas.ts";
 import { licitacionesRoutes } from "./routes/verticals/licitaciones/licitaciones.ts";
 import { despachosRoutes } from "./routes/verticals/despachos/despachos.ts";
 import { rentasRoutes } from "./routes/verticals/rentas/rentas.ts";
+import { whatsappDispatchRoutes } from "./routes/internal/whatsapp-dispatch.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -44,6 +45,9 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", licitacionesRoutes(deps));
   app.route("/", despachosRoutes(deps));
   app.route("/", rentasRoutes(deps));
+  // Plataforma compartida (no de un vertical) — drena messaging_outbox de las 3
+  // verticales de WhatsApp vía Graph API real, ver ese archivo para el detalle.
+  app.route("/", whatsappDispatchRoutes(deps));
 
   return app;
 }

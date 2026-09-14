@@ -2,12 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_VOICE_PROVIDER, readVoiceProviderFromEnv, selectVoiceProvider } from '../src/router.js';
 import { ElevenLabsVoiceProvider } from '../src/providers/elevenlabs-provider.js';
 import { GptLiveVoiceProvider } from '../src/providers/gptlive-provider.js';
-import { VoiceProviderConfigError, VoiceProviderNotActivatableError } from '../src/errors.js';
+import { VoiceProviderConfigError } from '../src/errors.js';
 
 const elevenlabsOpts = {
   elevenlabs: {
     mode: 'server' as const,
     apiKeyProvider: async () => 'sk-test',
+  },
+};
+
+const gptliveOpts = {
+  ...elevenlabsOpts,
+  gptlive: {
+    mode: 'server' as const,
+    apiKeyProvider: async () => 'sk-openai-test',
   },
 };
 
@@ -24,16 +32,15 @@ describe('selectVoiceProvider', () => {
     expect(provider).toBeInstanceOf(ElevenLabsVoiceProvider);
   });
 
-  it('"gptlive" explícito RECHAZA de inmediato en la selección — nunca cae en silencio a ElevenLabs', () => {
-    expect(() => selectVoiceProvider('gptlive', elevenlabsOpts)).toThrow(VoiceProviderNotActivatableError);
-    let caught: unknown;
-    try {
-      selectVoiceProvider('gptlive', elevenlabsOpts);
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(VoiceProviderNotActivatableError);
-    expect((caught as VoiceProviderNotActivatableError).providerId).toBe('gptlive');
+  it('"gptlive" explícito construye GptLiveVoiceProvider REAL — ya no rechaza la selección', () => {
+    const provider = selectVoiceProvider('gptlive', gptliveOpts);
+    expect(provider).toBeInstanceOf(GptLiveVoiceProvider);
+    expect(provider.id).toBe('gptlive');
+  });
+
+  it('"gptlive" sin `opts.gptlive` lanza VoiceProviderConfigError explícito — nunca adivina la config', () => {
+    expect(() => selectVoiceProvider('gptlive', elevenlabsOpts)).toThrow(VoiceProviderConfigError);
+    expect(() => selectVoiceProvider('gptlive', elevenlabsOpts)).toThrow(/falta `opts.gptlive`/);
   });
 
   it('un id de proveedor desconocido lanza VoiceProviderConfigError explícito', () => {
@@ -51,18 +58,13 @@ describe('readVoiceProviderFromEnv', () => {
     expect(readVoiceProviderFromEnv({ VOICE_PROVIDER: 'elevenlabs' })).toBe('elevenlabs');
   });
 
-  it('VOICE_PROVIDER=gptlive se lee tal cual (la selección explícita falla después, en selectVoiceProvider)', () => {
+  it('VOICE_PROVIDER=gptlive se lee tal cual y selectVoiceProvider lo construye real', () => {
     expect(readVoiceProviderFromEnv({ VOICE_PROVIDER: 'gptlive' })).toBe('gptlive');
+    const provider = selectVoiceProvider(readVoiceProviderFromEnv({ VOICE_PROVIDER: 'gptlive' }), gptliveOpts);
+    expect(provider).toBeInstanceOf(GptLiveVoiceProvider);
   });
 
   it('un valor inválido de VOICE_PROVIDER lanza VoiceProviderConfigError en vez de adivinar', () => {
     expect(() => readVoiceProviderFromEnv({ VOICE_PROVIDER: 'twilio' })).toThrow(VoiceProviderConfigError);
-  });
-});
-
-describe('integración router + provider inerte', () => {
-  it('GptLiveVoiceProvider.assertAvailable() es lo que el router invoca — no un método inventado solo para el test', () => {
-    const provider = new GptLiveVoiceProvider();
-    expect(() => provider.assertAvailable()).toThrow(VoiceProviderNotActivatableError);
   });
 });

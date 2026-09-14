@@ -5,8 +5,9 @@
 // Sirve para tests determinísticos y como fallback dev/CI sin Postgres real — mismo
 // rol que InMemoryRestaurantesRepository.
 import { createHash, randomUUID } from "node:crypto";
-import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
+import type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 import type {
+  ActiveHotelProperty,
   CancellationPolicyRecord,
   CfdiEmisionRecord,
   ConversationMessage,
@@ -18,13 +19,19 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HousekeepingShiftRecord,
+  MaintenanceTicketRecord,
+  MaintenanceTicketStatus,
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
+  NewHousekeepingShiftInput,
+  NewMaintenanceTicketInput,
   NewPaymentInput,
   NewReservationInput,
+  NightAuditRunRecord,
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
@@ -109,6 +116,23 @@ interface StoredConversation {
   fnbOrderId: string | null;
 }
 
+/** Espejo en memoria de `hoteles.messaging_outbox` (migrations/008) — mismo
+ * idioma de claim-con-lease-reclamable que `StoredWhatsAppEvent`/`StoredLease`. */
+interface InMemoryOutboxRow {
+  id: string;
+  propertyId: string;
+  organizationId: string;
+  channel: "whatsapp" | "email";
+  eventType: string;
+  dedupeKey: string;
+  payload: unknown;
+  status: "pending" | "processing" | "sent" | "failed" | "dead";
+  attempts: number;
+  claimedAt: number | null;
+  nextAttemptAt: number;
+  lastErrorClass: string | null;
+}
+
 interface StoredReservation {
   id: string;
   organizationId: string;
@@ -167,16 +191,24 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly whatsappLeases = new Map<string, StoredLease>();
   private readonly whatsappConversations = new Map<string, StoredConversation>(); // key: propertyId:phone
   private readonly contactosNoOperativos = new Map<string, ContactoNoOperativoRecord>();
+  private readonly outbox = new Map<string, InMemoryOutboxRow>();
 
   // ---- Fase 5 — H16-014/REQ-REC-014 fraude interno + H5 CFDI de hospedaje ----
   private readonly fraudAlerts = new Map<string, FraudAlertRecord>();
   private readonly hospedajeFiscalConfigByProperty = new Map<string, HospedajeFiscalConfig>();
   private readonly cfdiEmisiones = new Map<string, CfdiEmisionRecord>();
 
+  // ---- Fase 6 — H5/REQ-REV-013 night audit + REQ-HK-008/011 housekeeping ----
+  private readonly activeHotelProperties = new Map<string, ActiveHotelProperty>(); // key: propertyId
+  private readonly nightAuditRuns = new Map<string, NightAuditRunRecord>(); // key: propertyId:businessDate
+  private readonly maintenanceTickets = new Map<string, MaintenanceTicketRecord>();
+  private readonly housekeepingShifts = new Map<string, HousekeepingShiftRecord>();
+
   private readonly idempotencyLock = new KeyedMutex();
   private readonly whatsappLock = new KeyedMutex();
   private readonly fraudAlertLock = new KeyedMutex();
   private readonly cfdiLock = new KeyedMutex();
+  private readonly nightAuditRunLock = new KeyedMutex();
 
   // ---- seeding (equivalente a INSERT manual contra las migraciones SQL) ----
 
@@ -215,6 +247,14 @@ export class InMemoryHotelesRepository implements HotelesRepository {
    *  `seedTaxConfig`. */
   seedHospedajeFiscalConfig(propertyId: string, config: HospedajeFiscalConfig): void {
     this.hospedajeFiscalConfigByProperty.set(propertyId, config);
+  }
+
+  /** Fase 6 — equivalente en memoria de `core.organization`/`core.property` con
+   *  `vertical='hoteles'`/`status='active'` -- insumo de
+   *  `listActiveHotelProperties()` (ruta interna de barrido de night-audit, mismo
+   *  patrón que `InMemoryCitasRepository`'s organizaciones activas). */
+  seedActiveHotelProperty(organizationId: string, propertyId: string): void {
+    this.activeHotelProperties.set(propertyId, { organizationId, propertyId });
   }
 
   seedRoomType(
@@ -758,6 +798,66 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     if (event) event.status = "failed";
   }
 
+  // ---- Dispatcher real de messaging_outbox (migrations/008) ----
+
+  getOutbox(): readonly InMemoryOutboxRow[] {
+    return [...this.outbox.values()];
+  }
+
+  async enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    const existing = [...this.outbox.values()].find((o) => o.propertyId === propertyId && o.channel === channel && o.dedupeKey === dedupeKey);
+    if (existing) {
+      if (existing.status === "pending" || existing.status === "failed") {
+        existing.eventType = eventType;
+        existing.payload = payload;
+      }
+      return;
+    }
+    const id = randomUUID();
+    this.outbox.set(id, { id, propertyId, organizationId, channel, eventType, dedupeKey, payload, status: "pending", attempts: 0, claimedAt: null, nextAttemptAt: 0, lastErrorClass: null });
+  }
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const now = Date.now();
+    const eligible = [...this.outbox.values()]
+      .filter(
+        (o) =>
+          o.channel === "whatsapp" &&
+          ((o.status === "pending" && o.nextAttemptAt <= now) || (o.status === "processing" && (o.claimedAt ?? 0) < now - leaseSeconds * 1000)),
+      )
+      .slice(0, limit);
+    for (const row of eligible) {
+      row.status = "processing";
+      row.claimedAt = now;
+    }
+    return eligible.map((row) => ({ id: row.id, attempts: row.attempts, payload: row.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "sent";
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "pending";
+    row.attempts = attempts;
+    row.lastErrorClass = errorClass.slice(0, 120);
+    row.nextAttemptAt = Date.parse(nextAttemptAtIso);
+    row.claimedAt = null;
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.status !== "processing") return;
+    row.status = "dead";
+    row.attempts = attempts;
+    row.lastErrorClass = errorClass.slice(0, 120);
+    row.claimedAt = null;
+  }
+
   async insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord> {
     const record: ContactoNoOperativoRecord = {
       id: randomUUID(),
@@ -923,5 +1023,227 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     const record = this.cfdiEmisiones.get(cfdiId);
     if (!record) throw new Error(`CFDI ${cfdiId} no encontrado.`);
     this.cfdiEmisiones.set(cfdiId, { ...record, status, canceledAt: new Date().toISOString() });
+  }
+
+  // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
+
+  async listActiveHotelProperties(): Promise<readonly ActiveHotelProperty[]> {
+    return [...this.activeHotelProperties.values()];
+  }
+
+  async listInHouseReservationsForNightAudit(
+    propertyId: string,
+    businessDate: string,
+  ): Promise<readonly { reservationId: string; folioId: string | null; nightlyPrice: number | null }[]> {
+    const inHouse = [...this.reservations.values()].filter(
+      (r) =>
+        r.propertyId === propertyId &&
+        (r.status === "check_in" || r.status === "en_estancia") &&
+        r.checkInDate <= businessDate &&
+        r.checkOutDate > businessDate,
+    );
+    return inHouse.map((r) => {
+      const folio = [...this.folios.values()].find((f) => f.reservationId === r.id && f.isPrimary);
+      const rates = this.nightlyRates.get(`${propertyId}:${r.roomTypeId}`) ?? [];
+      const rate = rates.find((x) => x.date === businessDate);
+      return { reservationId: r.id, folioId: folio?.id ?? null, nightlyPrice: rate?.price ?? null };
+    });
+  }
+
+  async postNightlyHospedajeCharge(input: {
+    organizationId: string;
+    propertyId: string;
+    folioId: string;
+    businessDate: string;
+    netAmount: number;
+    taxAmount: number;
+  }): Promise<{ id: string; createdAt: string; isNew: boolean }> {
+    // Mismo espejo del índice único parcial que ya aplica `insertCharge` -- se
+    // verifica primero para devolver `isNew:false` en vez de lanzar (comportamiento
+    // "ON CONFLICT DO NOTHING ... RETURNING" del original, no una excepción).
+    const existing = [...this.charges.values()].find(
+      (c) => c.folioId === input.folioId && c.concept === "hospedaje" && c.stayDate === input.businessDate && c.reversesChargeId == null,
+    );
+    if (existing) return { id: existing.id, createdAt: existing.createdAt, isNew: false };
+    const { id, createdAt } = await this.insertCharge({
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      folioId: input.folioId,
+      description: `Hospedaje noche del ${input.businessDate}`,
+      amount: input.netAmount,
+      taxAmount: input.taxAmount,
+      concept: "hospedaje",
+      stayDate: input.businessDate,
+    });
+    return { id, createdAt, isNew: true };
+  }
+
+  async claimNightAuditRun(organizationId: string, propertyId: string, businessDate: string): Promise<NightAuditRunRecord> {
+    const key = `${propertyId}:${businessDate}`;
+    return this.nightAuditRunLock.run(key, async () => {
+      const existing = this.nightAuditRuns.get(key);
+      if (existing) return existing;
+      const record: NightAuditRunRecord = {
+        id: randomUUID(),
+        organizationId,
+        propertyId,
+        businessDate,
+        status: "en_progreso",
+        summary: {},
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+      };
+      this.nightAuditRuns.set(key, record);
+      return record;
+    });
+  }
+
+  async finishNightAuditRun(runId: string, summary: Readonly<Record<string, unknown>>): Promise<NightAuditRunRecord> {
+    const entry = [...this.nightAuditRuns.entries()].find(([, r]) => r.id === runId);
+    if (!entry) throw new Error(`night_audit_run_no_encontrado: ${runId}`);
+    const [key, record] = entry;
+    // Guarda de estado (mismo criterio que `night_audit_finish`/`resolveFraudAlert`):
+    // una corrida ya completada NUNCA se re-termina ni reemplaza su resumen.
+    if (record.status === "completado") return record;
+    const updated: NightAuditRunRecord = { ...record, status: "completado", summary, completedAt: new Date().toISOString() };
+    this.nightAuditRuns.set(key, updated);
+    return updated;
+  }
+
+  async findNightAuditRun(propertyId: string, businessDate: string): Promise<NightAuditRunRecord | null> {
+    return this.nightAuditRuns.get(`${propertyId}:${businessDate}`) ?? null;
+  }
+
+  async listNightAuditRuns(propertyId: string, limit = 30): Promise<readonly NightAuditRunRecord[]> {
+    return [...this.nightAuditRuns.values()]
+      .filter((r) => r.propertyId === propertyId)
+      .sort((a, b) => (a.businessDate < b.businessDate ? 1 : -1))
+      .slice(0, limit);
+  }
+
+  private chargesCreatedOnBusinessDate(propertyId: string, businessDate: string, timezone: string): StoredCharge[] {
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" });
+    return [...this.charges.values()].filter((c) => c.propertyId === propertyId && fmt.format(new Date(c.createdAt)) === businessDate);
+  }
+
+  async sumChargesByConceptForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>> {
+    const totals: Record<string, number> = {};
+    for (const c of this.chargesCreatedOnBusinessDate(propertyId, businessDate, timezone)) {
+      totals[c.concept] = (totals[c.concept] ?? 0) + c.amount + c.taxAmount;
+    }
+    return totals;
+  }
+
+  async sumPaymentsByMethodForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>> {
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" });
+    const totals: Record<string, number> = {};
+    for (const p of this.payments.values()) {
+      if (p.propertyId !== propertyId || p.status !== "capturado") continue;
+      if (fmt.format(new Date(p.createdAt)) !== businessDate) continue;
+      totals[p.method] = (totals[p.method] ?? 0) + p.amount;
+    }
+    return totals;
+  }
+
+  // ---- HotelesRepository: Fase 6 — REQ-HK-011 tickets de mantenimiento ----
+
+  async insertMaintenanceTicket(input: NewMaintenanceTicketInput): Promise<MaintenanceTicketRecord> {
+    const record: MaintenanceTicketRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      roomId: input.roomId,
+      title: input.title,
+      description: input.description,
+      origin: input.origin,
+      severity: input.severity,
+      status: "abierto",
+      assignedTo: null,
+      estimatedCost: input.estimatedCost,
+      actualCost: null,
+      resolutionNote: null,
+      createdBy: input.createdBy,
+      closedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.maintenanceTickets.set(record.id, record);
+    return record;
+  }
+
+  async listMaintenanceTickets(propertyId: string, filter?: { readonly status?: MaintenanceTicketStatus }): Promise<readonly MaintenanceTicketRecord[]> {
+    return [...this.maintenanceTickets.values()]
+      .filter((t) => t.propertyId === propertyId && (filter?.status == null || t.status === filter.status))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async findMaintenanceTicket(propertyId: string, ticketId: string): Promise<MaintenanceTicketRecord | null> {
+    const ticket = this.maintenanceTickets.get(ticketId);
+    if (!ticket || ticket.propertyId !== propertyId) return null;
+    return ticket;
+  }
+
+  async closeMaintenanceTicket(
+    propertyId: string,
+    ticketId: string,
+    input: { readonly actualCost: number; readonly resolutionNote: string | null },
+  ): Promise<MaintenanceTicketRecord | null> {
+    const ticket = this.maintenanceTickets.get(ticketId);
+    if (!ticket || ticket.propertyId !== propertyId) return null;
+    if (ticket.status === "cerrado" || ticket.status === "cancelado") return null;
+    const updated: MaintenanceTicketRecord = {
+      ...ticket,
+      status: "cerrado",
+      actualCost: input.actualCost,
+      resolutionNote: input.resolutionNote,
+      closedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.maintenanceTickets.set(ticketId, updated);
+    return updated;
+  }
+
+  // ---- HotelesRepository: Fase 6 — REQ-HK-008 turnos de camaristas/lavandería ----
+
+  async replaceHousekeepingShifts(
+    propertyId: string,
+    staffId: string,
+    fromDate: string,
+    toDate: string,
+    shifts: readonly NewHousekeepingShiftInput[],
+  ): Promise<readonly HousekeepingShiftRecord[]> {
+    for (const [id, shift] of this.housekeepingShifts) {
+      if (shift.propertyId === propertyId && shift.staffId === staffId && shift.workDate >= fromDate && shift.workDate <= toDate) {
+        this.housekeepingShifts.delete(id);
+      }
+    }
+    const created: HousekeepingShiftRecord[] = [];
+    for (const s of shifts) {
+      const record: HousekeepingShiftRecord = {
+        id: randomUUID(),
+        organizationId: s.organizationId,
+        propertyId: s.propertyId,
+        staffId: s.staffId,
+        workDate: s.workDate,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        createdAt: new Date().toISOString(),
+      };
+      this.housekeepingShifts.set(record.id, record);
+      created.push(record);
+    }
+    return created;
+  }
+
+  async listHousekeepingShifts(propertyId: string, fromDate: string, toDate: string, staffId?: string): Promise<readonly HousekeepingShiftRecord[]> {
+    return [...this.housekeepingShifts.values()]
+      .filter(
+        (s) =>
+          s.propertyId === propertyId &&
+          s.workDate >= fromDate &&
+          s.workDate <= toDate &&
+          (staffId == null || s.staffId === staffId),
+      )
+      .sort((a, b) => (a.workDate < b.workDate ? -1 : 1));
   }
 }

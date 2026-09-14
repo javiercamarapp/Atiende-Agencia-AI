@@ -1,20 +1,32 @@
 export type {
   Branch,
+  BranchProductState,
   BranchSummary,
   CallbackRequest,
   CallbackRequestInput,
+  Category,
+  CategoryPatch,
   CreateOrderInput,
   CreateOrderItemInput,
   Customer,
   CustomerAddress,
+  CustomerListFilter,
+  CustomerListPage,
   CustomerLookupResult,
   CustomerTier,
   DefaultComplement,
   NearestBranchMatch,
+  NewCategoryInput,
+  NewProductInput,
   Order,
   OrderHistoryItem,
+  OrderListFilter,
+  OrderListPage,
   OrderQuote,
+  OrderStatus,
   PersistedOrderItem,
+  Product,
+  ProductPatch,
   ProductoEncontrado,
   QuotedOrderLine,
   RequestedComplement,
@@ -46,11 +58,14 @@ export type {
   CustomerOverviewRow,
   TierDistributionMetric,
   TierDistributionRow,
+  MessagingOutboxRow,
 } from "./repository.ts";
 export { InMemoryRestaurantesRepository } from "./in-memory-repository.ts";
 export { PostgresRestaurantesRepository } from "./postgres-repository.ts";
 
-export { lookupCustomer, vipNote } from "./customers.ts";
+export { lookupCustomer, getCustomerDetailById, vipNote } from "./customers.ts";
+
+export { ORDER_STATUSES, OrderStatusTransitionError, isOrderStatus, nextValidStatuses, assertValidOrderStatusTransition, changeOrderStatus } from "./order-lifecycle.ts";
 
 export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
 export type { PreparedOrder } from "./orders.ts";
@@ -67,6 +82,7 @@ export { extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationB
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
+export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";
 export type { WhatsAppTurnHandler } from "./whatsapp/turn-handler.ts";
 

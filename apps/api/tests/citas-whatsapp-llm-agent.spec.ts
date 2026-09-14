@@ -369,4 +369,56 @@ describe("Agente de WhatsApp de citas con LLM real — end-to-end vía el webhoo
     expect(appointments).toHaveLength(1);
     expect(appointments[0]!.startsAt).toBe(targetStartsAt);
   });
+
+  it("Fase 6 §1 — guardia de crisis: un mensaje de crisis en un rubro de salud NUNCA llega al LLM; responde el mensaje de crisis y registra la escalación", async () => {
+    const { citasRepo, organizationId } = buildCitasAgentRepo();
+    citasRepo.seedTenantConfig({ organizationId, rubro: "psicologo" });
+
+    let llmCalls = 0;
+    const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
+    gateway.registerLadder("citas-agent-default", [new FakeLlmProvider({ id: "scripted", script: () => { llmCalls++; return textTurn("nunca debería llegar aquí"); } })]);
+    gateway.registerLadder("citas-agent-escalated", [new FakeLlmProvider({ id: "escalated-unused" })]);
+    const turnHandler = createLlmWhatsAppTurnHandler(citasRepo, gateway, { defaultRole: "citas-agent-default", escalatedRole: "citas-agent-escalated" });
+    const app = buildApp(buildFullAppDeps(citasRepo, turnHandler));
+
+    const res = await app.request("/v1/citas/whatsapp/webhook", signedPostInit(metaPayload("wamid.citas-crisis-1", "ya no aguanto más, quiero terminar con todo", PHONE_A_WA_ID)));
+    expect(res.status).toBe(200);
+    expect(llmCalls).toBe(0); // el guardrail determinista intercepta ANTES de llamar al LLM.
+
+    const escalations = citasRepo.getEmergencyEscalations();
+    expect(escalations).toHaveLength(1);
+    expect(escalations[0]!.organizationId).toBe(organizationId);
+    expect(escalations[0]!.keywordMatched).toBe("ya no aguanto");
+
+    // La respuesta de crisis quedó persistida tal cual en la conversación (nunca
+    // reformulada por el LLM, que ni siquiera se llamó).
+    const conversationProbe = await citasRepo.appendWhatsAppUserMessageOnce(organizationId, PHONE_A_E164, { role: "user", content: "probe" });
+    const assistantMessage = conversationProbe[conversationProbe.length - 2]!;
+    expect(assistantMessage.role).toBe("assistant");
+    expect(assistantMessage.content).toContain("911");
+  });
+
+  it("Fase 6 §1 — FAQs canónicas del rubro real se agregan como grounding del prompt del agente", async () => {
+    const { citasRepo, organizationId } = buildCitasAgentRepo();
+    citasRepo.seedTenantConfig({ organizationId, rubro: "veterinaria" });
+
+    let sawFaqBlock = false;
+    const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
+    gateway.registerLadder("citas-agent-default", [
+      new FakeLlmProvider({
+        id: "scripted",
+        script: (request) => {
+          sawFaqBlock = request.system?.includes("Cachorros: primera vacuna a las 6-8 semanas") ?? false;
+          return textTurn("Claro, con gusto le ayudo.");
+        },
+      }),
+    ]);
+    gateway.registerLadder("citas-agent-escalated", [new FakeLlmProvider({ id: "escalated-unused" })]);
+    const turnHandler = createLlmWhatsAppTurnHandler(citasRepo, gateway, { defaultRole: "citas-agent-default", escalatedRole: "citas-agent-escalated" });
+    const app = buildApp(buildFullAppDeps(citasRepo, turnHandler));
+
+    const res = await app.request("/v1/citas/whatsapp/webhook", signedPostInit(metaPayload("wamid.citas-faq-1", "hola, quiero información", PHONE_A_WA_ID)));
+    expect(res.status).toBe(200);
+    expect(sawFaqBlock).toBe(true);
+  });
 });

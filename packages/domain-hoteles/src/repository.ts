@@ -4,6 +4,7 @@
 // TenantDbSession, contra las migraciones de migrations/001-003). Ninguna función de
 // negocio de las rutas de apps/api toca SQL directamente — todas pasan por aquí.
 import type {
+  ActiveHotelProperty,
   CancellationPolicyRecord,
   CfdiEmisionRecord,
   ConversationMessage,
@@ -15,13 +16,19 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HousekeepingShiftRecord,
+  MaintenanceTicketRecord,
+  MaintenanceTicketStatus,
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
+  NewHousekeepingShiftInput,
+  NewMaintenanceTicketInput,
   NewPaymentInput,
   NewReservationInput,
+  NightAuditRunRecord,
   NightlyRateRecord,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
@@ -231,6 +238,113 @@ export interface HotelesRepository {
   findCfdiEmision(propertyId: string, cfdiId: string): Promise<CfdiEmisionRecord | null>;
   listCfdiEmisiones(propertyId: string, filter?: { readonly folioId?: string }): Promise<readonly CfdiEmisionRecord[]>;
   updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void>;
+
+  // ---- Fase 6 — H5/REQ-REV-013: night audit propio ----
+
+  /** Properties de hoteles activas -- insumo de la ruta interna de barrido
+   *  (`POST /internal/hoteles/night-audit`), mismo patrón que
+   *  `CitasRepository.listActiveOrganizations()`. */
+  listActiveHotelProperties(): Promise<readonly ActiveHotelProperty[]>;
+
+  /** Reservas "en casa" la noche de `businessDate` (check-in ya hecho, check-out
+   *  todavía no) -- `folioId`/`nightlyPrice` en `null` cuando faltan (ver
+   *  `night-audit/engine.ts::planNightlyHospedajeCharges`, nunca se inventa un dato
+   *  faltante aquí). */
+  listInHouseReservationsForNightAudit(
+    propertyId: string,
+    businessDate: string,
+  ): Promise<readonly { reservationId: string; folioId: string | null; nightlyPrice: number | null }[]>;
+
+  /** Postea el cargo de hospedaje de la noche -- idempotente vía el índice único
+   *  parcial `charge_folio_stay_date_hospedaje_idx` (ya existente desde
+   *  migrations/001): un segundo intento para el MISMO folio+noche nunca duplica el
+   *  cargo, devuelve `isNew:false` con el cargo ya existente. */
+  postNightlyHospedajeCharge(input: {
+    readonly organizationId: string;
+    readonly propertyId: string;
+    readonly folioId: string;
+    readonly businessDate: string;
+    readonly netAmount: number;
+    readonly taxAmount: number;
+  }): Promise<{ id: string; createdAt: string; isNew: boolean }>;
+
+  /** Reclama la corrida de `(propertyId, businessDate)` -- si ya existe (completada o
+   *  en progreso), devuelve la fila existente en vez de crear una segunda (mismo
+   *  criterio de idempotencia por índice único que `recordFraudAlert`, sin necesitar
+   *  un advisory lock de Postgres: el índice único de la tabla ya serializa la
+   *  carrera). */
+  claimNightAuditRun(organizationId: string, propertyId: string, businessDate: string): Promise<NightAuditRunRecord>;
+
+  /** Marca la corrida como completada con el resumen final -- SOLO si seguía
+   *  `en_progreso` (guarda de estado, mismo criterio que
+   *  `resolveFraudAlert`/`night_audit_finish` del origen: una corrida ya
+   *  `completado` NUNCA se re-termina ni reemplaza su resumen). Devuelve la fila
+   *  final (la que acaba de escribir, o la que ya existía si perdió la carrera). */
+  finishNightAuditRun(runId: string, summary: Readonly<Record<string, unknown>>): Promise<NightAuditRunRecord>;
+
+  findNightAuditRun(propertyId: string, businessDate: string): Promise<NightAuditRunRecord | null>;
+  listNightAuditRuns(propertyId: string, limit?: number): Promise<readonly NightAuditRunRecord[]>;
+
+  /** Resumen de caja del día -- cargos por concepto / pagos por método, agrupados por
+   *  la FECHA DE NEGOCIO (hora local `timezone`, ver
+   *  `night-audit/engine.ts::DEFAULT_PROPERTY_TIMEZONE`), nunca por `created_at::date`
+   *  crudo en UTC del servidor (un cargo de las 23:00 hora local puede caer en el día
+   *  calendario siguiente en UTC). */
+  sumChargesByConceptForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>>;
+  sumPaymentsByMethodForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>>;
+
+  // ---- Fase 6 — REQ-HK-011: tickets de mantenimiento ----
+
+  insertMaintenanceTicket(input: NewMaintenanceTicketInput): Promise<MaintenanceTicketRecord>;
+  listMaintenanceTickets(propertyId: string, filter?: { readonly status?: MaintenanceTicketStatus }): Promise<readonly MaintenanceTicketRecord[]>;
+  findMaintenanceTicket(propertyId: string, ticketId: string): Promise<MaintenanceTicketRecord | null>;
+  /** Cierra el ticket con su costo real -- `null` si el ticket no existe o ya estaba
+   *  cerrado/cancelado (el caller decide 404 vs 409). */
+  closeMaintenanceTicket(
+    propertyId: string,
+    ticketId: string,
+    input: { readonly actualCost: number; readonly resolutionNote: string | null },
+  ): Promise<MaintenanceTicketRecord | null>;
+
+  // ---- Fase 6 — REQ-HK-008: turnos de camaristas/lavandería ----
+
+  /** Reemplaza TODOS los turnos publicados de `staffId` en el rango
+   *  [`fromDate`,`toDate`] por `shifts` -- SIEMPRE se llama después de
+   *  `assertTurnosLftPublishable()` (la ruta HTTP valida antes de invocar esto, este
+   *  método nunca valida por su cuenta) para que solo la plantilla YA válida llegue a
+   *  persistirse. */
+  replaceHousekeepingShifts(
+    propertyId: string,
+    staffId: string,
+    fromDate: string,
+    toDate: string,
+    shifts: readonly NewHousekeepingShiftInput[],
+  ): Promise<readonly HousekeepingShiftRecord[]>;
+
+  listHousekeepingShifts(propertyId: string, fromDate: string, toDate: string, staffId?: string): Promise<readonly HousekeepingShiftRecord[]>;
+
+  // ---- Dispatcher real de messaging_outbox (migrations/008) — hoteles NO tenía
+  // NINGÚN concepto de outbox antes de este cambio (a diferencia de citas, que ya
+  // traía la tabla desde su Fase 1): `outcome.reply` del turn handler de WhatsApp
+  // solo se guardaba en `whatsapp_conversations.messages`, nunca se encolaba para
+  // envío real (ver @atiende/whatsapp-gateway/README.md). Partición por
+  // PROPERTY (no organización) — mismo eje que el resto de tablas de WhatsApp de
+  // este dominio, porque 1 número de WhatsApp = 1 property aquí. ----
+  enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
+  claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
+  markMessagingOutboxSent(id: string): Promise<void>;
+  markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
+  markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
+}
+
+/** Fila de `hoteles.messaging_outbox` reclamada para despacho real — mismo shape
+ * que `@atiende/domain-citas::MessagingOutboxRow` (ver
+ * @atiende/whatsapp-gateway::MessagingOutboxPort, el puerto genérico que
+ * `createHotelesMessagingOutboxPort` en whatsapp/outbox-adapter.ts implementa). */
+export interface MessagingOutboxRow {
+  readonly id: string;
+  readonly attempts: number;
+  readonly payload: unknown;
 }
 
 export type { FolioRecord, ChargeRecord, PaymentRecord, NewChargeInput, NewPaymentInput, FnbOrderRecord, NewFnbOrderInput, NightlyRateRecord, TaxConfigRecord, GuestIdentity } from "./types.ts";
@@ -238,3 +352,13 @@ export type { ConversationMessage, ContactoNoOperativoRecord, NewContactoNoOpera
 export type { ReservationRecord, NewReservationInput, CancellationPolicyRecord } from "./types.ts";
 export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
 export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";
+export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";
+export type {
+  MaintenanceTicketRecord,
+  MaintenanceTicketOrigin,
+  MaintenanceTicketSeverity,
+  MaintenanceTicketStatus,
+  NewMaintenanceTicketInput,
+  HousekeepingShiftRecord,
+  NewHousekeepingShiftInput,
+} from "./types.ts";

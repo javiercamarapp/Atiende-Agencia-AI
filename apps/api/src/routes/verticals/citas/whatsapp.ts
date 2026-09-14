@@ -62,7 +62,7 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
       const citasRepo = deps.citasRepo(db);
       const phoneNumberId = extractMetaPhoneNumberId(payload);
       const organizationId = phoneNumberId ? await citasRepo.resolveOrganizationByPhoneNumberId(phoneNumberId) : null;
-      if (!organizationId) {
+      if (!phoneNumberId || !organizationId) {
         // Número no configurado en la plataforma: ack silencioso, no reintento.
         return c.json({ ok: true });
       }
@@ -79,10 +79,14 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
           messageId: message.id,
           phone: `+${message.from}`,
           body: message.text.body,
+          phoneNumberId,
         });
-        // El envío real de `outcome.reply` vía Graph API es responsabilidad del
-        // dispatcher de apps/worker (messaging_outbox), fuera de esta fase — aquí
-        // solo se procesa y persiste la conversación/cita.
+        // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
+        // `handleInboundWhatsAppMessage` lo encola en `citas.messaging_outbox`
+        // (ver whatsapp/inbound.ts) y `POST /internal/whatsapp/dispatch`
+        // (@atiende/whatsapp-gateway::WhatsAppOutboundDispatcher) lo drena de
+        // verdad vía Graph API — mismo patrón de scheduler externo que
+        // `/internal/citas/confirmacion-cita`.
         if (outcome.retryable) hadRetryableFailure = true;
       }
 

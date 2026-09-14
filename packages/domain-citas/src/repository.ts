@@ -117,12 +117,117 @@ export interface WaitlistCandidateRow {
   readonly createdAt: string;
 }
 
+/** Fila de `citas.messaging_outbox` reclamada para despacho real — ver
+ * migrations/007_messaging_outbox_dispatch.sql y
+ * @atiende/whatsapp-gateway::MessagingOutboxPort (el puerto que
+ * `createCitasMessagingOutboxPort` en whatsapp/outbox-adapter.ts implementa sobre
+ * estos 4 métodos). */
+export interface MessagingOutboxRow {
+  readonly id: string;
+  readonly attempts: number;
+  readonly payload: unknown;
+}
+
 /** Fase 5 — panel de administración visual (ver README de esta fase). Página
  * paginada de resultados: `nextOffset` es `null` cuando ya no hay más filas. */
 export interface CustomerPage {
   readonly items: readonly CustomerRecord[];
   readonly total: number;
   readonly nextOffset: number | null;
+}
+
+// ============================================================================
+// Fase 6 §1 — guardia de crisis (ver diseño: vertical-config.ts + crisis-guardrail.ts).
+// ============================================================================
+
+/** `citas.tenant_config` (001_citas_schema.sql) — solo los dos campos que el
+ * guardrail de crisis necesita: el rubro real (qué FAQs/guardrail aplican) y el
+ * teléfono de aviso urgente al dueño, si lo configuró. */
+export interface TenantConfigRecord {
+  readonly organizationId: string;
+  readonly rubro: string;
+  readonly ownerNotificationPhone: string | null;
+}
+
+export interface EmergencyEscalationInput {
+  readonly organizationId: string;
+  readonly customerPhone: string;
+  readonly channel: "whatsapp" | "voice";
+  readonly keywordMatched: string;
+  readonly messageExcerpt: string;
+}
+
+export interface EmergencyEscalationRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly customerPhone: string;
+  readonly channel: "whatsapp" | "voice";
+  readonly keywordMatched: string;
+  readonly messageExcerpt: string;
+  readonly createdAt: string;
+}
+
+// ============================================================================
+// Fase 6 §2 — cuentas de sincronización de calendario alternativas a Google
+// (Cal.com/CalDAV, ver calendar-sync-port.ts/calcom-port.ts/caldav-port.ts).
+// ============================================================================
+
+export type CalendarProviderSyncStatus = "disconnected" | "connected" | "error";
+
+export interface ProviderCalComAccountRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly calcomEventTypeId: string;
+  readonly syncStatus: CalendarProviderSyncStatus;
+  readonly syncError: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ConnectProviderCalComAccountInput {
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly calcomEventTypeId: string;
+  /** En texto plano SOLO en esta frontera — el adaptador de Postgres lo envuelve de
+   * inmediato en Supabase Vault (misma función genérica que Fase 3), nunca queda en
+   * una columna en claro. El adaptador en memoria (tests) lo guarda tal cual. */
+  readonly apiKey: string;
+}
+
+export interface ProviderCalDavAccountRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly calendarCollectionUrl: string;
+  readonly username: string;
+  readonly syncStatus: CalendarProviderSyncStatus;
+  readonly syncError: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ConnectProviderCalDavAccountInput {
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly calendarCollectionUrl: string;
+  readonly username: string;
+  /** Contraseña específica de aplicación — nunca en claro más allá de esta
+   * frontera, mismo criterio que ConnectProviderCalComAccountInput.apiKey. */
+  readonly password: string;
+}
+
+// ============================================================================
+// Fase 6 §3 — dispatcher de correo (motor de envío real vía Resend, ver
+// email-dispatch.ts). Acotado a channel='email' de `citas.messaging_outbox` —
+// nunca toca una fila channel='whatsapp' (ver migración 009).
+// ============================================================================
+
+export interface EmailOutboxJobRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly attempts: number;
+  readonly payload: Record<string, unknown>;
 }
 
 export interface CitasRepository {
@@ -253,6 +358,13 @@ export interface CitasRepository {
   markReminderSent(appointmentId: string, sentAtIso: string): Promise<void>;
   resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null>;
   enqueueMessagingOutbox(organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void>;
+  // ---- Dispatcher real de messaging_outbox (migrations/007) — ver
+  // whatsapp/outbox-adapter.ts para el adaptador que expone estos 4 métodos como
+  // @atiende/whatsapp-gateway::MessagingOutboxPort. ----
+  claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]>;
+  markMessagingOutboxSent(id: string): Promise<void>;
+  markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
+  markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
   claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean>;
 
@@ -279,4 +391,26 @@ export interface CitasRepository {
   ): Promise<readonly ConversationMessage[]>;
   finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void>;
   markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void>;
+
+  // ---- Fase 6 §1 — guardia de crisis ----
+  findTenantConfig(organizationId: string): Promise<TenantConfigRecord | null>;
+  insertEmergencyEscalation(input: EmergencyEscalationInput): Promise<EmergencyEscalationRecord>;
+
+  // ---- Fase 6 §2/§3 — nombre de la organización para plantillas de correo
+  // (ver appointment-email-notifications.ts) ----
+  findOrganizationById(organizationId: string): Promise<{ readonly id: string; readonly name: string } | null>;
+
+  // ---- Fase 6 §2 — Cal.com/CalDAV por proveedor ----
+  findProviderCalComAccount(providerId: string): Promise<ProviderCalComAccountRecord | null>;
+  connectProviderCalComAccount(input: ConnectProviderCalComAccountInput): Promise<ProviderCalComAccountRecord>;
+  disconnectProviderCalComAccount(providerId: string): Promise<void>;
+  resolveProviderCalComApiKey(providerId: string): Promise<string | null>;
+  findProviderCalDavAccount(providerId: string): Promise<ProviderCalDavAccountRecord | null>;
+  connectProviderCalDavAccount(input: ConnectProviderCalDavAccountInput): Promise<ProviderCalDavAccountRecord>;
+  disconnectProviderCalDavAccount(providerId: string): Promise<void>;
+  resolveProviderCalDavPassword(providerId: string): Promise<string | null>;
+
+  // ---- Fase 6 §3 — dispatcher de correo ----
+  claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
+  completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
 }

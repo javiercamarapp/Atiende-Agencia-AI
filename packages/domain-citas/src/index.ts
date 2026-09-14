@@ -37,10 +37,15 @@ export type {
   ConversationMessage,
   CreateAppointmentResult,
   CustomerPage,
+  EmailOutboxJobRow,
+  EmergencyEscalationInput,
+  EmergencyEscalationRecord,
+  MessagingOutboxRow,
   NewAppointmentInput,
   ReassignResult,
   ReminderCandidateRow,
   RescheduleResult,
+  TenantConfigRecord,
   WaitlistCandidateRow,
 } from "./repository.ts";
 export { InMemoryCitasRepository } from "./in-memory-repository.ts";
@@ -104,6 +109,7 @@ export { extractMetaPhoneNumberId, extractMetaTextMessages, resolveOrganizationB
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { createDefaultConversationGuard, handleInboundWhatsAppMessage, redactSensitiveInfo } from "./whatsapp/inbound.ts";
 export type { CitasConversationGuard, InboundMessageOutcome } from "./whatsapp/inbound.ts";
+export { createCitasMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export {
   APPOINTMENT_HARD_RULES,
   createLlmWhatsAppTurnHandler,
@@ -113,6 +119,7 @@ export {
   providerFailureReply,
   saludoSegunHora,
   TOOLS,
+  verticalFaqsBlock,
 } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppLlmAgentConfig, WhatsAppLlmAgentOptions } from "./whatsapp/llm-turn-handler.ts";
 
@@ -125,3 +132,57 @@ export {
   tryNotifyWaitlistOfFreedSlot,
 } from "./reminders.ts";
 export type { ConfirmacionCitaSummary, OptimizadorResult, TimeWindow } from "./reminders.ts";
+
+// ---- Fase 6 §1 — guardia de crisis + FAQs canónicas por rubro ----
+export {
+  ALL_VERTICALS,
+  CRISIS_ESCALATION_MESSAGE,
+  CRISIS_KEYWORDS,
+  detectCrisisKeyword,
+  findVerticalFaqAnswer,
+  getVerticalFaqs,
+  normalizeForCrisisCheck,
+  requiresCrisisGuardrail,
+  VERTICAL_FAQS,
+} from "./vertical-config.ts";
+export type { Vertical, VerticalFaq } from "./vertical-config.ts";
+export { runCrisisGuardrail } from "./crisis-guardrail.ts";
+export type { CrisisGuardrailResult } from "./crisis-guardrail.ts";
+
+// ---- Fase 6 §2 — CalendarSyncPort genérico + adaptadores Cal.com/CalDAV ----
+export { assertAvailabilityContract, assertCalendarSyncPortContract, CalendarCapabilityUnsupportedError, CalendarConflictError, GoogleCalendarSyncAdapter, isRangeBookable, rangesOverlap } from "./calendar-sync-port.ts";
+export type {
+  AvailabilityInterval,
+  AvailabilityKind,
+  AvailabilityQuery,
+  AvailabilityResult,
+  CalendarEventResult as GenericCalendarEventResult,
+  CalendarPlatform,
+  CalendarSyncPort,
+  CreateCalendarEventInput,
+  DeleteCalendarEventInput,
+  UpdateCalendarEventInput,
+} from "./calendar-sync-port.ts";
+export { CalComApiError, RealCalComPort } from "./calcom-port.ts";
+export type { CalComEventType, CalComPortConfig } from "./calcom-port.ts";
+export { buildVEventIcs, IcsBuildError, IcsParseError, parseVEventIcs } from "./caldav-ics.ts";
+export type { ParsedVEvent, VEventDraft } from "./caldav-ics.ts";
+export { CalDavApiError, RealCalDavPort } from "./caldav-port.ts";
+export type { CalDavPortConfig } from "./caldav-port.ts";
+export type {
+  CalendarProviderSyncStatus,
+  ConnectProviderCalComAccountInput,
+  ConnectProviderCalDavAccountInput,
+  ProviderCalComAccountRecord,
+  ProviderCalDavAccountRecord,
+} from "./repository.ts";
+
+// ---- Fase 6 §3 — notificaciones por correo (plantillas + dispatcher fail-closed) ----
+export { escapeHtml, renderCorreo } from "./emails/layout.ts";
+export type { EtiquetaPlantilla, FilaPlantilla, SeccionPlantilla } from "./emails/layout.ts";
+export { correoCitaCancelada, correoCitaCreada, correoCitaModificada, correoCitaReagendada, correoCitaRecordatorio } from "./emails/appointment-templates.ts";
+export type { CitaCorreo, CitaReagendadaCorreo, Correo } from "./emails/appointment-templates.ts";
+export { enqueueAppointmentEmailCore, tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
+export type { AppointmentEmailEvent, AppointmentEmailExtra, AppointmentEmailResult } from "./appointment-email-notifications.ts";
+export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "./email-dispatch.ts";
+export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";

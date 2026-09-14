@@ -6,8 +6,9 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
-import type { HotelesRepository, IdempotencyParams, IdempotentResult } from "./repository.ts";
+import type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 import type {
+  ActiveHotelProperty,
   CancellationPolicyRecord,
   CfdiEmisionRecord,
   ConversationMessage,
@@ -20,13 +21,19 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HousekeepingShiftRecord,
+  MaintenanceTicketRecord,
+  MaintenanceTicketStatus,
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
+  NewHousekeepingShiftInput,
+  NewMaintenanceTicketInput,
   NewPaymentInput,
   NewReservationInput,
+  NightAuditRunRecord,
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
@@ -295,6 +302,111 @@ function mapCfdiEmision(row: CfdiEmisionRawRow): CfdiEmisionRecord {
     paymentId: row.payment_id,
     createdAt: row.created_at,
     canceledAt: row.canceled_at,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 6 — H5/REQ-REV-013 night audit + REQ-HK-008/011 housekeeping.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface NightAuditRunRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  business_date: string;
+  status: NightAuditRunRecord["status"];
+  summary: unknown;
+  started_at: string;
+  completed_at: string | null;
+}
+
+const NIGHT_AUDIT_RUN_COLUMNS = `id, organization_id, property_id, business_date::text as business_date, status, summary,
+       started_at::text as started_at, completed_at::text as completed_at`;
+
+function mapNightAuditRun(row: NightAuditRunRawRow): NightAuditRunRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    businessDate: row.business_date,
+    status: row.status,
+    summary: (row.summary as Record<string, unknown>) ?? {},
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+  };
+}
+
+interface MaintenanceTicketRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  room_id: string | null;
+  title: string;
+  description: string;
+  origin: MaintenanceTicketRecord["origin"];
+  severity: MaintenanceTicketRecord["severity"];
+  status: MaintenanceTicketStatus;
+  assigned_to: string | null;
+  estimated_cost: string;
+  actual_cost: string | null;
+  resolution_note: string | null;
+  created_by: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const MAINTENANCE_TICKET_COLUMNS = `id, organization_id, property_id, room_id, title, description, origin, severity, status,
+       assigned_to, estimated_cost::text as estimated_cost, actual_cost::text as actual_cost, resolution_note,
+       created_by, closed_at::text as closed_at, created_at::text as created_at, updated_at::text as updated_at`;
+
+function mapMaintenanceTicket(row: MaintenanceTicketRawRow): MaintenanceTicketRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    roomId: row.room_id,
+    title: row.title,
+    description: row.description,
+    origin: row.origin,
+    severity: row.severity,
+    status: row.status,
+    assignedTo: row.assigned_to,
+    estimatedCost: Number(row.estimated_cost),
+    actualCost: row.actual_cost == null ? null : Number(row.actual_cost),
+    resolutionNote: row.resolution_note,
+    createdBy: row.created_by,
+    closedAt: row.closed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+interface HousekeepingShiftRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  staff_id: string;
+  work_date: string;
+  start_time: string;
+  end_time: string;
+  created_at: string;
+}
+
+const HOUSEKEEPING_SHIFT_COLUMNS = `id, organization_id, property_id, staff_id, work_date::text as work_date,
+       to_char(start_time, 'HH24:MI') as start_time, to_char(end_time, 'HH24:MI') as end_time,
+       created_at::text as created_at`;
+
+function mapHousekeepingShift(row: HousekeepingShiftRawRow): HousekeepingShiftRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    staffId: row.staff_id,
+    workDate: row.work_date,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    createdAt: row.created_at,
   };
 }
 
@@ -839,6 +951,29 @@ export class PostgresHotelesRepository implements HotelesRepository {
     );
   }
 
+  // ---- Dispatcher real de messaging_outbox (migrations/008) ----
+
+  async enqueueMessagingOutbox(propertyId: string, organizationId: string, channel: "whatsapp" | "email", eventType: string, dedupeKey: string, payload: unknown): Promise<void> {
+    await this.db.query(`select hoteles.enqueue_messaging_outbox($1, $2, $3, $4, $5, $6::jsonb);`, [propertyId, organizationId, channel, eventType, dedupeKey, JSON.stringify(payload)]);
+  }
+
+  async claimMessagingOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxRow[]> {
+    const { rows } = await this.db.query<{ id: string; attempts: number; payload: unknown }>(`select id, attempts, payload from hoteles.claim_messaging_outbox_batch($1, $2);`, [limit, leaseSeconds]);
+    return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
+  }
+
+  async markMessagingOutboxSent(id: string): Promise<void> {
+    await this.db.query(`select hoteles.complete_messaging_outbox_sent($1);`, [id]);
+  }
+
+  async markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void> {
+    await this.db.query(`select hoteles.complete_messaging_outbox_retry($1, $2, $3, $4);`, [id, attempts, errorClass, nextAttemptAtIso]);
+  }
+
+  async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
+    await this.db.query(`select hoteles.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
+  }
+
   async insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord> {
     const { rows } = await this.db.query<{
       id: string;
@@ -1051,5 +1186,234 @@ export class PostgresHotelesRepository implements HotelesRepository {
 
   async updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void> {
     await this.db.query(`update hoteles.cfdi_emision set status = $1, canceled_at = now() where id = $2;`, [status, cfdiId]);
+  }
+
+  // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
+
+  async listActiveHotelProperties(): Promise<readonly ActiveHotelProperty[]> {
+    // Mismo patrón exacto que `CitasRepository.listActiveOrganizations()`
+    // (apps/api/src/routes/verticals/citas/reminders.ts): ejecutado bajo
+    // `engine.withAppSession({ userId: null }, ...)` desde la ruta interna de
+    // barrido, sin `auth.uid()` real.
+    const { rows } = await this.db.query<{ organization_id: string; property_id: string }>(
+      `select p.id as property_id, p.organization_id
+       from core.property p
+       join core.organization o on o.id = p.organization_id
+       where o.vertical = 'hoteles' and o.status = 'active' and p.status = 'active';`,
+    );
+    return rows.map((r) => ({ organizationId: r.organization_id, propertyId: r.property_id }));
+  }
+
+  async listInHouseReservationsForNightAudit(
+    propertyId: string,
+    businessDate: string,
+  ): Promise<readonly { reservationId: string; folioId: string | null; nightlyPrice: number | null }[]> {
+    const { rows } = await this.db.query<{ reservation_id: string; folio_id: string | null; nightly_price: string | null }>(
+      `select r.id as reservation_id, f.id as folio_id, rp.price::text as nightly_price
+       from hoteles.reservation r
+       left join hoteles.folio f on f.reservation_id = r.id and f.is_primary
+       left join hoteles.rate_plan rp on rp.room_type_id = r.room_type_id and rp.property_id = r.property_id and rp.date = $2::date
+       where r.property_id = $1
+         and r.status in ('check_in', 'en_estancia')
+         and r.check_in_date <= $2::date
+         and r.check_out_date > $2::date;`,
+      [propertyId, businessDate],
+    );
+    return rows.map((r) => ({ reservationId: r.reservation_id, folioId: r.folio_id, nightlyPrice: r.nightly_price == null ? null : Number(r.nightly_price) }));
+  }
+
+  async postNightlyHospedajeCharge(input: {
+    organizationId: string;
+    propertyId: string;
+    folioId: string;
+    businessDate: string;
+    netAmount: number;
+    taxAmount: number;
+  }): Promise<{ id: string; createdAt: string; isNew: boolean }> {
+    const inserted = await this.db.query<{ id: string; created_at: string }>(
+      `insert into hoteles.charge (organization_id, property_id, folio_id, description, amount, tax_amount, concept, stay_date)
+       values ($1, $2, $3, $4, $5, $6, 'hospedaje', $7::date)
+       on conflict (folio_id, stay_date) where concept = 'hospedaje' and stay_date is not null and reverses_charge_id is null
+       do nothing
+       returning id, created_at::text as created_at;`,
+      [input.organizationId, input.propertyId, input.folioId, `Hospedaje noche del ${input.businessDate}`, input.netAmount, input.taxAmount, input.businessDate],
+    );
+    if (inserted.rows[0]) return { id: inserted.rows[0].id, createdAt: inserted.rows[0].created_at, isNew: true };
+    const { rows } = await this.db.query<{ id: string; created_at: string }>(
+      `select id, created_at::text as created_at from hoteles.charge
+       where folio_id = $1 and stay_date = $2::date and concept = 'hospedaje' and reverses_charge_id is null;`,
+      [input.folioId, input.businessDate],
+    );
+    if (!rows[0]) throw new Error(`postNightlyHospedajeCharge: conflicto de índice único sin fila existente recuperable (folio=${input.folioId}, noche=${input.businessDate}).`);
+    return { id: rows[0].id, createdAt: rows[0].created_at, isNew: false };
+  }
+
+  async claimNightAuditRun(organizationId: string, propertyId: string, businessDate: string): Promise<NightAuditRunRecord> {
+    // Sin advisory lock explícito (a diferencia del origen): el índice único
+    // `(property_id, business_date)` de migrations/008 ya serializa la carrera vía
+    // `on conflict do nothing` -- mismo patrón exacto que `recordFraudAlert` arriba,
+    // consistente con el resto de este adaptador (ninguna otra escritura de
+    // domain-hoteles usa una función SQL SECURITY DEFINER dedicada para esto).
+    const inserted = await this.db.query<NightAuditRunRawRow>(
+      `insert into hoteles.night_audit_run (organization_id, property_id, business_date, status, summary)
+       values ($1, $2, $3::date, 'en_progreso', '{}'::jsonb)
+       on conflict (property_id, business_date) do nothing
+       returning ${NIGHT_AUDIT_RUN_COLUMNS};`,
+      [organizationId, propertyId, businessDate],
+    );
+    if (inserted.rows[0]) return mapNightAuditRun(inserted.rows[0]);
+    const { rows } = await this.db.query<NightAuditRunRawRow>(
+      `select ${NIGHT_AUDIT_RUN_COLUMNS} from hoteles.night_audit_run where property_id = $1 and business_date = $2::date;`,
+      [propertyId, businessDate],
+    );
+    if (!rows[0]) throw new Error(`claimNightAuditRun: conflicto de índice único sin fila existente recuperable (property=${propertyId}, fecha=${businessDate}).`);
+    return mapNightAuditRun(rows[0]);
+  }
+
+  async finishNightAuditRun(runId: string, summary: Readonly<Record<string, unknown>>): Promise<NightAuditRunRecord> {
+    const { rows } = await this.db.query<NightAuditRunRawRow>(
+      `update hoteles.night_audit_run
+       set status = 'completado', summary = $1, completed_at = now()
+       where id = $2 and status = 'en_progreso'
+       returning ${NIGHT_AUDIT_RUN_COLUMNS};`,
+      [JSON.stringify(summary), runId],
+    );
+    if (rows[0]) return mapNightAuditRun(rows[0]);
+    // Guarda de estado (mismo criterio que `resolveFraudAlert`): si perdió la carrera
+    // contra otra corrida que ya terminó primero, devuelve esa fila ya completada en
+    // vez de lanzar -- nunca reemplaza un resumen ya guardado.
+    const { rows: existing } = await this.db.query<NightAuditRunRawRow>(`select ${NIGHT_AUDIT_RUN_COLUMNS} from hoteles.night_audit_run where id = $1;`, [runId]);
+    if (!existing[0]) throw new Error(`night_audit_run_no_encontrado: ${runId}`);
+    return mapNightAuditRun(existing[0]);
+  }
+
+  async findNightAuditRun(propertyId: string, businessDate: string): Promise<NightAuditRunRecord | null> {
+    const { rows } = await this.db.query<NightAuditRunRawRow>(
+      `select ${NIGHT_AUDIT_RUN_COLUMNS} from hoteles.night_audit_run where property_id = $1 and business_date = $2::date;`,
+      [propertyId, businessDate],
+    );
+    return rows[0] ? mapNightAuditRun(rows[0]) : null;
+  }
+
+  async listNightAuditRuns(propertyId: string, limit = 30): Promise<readonly NightAuditRunRecord[]> {
+    const { rows } = await this.db.query<NightAuditRunRawRow>(
+      `select ${NIGHT_AUDIT_RUN_COLUMNS} from hoteles.night_audit_run where property_id = $1 order by business_date desc limit $2;`,
+      [propertyId, limit],
+    );
+    return rows.map(mapNightAuditRun);
+  }
+
+  // P1/auditoria-2 (heredado del origen, ver jobs/nightAudit.ts): el resumen de caja
+  // debe agrupar por la FECHA DE NEGOCIO (hora local `timezone`), no por
+  // `created_at::date` crudo en la zona de sesión del servidor (típicamente UTC) --
+  // comparar eso directo contra `businessDate` casi nunca coincide para un cargo
+  // hecho cerca de medianoche hora local.
+  async sumChargesByConceptForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>> {
+    const { rows } = await this.db.query<{ concept: string; total: string }>(
+      `select concept, sum(amount + tax_amount)::text as total
+       from hoteles.charge
+       where property_id = $1 and (created_at at time zone $3)::date = $2::date
+       group by concept;`,
+      [propertyId, businessDate, timezone],
+    );
+    return Object.fromEntries(rows.map((r) => [r.concept, Number(r.total)]));
+  }
+
+  async sumPaymentsByMethodForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>> {
+    const { rows } = await this.db.query<{ method: string; total: string }>(
+      `select method, sum(amount)::text as total
+       from hoteles.payment
+       where property_id = $1 and (created_at at time zone $3)::date = $2::date and status = 'capturado'
+       group by method;`,
+      [propertyId, businessDate, timezone],
+    );
+    return Object.fromEntries(rows.map((r) => [r.method, Number(r.total)]));
+  }
+
+  // ---- HotelesRepository: Fase 6 — REQ-HK-011 tickets de mantenimiento ----
+
+  async insertMaintenanceTicket(input: NewMaintenanceTicketInput): Promise<MaintenanceTicketRecord> {
+    const { rows } = await this.db.query<MaintenanceTicketRawRow>(
+      `insert into hoteles.maintenance_ticket
+         (organization_id, property_id, room_id, title, description, origin, severity, estimated_cost, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       returning ${MAINTENANCE_TICKET_COLUMNS};`,
+      [input.organizationId, input.propertyId, input.roomId, input.title, input.description, input.origin, input.severity, input.estimatedCost, input.createdBy],
+    );
+    return mapMaintenanceTicket(rows[0]!);
+  }
+
+  async listMaintenanceTickets(propertyId: string, filter?: { readonly status?: MaintenanceTicketStatus }): Promise<readonly MaintenanceTicketRecord[]> {
+    const { rows } = await this.db.query<MaintenanceTicketRawRow>(
+      filter?.status
+        ? `select ${MAINTENANCE_TICKET_COLUMNS} from hoteles.maintenance_ticket where property_id = $1 and status = $2 order by created_at desc limit 200;`
+        : `select ${MAINTENANCE_TICKET_COLUMNS} from hoteles.maintenance_ticket where property_id = $1 order by created_at desc limit 200;`,
+      filter?.status ? [propertyId, filter.status] : [propertyId],
+    );
+    return rows.map(mapMaintenanceTicket);
+  }
+
+  async findMaintenanceTicket(propertyId: string, ticketId: string): Promise<MaintenanceTicketRecord | null> {
+    const { rows } = await this.db.query<MaintenanceTicketRawRow>(
+      `select ${MAINTENANCE_TICKET_COLUMNS} from hoteles.maintenance_ticket where id = $1 and property_id = $2;`,
+      [ticketId, propertyId],
+    );
+    return rows[0] ? mapMaintenanceTicket(rows[0]) : null;
+  }
+
+  async closeMaintenanceTicket(
+    propertyId: string,
+    ticketId: string,
+    input: { readonly actualCost: number; readonly resolutionNote: string | null },
+  ): Promise<MaintenanceTicketRecord | null> {
+    const { rows } = await this.db.query<MaintenanceTicketRawRow>(
+      `update hoteles.maintenance_ticket
+       set status = 'cerrado', actual_cost = $1, resolution_note = $2, closed_at = now(), updated_at = now()
+       where id = $3 and property_id = $4 and status not in ('cerrado', 'cancelado')
+       returning ${MAINTENANCE_TICKET_COLUMNS};`,
+      [input.actualCost, input.resolutionNote, ticketId, propertyId],
+    );
+    return rows[0] ? mapMaintenanceTicket(rows[0]) : null;
+  }
+
+  // ---- HotelesRepository: Fase 6 — REQ-HK-008 turnos de camaristas/lavandería ----
+
+  async replaceHousekeepingShifts(
+    propertyId: string,
+    staffId: string,
+    fromDate: string,
+    toDate: string,
+    shifts: readonly NewHousekeepingShiftInput[],
+  ): Promise<readonly HousekeepingShiftRecord[]> {
+    await this.db.query(
+      `delete from hoteles.housekeeping_shift
+       where property_id = $1 and staff_id = $2 and work_date >= $3::date and work_date <= $4::date;`,
+      [propertyId, staffId, fromDate, toDate],
+    );
+    const created: HousekeepingShiftRecord[] = [];
+    for (const s of shifts) {
+      const { rows } = await this.db.query<HousekeepingShiftRawRow>(
+        `insert into hoteles.housekeeping_shift (organization_id, property_id, staff_id, work_date, start_time, end_time)
+         values ($1, $2, $3, $4::date, $5::time, $6::time)
+         returning ${HOUSEKEEPING_SHIFT_COLUMNS};`,
+        [s.organizationId, s.propertyId, s.staffId, s.workDate, s.startTime, s.endTime],
+      );
+      created.push(mapHousekeepingShift(rows[0]!));
+    }
+    return created;
+  }
+
+  async listHousekeepingShifts(propertyId: string, fromDate: string, toDate: string, staffId?: string): Promise<readonly HousekeepingShiftRecord[]> {
+    const { rows } = await this.db.query<HousekeepingShiftRawRow>(
+      staffId
+        ? `select ${HOUSEKEEPING_SHIFT_COLUMNS} from hoteles.housekeeping_shift
+           where property_id = $1 and work_date >= $2::date and work_date <= $3::date and staff_id = $4
+           order by work_date asc, start_time asc;`
+        : `select ${HOUSEKEEPING_SHIFT_COLUMNS} from hoteles.housekeeping_shift
+           where property_id = $1 and work_date >= $2::date and work_date <= $3::date
+           order by work_date asc, start_time asc;`,
+      staffId ? [propertyId, fromDate, toDate, staffId] : [propertyId, fromDate, toDate],
+    );
+    return rows.map(mapHousekeepingShift);
   }
 }

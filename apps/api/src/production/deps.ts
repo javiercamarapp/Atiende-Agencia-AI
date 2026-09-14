@@ -62,6 +62,7 @@ import type { RentasRepository } from "@atiende/domain-rentas";
 import { PostgresRentasRepository, PostgresRentasCalendarSyncRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
 import { openManagedPostgres } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
+import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
 import { ProductionCoreRepository } from "./core-repository.ts";
@@ -168,6 +169,13 @@ export function buildProductionDeps(): AppDeps {
   // la ruta de extracción de requisitos de licitaciones.
   const llmGateway = buildProductionLlmGateway(env);
 
+  // Dispatcher real de WhatsApp saliente — `undefined` si `WHATSAPP_ACCESS_TOKEN` no
+  // está configurado (ver env.ts), mismo criterio fail-closed que `llmGateway`
+  // arriba: la ruta que lo consume (routes/internal/whatsapp-dispatch.ts) responde
+  // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
+  // tests/CI — este constructor solo corre en producción real.
+  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken }) }) : undefined;
+
   cached = {
     env,
     engine,
@@ -232,6 +240,7 @@ export function buildProductionDeps(): AppDeps {
     // completo, incluida la confirmación de que `engine.admin` NO es service_role).
     rentasOwnerPortalRepo: (db) => new ProductionRentasOwnerPortalRepository(db),
     llmGateway,
+    whatsAppDispatcher,
   };
   return cached;
 }

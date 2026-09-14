@@ -10,6 +10,8 @@ import { hotelesQuotesRoutes } from "./quotes.ts";
 import { hotelesReservasRoutes } from "./reservas.ts";
 import { hotelesCfdiRoutes } from "./cfdi.ts";
 import { hotelesFraudeRoutes } from "./fraude.ts";
+import { hotelesNightAuditRoutes } from "./night-audit.ts";
+import { hotelesHousekeepingRoutes } from "./housekeeping.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -20,5 +22,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 5 — H5/REQ-BO-001/002 (CFDI de hospedaje) + H16-014/REQ-REC-014 (fraude interno).
   app.route("/", hotelesCfdiRoutes(deps));
   app.route("/", hotelesFraudeRoutes(deps));
+  // Fase 6 — H5/REQ-REV-013 (night audit propio) + REQ-HK-008/011 (housekeeping: turnos LFT + tickets de mantenimiento).
+  app.route("/", hotelesNightAuditRoutes(deps));
+  app.route("/", hotelesHousekeepingRoutes(deps));
   return app;
 }
