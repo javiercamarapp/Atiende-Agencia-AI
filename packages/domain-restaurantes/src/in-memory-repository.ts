@@ -42,6 +42,8 @@ import type {
   RestaurantesRepository,
   SalesBucketRow,
   SearchableProduct,
+  StaffOrderNotificationEventType,
+  StaffOrderNotificationRecord,
   TierDistributionRow,
   TopCustomerRow,
   WhatsAppConversationStatsRow,
@@ -233,6 +235,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly whatsappLeases = new Map<string, StoredLease>();
   private readonly whatsappConversations = new Map<string, StoredConversation>();
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
+  private readonly staffOrderNotifications = new Map<string, StaffOrderNotificationRecord>();
 
   private readonly orderLock = new KeyedMutex();
   private readonly customerLock = new KeyedMutex();
@@ -715,6 +718,19 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return this.phoneNumberIdToOrg.get(phoneNumberId) ?? null;
   }
 
+  // Fase 9 — sentido SALIENTE del mismo índice `phoneNumberIdToOrg` que ya siembra
+  // `seedWhatsAppChannel` (ver comentario de `resolveActiveWhatsAppPhoneNumberId` en
+  // repository.ts): un solo `phone_number_id` por organización (PK real de
+  // `restaurantes.whatsapp_channel_config`, migrations/001), así que basta con
+  // recorrer el mismo mapa buscando el organizationId — nunca hace falta un índice
+  // separado.
+  async resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null> {
+    for (const [phoneNumberId, orgId] of this.phoneNumberIdToOrg) {
+      if (orgId === organizationId) return phoneNumberId;
+    }
+    return null;
+  }
+
   async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
     return this.whatsappLock.run(`event:${messageId}`, async () => {
       const existing = this.whatsappEvents.get(messageId);
@@ -848,6 +864,65 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     row.attempts = attempts;
     row.lastErrorClass = errorClass.slice(0, 120);
     row.claimedAt = null;
+  }
+
+  // ---- Fase 9 — bandeja de notificaciones internas al staff (ver
+  // order-notifications.ts, migrations/009_order_notifications.sql) ----
+
+  getStaffOrderNotifications(): readonly StaffOrderNotificationRecord[] {
+    return [...this.staffOrderNotifications.values()];
+  }
+
+  async createStaffOrderNotification(
+    organizationId: string,
+    propertyId: string,
+    orderId: string,
+    eventType: StaffOrderNotificationEventType,
+    message: string,
+  ): Promise<StaffOrderNotificationRecord> {
+    // Idempotente por (organizationId, orderId, eventType) — mismo criterio que
+    // `enqueue_messaging_outbox` (ON CONFLICT DO NOTHING real, ver migrations/009):
+    // un reintento real del mismo evento nunca duplica la fila, siempre devuelve la
+    // ya existente.
+    const existing = [...this.staffOrderNotifications.values()].find((n) => n.organizationId === organizationId && n.orderId === orderId && n.eventType === eventType);
+    if (existing) return existing;
+    const record: StaffOrderNotificationRecord = {
+      id: randomUUID(),
+      organizationId,
+      propertyId,
+      orderId,
+      eventType,
+      message,
+      createdAt: new Date().toISOString(),
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+    };
+    this.staffOrderNotifications.set(record.id, record);
+    return record;
+  }
+
+  async listStaffOrderNotifications(
+    organizationId: string,
+    propertyIds: readonly string[] | null,
+    options?: { readonly unacknowledgedOnly?: boolean; readonly limit?: number },
+  ): Promise<readonly StaffOrderNotificationRecord[]> {
+    const limit = options?.limit ?? 50;
+    return [...this.staffOrderNotifications.values()]
+      .filter((n) => n.organizationId === organizationId)
+      .filter((n) => propertyIds === null || propertyIds.includes(n.propertyId))
+      .filter((n) => !options?.unacknowledgedOnly || n.acknowledgedAt === null)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+
+  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord> {
+    const existing = this.staffOrderNotifications.get(notificationId);
+    if (!existing || existing.organizationId !== organizationId) {
+      throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
+    }
+    const updated: StaffOrderNotificationRecord = { ...existing, acknowledgedAt: new Date().toISOString(), acknowledgedBy: actorId };
+    this.staffOrderNotifications.set(notificationId, updated);
+    return updated;
   }
 
   // ---- Fase 5 — back-office CORE (ver diseño §1) ----

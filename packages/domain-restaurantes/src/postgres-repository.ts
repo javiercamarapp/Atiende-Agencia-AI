@@ -45,6 +45,8 @@ import type {
   RestaurantesRepository,
   SalesBucketRow,
   SearchableProduct,
+  StaffOrderNotificationEventType,
+  StaffOrderNotificationRecord,
   TierDistributionMetric,
   TierDistributionRow,
   WhatsAppConversationStatsRow,
@@ -526,6 +528,108 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
     await this.db.query(`select restaurantes.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
+  }
+
+  // Fase 9 — sentido SALIENTE de `restaurantes.whatsapp_channel_config`
+  // (migrations/001, `organization_id` es su PK real: un solo `phone_number_id` por
+  // organización) — ver comentario completo en repository.ts.
+  async resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null> {
+    const { rows } = await this.db.query<{ phone_number_id: string }>(`select phone_number_id from restaurantes.whatsapp_channel_config where organization_id = $1;`, [organizationId]);
+    return rows[0]?.phone_number_id ?? null;
+  }
+
+  // ---- Fase 9 — bandeja de notificaciones internas al staff (ver
+  // order-notifications.ts, migrations/009_order_notifications.sql) ----
+
+  async createStaffOrderNotification(
+    organizationId: string,
+    propertyId: string,
+    orderId: string,
+    eventType: StaffOrderNotificationEventType,
+    message: string,
+  ): Promise<StaffOrderNotificationRecord> {
+    const { rows } = await this.db.query<{
+      id: string;
+      created_at: string;
+      acknowledged_at: string | null;
+      acknowledged_by: string | null;
+    }>(`select id, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by from restaurantes.enqueue_staff_order_notification($1, $2, $3, $4, $5);`, [
+      organizationId,
+      propertyId,
+      orderId,
+      eventType,
+      message,
+    ]);
+    const row = rows[0]!;
+    return { id: row.id, organizationId, propertyId, orderId, eventType, message, createdAt: row.created_at, acknowledgedAt: row.acknowledged_at, acknowledgedBy: row.acknowledged_by };
+  }
+
+  async listStaffOrderNotifications(
+    organizationId: string,
+    propertyIds: readonly string[] | null,
+    options?: { readonly unacknowledgedOnly?: boolean; readonly limit?: number },
+  ): Promise<readonly StaffOrderNotificationRecord[]> {
+    const limit = options?.limit ?? 50;
+    const { rows } = await this.db.query<{
+      id: string;
+      property_id: string;
+      order_id: string;
+      event_type: StaffOrderNotificationEventType;
+      message: string;
+      created_at: string;
+      acknowledged_at: string | null;
+      acknowledged_by: string | null;
+    }>(
+      `select id, property_id, order_id, event_type, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by
+       from restaurantes.staff_order_notification
+       where organization_id = $1
+         and ($2::uuid[] is null or property_id = any($2::uuid[]))
+         and ($3::boolean is false or acknowledged_at is null)
+       order by created_at desc
+       limit $4;`,
+      [organizationId, propertyIds !== null ? propertyIds : null, options?.unacknowledgedOnly ?? false, limit],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      organizationId,
+      propertyId: r.property_id,
+      orderId: r.order_id,
+      eventType: r.event_type,
+      message: r.message,
+      createdAt: r.created_at,
+      acknowledgedAt: r.acknowledged_at,
+      acknowledgedBy: r.acknowledged_by,
+    }));
+  }
+
+  async acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord> {
+    const { rows } = await this.db.query<{
+      property_id: string;
+      order_id: string;
+      event_type: StaffOrderNotificationEventType;
+      message: string;
+      created_at: string;
+      acknowledged_at: string | null;
+      acknowledged_by: string | null;
+    }>(
+      `update restaurantes.staff_order_notification set acknowledged_at = now(), acknowledged_by = $1
+       where organization_id = $2 and id = $3
+       returning property_id, order_id, event_type, message, created_at::text as created_at, acknowledged_at::text as acknowledged_at, acknowledged_by;`,
+      [actorId, organizationId, notificationId],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`Notificación "${notificationId}" no encontrada para la organización "${organizationId}".`);
+    return {
+      id: notificationId,
+      organizationId,
+      propertyId: row.property_id,
+      orderId: row.order_id,
+      eventType: row.event_type,
+      message: row.message,
+      createdAt: row.created_at,
+      acknowledgedAt: row.acknowledged_at,
+      acknowledgedBy: row.acknowledged_by,
+    };
   }
 
   // ---- KPIs de admin (Fase 3 — ver migrations/006_kpi_aggregates.sql) ----
