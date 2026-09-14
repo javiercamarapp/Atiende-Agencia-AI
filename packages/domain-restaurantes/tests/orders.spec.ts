@@ -126,3 +126,64 @@ describe("createOrder — memoria de cliente + idempotencia de dos niveles", () 
     expect(addresses[0]!.isDefault).toBe(true);
   });
 });
+
+// Fase 11 — integración real de promociones/marketing (ver src/promotions.ts):
+// el descuento se calcula sobre el total que ya produjo el motor de cotización
+// real (order-quote.ts), nunca uno inventado aquí.
+describe("createOrder/prepareCreateOrder — aplicación real de una promoción al total (Fase 11)", () => {
+  it("aplica un código porcentual real: descuenta del total y lo persiste ya descontado", async () => {
+    const fixture = buildRestaurantFixture();
+    await fixture.repo.createPromotion(fixture.organizationId, { code: "BIENVENIDA10", name: "Bienvenida", type: "percentage", value: 10 });
+
+    const prepared = await prepareCreateOrder(fixture.repo, baseInput(fixture, { promoCode: "bienvenida10" }));
+    expect(prepared.total).toBe(81); // 90 - 10%
+    expect(prepared.discount).toBe(9);
+    expect(prepared.appliedPromotion?.code).toBe("BIENVENIDA10");
+
+    const order = await createOrder(fixture.repo, baseInput(fixture, { promoCode: "bienvenida10" }));
+    expect(order.total).toBe(81);
+    expect(order.notes).toMatch(/Promoción aplicada: BIENVENIDA10 \(-\$9\.00\)/);
+  });
+
+  it("aplica un código de monto fijo, nunca deja el pedido en negativo", async () => {
+    const fixture = buildRestaurantFixture();
+    await fixture.repo.createPromotion(fixture.organizationId, { code: "FIJO500", name: "Fijo", type: "fixed", value: 500 });
+    const order = await createOrder(fixture.repo, baseInput(fixture, { promoCode: "FIJO500" }));
+    expect(order.total).toBe(0); // el fijo (500) excede el total real (90) -- se acota, nunca negativo
+  });
+
+  it("código inexistente en esta organización -> OrderValidationError, el pedido NUNCA se crea", async () => {
+    const fixture = buildRestaurantFixture();
+    await expect(createOrder(fixture.repo, baseInput(fixture, { promoCode: "NO-EXISTE" }))).rejects.toThrow(OrderValidationError);
+    const customer = await fixture.repo.findCustomerByPhone(fixture.organizationId, "9991234567");
+    expect(customer).toBeNull(); // ni siquiera se llegó a tocar la memoria de cliente
+  });
+
+  it("código de una promoción desactivada -> rechazado con el motivo real", async () => {
+    const fixture = buildRestaurantFixture();
+    await fixture.repo.createPromotion(fixture.organizationId, { code: "APAGADA", name: "x", type: "fixed", value: 10, isActive: false });
+    await expect(createOrder(fixture.repo, baseInput(fixture, { promoCode: "APAGADA" }))).rejects.toThrow(/ya no está activo/);
+  });
+
+  it("código que ya alcanzó max_uses -> rechazado", async () => {
+    const fixture = buildRestaurantFixture();
+    const promo = await fixture.repo.createPromotion(fixture.organizationId, { code: "AGOTADO", name: "x", type: "fixed", value: 5, maxUses: 1 });
+    await fixture.repo.incrementPromotionUses(fixture.organizationId, promo.id);
+    await expect(createOrder(fixture.repo, baseInput(fixture, { promoCode: "AGOTADO" }))).rejects.toThrow(/límite de usos/);
+  });
+
+  it("registra el uso real DESPUÉS de crear el pedido (times_used sube)", async () => {
+    const fixture = buildRestaurantFixture();
+    const promo = await fixture.repo.createPromotion(fixture.organizationId, { code: "USAME", name: "x", type: "fixed", value: 5 });
+    await createOrder(fixture.repo, baseInput(fixture, { promoCode: "USAME" }));
+    const after = await fixture.repo.findPromotion(fixture.organizationId, promo.id);
+    expect(after?.timesUsed).toBe(1);
+  });
+
+  it("sin promoCode: total y notas quedan exactamente igual que antes de esta fase (sin regresión)", async () => {
+    const fixture = buildRestaurantFixture();
+    const order = await createOrder(fixture.repo, baseInput(fixture));
+    expect(order.total).toBe(90);
+    expect(order.notes ?? "").not.toMatch(/Promoción aplicada/);
+  });
+});

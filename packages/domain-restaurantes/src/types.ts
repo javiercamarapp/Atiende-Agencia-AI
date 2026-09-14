@@ -144,6 +144,10 @@ export interface CreateOrderInput {
   readonly omitDefaultComplements?: readonly DefaultComplement[];
   readonly callTranscript?: string;
   readonly callRecordingUrl?: string;
+  /** Fase 11 — código de promoción a aplicar al total (ver promotions.ts). Opcional:
+   * un pedido sin código nunca pasa por el motor de promociones (mismo criterio que
+   * el resto de campos opcionales de este input). */
+  readonly promoCode?: string;
 }
 
 export interface Order {
@@ -315,4 +319,81 @@ export interface CallbackRequest extends CallbackRequestInput {
   readonly id: string;
   readonly resolved: boolean;
   readonly createdAt: string;
+}
+
+// ---- Fase 11 — promociones/marketing: motor real de código de descuento (ver
+// promotions.ts). El original (`restaurantes/supabase/migrations/20251204004242_
+// remix_migration_from_pg_dump.sql`) solo tenía `public.promos`: un banner
+// puramente informativo (title/description/image_url/discount_text libre/
+// is_active/display_order) SIN ninguna aplicación real a un pedido — `orders` del
+// origen no tiene columna de descuento/promo_id, y `discount_text` es texto libre
+// ("2x1", "20% off") que nunca se calcula, solo se muestra (confirmado también en
+// `supabase/functions/_shared/whatsapp-agent-core.ts` del origen: el agente solo
+// MENCIONA la promo, nunca la aplica). Este módulo es deliberadamente nuevo
+// respecto al origen — documentado así a propósito, nunca presentado como port de
+// una regla de negocio verificada — porque el gap real auditado pedía la
+// aplicación real al total de un pedido, que el origen nunca tuvo. Una sola
+// promoción por pedido a propósito: no hay evidencia en el origen de una regla de
+// combinabilidad, así que no se inventa una.
+export type PromotionType = "percentage" | "fixed";
+
+export interface Promotion {
+  readonly id: string;
+  readonly organizationId: string;
+  /** Siempre en mayúsculas (normalizado al crear/editar) — único por organización. */
+  readonly code: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly type: PromotionType;
+  /** Porcentaje (1-100) si type==='percentage', pesos (>0) si type==='fixed'. */
+  readonly value: number;
+  /** Total mínimo del pedido (antes de descuento) para que el código aplique — null
+   * = sin mínimo. */
+  readonly minOrderTotal: number | null;
+  readonly startsAt: string | null;
+  readonly endsAt: string | null;
+  /** 0=domingo..6=sábado (mismo criterio que `Date#getDay()`) — null/vacío = todos
+   * los días. */
+  readonly daysOfWeek: readonly number[] | null;
+  /** "HH:MM" en hora local del servidor — null = sin restricción de hora. */
+  readonly startTime: string | null;
+  readonly endTime: string | null;
+  /** Límite total de usos reales (organization-wide) — null = ilimitado. */
+  readonly maxUses: number | null;
+  readonly timesUsed: number;
+  readonly isActive: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface NewPromotionInput {
+  readonly code: string;
+  readonly name: string;
+  readonly description?: string | null;
+  readonly type: PromotionType;
+  readonly value: number;
+  readonly minOrderTotal?: number | null;
+  readonly startsAt?: string | null;
+  readonly endsAt?: string | null;
+  readonly daysOfWeek?: readonly number[] | null;
+  readonly startTime?: string | null;
+  readonly endTime?: string | null;
+  readonly maxUses?: number | null;
+  readonly isActive?: boolean;
+}
+
+export interface PromotionPatch {
+  readonly code?: string;
+  readonly name?: string;
+  readonly description?: string | null;
+  readonly type?: PromotionType;
+  readonly value?: number;
+  readonly minOrderTotal?: number | null;
+  readonly startsAt?: string | null;
+  readonly endsAt?: string | null;
+  readonly daysOfWeek?: readonly number[] | null;
+  readonly startTime?: string | null;
+  readonly endTime?: string | null;
+  readonly maxUses?: number | null;
+  readonly isActive?: boolean;
 }

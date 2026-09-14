@@ -18,6 +18,7 @@ export type {
   NearestBranchMatch,
   NewCategoryInput,
   NewProductInput,
+  NewPromotionInput,
   Order,
   OrderHistoryItem,
   OrderListFilter,
@@ -28,13 +29,18 @@ export type {
   Product,
   ProductPatch,
   ProductoEncontrado,
+  Promotion,
+  PromotionPatch,
+  PromotionType,
   QuotedOrderLine,
   RequestedComplement,
   RequestedOrderItemInput,
   TortillaChoice,
 } from "./types.ts";
 
-export { OrderConflictError, OrderValidationError } from "./errors.ts";
+export { OrderConflictError, OrderValidationError, PromotionError } from "./errors.ts";
+
+export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
 export { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 

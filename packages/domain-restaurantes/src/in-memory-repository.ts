@@ -24,6 +24,7 @@ import type {
   NearestBranchMatch,
   NewCategoryInput,
   NewProductInput,
+  NewPromotionInput,
   Order,
   OrderListFilter,
   OrderListPage,
@@ -31,6 +32,8 @@ import type {
   PersistedOrderItem,
   Product,
   ProductPatch,
+  Promotion,
+  PromotionPatch,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -173,6 +176,8 @@ interface StoredBranchProduct {
   isAvailable: boolean;
 }
 
+interface StoredPromotion extends Promotion {}
+
 interface StoredOrder extends Order {}
 
 interface StoredKnownZone {
@@ -223,6 +228,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly categories = new Map<string, StoredCategory>();
   private readonly products = new Map<string, StoredProduct>();
   private readonly branchProducts: StoredBranchProduct[] = [];
+  private readonly promotions = new Map<string, StoredPromotion>();
   private readonly customers = new Map<string, Customer>();
   private readonly customerIdByOrgPhone = new Map<string, string>();
   private readonly addresses = new Map<string, CustomerAddress[]>();
@@ -1047,6 +1053,86 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     };
     this.products.set(productId, updated);
     return this.toProduct(updated);
+  }
+
+  // ---- Fase 11 — promociones/marketing (ver promotions.ts, repository.ts) ----
+
+  async listPromotions(organizationId: string): Promise<readonly Promotion[]> {
+    return [...this.promotions.values()]
+      .filter((p) => p.organizationId === organizationId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((p) => ({ ...p }));
+  }
+
+  async findPromotion(organizationId: string, promotionId: string): Promise<Promotion | null> {
+    const promotion = this.promotions.get(promotionId);
+    return promotion && promotion.organizationId === organizationId ? { ...promotion } : null;
+  }
+
+  async findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null> {
+    const found = [...this.promotions.values()].find((p) => p.organizationId === organizationId && p.code === code);
+    return found ? { ...found } : null;
+  }
+
+  async createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion> {
+    const now = new Date().toISOString();
+    const created: StoredPromotion = {
+      id: randomUUID(),
+      organizationId,
+      code: input.code,
+      name: input.name,
+      description: input.description ?? null,
+      type: input.type,
+      value: input.value,
+      minOrderTotal: input.minOrderTotal ?? null,
+      startsAt: input.startsAt ?? null,
+      endsAt: input.endsAt ?? null,
+      daysOfWeek: input.daysOfWeek ?? null,
+      startTime: input.startTime ?? null,
+      endTime: input.endTime ?? null,
+      maxUses: input.maxUses ?? null,
+      timesUsed: 0,
+      isActive: input.isActive ?? true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.promotions.set(created.id, created);
+    return { ...created };
+  }
+
+  async updatePromotion(organizationId: string, promotionId: string, patch: PromotionPatch): Promise<Promotion | null> {
+    const existing = this.promotions.get(promotionId);
+    if (!existing || existing.organizationId !== organizationId) return null;
+    const updated: StoredPromotion = {
+      ...existing,
+      code: patch.code ?? existing.code,
+      name: patch.name ?? existing.name,
+      description: patch.description !== undefined ? patch.description : existing.description,
+      type: patch.type ?? existing.type,
+      value: patch.value ?? existing.value,
+      minOrderTotal: patch.minOrderTotal !== undefined ? patch.minOrderTotal : existing.minOrderTotal,
+      startsAt: patch.startsAt !== undefined ? patch.startsAt : existing.startsAt,
+      endsAt: patch.endsAt !== undefined ? patch.endsAt : existing.endsAt,
+      daysOfWeek: patch.daysOfWeek !== undefined ? patch.daysOfWeek : existing.daysOfWeek,
+      startTime: patch.startTime !== undefined ? patch.startTime : existing.startTime,
+      endTime: patch.endTime !== undefined ? patch.endTime : existing.endTime,
+      maxUses: patch.maxUses !== undefined ? patch.maxUses : existing.maxUses,
+      isActive: patch.isActive ?? existing.isActive,
+      updatedAt: new Date().toISOString(),
+    };
+    this.promotions.set(promotionId, updated);
+    return { ...updated };
+  }
+
+  /** Mismo re-check atómico que exige el puerto (ver repository.ts) — en memoria el
+   * "atómico" real es simplemente síncrono (JS de un solo hilo, sin await entre la
+   * lectura y la escritura), equivalente al UPDATE...WHERE... de Postgres. */
+  async incrementPromotionUses(organizationId: string, promotionId: string): Promise<boolean> {
+    const existing = this.promotions.get(promotionId);
+    if (!existing || existing.organizationId !== organizationId) return false;
+    if (!existing.isActive || (existing.maxUses !== null && existing.timesUsed >= existing.maxUses)) return false;
+    this.promotions.set(promotionId, { ...existing, timesUsed: existing.timesUsed + 1, updatedAt: new Date().toISOString() });
+    return true;
   }
 
   async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {
