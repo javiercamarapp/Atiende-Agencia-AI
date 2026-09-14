@@ -8,6 +8,8 @@
 // define migrations/001) para que la ruta HTTP pueda rechazar un salto inválido
 // (p.ej. "pending" -> "entregado" saltándose preparación) ANTES de tocar la base de
 // datos, en vez de dejar que cualquier string llegue crudo a un `update`.
+import { tryNotifyCustomerOnOrderStatusChange, tryNotifyStaffOrderProblem } from "./order-notifications.ts";
+import type { RestaurantesRepository } from "./repository.ts";
 import type { Order, OrderStatus } from "./types.ts";
 
 export class OrderStatusTransitionError extends Error {}
@@ -59,16 +61,23 @@ export function assertValidOrderStatusTransition(from: OrderStatus, to: OrderSta
  * el pedido YA resuelto (el caller ya verificó organización/alcance de sucursal
  * antes de llegar aquí) y persiste vía el repositorio — mismo patrón que
  * `createOrder`/`quoteOrder` de orders.ts: la lógica de negocio vive en
- * domain-restaurantes, la ruta HTTP solo autoriza y traduce errores a HTTP. */
-export async function changeOrderStatus(
-  repo: { updateOrderStatus(organizationId: string, orderId: string, status: OrderStatus): Promise<Order | null> },
-  organizationId: string,
-  order: Order,
-  nextStatus: OrderStatus,
-): Promise<Order> {
+ * domain-restaurantes, la ruta HTTP solo autoriza y traduce errores a HTTP.
+ *
+ * Fase 9 — ÚNICO choke point real de toda transición de estado disparada por
+ * MANAGER_ROLES (ver admin-orders.ts `PATCH .../orders/:orderId/status`): dispara
+ * aquí mismo (best-effort, nunca revierte la transición) el WhatsApp real al
+ * cliente cuando el nuevo estado es uno de los notificados (ver
+ * order-notifications.ts) — así ninguna otra ruta que llegue a agregarse aquí
+ * puede olvidar el aviso. */
+export async function changeOrderStatus(repo: RestaurantesRepository, organizationId: string, order: Order, nextStatus: OrderStatus): Promise<Order> {
   assertValidOrderStatusTransition(order.status, nextStatus);
   const updated = await repo.updateOrderStatus(organizationId, order.id, nextStatus);
   if (!updated) throw new OrderStatusTransitionError("El pedido ya no existe.");
+  if (updated.status === "problema") {
+    await tryNotifyStaffOrderProblem(repo, updated);
+  } else {
+    await tryNotifyCustomerOnOrderStatusChange(repo, updated);
+  }
   return updated;
 }
 
@@ -110,9 +119,14 @@ export function assertValidRepartidorStatusTransition(from: OrderStatus, to: Ord
  * `updateAssignedOrderStatus` (que además re-verifica `assigned_repartidor_id` en el
  * WHERE, defensa en profundidad). `incidentNote` se exige si y solo si `nextStatus`
  * es "problema" — mismo constraint exacto que el CHECK del RPC del origen.
+ *
+ * Fase 9 — el OTRO choke point real de transición de estado (ver comentario de
+ * `changeOrderStatus`): un repartidor SÍ puede mover un pedido a en_camino/
+ * entregado/problema, así que el aviso real al cliente (en_camino/entregado) y la
+ * incidencia al staff (problema) viven aquí también, best-effort igual.
  */
 export async function changeAssignedOrderStatus(
-  repo: { updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, status: OrderStatus, incidentNote: string | null): Promise<Order | null> },
+  repo: RestaurantesRepository,
   organizationId: string,
   repartidorId: string,
   order: Order,
@@ -129,5 +143,10 @@ export async function changeAssignedOrderStatus(
   }
   const updated = await repo.updateAssignedOrderStatus(organizationId, repartidorId, order.id, nextStatus, nextStatus === "problema" ? incidentNote!.trim() : null);
   if (!updated) throw new OrderStatusTransitionError("El pedido ya no existe o ya no está asignado a este repartidor.");
+  if (updated.status === "problema") {
+    await tryNotifyStaffOrderProblem(repo, updated);
+  } else {
+    await tryNotifyCustomerOnOrderStatusChange(repo, updated);
+  }
   return updated;
 }

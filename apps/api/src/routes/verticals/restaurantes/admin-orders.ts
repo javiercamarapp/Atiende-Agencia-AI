@@ -11,8 +11,8 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, REPARTIDOR_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError } from "@atiende/domain-restaurantes";
-import type { Order } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, REPARTIDOR_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import type { Order, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -40,6 +40,22 @@ function serializeOrder(o: Order) {
     assignedRepartidorId: o.assignedRepartidorId,
     estimatedDeliveryAt: o.estimatedDeliveryAt,
     incidentNote: o.incidentNote,
+  };
+}
+
+// Fase 9 — bandeja de notificaciones internas al staff (ver domain-restaurantes/src/
+// order-notifications.ts): sin push real disponible en este monorepo, el panel
+// admin la consulta por polling — ver comentario de cabecera del GET de abajo.
+function serializeStaffNotification(n: StaffOrderNotificationRecord) {
+  return {
+    id: n.id,
+    propertyId: n.propertyId,
+    orderId: n.orderId,
+    eventType: n.eventType,
+    message: n.message,
+    createdAt: n.createdAt,
+    acknowledgedAt: n.acknowledgedAt,
+    acknowledgedBy: n.acknowledgedBy,
   };
 }
 
@@ -77,6 +93,8 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
   app.use("/v1/restaurantes/:propertyId/admin/orders", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/v1/restaurantes/:propertyId/admin/orders/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/v1/restaurantes/:propertyId/admin/order-notifications", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/v1/restaurantes/:propertyId/admin/order-notifications/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   // Sirve tanto "pedidos en operación" (?status=pending, sin fechas) como
   // "historial" (?dateFrom=&dateTo=&cursor=), ver comentario de cabecera.
@@ -171,7 +189,59 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
     const updated = await repo.assignRepartidorToOrder(organizationId, orderId, raw.repartidorId, estimatedDeliveryAt);
     if (!updated) throw Errors.notFound("Pedido no encontrado.");
+    // Fase 9 — "pedido listo para repartidor" del gap original (ver
+    // order-notifications.ts::notifyStaffRepartidorAssignedCore para la
+    // justificación completa de por qué este es el evento real, no un status
+    // "listo" inventado): best-effort, nunca revierte el dispatch ya persistido.
+    await tryNotifyStaffRepartidorAssigned(repo, updated);
     return c.json({ order: serializeOrder(updated) });
+  });
+
+  // Fase 9 — bandeja de notificaciones internas al staff (ver order-notifications.ts):
+  // sin push real disponible en este monorepo, el panel admin la consulta por
+  // POLLING (?unacknowledgedOnly=true para el badge de "pendientes"). Mismo alcance
+  // de sucursal que el resto de rutas admin (resolveEffectivePropertyIds).
+  app.get("/v1/restaurantes/:propertyId/admin/order-notifications", async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const branchId = parseBranchId(c.req.query("branchId"));
+    const propertyIds = await resolveEffectivePropertyIds(deps, c, organizationId, branchId);
+    const unacknowledgedOnly = c.req.query("unacknowledgedOnly") === "true";
+    const limitRaw = c.req.query("limit");
+    let limit = 50;
+    if (limitRaw !== undefined) {
+      const n = Number(limitRaw);
+      if (!Number.isInteger(n) || n < 1 || n > 200) throw Errors.validation("limit: se esperaba un entero entre 1 y 200.");
+      limit = n;
+    }
+    const notifications = await repo.listStaffOrderNotifications(organizationId, propertyIds, { unacknowledgedOnly, limit });
+    return c.json({ notifications: notifications.map(serializeStaffNotification) });
+  });
+
+  app.post("/v1/restaurantes/:propertyId/admin/order-notifications/:notificationId/acknowledge", async (c) => {
+    assertVerticalRole(c, MANAGER_ROLES);
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const actorId = c.get("userId");
+    const notificationId = c.req.param("notificationId");
+    // Mismo criterio de defensa en profundidad que el resto de rutas admin de este
+    // archivo (findOrderById + scope check, ver arriba): un staff con membership
+    // restringida a ciertas sucursales nunca debe poder reconocer la notificación de
+    // una sucursal fuera de su alcance solo por adivinar el uuid. Se verifica ANTES
+    // de escribir nada (nunca reconoce y luego rechaza) consultando el mismo listado
+    // ya acotado por scope que usa el GET de arriba.
+    const scope = await resolveEffectivePropertyIds(deps, c, organizationId, null);
+    if (scope !== null) {
+      const visible = await repo.listStaffOrderNotifications(organizationId, scope, { limit: 500 });
+      if (!visible.some((n) => n.id === notificationId)) throw Errors.notFound("Notificación no encontrada.");
+    }
+    try {
+      const notification = await repo.acknowledgeStaffOrderNotification(organizationId, notificationId, actorId);
+      return c.json({ notification: serializeStaffNotification(notification) });
+    } catch {
+      throw Errors.notFound("Notificación no encontrada.");
+    }
   });
 
   return app;

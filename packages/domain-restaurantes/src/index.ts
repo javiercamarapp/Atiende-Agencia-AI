@@ -59,6 +59,8 @@ export type {
   TierDistributionMetric,
   TierDistributionRow,
   MessagingOutboxRow,
+  StaffOrderNotificationEventType,
+  StaffOrderNotificationRecord,
 } from "./repository.ts";
 export { InMemoryRestaurantesRepository } from "./in-memory-repository.ts";
 export { PostgresRestaurantesRepository } from "./postgres-repository.ts";
@@ -79,6 +81,18 @@ export {
 
 export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
 export type { PreparedOrder } from "./orders.ts";
+
+export {
+  notifyCustomerOnOrderStatusChangeCore,
+  tryNotifyCustomerOnOrderStatusChange,
+  notifyStaffNewOrderCore,
+  tryNotifyStaffNewOrder,
+  notifyStaffOrderProblemCore,
+  tryNotifyStaffOrderProblem,
+  notifyStaffRepartidorAssignedCore,
+  tryNotifyStaffRepartidorAssigned,
+} from "./order-notifications.ts";
+export type { CustomerOrderNotificationResult } from "./order-notifications.ts";
 
 export { registerCallbackRequest } from "./callback-requests.ts";
 

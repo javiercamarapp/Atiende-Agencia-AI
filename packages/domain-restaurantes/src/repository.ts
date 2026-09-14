@@ -220,6 +220,29 @@ export interface RestaurantesRepository {
   markMessagingOutboxSent(id: string): Promise<void>;
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
+  /** Único `phone_number_id` real conectado de la organización (ver
+   * `restaurantes.whatsapp_channel_config`, migrations/001) — a diferencia de
+   * `resolveOrganizationByPhoneNumberId` (arriba, la ruta INVERSA que usa el webhook
+   * de Meta para rutear un mensaje ENTRANTE al tenant dueño), este es el sentido
+   * SALIENTE: qué número usar para escribirle al CLIENTE fuera de una conversación
+   * entrante (ver order-notifications.ts). `null` cuando la organización nunca
+   * conectó WhatsApp — el caller debe tratarlo como "sin este canal disponible",
+   * nunca lanzar. */
+  resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null>;
+
+  // ---- Fase 9 — bandeja de notificaciones internas al staff (ver
+  // order-notifications.ts, migrations/009_order_notifications.sql): sin push real
+  // disponible en este monorepo, se persiste como registro consultable/reconocible
+  // por POLLING del panel admin — mismo criterio "honesto" que
+  // `@atiende/domain-licitaciones::tender_change_notification`, nunca finge un canal
+  // de envío que no existe. `createStaffOrderNotification` es idempotente por
+  // (organizationId, orderId, eventType) — un reintento real del mismo evento nunca
+  // duplica la fila. ----
+  createStaffOrderNotification(organizationId: string, propertyId: string, orderId: string, eventType: StaffOrderNotificationEventType, message: string): Promise<StaffOrderNotificationRecord>;
+  /** Más reciente primero. `propertyIds` null = organización completa (mismo
+   * contrato que el resto de rutas admin de este vertical, ver admin-scope.ts). */
+  listStaffOrderNotifications(organizationId: string, propertyIds: readonly string[] | null, options?: { readonly unacknowledgedOnly?: boolean; readonly limit?: number }): Promise<readonly StaffOrderNotificationRecord[]>;
+  acknowledgeStaffOrderNotification(organizationId: string, notificationId: string, actorId: string): Promise<StaffOrderNotificationRecord>;
 
   // ---- Fase 5 — back-office CORE (ver diseño §1) ----
 
@@ -316,4 +339,24 @@ export interface MessagingOutboxRow {
   readonly id: string;
   readonly attempts: number;
   readonly payload: unknown;
+}
+
+/** Los 3 eventos reales que dispara `order-notifications.ts` — mismo CHECK que
+ * `restaurantes.staff_order_notification.event_type` (migrations/009). */
+export type StaffOrderNotificationEventType = "order.created" | "order.problema" | "order.assigned_repartidor";
+
+/** Fila de `restaurantes.staff_order_notification` — bandeja interna consultable
+ * por polling (ver comentario de `createStaffOrderNotification` arriba). Mismo
+ * criterio "honesto, sin canal de envío real" que
+ * `@atiende/domain-licitaciones::TenderChangeNotificationRecord`. */
+export interface StaffOrderNotificationRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly orderId: string;
+  readonly eventType: StaffOrderNotificationEventType;
+  readonly message: string;
+  readonly createdAt: string;
+  readonly acknowledgedAt: string | null;
+  readonly acknowledgedBy: string | null;
 }

@@ -136,6 +136,45 @@ describe("PATCH /v1/restaurantes/:propertyId/repartidor/orders/:orderId/status",
     const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/orders/${order.id}/status`, authedJson(ctx.staff.owner.token, { status: "en_camino" }, "PATCH"));
     expect(res.status).toBe(403);
   });
+
+  // Fase 9 — el repartidor es el OTRO choke point real de transición de estado (ver
+  // order-lifecycle.ts::changeAssignedOrderStatus): en_camino/entregado disparan el
+  // MISMO WhatsApp real al cliente que el panel admin.
+  it("en_camino/entregado marcados por el repartidor encolan el WhatsApp real al cliente cuando la organización tiene WhatsApp conectado", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    ctx.restaurantesRepo.seedWhatsAppChannel(ctx.organizationId, "PHONE_NUMBER_ID_XYZ");
+    const order = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "preparando", total: 100, customerPhone: "9993334444" });
+    ctx.restaurantesRepo.seedOrder(order);
+    await ctx.restaurantesRepo.assignRepartidorToOrder(ctx.organizationId, order.id, ctx.staff.repartidor.id, null);
+    const app = buildApp(ctx.deps);
+
+    await app.request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/orders/${order.id}/status`, authedJson(ctx.staff.repartidor.token, { status: "en_camino" }, "PATCH"));
+    await app.request(`/v1/restaurantes/${ctx.propertyIdA}/repartidor/orders/${order.id}/status`, authedJson(ctx.staff.repartidor.token, { status: "entregado" }, "PATCH"));
+
+    const outbox = ctx.restaurantesRepo.getOutbox();
+    expect(outbox.map((row) => row.eventType).sort()).toEqual(["order.status.en_camino", "order.status.entregado"]);
+    expect(outbox.every((row) => (row.payload as { to: string }).to === "9993334444")).toBe(true);
+  });
+
+  it('reportar "problema" notifica al staff (bandeja interna), nunca al cliente por WhatsApp', async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    ctx.restaurantesRepo.seedWhatsAppChannel(ctx.organizationId, "PHONE_NUMBER_ID_XYZ");
+    const order = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "en_camino", total: 100 });
+    ctx.restaurantesRepo.seedOrder(order);
+    await ctx.restaurantesRepo.assignRepartidorToOrder(ctx.organizationId, order.id, ctx.staff.repartidor.id, null);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/repartidor/orders/${order.id}/status`,
+      authedJson(ctx.staff.repartidor.token, { status: "problema", incidentNote: "Dirección incorrecta." }, "PATCH"),
+    );
+    expect(res.status).toBe(200);
+    expect(ctx.restaurantesRepo.getOutbox()).toHaveLength(0);
+
+    const notifications = await ctx.restaurantesRepo.listStaffOrderNotifications(ctx.organizationId, null);
+    const incidencia = notifications.find((n) => n.orderId === order.id && n.eventType === "order.problema");
+    expect(incidencia?.message).toContain("Dirección incorrecta.");
+  });
 });
 
 describe("PATCH /v1/restaurantes/:propertyId/admin/orders/:orderId/assign-repartidor", () => {
@@ -197,5 +236,26 @@ describe("PATCH /v1/restaurantes/:propertyId/admin/orders/:orderId/assign-repart
       authedJson(ctx.staff.repartidor.token, { repartidorId: ctx.staff.repartidor.id }, "PATCH"),
     );
     expect(res.status).toBe(403);
+  });
+
+  // Fase 9 — "pedido listo para repartidor" del gap original: el dispatch real
+  // (asignar un repartidor) es el momento donde de verdad hay algo que avisar al
+  // staff, ver order-notifications.ts::notifyStaffRepartidorAssignedCore.
+  it("despachar un pedido genera la notificación interna 'order.assigned_repartidor'", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const order = makeOrder({ organizationId: ctx.organizationId, propertyId: ctx.propertyIdA, status: "preparando", total: 100 });
+    ctx.restaurantesRepo.seedOrder(order);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/orders/${order.id}/assign-repartidor`,
+      authedJson(ctx.staff.owner.token, { repartidorId: ctx.staff.repartidor.id }, "PATCH"),
+    );
+    expect(res.status).toBe(200);
+
+    const notifications = await ctx.restaurantesRepo.listStaffOrderNotifications(ctx.organizationId, null);
+    const dispatchNotification = notifications.find((n) => n.orderId === order.id && n.eventType === "order.assigned_repartidor");
+    expect(dispatchNotification).toBeDefined();
+    expect(dispatchNotification?.message).toMatch(/listo para salir/);
   });
 });

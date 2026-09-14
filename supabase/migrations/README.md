@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (64 migraciones, timestamps 20240101000001 .. 20240101000064)
+## Orden actual (65 migraciones, timestamps 20240101000001 .. 20240101000065)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -55,6 +55,7 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 62. `packages/domain-licitaciones/migrations/017_source_ingestion_and_deadline_reminders.sql` — Fase 8 licitaciones: primer conector automatizado REAL (`compras_mx_historico`, histórico de contratos de ComprasMX vía datos.gob.mx) — agrega el id al CHECK de `source_run.source` + `licitaciones.tender_deadline_reminder` (recordatorios de vencimiento próximo, mismo patrón "sin canal de envío real" que `tender_change_notification`).
 63. `packages/domain-rentas/migrations/010_rentas_limpieza_schema.sql` — Fase 8 rentas: módulo operativo de limpieza/mantenimiento (tareas, checklist, inventario, incidencias) — cierra el gap donde "limpieza" solo existía como valor del enum `razon` de `rentas.ocupacion` (`BUFFER_LIMPIEZA`). Agrega `rentas.tarea_operativa`/`rentas.item_inventario`/`rentas.incidencia_mantenimiento` (property-scoped) + `rentas.checklist_item_tarea`/`rentas.foto_checklist_item`/`rentas.movimiento_inventario`/`rentas.notificacion_tarea` (hijas, RLS vía join) + 3 columnas nuevas de buffer/SLA sobre `rentas.property_config` (ya existente desde la Fase 1, nunca una tabla de configuración propia).
 64. `packages/domain-restaurantes/migrations/008_repartidor_order_assignment.sql` — Fase 8 restaurantes: superficie real del rol "repartidor" — `restaurantes.orders.assigned_repartidor_id`/`estimated_delivery_at`/`incident_note` (dispatch real de un pedido a un repartidor + la incidencia que reporta), sin policies nuevas de RLS a propósito (ver comentario de cabecera del propio archivo SQL: la autorización fina vive en la capa TS, igual que el resto de este vertical).
+65. `packages/domain-restaurantes/migrations/009_order_notifications.sql` — Fase 9 restaurantes: notificaciones reales de cambio de estado de pedido — cliente por WhatsApp real vía `restaurantes.messaging_outbox` (ya existente desde la migración 54, sin tabla nueva) cuando el pedido pasa a preparando/en_camino/entregado/cancelado, y `restaurantes.staff_order_notification` (bandeja nueva, consultable por polling del panel admin — sin push real disponible en este monorepo, mismo criterio "honesto" que `licitaciones.tender_change_notification`) para pedido nuevo/incidencia/asignación a repartidor.
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.

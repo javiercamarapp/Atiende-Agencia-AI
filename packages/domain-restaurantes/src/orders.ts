@@ -5,6 +5,7 @@
 // product-search.ts::resolveOrderItemsAgainstProducts).
 import { createHash } from "node:crypto";
 import { OrderValidationError } from "./errors.ts";
+import { tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { buildComplementNotes, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS } from "./order-quote.ts";
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
@@ -258,7 +259,7 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
   // — nunca dos filas reales por una sola intención real de pedido. Un error real
   // aquí (violación de formato, fallo de conexión) se propaga tal cual, nunca se
   // reclasifica en silencio como conflicto.
-  return repo.createOrderIdempotent(
+  const order = await repo.createOrderIdempotent(
     {
       organizationId: payload.organizationId,
       propertyId: branch.propertyId,
@@ -278,6 +279,14 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
     dedupeFingerprint,
     idempotencyKey,
   );
+
+  // Fase 9 — "nuevo pedido entrante" al staff (ver order-notifications.ts, gap real
+  // verificado: `createOrder` nunca disparaba ningún aviso). Best-effort e
+  // idempotente por (organizationId, orderId, eventType) -- un reintento real de
+  // create_order_idempotent que devuelve el MISMO pedido (misma idempotencyKey o
+  // dedupeFingerprint) nunca duplica la notificación.
+  await tryNotifyStaffNewOrder(repo, order);
+  return order;
 }
 
 /**
