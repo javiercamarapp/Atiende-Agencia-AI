@@ -41,6 +41,25 @@ export type RescheduleResult =
   | { readonly outcome: "not_found" }
   | { readonly outcome: "conflict_invalid_status"; readonly status: string };
 
+/** Fase 7 -- transición de estado confirmar/completar/no-show desde el panel de
+ * staff. Mismo shape discriminado que CancelResult -- misma nota de diseño de
+ * arriba aplica igual aquí (conflictos como valores, nunca excepciones desde el
+ * repositorio). */
+export type ConfirmResult =
+  | { readonly outcome: "confirmed" | "already_confirmed"; readonly appointment: AppointmentRecord }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string };
+
+export type CompleteResult =
+  | { readonly outcome: "completed" | "already_completed"; readonly appointment: AppointmentRecord }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string };
+
+export type NoShowResult =
+  | { readonly outcome: "marked_no_show" | "already_no_show"; readonly appointment: AppointmentRecord }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string };
+
 /** Fase 4 -- "modificar-cita" (cambio de proveedor/servicio sin tocar el horario
  * de inicio). Mismo shape discriminado que RescheduleResult -- misma nota de
  * diseño de arriba aplica igual aquí. */
@@ -298,6 +317,19 @@ export interface CitasRepository {
   listAppointmentsInRange(organizationId: string, fromIso: string, toIso: string, providerId: string | undefined, limit: number): Promise<readonly AppointmentRecord[]>;
   cancelAppointmentIdempotent(organizationId: string, appointmentId: string): Promise<CancelResult>;
   cancelAppointmentFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<CancelResult>;
+  /** Fase 7 -- confirmar/completar/marcar no-show desde el panel de staff (única
+   * fuente real hoy -- ver appointments-lifecycle.ts). `pending -> confirmed`,
+   * idempotente si ya estaba confirmed, conflicto si ya es un estado terminal
+   * (completed/cancelled/no_show). */
+  confirmAppointmentFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<ConfirmResult>;
+  /** `pending|confirmed -> completed`, idempotente si ya estaba completed,
+   * conflicto si ya es cancelled/no_show. */
+  completeAppointmentFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<CompleteResult>;
+  /** `pending|confirmed -> no_show`, idempotente si ya estaba no_show, conflicto
+   * si ya es completed/cancelled. A diferencia de 'completed', 'no_show' libera de
+   * inmediato el horario del proveedor (fuera del EXCLUDE using gist de
+   * 001_citas_schema.sql). */
+  markAppointmentNoShowFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<NoShowResult>;
   rescheduleAppointmentIdempotent(
     organizationId: string,
     appointmentId: string,

@@ -23,6 +23,8 @@ import type {
   CalendarProviderSyncStatus,
   CancelResult,
   CitasRepository,
+  CompleteResult,
+  ConfirmResult,
   ConnectProviderCalComAccountInput,
   ConnectProviderCalDavAccountInput,
   ConnectProviderCalendarAccountInput,
@@ -34,6 +36,7 @@ import type {
   EmergencyEscalationRecord,
   MessagingOutboxRow,
   NewAppointmentInput,
+  NoShowResult,
   ProviderCalComAccountRecord,
   ProviderCalDavAccountRecord,
   ReassignResult,
@@ -509,6 +512,56 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async cancelAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<CancelResult> {
     return this.appointmentLock.run(`cancel:${organizationId}:${appointmentId}`, async () => this.cancelInternal(organizationId, appointmentId));
+  }
+
+  // ---- Fase 7 -- confirmar/completar/marcar no-show desde el panel de staff.
+  // Mismas 3 restricciones de integridad que la RPC real de
+  // migrations/010_appointment_status_transitions.sql: candado por clave
+  // (equivalente en memoria del `for update` de Postgres), no-op idempotente si ya
+  // está en el estado destino, conflicto si el estado actual no admite la
+  // transición. ----
+
+  async confirmAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<ConfirmResult> {
+    return this.appointmentLock.run(`confirm:${organizationId}:${appointmentId}`, async () => {
+      const appointment = this.appointments.get(appointmentId);
+      if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+      if (appointment.status === "confirmed") return { outcome: "already_confirmed", appointment };
+      if (appointment.status !== "pending") return { outcome: "conflict_invalid_status", status: appointment.status };
+
+      const updated: AppointmentRecord = { ...appointment, status: "confirmed" };
+      this.appointments.set(appointmentId, updated);
+      return { outcome: "confirmed", appointment: updated };
+    });
+  }
+
+  async completeAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<CompleteResult> {
+    return this.appointmentLock.run(`complete:${organizationId}:${appointmentId}`, async () => {
+      const appointment = this.appointments.get(appointmentId);
+      if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+      if (appointment.status === "completed") return { outcome: "already_completed", appointment };
+      if (appointment.status !== "pending" && appointment.status !== "confirmed") {
+        return { outcome: "conflict_invalid_status", status: appointment.status };
+      }
+
+      const updated: AppointmentRecord = { ...appointment, status: "completed" };
+      this.appointments.set(appointmentId, updated);
+      return { outcome: "completed", appointment: updated };
+    });
+  }
+
+  async markAppointmentNoShowFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<NoShowResult> {
+    return this.appointmentLock.run(`no-show:${organizationId}:${appointmentId}`, async () => {
+      const appointment = this.appointments.get(appointmentId);
+      if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+      if (appointment.status === "no_show") return { outcome: "already_no_show", appointment };
+      if (appointment.status !== "pending" && appointment.status !== "confirmed") {
+        return { outcome: "conflict_invalid_status", status: appointment.status };
+      }
+
+      const updated: AppointmentRecord = { ...appointment, status: "no_show" };
+      this.appointments.set(appointmentId, updated);
+      return { outcome: "marked_no_show", appointment: updated };
+    });
   }
 
   async rescheduleAppointmentIdempotent(organizationId: string, appointmentId: string, newStartsAt: string, newEndsAt: string, actorChannel: AppointmentActorChannel, _actorNote: string | null): Promise<RescheduleResult> {

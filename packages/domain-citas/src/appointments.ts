@@ -370,6 +370,65 @@ export async function cancelAppointmentFromPanel(repo: CitasRepository, organiza
 }
 
 // ============================================================================
+// Flujo 2c — transición de estado confirmar/completar/no-show desde el panel de
+// staff (Fase 7). Gap real de auditoría: el repo original (citas-reservaciones/
+// src/components/admin/AgendaSection.tsx, funciones confirmarCita/completarCita y
+// un update directo a status:'no_show') permite estas 3 transiciones; esta rama
+// preservaba los 5 estados en el esquema (001_citas_schema.sql) pero ninguna
+// función de negocio los escribía — una cita nunca salía de 'pending'/'confirmed'
+// aunque el cliente hubiera asistido. Mismo criterio EXACTO que
+// cancelAppointmentFromPanel arriba: sin distinción de rol (roles.ts), valida
+// appointmentId con el mismo validador que cancelar (ambos solo necesitan
+// organizationId+appointmentId), y resuelve el resultado discriminado del
+// repositorio a una excepción tipada o al registro actualizado.
+// ============================================================================
+
+function resolveConfirmOutcome(result: { outcome: "confirmed" | "already_confirmed"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string }): AppointmentRecord {
+  if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
+  if (result.outcome === "conflict_invalid_status") {
+    throw new AppointmentConflictError(`No se puede confirmar una cita en estado '${result.status}'.`);
+  }
+  return result.appointment;
+}
+
+function resolveCompleteOutcome(result: { outcome: "completed" | "already_completed"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string }): AppointmentRecord {
+  if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
+  if (result.outcome === "conflict_invalid_status") {
+    throw new AppointmentConflictError(`No se puede completar una cita en estado '${result.status}'.`);
+  }
+  return result.appointment;
+}
+
+function resolveNoShowOutcome(result: { outcome: "marked_no_show" | "already_no_show"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string }): AppointmentRecord {
+  if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
+  if (result.outcome === "conflict_invalid_status") {
+    throw new AppointmentConflictError(`No se puede marcar como no-show una cita en estado '${result.status}'.`);
+  }
+  return result.appointment;
+}
+
+/** Confirmar desde el panel de staff — pending -> confirmed. */
+export async function confirmAppointmentFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string): Promise<AppointmentRecord> {
+  const validated = validateCancelAppointmentPayload({ organizationId, appointmentId });
+  const result = await repo.confirmAppointmentFromPanel(validated.organizationId, validated.appointmentId, actorUserId);
+  return resolveConfirmOutcome(result);
+}
+
+/** Completar desde el panel de staff — pending|confirmed -> completed. */
+export async function completeAppointmentFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string): Promise<AppointmentRecord> {
+  const validated = validateCancelAppointmentPayload({ organizationId, appointmentId });
+  const result = await repo.completeAppointmentFromPanel(validated.organizationId, validated.appointmentId, actorUserId);
+  return resolveCompleteOutcome(result);
+}
+
+/** Marcar no-show desde el panel de staff — pending|confirmed -> no_show. */
+export async function markAppointmentNoShowFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string): Promise<AppointmentRecord> {
+  const validated = validateCancelAppointmentPayload({ organizationId, appointmentId });
+  const result = await repo.markAppointmentNoShowFromPanel(validated.organizationId, validated.appointmentId, actorUserId);
+  return resolveNoShowOutcome(result);
+}
+
+// ============================================================================
 // Flujo 2b — reagendar cita (nunca cancela+recrea: conserva el mismo id, ver
 // diseño Fase 1 §0.2/§5.2)
 // ============================================================================

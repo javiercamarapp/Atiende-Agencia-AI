@@ -1,10 +1,14 @@
-// Agenda del panel de citas (Fase 5) — vista mes/semana de citas REALES (GET
+// Agenda del panel de citas (Fase 5/7) — vista mes/semana de citas REALES (GET
 // /v1/citas/properties/:propertyId/appointments, Fase 5 — admin.ts), agrupadas por
-// día. La única acción de escritura que ofrece es cancelar, que ya existía desde
-// Fase 1 (appointments-lifecycle.ts) — el panel no reagenda ni reasigna hoy (ver
-// README de apps/api/.../citas: "solo cancelar existe desde el panel").
+// día. Fase 5 solo ofrecía cancelar (appointments-lifecycle.ts); Fase 7 agrega
+// confirmar/completar/marcar no-show — mismo patrón de botón condicionado por
+// estado. El panel sigue sin reagendar ni reasignar hoy (esas dos solo las
+// ejecuta el agente, ver ese mismo archivo) y sigue sin tiempo real: la agenda se
+// vuelve a pedir tras cada acción de escritura (`load()`), nunca vía suscripción
+// (gap conocido y documentado, ver resumen de la fase — Supabase Realtime del
+// origen no se portó).
 import { useEffect, useMemo, useState } from "react";
-import { cancelAppointment, fetchAppointments } from "../lib/appointments-client.ts";
+import { cancelAppointment, completeAppointment, confirmAppointment, fetchAppointments, markAppointmentNoShow } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
 import type { ProviderSummary } from "../lib/providers-client.ts";
@@ -53,6 +57,14 @@ function groupByDay(appointments: readonly AppointmentSummary[]): ReadonlyArray<
 }
 
 const CANCELABLE_STATUSES = new Set(["pending", "confirmed"]);
+// Fase 7 — mismos 2 estados "vivos" que ya usa CANCELABLE_STATUSES/
+// LIFECYCLE_EDITABLE_STATUSES de domain-citas/appointments.ts: solo una cita
+// pending/confirmed admite estas 3 transiciones nuevas.
+const CONFIRMABLE_STATUSES = new Set(["pending"]);
+const COMPLETABLE_STATUSES = new Set(["pending", "confirmed"]);
+const NO_SHOW_STATUSES = new Set(["pending", "confirmed"]);
+
+type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show";
 
 export function AgendaPage({ apiBaseUrl, token, propertyId }: CitasShellContext) {
   const [view, setView] = useState<ViewMode>("month");
@@ -62,7 +74,9 @@ export function AgendaPage({ apiBaseUrl, token, propertyId }: CitasShellContext)
   const [appointments, setAppointments] = useState<readonly AppointmentSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  // Una sola acción de ciclo de vida en vuelo a la vez, por cita — mismo criterio
+  // que el `cancellingId` original, generalizado a las 4 acciones del panel.
+  const [pendingAction, setPendingAction] = useState<{ id: string; action: LifecycleAction } | null>(null);
 
   const range = useMemo(() => computeRange(anchor, view), [anchor, view]);
 
@@ -93,18 +107,40 @@ export function AgendaPage({ apiBaseUrl, token, propertyId }: CitasShellContext)
     void load();
   }, [apiBaseUrl, token, propertyId, range.fromIso, range.toIso, providerFilter]);
 
-  async function handleCancel(appointmentId: string) {
-    if (!window.confirm("¿Cancelar esta cita? Esta acción no se puede deshacer.")) return;
-    setCancellingId(appointmentId);
+  async function runLifecycleAction(appointmentId: string, action: LifecycleAction, confirmMessage: string | null, run: () => Promise<AppointmentSummary>, errorFallback: string) {
+    if (confirmMessage && !window.confirm(confirmMessage)) return;
+    setPendingAction({ id: appointmentId, action });
     setError(null);
     try {
-      await cancelAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId);
+      await run();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cancelar la cita.");
+      setError(err instanceof Error ? err.message : errorFallback);
     } finally {
-      setCancellingId(null);
+      setPendingAction(null);
     }
+  }
+
+  async function handleCancel(appointmentId: string) {
+    await runLifecycleAction(appointmentId, "cancel", "¿Cancelar esta cita? Esta acción no se puede deshacer.", () => cancelAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo cancelar la cita.");
+  }
+
+  async function handleConfirm(appointmentId: string) {
+    await runLifecycleAction(appointmentId, "confirm", null, () => confirmAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo confirmar la cita.");
+  }
+
+  async function handleComplete(appointmentId: string) {
+    await runLifecycleAction(appointmentId, "complete", null, () => completeAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo marcar la cita como completada.");
+  }
+
+  async function handleNoShow(appointmentId: string) {
+    await runLifecycleAction(
+      appointmentId,
+      "no_show",
+      "¿Marcar esta cita como no-show? El cliente no se presentó y el horario del proveedor queda libre de inmediato.",
+      () => markAppointmentNoShow(fetch, apiBaseUrl, token, propertyId, appointmentId),
+      "No se pudo marcar la cita como no-show.",
+    );
   }
 
   const groups = appointments ? groupByDay(appointments) : [];
@@ -180,19 +216,46 @@ export function AgendaPage({ apiBaseUrl, token, propertyId }: CitasShellContext)
                     fontSize: 11,
                     padding: "3px 8px",
                     borderRadius: 999,
-                    background: apt.status === "cancelled" ? "#fee2e2" : apt.status === "completed" ? "#dcfce7" : "#e0e7ff",
-                    color: apt.status === "cancelled" ? "#991b1b" : apt.status === "completed" ? "#166534" : "#3730a3",
+                    background: apt.status === "cancelled" ? "#fee2e2" : apt.status === "completed" ? "#dcfce7" : apt.status === "no_show" ? "#ffedd5" : "#e0e7ff",
+                    color: apt.status === "cancelled" ? "#991b1b" : apt.status === "completed" ? "#166534" : apt.status === "no_show" ? "#9a3412" : "#3730a3",
                   }}
                 >
                   {formatAppointmentStatus(apt.status)}
                 </span>
+                {CONFIRMABLE_STATUSES.has(apt.status) && (
+                  <button
+                    onClick={() => void handleConfirm(apt.id)}
+                    disabled={pendingAction !== null && pendingAction.id === apt.id}
+                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #a5b4fc", background: "#fff", color: "#3730a3", fontSize: 12, cursor: "pointer" }}
+                  >
+                    {pendingAction?.id === apt.id && pendingAction.action === "confirm" ? "Confirmando…" : "Confirmar"}
+                  </button>
+                )}
+                {COMPLETABLE_STATUSES.has(apt.status) && (
+                  <button
+                    onClick={() => void handleComplete(apt.id)}
+                    disabled={pendingAction !== null && pendingAction.id === apt.id}
+                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #86efac", background: "#fff", color: "#166534", fontSize: 12, cursor: "pointer" }}
+                  >
+                    {pendingAction?.id === apt.id && pendingAction.action === "complete" ? "Completando…" : "Completar"}
+                  </button>
+                )}
+                {NO_SHOW_STATUSES.has(apt.status) && (
+                  <button
+                    onClick={() => void handleNoShow(apt.id)}
+                    disabled={pendingAction !== null && pendingAction.id === apt.id}
+                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fdba74", background: "#fff", color: "#9a3412", fontSize: 12, cursor: "pointer" }}
+                  >
+                    {pendingAction?.id === apt.id && pendingAction.action === "no_show" ? "Marcando…" : "No-show"}
+                  </button>
+                )}
                 {CANCELABLE_STATUSES.has(apt.status) && (
                   <button
                     onClick={() => void handleCancel(apt.id)}
-                    disabled={cancellingId === apt.id}
+                    disabled={pendingAction !== null && pendingAction.id === apt.id}
                     style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fca5a5", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}
                   >
-                    {cancellingId === apt.id ? "Cancelando…" : "Cancelar"}
+                    {pendingAction?.id === apt.id && pendingAction.action === "cancel" ? "Cancelando…" : "Cancelar"}
                   </button>
                 )}
               </div>
