@@ -45,13 +45,18 @@ describe("ConnectorRegistry (REQ-004: registro único de conectores)", () => {
 });
 
 describe("LICITACIONES_CONNECTOR_REGISTRY (instancia real de producción)", () => {
-  it("registra exactamente las 6 fuentes conocidas del origen (ComprasMX/DOF/OCDS-SHCP/PDN-S6/portales estatales + manual)", () => {
+  it("registra exactamente las 7 fuentes conocidas (ComprasMX/DOF/OCDS-SHCP/PDN-S6/portales estatales + histórico ComprasMX + manual)", () => {
     expect(LICITACIONES_CONNECTOR_REGISTRY.all().map((d) => d.id).sort()).toEqual([...SOURCE_CONNECTOR_IDS].sort());
   });
 
   it("REQ-150 (tolerancia cero): NINGÚN conector automatizado se declara verificado sin evidencia -- solo 'manual' lo está", () => {
     const verified = LICITACIONES_CONNECTOR_REGISTRY.all().filter((d) => d.liveVerification.verified);
     expect(verified.map((d) => d.id)).toEqual(["manual"]);
+  });
+
+  it("Fase 8: 'compras_mx_historico' es el único conector automatizado con una implementación real (`connector` presente) -- los otros 5 siguen siendo placeholders sin `connector`", () => {
+    const withConnector = LICITACIONES_CONNECTOR_REGISTRY.all().filter((d) => d.connector !== undefined);
+    expect(withConnector.map((d) => d.id)).toEqual(["compras_mx_historico"]);
   });
 
   it("REQ-146: cada conector automatizado declara una cadencia > 0 (nunca 'a demanda' salvo el manual)", () => {

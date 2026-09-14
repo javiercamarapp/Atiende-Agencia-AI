@@ -71,6 +71,8 @@ export const DEFAULT_STALE_THRESHOLD_MS: Record<SourceConnectorId, number> = {
   ocds_shcp: 3 * 15 * 60_000,
   pdn_s6: 3 * 15 * 60_000,
   state_portal: 3 * 60 * 60_000,
+  // Fase 8 — 3x su propia cadencia declarada (24 h, ver connector-registry.ts), mismo criterio que el resto de esta tabla.
+  compras_mx_historico: 3 * 24 * 60 * 60_000,
 };
 
 /**
