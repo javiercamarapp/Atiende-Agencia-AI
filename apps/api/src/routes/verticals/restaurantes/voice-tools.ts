@@ -15,6 +15,23 @@
 //
 // Se monta como su propio sub-Hono (en vez de extender public.ts) para que
 // el árbol de archivos deje claro qué endpoints son Server Tools de voz.
+//
+// NO DUPLICAR buscar_cliente NI crear_pedido AQUÍ: las otras 2 de las 3 tools
+// documentadas en docs/agente-voz/system-prompt.md §3 del repo original
+// (§3.1 buscar_cliente, §3.3 crear_pedido) YA existen como Server Tools HTTP
+// reales, protegidas con el MISMO `x-atiende-tool-secret`, desde Fase 1
+// (commit e9d9d33, anterior a este archivo) — ver public.ts:
+//   - POST /v1/restaurantes/:orgSlug/customers/lookup  (buscar_cliente,
+//     `lookupCustomer` — memoria real de cliente por teléfono)
+//   - POST /v1/restaurantes/:orgSlug/orders  (crear_pedido, `createOrder` —
+//     con `x-atiende-tool-secret` presente, la fuente del pedido se fuerza a
+//     "voice" sin importar lo que mande el body, y exige customer_address +
+//     payment_method + teléfono mexicano de 10 dígitos, igual que WhatsApp)
+// Volver a montarlas aquí con el mismo path chocaría con public.ts (ambos se
+// montan en "/" en app.ts) y quedarían muertas. El flujo cerrado de punta a
+// punta (reconocer al cliente recurrente -> cotizar -> cerrar el pedido antes
+// de colgar), los 3 vía x-atiende-tool-secret, está probado explícitamente en
+// apps/api/tests/voice-order-closed-loop.spec.ts.
 import { Hono } from "hono";
 import { consumeRateLimit, findNearestBranch, OrderValidationError, quoteOrder, searchProducts } from "@atiende/domain-restaurantes";
 import type { RequestedOrderItemInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
