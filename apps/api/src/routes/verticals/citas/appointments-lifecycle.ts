@@ -264,15 +264,17 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
   });
 
   // ---- Staff panel: confirmar/completar/marcar no-show — Fase 7. Gap real que
-  // esta fase cierra: sin estas 3 rutas una cita nunca salía de 'pending'/
+  // esa fase cerró: sin estas 3 rutas una cita nunca salía de 'pending'/
   // 'confirmed' aunque el cliente hubiera asistido (ver cabecera del archivo).
   // Ninguna cambia starts_at/ends_at ni provider_id/service_id, así que — a
   // diferencia de cancelar/reagendar/reasignar — no hay ningún hueco de horario
   // que liberar para la lista de espera y ningún evento de Google Calendar que
   // re-sincronizar (el horario del evento ya sincronizado sigue siendo válido).
-  // Sin notificación por correo a propósito: el origen (AgendaSection.tsx) nunca
-  // la tuvo para estas 3 transiciones tampoco — agregar plantillas nuevas de
-  // correo queda fuera del alcance real de este gap (ver resumen de la fase).
+  // Fase 11 — gap real que ESTA fase cierra: Fase 7 documentó a propósito que no
+  // había plantilla de correo para estas 3 transiciones (el origen,
+  // AgendaSection.tsx, tampoco la tenía). Ahora sí hay plantilla real
+  // (appointment-templates.ts::correoCitaConfirmada/Completada/NoShow) y las 3
+  // rutas la encolan best-effort, mismo patrón EXACTO que cancelar arriba.
   app.use(
     "/v1/citas/properties/:propertyId/appointments/:appointmentId/confirm",
     authMiddleware(deps.env),
@@ -287,6 +289,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
 
     try {
       const appointment = await confirmAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
+      await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.confirmed", appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
@@ -307,6 +310,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
 
     try {
       const appointment = await completeAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
+      await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.completed", appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
@@ -327,6 +331,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
 
     try {
       const appointment = await markAppointmentNoShowFromPanel(citasRepo, organizationId, appointmentId, userId);
+      await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.no_show", appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);

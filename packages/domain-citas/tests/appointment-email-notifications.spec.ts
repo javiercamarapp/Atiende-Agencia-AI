@@ -4,8 +4,9 @@
 // html) a partir de solo el appointmentId, (2) sin correo del cliente no encola
 // nada (no es un error), (3) cada evento tiene su dedupe_key real, (4) es
 // best-effort de verdad (tryEnqueueAppointmentEmail nunca lanza).
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { cancelAppointment, createAppointment, rescheduleAppointment } from "../src/appointments.ts";
+import { cancelAppointment, completeAppointmentFromPanel, confirmAppointmentFromPanel, createAppointment, markAppointmentNoShowFromPanel, rescheduleAppointment } from "../src/appointments.ts";
 import { enqueueAppointmentEmailCore, tryEnqueueAppointmentEmail } from "../src/appointment-email-notifications.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { buildCitasFixture } from "./fixtures.ts";
@@ -75,6 +76,51 @@ describe("enqueueAppointmentEmailCore", () => {
     const payload = job!.payload as { html: string; text: string };
     expect(payload.text).toContain("10:00"); // fecha anterior real, en el timezone del negocio.
     expect(payload.html).toContain("Reagendada");
+  });
+
+  it("appointment.confirmed: arma correo real con su propio dedupe_key, tras confirmAppointmentFromPanel", async () => {
+    const fixture = buildCitasFixture();
+    const startsAt = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();
+    const appointment = await createAppointment(fixture.repo, { organizationId: fixture.organizationId, providerId: fixture.providerId, serviceId: fixture.serviceId, customerName: "Cliente", customerPhone: "9998887766", customerEmail: "cliente@example.com", startsAt, source: "web" });
+    await confirmAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+
+    const result = await enqueueAppointmentEmailCore(fixture.repo, fixture.organizationId, "appointment.confirmed", appointment.id);
+    expect(result.enqueued).toBe(true);
+    const job = fixture.repo.getOutbox().find((o) => o.eventType === "appointment.confirmed");
+    expect(job!.dedupeKey).toBe(`confirmed:${appointment.id}`);
+    const payload = job!.payload as { subject: string; html: string };
+    expect(payload.subject).toContain("Cita confirmada");
+    expect(payload.html).toContain("Confirmada");
+  });
+
+  it("appointment.completed: arma correo real con su propio dedupe_key, tras completeAppointmentFromPanel", async () => {
+    const fixture = buildCitasFixture();
+    const startsAt = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();
+    const appointment = await createAppointment(fixture.repo, { organizationId: fixture.organizationId, providerId: fixture.providerId, serviceId: fixture.serviceId, customerName: "Cliente", customerPhone: "9998887766", customerEmail: "cliente@example.com", startsAt, source: "web" });
+    await completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+
+    const result = await enqueueAppointmentEmailCore(fixture.repo, fixture.organizationId, "appointment.completed", appointment.id);
+    expect(result.enqueued).toBe(true);
+    const job = fixture.repo.getOutbox().find((o) => o.eventType === "appointment.completed");
+    expect(job!.dedupeKey).toBe(`completed:${appointment.id}`);
+    const payload = job!.payload as { subject: string; html: string };
+    expect(payload.subject).toContain("Gracias por tu visita");
+    expect(payload.html).toContain("Completada");
+  });
+
+  it("appointment.no_show: arma correo real con su propio dedupe_key, tras markAppointmentNoShowFromPanel", async () => {
+    const fixture = buildCitasFixture();
+    const startsAt = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();
+    const appointment = await createAppointment(fixture.repo, { organizationId: fixture.organizationId, providerId: fixture.providerId, serviceId: fixture.serviceId, customerName: "Cliente", customerPhone: "9998887766", customerEmail: "cliente@example.com", startsAt, source: "web" });
+    await markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+
+    const result = await enqueueAppointmentEmailCore(fixture.repo, fixture.organizationId, "appointment.no_show", appointment.id);
+    expect(result.enqueued).toBe(true);
+    const job = fixture.repo.getOutbox().find((o) => o.eventType === "appointment.no_show");
+    expect(job!.dedupeKey).toBe(`no-show:${appointment.id}`);
+    const payload = job!.payload as { subject: string; html: string };
+    expect(payload.subject).toContain("No asististe");
+    expect(payload.html).toContain("No asistió");
   });
 
   it("evento desconocido lanza (nunca envía un correo sin plantilla real)", async () => {
