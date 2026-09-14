@@ -131,3 +131,55 @@ paquete nuevo `@atiende/mcp-cfdi` (`packages/mcp-servers/cfdi`), NO en este paqu
 llamada de red vive fuera de aquí/de ese puerto.
 
 Migraciones nuevas: `migrations/006_cfdi_hospedaje.sql`, `migrations/007_fraude_alerta.sql`.
+
+## Fase 9 — motor de revenue management / pricing (REQ-REV-003/004/005/007)
+
+Gap real verificado contra el original: `domain-hoteles` no tenía ninguna carpeta
+`revenue/` antes de esta fase (ni ninguna ruta relacionada). Port de la pieza de
+negocio más grande pendiente del vertical:
+
+- `revenue/revenueEngineGate.ts` (REQ-REV-003, P0/GOB) — máquina de estados
+  shadow/propone/autopilot. La autoridad final es el trigger de Postgres
+  (`migrations/011_revenue_engine_gate.sql::revenue_engine_gate_transition_guard`),
+  NUNCA un flag de aplicación: exige 90 días mínimos en shadow, un backtest
+  walk-forward vigente que pase, y una aprobación explícita del rol `owner`
+  registrada en un UPDATE previo, antes de dejar pasar a autopilot pleno. Este
+  módulo TS es solo el espejo de aplicación (valida/explica una transición antes del
+  round-trip a la base), mismo patrón que `reservationStateMachine.ts` frente a
+  `005_reservas_estado.sql`.
+- `revenue/walkForwardBacktest.ts` (REQ-REV-003) — backtest walk-forward SIN fuga de
+  información: cada ventana de prueba solo se compara contra datos de ANTES de sí
+  misma. Cálculo puro completo; el pipeline que alimenta `WindowEvaluation` con
+  datos reales de producción queda pendiente (requiere 90 días de datos reales en
+  shadow primero).
+- `revenue/priceRecommendationExplainer.ts` (REQ-REV-005) — explicador de precio en
+  español, dominio puro determinista: SIN LLM. Redacta por qué se recomienda un
+  precio (pick-up/compset/evento/tipo de cambio) a partir de factores YA calculados
+  que recibe, nunca inventa una razón.
+- `revenue/parity-guard.ts` (REQ-REV-007) — parity guard configurable por hotel vs.
+  OTAs: decide si una tarifa directa propuesta rompe la paridad pactada con cada
+  canal (bloquea o solo alerta, según el modo configurado), a partir de tarifas de
+  referencia YA obtenidas por quien llama.
+- `revenue/compsetGuard.ts` (REQ-REV-004) — guarda negativa de benchmarking de
+  compset: exige k≥10 hoteles competidores, ≥12 meses de histórico y opinión
+  antimonopolio documentada antes de dejar avanzar cualquier consulta de agregado de
+  red.
+
+Diferencia deliberada del port de `revenueEngineGate.ts` frente al original: el
+original exige también una "aprobación del fundador" (REQ-GOB-012,
+`founder_reserved_category`) que este repo no ha portado (no existe rol "founder"
+distinto de "owner" en `HOTEL_ROLES`). Este port exige en su lugar una aprobación
+explícita de `owner` (el rol más alto que SÍ existe aquí) con el mismo nivel de
+exigencia de gobierno — ver comentario de cabecera de `revenueEngineGate.ts` y de
+`migrations/011_revenue_engine_gate.sql` para el detalle completo.
+
+Pendiente honesto de esta fase (no fingido como completo): el conector/channel
+manager real que alimentaría `parity-guard.ts` con tarifas OTA en vivo (REQ-REV-
+008..011), el motor de recomendación de tarifas en sí (lo que produciría
+`PriceRecommendationInput` y correría en shadow), y el pipeline de ingesta de datos
+reales para `walkForwardBacktest.ts` — los tres, deliberadamente fuera de esta fase
+(mismo patrón que el resto del vertical: cada guarda/explicador es dominio puro,
+la orquestación que la alimenta con datos reales de negocio vive en fases futuras
+de `apps/api`).
+
+Migración nueva: `migrations/011_revenue_engine_gate.sql`.
