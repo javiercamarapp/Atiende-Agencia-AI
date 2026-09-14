@@ -523,3 +523,74 @@ export interface NewHousekeepingShiftInput {
   readonly startTime: string;
   readonly endTime: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 8 — REQ-BO-024 (P0/GOB, LFT art.132 fr.XXXIV): checador de asistencia
+// INALTERABLE, cruzado contra el horario programado, exportable a la STPS. Distinto
+// de `HousekeepingShiftRecord` de arriba (migrations/009): ese es la PLANTILLA de
+// turnos ya validada contra la LFT ANTES de publicarse (horario PLANEADO);
+// `AttendanceEventRecord` es el registro REAL de cuándo un empleado efectivamente
+// entró/salió (`hoteles.attendance_log`, migrations/010_checador_asistencia.sql) --
+// append-only, encadenado por hash por empleado, nunca editable ni borrable (ver esa
+// migración para la garantía real; esta interfaz solo describe la fila cruda).
+// `StaffScheduleRecord` es el horario programado (mutable, administrado por
+// owner/gm) contra el que `crossCheckAttendance` (checador/attendance.ts) cruza lo
+// trabajado -- separado de `HousekeepingShiftRecord` porque cubre a TODO el staff
+// (no solo camaristas/lavandería) y trae `authorizedOvertimeMinutes`, un campo que
+// housekeeping_shift no necesita.
+// ─────────────────────────────────────────────────────────────────────────
+export type AttendanceEventType = "entrada" | "salida";
+
+export interface AttendanceEventRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly staffUserId: string;
+  readonly eventType: AttendanceEventType;
+  /** ISO-8601, SIEMPRE fijado por el servidor al insertarse (`now()`), nunca por lo
+   *  que mande el cliente -- correcto para un registro inalterable de verdad (LFT
+   *  art.132 fr.XXXIV): el reloj del checador es el del servidor, no el del celular
+   *  de quien ficha. */
+  readonly recordedAt: string;
+  readonly source: string;
+  readonly note: string | null;
+  readonly createdAt: string;
+}
+
+export interface NewAttendanceEventInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  /** SIEMPRE el actor autenticado que hace la petición -- ver
+   *  ATTENDANCE_ADMIN_ROLES/roles.ts, comentario de cabecera: ningún caller de este
+   *  método (ni la ruta HTTP) debe aceptar un staffUserId ajeno del cliente. */
+  readonly staffUserId: string;
+  readonly eventType: AttendanceEventType;
+  readonly source: string;
+  readonly note: string | null;
+}
+
+export interface StaffScheduleRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly staffUserId: string;
+  /** Fecha de negocio del turno, YYYY-MM-DD. */
+  readonly workDate: string;
+  /** ISO-8601. */
+  readonly scheduledStart: string;
+  /** ISO-8601. */
+  readonly scheduledEnd: string;
+  readonly authorizedOvertimeMinutes: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface NewStaffScheduleInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly staffUserId: string;
+  readonly workDate: string;
+  readonly scheduledStart: string;
+  readonly scheduledEnd: string;
+  readonly authorizedOvertimeMinutes: number;
+}

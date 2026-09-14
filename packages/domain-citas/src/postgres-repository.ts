@@ -18,8 +18,12 @@ import type {
   BusyInterval,
   CustomerRecord,
   GoogleSyncStatus,
+  NewProviderInput,
+  NewServiceInput,
   ProviderCalendarAccountRecord,
+  ProviderPatch,
   ProviderRecord,
+  ServicePatch,
   ServiceRecord,
 } from "./types.ts";
 import type {
@@ -46,6 +50,7 @@ import type {
   ReassignResult,
   RescheduleResult,
   ReminderCandidateRow,
+  TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
 } from "./repository.ts";
@@ -216,6 +221,82 @@ export class PostgresCitasRepository implements CitasRepository {
   async providerOffersService(providerId: string, serviceId: string): Promise<boolean> {
     const { rows } = await this.db.query<{ count: string }>(`select count(*)::text as count from citas.provider_services where provider_id = $1 and service_id = $2;`, [providerId, serviceId]);
     return Number(rows[0]?.count ?? "0") > 0;
+  }
+
+  // ---- Fase 8 — panel admin: CRUD real de proveedores/servicios (ver
+  // repository.ts::NewProviderInput/ProviderPatch/NewServiceInput/ServicePatch para
+  // el porqué de cada campo). Mismo patrón `coalesce`/`case when $n::boolean` que
+  // `updateProduct` de domain-restaurantes (postgres-repository.ts) para distinguir
+  // "campo ausente del patch" (deja la columna intacta) de "campo presente pero
+  // null" (sí escribe null) en `property_id`/`price_cents`. ----
+  async createProvider(input: NewProviderInput): Promise<ProviderRecord> {
+    const { rows } = await this.db.query<ProviderRow>(
+      `insert into citas.providers (organization_id, property_id, display_name, role_label, is_active)
+       values ($1, $2, $3, $4, $5)
+       returning id, organization_id, property_id, display_name, role_label, is_active;`,
+      [input.organizationId, input.propertyId ?? null, input.displayName, input.roleLabel ?? "Proveedor", input.isActive ?? true],
+    );
+    return mapProvider(rows[0]!);
+  }
+
+  async updateProvider(organizationId: string, providerId: string, patch: ProviderPatch): Promise<ProviderRecord | null> {
+    const { rows } = await this.db.query<ProviderRow>(
+      `update citas.providers
+       set display_name = coalesce($3, display_name),
+           role_label = coalesce($4, role_label),
+           property_id = case when $5::boolean then $6::uuid else property_id end,
+           is_active = coalesce($7, is_active),
+           updated_at = now()
+       where id = $1 and organization_id = $2
+       returning id, organization_id, property_id, display_name, role_label, is_active;`,
+      [providerId, organizationId, patch.displayName ?? null, patch.roleLabel ?? null, patch.propertyId !== undefined, patch.propertyId ?? null, patch.isActive ?? null],
+    );
+    return rows[0] ? mapProvider(rows[0]) : null;
+  }
+
+  async setProviderServiceOffering(providerId: string, serviceId: string, offered: boolean): Promise<void> {
+    if (offered) {
+      await this.db.query(`insert into citas.provider_services (provider_id, service_id) values ($1, $2) on conflict (provider_id, service_id) do nothing;`, [providerId, serviceId]);
+    } else {
+      await this.db.query(`delete from citas.provider_services where provider_id = $1 and service_id = $2;`, [providerId, serviceId]);
+    }
+  }
+
+  async createService(input: NewServiceInput): Promise<ServiceRecord> {
+    const { rows } = await this.db.query<ServiceRow>(
+      `insert into citas.services (organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       returning id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active;`,
+      [input.organizationId, input.name, input.durationMinutes, input.bufferMinutesBefore ?? 0, input.bufferMinutesAfter ?? 0, input.priceCents ?? null, input.isActive ?? true],
+    );
+    return mapService(rows[0]!);
+  }
+
+  async updateService(organizationId: string, serviceId: string, patch: ServicePatch): Promise<ServiceRecord | null> {
+    const { rows } = await this.db.query<ServiceRow>(
+      `update citas.services
+       set name = coalesce($3, name),
+           duration_minutes = coalesce($4, duration_minutes),
+           buffer_minutes_before = coalesce($5, buffer_minutes_before),
+           buffer_minutes_after = coalesce($6, buffer_minutes_after),
+           price_cents = case when $7::boolean then $8::integer else price_cents end,
+           is_active = coalesce($9, is_active),
+           updated_at = now()
+       where id = $1 and organization_id = $2
+       returning id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active;`,
+      [
+        serviceId,
+        organizationId,
+        patch.name ?? null,
+        patch.durationMinutes ?? null,
+        patch.bufferMinutesBefore ?? null,
+        patch.bufferMinutesAfter ?? null,
+        patch.priceCents !== undefined,
+        patch.priceCents ?? null,
+        patch.isActive ?? null,
+      ],
+    );
+    return rows[0] ? mapService(rows[0]) : null;
   }
 
   async loadAvailabilityRules(providerId: string): Promise<readonly AvailabilityRule[]> {
@@ -814,12 +895,37 @@ export class PostgresCitasRepository implements CitasRepository {
   // ============================================================================
 
   async findTenantConfig(organizationId: string): Promise<TenantConfigRecord | null> {
-    const { rows } = await this.db.query<{ organization_id: string; rubro: string; owner_notification_phone: string | null }>(
-      `select organization_id, rubro, owner_notification_phone from citas.tenant_config where organization_id = $1;`,
+    const { rows } = await this.db.query<{ organization_id: string; rubro: string; default_timezone: string; owner_notification_phone: string | null }>(
+      `select organization_id, rubro, default_timezone, owner_notification_phone from citas.tenant_config where organization_id = $1;`,
       [organizationId],
     );
     const row = rows[0];
-    return row ? { organizationId: row.organization_id, rubro: row.rubro, ownerNotificationPhone: row.owner_notification_phone } : null;
+    return row ? { organizationId: row.organization_id, rubro: row.rubro, defaultTimezone: row.default_timezone, ownerNotificationPhone: row.owner_notification_phone } : null;
+  }
+
+  /** Fase 8 — upsert real: la fila de `citas.tenant_config` puede no existir
+   * todavía (ver comentario de `upsertTenantConfig` en repository.ts) — el
+   * `insert ... on conflict do update` con `coalesce(excluded.<col>, tenant_config.<col>)`
+   * hace que un patch parcial sobre una fila YA existente respete sus valores
+   * actuales para los campos ausentes, y que sobre una fila inexistente use los
+   * defaults reales de la columna (los mismos `default` de 001_citas_schema.sql,
+   * vía `insert into ... (organization_id, rubro, default_timezone,
+   * owner_notification_phone) values ($1, coalesce($2, 'otro'), coalesce($3,
+   * 'America/Mexico_City'), $4)`). */
+  async upsertTenantConfig(organizationId: string, patch: TenantConfigPatch): Promise<TenantConfigRecord> {
+    const { rows } = await this.db.query<{ organization_id: string; rubro: string; default_timezone: string; owner_notification_phone: string | null }>(
+      `insert into citas.tenant_config (organization_id, rubro, default_timezone, owner_notification_phone)
+       values ($1, coalesce($2, 'otro'), coalesce($3, 'America/Mexico_City'), $4)
+       on conflict (organization_id) do update
+         set rubro = coalesce($2, citas.tenant_config.rubro),
+             default_timezone = coalesce($3, citas.tenant_config.default_timezone),
+             owner_notification_phone = case when $5::boolean then $4 else citas.tenant_config.owner_notification_phone end,
+             updated_at = now()
+       returning organization_id, rubro, default_timezone, owner_notification_phone;`,
+      [organizationId, patch.rubro ?? null, patch.defaultTimezone ?? null, patch.ownerNotificationPhone ?? null, patch.ownerNotificationPhone !== undefined],
+    );
+    const row = rows[0]!;
+    return { organizationId: row.organization_id, rubro: row.rubro, defaultTimezone: row.default_timezone, ownerNotificationPhone: row.owner_notification_phone };
   }
 
   async insertEmergencyEscalation(input: EmergencyEscalationInput): Promise<EmergencyEscalationRecord> {
