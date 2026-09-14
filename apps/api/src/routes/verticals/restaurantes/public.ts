@@ -44,6 +44,7 @@ interface CreateOrderBody {
   readonly omit_default_complements?: unknown;
   readonly call_transcript?: unknown;
   readonly call_recording_url?: unknown;
+  readonly promo_code?: unknown;
 }
 
 function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, source: "web" | "voice"): CreateOrderInput {
@@ -72,6 +73,9 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
     omitDefaultComplements: Array.isArray(body.omit_default_complements) ? (body.omit_default_complements as CreateOrderInput["omitDefaultComplements"]) : undefined,
     callTranscript: typeof body.call_transcript === "string" ? body.call_transcript : undefined,
     callRecordingUrl: typeof body.call_recording_url === "string" ? body.call_recording_url : undefined,
+    // Fase 11 — código de promoción opcional (ver domain-restaurantes/src/
+    // promotions.ts); createOrder lo valida/aplica al total real, nunca aquí.
+    promoCode: typeof body.promo_code === "string" ? body.promo_code : undefined,
   };
 }
 

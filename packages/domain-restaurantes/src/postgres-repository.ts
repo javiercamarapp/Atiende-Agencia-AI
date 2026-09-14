@@ -27,6 +27,7 @@ import type {
   NearestBranchMatch,
   NewCategoryInput,
   NewProductInput,
+  NewPromotionInput,
   Order,
   OrderListFilter,
   OrderListPage,
@@ -34,6 +35,8 @@ import type {
   PersistedOrderItem,
   Product,
   ProductPatch,
+  Promotion,
+  PromotionPatch,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -210,6 +213,60 @@ function mapAdminProduct(row: AdminProductRow): Product {
 
 const ADMIN_PRODUCT_COLUMNS = `pr.id, pr.organization_id, pr.category_id, c.name as category_name, pr.name, pr.description, pr.price, pr.image_url, pr.is_popular, pr.is_available, pr.display_order, pr.search_keywords`;
 const ADMIN_PRODUCT_FROM = `from restaurantes.products pr left join restaurantes.categories c on c.id = pr.category_id`;
+
+interface PromotionRow {
+  readonly id: string;
+  readonly organization_id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly type: "percentage" | "fixed";
+  readonly value: string;
+  readonly min_order_total: string | null;
+  readonly starts_at: string | null;
+  readonly ends_at: string | null;
+  readonly days_of_week: readonly number[] | null;
+  readonly start_time: string | null;
+  readonly end_time: string | null;
+  readonly max_uses: number | null;
+  readonly times_used: number;
+  readonly is_active: boolean;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+/** `start_time`/`end_time` vuelven de Postgres como "HH:MM:SS" (tipo `time`) —
+ * se recorta a "HH:MM" para que coincida exactamente con el formato que ya usa
+ * `Promotion.startTime`/`endTime` y `promotions.ts::minutesSinceMidnight`. */
+function toHhMm(value: string | null): string | null {
+  return value === null ? null : value.slice(0, 5);
+}
+
+function mapPromotion(row: PromotionRow): Promotion {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    code: row.code,
+    name: row.name,
+    description: row.description,
+    type: row.type,
+    value: Number(row.value),
+    minOrderTotal: row.min_order_total === null ? null : Number(row.min_order_total),
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    daysOfWeek: row.days_of_week,
+    startTime: toHhMm(row.start_time),
+    endTime: toHhMm(row.end_time),
+    maxUses: row.max_uses,
+    timesUsed: row.times_used,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const PROMOTION_COLUMNS =
+  "id, organization_id, code, name, description, type, value, min_order_total, starts_at, ends_at, days_of_week, start_time, end_time, max_uses, times_used, is_active, created_at, updated_at";
 
 interface BranchProductRow {
   readonly property_id: string;
@@ -895,6 +952,113 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     );
     if (!rows[0]) return null;
     return this.findProduct(organizationId, rows[0].id);
+  }
+
+  // ---- Fase 11 — promociones/marketing (ver promotions.ts, migrations/010) ----
+
+  async listPromotions(organizationId: string): Promise<readonly Promotion[]> {
+    const { rows } = await this.db.query<PromotionRow>(
+      `select ${PROMOTION_COLUMNS} from restaurantes.promotions where organization_id = $1 order by created_at desc;`,
+      [organizationId],
+    );
+    return rows.map(mapPromotion);
+  }
+
+  async findPromotion(organizationId: string, promotionId: string): Promise<Promotion | null> {
+    const { rows } = await this.db.query<PromotionRow>(`select ${PROMOTION_COLUMNS} from restaurantes.promotions where organization_id = $1 and id = $2;`, [organizationId, promotionId]);
+    return rows[0] ? mapPromotion(rows[0]) : null;
+  }
+
+  async findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null> {
+    const { rows } = await this.db.query<PromotionRow>(`select ${PROMOTION_COLUMNS} from restaurantes.promotions where organization_id = $1 and code = $2;`, [organizationId, code]);
+    return rows[0] ? mapPromotion(rows[0]) : null;
+  }
+
+  async createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion> {
+    const { rows } = await this.db.query<PromotionRow>(
+      `insert into restaurantes.promotions
+         (organization_id, code, name, description, type, value, min_order_total, starts_at, ends_at, days_of_week, start_time, end_time, max_uses, is_active)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::smallint[], $11::time, $12::time, $13, $14)
+       returning ${PROMOTION_COLUMNS};`,
+      [
+        organizationId,
+        input.code,
+        input.name,
+        input.description ?? null,
+        input.type,
+        input.value,
+        input.minOrderTotal ?? null,
+        input.startsAt ?? null,
+        input.endsAt ?? null,
+        input.daysOfWeek ? [...input.daysOfWeek] : null,
+        input.startTime ?? null,
+        input.endTime ?? null,
+        input.maxUses ?? null,
+        input.isActive ?? true,
+      ],
+    );
+    return mapPromotion(rows[0]!);
+  }
+
+  async updatePromotion(organizationId: string, promotionId: string, patch: PromotionPatch): Promise<Promotion | null> {
+    const { rows } = await this.db.query<PromotionRow>(
+      `update restaurantes.promotions
+       set code = coalesce($3, code),
+           name = coalesce($4, name),
+           description = case when $5::boolean then $6 else description end,
+           type = coalesce($7, type),
+           value = coalesce($8, value),
+           min_order_total = case when $9::boolean then $10 else min_order_total end,
+           starts_at = case when $11::boolean then $12::timestamptz else starts_at end,
+           ends_at = case when $13::boolean then $14::timestamptz else ends_at end,
+           days_of_week = case when $15::boolean then $16::smallint[] else days_of_week end,
+           start_time = case when $17::boolean then $18::time else start_time end,
+           end_time = case when $19::boolean then $20::time else end_time end,
+           max_uses = case when $21::boolean then $22 else max_uses end,
+           is_active = coalesce($23, is_active),
+           updated_at = now()
+       where id = $1 and organization_id = $2
+       returning ${PROMOTION_COLUMNS};`,
+      [
+        promotionId,
+        organizationId,
+        patch.code ?? null,
+        patch.name ?? null,
+        patch.description !== undefined,
+        patch.description ?? null,
+        patch.type ?? null,
+        patch.value ?? null,
+        patch.minOrderTotal !== undefined,
+        patch.minOrderTotal ?? null,
+        patch.startsAt !== undefined,
+        patch.startsAt ?? null,
+        patch.endsAt !== undefined,
+        patch.endsAt ?? null,
+        patch.daysOfWeek !== undefined,
+        patch.daysOfWeek ? [...patch.daysOfWeek] : null,
+        patch.startTime !== undefined,
+        patch.startTime ?? null,
+        patch.endTime !== undefined,
+        patch.endTime ?? null,
+        patch.maxUses !== undefined,
+        patch.maxUses ?? null,
+        patch.isActive ?? null,
+      ],
+    );
+    return rows[0] ? mapPromotion(rows[0]) : null;
+  }
+
+  /** `restaurantes.increment_promotion_uses` (ver migrations/010) es SECURITY
+   * DEFINER — mismo patrón exacto que `create_order_idempotent` (migrations/003):
+   * el UPDATE atómico re-verifica `is_active`/`max_uses` server-side, así dos
+   * pedidos casi-simultáneos con el mismo código nunca lo rebasan, sin depender de
+   * que el caller haya validado en memoria un momento antes. */
+  async incrementPromotionUses(organizationId: string, promotionId: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ increment_promotion_uses: PromotionRow | null }>(
+      `select restaurantes.increment_promotion_uses($1, $2) as increment_promotion_uses;`,
+      [organizationId, promotionId],
+    );
+    return rows[0]?.increment_promotion_uses != null;
   }
 
   async getBranchProductState(propertyId: string, productId: string): Promise<BranchProductState | null> {

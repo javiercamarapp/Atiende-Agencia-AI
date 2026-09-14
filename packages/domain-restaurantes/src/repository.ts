@@ -22,6 +22,7 @@ import type {
   NearestBranchMatch,
   NewCategoryInput,
   NewProductInput,
+  NewPromotionInput,
   Order,
   OrderListFilter,
   OrderListPage,
@@ -29,6 +30,8 @@ import type {
   PersistedOrderItem,
   Product,
   ProductPatch,
+  Promotion,
+  PromotionPatch,
 } from "./types.ts";
 
 export interface SearchableProduct {
@@ -330,6 +333,34 @@ export interface RestaurantesRepository {
    * `update_assigned_order_status()` del origen) — null si el pedido no existe, no es de
    * esta organización, o ya no está asignado a este repartidor. */
   updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, status: OrderStatus, incidentNote: string | null): Promise<Order | null>;
+
+  // ---- Fase 11 — promociones/marketing (ver promotions.ts, migrations/010). CRUD
+  // real de admin + resolución por código para la aplicación real al total de un
+  // pedido (ver orders.ts::prepareCreateOrder). ----
+
+  /** Listado de administración — activas e inactivas, más reciente primero (mismo
+   * criterio que `listStaffOrderNotifications`: el staff necesita ver también lo
+   * desactivado para poder reactivarlo). */
+  listPromotions(organizationId: string): Promise<readonly Promotion[]>;
+  findPromotion(organizationId: string, promotionId: string): Promise<Promotion | null>;
+  /** Resolución por código para la aplicación real a un pedido (orders.ts) — el
+   * código YA viene normalizado (mayúsculas, ver promotions.ts::normalizePromotionCode)
+   * por el caller. `null` cuando el código no existe EN ESTA organización, sin
+   * filtrar por `isActive`/vigencia aquí — esa validación real vive en
+   * `promotions.ts::assertPromotionApplicable`, nunca en el repositorio (mismo
+   * principio que `updateOrderStatus`: el repositorio solo resuelve datos, nunca
+   * decide reglas de negocio). */
+  findPromotionByCode(organizationId: string, code: string): Promise<Promotion | null>;
+  createPromotion(organizationId: string, input: NewPromotionInput): Promise<Promotion>;
+  updatePromotion(organizationId: string, promotionId: string, patch: PromotionPatch): Promise<Promotion | null>;
+  /** Incrementa `times_used` de forma atómica DESPUÉS de un pedido creado con éxito
+   * — re-verifica `is_active`/`max_uses` en el propio UPDATE (nunca confía en la
+   * validación ya hecha en memoria minutos/segundos antes), así dos pedidos casi-
+   * simultáneos con el mismo código nunca exceden `max_uses`. Devuelve `false` si
+   * la promoción ya no calificaba en el momento exacto del incremento (perdió la
+   * carrera o fue desactivada entretanto) — el pedido YA se creó de todos modos,
+   * igual que el resto de efectos secundarios best-effort de `createOrder`. */
+  incrementPromotionUses(organizationId: string, promotionId: string): Promise<boolean>;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo

@@ -111,4 +111,50 @@ describe("POST /v1/restaurantes/:orgSlug/orders — checkout web público", () =
     const secondBody = (await second.json()) as { order: { id: string } };
     expect(secondBody.order.id).toBe(firstBody.order.id);
   });
+
+  // Fase 11 — promociones/marketing aplicadas de punta a punta por HTTP (ver
+  // domain-restaurantes/src/promotions.ts).
+  it("promo_code real: descuenta del total del checkout público", async () => {
+    const { deps, restaurantesRepo, organizationId, products } = await buildTestDeps();
+    await restaurantesRepo.createPromotion(organizationId, { code: "WEB10", name: "10% checkout web", type: "percentage", value: 10 });
+    const app = buildApp(deps);
+    const res = await app.request(
+      "/v1/restaurantes/los-taquitos-de-pm/orders",
+      jsonRequestInit(
+        {
+          branch_slug: "fco-montejo",
+          customer_name: "Cliente con Cupón",
+          customer_phone: "9991230099",
+          items: [{ product_id: products.cocaCola, requested_quantity: 2 }],
+          source: "web",
+          promo_code: "web10",
+        },
+        { origin: "http://localhost:5173" },
+      ),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { order: { total: number; notes: string | null } };
+    expect(body.order.total).toBe(81); // 90 - 10%
+    expect(body.order.notes ?? "").toMatch(/Promoción aplicada: WEB10 \(-\$9\.00\)/);
+  });
+
+  it("promo_code inexistente -> 400, el pedido nunca se crea", async () => {
+    const { deps, products } = await buildTestDeps();
+    const app = buildApp(deps);
+    const res = await app.request(
+      "/v1/restaurantes/los-taquitos-de-pm/orders",
+      jsonRequestInit(
+        {
+          branch_slug: "fco-montejo",
+          customer_name: "X",
+          customer_phone: "9991230098",
+          items: [{ product_id: products.cocaCola, requested_quantity: 1 }],
+          source: "web",
+          promo_code: "NO-EXISTE",
+        },
+        { origin: "http://localhost:5173" },
+      ),
+    );
+    expect(res.status).toBe(400);
+  });
 });

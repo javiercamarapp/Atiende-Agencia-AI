@@ -8,9 +8,10 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { buildComplementNotes, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS } from "./order-quote.ts";
+import { applyPromotionToOrderTotal, normalizePromotionCode } from "./promotions.ts";
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
-import type { Branch, CreateOrderInput, Order, PersistedOrderItem, ProductoEncontrado, RequestedOrderItemInput } from "./types.ts";
+import type { Branch, CreateOrderInput, Order, PersistedOrderItem, Promotion, ProductoEncontrado, RequestedOrderItemInput } from "./types.ts";
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -91,7 +92,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     invalidOptionalString(raw.customerAddress, 1000) ||
     invalidOptionalString(raw.notes, 2000) ||
     invalidOptionalString(raw.callTranscript, 20000) ||
-    invalidOptionalString(raw.callRecordingUrl, 2000)
+    invalidOptionalString(raw.callRecordingUrl, 2000) ||
+    invalidOptionalString(raw.promoCode, 40)
   ) {
     throw new OrderValidationError("Uno o más campos exceden el tamaño permitido");
   }
@@ -142,6 +144,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     customerName: raw.customerName.trim(),
     customerPhone: voicePhone ?? normalizePhone(raw.customerPhone),
     customerAddress: raw.customerAddress?.trim(),
+    promoCode: raw.promoCode?.trim() ? normalizePromotionCode(raw.promoCode) : undefined,
   };
 }
 
@@ -151,6 +154,11 @@ export interface PreparedOrder {
   readonly orderItems: readonly PersistedOrderItem[];
   readonly total: number;
   readonly containsAlcohol: boolean;
+  /** Fase 11 — promoción real aplicada a este pedido (ver promotions.ts), null si
+   * `payload.promoCode` no venía o no fue necesario resolverla todavía. */
+  readonly appliedPromotion: Promotion | null;
+  /** Descuento real ya restado de `total` — 0 cuando no hay promoción aplicada. */
+  readonly discount: number;
 }
 
 /** Cotiza un pedido completo contra el catálogo real, SIN persistir — usado también
@@ -216,7 +224,26 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
     });
   }
 
-  return { payload, branch, orderItems, total, containsAlcohol };
+  // Fase 11 — promociones/marketing (ver promotions.ts para el porqué de este
+  // gap y por qué es deliberadamente nuevo respecto al original). Se aplica DESPUÉS
+  // de sumar todos los renglones -- nunca antes -- así min_order_total siempre
+  // evalúa el total REAL del pedido, nunca uno parcial. Reusa `applyPromotionToOrderTotal`
+  // sobre el `total` que ya calculó el motor de cotización de arriba: cero
+  // duplicación de la lógica de precio de línea.
+  let appliedPromotion: Promotion | null = null;
+  let discount = 0;
+  if (payload.promoCode) {
+    const promotion = await repo.findPromotionByCode(payload.organizationId, payload.promoCode);
+    if (!promotion) {
+      throw new OrderValidationError(`El código "${payload.promoCode}" no existe.`);
+    }
+    const applied = applyPromotionToOrderTotal(total, promotion, new Date());
+    total = applied.total;
+    discount = applied.discount;
+    appliedPromotion = promotion;
+  }
+
+  return { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount };
 }
 
 /**
@@ -226,14 +253,18 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
  * pedido (protección real y a prueba de canal, port literal de createOrderCore).
  */
 export async function createOrder(repo: RestaurantesRepository, rawInput: CreateOrderInput): Promise<Order> {
-  const { payload, branch, orderItems, total, containsAlcohol } = await prepareCreateOrder(repo, rawInput);
+  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount } = await prepareCreateOrder(repo, rawInput);
 
   const customer = await repo.upsertCustomer(payload.organizationId, payload.customerPhone, payload.customerName);
   if (payload.customerAddress) await repo.addCustomerAddressIfNew(customer.id, payload.customerAddress);
 
   const itemsOrdenados = [...orderItems].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const complementNotes = buildComplementNotes(payload.notes, [...new Set(payload.requestedComplements ?? [])].sort(), [...new Set(payload.omitDefaultComplements ?? [])].sort());
-  const finalNotes = containsAlcohol ? [complementNotes, "Recepción de alcohol: mayoría de edad confirmada por el cliente."].join("\n") : complementNotes;
+  const notesWithAlcohol = containsAlcohol ? [complementNotes, "Recepción de alcohol: mayoría de edad confirmada por el cliente."].join("\n") : complementNotes;
+  // Fase 11 — el descuento real ya está restado de `total` (ver prepareCreateOrder);
+  // esta nota es solo auditoría legible por el staff en el panel de pedidos, nunca
+  // la fuente de verdad del descuento (eso es `total` + `appliedPromotion`).
+  const finalNotes = appliedPromotion ? [notesWithAlcohol, `Promoción aplicada: ${appliedPromotion.code} (-$${discount.toFixed(2)}).`].join("\n") : notesWithAlcohol;
 
   const dedupeFingerprint = sha256Hex(
     JSON.stringify({
@@ -286,6 +317,25 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
   // create_order_idempotent que devuelve el MISMO pedido (misma idempotencyKey o
   // dedupeFingerprint) nunca duplica la notificación.
   await tryNotifyStaffNewOrder(repo, order);
+
+  // Fase 11 — registra el uso real de la promoción DESPUÉS de persistir el pedido
+  // (nunca antes: un pedido que falla al crearse no debe consumir un uso). Igual
+  // que create_order_idempotent, un reintento con la MISMA idempotencyKey/
+  // dedupeFingerprint devuelve el pedido ya existente sin volver a ejecutar este
+  // bloque (createOrderIdempotent ya retornó antes de llegar aquí en ese caso...
+  // salvo que sí llega, así que se reincrementaría en un reintento real: se acepta
+  // porque el pedido en sí nunca se duplica -- ver nota de idempotencia de arriba --
+  // un reintento de red del MISMO request real es indistinguible aquí de dos
+  // pedidos reales con el mismo código, y no hay forma barata de diferenciarlos
+  // sin una tabla de uso por pedido, fuera de alcance de esta fase). Best-effort:
+  // nunca revierte un pedido real ya creado por esto.
+  if (appliedPromotion) {
+    try {
+      await repo.incrementPromotionUses(payload.organizationId, appliedPromotion.id);
+    } catch (err) {
+      console.error("promotions: best-effort incrementPromotionUses failed:", err);
+    }
+  }
   return order;
 }
 
