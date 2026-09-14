@@ -14,6 +14,7 @@ import type {
   ConversationMessage,
   ContactoNoOperativoRecord,
   DiscountChargeForFraudScan,
+  ExpenseEntryRecord,
   FnbOrderRecord,
   FolioRecord,
   FraudAlertRecord,
@@ -28,6 +29,7 @@ import type {
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
+  NewExpenseEntryInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
   NewHousekeepingShiftInput,
@@ -39,6 +41,9 @@ import type {
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
+  PlExpenseByDateRow,
+  PlOccupiedRoomNightsByDateRow,
+  PlRevenueByDateRow,
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
@@ -51,6 +56,7 @@ import type { ReservationStatus } from "./reservationStateMachine.ts";
 import { isCancellable } from "./reservationStateMachine.ts";
 import { occupancyPct } from "./overbooking.ts";
 import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
+import type { UsaliRevenueDepartment } from "./pl/usaliPL.ts";
 
 /** Serializa operaciones por clave — equivalente en memoria de
  *  `pg_advisory_xact_lock`/row lock de Postgres. */
@@ -170,6 +176,29 @@ function hashBody(body: unknown): string {
   return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
 }
 
+// Fase 10 (REQ-BO-010) — mismo mapeo concept -> departamento USALI documentado en
+// migrations/012_pl_usali.sql, compartido por InMemoryHotelesRepository (aquí, en TS)
+// y PostgresHotelesRepository (el `case` SQL equivalente) -- 'propina' se EXCLUYE
+// (retorna null), 'reverso' NUNCA se pasa directo aquí (el llamador siempre resuelve
+// primero al concept del cargo ORIGINAL vía `reversesChargeId`, ver
+// `resolveRevenueDateAndDepartment` abajo).
+function resolveRevenueDepartmentForConcept(concept: string): UsaliRevenueDepartment | null {
+  switch (concept) {
+    case "hospedaje":
+      return "rooms";
+    case "ab":
+      return "food_beverage";
+    case "extras":
+    case "otro":
+      return "otros_departamentos";
+    case "ajuste":
+    case "descuento":
+      return "rooms";
+    default:
+      return null; // 'propina' (excluida) y cualquier concept no reconocido.
+  }
+}
+
 export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly folios = new Map<string, StoredFolio>();
   private readonly charges = new Map<string, StoredCharge>();
@@ -213,6 +242,10 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   // ---- Fase 8 — REQ-BO-024 checador de asistencia inalterable ----
   private readonly attendanceEvents = new Map<string, AttendanceEventRecord>();
   private readonly staffSchedules = new Map<string, StaffScheduleRecord>(); // key: propertyId:staffUserId:workDate
+
+  // ---- Fase 10 — REQ-BO-010 back-office financiero: P&L USALI + punto de
+  // equilibrio dinámico (lado de gastos, append-only). ----
+  private readonly expenseEntries = new Map<string, ExpenseEntryRecord>();
 
   // ---- Fase 7 — descubrimiento de organización/property para el panel web de staff
   // (espejo de solo-lectura de `core.organization`/`core.property`, ver
@@ -1366,5 +1399,95 @@ export class InMemoryHotelesRepository implements HotelesRepository {
 
   async findStaffSchedule(propertyId: string, staffUserId: string, workDate: string): Promise<StaffScheduleRecord | null> {
     return this.staffSchedules.get(`${propertyId}:${staffUserId}:${workDate}`) ?? null;
+  }
+
+  // ---- HotelesRepository: Fase 10 — REQ-BO-010 back-office financiero (P&L USALI) ----
+
+  async insertExpenseEntry(input: NewExpenseEntryInput): Promise<ExpenseEntryRecord> {
+    if (input.amount < 0) throw new Error("expense_entry_amount_check: un gasto no admite monto negativo.");
+    const record: ExpenseEntryRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      department: input.department,
+      category: input.category,
+      description: input.description,
+      amount: input.amount,
+      expenseDate: input.expenseDate,
+      createdBy: input.createdBy,
+      createdAt: new Date().toISOString(),
+    };
+    this.expenseEntries.set(record.id, record);
+    return record;
+  }
+
+  async listExpenseEntries(propertyId: string, desde: string, hasta: string): Promise<readonly ExpenseEntryRecord[]> {
+    return [...this.expenseEntries.values()]
+      .filter((e) => e.propertyId === propertyId && e.expenseDate >= desde && e.expenseDate <= hasta)
+      .sort((a, b) => (a.expenseDate < b.expenseDate ? -1 : 1));
+  }
+
+  /** Resuelve fecha+departamento de UN cargo -- `fecha = stayDate ?? createdAt` (mismo
+   *  fallback que el original: `coalesce(stay_date, created_at::date)`); un 'reverso'
+   *  resuelve su departamento contra el concept del cargo ORIGINAL (nunca contra
+   *  'reverso' en sí, que no mapea a ningún departamento por su cuenta) -- devuelve
+   *  `null` cuando el concept resuelto es 'propina' (excluida) o el original ya no
+   *  existe (dato roto, se descarta en vez de fabricar un departamento). */
+  private resolveRevenueDateAndDepartment(charge: StoredCharge): { fecha: string; department: UsaliRevenueDepartment } | null {
+    const original = charge.reversesChargeId != null ? this.charges.get(charge.reversesChargeId) : undefined;
+    const effectiveConcept = original ? original.concept : charge.concept;
+    const department = resolveRevenueDepartmentForConcept(effectiveConcept);
+    if (department == null) return null;
+    const fecha = charge.stayDate ?? charge.createdAt.slice(0, 10);
+    return { fecha, department };
+  }
+
+  async loadRevenueByDepartmentAndDateForPl(propertyId: string, desde: string, hasta: string): Promise<readonly PlRevenueByDateRow[]> {
+    const totals = new Map<string, number>(); // key: fecha:department
+    for (const charge of this.charges.values()) {
+      if (charge.propertyId !== propertyId) continue;
+      const resolved = this.resolveRevenueDateAndDepartment(charge);
+      if (!resolved || resolved.fecha < desde || resolved.fecha > hasta) continue;
+      const key = `${resolved.fecha}:${resolved.department}`;
+      totals.set(key, (totals.get(key) ?? 0) + charge.amount);
+    }
+    return [...totals.entries()].map(([key, revenue]) => {
+      const [fecha, department] = key.split(":") as [string, UsaliRevenueDepartment];
+      return { fecha, department, revenue };
+    });
+  }
+
+  async loadExpensesByDepartmentAndDateForPl(propertyId: string, desde: string, hasta: string): Promise<readonly PlExpenseByDateRow[]> {
+    return [...this.expenseEntries.values()]
+      .filter((e) => e.propertyId === propertyId && e.expenseDate >= desde && e.expenseDate <= hasta)
+      .map((e) => ({ fecha: e.expenseDate, department: e.department, category: e.category, amount: e.amount }));
+  }
+
+  async loadOccupiedRoomNightsByDateForPl(
+    propertyId: string,
+    desde: string,
+    hasta: string,
+  ): Promise<readonly PlOccupiedRoomNightsByDateRow[]> {
+    const totals = new Map<string, { roomNights: number; revenue: number }>(); // key: fecha
+    for (const charge of this.charges.values()) {
+      if (charge.propertyId !== propertyId) continue;
+      if (charge.concept !== "hospedaje" || charge.reversedBy != null) continue;
+      if (!charge.stayDate || charge.stayDate < desde || charge.stayDate > hasta) continue;
+      const entry = totals.get(charge.stayDate) ?? { roomNights: 0, revenue: 0 };
+      entry.roomNights += 1;
+      entry.revenue += charge.amount;
+      totals.set(charge.stayDate, entry);
+    }
+    return [...totals.entries()].map(([fecha, v]) => ({ fecha, roomNights: v.roomNights, revenue: v.revenue }));
+  }
+
+  async sumAvailableRoomNightsForDateRange(propertyId: string, desde: string, hasta: string): Promise<number> {
+    let total = 0;
+    for (const [key, value] of this.availability.entries()) {
+      const [rowPropertyId, , date] = key.split(":");
+      if (rowPropertyId !== propertyId || !date || date < desde || date > hasta) continue;
+      total += value.totalRooms;
+    }
+    return total;
   }
 }

@@ -84,6 +84,7 @@ export {
   REVENUE_GATE_MANAGE_ROLES,
   REVENUE_AUTOPILOT_APPROVAL_ROLES,
   REVENUE_BACKTEST_ROLES,
+  PL_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
 
@@ -315,3 +316,42 @@ export type {
 
 export { BenchmarkGuardError, assertBenchmarkQueryAllowed } from "./revenue/compsetGuard.ts";
 export type { BenchmarkQueryRequest } from "./revenue/compsetGuard.ts";
+
+// ---- Fase 10 — REQ-BO-010 (P0): back-office financiero, P&L USALI + punto de
+// equilibrio dinámico (capa pura). Forecast de 90 días y proyección de caja a 13
+// semanas DELIBERADAMENTE fuera de esta fase -- ver header de
+// `pl/usaliPL.ts`/`migrations/012_pl_usali.sql`. ----
+export {
+  USALI_REVENUE_DEPARTMENTS,
+  USALI_UNDISTRIBUTED_DEPARTMENTS,
+  USALI_ALL_DEPARTMENTS,
+  USALI_EXPENSE_CATEGORIES,
+  buildDepartmentalStatements,
+  buildUsaliPL,
+  computeDynamicBreakeven,
+  buildOwnersReport,
+} from "./pl/usaliPL.ts";
+export type {
+  UsaliRevenueDepartment,
+  UsaliUndistributedDepartment,
+  UsaliDepartment,
+  UsaliExpenseCategory,
+  DepartmentRevenueRow,
+  DepartmentExpenseRow,
+  DepartmentStatement,
+  UndistributedRow,
+  UsaliPL,
+  BuildUsaliPLInput,
+  DynamicBreakevenInput,
+  DynamicBreakevenResult,
+  OwnersReportKpis,
+  OwnersReportInput,
+  OwnersReport,
+} from "./pl/usaliPL.ts";
+export type {
+  ExpenseEntryRecord,
+  NewExpenseEntryInput,
+  PlRevenueByDateRow,
+  PlExpenseByDateRow,
+  PlOccupiedRoomNightsByDateRow,
+} from "./types.ts";

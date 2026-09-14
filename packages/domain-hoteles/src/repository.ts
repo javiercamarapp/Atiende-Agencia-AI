@@ -11,6 +11,7 @@ import type {
   ConversationMessage,
   ContactoNoOperativoRecord,
   DiscountChargeForFraudScan,
+  ExpenseEntryRecord,
   FnbOrderRecord,
   FolioRecord,
   FraudAlertRecord,
@@ -25,6 +26,7 @@ import type {
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
+  NewExpenseEntryInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
   NewHousekeepingShiftInput,
@@ -34,6 +36,9 @@ import type {
   NewStaffScheduleInput,
   NightAuditRunRecord,
   NightlyRateRecord,
+  PlExpenseByDateRow,
+  PlOccupiedRoomNightsByDateRow,
+  PlRevenueByDateRow,
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
@@ -379,6 +384,30 @@ export interface HotelesRepository {
   markMessagingOutboxSent(id: string): Promise<void>;
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
+
+  // ---- Fase 10 (REQ-BO-010, P0) — back-office financiero: P&L USALI + punto de
+  // equilibrio dinámico. El lado de INGRESOS reutiliza `hoteles.charge` (ya
+  // existente, mismo motor de agregación por concepto/fecha de negocio que
+  // `sumChargesByConceptForBusinessDate` ya construyó para night-audit, extendido
+  // aquí a un RANGO de fechas + resolución de `reverses_charge_id` al departamento
+  // del cargo original); el lado de GASTOS es NUEVO (`hoteles.expense_entry`,
+  // migrations/012_pl_usali.sql), append-only. ----
+  insertExpenseEntry(input: NewExpenseEntryInput): Promise<ExpenseEntryRecord>;
+  listExpenseEntries(propertyId: string, desde: string, hasta: string): Promise<readonly ExpenseEntryRecord[]>;
+  /** Ingreso por fecha+departamento USALI, ya resuelto (concept -> departamento,
+   *  reversos netos contra el departamento del cargo ORIGINAL, 'propina' excluida)
+   *  -- ver el mapeo completo documentado en migrations/012_pl_usali.sql. */
+  loadRevenueByDepartmentAndDateForPl(propertyId: string, desde: string, hasta: string): Promise<readonly PlRevenueByDateRow[]>;
+  loadExpensesByDepartmentAndDateForPl(propertyId: string, desde: string, hasta: string): Promise<readonly PlExpenseByDateRow[]>;
+  /** Habitaciones-noche REALMENTE ocupadas y cobradas por fecha (`concept='hospedaje'`,
+   *  `reversed_by is null`, agrupado por `stay_date`) -- la base real de ADR/RevPAR/
+   *  ocupación del periodo, nunca la tarifa de rack. */
+  loadOccupiedRoomNightsByDateForPl(propertyId: string, desde: string, hasta: string): Promise<readonly PlOccupiedRoomNightsByDateRow[]>;
+  /** Suma de `hoteles.availability.total_rooms` del rango -- habitaciones-noche
+   *  DISPONIBLES reales (inventario por fecha, nunca un conteo estático de
+   *  `hoteles.room`; una property puede tener más de un `room_type` con distinto
+   *  inventario por noche). */
+  sumAvailableRoomNightsForDateRange(propertyId: string, desde: string, hasta: string): Promise<number>;
 }
 
 /** Fila de `hoteles.messaging_outbox` reclamada para despacho real — mismo shape
@@ -392,6 +421,7 @@ export interface MessagingOutboxRow {
 }
 
 export type { FolioRecord, ChargeRecord, PaymentRecord, NewChargeInput, NewPaymentInput, FnbOrderRecord, NewFnbOrderInput, NightlyRateRecord, TaxConfigRecord, GuestIdentity } from "./types.ts";
+export type { ExpenseEntryRecord, NewExpenseEntryInput, PlRevenueByDateRow, PlExpenseByDateRow, PlOccupiedRoomNightsByDateRow } from "./types.ts";
 export type { ConversationMessage, ContactoNoOperativoRecord, NewContactoNoOperativoInput, VoiceAgentConfig, WhatsAppPropertyRoute } from "./types.ts";
 export type { ReservationRecord, NewReservationInput, CancellationPolicyRecord } from "./types.ts";
 export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
