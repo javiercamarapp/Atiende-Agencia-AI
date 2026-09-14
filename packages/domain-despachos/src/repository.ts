@@ -19,6 +19,22 @@ import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts
 import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
 export interface DespachosRepository {
+  // ---- Fase 9 (paridad de UI del panel web): resolución de organización/property
+  // desde el slug de la organización — mismo rol EXACTO que
+  // `LicitacionesRepository.findOrganizationBySlug`/`listPropertiesForOrganization`
+  // (ver domain-licitaciones/src/repository.ts): el panel de staff solo conoce el
+  // slug de la organización tras el login (auth-client.ts nunca trae un
+  // organizationId/propertyId), pero TODAS las rutas de staff de despachos
+  // (cierre-mensual/cfdi/etc.) exigen `requirePropertyMembership("propertyId")`. Sin
+  // esto, apps/web/src/verticals/despachos no tenía ningún camino real para resolver
+  // ese propertyId — era el primer eslabón faltante antes que cualquier pantalla
+  // nueva de esta fase (ver GET /v1/despachos/:orgSlug/admin/branches, admin.ts). */
+  findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null>;
+  /** Despacho opera como property singleton por organización (mismo criterio que
+   * licitaciones/citas §2.1), pero el panel igual lee la lista completa — nunca
+   * asumir cardinalidad en el cliente. */
+  listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]>;
+
   // ---- CFDI (flujo 1) ----
   /** Lanza `InvoiceAlreadyExistsError` si ya existe un invoice con el mismo
    * (organizationId, folioFiscal) — el folio fiscal (UUID del timbre SAT) es la

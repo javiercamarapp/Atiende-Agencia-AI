@@ -210,3 +210,116 @@ export async function notifyWaitlistAfterReschedule(
   if (params.previousStartsAt === params.newStartsAt) return null;
   return tryNotifyWaitlistOfFreedSlot(repo, organizationId, timeZone, { providerId: params.providerId, serviceId: params.serviceId, startsAt: params.previousStartsAt });
 }
+
+// ============================================================================
+// Agente "Lista de espera (simple)" — port REAL de
+// citas-reservaciones/supabase/functions/_shared/agenda-agents-core.ts::runListaEsperaCore.
+//
+// A diferencia de runOptimizadorCore (arriba: match fino FIFO+preferencias de
+// fecha/franja/servicio/proveedor, dispara SOLO automáticamente al cancelar/
+// reagendar, notifica a UN único ganador), este es el broadcast MANUAL que el
+// staff dispara desde el panel cuando libera un espacio "a mano" (ej. amplía su
+// propio horario ese día) — un caso que nunca pasa por cancelar-cita/reagendar-cita
+// y por lo tanto nunca dispara al Optimizador automáticamente. Sin matchear
+// fecha/franja preferida, solo (opcionalmente) proveedor/servicio: notifica, EN
+// ORDEN DE POSICIÓN DE LA LISTA (el que se anotó primero, primero — mismo
+// criterio FIFO que runOptimizadorCore), a los primeros `limit` candidatos
+// vivos, respetando el mismo tope real de `MAX_WAITLIST_NOTIFICATIONS` por
+// cliente vía `claimWaitlistNotificationSlot` (misma RPC atómica, nunca una
+// condición de carrera leída-luego-escrita).
+// ============================================================================
+
+/** Cuántos clientes notifica `runListaEsperaCore` por corrida si el caller no pide
+ * un número explícito. */
+export const DEFAULT_LISTA_ESPERA_LIMIT = 5;
+
+/** Límite razonable de destinatarios por corrida — un broadcast manual no debe
+ * poder vaciar de un jalón toda la lista de espera de un negocio grande ni
+ * agotar el rate-limit real de WhatsApp Business por un solo clic del staff. El
+ * caller (la ruta HTTP) recorta cualquier valor pedido a este techo. */
+export const MAX_LISTA_ESPERA_LIMIT = 20;
+
+export interface ListaEsperaEvent {
+  /** Filtra a solo quienes pidieron este proveedor (o no expresaron preferencia). */
+  readonly providerId?: string;
+  /** Filtra a solo quienes pidieron este servicio (o no expresaron preferencia). */
+  readonly serviceId?: string;
+}
+
+/** Orden FIFO real de "posición en la lista de espera": el que se anotó primero
+ * va primero. Exportado para que el panel (GET de solo-lectura) muestre la
+ * lista en el MISMO orden en que `runListaEsperaCore` de verdad notifica, en
+ * vez de reinventar el criterio de orden en la capa HTTP. */
+export function sortWaitlistByPosition(rows: readonly WaitlistCandidateRow[]): WaitlistCandidateRow[] {
+  return [...rows].sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+export interface ListaEsperaSummary {
+  /** A cuántos clientes se les encoló realmente un mensaje en esta corrida. */
+  notified: number;
+  /** Cuántos candidatos vivos (activos, no expirados, bajo el tope de 3
+   * notificaciones) quedaron tras filtrar por proveedor/servicio y recortar a
+   * `limit` — puede ser mayor que `notified` si alguno perdió la carrera por el
+   * cupo de notificación justo en esta corrida (`claimWaitlistNotificationSlot`
+   * devolvió `false`, ej. otra corrida concurrente ya lo reclamó). */
+  candidatesConsidered: number;
+  skippedNoWhatsappConfig: boolean;
+}
+
+/**
+ * Broadcast manual real: el staff decide "notificar a la lista de espera de este
+ * horario/servicio liberado" desde el panel. Notifica, en orden FIFO de
+ * posición en la lista, a los primeros `limit` candidatos vivos que matcheen el
+ * filtro opcional de proveedor/servicio — SIN matchear fecha ni franja horaria
+ * preferida (a diferencia de runOptimizadorCore). Nunca lanza por un candidato
+ * individual que ya llegó a su tope: simplemente se salta y sigue con el
+ * siguiente en la fila.
+ */
+export async function runListaEsperaCore(
+  repo: CitasRepository,
+  organizationId: string,
+  event: ListaEsperaEvent = {},
+  limit: number = DEFAULT_LISTA_ESPERA_LIMIT,
+): Promise<ListaEsperaSummary> {
+  const effectiveLimit = Math.min(Math.max(1, Math.trunc(limit) || 1), MAX_LISTA_ESPERA_LIMIT);
+
+  const candidates = await repo.loadLiveWaitlistCandidates(organizationId);
+  const filtered = sortWaitlistByPosition(
+    candidates
+      .filter((row) => !event.providerId || row.providerId === null || row.providerId === event.providerId)
+      .filter((row) => !event.serviceId || row.serviceId === null || row.serviceId === event.serviceId),
+  ).slice(0, effectiveLimit);
+
+  const summary: ListaEsperaSummary = { notified: 0, candidatesConsidered: filtered.length, skippedNoWhatsappConfig: false };
+  if (filtered.length === 0) return summary;
+
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(organizationId);
+  if (!phoneNumberId) {
+    summary.skippedNoWhatsappConfig = true;
+    return summary;
+  }
+
+  const organization = await repo.findOrganizationById(organizationId);
+  const negocio = organization ? ` en ${organization.name}` : "";
+  // Una sola corrida disparada por el staff en el mismo minuto real comparte
+  // dedupe_key por candidato — dos clics accidentales dentro del mismo minuto no
+  // duplican el mensaje (mismo espíritu que reminder-24h), pero un negocio que
+  // vuelve a disparar el broadcast pasado ese minuto (otro espacio liberado más
+  // tarde) sí puede volver a notificar al mismo candidato hasta su tope real.
+  const runToken = new Date().toISOString().slice(0, 16);
+
+  for (const row of filtered) {
+    const claimed = await repo.claimWaitlistNotificationSlot(row.id, MAX_WAITLIST_NOTIFICATIONS);
+    if (!claimed) continue; // ya en su tope o ya no 'active' — se salta, nunca tumba la corrida completa
+
+    const name = row.customerName ? ` ${row.customerName}` : "";
+    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "waitlist.slot_available_broadcast", `waitlist-broadcast:${row.id}:${runToken}`, {
+      to: row.customerPhone,
+      phone_number_id: phoneNumberId,
+      body: `¡Buenas noticias${name}! Se acaba de liberar un espacio${negocio}. Responda "Sí" para que se lo agendemos, o "No" si ya no le interesa.`,
+    });
+    summary.notified += 1;
+  }
+
+  return summary;
+}
