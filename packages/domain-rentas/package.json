@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@atiende/agent-core": "*",
+    "@atiende/core-authz": "*",
     "@atiende/core-tenancy": "*",
     "jose": "6.2.12"
   }

@@ -224,3 +224,14 @@ export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJ
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 export { runRecordatorioCheckInCore } from "./checkin-reminders.ts";
 export type { RecordatorioCheckInSummary } from "./checkin-reminders.ts";
+
+// ---------------------------------------------------------------------------
+// Acceso auditado "romper cristal" (Fase 10) -- ver src/break-glass/*. Superadmin de
+// plataforma lee datos de un tenant específico fuera del flujo normal de RLS, con
+// razón obligatoria y bitácora inmutable encadenada por hash (migrations/
+// 012_break_glass_audit.sql). Cierra el gap identificado por auditoría: el módulo
+// genérico de impersonación de @atiende/core-authz (view-as) ya existía, pero sin
+// razón obligatoria, sin tabla Postgres real, y con dedupe diario -- lo opuesto de lo
+// que un incidente de emergencia necesita registrar.
+// ---------------------------------------------------------------------------
+export * from "./break-glass/index.ts";
