@@ -15,6 +15,7 @@ import type {
   ConversationMessage,
   ContactoNoOperativoRecord,
   DiscountChargeForFraudScan,
+  ExpenseEntryRecord,
   FnbOrderItem,
   FnbOrderRecord,
   FolioRecord,
@@ -30,6 +31,7 @@ import type {
   NewCfdiEmisionInput,
   NewChargeInput,
   NewContactoNoOperativoInput,
+  NewExpenseEntryInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
   NewHousekeepingShiftInput,
@@ -41,6 +43,9 @@ import type {
   NightlyRateRecord,
   ChargeRecord,
   PaymentRecord,
+  PlExpenseByDateRow,
+  PlOccupiedRoomNightsByDateRow,
+  PlRevenueByDateRow,
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
@@ -50,6 +55,7 @@ import type {
   WhatsAppPropertyRoute,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
+import type { UsaliRevenueDepartment } from "./pl/usaliPL.ts";
 
 // Ventana de protección contra reintento de un Idempotency-Key — mismo criterio que
 // hoteles/apps/api/src/lib/idempotency.ts (migración 0022): 7 días cubre un
@@ -58,6 +64,54 @@ const IDEMPOTENCY_KEY_TTL_DAYS = 7;
 
 function hashBody(body: unknown): string {
   return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
+}
+
+// Fase 10 (REQ-BO-010) — mismo mapeo `charge.concept` -> departamento USALI
+// documentado en migrations/012_pl_usali.sql, compartido en SQL (este `case`, para
+// `loadRevenueByDepartmentAndDateForPl`) y en TS (`InMemoryHotelesRepository`,
+// mismo criterio). 'propina' resuelve a null (columna omitida por el `where`),
+// 'reverso' se resuelve al concept del cargo ORIGINAL vía el `left join` sobre
+// `reverses_charge_id`.
+const PL_REVENUE_DEPARTMENT_CASE = `
+  case coalesce(orig.concept, c.concept)
+    when 'hospedaje' then 'rooms'
+    when 'ab' then 'food_beverage'
+    when 'extras' then 'otros_departamentos'
+    when 'otro' then 'otros_departamentos'
+    when 'ajuste' then 'rooms'
+    when 'descuento' then 'rooms'
+    else null
+  end
+`;
+
+interface ExpenseEntryRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  department: ExpenseEntryRecord["department"];
+  category: ExpenseEntryRecord["category"];
+  description: string;
+  amount: string;
+  expense_date: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+const EXPENSE_ENTRY_COLUMNS = "id, organization_id, property_id, department, category, description, amount, expense_date, created_by, created_at";
+
+function mapExpenseEntry(row: ExpenseEntryRawRow): ExpenseEntryRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    department: row.department,
+    category: row.category,
+    description: row.description,
+    amount: Number(row.amount),
+    expenseDate: row.expense_date,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
 }
 
 interface ChargeRawRow {
@@ -1570,5 +1624,94 @@ export class PostgresHotelesRepository implements HotelesRepository {
       [propertyId, staffUserId, workDate],
     );
     return rows[0] ? mapStaffSchedule(rows[0]) : null;
+  }
+
+  // ---- HotelesRepository: Fase 10 — REQ-BO-010 back-office financiero (P&L USALI) ----
+
+  async insertExpenseEntry(input: NewExpenseEntryInput): Promise<ExpenseEntryRecord> {
+    const { rows } = await this.db.query<ExpenseEntryRawRow>(
+      `insert into hoteles.expense_entry
+         (organization_id, property_id, department, category, description, amount, expense_date, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7::date, $8)
+       returning ${EXPENSE_ENTRY_COLUMNS};`,
+      [input.organizationId, input.propertyId, input.department, input.category, input.description, input.amount, input.expenseDate, input.createdBy],
+    );
+    return mapExpenseEntry(rows[0]!);
+  }
+
+  async listExpenseEntries(propertyId: string, desde: string, hasta: string): Promise<readonly ExpenseEntryRecord[]> {
+    const { rows } = await this.db.query<ExpenseEntryRawRow>(
+      `select ${EXPENSE_ENTRY_COLUMNS} from hoteles.expense_entry
+       where property_id = $1 and expense_date between $2::date and $3::date
+       order by expense_date asc;`,
+      [propertyId, desde, hasta],
+    );
+    return rows.map(mapExpenseEntry);
+  }
+
+  /** Ingreso por fecha+departamento USALI ya resuelto (ver `PL_REVENUE_DEPARTMENT_CASE`
+   *  arriba y el header de migrations/012_pl_usali.sql para el mapeo completo) --
+   *  `c.amount` es SIEMPRE neto (antes de IVA/ISH, mismo criterio que el `netAmount`
+   *  de `folioEngine.ts`), nunca `amount + tax_amount`. */
+  async loadRevenueByDepartmentAndDateForPl(propertyId: string, desde: string, hasta: string): Promise<readonly PlRevenueByDateRow[]> {
+    const { rows } = await this.db.query<{ fecha: string; department: UsaliRevenueDepartment | null; revenue: string }>(
+      `select
+         coalesce(c.stay_date, c.created_at::date)::text as fecha,
+         ${PL_REVENUE_DEPARTMENT_CASE} as department,
+         sum(c.amount)::text as revenue
+       from hoteles.charge c
+       left join hoteles.charge orig on orig.id = c.reverses_charge_id
+       where c.property_id = $1
+         and coalesce(c.stay_date, c.created_at::date) between $2::date and $3::date
+         and coalesce(orig.concept, c.concept) <> 'propina'
+       group by fecha, department;`,
+      [propertyId, desde, hasta],
+    );
+    return rows
+      .filter((r): r is { fecha: string; department: UsaliRevenueDepartment; revenue: string } => r.department != null)
+      .map((r) => ({ fecha: r.fecha, department: r.department, revenue: Number(r.revenue) }));
+  }
+
+  async loadExpensesByDepartmentAndDateForPl(propertyId: string, desde: string, hasta: string): Promise<readonly PlExpenseByDateRow[]> {
+    const { rows } = await this.db.query<{ fecha: string; department: PlExpenseByDateRow["department"]; category: PlExpenseByDateRow["category"]; amount: string }>(
+      `select expense_date::text as fecha, department::text as department, category::text as category, sum(amount)::text as amount
+       from hoteles.expense_entry
+       where property_id = $1 and expense_date between $2::date and $3::date
+       group by fecha, department, category;`,
+      [propertyId, desde, hasta],
+    );
+    return rows.map((r) => ({ fecha: r.fecha, department: r.department, category: r.category, amount: Number(r.amount) }));
+  }
+
+  /** Habitaciones-noche REALMENTE ocupadas y cobradas (un cargo `concept='hospedaje'`
+   *  vigente = una noche ocupada -- night-audit postea exactamente uno por
+   *  habitación/noche, ver `night-audit/engine.ts::planNightlyHospedajeCharges`).
+   *  Excluye cargos ya reversados (`reversed_by is not null`): esa noche se cancela
+   *  por completo, tanto en ingreso (el reverso lo neutraliza en
+   *  `loadRevenueByDepartmentAndDateForPl`) como en el conteo de ocupación real. */
+  async loadOccupiedRoomNightsByDateForPl(
+    propertyId: string,
+    desde: string,
+    hasta: string,
+  ): Promise<readonly PlOccupiedRoomNightsByDateRow[]> {
+    const { rows } = await this.db.query<{ fecha: string; room_nights: string; revenue: string }>(
+      `select stay_date::text as fecha, count(*)::text as room_nights, sum(amount)::text as revenue
+       from hoteles.charge
+       where property_id = $1 and concept = 'hospedaje' and reversed_by is null
+         and stay_date between $2::date and $3::date
+       group by fecha;`,
+      [propertyId, desde, hasta],
+    );
+    return rows.map((r) => ({ fecha: r.fecha, roomNights: Number(r.room_nights), revenue: Number(r.revenue) }));
+  }
+
+  async sumAvailableRoomNightsForDateRange(propertyId: string, desde: string, hasta: string): Promise<number> {
+    const { rows } = await this.db.query<{ total: string | null }>(
+      `select sum(total_rooms)::text as total
+       from hoteles.availability
+       where property_id = $1 and date between $2::date and $3::date;`,
+      [propertyId, desde, hasta],
+    );
+    return Number(rows[0]?.total ?? 0);
   }
 }
