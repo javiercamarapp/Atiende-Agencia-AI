@@ -116,3 +116,19 @@ export const HOUSEKEEPING_SHIFT_PUBLISH_ROLES: readonly HotelRole[] = ["owner", 
 // accountant -- a diferencia de NIGHT_AUDIT_ROLES, `accountant` no se agrega aquí: la
 // nómina no es su función en esta fase, ver diseño Fase 8 §2).
 export const ATTENDANCE_ADMIN_ROLES: readonly HotelRole[] = ["owner", "gm"];
+
+// Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management (pricing). Cambiar
+// el gate del motor (shadow/propone/autopilot) o su límite de variación en "propone"
+// es una decisión de gobierno, mismo nivel que ATTENDANCE_ADMIN_ROLES/
+// NIGHT_AUDIT_ROLES: owner/gm. Registrar la aprobación explícita que exige
+// REQ-REV-003 (P0/GOB) antes de habilitar autopilot PLENO es MÁS estricto:
+// reservado solo a "owner" (el rol más alto de HOTEL_ROLES; fusion no modela un rol
+// "founder" separado de "owner" -- ver revenue/revenueEngineGate.ts, comentario de
+// cabecera, para por qué este port usa "owner" en vez del "founder" del original).
+// La RLS real (migrations/011_revenue_engine_gate.sql) es la autoridad, esto es solo
+// el espejo de aplicación.
+export const REVENUE_GATE_MANAGE_ROLES: readonly HotelRole[] = ["owner", "gm"];
+export const REVENUE_AUTOPILOT_APPROVAL_ROLES: readonly HotelRole[] = ["owner"];
+// Correr/consultar un backtest walk-forward es una función de análisis/conciliación
+// de revenue, mismo criterio que NIGHT_AUDIT_ROLES: owner/gm/accountant.
+export const REVENUE_BACKTEST_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];

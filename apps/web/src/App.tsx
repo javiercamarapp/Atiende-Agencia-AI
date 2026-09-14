@@ -31,6 +31,12 @@ import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx"
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
+import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
+import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
+import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
+import { CierreMensualDetallePage } from "./verticals/despachos/pages/CierreMensualDetalle.tsx";
+import { CfdiPage } from "./verticals/despachos/pages/Cfdi.tsx";
+import { CfdiDetallePage } from "./verticals/despachos/pages/CfdiDetalle.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -342,6 +348,63 @@ function LicitacionesConvocatoriaDetalleRoute() {
   );
 }
 
+function DespachosLoginRoute() {
+  const navigate = useNavigate();
+  return <DespachosLoginPage apiBaseUrl={API_BASE_URL} onLoggedIn={(_session, landingPath) => navigate(landingPath)} />;
+}
+
+/** Redirección al abrir `/despachos/:orgSlug` a secas — cierre mensual es la
+ * landing real del panel (Fase 9, mismo criterio que CitasRootRedirect): es la
+ * tarea operativa más recurrente y de mayor riesgo de un despacho. */
+function DespachosRootRedirect() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  return <Navigate to={`/despachos/${orgSlug}/cierre-mensual`} replace />;
+}
+
+function DespachosCierreMensualRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <CierreMensualPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
+function DespachosCierreMensualDetalleRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <CierreMensualDetallePage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
+function DespachosCfdiRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <CfdiPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
+function DespachosCfdiDetalleRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <CfdiDetallePage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -380,6 +443,12 @@ export function App() {
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
+        <Route path="/despachos/login" element={<DespachosLoginRoute />} />
+        <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
+        <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />
+        <Route path="/despachos/:orgSlug/cierre-mensual/:periodoId" element={<DespachosCierreMensualDetalleRoute />} />
+        <Route path="/despachos/:orgSlug/cfdi" element={<DespachosCfdiRoute />} />
+        <Route path="/despachos/:orgSlug/cfdi/:invoiceId" element={<DespachosCfdiDetalleRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>
