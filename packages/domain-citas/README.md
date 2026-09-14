@@ -161,3 +161,57 @@ proveedor/servicio/`tenant_config`, por lo que `apps/web/.../Proveedores.tsx`,
   `services`/`tenant_config` (ya desde `migrations/001`) eran letra muerta sin el
   GRANT de escritura al rol `authenticated`; `provider_services` ni siquiera tenía
   policy de escritura.
+
+## Fase 9 — agente "Lista de espera (simple)": broadcast manual disparado por el staff
+
+Gap real de paridad con el origen
+(`citas-reservaciones/supabase/functions/agente-lista-espera/index.ts` +
+`_shared/agenda-agents-core.ts::runListaEsperaCore`): `citas.appointment_waitlist`
+(`migrations/003_waitlist_and_rate_limit.sql`) ya existía desde la Fase 1, y
+`reminders.ts::runOptimizadorCore` ya la usaba — pero solo AUTOMÁTICAMENTE, al
+cancelar/reagendar una cita, con match fino FIFO+preferencias de fecha/franja/
+servicio/proveedor, y notificando a UN único ganador. No existía ningún
+mecanismo de broadcast MANUAL: el caso real del staff que libera un espacio "a
+mano" (ej. amplía su propio horario ese día) sin pasar por cancelar-cita/
+reagendar-cita, y por lo tanto sin disparar nunca al Optimizador.
+
+- `reminders.ts::runListaEsperaCore` — la pieza nueva de dominio. Notifica, EN
+  ORDEN DE POSICIÓN DE LA LISTA (FIFO real: quien se anotó primero, primero —
+  mismo criterio de orden que `runOptimizadorCore`, nunca "los más recientes
+  primero" como el broadcast del origen), a los primeros `limit` candidatos
+  vivos de `loadLiveWaitlistCandidates`, filtrando opcionalmente por
+  `providerId`/`serviceId` — SIN matchear fecha ni franja horaria preferida (a
+  diferencia del Optimizador: este es el broadcast *simple*). `limit` por
+  default `DEFAULT_LISTA_ESPERA_LIMIT` (5), recortado siempre al techo real
+  `MAX_LISTA_ESPERA_LIMIT` (20) — un broadcast manual no debe poder vaciar de un
+  jalón toda la lista de espera de un negocio grande ni agotar el rate-limit real
+  de WhatsApp Business Platform por un solo clic del staff. Reusa, sin
+  duplicar, la misma RPC atómica `claim_waitlist_notification_slot` (tope real
+  de `MAX_WAITLIST_NOTIFICATIONS` = 3 notificaciones por cliente, nunca una
+  condición de carrera leída-luego-escrita) y el mismo `enqueueMessagingOutbox`
+  (`citas.messaging_outbox`, `channel='whatsapp'`) que el resto de
+  notificaciones de citas — ningún envío directo a la API de WhatsApp desde
+  aquí. Un candidato individual que ya llegó a su tope simplemente se salta
+  (nunca tumba la corrida completa); un negocio sin WhatsApp configurado nunca
+  lanza (`skippedNoWhatsappConfig: true`).
+- `sortWaitlistByPosition` — el comparador FIFO extraído como función propia
+  (antes vivía inline dentro de `runOptimizadorCore`) para que la ruta HTTP de
+  solo-lectura (`GET .../waitlist`, ver abajo) muestre la lista en el MISMO
+  orden en que el broadcast de verdad notifica, en vez de reinventar el
+  criterio de orden en la capa HTTP.
+- Rutas nuevas (`apps/api/src/routes/verticals/citas/admin.ts`, mismo guard JWT +
+  `requirePropertyMembership` sin `allowedRoles` que el resto del panel):
+  `GET properties/:propertyId/waitlist` (lectura, filtros opcionales
+  `?provider_id=&service_id=`) y
+  `POST properties/:propertyId/waitlist/broadcast` (dispara el broadcast real;
+  body opcional `{provider_id, service_id, limit}`, valida que
+  `provider_id`/`service_id` — si vienen — sean de verdad de esta organización
+  antes de llamar al dominio).
+- Ninguna migración SQL nueva: la tabla, la RPC de rate-limit y el
+  `messaging_outbox` ya existían desde la Fase 1 de este vertical — el gap era
+  puramente la ausencia del mecanismo de broadcast en la capa de dominio/HTTP,
+  no de esquema.
+- Fuera de alcance de esta fase: la UI del panel (`apps/web`) para disparar este
+  broadcast con un botón — hoy solo existe el mecanismo real (dominio + endpoint
+  HTTP), sin superficie visual todavía; ninguna página de `apps/web/.../citas`
+  mencionaba "lista de espera" antes de esta fase.
