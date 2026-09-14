@@ -11,7 +11,7 @@ import { hashPassword, InMemoryCoreRepository } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { InMemoryRentasCalendarStore, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
 import type { RentasVerticalRole } from "@atiende/domain-rentas";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -37,6 +37,12 @@ export interface RentasTestContext {
    * datos (`seedOwner`/`seedUnidad`/`seedOwnerStatement`/`seedCredential`/etc.) después
    * de construido el contexto. */
   readonly rentasOwnerPortalRepo: InMemoryRentasOwnerPortalRepository;
+  /** Fase 5 -- referencia tipada al bookkeeping de sincronización de calendario
+   * (feeds/versión/anti-eco), mismo criterio que `rentasRepo` arriba. */
+  readonly rentasCalendarSyncRepo: InMemoryRentasCalendarSyncRepository;
+  /** Fase 5 -- doble en memoria del canal externo (Airbnb/Booking/...), para que un
+   * test configure escenarios (`definirEscenario`) sin tocar la red. */
+  readonly rentasIcalFeedPort: FakeIcalFeedPort;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly unidadId: string;
@@ -65,6 +71,8 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
   const engine = new InMemoryRentasTenancyEngine(calendarStore);
   const rentasRepo = new InMemoryRentasRepository(calendarStore);
   const rentasOwnerPortalRepo = new InMemoryRentasOwnerPortalRepository();
+  const rentasCalendarSyncRepo = new InMemoryRentasCalendarSyncRepository(calendarStore);
+  const rentasIcalFeedPort = new FakeIcalFeedPort();
 
   const organizationId = randomUUID();
   const propertyId = randomUUID();
@@ -100,6 +108,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
 
   const canalManual = calendarStore.findCanalPorCodigo("manual")!;
   rentasRepo.seedReglaComisionCanal({ propertyId: null, canalId: canalManual.id, config: { yaNetoDeComision: true, comisionBasisPoints: 0, fuente: "Reserva directa: sin comisión de canal" } });
+  rentasCalendarSyncRepo.seedZonaHoraria(propertyId, "America/Cancun");
 
   const deps: AppDeps = {
     env: TEST_ENV,
@@ -112,6 +121,8 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
     rentasRepo: (_db) => rentasRepo,
     rentasOwnerPortalRepo: (_db) => rentasOwnerPortalRepo,
+    rentasCalendarSyncRepo: (_db) => rentasCalendarSyncRepo,
+    rentasIcalFeedPort: rentasIcalFeedPort,
     llmGateway: undefined,
     citasRepo: (_db) => new InMemoryCitasRepository(),
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
@@ -140,6 +151,8 @@ export async function buildRentasTestContext(buildApp: BuildAppFn): Promise<Rent
     engine,
     rentasRepo,
     rentasOwnerPortalRepo,
+    rentasCalendarSyncRepo,
+    rentasIcalFeedPort,
     organizationId,
     propertyId,
     unidadId,
