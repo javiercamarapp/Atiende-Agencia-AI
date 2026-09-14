@@ -72,6 +72,17 @@ export const GESTIONAR_CIERRE_MENSUAL_ROLES: readonly DespachosRole[] = ["admin"
  * otras acciones de alto impacto de esta vertical. */
 export const CERRAR_PERIODO_ROLES: readonly DespachosRole[] = ["admin"];
 
+/** Quién puede ver la cartera/aging de cobranza (Fase 10) — `auditor` SÍ
+ * puede ver (es lectura de un análisis, mismo criterio que
+ * MIGRACION_CATALOGO_ROLES/VER_CIERRE_MENSUAL_ROLES). */
+export const VER_COBRANZA_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor"];
+
+/** Quién puede registrar una cuenta por cobrar, marcarla pagada o generar/
+ * registrar un recordatorio — mismo criterio que DECLARACIONES_ROLES/
+ * CONCILIACION_ROLES: son los mismos operadores que preparan/ejecutan la
+ * operación financiera del cliente, nunca `auditor`/`readonly`. */
+export const GESTIONAR_COBRANZA_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
 export const ADMIN_ROLES: readonly DespachosRole[] = ["admin"];
 
 /**
