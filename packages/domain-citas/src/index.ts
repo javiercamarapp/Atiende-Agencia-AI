@@ -11,10 +11,14 @@ export type {
   CreateAppointmentPayload,
   CustomerRecord,
   GoogleSyncStatus,
+  NewProviderInput,
+  NewServiceInput,
   ProviderCalendarAccountRecord,
+  ProviderPatch,
   ProviderRecord,
   ReassignAppointmentPayload,
   RescheduleAppointmentPayload,
+  ServicePatch,
   ServiceRecord,
   Slot,
 } from "./types.ts";
@@ -48,6 +52,7 @@ export type {
   ReassignResult,
   ReminderCandidateRow,
   RescheduleResult,
+  TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
 } from "./repository.ts";

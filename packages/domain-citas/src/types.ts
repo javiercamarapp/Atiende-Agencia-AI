@@ -44,6 +44,30 @@ export interface ProviderRecord {
   readonly isActive: boolean;
 }
 
+/** Fase 8 — panel admin: alta real de un proveedor (ver diseño Fase 8 §1, port de
+ * `ProveedoresSection.tsx::guardar` del origen). `propertyId`, si viene, debe ser
+ * una sucursal real de la MISMA organización — el caller (admin.ts) lo valida
+ * contra `listPropertiesForOrganization` antes de llamar aquí; el repositorio
+ * mismo confía en ese id (mismo criterio que `NewProductInput.categoryId` de
+ * domain-restaurantes: la FK real de Postgres es la última línea de defensa). */
+export interface NewProviderInput {
+  readonly organizationId: string;
+  readonly propertyId?: string | null;
+  readonly displayName: string;
+  readonly roleLabel?: string;
+  readonly isActive?: boolean;
+}
+
+/** Patch parcial — un campo ausente (`undefined`) deja el valor actual intacto,
+ * mismo criterio que `ProductPatch` de domain-restaurantes (`coalesce` en SQL,
+ * `??` en memoria). `propertyId: null` explícito SÍ desasigna la sucursal. */
+export interface ProviderPatch {
+  readonly displayName?: string;
+  readonly roleLabel?: string;
+  readonly propertyId?: string | null;
+  readonly isActive?: boolean;
+}
+
 export interface ServiceRecord {
   readonly id: string;
   readonly organizationId: string;
@@ -53,6 +77,34 @@ export interface ServiceRecord {
   readonly bufferMinutesAfter: number;
   readonly priceCents: number | null;
   readonly isActive: boolean;
+}
+
+/** Fase 8 — panel admin: alta real de un servicio (port de
+ * `ServiciosSection.tsx::guardar` del origen). `citas.services` (001_citas_schema.sql)
+ * NO tiene columnas `description`/`requirements` como el origen (`services.description`/
+ * `services.requirements`) — esa parte de la ficha del origen queda fuera de esta
+ * fase a propósito (agregar las columnas es una migración nueva, decisión de
+ * producto separada de "cerrar el gap de que no se puede ni crear un servicio",
+ * ver resumen de la fase). */
+export interface NewServiceInput {
+  readonly organizationId: string;
+  readonly name: string;
+  readonly durationMinutes: number;
+  readonly bufferMinutesBefore?: number;
+  readonly bufferMinutesAfter?: number;
+  readonly priceCents?: number | null;
+  readonly isActive?: boolean;
+}
+
+/** Patch parcial — mismo criterio que `ProviderPatch`. `priceCents: null` explícito
+ * SÍ quita el precio fijo (servicio "a cotizar"). */
+export interface ServicePatch {
+  readonly name?: string;
+  readonly durationMinutes?: number;
+  readonly bufferMinutesBefore?: number;
+  readonly bufferMinutesAfter?: number;
+  readonly priceCents?: number | null;
+  readonly isActive?: boolean;
 }
 
 export interface CustomerRecord {

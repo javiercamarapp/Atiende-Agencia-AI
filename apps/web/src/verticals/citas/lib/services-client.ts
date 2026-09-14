@@ -1,8 +1,8 @@
-// Lógica de datos de Servicios (Fase 5) — lista + ficha, solo lectura por el mismo
-// motivo que providers-client.ts: domain-citas no expone todavía crear/editar un
-// servicio (solo `findService`/`listActiveServices`), y esta fase es de UI de
-// panel sobre lógica ya existente, no de negocio nueva (ver README).
-import { fetchJson } from "./admin-client.ts";
+// Lógica de datos de Servicios — lista + ficha (Fase 5) y, desde Fase 8, alta/
+// edición real de un servicio (ver admin.ts::POST/PATCH .../services). `citas.services`
+// no tiene columnas `description`/`requirements` como el repo original — quedan
+// fuera de esta fase (ver comentario en domain-citas/src/types.ts::NewServiceInput).
+import { fetchJson, sendJson } from "./admin-client.ts";
 
 export interface ServiceSummary {
   readonly id: string;
@@ -43,5 +43,47 @@ export async function fetchServices(fetchImpl: typeof fetch, apiBaseUrl: string,
 
 export async function fetchServiceDetail(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, serviceId: string): Promise<ServiceSummary> {
   const body = await fetchJson<{ service: ServiceApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/services/${serviceId}`, token);
+  return mapService(body.service);
+}
+
+export interface NewServiceInput {
+  readonly name: string;
+  readonly durationMinutes: number;
+  readonly bufferMinutesBefore?: number;
+  readonly bufferMinutesAfter?: number;
+  readonly priceCents?: number | null;
+  readonly isActive?: boolean;
+}
+
+export interface ServicePatch {
+  readonly name?: string;
+  readonly durationMinutes?: number;
+  readonly bufferMinutesBefore?: number;
+  readonly bufferMinutesAfter?: number;
+  readonly priceCents?: number | null;
+  readonly isActive?: boolean;
+}
+
+export async function createService(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: NewServiceInput): Promise<ServiceSummary> {
+  const body = await sendJson<{ service: ServiceApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/services`, token, "POST", {
+    name: input.name,
+    duration_minutes: input.durationMinutes,
+    buffer_minutes_before: input.bufferMinutesBefore,
+    buffer_minutes_after: input.bufferMinutesAfter,
+    price_cents: input.priceCents,
+    is_active: input.isActive,
+  });
+  return mapService(body.service);
+}
+
+export async function updateService(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, serviceId: string, patch: ServicePatch): Promise<ServiceSummary> {
+  const body = await sendJson<{ service: ServiceApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/services/${serviceId}`, token, "PATCH", {
+    name: patch.name,
+    duration_minutes: patch.durationMinutes,
+    buffer_minutes_before: patch.bufferMinutesBefore,
+    buffer_minutes_after: patch.bufferMinutesAfter,
+    price_cents: patch.priceCents,
+    is_active: patch.isActive,
+  });
   return mapService(body.service);
 }
