@@ -59,4 +59,11 @@ export const Errors = {
     new ApiError(503, "agentes_deshabilitado", "No hay un proveedor de IA configurado para este ambiente (LlmGateway ausente) — usa el generador determinista (usarIa:false) o configura un proveedor."),
   rentasMensajeriaSinPropuesta: (message: string) => new ApiError(422, "sin_propuesta_ia", message),
   rentasPlantillaNoAprobada: (message: string) => new ApiError(409, "plantilla_no_aprobada", message),
+  // ---- staff invite (Fase 10 — alta/gestión de cuentas de staff, genérico de core,
+  // hoy solo expuesto vía las rutas de restaurantes, ver diseño en
+  // packages/db/migrations/0002_staff_invite_schema.sql) ----
+  staffInviteTokenInvalido: () =>
+    new ApiError(400, "staff_invite_token_invalido", "La invitación es inválida, ya fue usada/revocada, o expiró. Pide que te reenvíen la invitación."),
+  staffInviteRolInsuficiente: () =>
+    new ApiError(403, "staff_invite_rol_insuficiente", "No puedes invitar a un rol con más alcance que el tuyo."),
 };

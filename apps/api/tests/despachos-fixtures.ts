@@ -85,6 +85,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
+    coreStaffRepo: (_db) => coreRepo,
     engine,
     restaurantesRepo: (_db) => new InMemoryRestaurantesRepository(),
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),

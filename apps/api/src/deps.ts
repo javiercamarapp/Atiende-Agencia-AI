@@ -1,4 +1,4 @@
-import type { CoreRepository } from "@atiende/db";
+import type { CoreRepository, CoreStaffRepository } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -54,6 +54,18 @@ import type { ApiEnv } from "./env.ts";
 export interface AppDeps {
   readonly env: ApiEnv;
   readonly coreRepo: CoreRepository;
+  /** Fase 10 — invitar/gestionar staff (crear/listar/revocar invitación), ver
+   * `@atiende/db::CoreStaffRepository`. A DIFERENCIA de `coreRepo` (objeto fijo,
+   * sesión de sistema `userId: null`, correcto para login porque el actor todavía no
+   * tiene sesión), esta es una FÁBRICA `(db) => CoreStaffRepository` — MISMO patrón
+   * que `restaurantesRepo`/`rentasOwnerPortalRepo` (ver comentario largo más abajo):
+   * quien invita YA está autenticado, así que la ruta pasa `c.get("db")` (sesión real
+   * por-request, `auth.uid()` = su propio userId) para que la policy RLS de
+   * `core.staff_invite` (owner/admin de la organización) sea la autoridad real, no
+   * una promesa de la capa TS. `findStaffInviteByTokenHash`/`acceptStaffInvite` (el
+   * lado del INVITADO, sin sesión todavía) se quedan en `coreRepo` de arriba, mismo
+   * criterio que login. */
+  readonly coreStaffRepo: (db: TenantDbSession) => CoreStaffRepository;
   readonly engine: TenancyEngine;
   readonly restaurantesRepo: (db: TenantDbSession) => RestaurantesRepository;
   readonly turnHandler: WhatsAppTurnHandler;

@@ -153,6 +153,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
+    coreStaffRepo: (_db) => coreRepo,
     engine,
     restaurantesRepo: (_db) => restaurantesRepoUnused,
     turnHandler: acknowledgeOnlyTurnHandler(new InMemoryRestaurantesRepository()),

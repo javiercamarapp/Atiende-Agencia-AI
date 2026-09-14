@@ -5,10 +5,21 @@
 `@atiende/core-tenancy`/`@atiende/core-auth` ya asumían solo como contrato TS. Aplicado
 por primera vez como parte de la Fase 1 de restaurantes.
 
+`migrations/0002_staff_invite_schema.sql` — Fase 10 restaurantes: `core.staff_invite`
+(token hasheado + expiración) + `core.accept_staff_invite()` (función `security
+definer`) — mecanismo genérico para invitar/dar de alta staff adicional en CUALQUIER
+vertical después del alta inicial de una organización (gap detectado en la Fase 8
+mientras se construía el rol "repartidor" — ver el comentario de cabecera de la
+migración y de `src/core-repository.ts` para el detalle completo). Solo restaurantes
+expone la ruta HTTP por ahora (`apps/api/src/routes/verticals/restaurantes/
+admin-staff.ts`), el esquema ya queda listo para el resto.
+
 `src/` — `hashPassword`/`verifyPassword` (scrypt, port literal de
-`hoteles/packages/db/src/password.ts`) y el puerto `CoreRepository`
-(`InMemoryCoreRepository` para tests, `PostgresCoreRepository` para producción) que
-usan las rutas núcleo de login (`apps/api/src/routes/auth.ts`).
+`hoteles/packages/db/src/password.ts`) y los puertos `CoreRepository`/
+`CoreStaffRepository` (`InMemoryCoreRepository` para tests, `PostgresCoreRepository`
+para producción — una sola clase implementa ambas interfaces) que usan las rutas
+núcleo de login (`apps/api/src/routes/auth.ts`) y de invitación de staff
+(`apps/api/src/routes/verticals/restaurantes/admin-staff.ts`).
 
 **Todavía reservado**: motor de conexión real (PGlite/embedded-postgres/Postgres
 gestionado) y corredor de migraciones (`db:migrate`/`db:seed` en el `package.json`

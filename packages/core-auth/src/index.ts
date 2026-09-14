@@ -10,6 +10,9 @@ export {
 
 export { ApiError, Errors } from "./errors.ts";
 
+export type { GeneratedInviteToken } from "./invite-token.ts";
+export { generateInviteToken, hashInviteToken } from "./invite-token.ts";
+
 export type { CoreAuthEnv, CoreAuthVariables, CoreAuthHonoEnv } from "./types.ts";
 
 export {

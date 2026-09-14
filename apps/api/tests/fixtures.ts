@@ -96,6 +96,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
+    coreStaffRepo: (_db) => coreRepo,
     engine: new InMemoryTenancyEngine(),
     // Fábricas `(_db) => instancia` — ignoran el argumento porque el repo en memoria
     // no tiene ningún concepto de sesión/RLS (ver comentario de AppDeps en

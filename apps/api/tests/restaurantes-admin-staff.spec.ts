@@ -1,0 +1,298 @@
+// Fase 10 restaurantes — HTTP end-to-end de admin-staff.ts (alta/gestión de cuentas
+// de staff) + POST /auth/accept-invite (routes/auth.ts, lado del invitado, genérico
+// de core). Reusa `buildRestaurantesKpiTestContext` (owner org-wide, staffSucursalA
+// acotado SOLO a propertyIdA, repartidor, otroOrgOwner de OTRA organización) — mismo
+// fixture que ya usan admin-branches/admin-orders/repartidor-orders.
+import { describe, expect, it } from "vitest";
+import type { InMemoryTenancyEngine } from "@atiende/db";
+import { buildApp } from "../src/app.ts";
+import { authedGet, authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
+
+interface InviteResponse {
+  readonly id: string;
+  readonly email: string;
+  readonly verticalRole: string;
+  readonly propertyIds: readonly string[] | null;
+  readonly status: string;
+  readonly expiresAt: string;
+  readonly inviteToken: string;
+}
+
+interface AcceptInviteResponse {
+  readonly token: string;
+  readonly refreshToken: string;
+  readonly email: string;
+  readonly organizations: ReadonlyArray<{ id: string; nombre: string; vertical: string; rol: string }>;
+}
+
+describe("POST /v1/restaurantes/:propertyId/admin/staff/invitaciones", () => {
+  it("owner invita a un nuevo 'staff' -- 201, genera un token real (nunca un insert directo silencioso), queda 'pending'", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "nuevo-staff@lostaquitos.mx", verticalRole: "staff" }, "POST"),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as InviteResponse;
+    expect(body.email).toBe("nuevo-staff@lostaquitos.mx");
+    expect(body.verticalRole).toBe("staff");
+    expect(body.status).toBe("pending");
+    expect(body.inviteToken.length).toBeGreaterThan(20);
+    // El owner tiene propertyIds:null (org-wide) -- el invitado hereda ese MISMO
+    // alcance, nunca uno más amplio ni inventado.
+    expect(body.propertyIds).toBeNull();
+
+    const listado = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`, authedGet(ctx.staff.owner.token));
+    expect(listado.status).toBe(200);
+    const listadoBody = (await listado.json()) as { invitations: InviteResponse[] };
+    expect(listadoBody.invitations.map((i) => i.email)).toContain("nuevo-staff@lostaquitos.mx");
+    // El token plano NUNCA se repite en el listado -- solo se devolvió una vez, en la
+    // respuesta de creación.
+    expect(listadoBody.invitations[0]).not.toHaveProperty("inviteToken");
+  });
+
+  it("staff (verticalRole 'staff', fuera de STAFF_INVITE_ROLES) -> 403, nunca puede invitar", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.staffSucursalA.token, { email: "x@lostaquitos.mx", verticalRole: "staff" }, "POST"),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("repartidor -> 403, nunca puede invitar", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.repartidor.token, { email: "x@lostaquitos.mx", verticalRole: "staff" }, "POST"),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("verticalRole desconocido -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "x@lostaquitos.mx", verticalRole: "gerente" }, "POST"),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("email inválido -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "no-es-un-correo", verticalRole: "staff" }, "POST"),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("invitar un correo que YA es staff de esta organización -> 409, nunca genera una invitación fantasma", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: ctx.staff.staffSucursalA.email, verticalRole: "staff" }, "POST"),
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it("owner de OTRA organización -- 403 al intentar sobre una property que no es suya (requirePropertyMembership, defensa en profundidad de siempre)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.otroOrgOwner.token, { email: "x@otro.mx", verticalRole: "staff" }, "POST"),
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /auth/accept-invite -- el invitado acepta y queda vinculado", () => {
+  it("token real, fullName y password -> 200, crea el staff_user + membership, y devuelve sesión ya autenticada", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const invite = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "invitado-real@lostaquitos.mx", verticalRole: "repartidor" }, "POST"),
+    );
+    const { inviteToken } = (await invite.json()) as InviteResponse;
+
+    const accept = await app.request("/auth/accept-invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: inviteToken, fullName: "Repartidor Invitado", password: "correcto-caballo-batería" }),
+    });
+    expect(accept.status).toBe(200);
+    const session = (await accept.json()) as AcceptInviteResponse;
+    expect(session.email).toBe("invitado-real@lostaquitos.mx");
+    const org = session.organizations.find((o) => o.id === ctx.organizationId);
+    expect(org?.rol).toBe("repartidor");
+
+    // Queda REALMENTE vinculado -- puede usar su propio token para /auth/me.
+    const me = await app.request("/auth/me", authedGet(session.token));
+    expect(me.status).toBe(200);
+    const meBody = (await me.json()) as { email: string; organizations: Array<{ rol: string }> };
+    expect(meBody.email).toBe("invitado-real@lostaquitos.mx");
+    expect(meBody.organizations.some((o) => o.rol === "repartidor")).toBe(true);
+
+    // La invitación ya no aparece como pendiente.
+    const listado = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`, authedGet(ctx.staff.owner.token));
+    const listadoBody = (await listado.json()) as { invitations: InviteResponse[] };
+    expect(listadoBody.invitations.map((i) => i.email)).not.toContain("invitado-real@lostaquitos.mx");
+  });
+
+  it("token inexistente -> 400, nunca crea nada", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request("/auth/accept-invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "token-que-nunca-existio", fullName: "X", password: "correcto-caballo-batería" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("un token ya usado no se puede volver a aceptar (de un solo uso, real)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const invite = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "una-sola-vez@lostaquitos.mx", verticalRole: "staff" }, "POST"),
+    );
+    const { inviteToken } = (await invite.json()) as InviteResponse;
+
+    const primera = await app.request("/auth/accept-invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: inviteToken, fullName: "Primera Vez", password: "correcto-caballo-batería" }),
+    });
+    expect(primera.status).toBe(200);
+
+    const segunda = await app.request("/auth/accept-invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: inviteToken, fullName: "Segunda Vez", password: "otra-contraseña-larga" }),
+    });
+    expect(segunda.status).toBe(400);
+  });
+
+  it("password menor a 8 caracteres -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request("/auth/accept-invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "cualquiera", fullName: "X", password: "corta" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("DELETE /v1/restaurantes/:propertyId/admin/staff/invitaciones/:inviteId -- revocar", () => {
+  it("owner revoca una invitación pending -- ya no es aceptable ni aparece en el listado", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const invite = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "revocado@lostaquitos.mx", verticalRole: "staff" }, "POST"),
+    );
+    const created = (await invite.json()) as InviteResponse;
+
+    const del = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones/${created.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(del.status).toBe(200);
+
+    const listado = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`, authedGet(ctx.staff.owner.token));
+    const listadoBody = (await listado.json()) as { invitations: InviteResponse[] };
+    expect(listadoBody.invitations.map((i) => i.id)).not.toContain(created.id);
+
+    const accept = await app.request("/auth/accept-invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: created.inviteToken, fullName: "Tarde", password: "correcto-caballo-batería" }),
+    });
+    expect(accept.status).toBe(400);
+  });
+
+  it("revocar una invitación inexistente -> 404", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const del = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones/00000000-0000-0000-0000-000000000000`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(del.status).toBe(404);
+  });
+});
+
+describe("Jerarquía real (canInviteStaff, @atiende/core-authz) -- un admin nunca da de alta a otro owner", () => {
+  it("owner invita a un 'admin'; ese admin SÍ puede invitar 'staff' pero NUNCA 'owner'", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const inviteAdmin = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "admin-nuevo@lostaquitos.mx", verticalRole: "admin" }, "POST"),
+    );
+    expect(inviteAdmin.status).toBe(201);
+    const { inviteToken } = (await inviteAdmin.json()) as InviteResponse;
+
+    const accept = await app.request("/auth/accept-invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: inviteToken, fullName: "Admin Nuevo", password: "correcto-caballo-batería" }),
+    });
+    expect(accept.status).toBe(200);
+    const adminToken = ((await accept.json()) as AcceptInviteResponse).token;
+
+    // `acceptStaffInvite` escribe la membership real en `core.membership` (en
+    // producción, la MISMA tabla que consulta `requirePropertyMembership`) -- pero en
+    // tests, `InMemoryTenancyEngine` es un doble aparte de `InMemoryCoreRepository`
+    // (dos Maps en memoria distintos, ver el comentario de cabecera de
+    // `in-memory-tenancy-engine.ts` y de `restaurantes-admin-kpis-fixtures.ts`:
+    // "siembra membership en AMBOS lados"), así que un membership creado en runtime
+    // vía `coreRepo`/`coreStaffRepo` no aparece solo por eso en el store del engine.
+    // Reflejamos aquí el mismo seed manual que el fixture ya hace para el staff
+    // sembrado de antemano -- esto NO es necesario en producción real (una sola
+    // tabla), solo en el doble de pruebas.
+    const me = await app.request("/auth/me", authedGet(adminToken));
+    const adminId = ((await me.json()) as { id: string }).id;
+    (ctx.deps.engine as InMemoryTenancyEngine).seedMembership({ userId: adminId, organizationId: ctx.organizationId, propertyIds: null, platformRole: "admin", verticalRole: "admin" });
+
+    // El admin SÍ puede invitar a otro "staff" (su propio techo hacia abajo).
+    const adminInvitaStaff = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(adminToken, { email: "staff-por-admin@lostaquitos.mx", verticalRole: "staff" }, "POST"),
+    );
+    expect(adminInvitaStaff.status).toBe(201);
+
+    // El admin NUNCA puede invitar a un "owner" (jerarquía mayor que la suya) --
+    // aunque "admin" SÍ está en STAFF_INVITE_ROLES, `canInviteStaff` lo bloquea.
+    const adminInvitaOwner = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(adminToken, { email: "otro-owner@lostaquitos.mx", verticalRole: "owner" }, "POST"),
+    );
+    expect(adminInvitaOwner.status).toBe(403);
+  });
+});

@@ -10,7 +10,7 @@
 // (nunca reutiliza una conexión entre requests, correcto para el `pg.Pool` de
 // `ManagedPostgresEngine`) y delega en un `PostgresCoreRepository` construido sobre esa
 // sesión efímera.
-import type { CoreRepository, MembershipRow, StaffUserRow } from "@atiende/db";
+import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, MembershipRow, StaffInviteRow, StaffUserRow } from "@atiende/db";
 import { PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -33,5 +33,22 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: null }, (session) =>
       new PostgresCoreRepository(session).findMembershipsByUserId(userId),
     );
+  }
+
+  // Fase 10 — lado del INVITADO (sin sesión autenticada todavía, mismo momento que
+  // login): sesión de sistema igual que los 3 métodos de arriba. `acceptStaffInvite`
+  // alcanza a escribir `core.staff_user`/`core.membership` porque llama a la función
+  // `security definer` `core.accept_staff_invite` (ver
+  // `packages/db/migrations/0002_staff_invite_schema.sql`), nunca porque el rol
+  // `authenticated` sin `auth.uid()` tenga GRANT de escritura directo sobre esas
+  // tablas.
+  findStaffInviteByTokenHash(tokenHash: string): Promise<StaffInviteRow | null> {
+    return this.engine.withAppSession({ userId: null }, (session) =>
+      new PostgresCoreRepository(session).findStaffInviteByTokenHash(tokenHash),
+    );
+  }
+
+  acceptStaffInvite(input: AcceptStaffInviteInput): Promise<AcceptStaffInviteResult> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).acceptStaffInvite(input));
   }
 }

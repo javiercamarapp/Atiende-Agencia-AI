@@ -1,9 +1,30 @@
-// InMemoryCoreRepository — implementación real (no un mock) de `CoreRepository`
-// respaldada por Maps, con las mismas restricciones de integridad que el DDL de
-// `migrations/0001_core_schema.sql` (email único, membership por (userId, orgId)).
-// Sirve para tests determinísticos de las rutas de login y como fallback dev/CI sin
-// Postgres real — mismo rol que `InMemoryStateStore` en `@atiende/core-conversation`.
-import type { CoreRepository, MembershipRow, StaffUserRow } from "./core-repository.ts";
+// InMemoryCoreRepository — implementación real (no un mock) de `CoreRepository` +
+// `CoreStaffRepository` respaldada por Maps, con las mismas restricciones de
+// integridad que el DDL de `migrations/0001_core_schema.sql`/
+// `migrations/0002_staff_invite_schema.sql` (email único, membership por (userId,
+// orgId), token de invitación único). Sirve para tests determinísticos de las rutas
+// de login/invitación y como fallback dev/CI sin Postgres real — mismo rol que
+// `InMemoryStateStore` en `@atiende/core-conversation`.
+//
+// Implementa AMBAS interfaces (ver comentario de cabecera en `core-repository.ts`
+// para por qué existen separadas) porque en memoria no hay ninguna diferencia real
+// de sesión/RLS que preservar — los tests que ejercitan invitaciones vía
+// `AppDeps.coreStaffRepo` y los que ejercitan login vía `AppDeps.coreRepo` comparten
+// la MISMA instancia (`coreStaffRepo: (_db) => coreRepo`, ver
+// `apps/api/tests/fixtures.ts`), así que el estado siempre queda consistente entre
+// ambos.
+import { randomUUID } from "node:crypto";
+import type {
+  AcceptStaffInviteInput,
+  AcceptStaffInviteResult,
+  CoreRepository,
+  CoreStaffRepository,
+  CreateStaffInviteInput,
+  MembershipRow,
+  StaffInviteRow,
+  StaffUserRow,
+} from "./core-repository.ts";
+import { StaffInviteInvalidError } from "./core-repository.ts";
 
 export interface SeedOrganization {
   readonly id: string;
@@ -20,11 +41,13 @@ export interface SeedMembership {
   readonly propertyIds: readonly string[] | null;
 }
 
-export class InMemoryCoreRepository implements CoreRepository {
+export class InMemoryCoreRepository implements CoreRepository, CoreStaffRepository {
   private readonly staffById = new Map<string, StaffUserRow>();
   private readonly staffIdByEmail = new Map<string, string>();
   private readonly organizations = new Map<string, SeedOrganization>();
   private readonly memberships: SeedMembership[] = [];
+  private readonly invitesById = new Map<string, StaffInviteRow>();
+  private readonly inviteIdByTokenHash = new Map<string, string>();
 
   addStaff(staff: StaffUserRow): void {
     if (this.staffIdByEmail.has(staff.email)) {
@@ -70,5 +93,98 @@ export class InMemoryCoreRepository implements CoreRepository {
           propertyIds: m.propertyIds,
         };
       });
+  }
+
+  // ---- CoreStaffRepository (sesión real por-request en producción; aquí, misma
+  // instancia compartida — ver comentario de cabecera del archivo) ----
+
+  async createStaffInvite(input: CreateStaffInviteInput): Promise<StaffInviteRow> {
+    if (this.inviteIdByTokenHash.has(input.tokenHash)) {
+      throw new Error("ya existe una invitación con ese tokenHash (colisión de token, no debería pasar nunca)");
+    }
+    const row: StaffInviteRow = {
+      id: randomUUID(),
+      email: input.email,
+      organizationId: input.organizationId,
+      platformRole: input.platformRole,
+      verticalRole: input.verticalRole,
+      propertyIds: input.propertyIds,
+      status: "pending",
+      invitedBy: input.invitedBy,
+      expiresAt: input.expiresAt,
+      acceptedAt: null,
+      acceptedBy: null,
+      createdAt: new Date().toISOString(),
+    };
+    this.invitesById.set(row.id, row);
+    this.inviteIdByTokenHash.set(input.tokenHash, row.id);
+    return row;
+  }
+
+  async listPendingStaffInvites(organizationId: string): Promise<readonly StaffInviteRow[]> {
+    return [...this.invitesById.values()]
+      .filter((i) => i.organizationId === organizationId && i.status === "pending")
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async revokeStaffInvite(id: string, organizationId: string): Promise<boolean> {
+    const invite = this.invitesById.get(id);
+    if (!invite || invite.organizationId !== organizationId || invite.status !== "pending") return false;
+    this.invitesById.set(id, { ...invite, status: "revoked" });
+    return true;
+  }
+
+  // ---- CoreRepository (sesión de sistema, igual que login) ----
+
+  async findStaffInviteByTokenHash(tokenHash: string): Promise<StaffInviteRow | null> {
+    const id = this.inviteIdByTokenHash.get(tokenHash);
+    return id ? (this.invitesById.get(id) ?? null) : null;
+  }
+
+  async acceptStaffInvite(input: AcceptStaffInviteInput): Promise<AcceptStaffInviteResult> {
+    const invite = await this.findStaffInviteByTokenHash(input.tokenHash);
+    if (!invite || invite.status !== "pending" || new Date(invite.expiresAt).getTime() < Date.now()) {
+      throw new StaffInviteInvalidError();
+    }
+
+    let staff = await this.findStaffByEmail(invite.email);
+    if (!staff) {
+      staff = {
+        id: randomUUID(),
+        email: invite.email,
+        fullName: input.fullName,
+        passwordHash: input.passwordHash,
+        createdVia: "invite",
+        emailVerifiedAt: new Date().toISOString(),
+      };
+      this.staffById.set(staff.id, staff);
+      this.staffIdByEmail.set(staff.email, staff.id);
+    }
+
+    const existingIdx = this.memberships.findIndex((m) => m.userId === staff!.id && m.organizationId === invite.organizationId);
+    const membership: SeedMembership = {
+      userId: staff.id,
+      organizationId: invite.organizationId,
+      platformRole: invite.platformRole,
+      verticalRole: invite.verticalRole,
+      propertyIds: invite.propertyIds,
+    };
+    if (existingIdx >= 0) this.memberships[existingIdx] = membership;
+    else this.memberships.push(membership);
+
+    this.invitesById.set(invite.id, { ...invite, status: "accepted", acceptedAt: new Date().toISOString(), acceptedBy: staff.id });
+
+    const org = this.organizations.get(invite.organizationId);
+    if (!org) throw new Error(`invitación apunta a organización inexistente "${invite.organizationId}"`);
+
+    return {
+      staffId: staff.id,
+      email: staff.email,
+      organizationId: invite.organizationId,
+      vertical: org.vertical,
+      platformRole: invite.platformRole,
+      verticalRole: invite.verticalRole,
+      propertyIds: invite.propertyIds,
+    };
   }
 }

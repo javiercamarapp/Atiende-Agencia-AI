@@ -1,5 +1,16 @@
 export { hashPassword, verifyPassword } from "./password.ts";
-export type { CoreRepository, StaffUserRow, MembershipRow } from "./core-repository.ts";
+export type {
+  CoreRepository,
+  CoreStaffRepository,
+  StaffUserRow,
+  MembershipRow,
+  StaffInviteRow,
+  StaffInviteStatus,
+  CreateStaffInviteInput,
+  AcceptStaffInviteInput,
+  AcceptStaffInviteResult,
+} from "./core-repository.ts";
+export { StaffInviteInvalidError } from "./core-repository.ts";
 export { InMemoryCoreRepository } from "./in-memory-core-repository.ts";
 export type { SeedOrganization, SeedMembership } from "./in-memory-core-repository.ts";
 export { PostgresCoreRepository } from "./postgres-core-repository.ts";
