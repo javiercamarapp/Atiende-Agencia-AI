@@ -81,3 +81,24 @@ export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<HotelRole, "owner" | "admin"
   fnb: "member",
   accountant: "member",
 };
+
+// Fase 6 (REQ-REV-013) — night audit propio. Mismo criterio que el origen
+// (`NIGHT_AUDIT_ROLES = [...ADMIN_ROLES, "accountant"]`): accountant puede
+// disparar/consultar el cierre como parte de su función de conciliación, además de
+// owner/gm.
+export const NIGHT_AUDIT_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+
+// Fase 6 (REQ-HK-011) — tickets de mantenimiento. Cualquier miembro del staff de la
+// property puede REPORTAR uno (huésped/staff/agente/sensor, mismo criterio que el
+// origen: "cualquier miembro del staff del hotel puede reportar"); solo owner/gm o el
+// propio técnico de mantenimiento asignado pueden cerrarlo/actualizar su costo
+// (housekeeping/frontdesk NUNCA, mismo criterio adversarial que el origen: "camarista
+// no cambia costo").
+export const MAINTENANCE_TICKET_CREATE_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "housekeeping", "maintenance"];
+export const MAINTENANCE_TICKET_MANAGE_ROLES: readonly HotelRole[] = ["owner", "gm", "maintenance"];
+
+// Fase 6 (REQ-HK-008) — turnos de camaristas/lavandería. Publicar/editar la plantilla
+// es una decisión de supervisión (mismo criterio que crear una tarea de housekeeping,
+// H6b del origen); cualquier miembro del staff de la property puede CONSULTAR el
+// cumplimiento (transparencia hacia la propia camarista sobre su propio horario).
+export const HOUSEKEEPING_SHIFT_PUBLISH_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk"];

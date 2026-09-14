@@ -21,6 +21,7 @@
     "@atiende/domain-rentas": "*",
     "@atiende/mcp-cfdi": "*",
     "@atiende/whatsapp-gateway": "*",
+    "@atiende/worker": "*",
     "hono": "4.13.7",
     "jose": "6.2.12"
   }

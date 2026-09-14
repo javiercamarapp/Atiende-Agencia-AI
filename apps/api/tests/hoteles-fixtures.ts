@@ -82,6 +82,10 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   const reservationsSeed = await seedStaff("reservations", "reservations");
   const accountantSeed = await seedStaff("accountant", "accountant");
 
+  // Fase 6 (REQ-REV-013) — insumo de `listActiveHotelProperties()` (ruta interna de
+  // barrido de night-audit).
+  hotelesRepo.seedActiveHotelProperty(organizationId, propertyId);
+
   hotelesRepo.seedTaxConfig(propertyId, { ivaRate: 0.16, ishRate: 0.03, discountThreshold: 500 });
   // Fase 5 (H5/REQ-BO-001/002) — configuración fiscal de CFDI de hospedaje: RFC
   // emisor del hotel + DSA por cuarto-noche (ver domain-hoteles/src/types.ts,

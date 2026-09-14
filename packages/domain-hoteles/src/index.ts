@@ -76,6 +76,10 @@ export {
   FRAUD_VIEW_ROLES,
   FRAUD_RESOLVER_ROLES,
   CFDI_HOSPEDAJE_ROLES,
+  NIGHT_AUDIT_ROLES,
+  MAINTENANCE_TICKET_CREATE_ROLES,
+  MAINTENANCE_TICKET_MANAGE_ROLES,
+  HOUSEKEEPING_SHIFT_PUBLISH_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
 
@@ -163,3 +167,52 @@ export {
   providerFailureReply as whatsappHotelesProviderFailureReply,
 } from "./whatsapp/llm-turn-handler.ts";
 export type { WhatsAppHotelesAgentConfig, WhatsAppHotelesLlmAgentOptions } from "./whatsapp/llm-turn-handler.ts";
+
+// ---- Fase 6 — H5/REQ-REV-013: night audit propio (capa pura, extiende folioEngine.ts) ----
+export {
+  planNightlyHospedajeCharges,
+  buildNightAuditSummary,
+  businessDateToClose,
+  localHour,
+  isPastNightAuditRunHour,
+  DEFAULT_PROPERTY_TIMEZONE,
+} from "./night-audit/engine.ts";
+export type {
+  InHouseReservationForNightAudit,
+  NightAuditAnomalyType,
+  NightAuditAnomaly,
+  NightAuditChargeDecision,
+  NightAuditHospedajePlan,
+  NightAuditSummary,
+} from "./night-audit/engine.ts";
+export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";
+
+// ---- Fase 6 — REQ-HK-008: turnos de camaristas/lavandería (LFT, puro) ----
+export {
+  classifyShiftType,
+  shiftDurationMinutes,
+  ordinaryDailyLimitMinutes,
+  validateTurnosLft,
+  assertTurnosLftPublishable,
+  TurnosLftViolationError,
+  DEFAULT_WEEKLY_HOUR_LIMIT_SCHEDULE,
+} from "./housekeeping/turnos-lft.ts";
+export type {
+  ShiftType,
+  ProposedShift,
+  WeeklyHourLimitMilestone,
+  ShiftLftViolationType,
+  ShiftLftViolation,
+  ValidateTurnosLftInput,
+  ValidateTurnosLftResult,
+} from "./housekeeping/turnos-lft.ts";
+export type { HousekeepingShiftRecord, NewHousekeepingShiftInput } from "./types.ts";
+
+// ---- Fase 6 — REQ-HK-011: tickets de mantenimiento ----
+export type {
+  MaintenanceTicketRecord,
+  MaintenanceTicketOrigin,
+  MaintenanceTicketSeverity,
+  MaintenanceTicketStatus,
+  NewMaintenanceTicketInput,
+} from "./types.ts";

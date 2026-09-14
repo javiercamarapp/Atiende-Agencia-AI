@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (54 migraciones, timestamps 20240101000001 .. 20240101000054)
+## Orden actual (56 migraciones, timestamps 20240101000001 .. 20240101000056)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -45,6 +45,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 52. `packages/domain-citas/migrations/007_messaging_outbox_dispatch.sql` — dispatcher real transversal de `citas.messaging_outbox` (claim-con-lease + retry/backoff/dead para channel='whatsapp'), pieza compartida por todas las verticales (ver `packages/whatsapp-gateway`). Comparte tabla con la migración 51 (channel='email' vs channel='whatsapp' — ver comentario de cabecera en ambos archivos SQL, sin colisión posible entre ambas).
 53. `packages/domain-hoteles/migrations/008_messaging_outbox.sql` — `hoteles.messaging_outbox` completo (hoteles no tenía NINGÚN concepto de outbox antes de esta rama).
 54. `packages/domain-restaurantes/migrations/007_messaging_outbox.sql` — `restaurantes.messaging_outbox` completo (mismo caso que hoteles).
+55. `packages/domain-hoteles/migrations/008_night_audit.sql` — Fase 6 hoteles (night audit propio, REQ-REV-013).
+56. `packages/domain-hoteles/migrations/009_housekeeping_mantenimiento_turnos.sql` — Fase 6 hoteles (tickets de mantenimiento + turnos de camaristas, REQ-HK-008/011).
 
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
@@ -53,8 +55,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000054`; usa
-   `20240101000055`, luego `...056`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000056`; usa
+   `20240101000057`, luego `...058`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el

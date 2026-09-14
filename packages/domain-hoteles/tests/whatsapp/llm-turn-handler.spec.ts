@@ -26,9 +26,9 @@ function baseRepoAndIds() {
   return { repo, organizationId, propertyId };
 }
 
-describe("TOOLS — catálogo reducido a 2 (diseño §5.2)", () => {
-  it("expone únicamente crear_ticket_huesped_fnb y registrar_contacto_no_operativo — nunca housekeeping/mantenimiento/dinero/plantillas", () => {
-    expect(TOOLS.map((t) => t.name).sort()).toEqual(["crear_ticket_huesped_fnb", "registrar_contacto_no_operativo"]);
+describe("TOOLS — catálogo (Fase 2 §5.2 + Fase 6 REQ-HK-011)", () => {
+  it("expone crear_ticket_huesped_fnb, crear_ticket_mantenimiento y registrar_contacto_no_operativo — nunca housekeeping (turnos)/dinero/plantillas", () => {
+    expect(TOOLS.map((t) => t.name).sort()).toEqual(["crear_ticket_huesped_fnb", "crear_ticket_mantenimiento", "registrar_contacto_no_operativo"]);
   });
 });
 
@@ -201,9 +201,83 @@ describe("createLlmHotelesWhatsAppTurnHandler — el loop de tool-use", () => {
     expect(result.reply).toMatch(/problema técnico/i);
   });
 
+  it("REQ-HK-011: un reporte de un problema físico crea un ticket de mantenimiento por WhatsApp (actor system:whatsapp, sin staff logueado)", async () => {
+    const { repo, organizationId, propertyId } = baseRepoAndIds();
+    const gateway = makeGateway();
+    gateway.registerLadder("default", [
+      new FakeLlmProvider({
+        id: "p",
+        script: () => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "c1",
+              name: "crear_ticket_mantenimiento",
+              argumentsJson: JSON.stringify({ titulo: "Aire acondicionado no enfría", descripcion: "Lleva 2 horas sin enfriar", habitacion: "410", severidad: "media" }),
+            },
+          ],
+          model: "fake",
+          tokensIn: 1,
+          tokensOut: 1,
+          costUsd: 0,
+        }),
+      }),
+    ]);
+    gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "e" })]);
+    const handler = createLlmHotelesWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated", maxToolUseTurns: 1 });
+
+    await handler.handleInboundMessage({ organizationId, propertyId, phone: "+5219990000000", messages: [{ role: "user", content: "el aire no enfría" }] });
+
+    const tickets = await repo.listMaintenanceTickets(propertyId);
+    expect(tickets).toHaveLength(1);
+    expect(tickets[0]!.title).toBe("Aire acondicionado no enfría");
+    expect(tickets[0]!.severity).toBe("media");
+    expect(tickets[0]!.origin).toBe("huesped");
+    expect(tickets[0]!.createdBy).toBeNull();
+    expect(tickets[0]!.description).toContain("410");
+  });
+
+  it("si titulo/descripcion vienen vacíos, crear_ticket_mantenimiento falla y el turno siguiente escala al modelo caro (mismo criterio que crear_ticket_huesped_fnb)", async () => {
+    const { repo, organizationId, propertyId } = baseRepoAndIds();
+    const gateway = makeGateway();
+    let step = 0;
+    const defaultCalls: string[] = [];
+    const escalatedCalls: string[] = [];
+    gateway.registerLadder("default", [
+      new FakeLlmProvider({
+        id: "p",
+        script: () => {
+          defaultCalls.push("default");
+          const current = step++;
+          if (current === 0) {
+            return { text: "", toolCalls: [{ id: "c1", name: "crear_ticket_mantenimiento", argumentsJson: JSON.stringify({ titulo: "", descripcion: "" }) }], model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 };
+          }
+          throw new Error("el rol default no debería volver a llamarse tras el fallo de la herramienta");
+        },
+      }),
+    ]);
+    gateway.registerLadder("escalated", [
+      new FakeLlmProvider({
+        id: "e",
+        script: () => {
+          escalatedCalls.push("escalated");
+          return { text: "¿Me puedes describir de nuevo el problema?", model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 };
+        },
+      }),
+    ]);
+    const handler = createLlmHotelesWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+
+    const result = await handler.handleInboundMessage({ organizationId, propertyId, phone: "+5219990000000", messages: [{ role: "user", content: "algo está roto" }] });
+
+    expect(defaultCalls).toHaveLength(1);
+    expect(escalatedCalls).toHaveLength(1);
+    expect(result.reply).toMatch(/describir/i);
+    expect(await repo.listMaintenanceTickets(propertyId)).toHaveLength(0);
+  });
+
   it("un argumentsJson mal formado en una tool call NO tracked para escalación se maneja como un resultado de error, sin tirar el turno completo", async () => {
-    // Usa registrar_contacto_no_operativo (no crear_ticket_huesped_fnb) a propósito:
-    // solo el fallo de crear_ticket_huesped_fnb dispara huboFalloDeHerramienta, así
+    // Usa registrar_contacto_no_operativo (no crear_ticket_huesped_fnb/crear_ticket_mantenimiento) a
+    // propósito: solo el fallo de esas dos tools dispara huboFalloDeHerramienta, así
     // este caso aísla "JSON mal formado se maneja sin tirar" de "escala al modelo caro".
     const { repo, organizationId, propertyId } = baseRepoAndIds();
     const gateway = makeGateway();
