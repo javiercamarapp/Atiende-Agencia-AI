@@ -67,6 +67,7 @@ import { loadApiEnv } from "../env.ts";
 import type { AppDeps } from "../deps.ts";
 import { ProductionCoreRepository } from "./core-repository.ts";
 import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-repository.ts";
+import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -249,6 +250,10 @@ export function buildProductionDeps(): AppDeps {
     // correcto (ver production/rentas-owner-portal-repository.ts para el detalle
     // completo, incluida la confirmación de que `engine.admin` NO es service_role).
     rentasOwnerPortalRepo: (db) => new ProductionRentasOwnerPortalRepository(db),
+    // Fase 11 -- onboarding self-serve del tenant, puerto ENTERO bloqueado (ver
+    // production/rentas-onboarding-repository.ts para el detalle completo del gap y
+    // su solución real conocida).
+    rentasOnboardingRepo: createProductionRentasOnboardingRepo(),
     llmGateway,
     whatsAppDispatcher,
   };
