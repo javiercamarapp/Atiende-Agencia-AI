@@ -26,6 +26,10 @@ import { ServicioFichaPage, ServiciosListPage } from "./verticals/citas/pages/Se
 import { ClienteFichaPage, ClientesListPage } from "./verticals/citas/pages/Clientes.tsx";
 import { DisponibilidadPage } from "./verticals/citas/pages/Disponibilidad.tsx";
 import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
+import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
+import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
+import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
+import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -302,6 +306,41 @@ function CitasConfiguracionRoute() {
   );
 }
 
+function LicitacionesLoginRoute() {
+  const navigate = useNavigate();
+  return <LicitacionesLoginPage apiBaseUrl={API_BASE_URL} onLoggedIn={(_session, landingPath) => navigate(landingPath)} />;
+}
+
+/** Redirección al abrir `/licitaciones/:orgSlug` a secas — convocatorias es la
+ * landing real del panel (Fase 7, mismo criterio que CitasRootRedirect: aún no
+ * hay dashboard de KPIs para este vertical). */
+function LicitacionesRootRedirect() {
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  return <Navigate to={`/licitaciones/${orgSlug}/convocatorias`} replace />;
+}
+
+function LicitacionesConvocatoriasRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <ConvocatoriasPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
+function LicitacionesConvocatoriaDetalleRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <ConvocatoriaDetallePage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -332,6 +371,10 @@ export function App() {
         <Route path="/citas/:orgSlug/clientes/:customerId" element={<CitasClienteFichaRoute />} />
         <Route path="/citas/:orgSlug/disponibilidad" element={<CitasDisponibilidadRoute />} />
         <Route path="/citas/:orgSlug/configuracion" element={<CitasConfiguracionRoute />} />
+        <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
+        <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

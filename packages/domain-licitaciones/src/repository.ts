@@ -359,6 +359,17 @@ export interface ScanRenewalAlertsResult {
 }
 
 export interface LicitacionesRepository {
+  // ---- Fase 7 pieza 1: resolución de organización/property para el panel web ----
+  /** Mismo rol que `CitasRepository.findOrganizationBySlug` — el panel solo conoce
+   * el slug de la organización tras el login (nunca un `organizationId`/`propertyId`,
+   * ver `GET /v1/licitaciones/:orgSlug/admin/branches` en admin.ts). */
+  findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null>;
+  /** Resuelve la(s) property(ies) de `core.property` de la organización — property
+   * singleton por organización en licitaciones (§2.1 del diseño Fase 1), pero el
+   * panel igual lee la lista completa (mismo criterio que citas/restaurantes: nunca
+   * asumir cardinalidad en el cliente). */
+  listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]>;
+
   // ---- Convocatoria / expediente (transversal) ----
   findTender(organizationId: string, tenderId: string): Promise<TenderRecord | null>;
   getOrCreateProposal(organizationId: string, tenderId: string, userId: string, title: string): Promise<ProposalRecord>;

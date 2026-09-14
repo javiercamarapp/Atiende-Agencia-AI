@@ -166,3 +166,39 @@ describe("GET /licitaciones/:propertyId/tenders/(matching|:tenderId/matching) (�
     expect(res.status).toBe(404);
   });
 });
+
+describe("GET /licitaciones/:propertyId/tenders(/:tenderId) (Fase 7 — lectura del TenderRecord completo para el panel web)", () => {
+  it("lista TODAS las convocatorias de la organización con su título real -- cualquier miembro puede leer", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders`, authedJson(ctx.staff.viewer.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { tenders: { id: string; title: string }[] };
+    expect(body.tenders.some((t) => t.id === ctx.tenderId && t.title === "Licitación pública de prueba")).toBe(true);
+  });
+
+  it("detalle de una convocatoria trae el TenderRecord completo (no solo el score)", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders/${ctx.tenderId}`, authedJson(ctx.staff.viewer.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string; title: string; submissionDeadline: string | null };
+    expect(body.id).toBe(ctx.tenderId);
+    expect(body.title).toBe("Licitación pública de prueba");
+    expect(body.submissionDeadline).toBe("2026-12-15T18:00:00-06:00");
+  });
+
+  it("detalle de una convocatoria inexistente -> 404 explícito", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders/00000000-0000-0000-0000-000000000000`, authedJson(ctx.staff.viewer.token));
+    expect(res.status).toBe(404);
+  });
+
+  it("rechaza sin JWT (401)", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders`);
+    expect(res.status).toBe(401);
+  });
+});

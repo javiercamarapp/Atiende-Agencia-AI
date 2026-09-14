@@ -533,6 +533,29 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     private readonly storageDir: string,
   ) {}
 
+  // ---- Fase 7 pieza 1: organización/property (panel web) — mismo patrón exacto
+  // que `PostgresCitasRepository.findOrganizationBySlug`/`listPropertiesForOrganization`:
+  // lee directo de `core.organization`/`core.property` (esquema núcleo compartido
+  // entre verticales, migración 0001_core_schema.sql), sin tabla propia de
+  // licitaciones para esto. ----
+
+  async findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null> {
+    const { rows } = await this.db.query<{ id: string; name: string; slug: string; status: "trial" | "active" | "suspended" }>(
+      `select id, name, slug, status from core.organization where slug = $1 and vertical = 'licitaciones';`,
+      [slug],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, name: row.name, slug: row.slug, isActive: row.status === "active" } : null;
+  }
+
+  async listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]> {
+    const { rows } = await this.db.query<{ property_id: string; name: string }>(
+      `select id as property_id, name from core.property where organization_id = $1 and status = 'active' order by name asc;`,
+      [organizationId],
+    );
+    return rows.map((row) => ({ propertyId: row.property_id, name: row.name }));
+  }
+
   async findTender(organizationId: string, tenderId: string): Promise<TenderRecord | null> {
     const { rows } = await this.db.query<TenderRow>(`select ${TENDER_COLUMNS} from licitaciones.tender where id = $1 and organization_id = $2;`, [tenderId, organizationId]);
     const row = rows[0];
