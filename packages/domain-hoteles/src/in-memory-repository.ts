@@ -32,10 +32,14 @@ import type {
   NewExpenseEntryInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
+  NewGuestInput,
   NewHousekeepingShiftInput,
   NewMaintenanceTicketInput,
   NewPaymentInput,
+  NewRatePlanRangeInput,
   NewReservationInput,
+  NewRoomInput,
+  NewRoomTypeInput,
   NewStaffScheduleInput,
   NightAuditRunRecord,
   NightlyRateRecord,
@@ -47,6 +51,7 @@ import type {
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  RoomSummary,
   RoomTypeSummary,
   GuestSummary,
   StaffScheduleRecord,
@@ -166,6 +171,10 @@ interface StoredReservation {
   cancellationPenaltyAmount: number | null;
   canceledAt: string | null;
   createdAt: string;
+  // Fix hallazgo CRÍTICO ("asignación de habitación al reservar") — ver
+  // types.ts::ReservationRecord.roomId para el porqué es independiente de
+  // `roomTypeId`/`bookAvailability`.
+  roomId: string | null;
 }
 
 interface StoredRoomType {
@@ -183,6 +192,19 @@ interface StoredGuest {
   fullName: string;
   email: string | null;
   phone: string | null;
+}
+
+// Fix hallazgo CRÍTICO — habitación FÍSICA (`hoteles.room`), no existía ningún
+// equivalente en memoria antes de este cambio (el motor de disponibilidad/
+// cotización SIEMPRE operó a nivel de `roomTypeId` agregado, ver
+// `StoredAvailability` abajo — una habitación concreta es una capa nueva, solo
+// para "qué número de cuarto le toca a esta reserva").
+interface StoredRoom {
+  id: string;
+  propertyId: string;
+  roomTypeId: string;
+  code: string;
+  status: RoomSummary["status"];
 }
 
 interface StoredAvailability {
@@ -227,6 +249,7 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly fnbOrders = new Map<string, FnbOrderRecord & { propertyId: string; organizationId: string }>();
   private readonly roomTypes = new Map<string, StoredRoomType>();
   private readonly guests = new Map<string, StoredGuest>(); // Fix hallazgo ALTA — catálogo de huéspedes existentes (hoteles.guest).
+  private readonly rooms = new Map<string, StoredRoom>(); // Fix hallazgo CRÍTICO — habitaciones físicas (hoteles.room).
   private readonly nightlyRates = new Map<string, NightlyRateRecord[]>(); // key: propertyId:roomTypeId
   private readonly idempotencyKeys = new Map<string, StoredIdempotencyRow>(); // key: organizationId:scope:key
 
@@ -394,9 +417,12 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   /** Permite a un test construir una reserva preexistente en un estado arbitrario
    *  (ej. para probar una transición desde `check_in`) sin pasar por la ruta HTTP de
    *  creación — equivalente en memoria de un `INSERT` manual contra
-   *  `hoteles.reservation` con `status` ya distinto del default. */
-  seedReservation(reservation: StoredReservation): void {
-    this.reservations.set(reservation.id, { ...reservation });
+   *  `hoteles.reservation` con `status` ya distinto del default. `roomId` opcional
+   *  (default `null`, mismo default que `insertReservation`) — la mayoría de los
+   *  tests preexistentes seedean una reserva sin necesitar una habitación física ya
+   *  asignada (fix hallazgo CRÍTICO, campo nuevo de esta pasada). */
+  seedReservation(reservation: Omit<StoredReservation, "roomId"> & { roomId?: string | null }): void {
+    this.reservations.set(reservation.id, { ...reservation, roomId: reservation.roomId ?? null });
   }
 
   private chargesByFolio(folioId: string): StoredCharge[] {
@@ -669,6 +695,73 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return { id: g.id, fullName: g.fullName, email: g.email, phone: g.phone };
   }
 
+  // ---- HotelesRepository: Fix hallazgo CRÍTICO — alta REAL de catálogo (mismo
+  // criterio de integridad que el adaptador Postgres, ver postgres-repository.ts
+  // para el comentario completo de cada método). ----
+
+  async insertRoomType(input: NewRoomTypeInput): Promise<RoomTypeSummary> {
+    const duplicate = [...this.roomTypes.values()].some((rt) => rt.propertyId === input.propertyId && rt.name === input.name);
+    if (duplicate) throw new Error(`nombre_duplicado: ya existe un tipo de habitación llamado "${input.name}" en esta property.`);
+    const id = randomUUID();
+    this.roomTypes.set(id, {
+      id,
+      propertyId: input.propertyId,
+      name: input.name,
+      maxOccupancy: input.maxOccupancy,
+      maxOverbookRooms: 0,
+      overbookingOccupancyThresholdPct: 95,
+    });
+    return { id, name: input.name, maxOccupancy: input.maxOccupancy };
+  }
+
+  async listRooms(propertyId: string, roomTypeId?: string | null): Promise<readonly RoomSummary[]> {
+    return [...this.rooms.values()]
+      .filter((r) => r.propertyId === propertyId && (roomTypeId == null || r.roomTypeId === roomTypeId))
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map((r) => ({ id: r.id, code: r.code, status: r.status, roomTypeId: r.roomTypeId }));
+  }
+
+  async findRoom(propertyId: string, roomId: string): Promise<RoomSummary | null> {
+    const r = this.rooms.get(roomId);
+    if (!r || r.propertyId !== propertyId) return null;
+    return { id: r.id, code: r.code, status: r.status, roomTypeId: r.roomTypeId };
+  }
+
+  async insertRoom(input: NewRoomInput): Promise<RoomSummary> {
+    const duplicate = [...this.rooms.values()].some((r) => r.propertyId === input.propertyId && r.code === input.code);
+    if (duplicate) throw new Error(`codigo_duplicado: ya existe una habitación con el código "${input.code}" en esta property.`);
+    const id = randomUUID();
+    this.rooms.set(id, { id, propertyId: input.propertyId, roomTypeId: input.roomTypeId, code: input.code, status: "disponible" });
+    return { id, code: input.code, status: "disponible", roomTypeId: input.roomTypeId };
+  }
+
+  async upsertRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }> {
+    const key = `${input.propertyId}:${input.roomTypeId}`;
+    const existing = this.nightlyRates.get(key) ?? [];
+    const byDate = new Map(existing.map((r) => [r.date, r]));
+    let datesWritten = 0;
+    for (let d = new Date(`${input.startDate}T00:00:00Z`); d.getTime() <= new Date(`${input.endDate}T00:00:00Z`).getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
+      const date = d.toISOString().slice(0, 10);
+      byDate.set(date, { date, price: input.price, minStay: input.minStay, closedToArrival: input.closedToArrival, closedToDeparture: input.closedToDeparture });
+      datesWritten += 1;
+    }
+    this.nightlyRates.set(key, [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)));
+    return { datesWritten };
+  }
+
+  async insertGuest(input: NewGuestInput): Promise<GuestSummary> {
+    const id = randomUUID();
+    this.guests.set(id, { id, propertyId: input.propertyId, fullName: input.fullName, email: input.email, phone: input.phone });
+    return { id, fullName: input.fullName, email: input.email, phone: input.phone };
+  }
+
+  async assignRoomToReservation(propertyId: string, reservationId: string, roomId: string): Promise<ReservationRecord | null> {
+    const stored = this.reservations.get(reservationId);
+    if (!stored || stored.propertyId !== propertyId) return null;
+    stored.roomId = roomId;
+    return this.toReservationRecord(stored);
+  }
+
   // ---- HotelesRepository: Fase 3 — máquina de estados de reservas (H02) ----
 
   private toReservationRecord(stored: StoredReservation): ReservationRecord {
@@ -685,6 +778,7 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       cancellationPenaltyAmount: stored.cancellationPenaltyAmount,
       canceledAt: stored.canceledAt,
       createdAt: stored.createdAt,
+      roomId: stored.roomId,
     };
   }
 
@@ -725,6 +819,7 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       cancellationPenaltyAmount: null,
       canceledAt: null,
       createdAt: new Date().toISOString(),
+      roomId: null,
     };
     this.reservations.set(id, stored);
     if (input.idempotencyKey) {
