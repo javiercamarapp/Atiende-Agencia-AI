@@ -19,6 +19,7 @@ import {
   asignarTarea,
   completarChecklistItem,
   completarTarea,
+  crearTareaManual,
   ESTADO_TAREA_LABELS,
   fetchInventario,
   fetchTareaDetalle,
@@ -29,10 +30,15 @@ import {
   SEVERIDAD_LABELS,
   TIPO_TAREA_LABELS,
 } from "../lib/limpieza-client.ts";
-import type { ItemInventario, SeveridadIncidencia, TareaOperativa, TareaOperativaDetalle, UnidadOption } from "../lib/limpieza-client.ts";
+import type { ItemInventario, PrioridadTareaOperativa, SeveridadIncidencia, TareaOperativa, TareaOperativaDetalle, TipoTareaOperativa, UnidadOption } from "../lib/limpieza-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 const LIMPIEZA_OPERACION_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "limpieza"]);
+// Espejo de LIMPIEZA_CREACION_MANUAL_ROLES (packages/domain-rentas/src/roles.ts) --
+// crear una tarea ad-hoc es una decisión de gestión, NUNCA abierta al rol `limpieza`
+// (que sí puede operar la tarea una vez creada). Mismo criterio de "gate en el
+// cliente solo por UX" que el resto del archivo: el servidor siempre re-valida.
+const LIMPIEZA_CREACION_MANUAL_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 
 const sectionStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 };
 const inputStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
@@ -79,6 +85,7 @@ function TareaCard({ tarea, activo, onClick, accion }: { tarea: TareaOperativa; 
 export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
   const puedeOperar = org ? LIMPIEZA_OPERACION_ROLES.has(org.rol) : false;
+  const puedeCrearManual = org ? LIMPIEZA_CREACION_MANUAL_ROLES.has(org.rol) : false;
 
   const [misTareas, setMisTareas] = useState<readonly TareaOperativa[] | null>(null);
   const [sinAsignar, setSinAsignar] = useState<readonly TareaOperativa[] | null>(null);
@@ -102,6 +109,14 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
   const [incEnviando, setIncEnviando] = useState(false);
   const [incError, setIncError] = useState<string | null>(null);
   const [incAviso, setIncAviso] = useState<string | null>(null);
+
+  const [mostrarFormNueva, setMostrarFormNueva] = useState(false);
+  const [nuevaUnidadId, setNuevaUnidadId] = useState("");
+  const [nuevaTipo, setNuevaTipo] = useState<TipoTareaOperativa>("limpieza");
+  const [nuevaPrioridad, setNuevaPrioridad] = useState<PrioridadTareaOperativa>("media");
+  const [nuevaProgramadaPara, setNuevaProgramadaPara] = useState("");
+  const [nuevaEnviando, setNuevaEnviando] = useState(false);
+  const [nuevaError, setNuevaError] = useState<string | null>(null);
 
   const cargarListas = useCallback(async () => {
     try {
@@ -218,6 +233,37 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
     }
   }
 
+  async function handleCrearTareaManual(e: FormEvent) {
+    e.preventDefault();
+    setNuevaError(null);
+    if (!nuevaUnidadId) {
+      setNuevaError("Elige una unidad.");
+      return;
+    }
+    if (!nuevaProgramadaPara) {
+      setNuevaError("Elige una fecha programada.");
+      return;
+    }
+    setNuevaEnviando(true);
+    try {
+      const tarea = await crearTareaManual(fetch, apiBaseUrl, token, propertyId, {
+        unidadId: nuevaUnidadId,
+        tipo: nuevaTipo,
+        prioridad: nuevaPrioridad,
+        programadaPara: nuevaProgramadaPara,
+      });
+      setNuevaUnidadId("");
+      setNuevaProgramadaPara("");
+      setMostrarFormNueva(false);
+      await cargarListas();
+      handleSeleccionar(tarea.id);
+    } catch (err) {
+      setNuevaError(err instanceof Error ? err.message : "No se pudo crear la tarea.");
+    } finally {
+      setNuevaEnviando(false);
+    }
+  }
+
   async function handleReportarIncidencia(e: FormEvent) {
     e.preventDefault();
     setIncError(null);
@@ -267,12 +313,69 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 960 }}>
-      <header>
-        <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Mis tareas</h1>
-        <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Tareas de limpieza/mantenimiento asignadas a ti, cola de tareas sin asignar, y reporte de incidencias.</p>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Mis tareas</h1>
+          <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Tareas de limpieza/mantenimiento asignadas a ti, cola de tareas sin asignar, y reporte de incidencias.</p>
+        </div>
+        {puedeCrearManual && (
+          <button type="button" onClick={() => setMostrarFormNueva((v) => !v)} style={primaryButtonStyle}>
+            {mostrarFormNueva ? "Cancelar" : "+ Nueva tarea"}
+          </button>
+        )}
       </header>
 
       {listaError && <p style={errorStyle} role="alert">{listaError}</p>}
+
+      {puedeCrearManual && mostrarFormNueva && (
+        <section style={sectionStyle}>
+          <h2 style={{ fontSize: 15, margin: 0 }}>Nueva tarea manual</h2>
+          <p style={{ color: "#6b7280", margin: 0, fontSize: 12 }}>
+            Fuera del sweep automático de checkout -- para dar de alta una tarea de limpieza/mantenimiento/inspección ad-hoc (nace sin ocupación ni bloqueo de calendario).
+          </p>
+          {nuevaError && <p style={errorStyle} role="alert">{nuevaError}</p>}
+          <form onSubmit={(e) => void handleCrearTareaManual(e)} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <label style={labelStyle}>
+              Unidad
+              <select value={nuevaUnidadId} onChange={(e) => setNuevaUnidadId(e.target.value)} style={inputStyle}>
+                <option value="">Selecciona una unidad…</option>
+                {unidades.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Tipo
+              <select value={nuevaTipo} onChange={(e) => setNuevaTipo(e.target.value as TipoTareaOperativa)} style={inputStyle}>
+                {(Object.keys(TIPO_TAREA_LABELS) as TipoTareaOperativa[]).map((t) => (
+                  <option key={t} value={t}>
+                    {TIPO_TAREA_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Prioridad
+              <select value={nuevaPrioridad} onChange={(e) => setNuevaPrioridad(e.target.value as PrioridadTareaOperativa)} style={inputStyle}>
+                {(Object.keys(PRIORIDAD_LABELS) as PrioridadTareaOperativa[]).map((p) => (
+                  <option key={p} value={p}>
+                    {PRIORIDAD_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Programada para
+              <input type="date" value={nuevaProgramadaPara} onChange={(e) => setNuevaProgramadaPara(e.target.value)} style={inputStyle} />
+            </label>
+            <button type="submit" disabled={nuevaEnviando} style={primaryButtonStyle}>
+              {nuevaEnviando ? "Creando…" : "Crear tarea"}
+            </button>
+          </form>
+        </section>
+      )}
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <section style={{ ...sectionStyle, flex: "1 1 320px" }}>
