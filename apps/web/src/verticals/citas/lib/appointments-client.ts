@@ -107,3 +107,31 @@ export async function markAppointmentNoShow(fetchImpl: typeof fetch, apiBaseUrl:
   const body = await postJson<{ appointment: AppointmentApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments/${appointmentId}/no-show`, token);
   return mapAppointmentRow(body.appointment);
 }
+
+/** Fase 12 — hallazgo de auditoría (ALTO, "Staff no puede crear citas manualmente
+ * desde la Agenda"): POST .../appointments (admin.ts, staff panel) -- a diferencia
+ * de `fetchAppointments`/las 4 transiciones de arriba (ya existían desde Fase 5/7),
+ * este endpoint es nuevo. `endsAt` lo calcula el servidor a partir de la duración
+ * del servicio -- el panel nunca lo manda. */
+export interface NewAppointmentInput {
+  readonly providerId: string;
+  readonly serviceId: string;
+  readonly customerName: string;
+  readonly customerPhone: string;
+  readonly customerEmail?: string;
+  readonly startsAt: string;
+  readonly notes?: string;
+}
+
+export async function createAppointment(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: NewAppointmentInput): Promise<AppointmentSummary> {
+  const body = await postJson<{ appointment: AppointmentApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments`, token, {
+    provider_id: input.providerId,
+    service_id: input.serviceId,
+    customer_name: input.customerName,
+    customer_phone: input.customerPhone,
+    ...(input.customerEmail ? { customer_email: input.customerEmail } : {}),
+    starts_at: input.startsAt,
+    ...(input.notes ? { notes: input.notes } : {}),
+  });
+  return mapAppointmentRow(body.appointment);
+}

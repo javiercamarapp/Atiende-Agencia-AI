@@ -26,7 +26,8 @@
 // pena avisar a quien está esperando; reusa el MISMO `providerFilter` de la
 // agenda para no duplicar el selector de proveedor.
 import { useEffect, useMemo, useState } from "react";
-import { cancelAppointment, completeAppointment, confirmAppointment, fetchAppointments, markAppointmentNoShow } from "../lib/appointments-client.ts";
+import type { FormEvent } from "react";
+import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
 import type { ProviderSummary } from "../lib/providers-client.ts";
@@ -113,6 +114,21 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
   const [waitlistError, setWaitlistError] = useState<string | null>(null);
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastSummary, setBroadcastSummary] = useState<{ notified: number; candidatesConsidered: number; skippedNoWhatsappConfig: number } | null>(null);
+
+  // ---- Fase 12 — hallazgo de auditoría (ALTO, "Staff no puede crear citas
+  // manualmente desde la Agenda"): alta manual real (POST .../appointments, ver
+  // appointments-client.ts::createAppointment). Formulario plegado por default —
+  // mismo criterio de "no ensuciar la vista principal" que el resto de este panel. ----
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newProviderId, setNewProviderId] = useState("");
+  const [newServiceId, setNewServiceId] = useState("");
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [newCustomerEmail, setNewCustomerEmail] = useState("");
+  const [newStartsAt, setNewStartsAt] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [creatingAppointment, setCreatingAppointment] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const range = useMemo(() => computeRange(anchor, view), [anchor, view]);
 
@@ -228,6 +244,40 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
     );
   }
 
+  async function handleCreateAppointment(e: FormEvent) {
+    e.preventDefault();
+    if (!newProviderId || !newServiceId || !newCustomerName.trim() || !newCustomerPhone.trim() || !newStartsAt) return;
+    setCreatingAppointment(true);
+    setCreateError(null);
+    try {
+      await createAppointment(fetch, apiBaseUrl, token, propertyId, {
+        providerId: newProviderId,
+        serviceId: newServiceId,
+        customerName: newCustomerName.trim(),
+        customerPhone: newCustomerPhone.trim(),
+        customerEmail: newCustomerEmail.trim() || undefined,
+        // El <input type="datetime-local"> devuelve hora LOCAL sin offset — se manda
+        // tal cual el `Date` la interpreta (hora local del navegador) y se serializa
+        // a ISO con offset real antes de mandarla al servidor.
+        startsAt: new Date(newStartsAt).toISOString(),
+        notes: newNotes.trim() || undefined,
+      });
+      setNewProviderId("");
+      setNewServiceId("");
+      setNewCustomerName("");
+      setNewCustomerPhone("");
+      setNewCustomerEmail("");
+      setNewStartsAt("");
+      setNewNotes("");
+      setShowNewForm(false);
+      await load();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "No se pudo crear la cita.");
+    } finally {
+      setCreatingAppointment(false);
+    }
+  }
+
   const groups = appointments ? groupByDay(appointments) : [];
 
   return (
@@ -266,8 +316,90 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
           <button onClick={() => setAnchor((a) => shiftAnchor(a, view, 1))} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}>
             Siguiente →
           </button>
+          <button
+            onClick={() => setShowNewForm((v) => !v)}
+            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: showNewForm ? "#fff" : "#111827", color: showNewForm ? "#111827" : "#fff", fontSize: 12, cursor: "pointer" }}
+          >
+            {showNewForm ? "Cancelar" : "+ Nueva cita"}
+          </button>
         </div>
       </header>
+
+      {showNewForm && (
+        <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
+          <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Nueva cita</p>
+          <form onSubmit={handleCreateAppointment} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <select required value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 180px" }}>
+                <option value="">Proveedor…</option>
+                {providers?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName}
+                  </option>
+                ))}
+              </select>
+              <select required value={newServiceId} onChange={(e) => setNewServiceId(e.target.value)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 180px" }}>
+                <option value="">Servicio…</option>
+                {services?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                required
+                type="datetime-local"
+                value={newStartsAt}
+                onChange={(e) => setNewStartsAt(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 200px" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input
+                required
+                placeholder="Nombre del cliente"
+                value={newCustomerName}
+                onChange={(e) => setNewCustomerName(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 180px" }}
+              />
+              <input
+                required
+                placeholder="Teléfono"
+                value={newCustomerPhone}
+                onChange={(e) => setNewCustomerPhone(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 140px" }}
+              />
+              <input
+                type="email"
+                placeholder="Correo (opcional)"
+                value={newCustomerEmail}
+                onChange={(e) => setNewCustomerEmail(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 180px" }}
+              />
+            </div>
+            <input
+              placeholder="Notas (opcional)"
+              value={newNotes}
+              onChange={(e) => setNewNotes(e.target.value)}
+              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
+            />
+            {createError && (
+              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+                {createError}
+              </p>
+            )}
+            <div>
+              <button
+                type="submit"
+                disabled={creatingAppointment}
+                style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}
+              >
+                {creatingAppointment ? "Creando…" : "Crear cita"}
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
 
       {error && (
         <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
