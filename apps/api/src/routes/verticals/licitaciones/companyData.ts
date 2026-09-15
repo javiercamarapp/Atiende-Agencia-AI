@@ -38,7 +38,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { CompanyDataDuplicateKeyError, WRITE_ROLES, assertExplicitOffset, assertValidDecimalString, isoNow } from "@atiende/domain-licitaciones";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, WRITE_ROLES, assertExplicitOffset, assertValidDecimalString, isoNow } from "@atiende/domain-licitaciones";
 import type { CompanyDataApprovalStatus } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -91,9 +91,23 @@ function parseOptionalExplicitOffsetDate(raw: unknown, field: string): string | 
   return raw;
 }
 
+/**
+ * Hallazgo de auditoría (severidad ALTA): antes convertía CUALQUIER `Error`
+ * no reconocido en un 404 con el mensaje crudo de Postgres filtrado tal cual
+ * al cliente (`err.message`) -- incluido, por ejemplo, un "permission denied
+ * for table ..." por un GRANT faltante (ver migración 020), o un `id` con
+ * formato de UUID inválido que Postgres rechaza con su propio mensaje
+ * interno. Ahora solo `CompanyDataNotFoundError` (lanzado explícitamente por
+ * los 5 métodos `update*` de `LicitacionesRepository` cuando el `id` no
+ * corresponde a ningún registro) se mapea a 404 -- cualquier otro error se
+ * propaga sin envolver, para que `apps/api/src/app.ts::onError` lo trate
+ * como 500 genérico ("Error interno") sin filtrar el mensaje interno de la
+ * base de datos.
+ */
 function mapDuplicateOrThrow(err: unknown): never {
   if (err instanceof CompanyDataDuplicateKeyError) throw Errors.conflict(err.message);
-  throw err instanceof Error ? Errors.notFound(err.message) : err;
+  if (err instanceof CompanyDataNotFoundError) throw Errors.notFound(err.message);
+  throw err;
 }
 
 export function licitacionesCompanyDataRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {

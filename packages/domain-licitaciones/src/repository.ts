@@ -814,7 +814,7 @@ export interface LicitacionesRepository {
   /** Historial COMPLETO e inmutable de resoluciones, más antigua primero (normalmente una sola fila: won/lost son terminales, pero el historial se conserva igual que `contract_status_history`). */
   listTenderResolutions(organizationId: string, tenderId: string): Promise<readonly TenderResolutionRecord[]>;
 
-  /** Lanza `CompanyDataDuplicateKeyError` -- ninguna clave natural en este bloque (`approved_rate.concept`, `company_capability.name`, `company_signer.role`). `company_document`/`company_experience` no tienen clave natural: crear siempre inserta una fila nueva. */
+  /** Lanza `CompanyDataDuplicateKeyError` -- ninguna clave natural en este bloque (`approved_rate.concept`, `company_capability.name`, `company_signer.role`). `company_document`/`company_experience` no tienen clave natural: crear siempre inserta una fila nueva. Los 5 métodos `update*` de este bloque lanzan `CompanyDataNotFoundError` cuando el `id` no corresponde a ningún registro de la organización -- `apps/api/.../companyData.ts::mapDuplicateOrThrow` depende de ese tipo (no de un `Error` genérico) para distinguir "no encontrado" (404) de cualquier otro fallo, que se propaga sin envolver. */
   createCompanyDocument(organizationId: string, input: CompanyDocumentCreateInput): Promise<CompanyDocumentRecord>;
   updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord>;
   createApprovedRate(organizationId: string, input: ApprovedRateCreateInput): Promise<ApprovedRateRecord>;

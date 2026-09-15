@@ -133,3 +133,31 @@ export class CompanyDataDuplicateKeyError extends Error {
     this.name = "CompanyDataDuplicateKeyError";
   }
 }
+
+/**
+ * Fase 16 (company data escribible) -- hallazgo de auditoría: lanzado por
+ * `LicitacionesRepository.updateCompanyDocument`/`updateApprovedRate`/
+ * `updateCompanyCapability`/`updateCompanyExperience`/`updateCompanySigner`
+ * cuando el `id` recibido no corresponde a ningún registro de la
+ * organización (ya sea porque nunca existió o porque es de otra
+ * organización -- ambos casos son indistinguibles desde afuera, mismo
+ * criterio que el resto del vertical). Antes de este tipo, esos 5 métodos
+ * lanzaban un `Error` genérico que `companyData.ts::mapDuplicateOrThrow`
+ * capturaba con `catch (err) { ... err instanceof Error ... }` -- una red
+ * tan amplia que CUALQUIER falla no reconocida (p. ej. "permission denied
+ * for table ..." de Postgres por un GRANT faltante, o un `id` con formato de
+ * UUID inválido) se reportaba igual como 404 con el mensaje crudo de la base
+ * de datos filtrado tal cual al cliente. Con este tipo, `mapDuplicateOrThrow`
+ * distingue "no encontrado" (404, mensaje propio) de cualquier otro error
+ * (propagado sin envolver, para que `apps/api/src/app.ts::onError` lo trate
+ * como 500 genérico sin filtrar el mensaje interno).
+ */
+export class CompanyDataNotFoundError extends Error {
+  constructor(
+    readonly resource: string,
+    readonly id: string,
+  ) {
+    super(`${resource} "${id}" no encontrado(a) para esta organización.`);
+    this.name = "CompanyDataNotFoundError";
+  }
+}

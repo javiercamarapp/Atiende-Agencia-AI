@@ -7,7 +7,7 @@
 // de estar "PENDIENTE".
 import { describe, expect, it } from "vitest";
 import { InMemoryLicitacionesRepository } from "../src/in-memory-repository.ts";
-import { CompanyDataDuplicateKeyError } from "../src/errors.ts";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError } from "../src/errors.ts";
 
 const ORG = "org-1";
 
@@ -30,9 +30,13 @@ describe("InMemoryLicitacionesRepository -- escritura de company_document (Fase 
     expect(updated.label).toBe("Acta Constitutiva");
   });
 
-  it("updateCompanyDocument contra un id inexistente lanza, nunca crea uno nuevo en silencio", async () => {
+  it("updateCompanyDocument contra un id inexistente lanza CompanyDataNotFoundError, nunca crea uno nuevo en silencio", async () => {
+    // Hallazgo de auditoría: `companyData.ts::mapDuplicateOrThrow` depende de
+    // este tipo exacto (no un `Error` genérico) para mapear a 404 sin filtrar
+    // mensajes internos de otros errores no reconocidos -- ver
+    // company-data-postgres-date-contract.spec.ts para el contrato completo.
     const repo = new InMemoryLicitacionesRepository();
-    await expect(repo.updateCompanyDocument(ORG, "no-existe", { approvalStatus: "aprobado" })).rejects.toThrow();
+    await expect(repo.updateCompanyDocument(ORG, "no-existe", { approvalStatus: "aprobado" })).rejects.toBeInstanceOf(CompanyDataNotFoundError);
   });
 
   it("dos organizaciones no comparten documentos", async () => {
