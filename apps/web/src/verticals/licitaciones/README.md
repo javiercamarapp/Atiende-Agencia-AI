@@ -88,29 +88,66 @@ lectura para esto, no es capricho de la UI):
   `.../tenders/matching` de matching.ts (dos sub-apps Hono montadas en "/", el
   registro de rutas es sensible a orden — ver comentario en tenders.ts).
 
+## Fase 11 — carga de bases + requisitos extraídos (gap ALTA: "el flujo central del producto sin ninguna pantalla")
+
+Pieza DELIBERADAMENTE acotada al prerrequisito compartido que todo el resto
+del Flujo 2 necesita — NO el flujo completo de propuesta
+técnica/económica/aprobaciones/ZIP (eso sigue en la lista de "fuera de esta
+fase" abajo, sin cambios):
+
+- `pages/RequisitosConvocatoria.tsx` (ruta
+  `/licitaciones/:orgSlug/convocatorias/:tenderId/requisitos`, enlazada desde
+  `ConvocatoriaDetalle.tsx`) — el staff sube uno o más PDF (o texto plano) de
+  las bases de una convocatoria, convertidos a base64 en el propio navegador
+  (`lib/requirements-client.ts::fileToBase64`, sin backend intermedio), y ve
+  la matriz de requisitos que `RuleBasedExtractor` [+ `LlmRequirementExtractor`
+  si hay LLM configurado] sacó de su texto REAL — extraído server-side por
+  `@atiende/domain-licitaciones::extractDocumentText` (motor `pdfjs-dist`,
+  Fase 11 del backend, ver `apps/api/.../technicalProposal.ts`). Un documento
+  sin texto extraíble (PDF escaneado sin capa de texto, formato no soportado o
+  corrupto) se reporta explícito como excluido (`skippedDocuments`) — nunca se
+  inventa contenido. Gating cosmético por `WRITE_ROLES` (mismo set que
+  `Convocatorias.tsx`); el servidor (`assertVerticalRole` en
+  `technicalProposal.ts`) es siempre la barrera real.
+- `lib/requirements-client.ts` — `fetchRequirementItems` (`GET .../requirements`,
+  forma persistida `RequirementItemRecord`), `extractRequirements`
+  (`POST .../requirements/extract`, con `idempotency-key` generado por
+  intento — un reintento manual del usuario SIEMPRE genera una key nueva) y
+  `fileToBase64`/`MAX_UPLOAD_FILE_BYTES` para la conversión y el límite
+  cliente-side (~22MB, mismo tope que `storage.ts::decodeBase64Content`
+  server-side).
+
+**Fuera de esta pieza, a propósito:** el resto del Flujo 2
+(`POST .../proposal/technical/generate`, `proposalEconomic.ts`, el mapeo de
+cumplimiento `PUT .../requirement-mappings/:topicKey`, aprobaciones y el
+ensamblado del ZIP de cierre) sigue sin pantalla — ver el punto siguiente, sin
+cambios de alcance por esta fase.
+
 ## Explícitamente fuera de esta fase (huecos honestos, no fingidos)
 
 - **`POST .../checklist/run` no tiene UI.** Exige `FileArtifact[]` reales
   (nombre/extensión/tamaño/páginas de los documentos YA SUBIDOS al
   expediente), `FormatLimitsConfig`, `SignatureRequirement[]` y
-  `presentAnnexRefs` — este panel no construye ninguna pantalla de carga de
-  documentos todavía (tampoco existe en ningún vertical un pipeline de
-  extracción de texto de PDF, ver el README de `apps/api/.../licitaciones`).
+  `presentAnnexRefs` — este panel no construye esa pantalla todavía (la carga
+  de PDF que sí existe desde Fase 11, `RequisitosConvocatoria.tsx`, alimenta
+  `.../requirements/extract`, un endpoint distinto; no produce el
+  `FileArtifact[]` que `checklist/run` necesita).
   `ConvocatoriaDetalle.tsx` SÍ muestra, de solo lectura, el último resultado
   ya corrido (por el agente o por una corrida previa vía API) — mostrar un
   dato real sin poder generarlo desde aquí es honesto; fingir un botón
   "ejecutar" que no tiene datos reales que mandar no lo sería.
 - **Propuesta técnica/económica y cierre del expediente** (Flujos 2/3,
   `proposalEconomic.ts`/`technicalProposal.ts`/`cierre.ts`) — sin pantalla
-  todavía. Es la porción más grande de trabajo restante del panel completo
-  (requisitos extraídos, secciones de propuesta, aprobaciones, ensamblado del
+  todavía, MÁS ALLÁ de la carga de bases + requisitos extraídos de Fase 11
+  (ver arriba). Sigue siendo la porción más grande de trabajo restante del
+  panel completo (secciones de propuesta, aprobaciones, ensamblado del
   paquete ZIP, contratos/cobranza/inconformidades/autopsia/renovación de Fase
   6) — trabajo genuino de varias fases más, no construido aquí. El perfil de
   matching (antes en esta lista) ya tiene pantalla real desde Fase 8, ver
-  arriba. Esta fase deliberadamente completó el tramo
-  MÁS IMPORTANTE (convocatorias + matching + go/no-go, el punto de entrada de
-  todo el flujo) de forma honesta y con datos reales de punta a punta, en vez
-  de dejar 5 pantallas a medias.
+  arriba. Esta fase deliberadamente completó el prerrequisito compartido
+  (carga de documentos + requisitos, el punto de entrada de TODO el Flujo 2)
+  de forma honesta y con datos reales de punta a punta, en vez de dejar el
+  flujo completo a medias.
 - **Selector de organización con 2+.** `decideLicitacionesLandingPath` ya
   contempla 2+ organizaciones (`/seleccionar-organizacion`), pero esa ruta no
   existe en `App.tsx` para NINGÚN vertical de este monorepo todavía — mismo

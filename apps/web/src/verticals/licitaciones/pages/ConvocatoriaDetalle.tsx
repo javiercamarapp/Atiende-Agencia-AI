@@ -109,6 +109,9 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
         <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
           {tender.contractingBody ?? "Entidad no declarada"} {tender.externalId ? `· ${tender.externalId}` : ""}
         </p>
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} style={{ display: "inline-block", marginTop: 8, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+          Subir bases y ver requisitos extraídos →
+        </Link>
       </div>
 
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>

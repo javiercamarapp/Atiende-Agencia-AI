@@ -2,9 +2,12 @@
 // (L1 · Flujo 1, checklist.ts). Solo lectura a propósito: `POST .../checklist/run`
 // exige un `FileArtifact[]`/`FormatLimitsConfig`/`SignatureRequirement[]` reales
 // (metadatos de los documentos ya subidos al expediente) que este panel todavía no
-// construye (no hay pantalla de carga de documentos, Fase 7 la deja documentada
-// como pendiente en el README) -- mostrar el ÚLTIMO resultado ya corrido (por el
-// agente o por una corrida previa) sí es honesto y real hoy.
+// construye -- la pantalla de carga que SÍ existe desde Fase 11
+// (`pages/RequisitosConvocatoria.tsx`, `lib/requirements-client.ts`) alimenta
+// `.../requirements/extract`, un endpoint distinto que produce requisitos, no el
+// `FileArtifact[]` que este checklist necesita; sigue documentado como pendiente en
+// el README -- mostrar el ÚLTIMO resultado ya corrido (por el agente o por una
+// corrida previa) sí es honesto y real hoy.
 import { fetchJson } from "./admin-client.ts";
 
 export type ComplianceResult = "verde" | "ambar" | "rojo";
