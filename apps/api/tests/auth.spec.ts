@@ -64,6 +64,115 @@ describe("POST /auth/refresh + GET /auth/me", () => {
   });
 });
 
+// Hallazgo de auditoría (rubro 2, autenticación y sesión, severidad ALTA: "el refresh
+// token vive 30 días sin rotación") — cada uso de POST /auth/refresh revoca el
+// refresh token presentado e implementa rotación real, mismo patrón que la revocación
+// de POST /auth/logout (0003_refresh_token_revocation.sql), conectado esta vez al
+// flujo normal de refresh en vez de a un logout explícito.
+describe("POST /auth/refresh — rotación (replay rejection)", () => {
+  it("un refresh token usado una segunda vez (replay) es rechazado, aunque siga sin expirar y sea criptográficamente válido", async () => {
+    const { deps, ownerEmail, ownerPassword } = await buildTestDeps();
+    const app = buildApp(deps);
+    const login = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: ownerPassword }));
+    const { refreshToken } = (await login.json()) as { refreshToken: string };
+
+    const first = await app.request("/auth/refresh", jsonRequestInit({ refreshToken }));
+    expect(first.status).toBe(200);
+    const { refreshToken: rotatedRefreshToken } = (await first.json()) as { refreshToken: string };
+    expect(rotatedRefreshToken).not.toBe(refreshToken);
+
+    // Replay del MISMO refresh token ya usado — debe rechazarse.
+    const replay = await app.request("/auth/refresh", jsonRequestInit({ refreshToken }));
+    expect(replay.status).toBe(401);
+
+    // El refresh token NUEVO emitido por la rotación sigue funcionando normal.
+    const withRotated = await app.request("/auth/refresh", jsonRequestInit({ refreshToken: rotatedRefreshToken }));
+    expect(withRotated.status).toBe(200);
+  });
+});
+
+// Hallazgo de auditoría (rubro 2, severidad ALTA: "no hay forma de invalidar
+// sesiones activas de un usuario, ej. tras cambio de contraseña o sospecha de
+// compromiso") — ver packages/db/migrations/0006_revoke_all_sessions.sql.
+describe("POST /auth/revoke-sessions", () => {
+  it("cierra TODOS los refresh tokens del usuario autenticado (self-service, sin enumerar cada jti)", async () => {
+    const { deps, ownerEmail, ownerPassword } = await buildTestDeps();
+    const app = buildApp(deps);
+
+    // Dos sesiones distintas del mismo usuario (ej. dos dispositivos).
+    const sesionA = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: ownerPassword }));
+    const { refreshToken: refreshA, token: accessA } = (await sesionA.json()) as { refreshToken: string; token: string };
+    const sesionB = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: ownerPassword }));
+    const { refreshToken: refreshB } = (await sesionB.json()) as { refreshToken: string };
+
+    // Antes de revocar, ambas sesiones refrescan normal.
+    expect((await app.request("/auth/refresh", jsonRequestInit({ refreshToken: refreshA }))).status).toBe(200);
+
+    const revoke = await app.request("/auth/revoke-sessions", { method: "POST", headers: { authorization: `Bearer ${accessA}` } });
+    expect(revoke.status).toBe(200);
+    expect(await revoke.json()).toEqual({ ok: true });
+
+    // refreshA ya fue rotado por el refresh de arriba (nuevo jti) -- pero también
+    // quedó emitido ANTES del corte de revoke-sessions, así que un refresh token de
+    // OTRA sesión (refreshB, nunca usado) debe rechazarse igual, sin haber sido
+    // tocado individualmente por jti.
+    expect((await app.request("/auth/refresh", jsonRequestInit({ refreshToken: refreshB }))).status).toBe(401);
+  });
+
+  it("401 sin Authorization", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+    const res = await app.request("/auth/revoke-sessions", { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+});
+
+// Hallazgo de auditoría (rubro 2, severidad ALTA: "sin rate-limit en /auth/login,
+// /auth/refresh, accept-invite -- un token robado o fuerza bruta no encuentran
+// ninguna fricción"). El backend en memoria de @atiende/core-ratelimit se resetea
+// antes de cada test (ver test-setup/reset-rate-limiter.ts) para que este límite no
+// interfiera con el resto de la suite.
+describe("rate limiting real en /auth/login, /auth/refresh, /auth/accept-invite", () => {
+  it("POST /auth/login: más de 10 intentos en la misma ventana desde la misma IP+email responde 429", async () => {
+    const { deps, ownerEmail } = await buildTestDeps();
+    const app = buildApp(deps);
+
+    let lastStatus = 0;
+    for (let i = 0; i < 11; i += 1) {
+      const res = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: "contraseña-incorrecta" }));
+      lastStatus = res.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it("POST /auth/refresh: más de 30 intentos en la misma ventana desde la misma IP responde 429", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+
+    let lastStatus = 0;
+    for (let i = 0; i < 31; i += 1) {
+      const res = await app.request("/auth/refresh", jsonRequestInit({ refreshToken: "esto-no-es-un-jwt-real" }));
+      lastStatus = res.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it("POST /auth/accept-invite: más de 10 intentos en la misma ventana con el mismo token responde 429", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+
+    let lastStatus = 0;
+    for (let i = 0; i < 11; i += 1) {
+      const res = await app.request(
+        "/auth/accept-invite",
+        jsonRequestInit({ token: "token-inexistente-siempre-el-mismo", fullName: "Alguien", password: "password123" }),
+      );
+      lastStatus = res.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+});
+
 // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
 // hoteles") — ver packages/db/migrations/0003_refresh_token_revocation.sql.
 describe("POST /auth/logout", () => {

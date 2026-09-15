@@ -13,9 +13,30 @@ import { Hono } from "hono";
 import { authMiddleware, hashInviteToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hashPassword, verifyPassword, StaffInviteInvalidError } from "@atiende/db";
+import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../errors.ts";
-import { readJsonCapped } from "../http-security.ts";
+import { readJsonCapped, requestActor } from "../http-security.ts";
 import type { AppDeps } from "../deps.ts";
+
+// Hallazgo de auditoría (rubro 2, autenticación y sesión, severidad ALTA: "sin
+// rate-limit en /auth/login, /auth/refresh, accept-invite -- un token robado o fuerza
+// bruta no encuentran ninguna fricción"). `@atiende/core-ratelimit` ya existía en el
+// monorepo con las categorías `auth:login`/`auth:token-issue` YA catalogadas en
+// `packages/core-ratelimit/src/endpoint-policy.ts` anticipando exactamente este
+// hallazgo -- nunca se había conectado a ninguna ruta real hasta esta pasada (se
+// agrega además `auth:accept-invite`, que no existía). Límites deliberadamente
+// generosos para un usuario legítimo (nadie inicia sesión/refresca/canjea una
+// invitación 10-30 veces en 5 minutos de uso normal) y ajustados para fuerza bruta
+// (10 intentos/5min es un candado real contra probar contraseñas, no un techo que un
+// atacante alcanza sin darse cuenta). La llave combina IP + el identificador que cada
+// endpoint ya tiene disponible ANTES de tocar la base de datos (email/token) --
+// `requestActor` (ver `http-security.ts`) para que el límite sea por IP+identidad, no
+// solo por IP (un NAT compartido no debe bloquear a todo el edificio) ni solo por
+// identidad (un atacante no debe poder rotar de IP para evadirlo sin límite --
+// ambos ejes cuentan).
+const LOGIN_RATE_LIMIT = { max: 10, windowMs: 5 * 60_000 } as const;
+const REFRESH_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
+const ACCEPT_INVITE_RATE_LIMIT = { max: 10, windowMs: 5 * 60_000 } as const;
 
 interface LoginBody {
   readonly email?: unknown;
@@ -85,6 +106,15 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = (await c.req.json().catch(() => ({}))) as LoginBody;
     const { email, password } = validateLoginBody(raw);
 
+    // Hallazgo de auditoría (rubro 2, severidad ALTA) — ver comentario de cabecera del
+    // archivo. Se evalúa DESPUÉS de validar el formato del email (para que la llave
+    // sea estable) pero ANTES de tocar `coreRepo`/scrypt (para que una ráfaga ni
+    // siquiera pague el costo de esa consulta/hash).
+    const loginAllowed = await rateLimit(`auth:login:${requestActor(c.req.raw, email)}`, LOGIN_RATE_LIMIT.max, LOGIN_RATE_LIMIT.windowMs, {
+      category: "auth:login",
+    });
+    if (!loginAllowed) throw Errors.tooManyRequests("Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.");
+
     const invalidCredentials = () => Errors.unauthorized("Correo o contraseña incorrectos.");
     const staff = await deps.coreRepo.findStaffByEmail(email);
     if (!staff) throw invalidCredentials();
@@ -102,29 +132,60 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const body = (await c.req.json().catch(() => ({}))) as { refreshToken?: unknown };
     if (typeof body.refreshToken !== "string" || !body.refreshToken) throw Errors.validation("refreshToken requerido");
 
+    // Hallazgo de auditoría (rubro 2, severidad ALTA) — ver comentario de cabecera del
+    // archivo. Sin identidad todavía disponible (el body solo trae el JWT, y no vale
+    // la pena verificarlo antes de frenar una ráfaga), la llave es solo IP.
+    const refreshAllowed = await rateLimit(`auth:refresh:${requestActor(c.req.raw)}`, REFRESH_RATE_LIMIT.max, REFRESH_RATE_LIMIT.windowMs, {
+      category: "auth:token-issue",
+    });
+    if (!refreshAllowed) throw Errors.tooManyRequests("Demasiados intentos de refresco de sesión. Intenta de nuevo en unos minutos.");
+
     let sub: string;
     let jti: string;
+    let iat: number;
+    let exp: number;
     try {
       const claims = await verifyRefreshToken(body.refreshToken, deps.env.jwtSecret);
       sub = claims.sub;
       jti = claims.jti;
+      iat = claims.iat;
+      exp = claims.exp;
     } catch {
       throw Errors.unauthorized("Refresh token inválido o expirado.");
     }
 
     // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
     // hoteles"): un refresh token cuyo `jti` ya fue revocado (el staff cerró sesión
-    // con él vía POST /auth/logout) no puede reemitir sesión, aunque el JWT en sí
-    // siga siendo criptográficamente válido y no haya expirado todavía — sin este
-    // chequeo, /auth/logout solo habría limpiado el localStorage de QUIEN pidió
-    // logout, sin impedir que ese mismo refresh token (copiado o interceptado antes)
-    // siguiera sirviendo para sacar access tokens nuevos indefinidamente.
+    // con él vía POST /auth/logout, O el propio uso de este mismo token vía rotación
+    // más abajo) no puede reemitir sesión, aunque el JWT en sí siga siendo
+    // criptográficamente válido y no haya expirado todavía — sin este chequeo,
+    // /auth/logout solo habría limpiado el localStorage de QUIEN pidió logout, sin
+    // impedir que ese mismo refresh token (copiado o interceptado antes) siguiera
+    // sirviendo para sacar access tokens nuevos indefinidamente.
     if (await deps.coreRepo.isRefreshTokenRevoked(jti)) {
       throw Errors.unauthorized("Refresh token inválido o expirado.");
     }
 
     const staff = await deps.coreRepo.findStaffById(sub);
     if (!staff) throw Errors.unauthorized();
+
+    // Hallazgo de auditoría (rubro 2, severidad ALTA, "no hay forma de invalidar
+    // sesiones activas de un usuario") — ver `packages/db/migrations/0006_revoke_all_
+    // sessions.sql`. Un refresh token emitido ANTES del corte que fijó POST
+    // /auth/revoke-sessions se rechaza aquí, aunque su `jti` individual nunca haya
+    // sido revocado uno por uno (no hay forma de enumerarlos todos).
+    if (staff.sessionsRevokedAt && iat * 1000 < new Date(staff.sessionsRevokedAt).getTime()) {
+      throw Errors.unauthorized("Refresh token inválido o expirado.");
+    }
+
+    // Hallazgo de auditoría (rubro 2, severidad ALTA, "el refresh token vive 30 días
+    // sin rotación"): se revoca el refresh token PRESENTADO antes de emitir uno nuevo
+    // — cada uso es de un solo tiro. Un replay del mismo refresh token (robado o
+    // interceptado) después de este punto encuentra su `jti` ya en
+    // `core.revoked_refresh_token` y es rechazado por el chequeo de arriba, igual que
+    // si el staff hubiera hecho logout explícito con él.
+    await deps.coreRepo.revokeRefreshToken({ jti, userId: sub, expiresAt: new Date(exp * 1000).toISOString() });
+
     return c.json(await issueSession(deps, staff.id, staff.email), 200);
   });
 
@@ -186,6 +247,22 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     });
   });
 
+  // Hallazgo de auditoría (rubro 2, severidad ALTA, "no hay forma de invalidar
+  // sesiones activas de un usuario, ej. tras cambio de contraseña o sospecha de
+  // compromiso") — ver `packages/db/migrations/0006_revoke_all_sessions.sql`. Cierra
+  // TODOS los refresh tokens del staff autenticado que llama (nunca un id recibido
+  // del body — self-service, no un endpoint de administrador sobre OTRO usuario, eso
+  // queda fuera de esta pasada). El access token ya emitido de la sesión que llama
+  // sigue vivo hasta su propio `exp` (mismo trade-off que logout/rotación arriba, JWT
+  // stateless por diseño) — el efecto real es que NINGÚN refresh token emitido antes
+  // de esta llamada (de esta sesión o de cualquier otra del mismo usuario, en
+  // cualquier dispositivo) vuelve a servir en POST /auth/refresh.
+  app.use("/auth/revoke-sessions", authMiddleware(deps.env));
+  app.post("/auth/revoke-sessions", async (c) => {
+    await deps.coreRepo.revokeAllRefreshTokens(c.get("userId"));
+    return c.json({ ok: true }, 200);
+  });
+
   app.use("/auth/select-org", authMiddleware(deps.env));
   app.post("/auth/select-org", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as SelectOrgBody;
@@ -224,6 +301,18 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.post("/auth/accept-invite", async (c) => {
     const raw = await readJsonCapped<AcceptInviteBody>(c.req.raw, 4 * 1024);
     const { token, fullName, password } = validateAcceptInviteBody(raw);
+
+    // Hallazgo de auditoría (rubro 2, severidad ALTA) — ver comentario de cabecera del
+    // archivo. Llave por IP + token (nunca el token completo se loguea/expone más
+    // allá de esta llave interna del rate limiter — mismo criterio que el resto del
+    // monorepo de nunca persistir un secreto en texto plano más de lo necesario).
+    const acceptInviteAllowed = await rateLimit(
+      `auth:accept-invite:${requestActor(c.req.raw, token)}`,
+      ACCEPT_INVITE_RATE_LIMIT.max,
+      ACCEPT_INVITE_RATE_LIMIT.windowMs,
+      { category: "auth:accept-invite" },
+    );
+    if (!acceptInviteAllowed) throw Errors.tooManyRequests("Demasiados intentos. Intenta de nuevo en unos minutos.");
 
     const passwordHash = await hashPassword(password);
     let result;

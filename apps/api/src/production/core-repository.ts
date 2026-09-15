@@ -63,4 +63,14 @@ export class ProductionCoreRepository implements CoreRepository {
   isRefreshTokenRevoked(jti: string): Promise<boolean> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).isRefreshTokenRevoked(jti));
   }
+
+  // Hallazgo de auditoría (rubro 2, severidad ALTA, "no hay forma de invalidar
+  // sesiones activas de un usuario") — sesión de sistema igual que el resto de este
+  // archivo: POST /auth/revoke-sessions usa `authMiddleware` (verifica el JWT Bearer
+  // por sí solo) pero nunca abre un `TenantDbSession` por-request propio, mismo
+  // criterio ya establecido por GET /auth/me (también autenticado, también resuelto
+  // sobre `deps.coreRepo` de sesión de sistema).
+  revokeAllRefreshTokens(userId: string): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).revokeAllRefreshTokens(userId));
+  }
 }

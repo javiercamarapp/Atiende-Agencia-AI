@@ -54,6 +54,14 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   // hoteles") — jti -> revocado. Solo el `jti` se guarda, nunca el JWT completo
   // (mismo criterio que un password/token de invitación); ver `revokeRefreshToken`.
   private readonly revokedRefreshTokenJtis = new Set<string>();
+  // Hallazgo de auditoría (rubro 2, severidad ALTA, "no hay forma de invalidar
+  // sesiones activas de un usuario") — userId -> ISO 8601 del corte de
+  // `revokeAllRefreshTokens`. Mapa aparte en vez de mutar el `StaffUserRow` guardado
+  // en `staffById` para que `addStaff` (usado por decenas de fixtures existentes) no
+  // tenga que empezar a conocer este campo — `findStaffByEmail`/`findStaffById` lo
+  // mezclan al leer, mismo criterio que Postgres lo trae como columna de la misma
+  // fila real (ver `postgres-core-repository.ts`).
+  private readonly sessionsRevokedAtByUserId = new Map<string, string>();
 
   addStaff(staff: StaffUserRow): void {
     if (this.staffIdByEmail.has(staff.email)) {
@@ -74,13 +82,22 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     this.memberships.push(membership);
   }
 
+  /** Adjunta `sessionsRevokedAt` (mapa aparte, ver comentario de cabecera) a la fila
+   *  guardada de `staffById` — nunca muta el `StaffUserRow` original. */
+  private withSessionsRevokedAt(staff: StaffUserRow): StaffUserRow {
+    return { ...staff, sessionsRevokedAt: this.sessionsRevokedAtByUserId.get(staff.id) ?? null };
+  }
+
   async findStaffByEmail(email: string): Promise<StaffUserRow | null> {
     const id = this.staffIdByEmail.get(email);
-    return id ? (this.staffById.get(id) ?? null) : null;
+    if (!id) return null;
+    const staff = this.staffById.get(id);
+    return staff ? this.withSessionsRevokedAt(staff) : null;
   }
 
   async findStaffById(id: string): Promise<StaffUserRow | null> {
-    return this.staffById.get(id) ?? null;
+    const staff = this.staffById.get(id);
+    return staff ? this.withSessionsRevokedAt(staff) : null;
   }
 
   async findMembershipsByUserId(userId: string): Promise<readonly MembershipRow[]> {
@@ -221,5 +238,13 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
 
   async isRefreshTokenRevoked(jti: string): Promise<boolean> {
     return this.revokedRefreshTokenJtis.has(jti);
+  }
+
+  // ---- Hallazgo de auditoría (rubro 2, severidad ALTA, "no hay forma de invalidar
+  // sesiones activas de un usuario") — ver el comentario de `sessionsRevokedAtByUserId`
+  // arriba y el contrato completo en `core-repository.ts::revokeAllRefreshTokens`. ----
+
+  async revokeAllRefreshTokens(userId: string): Promise<void> {
+    this.sessionsRevokedAtByUserId.set(userId, new Date().toISOString());
   }
 }
