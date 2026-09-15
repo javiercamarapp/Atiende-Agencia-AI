@@ -1,13 +1,16 @@
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué:
-// `hotelesPaymentsPort`/`despachosAuditSink` (integraciones sin adaptador/
+// `hotelesPaymentsPort`/`hotelesFraudeAuditSink` (integraciones sin adaptador/
 // credenciales, no relacionadas con RLS). `coreRepo`/`engine` y ahora también
 // `restaurantesRepo`/`hotelesRepo`/`citasRepo`/`licitacionesRepo`/`despachosRepo`/
 // `rentasRepo`/`rentasOwnerPortalRepo` SÍ son reales de punta a punta contra
 // Supabase en cuanto `DATABASE_URL` apunte al proyecto consolidado — estos 7
 // últimos como FÁBRICAS `(db) => new PostgresXRepository(db)`, nunca un objeto ya
-// construido (ver `../deps.ts` para por qué).
+// construido (ver `../deps.ts` para por qué). `despachosAuditSink` TAMPOCO es ya
+// `notProductionReady` — corrige una regresión real de la Ronda 12, ver
+// `./despachos-audit-sink.ts` y `packages/domain-despachos/migrations/
+// 008_despachos_audit_log.sql`.
 //
 // `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler`/`llmGateway`: el
 // bloqueante que quedaba (ningún proveedor LLM real registrado, ver
@@ -68,6 +71,7 @@ import type { AppDeps } from "../deps.ts";
 import { ProductionCoreRepository } from "./core-repository.ts";
 import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-repository.ts";
 import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
+import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -193,16 +197,29 @@ export function buildProductionDeps(): AppDeps {
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: notProductionReady<PaymentsPort>("hotelesPaymentsPort"),
     hotelesTurnHandler: llmGateway ? buildRealHotelesTurnHandler(engine, llmGateway) : notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
-    // Fase 5 (H5/REQ-BO-001/002) — a diferencia de `hotelesPaymentsPort` (SIN
-    // adaptador real todavía), aquí SÍ se conecta un `CfdiPort` real de punta a
-    // punta: `FinkokAdapter`/`SwSapienAdapter` son esqueletos HONESTOS que fallan
-    // explícito con `PortUnavailableError` mientras falten sus variables de entorno
-    // de credenciales/CSD (ver @atiende/mcp-cfdi/README.md) -- nunca fabrican un
-    // timbrado. No hace falta `notProductionReady` aquí porque el propio adaptador
-    // YA es honesto sobre su disponibilidad vía `status()`.
+    // Fase 5 (H5/REQ-BO-001/002) — Fix hallazgo auditoría (este comentario ANTES
+    // afirmaba incorrectamente que "SÍ se conecta un CfdiPort real de punta a
+    // punta"; es falso en este monorepo, se corrige aquí). `FinkokAdapter`/
+    // `SwSapienAdapter` son esqueletos HONESTOS -- código de integración real
+    // documentado (rutas SOAP/REST, forma del payload) pero SIN CSD/credenciales
+    // reales de Finkok/SW Sapien configuradas en este entorno (no hay cuenta de
+    // ningún PAC dada de alta): `timbrar`/`cancelar`/`consultarEstado` lanzan
+    // `PortUnavailableError` de forma INCONDICIONAL, nunca fabrican un timbrado
+    // falso. En otras palabras: NO hay ningún `CfdiPort` real de punta a punta
+    // conectado hoy -- timbrar/cancelar un CFDI de hospedaje real de un hotel es
+    // imposible en este ambiente hasta que alguien configure las variables de
+    // entorno de credenciales/CSD de un PAC real (ver @atiende/mcp-cfdi/README.md).
+    // No hace falta `notProductionReady` aquí porque el propio adaptador ya es
+    // honesto sobre su disponibilidad vía `status()`, Y (fix de este mismo
+    // hallazgo) `apps/api/.../hoteles/cfdi.ts` ahora traduce ese
+    // `PortUnavailableError`/`AggregateError` a un 503 `service_unavailable`
+    // explícito en vez de dejar que `app.onError` lo aplane a un 500 genérico.
     hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()),
     // Falta un adaptador de auditoría real (tabla/servicio dedicado) -- mismo tipo
-    // de gap que `despachosAuditSink` (ver ese comentario abajo), no el de sesión.
+    // de gap que tenía `despachosAuditSink` antes de la migración 007 de
+    // domain-despachos (ver `./despachos-audit-sink.ts`); `hotelesFraudeAuditSink`
+    // queda deliberadamente FUERA de ese cambio (gap propio de hoteles, no pedido
+    // en esa fase) — sigue `notProductionReady` hasta que tenga su propia tabla.
     hotelesFraudeAuditSink: notProductionReady<AuditSink>("hotelesFraudeAuditSink"),
     citasRepo: (db) => new PostgresCitasRepository(db),
     // El turn handler real (LLM real vía @atiende/agent-core::LlmGateway con
@@ -231,7 +248,18 @@ export function buildProductionDeps(): AppDeps {
     citasGoogleTokenExchange: exchangeGoogleAuthorizationCode,
     licitacionesRepo: (db) => new PostgresLicitacionesRepository(db, env.licitacionesStorageDir),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
-    despachosAuditSink: notProductionReady<AuditSink>("despachosAuditSink"),
+    // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
+    // la Ronda 12 documentada en `packages/domain-despachos/migrations/
+    // 008_despachos_audit_log.sql`: `cierre-mensual.ts`/`migracion-catalogo.ts`
+    // llamaban a este puerto DESPUÉS de que su escritura de negocio (completar
+    // tarea/cerrar un período fiscal/decidir un mapeo) ya había hecho commit, así
+    // que el stub que SIEMPRE lanzaba tumbaba esos 5 endpoints con un 500 sobre un
+    // cambio que ya había quedado persistido. `ProductionDespachosAuditSink`
+    // (`./despachos-audit-sink.ts`) escribe a `despachos.audit_log` desde la
+    // sesión de SISTEMA (mismo patrón que `coreRepo` arriba) y nunca lanza (ver
+    // cabecera de ese archivo) -- ese 500-después-del-commit ya no puede ocurrir
+    // por este puerto.
+    despachosAuditSink: new ProductionDespachosAuditSink(engine),
     rentasRepo: (db) => new PostgresRentasRepository(db),
     // Fase 5 -- ambos son código real de producción, no un stub: un feed iCal de
     // canal es una URL pública sin credenciales, así que a diferencia de

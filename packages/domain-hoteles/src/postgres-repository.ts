@@ -1370,8 +1370,13 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return rows.map(mapCfdiEmision);
   }
 
+  // Hallazgo auditoría — mismo fix que InMemoryHotelesRepository: `canceled_at`
+  // solo se sella cuando el status es 'cancelado' de verdad. Antes de este fix se
+  // escribía `canceled_at = now()` con CUALQUIER status devuelto por el PAC
+  // (incluyendo 'en_proceso_cancelacion'), dejando un CFDI con fecha de
+  // cancelación sin haber cancelado en realidad.
   async updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void> {
-    await this.db.query(`update hoteles.cfdi_emision set status = $1, canceled_at = now() where id = $2;`, [status, cfdiId]);
+    await this.db.query(`update hoteles.cfdi_emision set status = $1, canceled_at = case when $1 = 'cancelado' then now() else canceled_at end where id = $2;`, [status, cfdiId]);
   }
 
   // ---- HotelesRepository: Fase 7 — descubrimiento de organización/property ----

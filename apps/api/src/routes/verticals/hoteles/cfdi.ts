@@ -18,6 +18,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { PortUnavailableError } from "@atiende/mcp-cfdi";
 import {
   CFDI_HOSPEDAJE_ROLES,
   IdempotencyConflictError,
@@ -33,6 +34,30 @@ import {
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+// Hallazgo auditoría — en producción `deps.hotelesCfdiPort` es
+// `DualPacCfdiPort(FinkokAdapter, SwSapienAdapter)`, y AMBOS adaptadores son
+// esqueletos honestos que lanzan `PortUnavailableError` de forma INCONDICIONAL
+// (sin CSD/credenciales reales de Finkok/SW Sapien configuradas en este entorno,
+// ver comentario de cabecera de finkok-adapter.ts/sw-sapien-adapter.ts). Antes de
+// este fix ese error llegaba tal cual a `app.onError` (app.ts), que solo conoce
+// `ApiError` -- cualquier otro error se aplana a un 500 genérico "Error interno",
+// indistinguible en la UI de un bug real. `DualPacCfdiPort.timbrar` envuelve el
+// fallo de ambos PAC en un `AggregateError`; `.cancelar`/`.consultarEstado`
+// intentan el primario y, si falla, propagan tal cual el error del secundario (un
+// `PortUnavailableError` sin envolver). Se detectan ambas formas para responder
+// 503 honesto en vez de un 500 que sugiere un bug.
+function isPacUnavailableError(err: unknown): boolean {
+  if (err instanceof PortUnavailableError) return true;
+  if (err instanceof AggregateError) return err.errors.every((e) => e instanceof PortUnavailableError);
+  return false;
+}
+
+function pacUnavailableApiError(accion: string) {
+  return Errors.serviceUnavailable(
+    `El servicio de timbrado CFDI (PAC) no está disponible en este entorno: no hay credenciales reales de Finkok/SW Sapien configuradas, así que no se pudo ${accion}. Esto es esperado en este ambiente (sin CSD/credenciales de un PAC real) -- configura las variables de entorno del PAC para habilitarlo.`,
+  );
+}
 
 interface EmitirHospedajeBody {
   readonly rfcReceptor?: unknown;
@@ -280,6 +305,7 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.json(result.body as object, result.status as 201);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
+      if (isPacUnavailableError(err)) throw pacUnavailableApiError("timbrar el CFDI de hospedaje");
       throw err;
     }
   });
@@ -359,6 +385,7 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.json(result.body as object, result.status as 201);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
+      if (isPacUnavailableError(err)) throw pacUnavailableApiError("timbrar el complemento de pago");
       throw err;
     }
   });
@@ -383,10 +410,74 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (!cfdi.uuidFiscal) throw Errors.conflict("Este CFDI no tiene UUID fiscal (no fue timbrado con éxito).");
     if (cfdi.status === "cancelado") throw Errors.conflict("Este CFDI ya está cancelado.");
 
-    const cancelacion = await deps.hotelesCfdiPort.cancelar({ uuid: cfdi.uuidFiscal, motivo, folioSustitucion, idempotencyKey });
+    let cancelacion: Awaited<ReturnType<AppDeps["hotelesCfdiPort"]["cancelar"]>>;
+    try {
+      cancelacion = await deps.hotelesCfdiPort.cancelar({ uuid: cfdi.uuidFiscal, motivo, folioSustitucion, idempotencyKey });
+    } catch (err) {
+      if (isPacUnavailableError(err)) throw pacUnavailableApiError("cancelar el CFDI");
+      throw err;
+    }
+    // Hallazgo auditoría — el PAC puede devolver 'en_proceso_cancelacion' (el
+    // proceso de aceptación/rechazo de cancelación 2022+ del SAT no es
+    // instantáneo): `updateCfdiEmisionCancelacion` NUNCA marca `canceledAt` salvo
+    // que el status sea 'cancelado' de verdad (ver su propio comentario) -- antes
+    // de este fix se marcaba `canceled_at = now()` con CUALQUIER status devuelto
+    // por el PAC, dejando el registro con fecha de cancelación pero sin haber
+    // cancelado en realidad, y sin ninguna ruta que permitiera consultar el
+    // estado real después (ver endpoint .../consultar-estado más abajo).
     await repo.updateCfdiEmisionCancelacion(cfdiId, cancelacion.status);
 
     return c.json({ id: cfdiId, estado: cancelacion.status });
+  });
+
+  // Hallazgo auditoría — 'en_proceso_cancelacion' era un callejón sin salida: una
+  // vez que el PAC devolvía ese status desde /cancelar, ninguna ruta invocaba
+  // jamás `CfdiPort.consultarEstado`, así que el CFDI se quedaba para siempre sin
+  // confirmar si el SAT terminó aceptando o rechazando la cancelación (y, por el
+  // corto-circuito de idempotencia de arriba y el índice único parcial de
+  // 015_cfdi_hospedaje_reemision_tras_cancelacion.sql, tampoco se podía reemitir
+  // mientras tanto -- correcto, sigue "vigente"). Ruta manual (staff con acceso a
+  // CFDI, mismo rol que cancelar) en vez de un cron interno de plataforma: a
+  // diferencia de los cron sweep de rentas (ver checkout-sweep-cron.ts), aquí no
+  // hay forma de recorrer TODOS los CFDI pendientes cross-organización sin
+  // tropezar con el mismo bloqueador de RLS ya documentado ahí
+  // (`withAppSession({ userId: null })` nunca satisface
+  // `hoteles.can_access_money(property_id)`) -- una ruta manual por CFDI, scopeada
+  // a la property vía `requirePropertyMembership`, evita ese problema y le da al
+  // staff un botón real para desatorar el estado (ver botón en Cfdi.tsx).
+  app.post("/hoteles/:propertyId/cfdi/:cfdiId/consultar-estado", async (c) => {
+    assertVerticalRole(c, CFDI_HOSPEDAJE_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const cfdiId = c.req.param("cfdiId");
+
+    const repo = deps.hotelesRepo(c.get("db"));
+    const cfdi = await repo.findCfdiEmision(propertyId, cfdiId);
+    if (!cfdi) throw Errors.notFound("CFDI no encontrado.");
+    if (!cfdi.uuidFiscal) throw Errors.conflict("Este CFDI no tiene UUID fiscal (no fue timbrado con éxito): no hay nada que consultar contra el PAC.");
+    if (cfdi.status !== "en_proceso_cancelacion") {
+      throw Errors.conflict(`Este CFDI está en estado "${cfdi.status}", no en proceso de cancelación: no hay nada pendiente que consultar contra el PAC.`);
+    }
+
+    let estadoReal: CfdiEmisionRecord["status"];
+    try {
+      estadoReal = await deps.hotelesCfdiPort.consultarEstado(cfdi.uuidFiscal);
+    } catch (err) {
+      if (isPacUnavailableError(err)) throw pacUnavailableApiError("consultar el estado real de la cancelación");
+      throw err;
+    }
+
+    // Solo se persiste cuando el PAC YA confirmó 'cancelado' -- si sigue
+    // 'en_proceso_cancelacion' (SAT todavía no resuelve) o si el PAC informa que
+    // la cancelación fue rechazada, este endpoint es de solo consulta: el estado
+    // almacenado no se toca para no inventar una transición que el motivo de
+    // cancelación conocido no sustenta, y el staff puede reintentar la consulta
+    // más tarde.
+    if (estadoReal === "cancelado") {
+      await repo.updateCfdiEmisionCancelacion(cfdiId, "cancelado");
+    }
+
+    const actual = estadoReal === "cancelado" ? await repo.findCfdiEmision(propertyId, cfdiId) : cfdi;
+    return c.json({ ...serializeCfdi(actual ?? cfdi), estadoReal });
   });
 
   return app;

@@ -157,6 +157,30 @@ describe("InMemoryHotelesRepository -- CFDI de hospedaje (REQ-BO-002 idempotenci
     expect(updated!.canceledAt).not.toBeNull();
   });
 
+  // Hallazgo auditoría — 'en_proceso_cancelacion' (el ciclo de aceptación/rechazo
+  // de cancelación 2022+ del SAT no es instantáneo) NO es 'cancelado'. El bug
+  // real: este método marcaba `canceledAt` con CUALQUIER status que devolviera el
+  // PAC, así que un CFDI todavía pendiente de confirmación quedaba con una fecha
+  // de cancelación que era mentira, y (por el índice único parcial/corto-circuito
+  // de idempotencia, que tratan cualquier status <> 'cancelado' como vigente)
+  // tampoco podía reemitirse mientras tanto -- un callejón sin salida.
+  it("updateCfdiEmisionCancelacion con status 'en_proceso_cancelacion' NO marca canceledAt", async () => {
+    const repo = repoWithFolio();
+    const created = await repo.insertCfdiEmision(cfdiInput());
+    await repo.updateCfdiEmisionCancelacion(created.id, "en_proceso_cancelacion");
+    const updated = await repo.findCfdiEmision(PROPERTY, created.id);
+    expect(updated!.status).toBe("en_proceso_cancelacion");
+    expect(updated!.canceledAt).toBeNull();
+
+    // Cuando el PAC (vía consultarEstado, más tarde) por fin confirma 'cancelado',
+    // SÍ se marca canceledAt -- la condición es sobre el status final, no sobre
+    // "nunca".
+    await repo.updateCfdiEmisionCancelacion(created.id, "cancelado");
+    const confirmado = await repo.findCfdiEmision(PROPERTY, created.id);
+    expect(confirmado!.status).toBe("cancelado");
+    expect(confirmado!.canceledAt).not.toBeNull();
+  });
+
   it("a lo más UN CFDI de tipo 'pago' por payment -- idempotente por paymentId", async () => {
     const repo = repoWithFolio();
     const first = await repo.insertCfdiEmision(cfdiInput({ tipo: "pago", paymentId: "pay-1", subtotal: 0, iva: 0, ishMonto: 0, dsaMonto: 0, total: 500 }));

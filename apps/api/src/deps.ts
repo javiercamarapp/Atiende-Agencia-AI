@@ -118,13 +118,18 @@ export interface AppDeps {
   readonly citasGoogleTokenExchange: (input: ExchangeAuthorizationCodeInput) => Promise<ExchangeAuthorizationCodeResult>;
   readonly licitacionesRepo: (db: TenantDbSession) => LicitacionesRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
-  /** Auditoría de decisiones de la cola de revisión humana (aprobar/rechazar un CFDI)
-   * — reutiliza `@atiende/core-authz::AuditSink` en vez de una tabla propia de
-   * despachos (ver diseño Fase 1 despachos §3, tabla de mapeo: "lo compartido vive
-   * en core, no se repite por vertical"). A diferencia de los repos de arriba, NO es
-   * una fábrica por-request: es una integración transversal (aún sin adaptador de
-   * producción por falta de una tabla/servicio de auditoría dedicado, no por el gap
-   * de sesión-por-request de los repos de dominio) — ver production/not-ready.ts. */
+  /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un
+   * período de cierre mensual (cierre-mensual.ts) y aprobar/rechazar/editar un
+   * mapeo de migración de catálogo (migracion-catalogo.ts). Implementa
+   * `@atiende/core-authz::AuditSink` — tipo compartido, pero el adaptador de
+   * producción SÍ es una tabla propia de despachos (`despachos.audit_log`, ver
+   * `packages/domain-despachos/migrations/008_despachos_audit_log.sql` para por
+   * qué se apartó del comentario original de la migración 001 que preveía un
+   * `core.authz_audit_log` genérico). A diferencia de los repos de arriba, NO es
+   * una fábrica por-request: es una integración transversal que escribe desde la
+   * sesión de SISTEMA (`ProductionDespachosAuditSink`, mismo patrón que `coreRepo`
+   * — ver `apps/api/src/production/despachos-audit-sink.ts`), nunca depende del
+   * gap de sesión-por-request de los repos de dominio de arriba. */
   readonly despachosAuditSink: AuditSink;
   readonly rentasRepo: (db: TenantDbSession) => RentasRepository;
   /** Fase 3 rentas -- portal de propietario (solo lectura), identidad/sesión propias

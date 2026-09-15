@@ -1,7 +1,8 @@
 // Test de integración end-to-end (Fase 1 despachos §7, obligatorio): ingesta real de
 // un CFDI vía HTTP -> `requiresHumanReview=true` real (no simulado) -> aparece en la
 // cola de revisión -> un rol autorizado la resuelve -> la decisión queda auditada vía
-// `@atiende/core-authz::AuditSink` (sin tabla de auditoría propia de despachos).
+// `@atiende/core-authz::AuditSink` (el TIPO compartido; el adaptador de producción
+// SÍ tiene su propia tabla, `despachos.audit_log`, ver migración 007).
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
@@ -137,7 +138,9 @@ describe("cola de revisión humana — flujo 2, gateado por requiresHumanReview"
     // No queda pendiente.
     expect(await ctx.despachosRepo.listPendingReviews(ctx.propertyId)).toHaveLength(0);
 
-    // Auditoría real -- no una tabla propia de despachos, ver diseño Fase 1 §3.
+    // Auditoría real vía el `AuditSink` compartido (en este test, el
+    // `InMemoryAuditSink` de fixtures.ts -- producción usa `despachos.audit_log`,
+    // ver migración 007 y despachos-audit-sink.ts).
     const auditEntries = (ctx.deps.despachosAuditSink as unknown as { entries: { action: string; decision: string }[] }).entries;
     expect(auditEntries.some((e) => e.action === "despachos.revision:aprobado" && e.decision === "allowed")).toBe(true);
   });

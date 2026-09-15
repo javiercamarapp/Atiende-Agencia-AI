@@ -4,8 +4,10 @@
 // `fnbAllergyGuard` de hoteles o al `resolveOrderItemsAgainstProducts` de
 // restaurantes: nunca se declara un CFDI resuelto sin que un humano confirme cuando
 // el motor tenía dudas. Cada decisión (aprobar/rechazar) se audita vía
-// `@atiende/core-authz::AuditSink` — NO se reinventa una tabla de auditoría propia de
-// despachos (ver diseño Fase 1 §3).
+// `@atiende/core-authz::AuditSink` — el TIPO se reutiliza tal cual (diseño Fase 1
+// §3), aunque el adaptador de producción SÍ escribe a una tabla propia de despachos
+// (`despachos.audit_log`, agregada en la migración 007 -- ver
+// apps/api/src/production/despachos-audit-sink.ts para por qué).
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";

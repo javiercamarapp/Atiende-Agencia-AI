@@ -8,7 +8,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CompanyDataDuplicateKeyError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
   ApprovedRateCreateInput,
@@ -841,7 +841,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   async updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord> {
     const list = this.companyDocuments.get(organizationId) ?? [];
     const index = list.findIndex((d) => d.id === documentId);
-    if (index === -1) throw new Error(`Documento de empresa "${documentId}" no encontrado para la organización "${organizationId}".`);
+    if (index === -1) throw new CompanyDataNotFoundError("Documento de empresa", documentId);
     const updated: CompanyDocumentRecord = { ...list[index]!, ...input };
     const next = [...list];
     next[index] = updated;
@@ -868,7 +868,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   async updateApprovedRate(organizationId: string, rateId: string, input: ApprovedRateUpdateInput): Promise<ApprovedRateRecord> {
     const list = this.approvedRates.get(organizationId) ?? [];
     const index = list.findIndex((r) => r.id === rateId);
-    if (index === -1) throw new Error(`Tarifa aprobada "${rateId}" no encontrada para la organización "${organizationId}".`);
+    if (index === -1) throw new CompanyDataNotFoundError("Tarifa aprobada", rateId);
     const updated: ApprovedRateRecord = { ...list[index]!, ...input };
     const next = [...list];
     next[index] = updated;
@@ -897,7 +897,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   async updateCompanyCapability(organizationId: string, capabilityId: string, input: CompanyCapabilityUpdateInput): Promise<CompanyCapabilityRecord> {
     const list = this.companyCapabilities.get(organizationId) ?? [];
     const index = list.findIndex((c) => c.id === capabilityId);
-    if (index === -1) throw new Error(`Capacidad "${capabilityId}" no encontrada para la organización "${organizationId}".`);
+    if (index === -1) throw new CompanyDataNotFoundError("Capacidad", capabilityId);
     const updated: CompanyCapabilityRecord = { ...list[index]!, ...input };
     const next = [...list];
     next[index] = updated;
@@ -915,7 +915,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   async updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord> {
     const list = this.companyExperience.get(organizationId) ?? [];
     const index = list.findIndex((e) => e.id === experienceId);
-    if (index === -1) throw new Error(`Experiencia "${experienceId}" no encontrada para la organización "${organizationId}".`);
+    if (index === -1) throw new CompanyDataNotFoundError("Experiencia", experienceId);
     const updated: CompanyExperienceItemRecord = { ...list[index]!, ...input };
     const next = [...list];
     next[index] = updated;
@@ -934,7 +934,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   async updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord> {
     const list = this.companySigners.get(organizationId) ?? [];
     const index = list.findIndex((s) => s.id === signerId);
-    if (index === -1) throw new Error(`Firmante "${signerId}" no encontrado para la organización "${organizationId}".`);
+    if (index === -1) throw new CompanyDataNotFoundError("Firmante", signerId);
     const updated: CompanySignerRecord = { ...list[index]!, ...input };
     const next = [...list];
     next[index] = updated;

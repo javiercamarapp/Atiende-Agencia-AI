@@ -87,7 +87,7 @@ describe("restaurantes/lib/repartidor-client.ts — refresh automático ante 401
     expect(readPersistedSession(storage)).toEqual(REFRESHED);
   });
 
-  it("fetchAssignedOrders: refresh fallido -> limpia la sesión de localStorage (Repartidor.tsx la vuelve a leer como null y redirige a login)", async () => {
+  it("fetchAssignedOrders: refresh fallido -> limpia la sesión de localStorage y dispara SESSION_EXPIRED_EVENT (Repartidor.tsx escucha ese evento y redirige a login — ver restaurantes-repartidor-session-expired.spec.ts, no re-lee la sesión: navega directo desde el listener)", async () => {
     const fetchImpl = (async (url: string) => {
       if (url === "http://api.local/auth/refresh") return new Response(JSON.stringify({ message: "Refresh token inválido." }), { status: 401 });
       return new Response(JSON.stringify({ message: "jwt expired" }), { status: 401 });

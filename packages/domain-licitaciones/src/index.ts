@@ -182,7 +182,7 @@ export type {
   GoNoGoDecisionCreateInput,
 } from "./repository.ts";
 export { InMemoryLicitacionesRepository } from "./in-memory-repository.ts";
-export { PostgresLicitacionesRepository } from "./postgres-repository.ts";
+export { PostgresLicitacionesRepository, dateColumnToExplicitOffsetIso } from "./postgres-repository.ts";
 
 // ---- Fase 5 pieza 1: andamiaje de ingesta (REQ-004/005/146..150) ----
 export { SOURCE_CONNECTOR_IDS, isSourceConnectorId, SOURCE_HEALTH_STATES, SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, ConnectorRegistry, LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
@@ -245,7 +245,7 @@ export { DEFAULT_RENEWAL_LEAD_DAYS, daysBetween as renewalDaysBetween, computeRe
 export type { RenewalCandidateContract, RenewalAlertCandidate, RenewalUrgency, RenewalUpcomingCandidate } from "./renewal-radar.ts";
 
 export { INCONFORMIDAD_REVIEW_ROLES } from "./roles.ts";
-export { ContractTransitionRejectedError, TenderResolutionRejectedError, CompanyDataDuplicateKeyError } from "./errors.ts";
+export { ContractTransitionRejectedError, TenderResolutionRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError } from "./errors.ts";
 
 // ---- Fase 16: resolución won/lost + escritura de "datos de empresa" ----
 export { TENDER_RESOLUTIONS, TENDER_RESOLVABLE_FROM_STATUSES, isTenderResolution, checkTenderResolution } from "./tender-resolution.ts";

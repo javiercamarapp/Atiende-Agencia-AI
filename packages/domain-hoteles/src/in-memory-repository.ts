@@ -1210,10 +1210,19 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 
+  // Hallazgo auditoría — 'en_proceso_cancelacion' (el PAC todavía no confirma si
+  // el SAT aceptó o rechazó la cancelación, ver ciclo 2022+ en port.ts) NO es
+  // 'cancelado': marcar `canceledAt` con CUALQUIER status que devolviera el PAC
+  // (el bug real, antes de este fix) dejaba un CFDI con fecha de cancelación sin
+  // haber cancelado en realidad -- y como el índice único parcial/corto-circuito
+  // de idempotencia tratan cualquier status <> 'cancelado' como vigente, ese
+  // folio quedaba sin poder reemitirse NI mostrar una fecha de cancelación
+  // honesta. Solo se sella `canceledAt` cuando el status es 'cancelado' de
+  // verdad.
   async updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void> {
     const record = this.cfdiEmisiones.get(cfdiId);
     if (!record) throw new Error(`CFDI ${cfdiId} no encontrado.`);
-    this.cfdiEmisiones.set(cfdiId, { ...record, status, canceledAt: new Date().toISOString() });
+    this.cfdiEmisiones.set(cfdiId, { ...record, status, canceledAt: status === "cancelado" ? new Date().toISOString() : record.canceledAt });
   }
 
   // ---- HotelesRepository: Fase 7 — descubrimiento de organización/property ----

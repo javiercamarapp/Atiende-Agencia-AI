@@ -7,7 +7,7 @@
 // criterio que el resto de este vertical.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { Navigate, NavLink } from "react-router-dom";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import type { LoginSession } from "../../lib/auth-client.ts";
 import { fetchBranches } from "./dashboard-client.ts";
@@ -172,6 +172,23 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // un selector visual real (fuera de alcance de esta fase, ver diseño §1).
   const propertyId = branches[0]!.propertyId;
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "staff";
+
+  // Ronda 13 — hallazgo de auditoría (severidad ALTA, mismo archivo de causa que el
+  // listener de SESSION_EXPIRED_EVENT de arriba): un repartidor que entra por URL
+  // directa a `/restaurantes/:slug` (no por el link de su invitación, que ya lo manda
+  // a `/restaurantes/:slug/repartidor` vía `decideLandingPathForInvite`, ver
+  // shell-landing-path.spec.ts) llegaba HASTA AQUÍ, con este Shell pintando el nav de
+  // gestión completo (Productos/Sucursales/Pedidos/Historial/Clientes) para un rol
+  // que `MANAGER_ROLES` (domain-restaurantes/src/roles.ts) excluye a propósito — y el
+  // `<Dashboard>` que las rutas hijas renderizan ahí responde 403 porque el backend sí
+  // aplica esa misma lista. Redirige ANTES de pintar ese nav, al único panel que el
+  // backend de verdad le permite (mismo REPARTIDOR_ROLES) — nunca al revés: un
+  // MANAGER_ROLE nunca pasa por aquí (siempre es "staff" para cualquier rol vertical
+  // que no reconozca, ver el `?? "staff"` de arriba, así que solo "repartidor" exacto
+  // dispara esto).
+  if (role === "repartidor") {
+    return <Navigate to={`/restaurantes/${orgSlug}/repartidor`} replace />;
+  }
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>

@@ -6,7 +6,7 @@
 // `licitaciones.can_access_org`/`can_write_org`/`can_decide_org`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { CompanyDataDuplicateKeyError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
   ApprovedRateCreateInput,
@@ -106,6 +106,35 @@ import type {
 // Ventana de protección contra reintento de un Idempotency-Key — mismo
 // criterio que domain-hoteles/domain-restaurantes.
 const IDEMPOTENCY_KEY_TTL_DAYS = 7;
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * `licitaciones.company_document.expires_at` y
+ * `licitaciones.approved_rate.valid_from`/`valid_until` son columnas `date`
+ * (001_licitaciones_schema.sql) que este repositorio lee con `::text` (el
+ * parser nativo de `pg` para OID 1082 devolvería un `Date`, no la cadena que
+ * el resto de este archivo espera) — pero esa cadena `YYYY-MM-DD` por sí
+ * sola NO trae el offset horario explícito que `assertExplicitOffset`
+ * (types.ts) exige incondicionalmente en cuanto el valor no es `null`
+ * (`CompanyDataService.resolveDocumentByType`/`resolveApprovedRate`,
+ * company-data.ts). Sin esta normalización, cualquier fecha de vigencia
+ * real hacía lanzar esos dos métodos SIEMPRE, tumbando con 500 tanto
+ * `POST .../proposal/economic/generate` como la generación de la propuesta
+ * técnica en producción — el repositorio en memoria nunca reproduce este bug
+ * porque conserva tal cual la cadena ISO-con-offset que le pasan los
+ * tests/fixtures, en vez de pasar por una columna `date` real de Postgres.
+ *
+ * Convención: medianoche UTC ("YYYY-MM-DDT00:00:00Z"), consistente con
+ * `isoNow()` (types.ts), que ya usa "Z" como offset canónico — la columna es
+ * `date`, sin componente de hora que preservar. Si el valor ya trae offset
+ * (o es `null`), se devuelve tal cual: la función es idempotente y segura de
+ * aplicar más de una vez.
+ */
+export function dateColumnToExplicitOffsetIso(value: string | null): string | null {
+  if (value === null) return null;
+  return DATE_ONLY_PATTERN.test(value) ? `${value}T00:00:00Z` : value;
+}
 
 function hashBody(body: unknown): string {
   return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
@@ -1258,7 +1287,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [organizationId, input.type, input.label, input.expiresAt, input.approvalStatus ?? "pendiente_aprobacion"],
     );
     const row = rows[0]!;
-    return { id: row.id, type: row.document_type, label: row.label, expiresAt: row.expires_at, approvalStatus: row.approval_status };
+    return { id: row.id, type: row.document_type, label: row.label, expiresAt: dateColumnToExplicitOffsetIso(row.expires_at), approvalStatus: row.approval_status };
   }
 
   async updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord> {
@@ -1272,8 +1301,8 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [documentId, organizationId, input.label ?? null, "expiresAt" in input, input.expiresAt ?? null, input.approvalStatus ?? null],
     );
     const row = rows[0];
-    if (!row) throw new Error(`Documento de empresa "${documentId}" no encontrado para la organización "${organizationId}".`);
-    return { id: row.id, type: row.document_type, label: row.label, expiresAt: row.expires_at, approvalStatus: row.approval_status };
+    if (!row) throw new CompanyDataNotFoundError("Documento de empresa", documentId);
+    return { id: row.id, type: row.document_type, label: row.label, expiresAt: dateColumnToExplicitOffsetIso(row.expires_at), approvalStatus: row.approval_status };
   }
 
   async createApprovedRate(organizationId: string, input: ApprovedRateCreateInput): Promise<ApprovedRateRecord> {
@@ -1287,7 +1316,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [organizationId, input.concept, input.unitPrice, input.approvalStatus ?? "pendiente_aprobacion", input.validFrom ?? null, input.validUntil ?? null],
     );
     const row = rows[0]!;
-    return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: row.valid_from, validUntil: row.valid_until };
+    return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: dateColumnToExplicitOffsetIso(row.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(row.valid_until) };
   }
 
   async updateApprovedRate(organizationId: string, rateId: string, input: ApprovedRateUpdateInput): Promise<ApprovedRateRecord> {
@@ -1302,8 +1331,8 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [rateId, organizationId, input.unitPrice ?? null, input.approvalStatus ?? null, input.validFrom ?? null, "validUntil" in input, input.validUntil ?? null],
     );
     const row = rows[0];
-    if (!row) throw new Error(`Tarifa aprobada "${rateId}" no encontrada para la organización "${organizationId}".`);
-    return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: row.valid_from, validUntil: row.valid_until };
+    if (!row) throw new CompanyDataNotFoundError("Tarifa aprobada", rateId);
+    return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: dateColumnToExplicitOffsetIso(row.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(row.valid_until) };
   }
 
   async listAllApprovedRates(organizationId: string): Promise<readonly ApprovedRateRecord[]> {
@@ -1311,7 +1340,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       `select id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until from licitaciones.approved_rate where organization_id = $1 order by concept asc;`,
       [organizationId],
     );
-    return rows.map((r) => ({ id: r.id, concept: r.concept, unitPrice: r.unit_price, currency: "MXN" as const, approvalStatus: r.approval_status, validFrom: r.valid_from, validUntil: r.valid_until }));
+    return rows.map((r) => ({ id: r.id, concept: r.concept, unitPrice: r.unit_price, currency: "MXN" as const, approvalStatus: r.approval_status, validFrom: dateColumnToExplicitOffsetIso(r.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(r.valid_until) }));
   }
 
   async createCompanyCapability(organizationId: string, input: CompanyCapabilityCreateInput): Promise<CompanyCapabilityRecord> {
@@ -1339,7 +1368,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [capabilityId, organizationId, input.description ?? null, "evidenceDocId" in input, input.evidenceDocId ?? null, input.approvalStatus ?? null],
     );
     const row = rows[0];
-    if (!row) throw new Error(`Capacidad "${capabilityId}" no encontrada para la organización "${organizationId}".`);
+    if (!row) throw new CompanyDataNotFoundError("Capacidad", capabilityId);
     return { id: row.id, name: row.name, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
   }
 
@@ -1365,7 +1394,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [experienceId, organizationId, input.description ?? null, input.evidenceDocId ?? null, input.approvalStatus ?? null],
     );
     const row = rows[0];
-    if (!row) throw new Error(`Experiencia "${experienceId}" no encontrada para la organización "${organizationId}".`);
+    if (!row) throw new CompanyDataNotFoundError("Experiencia", experienceId);
     return { id: row.id, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
   }
 
@@ -1386,7 +1415,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [signerId, organizationId, input.name ?? null, input.authorized ?? null],
     );
     const row = rows[0];
-    if (!row) throw new Error(`Firmante "${signerId}" no encontrado para la organización "${organizationId}".`);
+    if (!row) throw new CompanyDataNotFoundError("Firmante", signerId);
     return row;
   }
 
@@ -1424,7 +1453,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       `select id, document_type, label, expires_at::text as expires_at, approval_status from licitaciones.company_document where organization_id = $1;`,
       [organizationId],
     );
-    return rows.map((r) => ({ id: r.id, type: r.document_type, label: r.label, expiresAt: r.expires_at, approvalStatus: r.approval_status }));
+    return rows.map((r) => ({ id: r.id, type: r.document_type, label: r.label, expiresAt: dateColumnToExplicitOffsetIso(r.expires_at), approvalStatus: r.approval_status }));
   }
 
   async listCompanyCapabilities(organizationId: string): Promise<readonly CompanyCapabilityRecord[]> {
@@ -1458,7 +1487,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
        where organization_id = $1 and approval_status = 'aprobado' and valid_from <= $2::timestamptz and (valid_until is null or valid_until >= $2::timestamptz);`,
       [organizationId, asOfIso],
     );
-    return rows.map((r) => ({ id: r.id, concept: r.concept, unitPrice: r.unit_price, currency: "MXN" as const, approvalStatus: r.approval_status, validFrom: r.valid_from, validUntil: r.valid_until }));
+    return rows.map((r) => ({ id: r.id, concept: r.concept, unitPrice: r.unit_price, currency: "MXN" as const, approvalStatus: r.approval_status, validFrom: dateColumnToExplicitOffsetIso(r.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(r.valid_until) }));
   }
 
   async saveEconomicGeneration(
