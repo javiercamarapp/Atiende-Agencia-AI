@@ -1,0 +1,17 @@
+{
+  "name": "Atiende, agencia de AI",
+  "short_name": "Atiende",
+  "description": "Panel operativo de Atiende, agencia de AI — hoteles, restaurantes, citas y reservaciones, licitaciones, despachos y rentas.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1D4ED8",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
