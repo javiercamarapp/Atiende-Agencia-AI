@@ -42,6 +42,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "cierre-mensual", label: "Cierre mensual" },
   { to: "cfdi", label: "CFDI" },
   { to: "cobranza", label: "Cobranza" },
+  { to: "vencimientos", label: "Vencimientos" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
