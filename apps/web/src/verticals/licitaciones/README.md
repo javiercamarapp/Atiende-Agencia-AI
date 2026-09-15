@@ -235,6 +235,49 @@ futuras): declarar que el expediente YA se presentó ante el portal
 (`GET`/`POST .../submission[/declare]`), contratos, cobranza e
 inconformidades.
 
+## Fase 15 — post-adjudicación, primera porción: contratos + documentos del contrato (gap ALTA: "Post-adjudicación completa (contratos, documentos, cobranza, inconformidades, autopsia, renovaciones) = 22 rutas sin UI")
+
+SOLO contratos + documentos del contrato en esta pieza — cobranza,
+inconformidades, autopsia y renovaciones quedan FUERA a propósito (alcance de
+otro agente en paralelo o de rondas futuras).
+
+- `pages/Contrato.tsx` (ruta
+  `/licitaciones/:orgSlug/convocatorias/:tenderId/contrato`, enlazada desde
+  `ConvocatoriaDetalle.tsx` solo cuando `tender.status === "won"`) —
+  - **Alta + metadatos administrativos** (`POST`/`PATCH .../contract`,
+    `contracts.ts`): registra el `ContractRecord` en estado inicial
+    `"adjudicado"` si todavía no existe uno; el PATCH edita fecha de
+    fin/número de contrato/opción de renovación SIN generar fila de
+    historial (insumo directo del radar de renovaciones, fuera de esta
+    pieza).
+  - **Máquina de estados** (`POST .../contract/transition`): ofrece solo los
+    destinos que `CONTRACT_TRANSITIONS[estado_actual]` permite (espejo local
+    del catálogo cerrado de `contract-lifecycle.ts`, nunca la única
+    barrera — el servidor responde 409 con `allowedNextStates` si algo queda
+    desincronizado). Las transiciones sensibles
+    (rescindir/penalizar/marcar en inconformidad/modificar,
+    `CONTRACT_DECISION_TRANSITIONS`) exigen motivo + rol DECISION_ROLES
+    (owner/admin/analyst); el resto solo WRITE_ROLES y motivo. Historial
+    append-only completo (`GET .../contract/history`) siempre visible debajo.
+  - **Documentos del contrato firmado** (`POST`/`GET .../contract/documents`,
+    `contractDocuments.ts`): sube bytes reales
+    (`fileToBase64`/`MAX_UPLOAD_FILE_BYTES` reexportados de
+    `requirements-client.ts`, mismo límite ~22MB real del servidor). Cada
+    campo que el extractor determinista encuentra
+    (`extractContractFields`) entra como `"sugerido"` — esta pantalla exige
+    confirmarlo o corregirlo uno por uno (`POST .../fields/:fieldId/confirm`)
+    antes de tratarlo como válido, nunca se asume automáticamente.
+- `lib/contract-client.ts` (nuevo) — cliente de las 9 rutas de
+  `contracts.ts`/`contractDocuments.ts`; `fetchContract` trata un 404 "sin
+  contrato registrado todavía" como `null` (mismo criterio que
+  `cierre-client.ts::fetchLatestPackage`), arma su propio `withAuthRefresh`
+  para eso y para el PATCH (`admin-client.ts` no tenía un `patchJson`
+  genérico, y no hacía falta uno para una sola ruta de esta pieza).
+
+**Fuera de esta pieza, a propósito** (alcance de otro agente en paralelo o de
+rondas futuras): cobranza del contrato (`ContractInvoiceRecord`,
+`contract-billing.ts`), inconformidades, autopsia y renovaciones.
+
 ## Explícitamente fuera de esta fase (huecos honestos, no fingidos)
 
 - **Selector de organización con 2+.** `decideLicitacionesLandingPath` ya

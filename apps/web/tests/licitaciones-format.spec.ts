@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatComplianceResult, formatDate, formatDeadline, formatEligibility, formatMoney, formatTenderStatus } from "../src/verticals/licitaciones/lib/format.ts";
+import { formatComplianceResult, formatContractFieldKey, formatContractFieldStatus, formatContractStatus, formatDate, formatDeadline, formatEligibility, formatMoney, formatTenderStatus } from "../src/verticals/licitaciones/lib/format.ts";
 
 describe("formatMoney", () => {
   it("null -> mensaje honesto, nunca $0", () => {
@@ -45,5 +45,19 @@ describe("formatEligibility / formatComplianceResult", () => {
   it("mapean los valores conocidos", () => {
     expect(formatEligibility("cumple")).toBe("Cumple");
     expect(formatComplianceResult("rojo")).toBe("Rojo");
+  });
+});
+
+describe("formatContractStatus / formatContractFieldKey / formatContractFieldStatus", () => {
+  it("mapean los valores conocidos", () => {
+    expect(formatContractStatus("en_ejecucion")).toBe("En ejecución");
+    expect(formatContractFieldKey("monto_total")).toBe("Monto total");
+    expect(formatContractFieldStatus("sugerido")).toBe("Sugerido");
+  });
+
+  it("un valor desconocido se muestra tal cual (nunca oculta el dato real)", () => {
+    expect(formatContractStatus("algo_nuevo")).toBe("algo_nuevo");
+    expect(formatContractFieldKey("algo_nuevo")).toBe("algo_nuevo");
+    expect(formatContractFieldStatus("algo_nuevo")).toBe("algo_nuevo");
   });
 });
