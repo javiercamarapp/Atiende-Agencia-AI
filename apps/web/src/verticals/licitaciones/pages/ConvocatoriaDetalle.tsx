@@ -129,6 +129,14 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
             </Link>
           </>
         )}
+        {tender.status === "lost" && (
+          <>
+            <br />
+            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/autopsia`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+              Autopsia del fallo y lecciones aprendidas →
+            </Link>
+          </>
+        )}
       </div>
 
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>

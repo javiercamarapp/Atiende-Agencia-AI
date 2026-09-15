@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { formatComplianceResult, formatContractFieldKey, formatContractFieldStatus, formatContractStatus, formatDate, formatDeadline, formatEligibility, formatMoney, formatTenderStatus } from "../src/verticals/licitaciones/lib/format.ts";
+import {
+  formatComplianceResult,
+  formatContractFieldKey,
+  formatContractFieldStatus,
+  formatContractStatus,
+  formatDate,
+  formatDeadline,
+  formatEligibility,
+  formatMoney,
+  formatOwnProposalStatus,
+  formatTenderStatus,
+} from "../src/verticals/licitaciones/lib/format.ts";
 
 describe("formatMoney", () => {
   it("null -> mensaje honesto, nunca $0", () => {
@@ -59,5 +70,18 @@ describe("formatContractStatus / formatContractFieldKey / formatContractFieldSta
     expect(formatContractStatus("algo_nuevo")).toBe("algo_nuevo");
     expect(formatContractFieldKey("algo_nuevo")).toBe("algo_nuevo");
     expect(formatContractFieldStatus("algo_nuevo")).toBe("algo_nuevo");
+  });
+});
+
+describe("formatOwnProposalStatus", () => {
+  it("mapea los 4 valores del catálogo cerrado", () => {
+    expect(formatOwnProposalStatus("ganadora")).toBe("Ganadora");
+    expect(formatOwnProposalStatus("desechada")).toBe("Desechada");
+    expect(formatOwnProposalStatus("no_presentada")).toBe("No presentada");
+    expect(formatOwnProposalStatus("desconocido")).toBe("Desconocido");
+  });
+
+  it("un valor desconocido se muestra tal cual (nunca oculta el dato real)", () => {
+    expect(formatOwnProposalStatus("algo_nuevo")).toBe("algo_nuevo");
   });
 });
