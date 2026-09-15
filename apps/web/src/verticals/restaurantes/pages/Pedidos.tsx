@@ -64,7 +64,15 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
     void loadRepartidores();
   }, [apiBaseUrl, token, propertyId]);
 
+  // Fase 12 — hallazgo de auditoría (severidad ALTA, "'Marcar cancelado' ejecuta con un
+  // clic sin confirmación"): "cancelado" es el único estado terminal (NEXT_STATUSES lo
+  // deja sin salidas, junto con "completado") que además es un desenlace NEGATIVO — se
+  // pierde el pedido, nunca se puede reabrir desde aquí — mismo patrón de confirmación
+  // real que citas/Agenda.tsx::runLifecycleAction usa para su acción "cancel". Las demás
+  // transiciones (preparando/en_camino/entregado/problema, y "completado" mismo — el
+  // desenlace ESPERADO del flujo feliz) no ganan nada con un confirm de más.
   async function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
+    if (nextStatus === "cancelado" && !window.confirm(`¿Cancelar el pedido de ${order.customerName}? Esta acción no se puede deshacer.`)) return;
     setChangingId(order.id);
     setError(null);
     try {
