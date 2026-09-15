@@ -5,11 +5,12 @@
 // propiedades y rol del staff logueado vienen todos de datos reales (sesión
 // persistida + GET /v1/rentas/:orgSlug/admin/propiedades), nada inventado.
 //
-// El cotizador/panel de finanzas visual completo sigue fuera de alcance (ver README
-// de este vertical) — esta fase era específicamente "que el login deje de terminar en
+// El panel de finanzas visual completo sigue fuera de alcance (ver README de este
+// vertical) — esta fase era específicamente "que el login deje de terminar en
 // pantalla en blanco", no portar el resto del dashboard operativo. El calendario de
 // reservas y bloqueos SÍ tiene UI real desde la Fase 13 (pages/Calendario.tsx, link
-// "Calendario" en la nav de RentasShell.tsx).
+// "Calendario" en la nav de RentasShell.tsx), y el cotizador + configuración de
+// pricing desde la Fase 14 (pages/Precios.tsx, link "Precios").
 import type { CSSProperties } from "react";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
@@ -51,7 +52,7 @@ export function RentasDashboardPage({ orgSlug, properties, session }: RentasShel
       </div>
 
       <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
-        El cotizador y el panel de finanzas de rentas todavía no tienen UI en este panel — llega en una fase posterior. El calendario de reservas y bloqueos ya está disponible en la sección "Calendario".
+        El panel de finanzas de rentas todavía no tiene UI en este panel — llega en una fase posterior. El calendario de reservas y bloqueos está disponible en "Calendario", y el cotizador con la configuración de pricing en "Precios".
       </p>
     </div>
   );
