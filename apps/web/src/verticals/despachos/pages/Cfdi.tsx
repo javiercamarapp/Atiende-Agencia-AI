@@ -6,9 +6,9 @@
 // base de datos a mano. La ingesta en sí (POST .../cfdi) sigue siendo un flujo
 // server-to-server (PAC/timbrado), fuera de alcance de esta fase — mismo criterio
 // que Convocatorias.tsx/licitaciones: cerrar el gap de LECTURA real primero.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { fetchInvoices } from "../lib/cfdi-client.ts";
+import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
@@ -22,6 +22,11 @@ const TIPO_LABELS: Record<InvoiceSummary["tipo"], string> = { I: "Ingreso", E: "
 // (@atiende/domain-despachos/src/roles.ts) — el enforcement real es SIEMPRE
 // server-side, en revisiones.ts (assertVerticalRole).
 const RESOLVER_ROLES = new Set(["admin", "contador"]);
+
+// Espejo cosmético de INGESTA_CFDI_ROLES (@atiende/domain-despachos/src/roles.ts)
+// — mismos dos roles que ya pueden `POST /cfdi`; el enforcement real vuelve a
+// vivir SIEMPRE en la ruta (`assertVerticalRole`), esto solo oculta el botón.
+const INGESTA_ROLES = new Set(["admin", "contador"]);
 
 function ValidoBadge({ valido }: { valido: boolean }) {
   return (
@@ -43,6 +48,11 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
   const [notaDrafts, setNotaDrafts] = useState<Record<string, string>>({});
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+
+  const [importando, setImportando] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importOk, setImportOk] = useState<string | null>(null);
+  const xmlInputRef = useRef<HTMLInputElement | null>(null);
 
   async function load() {
     setLoading(true);
@@ -102,6 +112,28 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
     }
   }
 
+  // POST /despachos/:propertyId/cfdi/importar-xml (cierre de gap de auditoría:
+  // hasta esta fase la ÚNICA forma de ingestar un CFDI era pegar a mano el JSON
+  // de 15+ campos ya desarmado -- ver cabecera de cfdi.ts). Un CFDI real llega
+  // como archivo .xml timbrado por el PAC; este botón lee el archivo local con
+  // FileReader (nunca sube nada a un tercero) y manda el texto crudo tal cual.
+  async function handleImportarXml(file: File) {
+    setImportError(null);
+    setImportOk(null);
+    setImportando(true);
+    try {
+      const xml = await file.text();
+      const invoice = await importarCfdiXml(fetch, apiBaseUrl, token, propertyId, xml);
+      setImportOk(`CFDI ${invoice.folioFiscal.slice(0, 13)}… importado correctamente.`);
+      await Promise.all([load(), loadRevisiones()]);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "No se pudo importar el CFDI.");
+    } finally {
+      setImportando(false);
+      if (xmlInputRef.current) xmlInputRef.current.value = "";
+    }
+  }
+
   const invoicesById = new Map((invoices ?? []).map((inv) => [inv.id, inv] as const));
 
   return (
@@ -111,11 +143,44 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
           <h1 style={{ fontSize: 20, margin: 0 }}>CFDI</h1>
           <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Comprobantes ingestados y validados contra las reglas fiscales del SAT.</p>
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
-          <input type="checkbox" checked={soloRevision} onChange={(e) => setSoloRevision(e.target.checked)} />
-          Solo con revisión humana pendiente
-        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
+            <input type="checkbox" checked={soloRevision} onChange={(e) => setSoloRevision(e.target.checked)} />
+            Solo con revisión humana pendiente
+          </label>
+          {INGESTA_ROLES.has(role) && (
+            <>
+              <input
+                ref={xmlInputRef}
+                type="file"
+                accept=".xml,text/xml,application/xml"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImportarXml(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => xmlInputRef.current?.click()}
+                disabled={importando}
+                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+              >
+                {importando ? "Importando…" : "Cargar XML de CFDI"}
+              </button>
+            </>
+          )}
+        </div>
       </header>
+
+      {importError && (
+        <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+          {importError}
+        </p>
+      )}
+      {importOk && !importError && (
+        <p style={{ color: "#166534", margin: 0, fontSize: 13 }}>{importOk}</p>
+      )}
 
       <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>

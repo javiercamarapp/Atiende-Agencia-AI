@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@atiende/agent-core": "*",
+    "@atiende/billing": "*",
     "@atiende/core-auth": "*",
     "@atiende/core-authz": "*",
     "@atiende/core-tenancy": "*",

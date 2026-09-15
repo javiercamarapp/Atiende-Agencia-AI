@@ -74,6 +74,32 @@ export async function postJson<T>(
   return (await res.json()) as T;
 }
 
+/** Mismo wrapper `withAuthRefresh` que `postJson`, pero para un body de texto
+ * crudo (p. ej. un XML de CFDI) en vez de JSON -- `POST
+ * /despachos/:propertyId/cfdi/importar-xml` (apps/api/.../despachos/cfdi.ts)
+ * espera el XML tal cual, nunca envuelto en `{ xml: "..." }`. */
+export async function postXml<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  rawBody: string,
+  contentType = "application/xml",
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${t}`, "content-type": contentType },
+      body: rawBody,
+    }),
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new DespachosAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
 export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string): Promise<readonly BranchOption[]> {
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/despachos/${orgSlug}/admin/branches`, token);
   return body.branches;
