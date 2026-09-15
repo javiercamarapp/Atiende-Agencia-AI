@@ -14,13 +14,13 @@ import {
   AprobacionRequeridaError,
   ActorSinPermisoParaProponerBorradorError,
   BorradorIASinPropuestaError,
+  CanalMensajeriaNoConfiguradoError,
   ContenidoProhibidoError,
   GeneracionBorradorIAFallidaError,
   GeneradorBorradorIA,
   GeneradorBorradorPlantillas,
   MENSAJERIA_ESCRITURA_ROLES,
   MensajeExcedeLongitudError,
-  SimuladorCanalMensajeria,
   TransicionBorradorInvalidaError,
   aprobarBorrador,
   intentarEnvioAutomatico,
@@ -43,6 +43,11 @@ function traducirErrorMensajeria(error: unknown): unknown {
   if (error instanceof ActorSinPermisoParaProponerBorradorError) return Errors.forbidden(error.message);
   if (error instanceof BorradorIASinPropuestaError) return Errors.rentasMensajeriaSinPropuesta(error.message);
   if (error instanceof GeneracionBorradorIAFallidaError) return Errors.serviceUnavailable(error.message);
+  // Hallazgo de auditoría (severidad CRÍTICA, "la mensajería de rentas es un
+  // simulador que nunca toca un canal real") -- lanzado ANTES de escribir nada, el
+  // borrador se queda exactamente en el estado que tenía (nunca 'enviado'), mismo
+  // criterio 503 honesto que `hotelesCfdiPort`.
+  if (error instanceof CanalMensajeriaNoConfiguradoError) return Errors.serviceUnavailable(error.message);
   return error;
 }
 
@@ -193,7 +198,12 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
 
       const validado = validarMensajeSaliente({ canal: actual.canal, texto: actual.texto, reservaConfirmada: conversacion.reservaConfirmada });
 
-      const canal = new SimuladorCanalMensajeria(actual.canal);
+      // Inyectado (nunca construido inline) -- ver `deps.rentasCanalMensajeria` en
+      // ../../../deps.ts: en producción resuelve a `CanalMensajeriaPartnerPendiente`
+      // (falla honesto, 503, si el canal no está conectado de verdad); en tests, al
+      // `SimuladorCanalMensajeria` (ver apps/api/tests/rentas-fixtures.ts). NUNCA se
+      // construye un canal aquí mismo -- ese era el hallazgo que este cambio corrige.
+      const canal = deps.rentasCanalMensajeria(actual.canal);
       const envio = await canal.enviarMensajeAprobado({ borradorId: actual.id, texto: validado.texto, aprobadoPor: userId });
 
       // Solo AHORA, con aprobadoPor poblado, se permite 'enviado'.

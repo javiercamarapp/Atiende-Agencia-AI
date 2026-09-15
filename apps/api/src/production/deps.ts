@@ -62,7 +62,7 @@ import type { DespachosRepository } from "@atiende/domain-despachos";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RentasRepository } from "@atiende/domain-rentas";
-import { PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
+import { CanalMensajeriaPartnerPendiente, PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
 import { openManagedPostgres, PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
@@ -271,6 +271,13 @@ export function buildProductionDeps(): AppDeps {
     // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS
     // por-request real, ningún stub (ver migrations/009_rentas_mensajeria_schema.sql).
     rentasMensajeriaRepo: (db) => new PostgresRentasMensajeriaRepository(db),
+    // Hallazgo de auditoría (severidad CRÍTICA, "la mensajería de rentas es un
+    // simulador que nunca toca un canal real") -- `CanalMensajeriaPartnerPendiente`
+    // es un esqueleto HONESTO (mismo criterio que `hotelesCfdiPort` justo arriba):
+    // sin credencial real de partner de Airbnb/Vrbo/Booking.com (ninguna está
+    // configurada en este entorno), `enviarMensajeAprobado` SIEMPRE lanza en vez de
+    // fingir un envío -- la ruta (`mensajeria-borradores.ts`) responde 503 explícito.
+    rentasCanalMensajeria: (canal) => new CanalMensajeriaPartnerPendiente(canal),
     // Los 5 métodos de solo lectura del portal SÍ quedan reales aquí (sesión RLS
     // por-request, igual que el resto). Los otros 3 (credenciales/invitaciones)
     // requieren una sesión de `service_role` que este monorepo no aprovisiona

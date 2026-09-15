@@ -3,7 +3,8 @@
 // garantía central del vertical: "un agente redacta la respuesta al huésped -- y esa
 // respuesta no sale hasta que alguien la aprueba" (colaAprobacion.ts).
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
-import { DEFAULT_RENTAS_MENSAJERIA_AGENT_ROLE, NOMBRE_TOOL_PROPONER_BORRADOR } from "@atiende/domain-rentas";
+import { CanalMensajeriaNoConfiguradoError, DEFAULT_RENTAS_MENSAJERIA_AGENT_ROLE, NOMBRE_TOOL_PROPONER_BORRADOR } from "@atiende/domain-rentas";
+import type { CanalMensajeria } from "@atiende/domain-rentas";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildRentasTestContext } from "./rentas-fixtures.ts";
@@ -85,6 +86,35 @@ describe("Cola de aprobación humana — flujo determinista completo (sin IA)", 
     const aprobado = (await aprobarRes.json()) as BorradorBody;
     expect(aprobado.estado).toBe("enviado");
     expect(aprobado.aprobadoPor).toBe(ctx.staff.operadorAccesoTotal.id);
+  });
+
+  // Hallazgo de auditoría (severidad CRÍTICA, "la mensajería de rentas es un
+  // simulador que nunca toca un canal real") -- verifica que la ruta de verdad usa
+  // `deps.rentasCanalMensajeria` (inyectado), no un `SimuladorCanalMensajeria`
+  // construido inline: un canal que falla honesto (mismo comportamiento que
+  // `CanalMensajeriaPartnerPendiente` real de producción, sin credenciales)
+  // responde 503, y el borrador NUNCA queda 'enviado'.
+  it("si el canal de mensajería no está configurado, /aprobar responde 503 y el borrador NUNCA queda 'enviado'", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const canalQueSiempreFalla: CanalMensajeria = {
+      nombreCanal: "airbnb",
+      capacidades: { recepcionMensajes: true, envioMensajes: true },
+      obtenerEstadoConexion: () => "partner_pendiente",
+      enviarMensajeAprobado: async () => {
+        throw new CanalMensajeriaNoConfiguradoError("airbnb", "falta AIRBNB_MESSAGING_API_TOKEN -- prueba.");
+      },
+    };
+    const app = buildApp({ ...ctx.deps, rentasCanalMensajeria: () => canalQueSiempreFalla });
+
+    const conversacion = await crearConversacion(app, ctx.propertyId, ctx.unidadId, ctx.staff.operadorAccesoTotal.token, "airbnb");
+    const borradorRes = await app.request(`/rentas/${ctx.propertyId}/conversaciones/${conversacion.id}/borradores`, authedJson(ctx.staff.operadorAccesoTotal.token, {}));
+    const borrador = (await borradorRes.json()) as BorradorBody;
+
+    const aprobarRes = await app.request(`/rentas/${ctx.propertyId}/borradores/${borrador.id}/aprobar`, authedJson(ctx.staff.operadorAccesoTotal.token, {}));
+    expect(aprobarRes.status).toBe(503);
+
+    const releido = await ctx.rentasMensajeriaRepo.findBorrador(ctx.propertyId, borrador.id);
+    expect(releido!.estado).toBe("pendiente_aprobacion"); // nunca avanzó a 'aprobado'/'enviado'
   });
 
   it("contador NUNCA puede aprobar/rechazar un borrador (solo lectura financiera)", async () => {

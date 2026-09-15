@@ -23,7 +23,7 @@ export type { PlantillaMensaje } from "./plantillas.ts";
 export { contieneLenguajeExcluyente, ContenidoProhibidoError, detectarContactoOPago, MensajeExcedeLongitudError, politicaDeCanal, POLITICAS_POR_CANAL, validarMensajeSaliente } from "./politica.ts";
 export type { EntradaValidarMensajeSaliente, HallazgosContactoPago, PoliticaCanalMensajeria, ResultadoValidarMensajeSaliente } from "./politica.ts";
 
-export { SimuladorCanalMensajeria } from "./canalMensajeria.ts";
+export { CanalMensajeriaNoConfiguradoError, CanalMensajeriaPartnerPendiente, SimuladorCanalMensajeria } from "./canalMensajeria.ts";
 export type { CanalMensajeria, EntradaEnviarMensajeAprobado, EstadoConexionCanalMensajeria, MessagingChannelCapabilities, ResultadoEnvioMensaje } from "./canalMensajeria.ts";
 
 export { GeneradorBorradorPlantillas } from "./borrador.ts";
