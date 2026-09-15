@@ -22,6 +22,7 @@ import { MANAGER_ROLES } from "@atiende/domain-restaurantes";
 import type { Category, Product } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -148,6 +149,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const slug = requireSlug(raw.slug);
     const displayOrder = optionalDisplayOrder(raw.displayOrder);
     const created = await repo.createCategory(c.get("organizationId"), { name, slug, ...(displayOrder !== undefined ? { displayOrder } : {}) });
+    logEvent(c, "info", "restaurantes_admin_categoria_creada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), categoryId: created.id });
     return c.json({ category: serializeCategory(created) }, 201);
   });
 
@@ -162,6 +164,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     };
     const updated = await repo.updateCategory(c.get("organizationId"), c.req.param("categoryId"), patch);
     if (!updated) throw Errors.notFound("Categoría no encontrada.");
+    logEvent(c, "info", "restaurantes_admin_categoria_actualizada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), categoryId: updated.id });
     return c.json({ category: serializeCategory(updated) });
   });
 
@@ -204,6 +207,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
       ...(displayOrder !== undefined ? { displayOrder } : {}),
       ...(searchKeywords !== undefined ? { searchKeywords } : {}),
     });
+    logEvent(c, "info", "restaurantes_admin_producto_creado", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), productId: created.id });
     return c.json({ product: { ...serializeProduct(created), branch: null } }, 201);
   });
 
@@ -227,6 +231,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     };
     const updated = await repo.updateProduct(organizationId, productId, patch);
     if (!updated) throw Errors.notFound("Producto no encontrado.");
+    logEvent(c, "info", "restaurantes_admin_producto_actualizado", { actorUserId: c.get("userId"), organizationId, productId: updated.id });
     const propertyId = c.req.param("propertyId");
     return c.json({ product: { ...serializeProduct(updated), branch: await repo.getBranchProductState(propertyId, updated.id) } });
   });
@@ -251,6 +256,7 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const isAvailable = raw.isAvailable !== undefined ? Boolean(raw.isAvailable) : (existing?.isAvailable ?? true);
 
     const state = await repo.upsertBranchProductState(propertyId, productId, price, isAvailable);
+    logEvent(c, "info", "restaurantes_admin_producto_disponibilidad_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, propertyId, productId, price, isAvailable });
     return c.json({ branch: state });
   });
 

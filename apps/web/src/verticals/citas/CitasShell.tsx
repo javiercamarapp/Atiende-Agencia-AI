@@ -11,8 +11,9 @@ import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
-import { fetchBranches } from "./lib/admin-client.ts";
+import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
+import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 
@@ -75,9 +76,36 @@ const logoutButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const selectLabelStyle: CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "#6b7280",
+  margin: "0 0 4px",
+};
+
+const selectStyle: CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "6px 8px",
+  borderRadius: 8,
+  border: "1px solid #d1d5db",
+  fontSize: 13,
+  color: "#111827",
+  background: "#fff",
+  boxSizing: "border-box",
+};
+
 export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: CitasShellProps) {
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
   const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
+  // Sucursal activa elegida en el selector de abajo -- mismo patrón exacto que
+  // HotelesShell.tsx/RestaurantesShell.tsx: `null` hasta que el staff elige una
+  // explícitamente, inicializado leyendo lib/property-selection.ts (persistido para
+  // este `orgSlug`) para que sobreviva a que App.tsx monte una instancia NUEVA de
+  // este Shell al navegar a otra ruta del panel.
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(() => readPersistedPropertyId(window.localStorage, orgSlug));
   const [error, setError] = useState<string | null>(null);
   // Mismo hallazgo de auditoría que hoteles/restaurantes: /auth/logout ya existe en
   // el backend (compartido entre verticales), solo faltaba el botón.
@@ -168,18 +196,49 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
     );
   }
 
-  // Fase 5 §1 — un negocio de citas casi siempre tiene una sola sucursal (ver
-  // ProviderRecord.propertyId, "null si el negocio es de una sola ubicación, caso
-  // común"); el panel usa la primera hasta que un negocio real necesite elegir
-  // entre varias (mismo criterio que restaurantes/pages/Dashboard.tsx).
-  const propertyId = branches[0]!.propertyId;
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA, "negocio
+  // de citas con 2+ sucursales solo opera la primera"): antes se usaba SIEMPRE
+  // `branches[0]!.propertyId` ("hasta que un negocio real necesite elegir entre
+  // varias") — ver el comentario de cabecera de `resolveActivePropertyId`
+  // (./lib/admin-client.ts) para el hallazgo completo y el patrón (idéntico a
+  // hoteles/despachos/rentas/restaurantes) que lo cierra.
+  const propertyId = resolveActivePropertyId(branches, selectedPropertyId)!;
+  const activeBranch = branches.find((b) => b.propertyId === propertyId)!;
   const orgId = session.organizations.find((o) => o.slug === orgSlug)?.id ?? "";
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "staff";
+
+  // Handler real del selector: actualiza el estado de React (recalcula
+  // `children(ctx)` con el nuevo propertyId de inmediato, vía la `key={propertyId}`
+  // de abajo) y persiste la selección best-effort (ver lib/property-selection.ts)
+  // para que sobreviva a navegar a otra ruta del panel o a un refresh de página.
+  function handleSelectBranch(nextPropertyId: string) {
+    setSelectedPropertyId(nextPropertyId);
+    persistPropertyId(window.localStorage, orgSlug, nextPropertyId);
+  }
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
         <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Citas · {orgSlug}</p>
+        {/* Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA):
+            selector real, visible solo cuando hay más de una sucursal — mismo
+            criterio que "Hotel activo" en HotelesShell.tsx. */}
+        {branches.length > 1 ? (
+          <div style={{ margin: "0 0 8px" }}>
+            <label htmlFor="citas-sucursal-activa" style={selectLabelStyle}>
+              Sucursal activa
+            </label>
+            <select id="citas-sucursal-activa" value={propertyId} onChange={(e) => handleSelectBranch(e.target.value)} style={selectStyle}>
+              {branches.map((b) => (
+                <option key={b.propertyId} value={b.propertyId}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 8px" }}>{activeBranch.name}</p>
+        )}
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.to} to={`/citas/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
             {item.label}
@@ -189,7 +248,12 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
       </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role })}</div>
+      {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
+          cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
+          (selector, sin navegar) — mismo criterio que HotelesShell.tsx. */}
+      <div key={propertyId} style={{ flex: 1, padding: 24, overflow: "auto" }}>
+        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role })}
+      </div>
     </div>
   );
 }

@@ -4,7 +4,7 @@
 // EXACTO de apps/web/src/verticals/restaurantes/lib/staff-client.ts (leído
 // primero como plantilla) sobre los 4 roles de despachos en vez de los de
 // restaurantes, y sin `fetchRepartidores` (despachos no tiene un rol análogo).
-import { deleteJson, fetchJson, postJson } from "./admin-client.ts";
+import { deleteJson, fetchJson, patchJson, postJson } from "./admin-client.ts";
 
 /** Mismos 4 roles que `DESPACHOS_ROLES` de `@atiende/domain-despachos/src/roles.ts`
  * -- duplicado aquí a propósito, no importado: apps/web no depende de los paquetes
@@ -52,4 +52,38 @@ export async function createStaffInvite(
  * estaba revocada", ver admin-staff.ts), que `deleteJson` propaga como error real. */
 export async function revokeStaffInvite(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, inviteId: string): Promise<void> {
   await deleteJson<{ ok: true }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/invitaciones/${inviteId}`, token);
+}
+
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): mismo hueco real que
+// restaurantes tenía antes de esta pasada — todo lo de arriba solo fija el rol AL
+// INVITAR, nunca después. `OrgMember` SÍ trae `verticalRole` (a diferencia de un
+// selector que ya conoce el rol) — es el dato que la tabla nueva "Staff activo"
+// necesita mostrar/editar.
+export interface OrgMember {
+  readonly id: string;
+  readonly email: string;
+  readonly fullName: string;
+  readonly verticalRole: StaffVerticalRole;
+  readonly propertyIds: readonly string[] | null;
+}
+
+export async function fetchOrgMembers(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<readonly OrgMember[]> {
+  const body = await fetchJson<{ miembros: OrgMember[] }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/miembros`, token);
+  return body.miembros;
+}
+
+/** Cambia el rol de un staff YA ACEPTADO — `admin-staff.ts::PATCH miembroItemPath`
+ * reaplica la MISMA jerarquía de `canInviteStaff` que ya bloquea `createStaffInvite`
+ * de arriba (nunca tocar/ascender a alguien de más alcance que el propio, nunca
+ * auto-cambio de rol) — un 400/403/404 real, nunca un éxito fingido. */
+export async function updateStaffRole(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  userId: string,
+  verticalRole: StaffVerticalRole,
+): Promise<OrgMember> {
+  return patchJson<OrgMember>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/admin/staff/miembros/${userId}`, token, { verticalRole });
 }

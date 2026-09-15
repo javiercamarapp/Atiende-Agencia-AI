@@ -22,6 +22,16 @@ import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-c
 import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
 import type { ClosePeriod, CloseTask } from "./cierre-mensual/types.ts";
 
+/** Página de `listInvoicesPage` -- mismo criterio de forma que
+ * `CitasRepository::CustomerPage` (@atiende/domain-citas): `total` es el conteo
+ * completo del filtro (no solo `items.length`), `nextOffset` es `null` cuando ya no
+ * queda página siguiente. */
+export interface InvoicePage {
+  readonly items: readonly InvoiceRecord[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}
+
 export interface DespachosRepository {
   // ---- Fase 9 (paridad de UI del panel web): resolución de organización/property
   // desde el slug de la organización — mismo rol EXACTO que
@@ -52,6 +62,14 @@ export interface DespachosRepository {
    * hoteles/folios, donde "cargo nuevo" no tiene una llave natural propia). */
   insertInvoice(input: NewInvoiceInput): Promise<InvoiceRecord>;
   findInvoice(propertyId: string, invoiceId: string): Promise<InvoiceRecord | null>;
+  /** Batch de `findInvoice` -- hallazgo de auditoría (rubro 10, "performance y
+   * escalabilidad", severidad MEDIA: "cobranza de despachos con 1+2N queries
+   * serializadas"). Una sola consulta agregada (`WHERE id = ANY($1)`) para TODOS los
+   * invoices de una lista de cuentas por cobrar, en vez de un `findInvoice` por
+   * cuenta dentro de un `Promise.all` -- ver apps/api/.../cobranza.ts, que ya NO
+   * llama a `findInvoice` uno por uno en sus rutas de listado. Orden no garantizado;
+   * el llamador indexa por `id`. */
+  findInvoicesByIds(propertyId: string, invoiceIds: readonly string[]): Promise<readonly InvoiceRecord[]>;
   findInvoiceByFolioFiscal(organizationId: string, folioFiscal: string): Promise<InvoiceRecord | null>;
   /** `filter.periodo` (Fase 2, aditivo; corregido en migración 006): "YYYY-MM",
    * filtra a los invoices cuya `fecha` real de emisión (columna `despachos.
@@ -67,6 +85,15 @@ export interface DespachosRepository {
    * `diot.reportable` (como hace la agregación DIOT real, que solo reporta
    * proveedores tipo 'I'). */
   listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]>;
+  /** Versión PAGINADA de `listInvoices`, para `GET /despachos/:propertyId/cfdi` (el
+   * listado que un humano navega en el panel) -- hallazgo de auditoría (rubro 10,
+   * "performance y escalabilidad", severidad BAJA: "listados sin paginación en 4
+   * verticales"). `listInvoices` (arriba) se queda EXACTAMENTE como está y sigue
+   * siendo la única usada por agregaciones fiscales que necesitan el conjunto
+   * COMPLETO de un período (declaraciones/DIOT/devolución de IVA/conciliación) --
+   * paginar esa función truncaría un cálculo fiscal real. Orden `created_at desc`
+   * (más reciente primero), mismo criterio que `listInvoices`. */
+  listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage>;
 
   // ---- Cola de revisión humana (flujo 2) ----
   createReview(input: NewInvoiceReviewInput): Promise<InvoiceReviewRecord>;
@@ -139,6 +166,11 @@ export interface DespachosRepository {
    * rastro que después alimenta `scoreCobrabilidadCartera` como historial. */
   insertCollectionEvent(input: NewCollectionEventInput): Promise<CollectionEventRecord>;
   listCollectionEvents(propertyId: string, receivableId: string): Promise<readonly CollectionEventRecord[]>;
+  /** Batch de `listCollectionEvents` -- mismo hallazgo de auditoría que
+   * `findInvoicesByIds` de arriba. Una sola consulta agregada (`WHERE receivable_id =
+   * ANY($1)`) para el historial de TODAS las cuentas de una lista, en vez de un
+   * `listCollectionEvents` por cuenta. El llamador agrupa por `receivableId`. */
+  listCollectionEventsForReceivables(propertyId: string, receivableIds: readonly string[]): Promise<readonly CollectionEventRecord[]>;
 
   // ---- Infraestructura de correo (hallazgo de auditoría, severidad ALTA: "despachos
   // no tiene ninguna infraestructura de correo, mientras citas/rentas/licitaciones sí

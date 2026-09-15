@@ -34,62 +34,70 @@ impacto) y esta rama sí agrega `vercel.json` + el adaptador `hono/vercel` reale
   código ya documentaba ("se abre siempre vía `TenancyEngine.withAppSession({userId:
   null}, ...)`" — sesión de sistema, sin ambigüedad de diseño).
 
-### 0.2 — Todavía pendiente (gap real de arquitectura, no de configuración)
+### 0.2 — Actualizado (barrido de documentación, rondas 13/14/16): el gap de
+arquitectura de esta sección YA SE RESOLVIÓ
 
-**Las rutas de negocio de restaurantes (`/v1/restaurantes/*`) y hoteles
-(`/hoteles/:propertyId/*`) siguen SIN adaptador de producción**, a propósito.
-`PostgresRestaurantesRepository`/`PostgresHotelesRepository` (@atiende/db) sí
-existen y typechecan, pero — a diferencia de `CoreRepository` — dependen de RLS real
-por-usuario (`auth.uid()` vía `core.has_property_access`/`hoteles.can_access_money`)
-resuelta en la transacción que `dbSession(engine)` abre POR REQUEST
-(`@atiende/core-auth/src/middleware.ts`), mientras que `deps.restaurantesRepo`/
-`deps.hotelesRepo` son objetos FIJOS construidos una sola vez al armar `AppDeps` (ver
-`apps/api/src/deps.ts` y cómo los consumen `routes/verticals/*/*.ts`: `const repo =
-deps.hotelesRepo`, nunca `c.get("db")`). Conectar un `Postgres*Repository` real ahí
-significaría fijarlo a UNA sola sesión — de sistema o de un usuario arbitrario — para
-TODAS las requests, lo que rompería el aislamiento RLS por-tenant (fuga de datos
-entre organizaciones) en vez de arreglar el gap.
+Esta sección describía, en la rama original de deploy config, un gap real:
+`deps.restaurantesRepo`/`deps.hotelesRepo` eran objetos FIJOS construidos una sola
+vez, incompatibles con RLS por-request. **Eso ya no es cierto.** Ver
+`apps/api/src/production/deps.ts` y `apps/api/src/production/not-ready.ts` (su
+propio comentario de cabecera documenta la resolución con detalle): `coreRepo`,
+`restaurantesRepo`, `hotelesRepo`, `citasRepo`, `licitacionesRepo`, `despachosRepo`,
+`rentasRepo` y `rentasOwnerPortalRepo` son hoy FÁBRICAS por-request
+(`(db) => new Postgres*Repository(db)`), cada ruta las liga a la sesión
+`dbSession(engine)`/`c.get("db")` de ESE request — el aislamiento RLS por-tenant
+está intacto, nada de esto es un singleton compartido entre requests.
 
-Por eso `apps/api/src/production/deps.ts` conecta esos dos puertos (más
-`turnHandler`/`hotelesPaymentsPort`) a `notProductionReady(...)`
-(`apps/api/src/production/not-ready.ts`): cualquier request real a esas rutas falla
-explícito con un 500 accionable, en vez de servir datos en memoria que parecen reales
-pero se pierden en cada cold start y no aíslan tenants. **Resolver esto requiere una
-decisión de arquitectura** (¿el puerto deja de ser un singleton y pasa a ser una
-fábrica por-request que recibe `c.get("db")`? ¿otro mecanismo?) que packages/db/README.md
-y apps/api/src/index.ts ya marcaban como "trabajo pendiente de infraestructura" —
-este cambio de deploy config no la inventó ni la resolvió en silencio.
+**Lo que de verdad sigue pendiente hoy no es arquitectura, son credenciales reales
+de terceros** — cada pieza falla explícito (503 o error accionable, nunca datos
+falsos) hasta que se configure:
 
-**Consecuencia práctica:** pegar las API keys reales deja *login* funcionando de
-punta a punta. Los flujos de negocio de restaurantes/hoteles necesitan ese trabajo de
-arquitectura adicional antes de servir tráfico real (ver `not-ready.ts` para el
-detalle técnico completo).
-
-### 0.3 — Migraciones: todavía dispersas, no consolidadas en `supabase/migrations/`
-
-Verificado con grep sobre esta rama — estas son TODAS las migraciones SQL reales que
-existen hoy, ninguna copiada aún a `supabase/migrations/`:
-
-| Archivo | Schema que crea | Orden relativo |
+| Puerto | Bloqueado por | Dónde |
 |---|---|---|
-| `packages/db/migrations/0001_core_schema.sql` | `core` (organization, property, staff_user, membership) | Primero — todo lo demás depende de `core.*` |
-| `packages/domain-restaurantes/migrations/001_restaurantes_schema.sql` | `restaurantes` | Después de `core` |
-| `packages/domain-restaurantes/migrations/002_calc_customer_tier.sql` | (funciones sobre `restaurantes.*`) | Después de 001 |
-| `packages/domain-restaurantes/migrations/003_create_order_idempotent.sql` | (funciones sobre `restaurantes.*`) | Después de 002 |
-| `packages/domain-restaurantes/migrations/004_whatsapp_atomic_append_and_rate_limit.sql` | (funciones sobre `restaurantes.*`) | Después de 003 |
-| `packages/domain-hoteles/migrations/001_hoteles_schema.sql` | `hoteles` | Después de `core` |
-| `packages/domain-hoteles/migrations/002_folio_engine_functions.sql` | (funciones sobre `hoteles.*`) | Después de 001 |
-| `packages/domain-hoteles/migrations/003_availability.sql` | (funciones sobre `hoteles.*`) | Después de 002 |
-| `packages/core-conversation/migrations/001_conversation_state_cas.sql` | funciones `get_conversation_state`/`set_conversation_state_cas` | **Requiere una tabla `conversations` con columna `metadata JSONB` que NINGUNA migración de este repo crea todavía** (dice explícito el comentario de ese mismo archivo, línea 11) — no la apliques contra el proyecto real hasta resolver esto o la función queda inservible. |
+| `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler` (agente LLM de WhatsApp) | Ninguna API key de proveedor LLM configurada | `ANTHROPIC_API_KEY`+`ANTHROPIC_MODEL` / `OPENAI_API_KEY`+`OPENAI_MODEL` / `OPENROUTER_API_KEY`+`OPENROUTER_MODEL`, ver `.env.example` y `apps/api/src/production/llm-gateway.ts` |
+| `whatsAppDispatcher` (envío saliente real de WhatsApp) | Sin `WHATSAPP_ACCESS_TOKEN` | `.env.example`, `apps/api/src/production/deps.ts` |
+| `citasGoogleCalendarPortResolver` | Sin `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_OAUTH_REDIRECT_BASE_URL` | ídem — devuelve "sin conectar" honesto, nunca error, mientras falten |
+| `hotelesCfdiPort` (timbrar/cancelar CFDI de hospedaje) | Sin credenciales/CSD reales de Finkok NI de SW Sapien | `.env.example` (`FINKOK_*`/`SW_*`), `packages/mcp-servers/cfdi/README.md` |
+| `hotelesPaymentsPort` | Sin adaptador de cobro (Stripe/Conekta) todavía | `apps/api/src/production/not-ready.ts` |
+| `rentasCanalMensajeria` | Sin credencial de partner (Airbnb/Vrbo/Booking.com) — ningún nombre de variable definido aún, es la integración misma la que falta | `packages/domain-rentas/src/mensajeria/` |
+| `rentasOnboardingRepo` (3 de sus 8 métodos: credenciales/invitaciones) | Requieren una sesión `service_role` que este monorepo no aprovisiona todavía | `apps/api/src/production/rentas-onboarding-repository.ts` |
 
-Numeración destino según `packages/db/README.md`: `0000–0099` núcleo, `0100–0199`
-restaurantes, `0200+` el resto — sigue esa convención al copiar a
-`supabase/migrations/<timestamp>_<nombre>.sql` (nombres de archivo, no de contenido:
-`supabase db push` los aplica en orden alfabético de nombre de archivo).
+**Consecuencia práctica:** con `DATABASE_URL` + los secretos de plataforma
+(`JWT_SECRET`, `VOICE_TOOL_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`,
+`INTERNAL_SECRET`, `RENTAS_OWNER_JWT_SECRET`) configurados, **login Y las rutas de
+negocio de las 6 verticales (CRUD real contra Postgres, RLS por-tenant real)
+funcionan de punta a punta** — lo que queda 503 explícito hasta pegar la credencial
+correspondiente es SOLO la tabla de arriba (agente de WhatsApp con IA, envío
+saliente de WhatsApp, Google Calendar, timbrado de CFDI, cobro de hoteles, canal de
+mensajería de rentas, y 3 métodos del portal de onboarding de rentas).
 
-No se copiaron automáticamente en esta rama para no inventar timestamps/orden sin que
-alguien revise colisiones de nombre de tabla/función entre paquetes primero — son 9
-archivos de 4 paquetes distintos, más riesgo de error que los 2 de la rama anterior.
+### 0.3 — Migraciones: ya consolidadas en `supabase/migrations/`
+
+Actualizado (barrido de documentación, rondas 13/14/16): esta sección describía 9
+migraciones "todavía dispersas, ninguna copiada a `supabase/migrations/`" — eso
+también quedó resuelto. `supabase/migrations/` ya contiene 109 archivos
+(`20240101000001_...` a `20240101000109_...`, orden alfabético de nombre =
+orden de aplicación, mismo criterio que documentaba esta sección), copia de TODAS
+las migraciones reales de `packages/db/migrations/`,
+`packages/core-conversation/migrations/` y de los 6 `packages/domain-*/migrations/`
+a la fecha. Cada archivo fuente sigue viviendo en su paquete de origen (fuente
+canónica, ver `packages/db/README.md` para la convención de numeración por bloques)
+— `supabase/migrations/` es la copia consolidada con timestamp que `supabase db
+push` aplica contra el proyecto real.
+
+Único hallazgo real encontrado en este mismo barrido: `packages/domain-despachos/
+migrations/002_migracion_catalogo_schema.sql` (la migración detrás de
+`supabase/migrations/20240101000037_002_despachos_migracion_catalogo_schema.sql`)
+NO tenía fuente canónica en su paquete — vivía SOLO como copia consolidada. Ya se
+agregó (contenido idéntico, verificado con diff) — no reaplica ni cambia nada en un
+proyecto Supabase ya migrado, solo restaura la convención de "el paquete de dominio
+es la fuente".
+
+`packages/core-conversation/migrations/001_conversation_state_cas.sql` sigue
+requiriendo una tabla `conversations` con columna `metadata JSONB` que NINGUNA
+migración de este repo crea todavía (dice explícito el comentario de ese mismo
+archivo) — revisa ese gap antes de asumir que esa función en particular es
+utilizable contra el proyecto real.
 
 ---
 
@@ -111,11 +119,11 @@ npx supabase link --project-ref <tu-project-ref>
 ```
 Reemplaza también `project_id` en `supabase/config.toml` por ese mismo ref.
 
-### (c) Consolidar y aplicar las migraciones — gratis, PERO revisa el Paso 0.3 primero
-Copia los 9 archivos de la tabla de arriba a `supabase/migrations/` con timestamps
-que respeten el orden de la columna "Orden relativo", **y decide qué hacer con la
-tabla `conversations` faltante** (crearla en una migración nueva antes de la 001 de
-core-conversation, o dejar esa función sin aplicar hasta que exista) antes de correr:
+### (c) Aplicar las migraciones — gratis, PERO revisa el Paso 0.3 primero
+`supabase/migrations/` ya trae las 109 migraciones consolidadas (nada que copiar a
+mano) — **decide qué hacer con la tabla `conversations` faltante** que bloquea
+`packages/core-conversation/migrations/001_conversation_state_cas.sql` (crearla en
+una migración nueva antes de esa, o dejarla sin aplicar hasta que exista) y corre:
 ```bash
 npx supabase db push
 ```
@@ -125,11 +133,15 @@ npx supabase db push
 cp .env.example .env
 ```
 Ver los comentarios de cada bloque en `.env.example` para saber exactamente qué lee
-el código hoy y qué es solo referencia a futuro. Como mínimo para que **login**
-funcione de punta a punta: `JWT_SECRET`, `VOICE_TOOL_SECRET`,
-`WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` (generas tú mismo, ej. `openssl rand
--hex 32`), y `DATABASE_URL` (Project Settings → Database → Connection string, pooler
-de **transacción**, puerto 6543 — ver comentario en `.env.example`).
+el código hoy y qué es solo referencia a futuro. Como mínimo para que **login Y las
+rutas de negocio de las 6 verticales** (no solo login, ver Paso 0.2) funcionen de
+punta a punta: `JWT_SECRET`, `VOICE_TOOL_SECRET`, `WHATSAPP_VERIFY_TOKEN`,
+`WHATSAPP_APP_SECRET`, `INTERNAL_SECRET`, `RENTAS_OWNER_JWT_SECRET` (generas tú
+mismo, ej. `openssl rand -hex 32` para cada uno — nunca reutilices el mismo valor
+entre `JWT_SECRET` y `RENTAS_OWNER_JWT_SECRET`), y `DATABASE_URL` (Project Settings
+→ Database → Connection string, pooler de **transacción**, puerto 6543 — ver
+comentario en `.env.example`). Sin `RENTAS_OWNER_JWT_SECRET` en particular,
+`loadApiEnv()` lanza al arrancar — bloquea TODA la app, no solo rentas.
 
 `.env` nunca se commitea (ya está en `.gitignore`).
 
@@ -143,16 +155,17 @@ Project → Settings → Environment Variables. Vercel nunca lee tu `.env` local
 que pegarlas a mano o con `vercel env add`.
 
 **Además, agrega `CRON_SECRET` con el MISMO valor que `INTERNAL_SECRET`.**
-`vercel.json::crons` (16 crons diarios a la fecha, uno por cada dispatcher/reminder
+`vercel.json::crons` (17 crons diarios a la fecha, uno por cada dispatcher/reminder
 interno de cada vertical — citas, hoteles, restaurantes, despachos, rentas,
-licitaciones, más el dispatcher de WhatsApp de plataforma; ver
-`apps/worker/src/jobs/citas/README.md`) dispara un GET real a cada `/internal/*`
-que Vercel autentica mandando `Authorization: Bearer $CRON_SECRET` — sin esa
-variable configurada, el cron sigue disparándose pero la ruta responde 401
+licitaciones, más el dispatcher de WhatsApp de plataforma; corre
+`python3 -c "import json;print(len(json.load(open('vercel.json'))['crons']))"` para
+confirmar el conteo vigente en cualquier momento) dispara un GET real a cada
+`/internal/*` que Vercel autentica mandando `Authorization: Bearer $CRON_SECRET` —
+sin esa variable configurada, el cron sigue disparándose pero la ruta responde 401
 (fail-closed, nunca despacha nada sin autenticarse).
 
 **ADVERTENCIA sin verificar desde este repo — revisar en el dashboard antes de
-confiar en que estos 16 crons realmente corran:** la documentación pública de
+confiar en que estos 17 crons realmente corran:** la documentación pública de
 Vercel para el plan Hobby (gratis) históricamente limita no solo la frecuencia
 (máximo una vez al día por cron, que aquí sí se cumple — cada entrada usa un
 horario fijo diario) sino también el **número total de cron jobs por proyecto**

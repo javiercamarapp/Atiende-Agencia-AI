@@ -12,15 +12,15 @@
 //      de devolución -> prepara la solicitud.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { InMemoryDespachosRepository } from "../src/in-memory-repository.ts";
-import { DEFAULT_MONTHLY_CLOSE_TEMPLATE } from "../src/cierre-mensual/templates.ts";
-import { autoCheckTareas, completarTarea, evaluarCierre, cerrarPeriodo, estaPeriodoCerrado } from "../src/cierre-mensual/engine.ts";
-import { CierreValidacionError } from "../src/errors.ts";
-import { predecirCategoria, necesitaRevisionHumana } from "../src/bookkeeping/clasificador.ts";
-import { generatePoliza, validatePoliza } from "../src/bookkeeping/rules-engine.ts";
-import type { CfdiClassification } from "../src/bookkeeping/types.ts";
-import { generarDiotDevolucionIva, conciliarDiotDeclaracion, calcularSaldoFavor, calcularMontoDevolucion, prepararSolicitud } from "../src/devolucion-iva/calculo.ts";
-import type { DeclaracionMensualIva, FacturaCfdiIva } from "../src/devolucion-iva/types.ts";
+import { InMemoryDespachosRepository } from "../../src/in-memory-repository.ts";
+import { DEFAULT_MONTHLY_CLOSE_TEMPLATE } from "../../src/cierre-mensual/templates.ts";
+import { autoCheckTareas, completarTarea, evaluarCierre, cerrarPeriodo, estaPeriodoCerrado } from "../../src/cierre-mensual/engine.ts";
+import { CierreValidacionError } from "../../src/errors.ts";
+import { predecirCategoria, necesitaRevisionHumana } from "../../src/bookkeeping/clasificador.ts";
+import { generatePoliza, validatePoliza } from "../../src/bookkeeping/rules-engine.ts";
+import type { CfdiClassification } from "../../src/bookkeeping/types.ts";
+import { generarDiotDevolucionIva, conciliarDiotDeclaracion, calcularSaldoFavor, calcularMontoDevolucion, prepararSolicitud } from "../../src/devolucion-iva/calculo.ts";
+import type { DeclaracionMensualIva, FacturaCfdiIva } from "../../src/devolucion-iva/types.ts";
 
 describe("integración e2e (Fase 6): cierre mensual completo, con bloqueo real de re-cierre", () => {
   it("abre, auto-completa lo posible, bloquea el cierre con tareas manuales pendientes, y cierra tras completarlas", async () => {

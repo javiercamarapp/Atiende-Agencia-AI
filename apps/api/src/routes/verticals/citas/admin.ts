@@ -330,41 +330,43 @@ function serializeAppointment(appointment: AppointmentRecord) {
 }
 
 /** Enriquece una lista de citas con el nombre real de proveedor/servicio/cliente —
- * la agenda del panel es ilegible con solo ids. Deduplica lookups por id dentro de
- * la misma respuesta (una organización real tiene pocas decenas de proveedores/
- * servicios, nunca uno por cita) — sigue sin ser una regla de negocio nueva, solo
- * composición de lecturas que ya existían (`findProvider`/`findService`/
- * `findCustomerById`). */
+ * la agenda del panel es ilegible con solo ids.
+ *
+ * Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad MEDIA):
+ * "Agenda de citas con 1+P+S+C queries por carga" -- la versión anterior YA
+ * deduplicaba ids dentro de la respuesta (un `Map` de caché por id), pero seguía
+ * ejecutando una llamada al repositorio POR CADA proveedor/servicio/cliente DISTINTO
+ * referenciado (P+S+C llamadas, además de la que lista las citas). Ahora resuelve los
+ * tres catálogos en 3 llamadas agregadas (`findProvidersByIds`/`findServicesByIds`/
+ * `findCustomersByIds`, ver `CitasRepository`), sin importar cuántos ids distintos
+ * traiga la página. */
 async function enrichAppointments(citasRepo: CitasRepository, organizationId: string, appointments: readonly AppointmentRecord[]) {
-  const providerCache = new Map<string, ProviderRecord | null>();
-  const serviceCache = new Map<string, ServiceRecord | null>();
-  const customerCache = new Map<string, CustomerRecord | null>();
+  const providerIds = [...new Set(appointments.map((a) => a.providerId))];
+  const serviceIds = [...new Set(appointments.map((a) => a.serviceId))];
+  const customerIds = [...new Set(appointments.map((a) => a.customerId))];
 
-  async function cachedProvider(id: string) {
-    if (!providerCache.has(id)) providerCache.set(id, await citasRepo.findProvider(organizationId, id));
-    return providerCache.get(id) ?? null;
-  }
-  async function cachedService(id: string) {
-    if (!serviceCache.has(id)) serviceCache.set(id, await citasRepo.findService(organizationId, id));
-    return serviceCache.get(id) ?? null;
-  }
-  async function cachedCustomer(id: string) {
-    if (!customerCache.has(id)) customerCache.set(id, await citasRepo.findCustomerById(organizationId, id));
-    return customerCache.get(id) ?? null;
-  }
+  const [providers, services, customers] = await Promise.all([
+    citasRepo.findProvidersByIds(organizationId, providerIds),
+    citasRepo.findServicesByIds(organizationId, serviceIds),
+    citasRepo.findCustomersByIds(organizationId, customerIds),
+  ]);
 
-  return Promise.all(
-    appointments.map(async (appointment) => {
-      const [provider, service, customer] = await Promise.all([cachedProvider(appointment.providerId), cachedService(appointment.serviceId), cachedCustomer(appointment.customerId)]);
-      return {
-        ...serializeAppointment(appointment),
-        provider_name: provider?.displayName ?? null,
-        service_name: service?.name ?? null,
-        customer_name: customer?.fullName ?? null,
-        customer_phone: customer?.phone ?? null,
-      };
-    }),
-  );
+  const providerById = new Map<string, ProviderRecord>(providers.map((p) => [p.id, p]));
+  const serviceById = new Map<string, ServiceRecord>(services.map((s) => [s.id, s]));
+  const customerById = new Map<string, CustomerRecord>(customers.map((c) => [c.id, c]));
+
+  return appointments.map((appointment) => {
+    const provider = providerById.get(appointment.providerId) ?? null;
+    const service = serviceById.get(appointment.serviceId) ?? null;
+    const customer = customerById.get(appointment.customerId) ?? null;
+    return {
+      ...serializeAppointment(appointment),
+      provider_name: provider?.displayName ?? null,
+      service_name: service?.name ?? null,
+      customer_name: customer?.fullName ?? null,
+      customer_phone: customer?.phone ?? null,
+    };
+  });
 }
 
 function parsePositiveInt(raw: string | undefined, fallback: number, max: number): number {

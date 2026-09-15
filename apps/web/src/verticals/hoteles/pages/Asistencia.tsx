@@ -66,7 +66,6 @@ export function AsistenciaPage({ apiBaseUrl, token, propertyId, role }: HotelesS
 
   useEffect(() => {
     void cargarMisEventos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBaseUrl, token, propertyId]);
 
   const ultimoEvento = misEventos && misEventos.length > 0 ? misEventos[misEventos.length - 1] : null;

@@ -14,11 +14,13 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   createStaffInvite,
+  fetchOrgMembers,
   fetchRepartidores,
   fetchStaffInvites,
   revokeStaffInvite,
+  updateStaffRole,
 } from "../lib/staff-client.ts";
-import type { CreatedStaffInvite, RepartidorMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
+import type { CreatedStaffInvite, OrgMember, RepartidorMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -45,6 +47,12 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
   const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+  // restaurantes permite gestionar roles desde el producto"): verificado contra el
+  // código real que ni siquiera restaurantes podía cambiar el rol de un staff YA
+  // ACEPTADO — todo lo de arriba (invites/repartidores) solo cubre alta o lectura.
+  const [members, setMembers] = useState<readonly OrgMember[] | null>(null);
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
@@ -57,13 +65,30 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
     setError(null);
     try {
       // `fetchRepartidores` está gateado por MANAGER_ROLES (owner/admin/staff, más
-      // amplio) en el servidor -- se pide siempre. `fetchStaffInvites` está gateado
-      // por STAFF_INVITE_ROLES (owner/admin, más angosto) -- solo se pide cuando
-      // `canManage` ya lo anticipa, para no disparar un 403 esperado en cada carga.
+      // amplio) en el servidor -- se pide siempre. `fetchStaffInvites`/
+      // `fetchOrgMembers` están gateados por STAFF_INVITE_ROLES (owner/admin, más
+      // angosto) -- solo se piden cuando `canManage` ya lo anticipa, para no
+      // disparar un 403 esperado en cada carga.
       setRepartidores(await fetchRepartidores(fetch, apiBaseUrl, token, propertyId));
-      if (canManage) setInvites(await fetchStaffInvites(fetch, apiBaseUrl, token, propertyId));
+      if (canManage) {
+        setInvites(await fetchStaffInvites(fetch, apiBaseUrl, token, propertyId));
+        setMembers(await fetchOrgMembers(fetch, apiBaseUrl, token, propertyId));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el staff.");
+    }
+  }
+
+  async function handleRoleChange(memberId: string, nextRole: StaffVerticalRole) {
+    setSavingRoleId(memberId);
+    setError(null);
+    try {
+      const updated = await updateStaffRole(fetch, apiBaseUrl, token, propertyId, memberId, nextRole);
+      setMembers((prev) => (prev ? prev.map((m) => (m.id === memberId ? updated : m)) : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cambiar el rol de ese staff.");
+    } finally {
+      setSavingRoleId(null);
     }
   }
 
@@ -186,6 +211,45 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
                   >
                     {revokingId === inv.id ? "Revocando…" : "Revocar"}
                   </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {canManage && (
+        <section>
+          <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Staff activo</p>
+          <p style={{ margin: "0 0 8px", fontSize: 12, color: "#9ca3af" }}>
+            Cambia el rol de un staff ya aceptado. No puedes tocar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo, ni cambiar tu propio rol
+            — el servidor lo rechaza aunque el rol aparezca en esta lista.
+          </p>
+          {!members && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
+          {members && members.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Todavía no hay ningún staff aceptado en esta organización.</p>}
+          {members && members.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {members.map((m) => (
+                <div
+                  key={m.id}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, flexWrap: "wrap" }}
+                >
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>{m.fullName}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{m.email}</p>
+                  </div>
+                  <select
+                    value={m.verticalRole}
+                    disabled={savingRoleId === m.id}
+                    onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
+                    style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
+                  >
+                    {ROLE_OPTIONS.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               ))}
             </div>

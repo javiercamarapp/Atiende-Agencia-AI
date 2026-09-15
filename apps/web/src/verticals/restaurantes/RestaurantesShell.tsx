@@ -10,8 +10,9 @@ import type { CSSProperties, ReactNode } from "react";
 import { Navigate, NavLink } from "react-router-dom";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import type { LoginSession } from "../../lib/auth-client.ts";
-import { fetchBranches } from "./dashboard-client.ts";
+import { fetchBranches, resolveActivePropertyId } from "./dashboard-client.ts";
 import type { BranchOption } from "./dashboard-client.ts";
+import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
@@ -75,6 +76,27 @@ const logoutButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const selectLabelStyle: CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "#6b7280",
+  margin: "0 0 4px",
+};
+
+const selectStyle: CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "6px 8px",
+  borderRadius: 8,
+  border: "1px solid #d1d5db",
+  fontSize: 13,
+  color: "#111827",
+  background: "#fff",
+  boxSizing: "border-box",
+};
+
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   // Hallazgo de auditoría (severidad MEDIA/BRANDING, "Título de pestaña fijo en
   // 'Restaurantes' para las 6 verticales"): ver el comentario de cabecera de
@@ -83,6 +105,14 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   useDocumentTitle("Restaurantes", orgSlug);
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
   const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
+  // Sucursal activa elegida en el selector de abajo -- `null` hasta que el staff
+  // elige una explícitamente, en cuyo caso `resolveActivePropertyId` cae a la primera
+  // de `branches` (mismo fallback que el `branches[0]` fijo de antes, pero ahora es
+  // solo el default inicial, no un techo duro). Inicializado leyendo
+  // lib/property-selection.ts (persistido para este `orgSlug`) para que sobreviva a
+  // que App.tsx monte una instancia NUEVA de este Shell al navegar a otra ruta del
+  // panel — mismo patrón exacto que HotelesShell.tsx.
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(() => readPersistedPropertyId(window.localStorage, orgSlug));
   const [error, setError] = useState<string | null>(null);
   // Mismo hallazgo de auditoría que hoteles ("No existe botón ni flujo de 'Cerrar
   // sesión' en ninguna pantalla de restaurantes"): /auth/logout ya existe en el
@@ -174,10 +204,24 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     );
   }
 
-  // Igual que el Dashboard de KPIs (Fase 3): usa la primera sucursal hasta que haya
-  // un selector visual real (fuera de alcance de esta fase, ver diseño §1).
-  const propertyId = branches[0]!.propertyId;
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA, "cadena de
+  // restaurantes con 2+ sucursales solo opera la primera"): antes se usaba SIEMPRE
+  // `branches[0]!.propertyId`, sin importar cuántas sucursales trajera `branches` —
+  // ver el comentario de cabecera de `resolveActivePropertyId`
+  // (./dashboard-client.ts) para el hallazgo completo y el patrón (idéntico a
+  // hoteles/despachos/rentas) que lo cierra.
+  const propertyId = resolveActivePropertyId(branches, selectedPropertyId)!;
+  const activeBranch = branches.find((b) => b.propertyId === propertyId)!;
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "staff";
+
+  // Handler real del selector: actualiza el estado de React (recalcula
+  // `children(ctx)` con el nuevo propertyId de inmediato, vía la `key={propertyId}`
+  // de abajo) y persiste la selección best-effort (ver lib/property-selection.ts)
+  // para que sobreviva a navegar a otra ruta del panel o a un refresh de página.
+  function handleSelectBranch(nextPropertyId: string) {
+    setSelectedPropertyId(nextPropertyId);
+    persistPropertyId(window.localStorage, orgSlug, nextPropertyId);
+  }
 
   // Ronda 13 — hallazgo de auditoría (severidad ALTA, mismo archivo de causa que el
   // listener de SESSION_EXPIRED_EVENT de arriba): un repartidor que entra por URL
@@ -200,6 +244,26 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
         <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Restaurantes · {orgSlug}</p>
+        {/* Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA,
+            "cadena de restaurantes con 2+ sucursales solo opera la primera"): selector
+            real, visible solo cuando hay más de una sucursal — mismo criterio que
+            "Hotel activo" en HotelesShell.tsx. */}
+        {branches.length > 1 ? (
+          <div style={{ margin: "0 0 8px" }}>
+            <label htmlFor="restaurantes-sucursal-activa" style={selectLabelStyle}>
+              Sucursal activa
+            </label>
+            <select id="restaurantes-sucursal-activa" value={propertyId} onChange={(e) => handleSelectBranch(e.target.value)} style={selectStyle}>
+              {branches.map((b) => (
+                <option key={b.propertyId} value={b.propertyId}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 8px" }}>{activeBranch.name}</p>
+        )}
         <NavLink to={`/restaurantes/${orgSlug}`} end style={({ isActive }) => linkStyle(isActive)}>
           Panel (KPIs)
         </NavLink>
@@ -221,7 +285,14 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
       </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}</div>
+      {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
+          cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
+          (selector, sin navegar) — mismo criterio que HotelesShell.tsx: cualquier
+          página que cachee en su propio useState un resultado calculado para la
+          sucursal anterior queda cubierta sin tener que auditarlas una por una. */}
+      <div key={propertyId} style={{ flex: 1, padding: 24, overflow: "auto" }}>
+        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+      </div>
     </div>
   );
 }

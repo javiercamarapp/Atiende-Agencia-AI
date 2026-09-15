@@ -15,7 +15,7 @@
 // token nuevo. Firma de `fetchJson`/`sendJson` SIN CAMBIOS: cada caller de este
 // repo (fraude-client.ts, folios-client.ts, etc.) sigue llamándolos exactamente
 // igual, sin enterarse de que ahora pueden reintentar por dentro.
-import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError, readErrorMessage, readWriteErrorMessage } from "../../../lib/authed-fetch.ts";
 import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearHotelesSession, persistHotelesSession, readPersistedHotelesSession } from "./auth-client.ts";
 import type { LoginSession } from "./auth-client.ts";
@@ -47,8 +47,7 @@ function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
 export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new HotelesAdminError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
+    throw new HotelesAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -73,8 +72,7 @@ export async function sendJson<T>(
     return fetchImpl(url, { method, headers, body: JSON.stringify(payload) });
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new HotelesAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+    throw new HotelesAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }

@@ -23,6 +23,25 @@ const MAX_CFDI_XML_BYTES = 512 * 1024;
 
 const TIPOS_COMPROBANTE_VALIDOS = new Set(["I", "E", "T", "P", "N"]);
 
+// Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA:
+// "listados sin paginación en 4 verticales") -- `GET .../cfdi` devolvía TODOS los
+// CFDI ingeridos de la property, sin límite, en un solo array. Un despacho activo
+// acumula miles de comprobantes a lo largo de los años; esta ruta ahora pagina por
+// offset/limit (mismo patrón que `GET .../citas/properties/:propertyId/customers`,
+// ver domain-citas/src/repository.ts::CustomerPage) -- `listInvoices` (sin paginar)
+// se queda intacta para las agregaciones fiscales que sí necesitan el período
+// completo (declaraciones/DIOT/devolución de IVA/conciliación, ver
+// domain-despachos/src/repository.ts::InvoicePage).
+const DEFAULT_CFDI_LIMIT = 50;
+const MAX_CFDI_LIMIT = 200;
+
+function parsePositiveInt(raw: string | undefined, fallback: number, max: number): number {
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, max);
+}
+
 interface ConceptoBody {
   readonly cantidad?: unknown;
   readonly valorUnitario?: unknown;
@@ -309,8 +328,19 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     assertVerticalRole(c, VER_CFDI_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const soloRevision = c.req.query("requiereRevisionHumana");
-    const invoices = await repo.listInvoices(c.req.param("propertyId"), soloRevision !== undefined ? { requiresHumanReview: soloRevision === "true" } : undefined);
-    return c.json(invoices.map(serializeInvoice));
+    const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_CFDI_LIMIT, MAX_CFDI_LIMIT);
+    const rawOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+
+    // El body sigue siendo el array plano (compatibilidad con el cliente ya
+    // existente, apps/web/.../despachos/lib/cfdi-client.ts) -- lo que cambia de
+    // verdad es que la QUERY ahora está acotada por `limit`/`offset` en vez de traer
+    // TODA la tabla; el total real y el siguiente offset van en headers para
+    // cualquier consumidor que sí quiera paginar de verdad.
+    const page = await repo.listInvoicesPage(c.req.param("propertyId"), { limit, offset, requiresHumanReview: soloRevision !== undefined ? soloRevision === "true" : undefined });
+    c.header("X-Total-Count", String(page.total));
+    if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
+    return c.json(page.items.map(serializeInvoice));
   });
 
   return app;

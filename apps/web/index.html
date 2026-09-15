@@ -4,6 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Atiende — Restaurantes</title>
+
+    <!-- Hallazgo de auditoría (rubro 12/branding, MEDIO, "favicon/manifest/OG sin
+         configurar"): ninguna de las 3 piezas existía — pestaña sin ícono, sin
+         manifest (no instalable como PWA, sin theme-color en el selector de
+         apps/tareas de Android), y cualquier link a este panel compartido en
+         WhatsApp/Slack/etc. mostraba una tarjeta vacía. Íconos reales (favicon.svg,
+         recorte del glifo de docs/brand/atiende-wordmark.svg — ver el comentario de
+         cabecera de ese archivo) + manifest.json real + OG/Twitter Card mínimos. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="mask-icon" href="/favicon.svg" color="#1D4ED8" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1D4ED8" />
+
+    <meta name="description" content="Atiende, agencia de AI — hoteles, restaurantes, citas y reservaciones, licitaciones, despachos y rentas." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Atiende" />
+    <meta property="og:title" content="Atiende, agencia de AI" />
+    <meta property="og:description" content="Panel operativo de Atiende, agencia de AI — hoteles, restaurantes, citas y reservaciones, licitaciones, despachos y rentas." />
+    <meta property="og:image" content="/atiende-wordmark.svg" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Atiende, agencia de AI" />
+    <meta name="twitter:description" content="Panel operativo de Atiende, agencia de AI — hoteles, restaurantes, citas y reservaciones, licitaciones, despachos y rentas." />
+    <meta name="twitter:image" content="/atiende-wordmark.svg" />
   </head>
   <body>
     <div id="root"></div>

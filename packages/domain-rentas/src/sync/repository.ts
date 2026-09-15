@@ -17,7 +17,7 @@
 import type { RangoFechas } from "../tipos.ts";
 import type { UidActivoInterno } from "./reconciliacion.ts";
 import type { EstadoFeedCanal } from "./cuarentena.ts";
-import type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
+import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 export interface RentasCalendarSyncRepository {
   // ---- Zona horaria de la property (rentas.property_config, migrations/001) ----
@@ -74,8 +74,20 @@ export interface RentasCalendarSyncRepository {
 
   // ---- Export ----
   listOcupacionesActivasBloqueantes(unidadId: string): Promise<OcupacionActivaExportable[]>;
-  findBloqueoExportadoPrevio(ocupacionId: string, canalId: string): Promise<BloqueoExportadoPrevio | null>;
-  upsertBloqueoExportado(organizationId: string, propertyId: string, ocupacionId: string, canalId: string, uidExportado: string, hashContenido: string, sequence: number): Promise<void>;
+  /** Batch de `findBloqueoExportadoPrevio` -- hallazgo de auditoría (rubro 10,
+   * "performance y escalabilidad", severidad MEDIA: "feed iCal público... ejecuta
+   * 3+2N queries por request"). Una sola consulta agregada para TODAS las ocupaciones
+   * activas de la unidad (`WHERE ocupacion_id = ANY($1)`), en vez de una query por
+   * ocupación dentro de un bucle -- ver ./motor.ts::exportarFeedParaUnidad, que ya NO
+   * llama a `findBloqueoExportadoPrevio` uno por uno. Devuelve un Map indexado por
+   * `ocupacionId` (solo las que ya tenían fila previa); una ocupación ausente del Map
+   * nunca se exportó antes a este canal. */
+  findBloqueosExportadosPrevios(ocupacionIds: readonly string[], canalId: string): Promise<Map<string, BloqueoExportadoPrevio>>;
+  /** Batch de `upsertBloqueoExportado` -- mismo hallazgo que
+   * `findBloqueosExportadosPrevios`, ver comentario de arriba. Una sola sentencia
+   * INSERT ... ON CONFLICT multi-fila para TODOS los bloqueos exportados del ciclo,
+   * en vez de un upsert por bloqueo. Sin efecto si `entradas` viene vacío. */
+  upsertBloqueosExportadosBatch(organizationId: string, propertyId: string, canalId: string, entradas: readonly EntradaUpsertBloqueoExportado[]): Promise<void>;
 }
 
-export type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
+export type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";

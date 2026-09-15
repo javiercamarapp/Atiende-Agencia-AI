@@ -22,7 +22,7 @@
 // refleja de inmediato en una cotización posterior, exactamente como en producción.
 import { randomUUID } from "node:crypto";
 import { InMemoryRentasCalendarStore } from "./calendar-store.ts";
-import type { RentasRepository } from "./repository.ts";
+import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
 import type { CandidataConciliacion, LineaConciliada, ResumenConciliacion } from "./finanzas/conciliacion.ts";
 import type { RangoFechas } from "./tipos.ts";
@@ -335,6 +335,13 @@ export class InMemoryRentasRepository implements RentasRepository {
 
   async listOcupaciones(propertyId: string, unidadId: string): Promise<readonly OcupacionCalendarioItem[]> {
     return this.calendarStore.listOcupaciones(propertyId, unidadId);
+  }
+
+  async listOcupacionesPage(propertyId: string, unidadId: string, opts: { readonly limit: number; readonly offset: number }): Promise<OcupacionCalendarioPage> {
+    const filtered = this.calendarStore.listOcupaciones(propertyId, unidadId);
+    const items = filtered.slice(opts.offset, opts.offset + opts.limit);
+    const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;
+    return { items, total: filtered.length, nextOffset };
   }
 
   // ---- RentasRepository: Fase 17 -- panel operativo del rol `limpieza` (delegado al

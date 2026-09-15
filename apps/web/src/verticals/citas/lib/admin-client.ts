@@ -19,7 +19,7 @@
 // POST /auth/refresh con el refreshToken persistido bajo "atiende.citas.session" y
 // reintenta la request original una sola vez con el token nuevo. Firma SIN
 // CAMBIOS: cada caller de este vertical sigue llamándolos exactamente igual.
-import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError, readErrorMessage, readWriteErrorMessage } from "../../../lib/authed-fetch.ts";
 import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearCitasSession, persistCitasSession, readPersistedCitasSession } from "./auth-client.ts";
 import type { LoginSession } from "./auth-client.ts";
@@ -47,8 +47,7 @@ function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
 export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new CitasAdminError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
+    throw new CitasAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -78,8 +77,7 @@ export async function sendJson<T>(
     }),
   );
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new CitasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+    throw new CitasAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -97,8 +95,7 @@ export async function deleteJson<T>(
     fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }),
   );
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new CitasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+    throw new CitasAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -111,4 +108,19 @@ export interface BranchOption {
 export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string): Promise<readonly BranchOption[]> {
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/citas/${orgSlug}/admin/branches`, token);
   return body.branches;
+}
+
+// Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA, "negocio de
+// citas con 2+ sucursales solo opera la primera"): CitasShell.tsx fijaba
+// `branches[0]!.propertyId` con el comentario explícito de que era un gap
+// deliberado ("hasta que un negocio real necesite elegir entre varias") — a
+// diferencia de licitaciones (property singleton POR DISEÑO, §2.1), citas SÍ
+// soporta multi-sucursal (este mismo `fetchBranches` puede devolver 2+ filas) y
+// nunca tuvo el selector. MISMO patrón exacto que ya resolvió esto en
+// hoteles/despachos/rentas/restaurantes (`resolveActivePropertyId` de
+// hoteles/lib/discovery-client.ts, leído primero como plantilla).
+export function resolveActivePropertyId(branches: readonly BranchOption[], selectedPropertyId: string | null): string | null {
+  if (branches.length === 0) return null;
+  if (selectedPropertyId !== null && branches.some((b) => b.propertyId === selectedPropertyId)) return selectedPropertyId;
+  return branches[0]!.propertyId;
 }

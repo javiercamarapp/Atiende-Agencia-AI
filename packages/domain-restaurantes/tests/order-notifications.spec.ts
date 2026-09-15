@@ -36,7 +36,7 @@ describe("notifyCustomerOnOrderStatusChangeCore", () => {
   it("no encola nada si la organización nunca conectó WhatsApp", async () => {
     const fixture = buildRestaurantFixture();
     const order = await seedOrder(fixture);
-    const preparando = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "preparando");
+    const preparando = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "pending", "preparando");
     const result = await notifyCustomerOnOrderStatusChangeCore(fixture.repo, preparando!);
     expect(result).toEqual({ enqueued: false, reason: "no_whatsapp_channel" });
     expect(fixture.repo.getOutbox()).toHaveLength(0);
@@ -47,10 +47,12 @@ describe("notifyCustomerOnOrderStatusChangeCore", () => {
     fixture.repo.seedWhatsAppChannel(fixture.organizationId, "PHONE_NUMBER_ID_123");
     const order = await seedOrder(fixture);
 
+    let previousStatus: "pending" | "preparando" | "en_camino" = "pending";
     for (const status of ["preparando", "en_camino", "entregado"] as const) {
-      const updated = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, status);
+      const updated = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, previousStatus, status);
       const result = await notifyCustomerOnOrderStatusChangeCore(fixture.repo, updated!);
       expect(result).toEqual({ enqueued: true });
+      previousStatus = status as "preparando" | "en_camino";
     }
 
     const outbox = fixture.repo.getOutbox();
@@ -65,7 +67,7 @@ describe("notifyCustomerOnOrderStatusChangeCore", () => {
     const fixture = buildRestaurantFixture();
     fixture.repo.seedWhatsAppChannel(fixture.organizationId, "PHONE_NUMBER_ID_123");
     const order = await seedOrder(fixture);
-    const cancelado = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "cancelado");
+    const cancelado = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "pending", "cancelado");
     const result = await notifyCustomerOnOrderStatusChangeCore(fixture.repo, cancelado!);
     expect(result).toEqual({ enqueued: true });
     expect((fixture.repo.getOutbox()[0]?.payload as { body: string }).body).toMatch(/cancelado/);
@@ -77,7 +79,7 @@ describe("notifyCustomerOnOrderStatusChangeCore", () => {
     const order = await seedOrder(fixture);
     expect(await notifyCustomerOnOrderStatusChangeCore(fixture.repo, order)).toEqual({ enqueued: false, reason: "status_not_notified" });
 
-    const problema = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "problema");
+    const problema = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "pending", "problema");
     expect(await notifyCustomerOnOrderStatusChangeCore(fixture.repo, problema!)).toEqual({ enqueued: false, reason: "status_not_notified" });
     expect(fixture.repo.getOutbox()).toHaveLength(0);
   });
@@ -86,7 +88,7 @@ describe("notifyCustomerOnOrderStatusChangeCore", () => {
     const fixture = buildRestaurantFixture();
     fixture.repo.seedWhatsAppChannel(fixture.organizationId, "PHONE_NUMBER_ID_123");
     const order = await seedOrder(fixture);
-    const sinTelefono = { ...(await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "preparando"))!, customerPhone: "" };
+    const sinTelefono = { ...(await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "pending", "preparando"))!, customerPhone: "" };
     const result = await notifyCustomerOnOrderStatusChangeCore(fixture.repo, sinTelefono);
     expect(result).toEqual({ enqueued: false, reason: "no_customer_phone" });
   });
@@ -95,7 +97,7 @@ describe("notifyCustomerOnOrderStatusChangeCore", () => {
     const fixture = buildRestaurantFixture();
     fixture.repo.seedWhatsAppChannel(fixture.organizationId, "PHONE_NUMBER_ID_123");
     const order = await seedOrder(fixture);
-    const preparando = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "preparando");
+    const preparando = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "pending", "preparando");
     await notifyCustomerOnOrderStatusChangeCore(fixture.repo, preparando!);
     await notifyCustomerOnOrderStatusChangeCore(fixture.repo, preparando!);
     expect(fixture.repo.getOutbox()).toHaveLength(1);
@@ -104,7 +106,7 @@ describe("notifyCustomerOnOrderStatusChangeCore", () => {
   it("tryNotifyCustomerOnOrderStatusChange nunca lanza aunque el repositorio falle -- best-effort real", async () => {
     const fixture = buildRestaurantFixture();
     const order = await seedOrder(fixture);
-    const preparando = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "preparando");
+    const preparando = await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "pending", "preparando");
     const brokenRepo = {
       ...fixture.repo,
       resolveActiveWhatsAppPhoneNumberId: async () => {
@@ -142,7 +144,7 @@ describe("changeOrderStatus / changeAssignedOrderStatus — disparan el aviso re
     const repartidorId = randomUUID();
     const order = await seedOrder(fixture);
     await fixture.repo.assignRepartidorToOrder(fixture.organizationId, order.id, repartidorId, null);
-    await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "preparando");
+    await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "pending", "preparando");
     const assigned = (await fixture.repo.findAssignedOrderById(fixture.organizationId, repartidorId, order.id))!;
 
     const enCamino = await changeAssignedOrderStatus(fixture.repo, fixture.organizationId, repartidorId, assigned, "en_camino", null);

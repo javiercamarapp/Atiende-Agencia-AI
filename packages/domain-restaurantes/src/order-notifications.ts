@@ -80,6 +80,19 @@ export interface CustomerOrderNotificationResult {
  * (p.ej. preparando y luego en_camino) generen dos mensajes reales — nunca se
  * pisan entre sí — pero un reintento idéntico (mismo pedido, mismo status) nunca
  * duplica (mismo dedupe real que `reminders.ts::runConfirmacionCitaCore`).
+ *
+ * Hallazgo de auditoría (rubro 17, comunicación transaccional, severidad MEDIA,
+ * "soporte de plantillas HSM de WhatsApp ausente"): este envío es PROACTIVO (el
+ * negocio inicia la conversación al cambiar el estado del pedido) — incluso cuando
+ * `order` se originó por voz/web/admin, sin NINGÚN mensaje de WhatsApp previo de
+ * este cliente que abra la ventana de 24h de Meta. `MetaGraphWhatsAppClient`
+ * (`@atiende/whatsapp-gateway`) todavía no sabe enviar `type: "template"` — ver el
+ * comentario de cabecera de
+ * `packages/whatsapp-gateway/src/providers/meta-graph-client.ts` (o el README de
+ * ese paquete) para el gap completo. Comportamiento actual honesto: Meta real
+ * rechaza este envío fuera de ventana con un 4xx de negocio, el dispatcher lo marca
+ * `dead` (nunca `sent` fingido) — la notificación simplemente no le llega al
+ * cliente por WhatsApp hasta que exista una plantilla real aprobada.
  */
 export async function notifyCustomerOnOrderStatusChangeCore(repo: RestaurantesRepository, order: Order): Promise<CustomerOrderNotificationResult> {
   if (!CUSTOMER_NOTIFIED_STATUSES.has(order.status)) return { enqueued: false, reason: "status_not_notified" };

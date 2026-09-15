@@ -19,6 +19,7 @@ import { MANAGER_ROLES } from "@atiende/domain-restaurantes";
 import type { Branch } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 
@@ -121,6 +122,7 @@ export function restaurantesAdminBranchesRoutes(deps: AppDeps): Hono<CoreAuthHon
     };
     const updated = await repo.updateBranchDetail(organizationId, branchId, patch);
     if (!updated) throw Errors.notFound("Sucursal no encontrada.");
+    logEvent(c, "info", "restaurantes_admin_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, branchId });
     return c.json({ branch: serializeBranch(updated) });
   });
 

@@ -13,7 +13,7 @@ import type { RangoFechas } from "../tipos.ts";
 import type { UidActivoInterno } from "./reconciliacion.ts";
 import { ESTADO_FEED_INICIAL, type EstadoFeedCanal } from "./cuarentena.ts";
 import type { RentasCalendarSyncRepository } from "./repository.ts";
-import type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
+import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 interface FeedRow {
   id: string;
@@ -225,18 +225,43 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
     return fila.rows;
   }
 
-  async findBloqueoExportadoPrevio(ocupacionId: string, canalId: string): Promise<BloqueoExportadoPrevio | null> {
-    const fila = await this.db.query<{ hash_contenido: string; sequence: number }>(`SELECT hash_contenido, sequence FROM rentas.bloqueo_exportado WHERE ocupacion_id = $1 AND canal_id = $2`, [ocupacionId, canalId]);
-    return fila.rows[0] ? { hashContenido: fila.rows[0].hash_contenido, sequence: fila.rows[0].sequence } : null;
+  /** Batch de la antigua `findBloqueoExportadoPrevio` -- hallazgo de auditoría (rubro
+   * 10: "3+2N queries por request", ver ./repository.ts). Una sola consulta agregada
+   * (`WHERE ocupacion_id = ANY($1)`) para TODAS las ocupaciones activas de la unidad,
+   * en vez de una query por ocupación dentro del bucle de ./motor.ts. */
+  async findBloqueosExportadosPrevios(ocupacionIds: readonly string[], canalId: string): Promise<Map<string, BloqueoExportadoPrevio>> {
+    if (ocupacionIds.length === 0) return new Map();
+    const fila = await this.db.query<{ ocupacion_id: string; hash_contenido: string; sequence: number }>(
+      `SELECT ocupacion_id, hash_contenido, sequence FROM rentas.bloqueo_exportado WHERE ocupacion_id = ANY($1) AND canal_id = $2`,
+      [ocupacionIds, canalId],
+    );
+    const resultado = new Map<string, BloqueoExportadoPrevio>();
+    for (const row of fila.rows) resultado.set(row.ocupacion_id, { hashContenido: row.hash_contenido, sequence: row.sequence });
+    return resultado;
   }
 
-  async upsertBloqueoExportado(organizationId: string, propertyId: string, ocupacionId: string, canalId: string, uidExportado: string, hashContenido: string, sequence: number): Promise<void> {
+  /** Batch de la antigua `upsertBloqueoExportado` -- mismo hallazgo que
+   * `findBloqueosExportadosPrevios` de arriba. Un solo INSERT ... ON CONFLICT
+   * multi-fila (vía `unnest` de los 4 arreglos paralelos) para TODOS los bloqueos
+   * exportados del ciclo, en vez de un upsert por bloqueo. No-op si `entradas` viene
+   * vacío -- una unidad sin ocupaciones activas bloqueantes no ejecuta esta query. */
+  async upsertBloqueosExportadosBatch(organizationId: string, propertyId: string, canalId: string, entradas: readonly EntradaUpsertBloqueoExportado[]): Promise<void> {
+    if (entradas.length === 0) return;
     await this.db.query(
       `INSERT INTO rentas.bloqueo_exportado (organization_id, property_id, ocupacion_id, canal_id, uid_exportado, hash_contenido, sequence, exportado_en)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+       SELECT $1, $2, t.ocupacion_id, $3, t.uid_exportado, t.hash_contenido, t.sequence, now()
+       FROM unnest($4::uuid[], $5::text[], $6::text[], $7::int[]) AS t(ocupacion_id, uid_exportado, hash_contenido, sequence)
        ON CONFLICT (ocupacion_id, canal_id) DO UPDATE SET
          uid_exportado = EXCLUDED.uid_exportado, hash_contenido = EXCLUDED.hash_contenido, sequence = EXCLUDED.sequence, exportado_en = now()`,
-      [organizationId, propertyId, ocupacionId, canalId, uidExportado, hashContenido, sequence],
+      [
+        organizationId,
+        propertyId,
+        canalId,
+        entradas.map((e) => e.ocupacionId),
+        entradas.map((e) => e.uidExportado),
+        entradas.map((e) => e.hashContenido),
+        entradas.map((e) => e.sequence),
+      ],
     );
   }
 }

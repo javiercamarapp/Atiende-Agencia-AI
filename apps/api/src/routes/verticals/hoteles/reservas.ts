@@ -42,6 +42,16 @@ import type { AppDeps } from "../../../deps.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+const DEFAULT_RESERVAS_LIMIT = 50;
+const MAX_RESERVAS_LIMIT = 200;
+
+function parsePositiveInt(raw: string | undefined, fallback: number, max: number): number {
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, max);
+}
+
 // Mapa de códigos de dominio (@atiende/domain-hoteles::QuoteError) -> estatus HTTP —
 // idéntico al de quotes.ts (mismo motor, mismo significado de cada código).
 const QUOTE_CODE_STATUS: Record<string, number> = {
@@ -129,10 +139,24 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   // Superficie mínima consultable (diseño §5) — sin roles finos, cualquier staff de la
   // property puede leer, mismo criterio que GET /pedidos-fnb.
+  // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA:
+  // "listados sin paginación en 4 verticales") -- devolvía TODAS las reservas de la
+  // property en un solo array, sin límite. Un hotel activo acumula miles de reservas
+  // a lo largo de los años. El body sigue siendo el array plano (compatibilidad con
+  // el cliente ya existente) -- lo que cambia de verdad es que la QUERY ahora está
+  // acotada por `limit`/`offset` reales (`listReservationsPage`, ver
+  // @atiende/domain-hoteles::repository.ts) en vez de traer TODA la tabla; el total
+  // real y el siguiente offset van en headers para quien sí quiera paginar de verdad.
   app.get("/hoteles/:propertyId/reservas", async (c) => {
     const repo = deps.hotelesRepo(c.get("db"));
-    const reservas = await repo.listReservations(c.req.param("propertyId"));
-    return c.json(reservas.map(serializeReservation));
+    const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_RESERVAS_LIMIT, MAX_RESERVAS_LIMIT);
+    const rawOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+
+    const page = await repo.listReservationsPage(c.req.param("propertyId"), { limit, offset });
+    c.header("X-Total-Count", String(page.total));
+    if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
+    return c.json(page.items.map(serializeReservation));
   });
 
   // Fix hallazgo ALTA — catálogo de tipos de habitación de la property (ver

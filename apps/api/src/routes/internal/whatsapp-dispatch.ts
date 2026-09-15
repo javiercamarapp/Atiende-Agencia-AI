@@ -67,6 +67,7 @@ import type { RestaurantesRepository } from "@atiende/domain-restaurantes";
 import type { DispatchSummary, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
+import { logEvent } from "../../logger.ts";
 import type { AppDeps } from "../../deps.ts";
 
 const DEFAULT_LIMIT = 25;
@@ -187,7 +188,7 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
         // No es un fallo de la ruta (el resto del batch sí se despachó bien),
         // pero sí vale la pena que quede en logs de la plataforma para
         // inspección manual de mensajes muertos.
-        console.error(`whatsapp-dispatch: ${result.dead} mensaje(s) de ${vertical} quedaron 'dead' en esta corrida.`);
+        logEvent(c, "error", "whatsapp_dispatch_mensajes_dead", { vertical, dead: result.dead });
       }
     }
 
@@ -205,8 +206,7 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
     // muertos -- consumible por cualquier integración de logs (Sentry,
     // Logtail, `vercel logs`, etc.) sin tocar el contrato HTTP del cron.
     if (anyFailure) {
-      console.error("whatsapp-dispatch: corrida de cron con verticales fallidas", {
-        severity: "error",
+      logEvent(c, "error", "whatsapp_dispatch_cron_con_verticales_fallidas", {
         failedVerticals,
         failedCount: failedVerticals.length,
         totalDead,

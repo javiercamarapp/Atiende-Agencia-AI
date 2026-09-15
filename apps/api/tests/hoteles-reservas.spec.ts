@@ -309,6 +309,55 @@ describe("GET /hoteles/:propertyId/reservas", () => {
     const body = (await res.json()) as ReservaBody[];
     expect(body.length).toBeGreaterThanOrEqual(1);
   });
+
+  // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA):
+  // "listados sin paginación en 4 verticales" -- devolvía TODAS las reservas de la
+  // property en un solo array, sin límite. Con N=5 reservas y limit=2, la query debe
+  // quedar ACOTADA (nunca "todo de una vez"), y X-Total-Count/X-Next-Offset deben
+  // permitir recorrer las 5 sin duplicar ni omitir ninguna.
+  it("con N=5 reservas y limit=2, la query queda acotada -- X-Total-Count/X-Next-Offset recorren las 5 sin duplicar ni omitir", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    // 2 habitaciones libres por noche (ver hoteles-fixtures.ts) -- reparte las 5
+    // reservas entre los 3 pares fecha in/out sembrados para nunca chocar con el
+    // inventario real (2+2+1 = 5, cada rango con <= 2 reservas simultáneas).
+    const RANGOS: readonly [string, string][] = [
+      ["2026-12-01", "2026-12-02"],
+      ["2026-12-01", "2026-12-02"],
+      ["2026-12-02", "2026-12-03"],
+      ["2026-12-02", "2026-12-03"],
+      ["2025-01-10", "2025-01-11"],
+    ];
+    const N = RANGOS.length;
+    for (let i = 0; i < N; i += 1) {
+      const [checkInDate, checkOutDate] = RANGOS[i]!;
+      const res = await app.request(
+        `/hoteles/${ctx.propertyId}/reservas`,
+        authedJson(ctx.staff.owner.token, { roomTypeId: ctx.roomTypeId, checkInDate, checkOutDate }, { "idempotency-key": `k-pagina-${i}` }),
+      );
+      expect(res.status).toBe(201);
+    }
+
+    const idsVistos = new Set<string>();
+    let offset = 0;
+    let paginas = 0;
+    for (;;) {
+      const res = await app.request(`/hoteles/${ctx.propertyId}/reservas?limit=2&offset=${offset}`, authedJson(ctx.staff.housekeeping.token));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-total-count")).toBe(String(N));
+      const pagina = (await res.json()) as ReservaBody[];
+      expect(pagina.length).toBeLessThanOrEqual(2);
+      for (const r of pagina) idsVistos.add(r.id);
+      paginas += 1;
+      const nextOffset = res.headers.get("x-next-offset");
+      if (nextOffset === null) break;
+      offset = Number(nextOffset);
+      expect(paginas).toBeLessThan(10);
+    }
+
+    expect(idsVistos.size).toBe(N);
+    expect(paginas).toBe(3); // ceil(5/2)
+  });
 });
 
 // Fix hallazgo ALTA — catálogos que le faltaban al formulario de "crear reserva":

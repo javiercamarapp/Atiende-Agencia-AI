@@ -18,8 +18,22 @@
 // equivalente.
 import { Hono } from "hono";
 import { exportarFeedParaUnidad } from "@atiende/domain-rentas";
+import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../../../errors.ts";
+import { requestActor } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+// Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad MEDIA):
+// "feed iCal público de rentas sin rate-limit ejecuta 3+2N queries por request" --
+// esta ruta es pública/sin auth por diseño (ver comentario de arriba), así que un
+// scraper enumerando unidadId/canalCodigo puede disparar cómputo/queries sin freno.
+// Mismo patrón que `auth.ts` ya conectó con `@atiende/core-ratelimit` (rubro 2):
+// llave por IP (nunca por recurso -- un scraper enumerando MUCHOS unidadId/canalCodigo
+// desde una sola IP debe agotar el mismo cupo, no uno nuevo por combinación). Límite
+// generoso para un poll real de una OTA (nadie refresca un feed .ics más de una vez
+// por minuto en la práctica; `Cache-Control: max-age=300` de abajo ya desalienta un
+// poll más frecuente que eso de un cliente bien portado).
+const ICAL_FEED_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 
 export function rentasIcalFeedPublicoRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -28,6 +42,11 @@ export function rentasIcalFeedPublicoRoutes(deps: AppDeps): Hono {
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
     const canalCodigo = c.req.param("canalCodigo");
+
+    const allowed = await rateLimit(`rentas:ical-feed:${requestActor(c.req.raw)}`, ICAL_FEED_RATE_LIMIT.max, ICAL_FEED_RATE_LIMIT.windowMs, {
+      category: "rentas:ical-feed-publico",
+    });
+    if (!allowed) throw Errors.tooManyRequests("Demasiadas solicitudes al feed de disponibilidad. Intenta de nuevo en unos minutos.");
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const rentasRepo = deps.rentasRepo(db);

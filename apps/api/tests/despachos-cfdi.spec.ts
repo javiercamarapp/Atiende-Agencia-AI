@@ -3,6 +3,7 @@
 // cola de revisión -> un rol autorizado la resuelve -> la decisión queda auditada vía
 // `@atiende/core-authz::AuditSink` (el TIPO compartido; el adaptador de producción
 // SÍ tiene su propia tabla, `despachos.audit_log`, ver migración 007).
+import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
@@ -220,5 +221,51 @@ describe("vencimientos fiscales — flujo 3", () => {
 
     const segundo = await app.request(`/despachos/${ctx.propertyId}/vencimientos/${deadline!.id}/completar`, authedJson(ctx.staff.contador.token, {}));
     expect(segundo.status).toBe(409);
+  });
+});
+
+// Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA):
+// "listados sin paginación en 4 verticales" -- GET .../cfdi devolvía TODOS los CFDI
+// de la property en un solo array, sin límite. Verifica que la query ahora queda
+// ACOTADA por limit/offset reales (nunca "todo de una vez"), con el total real y el
+// siguiente offset expuestos por header para quien sí quiera paginar.
+describe("GET /despachos/:propertyId/cfdi -- paginado real (offset/limit)", () => {
+  it("con N=5 CFDI y limit=2, devuelve solo 2 por página, y X-Total-Count/X-Next-Offset permiten recorrer las 5 sin duplicar ni omitir ninguna", async () => {
+    const app = buildApp(ctx.deps);
+    const N = 5;
+    for (let i = 0; i < N; i += 1) {
+      const res = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot({ folioFiscal: randomUUID() })));
+      expect(res.status).toBe(201);
+    }
+
+    const idsVistos = new Set<string>();
+    let offset = 0;
+    let paginas = 0;
+    for (;;) {
+      const res = await app.request(`/despachos/${ctx.propertyId}/cfdi?limit=2&offset=${offset}`, authedJson(ctx.staff.contador.token));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-total-count")).toBe(String(N));
+      const pagina = (await res.json()) as { id: string }[];
+      expect(pagina.length).toBeLessThanOrEqual(2);
+      for (const inv of pagina) idsVistos.add(inv.id);
+      paginas += 1;
+      const nextOffset = res.headers.get("x-next-offset");
+      if (nextOffset === null) break;
+      offset = Number(nextOffset);
+      expect(paginas).toBeLessThan(10); // guarda contra un loop infinito si el paginado real se rompiera
+    }
+
+    expect(idsVistos.size).toBe(N);
+    expect(paginas).toBe(3); // ceil(5/2)
+  });
+
+  it("sin limit/offset, sigue devolviendo el array plano (compatibilidad con el cliente existente) acotado al default", async () => {
+    const app = buildApp(ctx.deps);
+    await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot({ folioFiscal: randomUUID() })));
+    const res = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as unknown;
+    expect(Array.isArray(body)).toBe(true);
+    expect(res.headers.get("x-total-count")).toBe("1");
   });
 });

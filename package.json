@@ -18,7 +18,6 @@
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.config.ts tests/integration --pool=forks --poolOptions.forks.singleFork",
-    "test:adversarial": "vitest run --config vitest.config.ts tests/adversarial --pool=forks --poolOptions.forks.singleFork",
     "db:migrate": "node packages/db/src/cli.ts migrate",
     "db:seed": "node packages/db/src/cli.ts seed",
     "audit:deps": "npm audit --audit-level=high"
@@ -29,6 +28,8 @@
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.2",
     "eslint": "^9.36.0",
+    "globals": "^14.0.0",
+    "jsdom": "^30.0.1",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.46.2",
     "vitest": "^3.2.4"

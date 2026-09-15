@@ -17,8 +17,14 @@ export type { LoginSession, SessionStorageLike };
  * /auth/select-org) — mismo criterio "1 organización entra directo, 2+ piden
  * selector" ya aplicado en hoteles/restaurantes. */
 export function decideDespachosLandingPath(session: LoginSession): string {
-  if (session.organizations.length === 0) return "/sin-organizacion";
-  if (session.organizations.length === 1) return `/despachos/${session.organizations[0]!.slug}`;
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA) — mismo
+  // hueco que `decideHotelesLandingPath`: `session.organizations` trae membresías de
+  // TODAS las verticales (JWT único, ver cabecera). Filtrar por "despachos" antes de
+  // contar evita mandar al selector a alguien con 1 solo despacho (porque también
+  // tiene, p. ej., un hotel), o peor, navegar a `/despachos/<slug-de-otra-vertical>`.
+  const deDespachos = session.organizations.filter((o) => o.vertical === "despachos");
+  if (deDespachos.length === 0) return "/sin-organizacion";
+  if (deDespachos.length === 1) return `/despachos/${deDespachos[0]!.slug}`;
   return "/seleccionar-organizacion";
 }
 

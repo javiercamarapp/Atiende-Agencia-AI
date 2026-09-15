@@ -14,7 +14,7 @@
 // RestaurantesShell.tsx) y reintenta la request original una sola vez con el
 // token nuevo. Firma SIN CAMBIOS: branches-client.ts/catalog-client.ts/
 // customers-client.ts/orders-client.ts siguen llamándolos exactamente igual.
-import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError, readErrorMessage, readWriteErrorMessage } from "../../../lib/authed-fetch.ts";
 import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearSession, persistSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
@@ -42,8 +42,7 @@ function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
 export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new RestaurantesAdminError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
+    throw new RestaurantesAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -64,8 +63,7 @@ export async function sendJson<T>(
     }),
   );
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new RestaurantesAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+    throw new RestaurantesAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -78,8 +76,7 @@ export async function sendJson<T>(
 export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new RestaurantesAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+    throw new RestaurantesAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }

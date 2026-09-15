@@ -1,0 +1,26 @@
+<!--
+  Favicon real de Atiende — hallazgo de auditoría (rubro 12/branding, MEDIO,
+  "favicon/manifest/OG sin configurar"): recorte cuadrado del glifo (sin el texto
+  "atiende") de docs/brand/atiende-wordmark.svg, MISMOS colores/trazos/formas, solo
+  con el viewBox ajustado para encuadrar únicamente el ícono en un cuadro (los
+  favicons/manifest icons necesitan proporción 1:1; el wordmark original es 220x40,
+  pensado para texto al lado, no para un ícono cuadrado). No se generó ningún PNG:
+  este entorno no tiene ninguna herramienta de rasterizado instalada (ni
+  rsvg-convert/imagemagick/sharp) — un SVG real y correcto es preferible a fabricar
+  un PNG a mano. `<link rel="icon" type="image/svg+xml">` (ver index.html) tiene
+  soporte amplio en navegadores modernos.
+-->
+<svg viewBox="0 2 42 42" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Atiende">
+  <rect x="0" y="12" width="13" height="4" rx="2" fill="#7DD3FC" />
+  <rect x="4" y="20" width="13" height="4" rx="2" fill="#7DD3FC" />
+  <rect x="0" y="28" width="13" height="4" rx="2" fill="#7DD3FC" />
+  <circle cx="26" cy="14" r="5" fill="#38BDF8" />
+  <path
+    d="M14 40 L20 28 Q22 24 27 24 L31 24 Q34 24 36 21 L38 18"
+    stroke="#1D4ED8"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+</svg>

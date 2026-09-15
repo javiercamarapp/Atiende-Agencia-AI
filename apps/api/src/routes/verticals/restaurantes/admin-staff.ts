@@ -36,9 +36,11 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { canInviteStaff } from "@atiende/core-authz";
 import type { PlatformRole } from "@atiende/core-tenancy";
 import { correoInvitacionStaff, isRestaurantesRole, MANAGER_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-restaurantes";
-import type { OrganizationMemberRow, StaffInviteRow } from "@atiende/db";
+import { MembershipRoleUpdateError } from "@atiende/db";
+import type { OrganizationMemberRow, OrganizationMemberWithRoleRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 
@@ -80,6 +82,25 @@ function serializeMember(member: OrganizationMemberRow) {
   };
 }
 
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): a diferencia de
+// `serializeMember` de arriba (Fase 12, deliberadamente sin rol — ese selector ya
+// conoce el rol, lo pidió como filtro), este SÍ incluye `verticalRole` — es
+// justo el dato que la tabla nueva "Staff activo" necesita mostrar/editar.
+function serializeMemberWithRole(member: OrganizationMemberWithRoleRow) {
+  return {
+    id: member.userId,
+    email: member.email,
+    fullName: member.fullName,
+    verticalRole: member.verticalRole,
+    propertyIds: member.propertyIds,
+  };
+}
+
+interface UpdateMemberRoleBody {
+  readonly verticalRole?: unknown;
+}
+
 export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const collectionPath = "/v1/restaurantes/:propertyId/admin/staff/invitaciones";
@@ -93,10 +114,22 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   // día) -- gatearla con `STAFF_INVITE_ROLES` le negaría el selector a un manager
   // "staff" que SÍ puede despachar vía admin-orders.ts.
   const repartidoresPath = "/v1/restaurantes/:propertyId/admin/staff/repartidores";
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+  // restaurantes permite gestionar roles desde el producto"): dos rutas nuevas,
+  // separadas de `collectionPath`/`itemPath` (invitaciones PENDIENTES) por el mismo
+  // motivo que `repartidoresPath` (recurso distinto: membership YA ACEPTADA) —
+  // `miembrosPath` lista TODOS los miembros con su rol actual, `miembroItemPath`
+  // cambia el rol de uno. Gateadas con `STAFF_INVITE_ROLES` (mismo umbral que
+  // invitar — cambiar el rol de alguien es, al menos, igual de sensible que darlo de
+  // alta).
+  const miembrosPath = "/v1/restaurantes/:propertyId/admin/staff/miembros";
+  const miembroItemPath = "/v1/restaurantes/:propertyId/admin/staff/miembros/:userId";
 
   app.use(collectionPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(itemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(repartidoresPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(miembrosPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(miembroItemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(collectionPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
@@ -178,6 +211,20 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       console.error("admin-staff: best-effort staff invite email enqueue failed:", err);
     }
 
+    // Hallazgo de auditoría (observabilidad) — trazabilidad de acciones
+    // administrativas de staff: quién (actorUserId), qué (evento), sobre qué
+    // (email/verticalRole invitados) y cuándo (campo `ts` de `logEvent`), con el
+    // `requestId` del propio request para correlacionar contra el resto de logs
+    // de esta misma llamada HTTP (ver `../../../logger.ts`).
+    logEvent(c, "info", "restaurantes_admin_staff_invitado", {
+      actorUserId: staffId,
+      organizationId,
+      propertyIds,
+      inviteId: invite.id,
+      invitedEmail: email,
+      verticalRole,
+    });
+
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);
   });
 
@@ -194,6 +241,7 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const inviteId = c.req.param("inviteId");
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
     if (!revoked) throw Errors.notFound("Invitación no encontrada, ya fue usada, o ya estaba revocada.");
+    logEvent(c, "info", "restaurantes_admin_staff_invitacion_revocada", { actorUserId: c.get("userId"), organizationId, inviteId });
     return c.json({ ok: true });
   });
 
@@ -211,6 +259,69 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const organizationId = c.get("organizationId");
     const members = await deps.coreStaffRepo(c.get("db")).listMembersByVerticalRole(organizationId, "repartidor");
     return c.json({ repartidores: members.map(serializeMember) });
+  });
+
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+  // restaurantes permite gestionar roles desde el producto"): verificado contra el
+  // código real que ni siquiera restaurantes podía hacer esto -- `POST
+  // collectionPath` de arriba solo fija el rol AL INVITAR, ningún endpoint cambiaba
+  // el rol de un staff YA ACEPTADO. Lista TODOS los miembros (no solo
+  // "repartidor") con su `verticalRole` actual, para la tabla nueva "Staff activo"
+  // del panel.
+  app.get(miembrosPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(organizationId);
+    return c.json({ miembros: members.map(serializeMemberWithRole) });
+  });
+
+  // Cambia el `verticalRole` (y su `platformRole` mapeado) de un staff YA ACEPTADO.
+  // Autorización en DOS capas, mismo criterio exacto que `POST collectionPath`
+  // (invitar) de arriba:
+  //   1. `assertVerticalRole(STAFF_INVITE_ROLES)` -- primer filtro (quién llega
+  //      siquiera a la ruta).
+  //   2. `canInviteStaff` aplicado DOS veces (al rol ACTUAL del target y al rol
+  //      NUEVO que se le quiere asignar) -- la MISMA jerarquía que ya aplica al
+  //      invitar, reutilizada tal cual (nunca se reimplementa): un admin nunca toca
+  //      a un owner, ni puede ascender a nadie por encima de su propio rango.
+  // La AUTORIDAD real, sin embargo, es `core.update_membership_role` (`security
+  // definer`, ver `packages/db/migrations/0007_update_membership_role.sql`) --
+  // reaplica esta MISMA regla dentro de la función SQL (más el bloqueo de
+  // auto-cambio de rol) y es quien de verdad escribe `core.membership`; estas dos
+  // capas de TS son solo el primer filtro/mejor mensaje de error, nunca la única
+  // barrera (mismo principio "RLS real, TS es defensa en profundidad" del resto del
+  // monorepo).
+  app.patch(miembroItemPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const callerUserId = c.get("userId");
+    const targetUserId = c.req.param("userId");
+
+    if (targetUserId === callerUserId) throw Errors.validation("No puedes cambiar tu propio rol.");
+
+    const raw = await readJsonCapped<UpdateMemberRoleBody>(c.req.raw, 1 * 1024);
+    if (typeof raw.verticalRole !== "string" || !isRestaurantesRole(raw.verticalRole)) {
+      throw Errors.validation(`verticalRole inválido — se esperaba uno de: owner, admin, staff, repartidor.`);
+    }
+    const newVerticalRole = raw.verticalRole;
+    const newPlatformRole: PlatformRole = PLATFORM_ROLE_BY_VERTICAL_ROLE[newVerticalRole];
+
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(organizationId);
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw Errors.notFound("Ese staff no pertenece a esta organización.");
+
+    const callerPlatformRole = c.get("platformRole");
+    if (!callerPlatformRole || !canInviteStaff(callerPlatformRole, target.platformRole) || !canInviteStaff(callerPlatformRole, newPlatformRole)) {
+      throw Errors.staffRoleChangeRolInsuficiente();
+    }
+
+    try {
+      const updated = await deps.coreStaffRepo(c.get("db")).updateMemberVerticalRole(organizationId, targetUserId, newPlatformRole, newVerticalRole);
+      return c.json(serializeMemberWithRole(updated));
+    } catch (err) {
+      if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);
+      throw err;
+    }
   });
 
   return app;

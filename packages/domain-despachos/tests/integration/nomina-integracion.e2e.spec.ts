@@ -7,9 +7,9 @@
 // `reglas-fiscales-avanzadas.ts` no se toca, esta prueba solo demuestra cómo
 // un caller externo compondría ambas capas).
 import { describe, expect, it } from "vitest";
-import { procesarNomina } from "../src/nomina/payroll-engine.ts";
-import { validarCfdiDespachos } from "../src/cfdi/reglas-fiscales-avanzadas.ts";
-import type { DatosCfdiDespachos } from "../src/cfdi/reglas-fiscales-avanzadas.ts";
+import { procesarNomina } from "../../src/nomina/payroll-engine.ts";
+import { validarCfdiDespachos } from "../../src/cfdi/reglas-fiscales-avanzadas.ts";
+import type { DatosCfdiDespachos } from "../../src/cfdi/reglas-fiscales-avanzadas.ts";
 
 function cfdiNomina(overrides: Partial<DatosCfdiDespachos> = {}): DatosCfdiDespachos {
   return {

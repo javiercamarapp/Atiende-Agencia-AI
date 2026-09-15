@@ -31,8 +31,8 @@ runner deriva el resultado esperado de cada escenario, y el `README.md` de cada
 ### Qué NO cubre
 
 - El resto de la suite (`npm run typecheck`, `npx vitest run`, `npm run
-  test:integration`, `npm run test:adversarial`, lint) **no tiene ningún
-  trigger de CI todavía** — sigue corriéndose a mano por quien hace el cambio.
+  test:integration`, lint) **no tiene ningún trigger de CI todavía** — sigue
+  corriéndose a mano por quien hace el cambio.
   Agregar ese tier es una decisión de plataforma más amplia (qué runner, qué
   triggers, cache de `node_modules`, tiempo de corrida de 4089+ specs), fuera
   del alcance de este hallazgo puntual sobre Postgres real.

@@ -11,10 +11,11 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { MANAGER_ROLES, REPARTIDOR_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
+import { MANAGER_ROLES, changeOrderStatus, isOrderStatus, OrderStatusTransitionError, tryNotifyStaffRepartidorAssigned } from "@atiende/domain-restaurantes";
 import type { Order, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
@@ -152,6 +153,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // `repo`/transacción (ver comentario de cabecera de
       // routes/internal/whatsapp-dispatch.ts), en vez de esperar al cron diario.
       await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
+      logEvent(c, "info", "restaurantes_admin_pedido_status_cambiado", { actorUserId: c.get("userId"), organizationId, orderId, status: raw.status });
       return c.json({ order: serializeOrder(updated) });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
@@ -218,6 +220,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     // justificación completa de por qué este es el evento real, no un status
     // "listo" inventado): best-effort, nunca revierte el dispatch ya persistido.
     await tryNotifyStaffRepartidorAssigned(repo, updated);
+    logEvent(c, "info", "restaurantes_admin_pedido_repartidor_asignado", { actorUserId: c.get("userId"), organizationId, orderId, repartidorId: raw.repartidorId, estimatedDeliveryAt });
     return c.json({ order: serializeOrder(updated) });
   });
 
@@ -262,6 +265,7 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     }
     try {
       const notification = await repo.acknowledgeStaffOrderNotification(organizationId, notificationId, actorId);
+      logEvent(c, "info", "restaurantes_admin_notificacion_reconocida", { actorUserId: actorId, organizationId, notificationId });
       return c.json({ notification: serializeStaffNotification(notification) });
     } catch {
       throw Errors.notFound("Notificación no encontrada.");

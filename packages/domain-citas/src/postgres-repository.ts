@@ -241,12 +241,30 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows[0] ? mapProvider(rows[0]) : null;
   }
 
+  async findProvidersByIds(organizationId: string, providerIds: readonly string[]): Promise<readonly ProviderRecord[]> {
+    if (providerIds.length === 0) return [];
+    const { rows } = await this.db.query<ProviderRow>(
+      `select id, organization_id, property_id, display_name, role_label, is_active from citas.providers where organization_id = $1 and id = ANY($2);`,
+      [organizationId, providerIds],
+    );
+    return rows.map(mapProvider);
+  }
+
   async findService(organizationId: string, serviceId: string): Promise<ServiceRecord | null> {
     const { rows } = await this.db.query<ServiceRow>(
       `select id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active from citas.services where id = $1 and organization_id = $2;`,
       [serviceId, organizationId],
     );
     return rows[0] ? mapService(rows[0]) : null;
+  }
+
+  async findServicesByIds(organizationId: string, serviceIds: readonly string[]): Promise<readonly ServiceRecord[]> {
+    if (serviceIds.length === 0) return [];
+    const { rows } = await this.db.query<ServiceRow>(
+      `select id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active from citas.services where organization_id = $1 and id = ANY($2);`,
+      [organizationId, serviceIds],
+    );
+    return rows.map(mapService);
   }
 
   async providerOffersService(providerId: string, serviceId: string): Promise<boolean> {
@@ -437,11 +455,20 @@ export class PostgresCitasRepository implements CitasRepository {
       const row = updated[0] ?? existing;
       return { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email };
     }
+    // Fix hallazgo auditoría (rubro 3, "recuperación de 23505 sin SAVEPOINT deriva en
+    // 25P02") — sin este SAVEPOINT, el unique_violation de abajo deja TODA la
+    // transacción de la request en curso abortada a nivel Postgres (25P02:
+    // "current transaction is aborted, commands ignored until end of transaction
+    // block") y el SELECT de recuperación fallaría también, en vez de devolver la
+    // fila ganadora — mismo patrón ya establecido en
+    // domain-rentas/src/aplicacion/reservas.ts (`crearReservaConfirmada`).
+    await this.db.exec("SAVEPOINT sp_upsert_customer_race");
     try {
       const { rows: created } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
         `insert into citas.customers (organization_id, phone, full_name, email) values ($1, $2, $3, $4) returning id, organization_id, full_name, phone, email;`,
         [organizationId, phone, name, email ?? null],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_upsert_customer_race");
       const row = created[0]!;
       return { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email };
     } catch (err) {
@@ -450,6 +477,8 @@ export class PostgresCitasRepository implements CitasRepository {
       // vez de propagar un error genérico (mismo patrón que domain-restaurantes).
       const message = err instanceof Error ? err.message : String(err);
       if (!/unique|duplicate/i.test(message)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_upsert_customer_race");
+      await this.db.exec("RELEASE SAVEPOINT sp_upsert_customer_race");
       const { rows: race } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
         `select id, organization_id, full_name, phone, email from citas.customers where organization_id = $1 and phone = $2;`,
         [organizationId, phone],
@@ -476,6 +505,15 @@ export class PostgresCitasRepository implements CitasRepository {
     );
     const row = rows[0];
     return row ? { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email } : null;
+  }
+
+  async findCustomersByIds(organizationId: string, customerIds: readonly string[]): Promise<readonly CustomerRecord[]> {
+    if (customerIds.length === 0) return [];
+    const { rows } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
+      `select id, organization_id, full_name, phone, email from citas.customers where organization_id = $1 and id = ANY($2);`,
+      [organizationId, customerIds],
+    );
+    return rows.map((row) => ({ id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email }));
   }
 
   async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {

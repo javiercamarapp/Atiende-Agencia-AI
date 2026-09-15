@@ -5,7 +5,7 @@
 // Sirve para tests determinísticos y como fallback dev/CI sin Postgres real — mismo
 // rol que InMemoryRestaurantesRepository.
 import { createHash, randomUUID } from "node:crypto";
-import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
+import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
   AttendanceEventRecord,
@@ -789,6 +789,16 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       .map((r) => this.toReservationRecord(r));
   }
 
+  async listReservationsPage(propertyId: string, opts: { readonly limit: number; readonly offset: number }): Promise<ReservationPage> {
+    const filtered = [...this.reservations.values()]
+      .filter((r) => r.propertyId === propertyId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .map((r) => this.toReservationRecord(r));
+    const items = filtered.slice(opts.offset, opts.offset + opts.limit);
+    const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;
+    return { items, total: filtered.length, nextOffset };
+  }
+
   async findReservation(propertyId: string, reservationId: string): Promise<ReservationRecord | null> {
     const stored = this.reservations.get(reservationId);
     if (!stored || stored.propertyId !== propertyId) return null;
@@ -935,9 +945,22 @@ export class InMemoryHotelesRepository implements HotelesRepository {
         return existing.response as IdempotentResult<T>;
       }
       this.idempotencyKeys.set(key, { requestHash, response: null });
-      const result = await run();
-      this.idempotencyKeys.set(key, { requestHash, response: result });
-      return result;
+      try {
+        const result = await run();
+        this.idempotencyKeys.set(key, { requestHash, response: result });
+        return result;
+      } catch (err) {
+        // Fix hallazgo auditoría (rubro 2, "Idempotency-Key queda envenenada ante
+        // error no-Postgres") — un error de `run()` (de red, de validación, lo que
+        // sea) NUNCA debe dejar la key marcada como "en proceso" para siempre (hasta
+        // aquí no hay TTL en memoria que la libere sola): se retira la reclamación
+        // para que un reintento legítimo con la MISMA key pueda proceder — mismo
+        // efecto que el `ROLLBACK` real de `PostgresHotelesRepository.withIdempotency`
+        // (la transacción por-request completa revierte el INSERT de la key ante
+        // CUALQUIER error, ver packages/core-auth/src/middleware.ts::dbSession).
+        this.idempotencyKeys.delete(key);
+        throw err;
+      }
     });
   }
 

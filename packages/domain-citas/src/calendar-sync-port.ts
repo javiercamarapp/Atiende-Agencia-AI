@@ -252,7 +252,6 @@ export class GoogleCalendarSyncAdapter implements CalendarSyncPort {
     await this.#port.deleteEvent({ calendarId: input.externalCalendarRef, eventId: input.eventId, signal: input.signal });
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async listAvailability(_query: AvailabilityQuery): Promise<AvailabilityResult> {
     throw new CalendarCapabilityUnsupportedError(
       "GoogleCalendarSyncAdapter.listAvailability: por diseño, este motor nunca consulta disponibilidad en Google Calendar — la base de datos propia (availability_rules + appointments) es la única fuente de verdad.",

@@ -381,6 +381,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       );
       return mapCustomer(updated[0] ?? existing);
     }
+    // Fix hallazgo auditoría (rubro 3, "recuperación de 23505 sin SAVEPOINT deriva en
+    // 25P02") — el INSERT de abajo puede perder una carrera real contra
+    // UNIQUE(organization_id, phone). Sin este SAVEPOINT, ese unique_violation deja
+    // TODA la transacción de la request en curso abortada a nivel Postgres (25P02:
+    // "current transaction is aborted, commands ignored until end of transaction
+    // block") — el SELECT/UPDATE de recuperación de abajo fallaría también con
+    // 25P02 en vez de devolver la fila ganadora, y el error que finalmente sale no
+    // es un 500 aislado de este upsert sino que tumba el REQUEST completo (misma
+    // transacción por-request de `dbSession`, ver packages/core-auth/src/middleware.ts).
+    // Mismo patrón ya establecido en domain-rentas/src/aplicacion/reservas.ts
+    // (`crearReservaConfirmada`): SAVEPOINT antes del INSERT con riesgo real de
+    // choque, `ROLLBACK TO SAVEPOINT` + `RELEASE SAVEPOINT` para recuperar la
+    // transacción ANTES de reintentar con una consulta nueva.
+    await this.db.exec("SAVEPOINT sp_upsert_customer_race");
     try {
       const { rows: created } = await this.db.query<CustomerRow>(
         `insert into restaurantes.customers (organization_id, phone, name, order_count)
@@ -388,10 +402,13 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
          returning id, organization_id, phone, name, order_count;`,
         [organizationId, phone, name],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_upsert_customer_race");
       return mapCustomer(created[0]!);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!/unique|duplicate/i.test(message)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_upsert_customer_race");
+      await this.db.exec("RELEASE SAVEPOINT sp_upsert_customer_race");
       const { rows: race } = await this.db.query<CustomerRow>(
         `select id, organization_id, phone, name, order_count from restaurantes.customers where organization_id = $1 and phone = $2;`,
         [organizationId, phone],
@@ -1152,13 +1169,19 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return { orders: page, nextCursor };
   }
 
-  async updateOrderStatus(organizationId: string, orderId: string, status: OrderStatus): Promise<Order | null> {
+  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null> {
+    // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
+    // TOCTOU") — `and status = $4` es la guarda real: sin ella, el UPDATE aplica
+    // ciegamente sobre CUALQUIER estado actual, incluso uno distinto al que
+    // `order-lifecycle.ts` validó (con una lectura que para este punto puede ya
+    // estar obsoleta por una escritura concurrente). Devuelve 0 filas (null) tanto
+    // si el pedido no existe como si su estado real ya cambió — ver repository.ts.
     const { rows } = await this.db.query<OrderRow>(
       `update restaurantes.orders
        set status = $3, delivered_at = case when $3 = 'entregado' then now() else delivered_at end
-       where id = $1 and organization_id = $2
+       where id = $1 and organization_id = $2 and status = $4
        returning ${ORDER_COLUMNS};`,
-      [orderId, organizationId, status],
+      [orderId, organizationId, toStatus, fromStatus],
     );
     return rows[0] ? mapOrder(rows[0]) : null;
   }
@@ -1199,15 +1222,24 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows[0] ? mapOrder(rows[0]) : null;
   }
 
-  async updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, status: OrderStatus, incidentNote: string | null): Promise<Order | null> {
+  async updateAssignedOrderStatus(
+    organizationId: string,
+    repartidorId: string,
+    orderId: string,
+    fromStatus: OrderStatus,
+    toStatus: OrderStatus,
+    incidentNote: string | null,
+  ): Promise<Order | null> {
+    // Mismo fix TOCTOU que `updateOrderStatus` (`and status = $6`) — ver ese
+    // comentario de cabecera.
     const { rows } = await this.db.query<OrderRow>(
       `update restaurantes.orders
        set status = $4,
            delivered_at = case when $4 = 'entregado' then now() else delivered_at end,
            incident_note = case when $4 = 'problema' then $5 else incident_note end
-       where id = $1 and organization_id = $2 and assigned_repartidor_id = $3
+       where id = $1 and organization_id = $2 and assigned_repartidor_id = $3 and status = $6
        returning ${ORDER_COLUMNS};`,
-      [orderId, organizationId, repartidorId, status, incidentNote],
+      [orderId, organizationId, repartidorId, toStatus, incidentNote, fromStatus],
     );
     return rows[0] ? mapOrder(rows[0]) : null;
   }

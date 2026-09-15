@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  MIN_SHADOW_DAYS,
   PROPONE_VARIATION_PCT_MIN,
   PROPONE_VARIATION_PCT_MAX,
   RevenueGateError,
