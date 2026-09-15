@@ -112,3 +112,18 @@ export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string,
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/citas/${orgSlug}/admin/branches`, token);
   return body.branches;
 }
+
+// Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA, "negocio de
+// citas con 2+ sucursales solo opera la primera"): CitasShell.tsx fijaba
+// `branches[0]!.propertyId` con el comentario explícito de que era un gap
+// deliberado ("hasta que un negocio real necesite elegir entre varias") — a
+// diferencia de licitaciones (property singleton POR DISEÑO, §2.1), citas SÍ
+// soporta multi-sucursal (este mismo `fetchBranches` puede devolver 2+ filas) y
+// nunca tuvo el selector. MISMO patrón exacto que ya resolvió esto en
+// hoteles/despachos/rentas/restaurantes (`resolveActivePropertyId` de
+// hoteles/lib/discovery-client.ts, leído primero como plantilla).
+export function resolveActivePropertyId(branches: readonly BranchOption[], selectedPropertyId: string | null): string | null {
+  if (branches.length === 0) return null;
+  if (selectedPropertyId !== null && branches.some((b) => b.propertyId === selectedPropertyId)) return selectedPropertyId;
+  return branches[0]!.propertyId;
+}
