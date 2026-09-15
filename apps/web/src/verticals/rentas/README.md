@@ -115,3 +115,44 @@ Fases 1 y 2 del backend, pero ningún cliente web los consumía: `contador`
   Al importar un payout, su id recién creado se precarga automáticamente en el campo
   de consulta (dato real devuelto por el propio POST, nunca inventado). Agregar esos
   catálogos es trabajo de backend fuera del alcance de este hallazgo.
+
+Fase 17: `pages/MisTareas.tsx` — panel operativo real del rol `limpieza` (tareas/
+checklist/inventario/incidencias, motor de `packages/domain-rentas/src/limpieza/*`
+desde la Fase 8). Ver el comentario de cabecera de `RentasShell.tsx` para el detalle
+completo; no documentado aquí en su momento.
+
+Fase 18: `lib/property-selection.ts` + selector real en `RentasShell.tsx` +
+`pages/Dashboard.tsx` clicable — cierra el hallazgo de auditoría "en rentas, una
+empresa gestora con varias propiedades solo puede operar la primera". Hasta esta
+fase `RentasShell.tsx` fijaba `propertyId = properties[0]` para siempre ("hasta que
+haya un selector visual real"), igual que `HotelesShell.tsx` — pero a diferencia de
+hoteles (donde ese atajo se justifica porque la mayoría de sus organizaciones operan
+un solo hotel), en rentas el caso multi-propiedad es **el caso base del vertical**
+(una gestora que administra propiedades de más de un anfitrión), así que el atajo
+dejaba inoperable el caso más común, no una excepción.
+
+- **Selector real**: dropdown en el header del nav de `RentasShell.tsx` cuando la
+  organización tiene 2+ properties (con 1 sola sigue mostrando solo su nombre, mismo
+  criterio visual que `HotelesShell.tsx`). `propertyId`/`setPropertyId` viajan en
+  `RentasShellContext` para que cualquier página hija pueda leer y cambiar la
+  property activa.
+- **Segundo punto de entrada**: `pages/Dashboard.tsx` ya listaba las properties de
+  la organización pero no eran clicables — ahora cada una es un botón real que llama
+  al mismo `setPropertyId` del contexto (no un selector paralelo).
+- **Persistencia (`lib/property-selection.ts`)**: cada ruta de `App.tsx`
+  (`/rentas/:orgSlug/calendario`, `/rentas/:orgSlug/finanzas`, etc.) monta una
+  instancia NUEVA de `<RentasShell>` — no hay un layout persistente entre rutas de
+  React Router en este panel. Sin persistir la selección fuera del `useState` del
+  Shell, cambiar de página (Calendario → Finanzas) resetearía silenciosamente la
+  property activa a la primera, el mismo bug que este hallazgo pide cerrar. Se
+  persiste en `localStorage` bajo `atiende.rentas.selectedProperty.<orgSlug>`,
+  best-effort (nunca lanza si el storage falla al leer/escribir — modo privado,
+  cuota excedida, storage bloqueado — la selección sigue viva en memoria durante la
+  sesión del tab, solo no sobrevive un refresh).
+- **Ninguna página operativa necesitó cambios funcionales**: `Calendario.tsx`,
+  `Precios.tsx`, `Aprobaciones.tsx`, `Finanzas.tsx` y `MisTareas.tsx` ya
+  desestructuraban `propertyId` de `RentasShellContext` (nunca asumían
+  `properties[0]` directamente) y ya lo listaban en el arreglo de dependencias de
+  sus `useEffect` de carga — en cuanto el Shell les pasa un `propertyId` distinto,
+  vuelven a pedir datos automáticamente sin ningún cambio de código en esas 5
+  páginas.

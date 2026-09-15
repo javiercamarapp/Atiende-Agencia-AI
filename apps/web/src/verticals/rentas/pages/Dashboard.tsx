@@ -14,6 +14,14 @@
 // aprobación de mensajería desde la Fase 15 (pages/Aprobaciones.tsx, link
 // "Aprobaciones"), y movimiento por reserva + owner statements + payouts desde la
 // Fase 16 (pages/Finanzas.tsx, link "Finanzas").
+//
+// Fase 18 -- cierra la mitad del hallazgo de auditoría "en rentas, una empresa
+// gestora con varias propiedades solo puede operar la primera" que le tocaba a esta
+// página: hasta esta fase la lista de properties de abajo era solo informativa (un
+// <li> sin ningún onClick). Ahora cada property es un botón real que cambia la
+// property activa del Shell (RentasShellContext.setPropertyId, ver el selector real
+// del nav en RentasShell.tsx -- esta lista es un segundo punto de entrada al mismo
+// estado, no un selector paralelo) y la property activa queda resaltada.
 import type { CSSProperties } from "react";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
@@ -23,7 +31,18 @@ const cardStyle: CSSProperties = {
   padding: 16,
 };
 
-export function RentasDashboardPage({ orgSlug, properties, session }: RentasShellContext) {
+const propertyButtonBaseStyle: CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  padding: "8px 12px",
+  borderRadius: 8,
+  fontSize: 14,
+  cursor: "pointer",
+  border: "1px solid transparent",
+};
+
+export function RentasDashboardPage({ orgSlug, properties, propertyId, setPropertyId, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
 
   return (
@@ -46,16 +65,33 @@ export function RentasDashboardPage({ orgSlug, properties, session }: RentasShel
           Propiedades ({properties.length})
         </h2>
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-          {properties.map((p) => (
-            <li key={p.propertyId} style={{ padding: "8px 12px", borderRadius: 8, background: "#f9fafb" }}>
-              {p.nombre}
-            </li>
-          ))}
+          {properties.map((p) => {
+            const activa = p.propertyId === propertyId;
+            return (
+              <li key={p.propertyId}>
+                <button
+                  type="button"
+                  onClick={() => setPropertyId(p.propertyId)}
+                  aria-pressed={activa}
+                  style={{
+                    ...propertyButtonBaseStyle,
+                    background: activa ? "#111827" : "#f9fafb",
+                    color: activa ? "#fff" : "#111827",
+                    borderColor: activa ? "#111827" : "transparent",
+                    fontWeight: activa ? 600 : 400,
+                  }}
+                >
+                  {p.nombre}
+                  {activa ? " · activa" : ""}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </div>
 
       <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
-        El panel de finanzas de rentas todavía no tiene UI en este panel — llega en una fase posterior. El calendario de reservas y bloqueos está disponible en "Calendario", y el cotizador con la configuración de pricing en "Precios".
+        Elige una propiedad arriba (o desde el selector del panel lateral) para que Calendario, Precios, Aprobaciones, Finanzas y Mis tareas operen sobre ella. El calendario de reservas y bloqueos está disponible en "Calendario", y el cotizador con la configuración de pricing en "Precios".
       </p>
     </div>
   );

@@ -95,6 +95,29 @@ describe("fetchMovimiento", () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No hay movimiento financiero registrado para esta reserva." }), { status: 404 })) as unknown as typeof fetch;
     await expect(fetchMovimiento(fetchImpl, "http://api.local", "tok", "prop-1", "ocup-1")).rejects.toThrow(/No hay movimiento financiero/);
   });
+
+  // Hallazgo de auditoría "en rentas, una empresa gestora con varias propiedades
+  // solo puede operar la primera" (cierre en RentasShell.tsx/Dashboard.tsx, Fase
+  // 18): Finanzas.tsx (MovimientoSection) recibe `propertyId` de
+  // RentasShellContext y lo pasa directo a fetchUnidades/fetchOcupaciones/
+  // fetchMovimiento -- este test confirma que el selector de property, al cambiar
+  // `propertyId`, efectivamente cambia qué reserva/movimiento pide Finanzas.tsx
+  // (URLs distintas, nunca el movimiento "cacheado" de la property anterior).
+  it("cambiar la property activa del selector pide el movimiento de la NUEVA property", async () => {
+    const urlsPedidas: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urlsPedidas.push(url);
+      return new Response(JSON.stringify({ ocupacionId: "ocup-1", moneda: "MXN", ingresoBrutoCentavos: 0, montoRecibidoCentavos: 0, comisionCanalCentavos: 0, comisionCanalFuente: "", comisionGestorCentavos: 0, gastosCentavos: 0, impuestosCentavos: 0, netoCentavos: 0 }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await fetchMovimiento(fetchImpl, "http://api.local", "tok", "prop-1", "ocup-1");
+    await fetchMovimiento(fetchImpl, "http://api.local", "tok", "prop-2", "ocup-1");
+
+    expect(urlsPedidas).toEqual([
+      "http://api.local/rentas/prop-1/reservas/ocup-1/movimiento",
+      "http://api.local/rentas/prop-2/reservas/ocup-1/movimiento",
+    ]);
+  });
 });
 
 describe("generarOwnerStatement", () => {
