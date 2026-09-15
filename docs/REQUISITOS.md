@@ -1,5 +1,20 @@
 # Matriz de requisitos trazable — Atiende (núcleo del monorepo fusionado)
 
+> **⚠️ Documento histórico — snapshot de la entrega INICIAL del esqueleto, no el
+> estado actual del repo.** Actualizado en el barrido de documentación de las
+> rondas 13/14/16: varios `README.md` de todo el monorepo seguían apuntando aquí
+> ("ver `docs/REQUISITOS.md`") como si §0 describiera el estado vigente — ya no lo
+> hace. Desde que se escribió esta entrega, las 6 verticales (incluida `despachos`,
+> que ni siquiera existía como concepto aquí) se construyeron de punta a punta:
+> `apps/api`/`apps/web`/`apps/worker` tienen código real y tests en verde,
+> `packages/db` tiene motor de conexión real (`managed-postgres-engine.ts`) y 109
+> migraciones consolidadas en `supabase/migrations/`, y cada `packages/domain-*`
+> tiene su propio dominio real. Para el estado ACTUAL de qué existe y qué sigue
+> pendiente, usa el `README.md` de cada paquete/app (corregidos en este mismo
+> barrido) y `docs/DEPLOY.md` §0.2/§0.3 — no §0 de abajo, que congela la foto del
+> día en que se escribió esta matriz y se deja intacta como registro histórico
+> (mismo criterio de "no reescribir estas filas" que ya pedía la §3 original).
+
 ## 0. Alcance honesto de esta entrega
 
 Este documento describe **solo el esqueleto inicial del monorepo `atiende`**: la

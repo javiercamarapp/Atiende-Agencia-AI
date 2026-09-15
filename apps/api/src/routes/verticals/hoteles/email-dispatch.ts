@@ -27,6 +27,7 @@ import { dispatchPendingEmailJobs } from "@atiende/domain-hoteles";
 import type { HotelesEmailDispatchSummary, HotelesRepository } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de citas/email-dispatch.ts. */
@@ -78,8 +79,7 @@ export function hotelesEmailDispatchRoutes(deps: AppDeps): Hono {
     // citas/email-dispatch.ts: se deja el status code en 200 (contrato de Vercel
     // Cron), la corrección real es loguear estructurado con severidad `error`.
     if (summary.failed > 0 || summary.dead > 0) {
-      console.error("hoteles email-dispatch: corrida de cron con fallos", {
-        severity: "error",
+      logEvent(c, "error", "hoteles_email_dispatch_cron_con_fallos", {
         processed: summary.processed,
         failed: summary.failed,
         dead: summary.dead,

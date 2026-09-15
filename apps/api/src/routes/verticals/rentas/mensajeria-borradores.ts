@@ -31,6 +31,7 @@ import {
 import type { ActorAgente, BorradorEstado, BorradorRecord, ContextoBorrador, RentasVerticalRole, ResultadoBorrador } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Traduce los errores tipados de dominio de mensajería al status HTTP
@@ -157,17 +158,14 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
 
     const borrador = await mensajeriaRepo.insertBorrador({ conversacionId, mensajeEntranteId, canal: conversacion.canal, texto: generado.texto, generadoPor });
 
-    console.log(
-      JSON.stringify({
-        evento: "rentas_borrador_generado",
-        borradorId: borrador.id,
-        conversacionId,
-        estado: "pendiente_aprobacion",
-        generadoPor,
-        necesitaEscalamiento: generado.necesitaEscalamiento,
-        senales: generado.senales,
-      }),
-    );
+    logEvent(c, "info", "rentas_borrador_generado", {
+      borradorId: borrador.id,
+      conversacionId,
+      estado: "pendiente_aprobacion",
+      generadoPor,
+      necesitaEscalamiento: generado.necesitaEscalamiento,
+      senales: generado.senales,
+    });
 
     return c.json({ ...borrador, necesitaEscalamiento: generado.necesitaEscalamiento, senales: generado.senales }, 201);
   });
@@ -214,9 +212,7 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
       actualizado = await mensajeriaRepo.marcarBorradorAprobadoYEnviado({ id: actual.id, aprobadoPor: userId, textoFinal: validado.texto, redactado: validado.redactado, mensajeEnviadoId: mensajeSaliente.id });
       redactado = validado.redactado;
 
-      console.log(
-        JSON.stringify({ evento: "rentas_borrador_aprobado_y_enviado", borradorId: id, aprobadoPor: userId, canal: actual.canal, redactado, enviadoEn: envio.enviadoEn }),
-      );
+      logEvent(c, "info", "rentas_borrador_aprobado_y_enviado", { borradorId: id, aprobadoPor: userId, canal: actual.canal, redactado, enviadoEn: envio.enviadoEn });
     } catch (err) {
       throw traducirErrorMensajeria(err);
     }
@@ -247,7 +243,7 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
       throw traducirErrorMensajeria(err);
     }
 
-    console.log(JSON.stringify({ evento: "rentas_borrador_rechazado", borradorId: id, rechazadoPor: userId }));
+    logEvent(c, "info", "rentas_borrador_rechazado", { borradorId: id, rechazadoPor: userId });
     return c.json(actualizado, 200);
   });
 
@@ -277,7 +273,7 @@ export function rentasMensajeriaBorradoresRoutes(deps: AppDeps): Hono<CoreAuthHo
     try {
       intentarEnvioAutomatico({ id: actual.id, estado: actual.estado });
     } catch (err) {
-      console.error(JSON.stringify({ evento: "rentas_intento_envio_automatico_rechazado", borradorId: id, motivo: "sin_aprobacion_humana_en_el_instante_del_envio" }));
+      logEvent(c, "error", "rentas_intento_envio_automatico_rechazado", { borradorId: id, motivo: "sin_aprobacion_humana_en_el_instante_del_envio" });
       throw traducirErrorMensajeria(err);
     }
     // intentarEnvioAutomatico siempre lanza -- este punto es inalcanzable, pero

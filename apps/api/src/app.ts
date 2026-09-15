@@ -4,8 +4,9 @@
 // whatsapp.ts pueda leer bytes crudos sin que nada los haya consumido antes (ver
 // comentario crítico en routes/verticals/restaurantes/whatsapp.ts).
 import { Hono } from "hono";
-import { ApiError } from "@atiende/core-auth";
+import { ApiError, requestId } from "@atiende/core-auth";
 import type { AppDeps } from "./deps.ts";
+import { logEvent } from "./logger.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
 import { restaurantesVoiceToolsRoutes } from "./routes/verticals/restaurantes/voice-tools.ts";
@@ -23,11 +24,23 @@ import { whatsappDispatchRoutes } from "./routes/internal/whatsapp-dispatch.ts";
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
 
+  // Hallazgo de auditoría (observabilidad) — `requestId()` (@atiende/core-auth)
+  // existía y varias rutas de licitaciones ya leían `c.get("requestId")` para
+  // `correlationId`, pero el middleware nunca se montaba en el pipeline real:
+  // fuera de tests que lo montan manualmente, `c.get("requestId")` siempre
+  // devolvía `undefined` en producción pese a que `CoreAuthVariables` lo tipa
+  // como `string` no-opcional. Montado aquí, primero que nada, para TODA ruta
+  // (incluidas las públicas/internas que no pasan por `authMiddleware`) — ver
+  // `./logger.ts` (`logEvent`) para cómo el resto de logs estructurados de esta
+  // app ahora incluyen este mismo id, y `docs/OBSERVABILIDAD.md` para el detalle
+  // completo de qué correlaciona y qué no.
+  app.use("*", requestId());
+
   app.onError((err, c) => {
     if (err instanceof ApiError) {
       return c.json({ code: err.code, message: err.message }, err.status as 400 | 401 | 403 | 404 | 409 | 413 | 429 | 503, err.headers);
     }
-    console.error("apps/api error interno:", err);
+    logEvent(c, "error", "apps_api_error_interno", { message: err instanceof Error ? err.message : String(err) });
     return c.json({ code: "internal_error", message: "Error interno" }, 500);
   });
 

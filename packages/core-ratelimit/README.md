@@ -34,15 +34,15 @@ logging que este monorepo todavía no tiene un equivalente compartido.
 
 ## Cuándo usar este paquete vs. `packages/core-authz/src/rate-limiter.ts`
 
-> **Nota sobre el estado real de este repo (11-sep-2026):** al escribir este paquete,
-> `packages/core-authz/src/rate-limiter.ts` **no existe todavía** en `atiende-fusion` — se
-> verificó con `git log --all` y `find` sobre el árbol completo, sin resultados. La consigna
-> de esta tarea lo describía como ya integrado (portado de hoteles, in-memory, fail-closed
-> para `/admin`); si esa integración llega en otro momento, la tabla de abajo sigue siendo
-> la guía correcta para decidir cuál usar. No se fabricó ese archivo aquí — hacerlo habría
-> sido inventar una pieza que esta tarea no pidió construir.
+> **Actualizado (barrido de documentación, rondas 13/14/16):** `packages/core-authz/
+> src/rate-limiter.ts` **ya existe** (`InMemoryRateLimiter`, mismo diseño in-memory/
+> por-llave que esta nota describía como pendiente el 11-sep-2026) y
+> `admin-middleware.ts` lo consume vía la interfaz `RateLimiter` inyectada
+> (`requireAdminAccess({ rateLimiter, ... })`). La tabla de abajo sigue siendo la
+> guía correcta para decidir cuál usar — no cambió nada de la comparación, solo
+> dejó de ser hipotética.
 
-| | `core-authz/rate-limiter.ts` (si/cuando exista) | `core-ratelimit` (este paquete) |
+| | `core-authz/rate-limiter.ts` | `core-ratelimit` (este paquete) |
 |---|---|---|
 | Backend | En memoria, por instancia | Redis (distribuido) + memoria como fallback |
 | Alcance del límite | Por instancia — no es global entre instancias serverless | Global entre instancias mientras Redis esté sano |

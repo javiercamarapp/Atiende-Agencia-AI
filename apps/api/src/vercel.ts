@@ -7,14 +7,25 @@
 // req/res al estilo Express (ver https://hono.dev/docs/getting-started/vercel).
 //
 // A diferencia de `./index.ts` (entrypoint de Node.js "puro", que deliberadamente NO
-// arranca nada porque documenta el hueco de motor de conexión real), este archivo SÍ
-// construye deps reales de producción (`./production/deps.ts`) — con la salvedad,
-// también documentada ahí (`./production/not-ready.ts`), de que `hotelesPaymentsPort`/
-// `despachosAuditSink` fallan explícito si algo los invoca en producción (sin
-// adaptador/credenciales todavía), en vez de fingir con datos en memoria; y de que
-// `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler` solo quedan reales (LLM real
-// vía `./production/llm-gateway.ts`) en cuanto al menos una API key de proveedor
-// esté configurada — sin ninguna, fallan explícito igual que los dos anteriores.
+// arranca nada), este archivo SÍ construye deps reales de producción
+// (`./production/deps.ts`) — la mayoría de los puertos (coreRepo, restaurantesRepo/
+// hotelesRepo/citasRepo/licitacionesRepo/despachosRepo/rentasRepo, despachosAuditSink,
+// hotelesFraudeAuditSink, hotelesCfdiPort, rentasCalendarSyncRepo/rentasIcalFeedPort,
+// rentasMensajeriaRepo, rentasOwnerPortalRepo, citasGoogleCalendarPortResolver) ya son
+// adaptadores reales de punta a punta. Actualizado (barrido de documentación,
+// rondas 13/14/16): este comentario ANTES decía que `despachosAuditSink` seguía
+// fallando explícito "sin adaptador/credenciales todavía" — ya no es cierto, ver
+// `./production/despachos-audit-sink.ts`. Lo que SÍ sigue fallando explícito, cada
+// uno por su propia razón documentada en `./production/not-ready.ts`/`./env.ts`:
+// `hotelesPaymentsPort` (sin adaptador de cobro todavía), `turnHandler`/
+// `hotelesTurnHandler`/`citasTurnHandler` (sin NINGUNA API key de proveedor LLM
+// configurada, ver `./production/llm-gateway.ts`), el dispatcher de WhatsApp
+// saliente (sin `WHATSAPP_ACCESS_TOKEN`), `citasGoogleCalendarPortResolver` (sin
+// `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_OAUTH_REDIRECT_BASE_URL`),
+// `hotelesCfdiPort` (sin CSD/credenciales reales de un PAC), y
+// `rentasCanalMensajeria`/`rentasOnboardingRepo` (sin credenciales de partner de
+// canal / sin sesión `service_role` respectivamente) — ver `docs/DEPLOY.md` §0.2
+// para el detalle completo, actualizado en el mismo barrido.
 import { handle } from "hono/vercel";
 import { buildApp } from "./app.ts";
 import { buildProductionDeps } from "./production/deps.ts";
