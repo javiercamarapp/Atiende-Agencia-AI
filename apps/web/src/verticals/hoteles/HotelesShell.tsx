@@ -40,6 +40,7 @@ export interface HotelesShellProps {
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "reservas", label: "Reservas" },
   { to: "mantenimiento", label: "Mantenimiento" },
+  { to: "asistencia", label: "Asistencia" },
   { to: "fraude", label: "Fraude" },
   { to: "cfdi", label: "CFDI" },
 ];
