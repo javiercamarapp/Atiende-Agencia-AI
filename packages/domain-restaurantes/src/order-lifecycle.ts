@@ -71,8 +71,21 @@ export function assertValidOrderStatusTransition(from: OrderStatus, to: OrderSta
  * puede olvidar el aviso. */
 export async function changeOrderStatus(repo: RestaurantesRepository, organizationId: string, order: Order, nextStatus: OrderStatus): Promise<Order> {
   assertValidOrderStatusTransition(order.status, nextStatus);
-  const updated = await repo.updateOrderStatus(organizationId, order.id, nextStatus);
-  if (!updated) throw new OrderStatusTransitionError("El pedido ya no existe.");
+  const updated = await repo.updateOrderStatus(organizationId, order.id, order.status, nextStatus);
+  if (!updated) {
+    // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
+    // TOCTOU") — `order.status` (con el que se validó arriba) puede haber quedado
+    // obsoleto entre el `findOrderById` que hizo la ruta HTTP y este UPDATE (otra
+    // request concurrente ya lo cambió primero). `updateOrderStatus` ahora exige
+    // `status = order.status` en su propio WHERE — si vuelve null, se distingue
+    // "ya no existe" de "cambió de estado mientras tanto" SOLO aquí, en el camino
+    // de error (nunca se paga ese `findOrderById` extra en el camino feliz).
+    const current = await repo.findOrderById(organizationId, order.id);
+    if (!current) throw new OrderStatusTransitionError("El pedido ya no existe.");
+    throw new OrderStatusTransitionError(
+      `El pedido cambió de estado mientras se procesaba esta solicitud (ahora está "${current.status}", se esperaba "${order.status}"). Actualiza la vista e intenta de nuevo.`,
+    );
+  }
   if (updated.status === "problema") {
     await tryNotifyStaffOrderProblem(repo, updated);
   } else {
@@ -141,8 +154,22 @@ export async function changeAssignedOrderStatus(
   } else if (incidentNote !== null) {
     throw new OrderStatusTransitionError('incidentNote solo aplica cuando el nuevo estado es "problema".');
   }
-  const updated = await repo.updateAssignedOrderStatus(organizationId, repartidorId, order.id, nextStatus, nextStatus === "problema" ? incidentNote!.trim() : null);
-  if (!updated) throw new OrderStatusTransitionError("El pedido ya no existe o ya no está asignado a este repartidor.");
+  const updated = await repo.updateAssignedOrderStatus(
+    organizationId,
+    repartidorId,
+    order.id,
+    order.status,
+    nextStatus,
+    nextStatus === "problema" ? incidentNote!.trim() : null,
+  );
+  if (!updated) {
+    // Mismo fix TOCTOU que `changeOrderStatus` de arriba.
+    const current = await repo.findAssignedOrderById(organizationId, repartidorId, order.id);
+    if (!current) throw new OrderStatusTransitionError("El pedido ya no existe o ya no está asignado a este repartidor.");
+    throw new OrderStatusTransitionError(
+      `El pedido cambió de estado mientras se procesaba esta solicitud (ahora está "${current.status}", se esperaba "${order.status}"). Actualiza la vista e intenta de nuevo.`,
+    );
+  }
   if (updated.status === "problema") {
     await tryNotifyStaffOrderProblem(repo, updated);
   } else {

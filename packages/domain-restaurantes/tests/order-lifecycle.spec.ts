@@ -102,6 +102,45 @@ describe("changeOrderStatus — persiste solo transiciones válidas", () => {
     const reread = await fixture.repo.findOrderById(fixture.organizationId, order.id);
     expect(reread?.status).toBe("pending"); // nunca cambió
   });
+
+  // Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin guarda
+  // TOCTOU") — reproduce EXACTAMENTE la carrera real: dos requests leen el mismo
+  // pedido "pending" (misma lectura vieja de `order`), una gana y lo mueve a
+  // "cancelado" (terminal), y la SEGUNDA (con el objeto `order` YA obsoleto, que
+  // sigue mostrando "pending") intenta moverlo a "preparando" -- antes del fix,
+  // `changeOrderStatus` validaba contra ese `order.status` obsoleto (pending ->
+  // preparando es válido en la máquina de estados) y el UPDATE lo aplicaba sin
+  // volver a comprobar el estado real, revivviendo un pedido YA cancelado. Con el
+  // fix, el UPDATE exige `status = fromStatus` en su propio WHERE: la segunda
+  // llamada debe fallar con un conflicto real, NUNCA revivir el pedido cancelado.
+  it("TOCTOU real: si el estado cambió entre la lectura y el UPDATE, la segunda transición se rechaza en vez de revivir un pedido ya cancelado", async () => {
+    const fixture = buildRestaurantFixture();
+    const orderInicial = await createOrder(fixture.repo, {
+      organizationId: fixture.organizationId,
+      branchSlug: "fco-montejo",
+      customerName: "Race Condition",
+      customerPhone: "9990009999",
+      customerAddress: "Calle 1",
+      items: [{ productId: fixture.products.cocaCola, requestedQuantity: 1 }],
+      source: "web",
+    });
+    expect(orderInicial.status).toBe("pending");
+
+    // Request A (gana la carrera): pending -> cancelado, ya persistido.
+    await changeOrderStatus(fixture.repo, fixture.organizationId, orderInicial, "cancelado");
+    const trasA = await fixture.repo.findOrderById(fixture.organizationId, orderInicial.id);
+    expect(trasA?.status).toBe("cancelado");
+
+    // Request B (perdió la carrera): sigue con el `order` VIEJO (status "pending"
+    // en memoria, leído ANTES de que A corriera) e intenta pending -> preparando —
+    // válido según la máquina de estados EN ABSTRACTO, pero el pedido real YA no
+    // está en "pending".
+    await expect(changeOrderStatus(fixture.repo, fixture.organizationId, orderInicial, "preparando")).rejects.toThrow(OrderStatusTransitionError);
+
+    // El pedido sigue "cancelado" -- NUNCA se revivió a "preparando".
+    const trasB = await fixture.repo.findOrderById(fixture.organizationId, orderInicial.id);
+    expect(trasB?.status).toBe("cancelado");
+  });
 });
 
 // Fase 8 — superficie real del rol "repartidor" (ver roles.ts::REPARTIDOR_ROLES): un
@@ -150,10 +189,10 @@ describe("changeAssignedOrderStatus — persiste solo lo válido, acotado al rep
     } satisfies CreateOrderInput);
     await fixture.repo.assignRepartidorToOrder(fixture.organizationId, order.id, repartidorId, null);
     if (status !== "pending") {
-      await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "preparando");
+      await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "pending", "preparando");
     }
     if (status === "en_camino") {
-      await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "en_camino");
+      await fixture.repo.updateOrderStatus(fixture.organizationId, order.id, "preparando", "en_camino");
     }
     const assigned = await fixture.repo.findAssignedOrderById(fixture.organizationId, repartidorId, order.id);
     return { fixture, repartidorId, order: assigned! };

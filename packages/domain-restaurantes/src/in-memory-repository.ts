@@ -1209,11 +1209,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return { orders: page, nextCursor };
   }
 
-  async updateOrderStatus(organizationId: string, orderId: string, status: OrderStatus): Promise<Order | null> {
-    const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId);
+  async updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null> {
+    // Mismo espejo del fix TOCTOU de postgres-repository.ts: la guarda de estado
+    // vive en el `findIndex`, no en una validación aparte.
+    const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId && o.status === fromStatus);
     if (index === -1) return null;
     const existing = this.orders[index]!;
-    const updated: Order = { ...existing, status };
+    const updated: Order = { ...existing, status: toStatus };
     this.orders[index] = updated;
     return updated;
   }
@@ -1242,11 +1244,20 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return order ?? null;
   }
 
-  async updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, status: OrderStatus, incidentNote: string | null): Promise<Order | null> {
-    const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId && o.assignedRepartidorId === repartidorId);
+  async updateAssignedOrderStatus(
+    organizationId: string,
+    repartidorId: string,
+    orderId: string,
+    fromStatus: OrderStatus,
+    toStatus: OrderStatus,
+    incidentNote: string | null,
+  ): Promise<Order | null> {
+    const index = this.orders.findIndex(
+      (o) => o.id === orderId && o.organizationId === organizationId && o.assignedRepartidorId === repartidorId && o.status === fromStatus,
+    );
     if (index === -1) return null;
     const existing = this.orders[index]!;
-    const updated: Order = { ...existing, status, incidentNote: status === "problema" ? incidentNote : existing.incidentNote };
+    const updated: Order = { ...existing, status: toStatus, incidentNote: toStatus === "problema" ? incidentNote : existing.incidentNote };
     this.orders[index] = updated;
     return updated;
   }
