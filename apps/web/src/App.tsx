@@ -25,6 +25,7 @@ import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
+import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
 import { PedidosFnbPage } from "./verticals/hoteles/pages/PedidosFnb.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
 import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
@@ -295,6 +296,22 @@ function HotelesCfdiListadoRoute() {
   return (
     <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
       {(ctx) => <HotelesCfdiListadoPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
+/** Hallazgo de auditoría (severidad ALTA, "P&L USALI (P0)... sin UI", porción
+ * restante): back-office de P&L completo (pages/Pl.tsx) — mismo patrón que
+ * HotelesMantenimientoRoute/HotelesFraudeRoute (nav gateada cosméticamente por rol
+ * en HotelesShell.tsx, no aquí; un rol sin acceso que navegue directo a esta URL ve
+ * el 403 real del servidor como mensaje de error dentro de Pl.tsx). */
+function HotelesPlRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesPlPage {...ctx} />}
     </HotelesShell>
   );
 }
@@ -773,6 +790,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
+        <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
