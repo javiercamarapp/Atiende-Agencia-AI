@@ -127,13 +127,26 @@ export async function logout(fetchImpl: typeof fetch, apiBaseUrl: string, refres
  * KPIs, protegido por MANAGER_ROLES) y recibía 403 sin ningún enlace a su panel
  * real en `/restaurantes/:slug/repartidor` (deliberadamente fuera del nav de
  * gestión, ver Repartidor.tsx). Se resuelve en el ÚNICO lugar que decide la
- * landing, sin tocar el nav ni el 403 real del servidor. */
+ * landing, sin tocar el nav ni el 403 real del servidor.
+ *
+ * Hallazgo de auditoría (rubro 11/UX, MEDIO, "login cross-vertical manda al slug
+ * equivocado"): aunque esta función solo la llama `RestaurantesLoginPage`, el
+ * endpoint `POST /auth/login` que consume es genérico a las 6 verticales (mismo
+ * JWT, ver cabecera de este archivo) y devuelve TODAS las organizaciones del
+ * usuario sin filtrar por vertical — nada impide que alguien cuya única
+ * organización sea de otra vertical (p. ej. "hoteles") llegue a
+ * `/restaurantes/login` y quede autenticado. El hardcode de `/restaurantes/`
+ * de abajo lo mandaba entonces a `/restaurantes/<slug-de-un-hotel>`, un slug que
+ * no existe como restaurante (RestaurantesShell no encuentra la organización).
+ * Se corrige exactamente como ya lo hace `decideLandingPathForInvite`: usar el
+ * `vertical` real de la organización, no asumir el de la página de login que se
+ * usó para entrar. */
 export function decideLandingPath(session: LoginSession): string {
   if (session.organizations.length === 0) return "/sin-organizacion";
   if (session.organizations.length === 1) {
     const org = session.organizations[0]!;
-    if (org.rol === "repartidor") return `/restaurantes/${org.slug}/repartidor`;
-    return `/restaurantes/${org.slug}`;
+    if (org.rol === "repartidor") return `/${org.vertical}/${org.slug}/repartidor`;
+    return `/${org.vertical}/${org.slug}`;
   }
   return "/seleccionar-organizacion";
 }
