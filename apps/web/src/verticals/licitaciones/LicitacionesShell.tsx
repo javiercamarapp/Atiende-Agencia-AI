@@ -16,6 +16,7 @@ import { fetchBranches } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
+import { ATIENDE_LOGO_DATA_URI, LICITACIONES_TAB_TITLE } from "./lib/brand.ts";
 
 export interface LicitacionesShellContext {
   readonly apiBaseUrl: string;
@@ -77,6 +78,12 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     setSession(s);
     if (!s) onRequireLogin();
   }, [onRequireLogin]);
+
+  // Hallazgo de auditoría ("título de pestaña fijo en 'Restaurantes'") — ver
+  // el comentario de `LICITACIONES_TAB_TITLE` en lib/brand.ts.
+  useEffect(() => {
+    document.title = LICITACIONES_TAB_TITLE;
+  }, []);
 
   // Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
   // "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
@@ -165,6 +172,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
+        <img src={ATIENDE_LOGO_DATA_URI} alt="atiende" width={88} height={16} style={{ display: "block", marginBottom: 10 }} />
         <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Licitaciones · {orgSlug}</p>
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.to} to={`/licitaciones/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
