@@ -53,3 +53,12 @@ export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<LicitacionesRole, "owner" | 
   reviewer: "member",
   viewer: "viewer",
 };
+
+// Hallazgo de auditoría (severidad ALTA, "alta de organización/staff imposible
+// sin SQL"): mismo rol que `@atiende/domain-restaurantes::STAFF_INVITE_ROLES` —
+// solo owner/admin invitan staff nuevo (nunca analyst/writer/reviewer/viewer,
+// aunque WRITE_ROLES sí los incluya para el resto de rutas de negocio: invitar
+// gente es una decisión de gobierno de la organización, no redacción de
+// expedientes). Ver `apps/api/src/routes/verticals/licitaciones/admin-staff.ts`,
+// el único consumidor real.
+export const STAFF_INVITE_ROLES: readonly LicitacionesRole[] = ["owner", "admin"];

@@ -2,12 +2,19 @@
 // local bajo `storageDir` — port del mecanismo real de
 // licitaciones/apps/api/src/lib/expediente/package-storage.ts +
 // lib/storage.ts (mismo patrón: ninguna ronda del origen usa S3/objeto
-// remoto tampoco). Nota de alcance de Fase 1 (§4.3 del diseño): el monorepo
-// fusionado todavía no tiene un motor de almacenamiento de adjuntos
-// compartido entre verticales (voice-gateway/billing no lo necesitaron
-// todavía) — este módulo es autocontenido y sirve como base reutilizable
-// cuando esa pieza compartida se construya, igual que hoteles avanzó con
-// SQL real pese a no tener aún un pool de conexión Postgres real.
+// remoto tampoco).
+//
+// SOLO para `InMemoryLicitacionesRepository` (tests/desarrollo local, donde
+// `storageDir` es un `mkdtempSync` efímero del propio proceso de test) desde
+// el hallazgo de auditoría cerrado en migrations/022_persistent_file_storage.sql:
+// el adaptador de PRODUCCIÓN (`PostgresLicitacionesRepository`) dejó de usar
+// este módulo — un filesystem local no sobrevive entre invocaciones de una
+// función serverless de Vercel (cada invocación tiene su propio `/tmp`), así
+// que ese adaptador ahora guarda el contenido dentro de Postgres
+// (`licitaciones.file_blob`, bytea bajo RLS) — ver ese archivo de migración
+// para el detalle completo. Este módulo se conserva tal cual para el
+// repositorio en memoria, donde un directorio temporal de proceso sí es
+// almacenamiento suficiente (el proceso de test vive y muere junto con él).
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";

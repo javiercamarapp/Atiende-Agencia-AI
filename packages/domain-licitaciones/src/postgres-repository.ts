@@ -65,10 +65,9 @@ import { normalizeOrNoDisponible } from "./fallo-autopsy.ts";
 import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
 import { computeRenewalAlertCandidates, DEFAULT_RENEWAL_LEAD_DAYS } from "./renewal-radar.ts";
 import type { RenewalCandidateContract } from "./renewal-radar.ts";
-import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
-import { sha256Hex } from "./types.ts";
+import { sha256Bytes, sha256Hex } from "./types.ts";
 import { ApprovalWorkflow } from "./approval-workflow.ts";
 import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
@@ -627,10 +626,7 @@ function mapRenewalAlert(row: RenewalAlertRow): RenewalAlertRecord {
 }
 
 export class PostgresLicitacionesRepository implements LicitacionesRepository {
-  constructor(
-    private readonly db: TenantDbSession,
-    private readonly storageDir: string,
-  ) {}
+  constructor(private readonly db: TenantDbSession) {}
 
   // ---- Fase 7 pieza 1: organización/property (panel web) — mismo patrón exacto
   // que `PostgresCitasRepository.findOrganizationBySlug`/`listPropertiesForOrganization`:
@@ -1845,17 +1841,51 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       : null;
   }
 
+  // Hallazgo de auditoría (severidad CRÍTICA, ver migrations/022_persistent_file_storage.sql):
+  // el contenido vive DENTRO de Postgres (`licitaciones.file_blob`, bytea bajo RLS)
+  // en vez de filesystem local (`storage.ts`, efímero en una función serverless de
+  // Vercel -- cada invocación tiene su propio `/tmp`, así que un ZIP ensamblado en
+  // una invocación quedaba irrecuperable en la siguiente). `storageRef` sigue
+  // siendo un `text` opaco de cara al resto del repositorio (`package_manifest.storage_ref`/
+  // `submission.acknowledgement_storage_ref` no cambian de tipo) -- ahora es el
+  // uuid de la fila en `file_blob` en vez de una ruta relativa de disco.
   async writeManifestZip(organizationId: string, proposalId: string, zip: Uint8Array): Promise<string> {
-    return writePackageZip(this.storageDir, organizationId, proposalId, zip);
+    void proposalId; // conservado en la firma (paridad con la interfaz) -- el blob no lo necesita, ya vive en `package_manifest.proposal_id`.
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into licitaciones.file_blob (organization_id, sha256, size_bytes, content)
+       values ($1, $2, $3, $4)
+       returning id;`,
+      [organizationId, sha256Bytes(zip), zip.byteLength, Buffer.from(zip)],
+    );
+    return rows[0]!.id;
   }
 
   async readManifestZip(storageRef: string): Promise<Uint8Array> {
-    return readPackageZip(this.storageDir, storageRef);
+    const { rows } = await this.db.query<{ content: Buffer }>(`select content from licitaciones.file_blob where id = $1;`, [storageRef]);
+    const row = rows[0];
+    if (!row) throw new Error(`Expediente no encontrado en almacenamiento persistente (storageRef=${storageRef}).`);
+    return new Uint8Array(row.content);
   }
 
+  // Dedupe por hash de contenido dentro de la misma organización -- mismo criterio
+  // que `storage.ts::storeFile` original ("subir el mismo contenido dos veces
+  // nunca duplica el archivo"): dos declaraciones de presentación que suban el
+  // MISMO acuse (bytes idénticos) reusan la misma fila de `file_blob` en vez de
+  // insertar una copia.
   async storeAcknowledgement(organizationId: string, buffer: Uint8Array): Promise<{ storageRef: string; sha256: string }> {
-    const stored = await storeFile(this.storageDir, organizationId, Buffer.from(buffer));
-    return { storageRef: stored.relativePath, sha256: stored.sha256 };
+    const sha256 = sha256Bytes(buffer);
+    const { rows: existing } = await this.db.query<{ id: string }>(
+      `select id from licitaciones.file_blob where organization_id = $1 and sha256 = $2 limit 1;`,
+      [organizationId, sha256],
+    );
+    if (existing[0]) return { storageRef: existing[0].id, sha256 };
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into licitaciones.file_blob (organization_id, sha256, size_bytes, content)
+       values ($1, $2, $3, $4)
+       returning id;`,
+      [organizationId, sha256, buffer.byteLength, Buffer.from(buffer)],
+    );
+    return { storageRef: rows[0]!.id, sha256 };
   }
 
   async findSubmission(organizationId: string, proposalId: string): Promise<SubmissionRecord | null> {

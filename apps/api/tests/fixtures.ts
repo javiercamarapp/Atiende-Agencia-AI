@@ -35,7 +35,6 @@ export const TEST_ENV: ApiEnv = {
   rentasOwnerJwtSecret: "test-rentas-owner-jwt-secret",
   rentasOwnerAccessTokenTtlSeconds: 900,
   rentasOwnerRefreshTokenTtlSeconds: 60 * 60 * 24 * 30,
-  licitacionesStorageDir: "/tmp/atiende-licitaciones-storage-test",
   llmProviders: { anthropic: null, openai: null, openrouter: null },
 };
 
