@@ -18,6 +18,8 @@ import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
 import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
+import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
+import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
 import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
 import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
@@ -198,6 +200,28 @@ function HotelesFraudeRoute() {
   return (
     <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
       {(ctx) => <FraudePage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
+function HotelesCfdiListadoRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesCfdiListadoPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
+function HotelesFolioCfdiRoute() {
+  const navigate = useNavigate();
+  const { orgSlug, folioId } = useParams<{ orgSlug: string; folioId: string }>();
+  if (!orgSlug || !folioId) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesCfdiPage {...ctx} folioId={folioId} />}
     </HotelesShell>
   );
 }
@@ -516,8 +540,10 @@ export function App() {
         <Route path="/hoteles/:orgSlug" element={<HotelesRootRedirect />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
         <Route path="/hoteles/:orgSlug/folios/:folioId" element={<HotelesFolioRoute />} />
+        <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
+        <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />

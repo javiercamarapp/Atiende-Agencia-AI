@@ -5,6 +5,7 @@
 // devuelve.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { addCharge, addDiscount, addPayment, closeFolio, fetchFolio, reverseCharge, CHARGE_CONCEPT_LABELS } from "../lib/folios-client.ts";
 import type { AddChargeInput, FolioSummary } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
@@ -20,7 +21,7 @@ function formatMoney(n: number): string {
 
 const CHARGE_CONCEPTS: readonly AddChargeInput["concepto"][] = ["hospedaje", "ab", "extras", "ajuste", "propina", "otro"];
 
-export function FolioPage({ apiBaseUrl, token, propertyId, folioId }: FolioPageProps) {
+export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: FolioPageProps) {
   const [folio, setFolio] = useState<FolioSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -117,7 +118,12 @@ export function FolioPage({ apiBaseUrl, token, propertyId, folioId }: FolioPageP
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Folio: {folio.etiqueta}</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <h1 style={{ fontSize: 20, margin: 0 }}>Folio: {folio.etiqueta}</h1>
+          <Link to={`/hoteles/${orgSlug}/folios/${folioId}/cfdi`} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "1px solid #111827", color: "#111827", textDecoration: "none" }}>
+            CFDI de este folio
+          </Link>
+        </div>
         <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
           {folio.esPrincipal ? "Folio principal" : "Folio secundario"} · Estado: {folio.estado}
           {folio.motivoCierre ? ` (${folio.motivoCierre})` : ""}
