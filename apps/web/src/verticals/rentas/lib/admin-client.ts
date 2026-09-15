@@ -13,7 +13,7 @@
 // request original una sola vez con el token nuevo. Firma de `fetchJson`/`sendJson`
 // SIN CAMBIOS: cada caller de este repo sigue pasando exactamente los mismos
 // argumentos posicionales de siempre, `authCtx` es opcional al final.
-import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError, readErrorMessage, readWriteErrorMessage } from "../../../lib/authed-fetch.ts";
 import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearRentasSession, persistRentasSession, readPersistedRentasSession } from "./auth-client.ts";
 import type { LoginSession } from "./auth-client.ts";
@@ -41,8 +41,7 @@ function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
 export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new RentasAdminError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
+    throw new RentasAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -67,8 +66,7 @@ export async function sendJson<T>(
     }),
   );
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new RentasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+    throw new RentasAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -83,8 +81,7 @@ export async function sendJson<T>(
 export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new RentasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+    throw new RentasAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
