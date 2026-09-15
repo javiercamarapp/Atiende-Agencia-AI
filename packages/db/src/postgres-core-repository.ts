@@ -35,6 +35,7 @@ interface StaffUserRawRow {
   readonly password_hash: string | null;
   readonly created_via: StaffUserRow["createdVia"];
   readonly email_verified_at: string | null;
+  readonly sessions_revoked_at: string | null;
 }
 
 interface MembershipRawRow {
@@ -87,6 +88,7 @@ function mapStaff(row: StaffUserRawRow): StaffUserRow {
     passwordHash: row.password_hash,
     createdVia: row.created_via,
     emailVerifiedAt: row.email_verified_at,
+    sessionsRevokedAt: row.sessions_revoked_at,
   };
 }
 
@@ -112,7 +114,7 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   async findStaffByEmail(email: string): Promise<StaffUserRow | null> {
     const { rows } = await this.db.query<StaffUserRawRow>(
-      `select id, email, full_name, password_hash, created_via, email_verified_at
+      `select id, email, full_name, password_hash, created_via, email_verified_at, sessions_revoked_at
        from core.staff_user where email = $1;`,
       [email],
     );
@@ -121,7 +123,7 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   async findStaffById(id: string): Promise<StaffUserRow | null> {
     const { rows } = await this.db.query<StaffUserRawRow>(
-      `select id, email, full_name, password_hash, created_via, email_verified_at
+      `select id, email, full_name, password_hash, created_via, email_verified_at, sessions_revoked_at
        from core.staff_user where id = $1;`,
       [id],
     );
@@ -267,5 +269,15 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   async isRefreshTokenRevoked(jti: string): Promise<boolean> {
     const { rows } = await this.db.query<{ revoked: boolean }>(`select core.is_refresh_token_revoked($1) as revoked;`, [jti]);
     return rows[0]?.revoked ?? false;
+  }
+
+  // ---- Hallazgo de auditoría (rubro 2, severidad ALTA, "no hay forma de invalidar
+  // sesiones activas de un usuario") — ver `migrations/0006_revoke_all_sessions.sql`.
+  // `security definer`, mismo motivo/mismo patrón exacto que `revokeRefreshToken`
+  // arriba: `authenticated` solo tiene GRANT de SELECT sobre `core.staff_user`, nunca
+  // UPDATE (ver `0001_core_schema.sql`). ----
+
+  async revokeAllRefreshTokens(userId: string): Promise<void> {
+    await this.db.query(`select core.revoke_all_refresh_tokens($1);`, [userId]);
   }
 }

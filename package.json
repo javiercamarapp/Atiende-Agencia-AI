@@ -24,6 +24,7 @@
     "audit:deps": "npm audit --audit-level=high"
   },
   "devDependencies": {
+    "@atiende/core-ratelimit": "*",
     "@eslint/js": "^9.36.0",
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.2",
