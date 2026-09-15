@@ -96,14 +96,21 @@ cabecera de `src/limpieza/aplicacion/tareas.ts`) para el detalle completo; resum
   idempotente directo sobre `rentas.ocupacion` (reservas confirmadas cuyo checkout ya
   llegó y sin tarea de limpieza vinculada) — mismo patrón que `ical-sync-cron.ts`
   (cron interno, guardado por `x-atiende-internal-secret`).
-- **Fuera de fase** (documentado, no fingido como completo): plantilla de checklist
-  editable por property (H-051, REQ-114 — hoy solo la plantilla por defecto de
-  `checklist.ts`), reabastecimiento manual de inventario (solo consumo vía
-  `completarTarea`), subida real de fotos (solo `dev-local`, mismo criterio que el
-  resto del monorepo), canal real de notificación de tarea (`notificacion_tarea.canales`
-  queda vacío — sin dispatcher propio para este lote), endpoint de escritura de la
-  configuración operativa por property (defaults de `CONFIGURACION_OPERATIVA_DEFECTO`
-  vía `rentas.property_config`).
+- **Sin HTTP hasta Fase 17** — el motor completo de arriba se quedó sin ningún route
+  de `apps/api` que lo expusiera (ver "Panel operativo del rol `limpieza` (Fase 17)"
+  más abajo para el cierre de ese gap).
+- **Fuera de fase** (documentado, no fingido como completo — sigue así después de
+  Fase 17): plantilla de checklist editable por property (H-051, REQ-114 — hoy solo
+  la plantilla por defecto de `checklist.ts`), reabastecimiento manual de inventario
+  (solo consumo vía `completarTarea`), subida real de fotos (solo `dev-local`, mismo
+  criterio que el resto del monorepo), canal real de notificación de tarea
+  (`notificacion_tarea.canales` queda vacío — sin dispatcher propio para este lote),
+  endpoint de escritura de la configuración operativa por property (defaults de
+  `CONFIGURACION_OPERATIVA_DEFECTO` vía `rentas.property_config`), creación
+  automática de tareas al checkout por HTTP/cron (`crearTareaLimpiezaPorCheckout`/
+  `procesarCheckoutsPendientes` siguen sin ningún trigger que las invoque), y
+  confirmación humana de bloqueo de mantenimiento por incidencia grave
+  (`confirmarBloqueoMantenimiento`, `LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES`).
 
 ## Correo transaccional al huésped (Fase 9)
 
@@ -209,3 +216,60 @@ construido, honestamente bloqueado en la porción que no es de este paquete**:
   `@atiende/core-tenancy::types.ts`: "Campos de plan/facturación deliberadamente
   AUSENTES — ver packages/billing"), y cualquier rate limiting sobre la ruta pública
   (mismo criterio que `POST /auth/login`, que tampoco lo tiene hoy en este monorepo).
+
+## Panel operativo del rol `limpieza` (Fase 17)
+
+Cierra el gap identificado por auditoría (severidad ALTA): el rol `limpieza`
+(`LIMPIEZA_OPERACION_ROLES`, ver `roles.ts`) existía en `RENTAS_VERTICAL_ROLES` desde
+la Fase 1 sin que ningún módulo lo usara, y el motor transaccional completo de
+limpieza/mantenimiento (`asignarTarea`/`completarChecklistItem`/`completarTarea`/
+`registrarIncidencia`, Fase 8) llevaba desde entonces sin un solo HTTP route que lo
+expusiera — confirmado leyendo completo `apps/api/src/routes/verticals/rentas/*.ts`
+antes de escribir nada (no había ningún archivo `limpieza.ts`/`mantenimiento.ts`, y
+`mapRentasDomainError` en `reservas.ts` ya traducía los códigos de error de este
+módulo solo "para que este switch exhaustivo siga compilando", sin que ninguna ruta
+los disparara).
+
+- **`apps/api/src/routes/verticals/rentas/limpieza.ts`** (nuevo) — mismo patrón
+  arquitectónico exacto que `reservas.ts`/`bloqueos.ts`: el motor transaccional
+  siempre vive en este paquete, la ruta le pasa el `TenantDbSession` del request
+  DIRECTO. 7 endpoints, todos gateados por `LIMPIEZA_OPERACION_ROLES`:
+  `GET .../tareas` (lista, con `?asignadoA=me|sin_asignar|<staffId>` y
+  `?estado=csv`), `GET .../tareas/:tareaId` (detalle + checklist),
+  `POST .../tareas/:tareaId/asignar` (autoasignación si el body no trae
+  `asignadoA`), `POST .../tareas/:tareaId/checklist/:itemId/completar`,
+  `POST .../tareas/:tareaId/completar` (con `consumos` opcional — el único camino
+  real para un movimiento de inventario, ver "Fuera de fase" arriba),
+  `GET .../unidades/:unidadId/inventario`, y `POST`/`GET
+  .../unidades/:unidadId/incidencias`.
+- **`RentasRepository`** (nuevo, solo LECTURA de este módulo): `listTareas`,
+  `findTareaDetalle`, `findChecklistItem` (defensa en profundidad), `listItemsInventario`,
+  `listIncidencias` — las ESCRITURAS siguen sin envolverse aquí, mismo criterio que
+  reservas/bloqueos.
+  `InMemoryRentasCalendarStore` gana las tablas `tarea_operativa`/
+  `checklist_item_tarea`/`foto_checklist_item`/`item_inventario`/
+  `movimiento_inventario`/`incidencia_mantenimiento`/`notificacion_tarea` (compartidas
+  con `InMemoryRentasTenancyEngine`, que ahora también despacha el texto SQL literal
+  de `asignarTarea`/`completarChecklistItem`/`completarTarea`/`registrarIncidencia` —
+  mismo principio que ya aplicaba a `aplicacion/reservas.ts`). `seedTareaOperativa`/
+  `seedItemInventario` son siembra de test (equivalentes a `seedUnidad`): saltan a
+  propósito la orquestación de `crearTareaLimpiezaPorCheckout` (que sigue sin HTTP,
+  ver abajo) porque los tests de este módulo solo necesitan una fila ya existente
+  sobre la que ejercitar asignar/completar/reportar.
+- **`apps/web/src/verticals/rentas/lib/limpieza-client.ts`** + **`pages/MisTareas.tsx`**
+  (nuevos) — la primera vista real del rol `limpieza`: "mis tareas de hoy"
+  (`asignadoA=me`) con un botón para tomar tareas de la cola "sin asignar", checklist
+  accionable por tarea, botón "completar tarea" (bloqueado si el checklist no está
+  completo, con el 409 real del servidor mostrado, nunca silenciado), formulario de
+  consumo de inventario al completar, y un formulario de reportar incidencia por
+  unidad. Enlace de nav visible en `RentasShell.tsx` para cualquier rol (mismo
+  criterio que Precios/Aprobaciones/Finanzas — la página gatea su propio contenido).
+- **Deliberadamente fuera de esta fase** (no en el alcance del hallazgo, documentado
+  arriba también en "Fuera de fase" de Fase 8): `crearTareaLimpiezaPorCheckout`/
+  `procesarCheckoutsPendientes` (creación automática de tareas al checkout) y
+  `confirmarBloqueoMantenimiento` (confirmación de bloqueo por incidencia grave,
+  `LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES`) siguen sin ningún HTTP route — hoy, la ÚNICA
+  forma de que exista una fila `tarea_operativa` real en producción sigue siendo
+  inexistente (ni HTTP ni cron la crean). Es un hallazgo real y distinto ("no hay
+  ninguna forma de que nazca una tarea de limpieza en producción"), reportado
+  honestamente como bloqueador en vez de fingido como resuelto por esta fase.

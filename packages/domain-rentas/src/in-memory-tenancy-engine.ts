@@ -19,6 +19,7 @@
 // como en Postgres real ambos caminos leen/escriben la misma tabla.
 import type { PlatformRole, TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { InMemoryRentasCalendarStore } from "./calendar-store.ts";
+import type { EstadoIncidencia, SeveridadIncidencia } from "./limpieza/tipos.ts";
 
 export interface SeedTenancyProperty {
   readonly id: string;
@@ -211,6 +212,138 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
           const [id, inicio, fin] = params as [string, string, string];
           store.actualizarRango(id, inicio, fin);
           return { rows: [] as R[] };
+        }
+
+        // -------------------------------------------------------------------
+        // Fase 17 -- módulo operativo de limpieza/mantenimiento (texto SQL literal
+        // emitido por ../limpieza/aplicacion/tareas.ts: asignarTarea/
+        // completarChecklistItem/completarTarea/registrarIncidencia -- las 4
+        // funciones que apps/api/.../rentas/limpieza.ts invoca con el
+        // `TenantDbSession` del request DIRECTO, mismo patrón que
+        // crearBloqueo/cancelarOcupacion arriba). `crearTareaLimpiezaPorCheckout`/
+        // `procesarCheckoutsPendientes`/`reprogramarTareaPorCambioReserva`/
+        // `cancelarTareaPorCancelacionReserva`/`confirmarBloqueoMantenimiento` NO se
+        // soportan aquí a propósito -- ningún HTTP route de este lote las invoca
+        // todavía (ver README de este paquete, sección "Fuera de fase"); los tests
+        // de este módulo siembran la tarea/inventario directo con
+        // `store.seedTareaOperativa`/`store.seedItemInventario`.
+        // -------------------------------------------------------------------
+
+        // ---- SELECT organization_id, property_id FROM rentas.unidad WHERE id = $1
+        // (registrarIncidencia) ----
+        if (n.startsWith("select organization_id, property_id from rentas.unidad")) {
+          const [unidadId] = params as [string];
+          const unidad = store.getUnidadById(unidadId);
+          if (!unidad) return { rows: [] as R[] };
+          return { rows: [{ organization_id: unidad.organizationId, property_id: unidad.propertyId }] as unknown as R[] };
+        }
+
+        // ---- UPDATE rentas.tarea_operativa SET asignado_a = ... WHERE id = $1
+        // RETURNING id (asignarTarea) ----
+        if (n.startsWith("update rentas.tarea_operativa set asignado_a")) {
+          const [tareaId, asignadoA, esProveedorExterno] = params as [string, string, boolean];
+          const resultado = store.asignarTareaOperativa(tareaId, asignadoA, esProveedorExterno);
+          return { rows: (resultado ? [resultado] : []) as unknown as R[] };
+        }
+
+        // ---- INSERT INTO rentas.notificacion_tarea (asignarTarea/completarTarea) ----
+        if (n.startsWith("insert into rentas.notificacion_tarea")) {
+          const [tareaId] = params as [string];
+          store.insertNotificacionTarea(tareaId, n.includes("'asignada'") ? "asignada" : "completada");
+          return { rows: [] as R[] };
+        }
+
+        // ---- UPDATE rentas.checklist_item_tarea SET completado = true ... WHERE
+        // id = $1 RETURNING id (completarChecklistItem) ----
+        if (n.startsWith("update rentas.checklist_item_tarea set completado")) {
+          const [checklistItemId, completadoPor] = params as [string, string];
+          const resultado = store.completarChecklistItemTarea(checklistItemId, completadoPor);
+          return { rows: (resultado ? [resultado] : []) as unknown as R[] };
+        }
+
+        // ---- INSERT INTO rentas.foto_checklist_item (completarChecklistItem) ----
+        if (n.startsWith("insert into rentas.foto_checklist_item")) {
+          const [checklistItemId, rutaAlmacenamiento, subidaPor] = params as [string, string, string | null];
+          store.insertFotoChecklistItem(checklistItemId, rutaAlmacenamiento, subidaPor);
+          return { rows: [] as R[] };
+        }
+
+        // ---- SELECT completado FROM rentas.checklist_item_tarea WHERE tarea_id = $1
+        // (completarTarea) ----
+        if (n.startsWith("select completado from rentas.checklist_item_tarea")) {
+          const [tareaId] = params as [string];
+          return { rows: store.listChecklistCompletadoPorTarea(tareaId) as unknown as R[] };
+        }
+
+        // ---- UPDATE rentas.tarea_operativa SET estado = 'bloqueada' ... WHERE
+        // id = $1 (completarTarea, checklist incompleto) ----
+        if (n.startsWith("update rentas.tarea_operativa set estado = 'bloqueada'")) {
+          const [tareaId] = params as [string];
+          store.marcarTareaBloqueada(tareaId);
+          return { rows: [] as R[] };
+        }
+
+        // ---- SELECT id, cantidad_actual, umbral_minimo FROM rentas.item_inventario
+        // WHERE id = $1 FOR UPDATE (completarTarea, consumo) ----
+        if (n.startsWith("select id, cantidad_actual, umbral_minimo from rentas.item_inventario")) {
+          const [id] = params as [string];
+          const item = store.getItemInventario(id);
+          if (!item) return { rows: [] as R[] };
+          return { rows: [{ id: item.id, cantidad_actual: String(item.cantidadActual), umbral_minimo: String(item.umbralMinimo) }] as unknown as R[] };
+        }
+
+        // ---- UPDATE rentas.item_inventario SET cantidad_actual = $1 ... WHERE
+        // id = $2 (completarTarea, consumo) ----
+        if (n.startsWith("update rentas.item_inventario set cantidad_actual")) {
+          const [cantidadNueva, id] = params as [number, string];
+          store.actualizarCantidadInventario(id, cantidadNueva);
+          return { rows: [] as R[] };
+        }
+
+        // ---- INSERT INTO rentas.movimiento_inventario (completarTarea, consumo) ----
+        if (n.startsWith("insert into rentas.movimiento_inventario")) {
+          const [itemInventarioId, tareaId, cantidad] = params as [string, string | null, number];
+          store.insertMovimientoInventario(itemInventarioId, tareaId, cantidad, "consumo_checklist");
+          return { rows: [] as R[] };
+        }
+
+        // ---- UPDATE rentas.tarea_operativa SET estado = 'completada' ... WHERE
+        // id = $1 (completarTarea) ----
+        if (n.startsWith("update rentas.tarea_operativa set estado = 'completada'")) {
+          const [tareaId] = params as [string];
+          store.marcarTareaCompletada(tareaId);
+          return { rows: [] as R[] };
+        }
+
+        // ---- INSERT INTO rentas.incidencia_mantenimiento (registrarIncidencia) ----
+        if (n.startsWith("insert into rentas.incidencia_mantenimiento")) {
+          const [organizationId, propertyId, unidadId, tareaOrigenId, severidad, titulo, descripcion, reportadoPor, estado, propuestaBloqueoInicio, propuestaBloqueoFin] = params as [
+            string,
+            string,
+            string,
+            string | null,
+            SeveridadIncidencia,
+            string,
+            string | null,
+            string,
+            EstadoIncidencia,
+            string | null,
+            string | null,
+          ];
+          const resultado = store.insertIncidenciaMantenimiento({
+            organizationId,
+            propertyId,
+            unidadId,
+            tareaOrigenId,
+            severidad,
+            titulo,
+            descripcion,
+            reportadoPor,
+            estado,
+            propuestaBloqueoInicio,
+            propuestaBloqueoFin,
+          });
+          return { rows: [resultado] as unknown as R[] };
         }
 
         throw new Error(`InMemoryRentasTenancyEngine: consulta SQL no soportada (alcance angosto a propósito): ${sql}`);

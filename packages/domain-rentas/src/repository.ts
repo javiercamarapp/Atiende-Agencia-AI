@@ -22,6 +22,8 @@ import type {
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
   EmailOutboxJobRow,
+  IncidenciaMantenimientoRecord,
+  ItemInventarioRecord,
   MessagingOutboxChannel,
   MovimientoFinancieroReserva,
   NewDescuentoDuracionInput,
@@ -47,6 +49,9 @@ import type {
   RentasPropertySummary,
   ReservaParaStatement,
   ReservaProximaCheckIn,
+  TareaListFiltro,
+  TareaOperativaDetalle,
+  TareaOperativaRecord,
   TemporadaRecord,
   UltimaVersionOwnerStatement,
   UnidadRecord,
@@ -155,6 +160,34 @@ export interface RentasRepository {
    *  UNIFICADA que un calendario real necesita para pintar ambas capas en una sola
    *  lista. Ver types.ts::OcupacionCalendarioItem. */
   listOcupaciones(propertyId: string, unidadId: string): Promise<readonly OcupacionCalendarioItem[]>;
+
+  // ---- Fase 17 — panel operativo del rol `limpieza` (tareas/checklist/inventario/
+  // incidencias). Las ESCRITURAS de este módulo (asignar/completar checklist/
+  // completar tarea/registrar incidencia) NO viven aquí -- siguen pasando por las
+  // funciones de aplicación de ../limpieza/aplicacion/tareas.ts con el
+  // `TenantDbSession` del request DIRECTO, mismo patrón exacto que
+  // reservas.ts/bloqueos.ts (ver el comentario de cabecera de este archivo). Este
+  // repository solo cubre las LECTURAS que ese panel necesita. ----
+
+  /** `GET .../tareas`: tareas de una property, opcionalmente filtradas por
+   *  asignación/estado -- ver types.ts::TareaListFiltro. */
+  listTareas(propertyId: string, filtro?: TareaListFiltro): Promise<readonly TareaOperativaRecord[]>;
+  /** `GET .../tareas/:tareaId`: detalle de una tarea + su checklist completo, para la
+   *  vista "mis tareas de hoy" del rol `limpieza`. `null` si la tarea no existe o no
+   *  pertenece a esta property (defensa en profundidad, mismo criterio que
+   *  `findUnidad`). */
+  findTareaDetalle(propertyId: string, tareaId: string): Promise<TareaOperativaDetalle | null>;
+  /** Defensa en profundidad ANTES de invocar `completarChecklistItem`: nunca confiar
+   *  en que el cliente "sabe" que un `itemId` pertenece a `tareaId`/`propertyId` --
+   *  mismo criterio que `findOcupacion` en reservas.ts. */
+  findChecklistItem(propertyId: string, tareaId: string, itemId: string): Promise<{ id: string } | null>;
+  /** `GET .../unidades/:unidadId/inventario`: catálogo de ropa blanca/consumibles de
+   *  una unidad -- insumo para elegir qué `itemInventarioId` consumir al completar
+   *  una tarea (H-052). */
+  listItemsInventario(propertyId: string, unidadId: string): Promise<readonly ItemInventarioRecord[]>;
+  /** `GET .../unidades/:unidadId/incidencias`: incidencias de mantenimiento
+   *  reportadas sobre una unidad (H-055), más recientes primero. */
+  listIncidencias(propertyId: string, unidadId: string): Promise<readonly IncidenciaMantenimientoRecord[]>;
 }
 
 export type {
@@ -164,6 +197,8 @@ export type {
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
   EmailOutboxJobRow,
+  IncidenciaMantenimientoRecord,
+  ItemInventarioRecord,
   MessagingOutboxChannel,
   MovimientoFinancieroReserva,
   NewDescuentoDuracionInput,
@@ -189,6 +224,9 @@ export type {
   RentasPropertySummary,
   ReservaParaStatement,
   ReservaProximaCheckIn,
+  TareaListFiltro,
+  TareaOperativaDetalle,
+  TareaOperativaRecord,
   TemporadaRecord,
   UltimaVersionOwnerStatement,
   UnidadRecord,

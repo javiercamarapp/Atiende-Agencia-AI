@@ -33,6 +33,7 @@ import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages
 import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Precios.tsx";
 import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
 import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
+import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -410,6 +411,21 @@ function RentasFinanzasRoute() {
   );
 }
 
+/** Mis tareas (Fase 17) — panel operativo del rol `limpieza` (tareas/checklist/
+ * inventario/incidencias). Cierra el hallazgo de auditoría ALTA "el rol `limpieza`
+ * sigue sin ninguna vista funcional". Mismo patrón de ruta hija que
+ * RentasCalendarioRoute/RentasPreciosRoute/RentasAprobacionesRoute/RentasFinanzasRoute. */
+function RentasMisTareasRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasMisTareasPage {...ctx} />}
+    </RentasShell>
+  );
+}
+
 function CitasLoginRoute() {
   const navigate = useNavigate();
   return (
@@ -763,6 +779,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
+        <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />

@@ -33,6 +33,8 @@ import type {
   ContextoPricingUnidad,
   DescuentoDuracionRecord,
   EmailOutboxJobRow,
+  IncidenciaMantenimientoRecord,
+  ItemInventarioRecord,
   MessagingOutboxChannel,
   MovimientoFinancieroReserva,
   NewDescuentoDuracionInput,
@@ -58,6 +60,9 @@ import type {
   RentasPropertySummary,
   ReservaParaStatement,
   ReservaProximaCheckIn,
+  TareaListFiltro,
+  TareaOperativaDetalle,
+  TareaOperativaRecord,
   TemporadaRecord,
   UltimaVersionOwnerStatement,
   UnidadRecord,
@@ -216,6 +221,19 @@ export class InMemoryRentasRepository implements RentasRepository {
     this.calendarStore.seedUnidad(unidad);
   }
 
+  /** Fase 17 -- siembra una tarea operativa (+ checklist) para tests de
+   *  apps/api/.../rentas/limpieza.ts -- ver el comentario de cabecera de
+   *  `InMemoryRentasCalendarStore.seedTareaOperativa`. */
+  seedTareaOperativa(input: Parameters<InMemoryRentasCalendarStore["seedTareaOperativa"]>[0]): ReturnType<InMemoryRentasCalendarStore["seedTareaOperativa"]> {
+    return this.calendarStore.seedTareaOperativa(input);
+  }
+
+  /** Fase 17 -- siembra un ítem de inventario de una unidad para tests -- ver el
+   *  comentario de cabecera de `InMemoryRentasCalendarStore.seedItemInventario`. */
+  seedItemInventario(input: Parameters<InMemoryRentasCalendarStore["seedItemInventario"]>[0]): ReturnType<InMemoryRentasCalendarStore["seedItemInventario"]> {
+    return this.calendarStore.seedItemInventario(input);
+  }
+
   seedOwner(owner: OwnerRecord): void {
     this.owners.set(owner.id, owner);
   }
@@ -317,6 +335,31 @@ export class InMemoryRentasRepository implements RentasRepository {
 
   async listOcupaciones(propertyId: string, unidadId: string): Promise<readonly OcupacionCalendarioItem[]> {
     return this.calendarStore.listOcupaciones(propertyId, unidadId);
+  }
+
+  // ---- RentasRepository: Fase 17 -- panel operativo del rol `limpieza` (delegado al
+  // store compartido -- mismo criterio que el resto de este bloque: las escrituras
+  // reales de este módulo las hace `InMemoryRentasTenancyEngine` sobre la MISMA
+  // instancia, ver el comentario de cabecera de calendar-store.ts) ----
+
+  async listTareas(propertyId: string, filtro?: TareaListFiltro): Promise<readonly TareaOperativaRecord[]> {
+    return this.calendarStore.listTareas(propertyId, filtro);
+  }
+
+  async findTareaDetalle(propertyId: string, tareaId: string): Promise<TareaOperativaDetalle | null> {
+    return this.calendarStore.findTareaDetalle(propertyId, tareaId);
+  }
+
+  async findChecklistItem(propertyId: string, tareaId: string, itemId: string): Promise<{ id: string } | null> {
+    return this.calendarStore.findChecklistItem(propertyId, tareaId, itemId);
+  }
+
+  async listItemsInventario(propertyId: string, unidadId: string): Promise<readonly ItemInventarioRecord[]> {
+    return this.calendarStore.listItemsInventario(propertyId, unidadId);
+  }
+
+  async listIncidencias(propertyId: string, unidadId: string): Promise<readonly IncidenciaMantenimientoRecord[]> {
+    return this.calendarStore.listIncidencias(propertyId, unidadId);
   }
 
   // ---- RentasRepository: pricing (lectura, flujo 2 Fase 1) ----

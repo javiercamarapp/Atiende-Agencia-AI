@@ -27,7 +27,13 @@
 // Fase 16 -- agrega el link de nav a Finanzas (movimiento por reserva, owner
 // statements, payouts/conciliación -- ver pages/Finanzas.tsx): cierra el hallazgo de
 // auditoría ALTA "Finanzas sin UI para admin_gestora ni contador" -- mismo patrón,
-// un renglón más en NAV_ITEMS. Visible para cualquier rol (mismo criterio que
+// un renglón más en NAV_ITEMS.
+//
+// Fase 17 -- agrega el link de nav a Mis tareas (panel operativo del rol `limpieza`:
+// tareas/checklist/inventario/incidencias -- ver pages/MisTareas.tsx): cierra el
+// hallazgo de auditoría ALTA "el rol `limpieza` sigue sin ninguna vista funcional" --
+// mismo patrón, un renglón más en NAV_ITEMS (MisTareasPage gatea su propio contenido
+// por LIMPIEZA_OPERACION_ROLES, igual que FinanzasPage/PreciosPage). Visible para cualquier rol (mismo criterio que
 // Precios/Aprobaciones); FinanzasPage gatea su propio contenido por
 // FINANZAS_LECTURA_ROLES/FINANZAS_ESCRITURA_ROLES.
 import { useEffect, useState } from "react";
@@ -46,6 +52,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "precios", label: "Precios" },
   { to: "aprobaciones", label: "Aprobaciones" },
   { to: "finanzas", label: "Finanzas" },
+  { to: "mis-tareas", label: "Mis tareas" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({

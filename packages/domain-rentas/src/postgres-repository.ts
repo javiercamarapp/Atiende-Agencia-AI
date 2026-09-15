@@ -16,6 +16,8 @@ import type {
   DescuentoDuracion,
   DescuentoDuracionRecord,
   EmailOutboxJobRow,
+  IncidenciaMantenimientoRecord,
+  ItemInventarioRecord,
   MessagingOutboxChannel,
   MovimientoFinancieroReserva,
   NewDescuentoDuracionInput,
@@ -42,11 +44,15 @@ import type {
   RentasPropertySummary,
   ReservaParaStatement,
   ReservaProximaCheckIn,
+  TareaListFiltro,
+  TareaOperativaDetalle,
+  TareaOperativaRecord,
   TemporadaRecord,
   TemporadaTarifa,
   UltimaVersionOwnerStatement,
   UnidadRecord,
 } from "./types.ts";
+import type { ChecklistItemTarea, EstadoIncidencia, EstadoTareaOperativa, PrioridadTareaOperativa, SeveridadIncidencia, TipoTareaOperativa } from "./limpieza/tipos.ts";
 
 interface UnidadRow {
   id: string;
@@ -840,5 +846,186 @@ export class PostgresRentasRepository implements RentasRepository {
       [organizationId],
     );
     return rows.map((row) => ({ propertyId: row.property_id, name: row.name }));
+  }
+
+  // ---- RentasRepository: Fase 17 -- panel operativo del rol `limpieza` (lecturas de
+  // tarea_operativa/checklist_item_tarea/item_inventario/incidencia_mantenimiento,
+  // ver migrations/010_rentas_limpieza_schema.sql). Las escrituras siguen pasando por
+  // ../limpieza/aplicacion/tareas.ts (ver comentario de cabecera del archivo). ----
+
+  async listTareas(propertyId: string, filtro: TareaListFiltro = {}): Promise<readonly TareaOperativaRecord[]> {
+    // `asignado_a is not distinct from $2` deja pasar tanto "= $2" (staffId concreto)
+    // como "IS NULL" (sin asignar, cuando $2 es null) con un solo operador -- mismo
+    // patrón que `findReglaComisionCanal` (canal_id is not distinct from $2) arriba.
+    // `$2::boolean` decide si el filtro de asignación aplica en absoluto -- distingue
+    // "sin filtro" (arg ausente) de "filtra por NULL" (arg = null literal).
+    const { rows } = await this.db.query<{
+      id: string;
+      property_id: string;
+      unidad_id: string;
+      unidad_nombre: string;
+      tipo: TipoTareaOperativa;
+      estado: EstadoTareaOperativa;
+      prioridad: PrioridadTareaOperativa;
+      asignado_a: string | null;
+      es_proveedor_externo: boolean;
+      programada_para: string;
+      sla_vence_en: string | null;
+      completada_en: string | null;
+      creado_en: string;
+    }>(
+      `select t.id, t.property_id, t.unidad_id, coalesce(u.name, t.unidad_id::text) as unidad_nombre,
+              t.tipo, t.estado, t.prioridad, t.asignado_a, t.es_proveedor_externo,
+              t.programada_para::text as programada_para, t.sla_vence_en::text as sla_vence_en,
+              t.completada_en::text as completada_en, t.creado_en::text as creado_en
+       from rentas.tarea_operativa t
+       join rentas.unidad u on u.id = t.unidad_id
+       where t.property_id = $1
+         and ($2::boolean is not true or t.asignado_a is not distinct from $3)
+         and ($4::text[] is null or t.estado = any($4::text[]))
+       order by t.programada_para asc, t.creado_en asc;`,
+      [propertyId, filtro.asignadoA !== undefined, filtro.asignadoA ?? null, filtro.estados ? [...filtro.estados] : null],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      propertyId: r.property_id,
+      unidadId: r.unidad_id,
+      unidadNombre: r.unidad_nombre,
+      tipo: r.tipo,
+      estado: r.estado,
+      prioridad: r.prioridad,
+      asignadoA: r.asignado_a,
+      esProveedorExterno: r.es_proveedor_externo,
+      programadaPara: r.programada_para,
+      slaVenceEn: r.sla_vence_en,
+      completadaEn: r.completada_en,
+      creadoEn: r.creado_en,
+    }));
+  }
+
+  async findTareaDetalle(propertyId: string, tareaId: string): Promise<TareaOperativaDetalle | null> {
+    const { rows } = await this.db.query<{
+      id: string;
+      property_id: string;
+      unidad_id: string;
+      unidad_nombre: string;
+      tipo: TipoTareaOperativa;
+      estado: EstadoTareaOperativa;
+      prioridad: PrioridadTareaOperativa;
+      asignado_a: string | null;
+      es_proveedor_externo: boolean;
+      programada_para: string;
+      sla_vence_en: string | null;
+      completada_en: string | null;
+      creado_en: string;
+    }>(
+      `select t.id, t.property_id, t.unidad_id, coalesce(u.name, t.unidad_id::text) as unidad_nombre,
+              t.tipo, t.estado, t.prioridad, t.asignado_a, t.es_proveedor_externo,
+              t.programada_para::text as programada_para, t.sla_vence_en::text as sla_vence_en,
+              t.completada_en::text as completada_en, t.creado_en::text as creado_en
+       from rentas.tarea_operativa t
+       join rentas.unidad u on u.id = t.unidad_id
+       where t.id = $1 and t.property_id = $2;`,
+      [tareaId, propertyId],
+    );
+    const row = rows[0];
+    if (!row) return null;
+
+    const checklist = await this.db.query<{ id: string; tarea_id: string; descripcion: string; orden: number; completado: boolean; completado_en: string | null; completado_por: string | null }>(
+      `select id, tarea_id, descripcion, orden, completado, completado_en::text as completado_en, completado_por
+       from rentas.checklist_item_tarea where tarea_id = $1 order by orden asc;`,
+      [tareaId],
+    );
+
+    return {
+      id: row.id,
+      propertyId: row.property_id,
+      unidadId: row.unidad_id,
+      unidadNombre: row.unidad_nombre,
+      tipo: row.tipo,
+      estado: row.estado,
+      prioridad: row.prioridad,
+      asignadoA: row.asignado_a,
+      esProveedorExterno: row.es_proveedor_externo,
+      programadaPara: row.programada_para,
+      slaVenceEn: row.sla_vence_en,
+      completadaEn: row.completada_en,
+      creadoEn: row.creado_en,
+      checklist: checklist.rows.map(
+        (c): ChecklistItemTarea => ({
+          id: c.id,
+          tareaId: c.tarea_id,
+          descripcion: c.descripcion,
+          orden: c.orden,
+          completado: c.completado,
+          completadoEn: c.completado_en,
+          completadoPor: c.completado_por,
+        }),
+      ),
+    };
+  }
+
+  async findChecklistItem(propertyId: string, tareaId: string, itemId: string): Promise<{ id: string } | null> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `select ci.id
+       from rentas.checklist_item_tarea ci
+       join rentas.tarea_operativa t on t.id = ci.tarea_id
+       where ci.id = $1 and ci.tarea_id = $2 and t.property_id = $3;`,
+      [itemId, tareaId, propertyId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async listItemsInventario(propertyId: string, unidadId: string): Promise<readonly ItemInventarioRecord[]> {
+    const { rows } = await this.db.query<{ id: string; unidad_id: string; nombre: string; categoria: ItemInventarioRecord["categoria"]; cantidad_actual: string; umbral_minimo: string; unidad_medida: string }>(
+      `select id, unidad_id, nombre, categoria, cantidad_actual, umbral_minimo, unidad_medida
+       from rentas.item_inventario where property_id = $1 and unidad_id = $2 order by nombre asc;`,
+      [propertyId, unidadId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      unidadId: r.unidad_id,
+      nombre: r.nombre,
+      categoria: r.categoria,
+      cantidadActual: Number(r.cantidad_actual),
+      umbralMinimo: Number(r.umbral_minimo),
+      unidadMedida: r.unidad_medida,
+    }));
+  }
+
+  async listIncidencias(propertyId: string, unidadId: string): Promise<readonly IncidenciaMantenimientoRecord[]> {
+    const { rows } = await this.db.query<{
+      id: string;
+      property_id: string;
+      unidad_id: string;
+      tarea_origen_id: string | null;
+      severidad: SeveridadIncidencia;
+      titulo: string;
+      descripcion: string | null;
+      estado: EstadoIncidencia;
+      propuesta_bloqueo_inicio: string | null;
+      propuesta_bloqueo_fin: string | null;
+      reportado_por: string | null;
+      creado_en: string;
+    }>(
+      `select id, property_id, unidad_id, tarea_origen_id, severidad, titulo, descripcion, estado,
+              propuesta_bloqueo_inicio::text as propuesta_bloqueo_inicio, propuesta_bloqueo_fin::text as propuesta_bloqueo_fin,
+              reportado_por, creado_en::text as creado_en
+       from rentas.incidencia_mantenimiento where property_id = $1 and unidad_id = $2 order by creado_en desc;`,
+      [propertyId, unidadId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      propertyId: r.property_id,
+      unidadId: r.unidad_id,
+      tareaOrigenId: r.tarea_origen_id,
+      severidad: r.severidad,
+      titulo: r.titulo,
+      descripcion: r.descripcion,
+      estado: r.estado,
+      propuestaBloqueoRango: r.propuesta_bloqueo_inicio && r.propuesta_bloqueo_fin ? { inicio: r.propuesta_bloqueo_inicio, fin: r.propuesta_bloqueo_fin } : null,
+      reportadoPor: r.reportado_por,
+      creadoEn: r.creado_en,
+    }));
   }
 }
