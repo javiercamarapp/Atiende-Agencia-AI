@@ -1,8 +1,8 @@
 // Marco visual compartido de todos los correos transaccionales de hoteles — mismo
 // patrón EXACTO que packages/domain-citas/src/emails/layout.ts (tabla HTML
 // compatible Outlook/Gmail/Apple Mail, tarjeta blanca, botón píldora, preheader
-// oculto), sigue siendo la marca "atiende" (un solo software/frontend para todos
-// los verticales) — NUNCA "Likida" en ningún string.
+// oculto), sigue siendo la marca "Atiende, agencia de AI" (un solo software/
+// frontend para todos los verticales) — nunca ninguna otra marca en ningún string.
 //
 // Único cambio deliberado frente al layout de citas/rentas/licitaciones/despachos:
 // el wordmark ya no es un `<span>` de texto — es el logo REAL de la marca (SVG
