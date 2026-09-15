@@ -1,7 +1,7 @@
 // Tipos de registro (fila ya mapeada a camelCase) que RentasRepository
 // devuelve/recibe — ninguna función de negocio de las rutas de apps/api toca una
 // fila cruda de SQL directamente, mismo criterio que domain-hoteles/domain-restaurantes.
-import type { EstadoOcupacion, Razon, RangoFechas } from "./tipos.ts";
+import type { Capa, EstadoOcupacion, Razon, RangoFechas } from "./tipos.ts";
 import type { ConfiguracionComisionCanal, LineaGastoEntrada, LineaImpuestoEntrada, MovimientoFinancieroReserva } from "./finanzas/tipos.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
 import type { LineaConciliada, ResumenConciliacion } from "./finanzas/conciliacion.ts";
@@ -86,6 +86,28 @@ export interface BloqueoRecord {
   readonly rango: RangoFechas;
   readonly razon: Extract<Razon, "BLOQUEO_PROPIETARIO" | "MANTENIMIENTO" | "BUFFER_LIMPIEZA">;
   readonly estado: EstadoOcupacion;
+}
+
+/** Fila de listado para `GET .../ocupaciones` -- Fase 13 (calendario visual del panel
+ *  de staff). A diferencia de `BloqueoRecord` (solo `capa='bloqueo'`, Fase 4) esta
+ *  vista es la UNIFICADA que el calendario necesita: TODA ocupación de la unidad
+ *  (reserva de canal Y bloqueo, activa Y cancelada), con lo mínimo para pintarla sin
+ *  una segunda ronda de queries -- `canalCodigo` para distinguir "Airbnb"/"manual" en
+ *  una reserva, `huespedNombre`/`huespedContacto` cuando la reserva tiene un huésped
+ *  mínimo adjunto (ver `attachGuestToOcupacion`). Nunca expone más que esto -- ningún
+ *  dato financiero ni de pricing vive aquí, mismo criterio de acotamiento que
+ *  `OcupacionResumen`. */
+export interface OcupacionCalendarioItem {
+  readonly id: string;
+  readonly unidadId: string;
+  readonly capa: Capa;
+  readonly rango: RangoFechas;
+  readonly razon: Razon;
+  readonly estado: EstadoOcupacion;
+  readonly canalCodigo: string | null;
+  readonly huespedNombre: string | null;
+  readonly huespedContacto: string | null;
+  readonly createdAt: string;
 }
 
 export interface NewReservaFinancieroInput {

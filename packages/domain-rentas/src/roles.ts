@@ -28,6 +28,23 @@ export function isRentasVerticalRole(value: string): value is RentasVerticalRole
 // consecuencia es un 403 de más, nunca un acceso de más.
 export const ESCRITURA_CALENDARIO_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
 
+// Fase 13 -- calendario visual del panel de staff (GET /rentas/:propertyId/unidades y
+// GET .../unidades/:unidadId/ocupaciones, ver apps/api/.../rentas/calendario.ts):
+// misma "lectura más permisiva que escritura" que ya declara
+// SYNC_CALENDARIO_LECTURA_ROLES arriba de este archivo -- `operador:solo_calendario`
+// existe específicamente para poder VER el calendario sin poder tocarlo (ver el test
+// "un rol de SOLO calendario (lectura) no puede crear reservas/bloqueos -- 403" en
+// rentas-reservas.spec.ts/rentas-bloqueos.spec.ts, que ya asume que ese rol puede
+// leer). Deliberadamente NO reutilizado por `GET .../bloqueos` (bloqueos.ts, Fase 4):
+// esa ruta ya existía antes de esta fase con ESCRITURA_CALENDARIO_ROLES y tocarla es
+// un cambio de comportamiento fuera del alcance de este hallazgo.
+export const CALENDARIO_LECTURA_ROLES: readonly RentasVerticalRole[] = [
+  "admin_gestora",
+  "operador:acceso_total",
+  "operador:calendario_mensajeria",
+  "operador:solo_calendario",
+];
+
 // Cancelar exige el nivel más alto (equivalente a H-018 del origen: "cancelar es una
 // acción irreversible desde la perspectiva del huésped").
 export const CANCELAR_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total"];

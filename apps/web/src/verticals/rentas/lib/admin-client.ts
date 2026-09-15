@@ -44,3 +44,20 @@ export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: 
   }
   return (await res.json()) as T;
 }
+
+/** Fase 13 -- primer POST/PATCH real del panel de staff de rentas (calendario:
+ * crear/modificar/cancelar reservas, crear/cancelar bloqueos). Ninguna ruta de
+ * escritura de rentas exige `Idempotency-Key` (a diferencia de hoteles) -- mismo
+ * criterio simple que `verticals/restaurantes/lib/admin-client.ts::sendJson`. */
+export async function sendJson<T>(fetchImpl: typeof fetch, url: string, token: string, method: "POST" | "PATCH", payload: unknown = {}): Promise<T> {
+  const res = await fetchImpl(url, {
+    method,
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new RentasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}

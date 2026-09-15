@@ -24,6 +24,7 @@ import { rentasEmailDispatchRoutes } from "./email-dispatch.ts";
 import { rentasCheckInRecordatorioRoutes } from "./checkin-recordatorio.ts";
 import { rentasOnboardingRoutes } from "./onboarding.ts";
 import { rentasAdminDiscoveryRoutes } from "./admin-discovery.ts";
+import { rentasCalendarioRoutes } from "./calendario.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -87,5 +88,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   // Fase 12 — descubrimiento de organización/property para el panel web de staff.
   app.route("/", rentasAdminDiscoveryRoutes(deps));
+  // Fase 13 — calendario visual del panel de staff: listado de unidades + listado
+  // unificado de ocupaciones (reserva + bloqueo) por unidad.
+  app.route("/", rentasCalendarioRoutes(deps));
   return app;
 }

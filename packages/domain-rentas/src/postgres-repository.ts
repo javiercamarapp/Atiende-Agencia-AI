@@ -27,6 +27,7 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,
@@ -156,6 +157,65 @@ export class PostgresRentasRepository implements RentasRepository {
       [propertyId, unidadId],
     );
     return rows.map((row) => ({ id: row.id, unidadId: row.unidad_id, rango: { inicio: row.inicio, fin: row.fin }, razon: row.razon, estado: row.estado }));
+  }
+
+  /** Fase 13 -- selector de unidad del calendario visual del panel de staff. */
+  async listUnidades(propertyId: string): Promise<readonly UnidadRecord[]> {
+    // `rentas.unidad.name` es `not null` en el esquema (migrations/001) -- nunca
+    // `null` en una fila real, a diferencia de `owner_id`.
+    const { rows } = await this.db.query<UnidadRow & { name: string }>(
+      `select id, organization_id, property_id, duracion_minima_noches, owner_id, name from rentas.unidad where property_id = $1 order by name;`,
+      [propertyId],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      organizationId: row.organization_id,
+      propertyId: row.property_id,
+      duracionMinimaNoches: row.duracion_minima_noches,
+      ownerId: row.owner_id,
+      name: row.name,
+    }));
+  }
+
+  /** Fase 13 -- `GET .../ocupaciones`: TODA ocupación de la unidad (capa='reserva' Y
+   *  capa='bloqueo', activa Y cancelada), ordenadas por fecha de inicio -- el listado
+   *  unificado que le faltaba al calendario visual (a diferencia de `listBloqueos`
+   *  arriba, acotado a `capa='bloqueo'`). */
+  async listOcupaciones(propertyId: string, unidadId: string): Promise<readonly OcupacionCalendarioItem[]> {
+    const { rows } = await this.db.query<{
+      id: string;
+      unidad_id: string;
+      inicio: string;
+      fin: string;
+      capa: "reserva" | "bloqueo";
+      razon: OcupacionCalendarioItem["razon"];
+      estado: OcupacionCalendarioItem["estado"];
+      canal_codigo: string | null;
+      huesped_nombre: string | null;
+      huesped_contacto: string | null;
+      created_at: string;
+    }>(
+      `select o.id, o.unidad_id, lower(o.rango)::text as inicio, upper(o.rango)::text as fin, o.capa, o.razon, o.estado,
+              c.codigo as canal_codigo, g.nombre as huesped_nombre, g.contacto as huesped_contacto, o.created_at::text as created_at
+       from rentas.ocupacion o
+       left join rentas.canal c on c.id = o.canal_origen_id
+       left join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+       where o.property_id = $1 and o.unidad_id = $2
+       order by lower(o.rango);`,
+      [propertyId, unidadId],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      unidadId: row.unidad_id,
+      capa: row.capa,
+      rango: { inicio: row.inicio, fin: row.fin },
+      razon: row.razon,
+      estado: row.estado,
+      canalCodigo: row.canal_codigo,
+      huespedNombre: row.huesped_nombre,
+      huespedContacto: row.huesped_contacto,
+      createdAt: row.created_at,
+    }));
   }
 
   async insertGuestMinimo(input: NewGuestMinimoInput): Promise<{ id: string }> {

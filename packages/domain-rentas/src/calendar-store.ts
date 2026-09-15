@@ -25,8 +25,8 @@
 // verificar en un test de concurrencia, y sí se implementa como until real (una
 // segunda adquisición espera a que la primera libere).
 import { randomUUID } from "node:crypto";
-import type { EstadoOcupacion } from "./tipos.ts";
-import type { BloqueoRecord, CanalRecord, NewGuestMinimoInput, OcupacionParaMovimiento, OcupacionResumen, UnidadRecord } from "./types.ts";
+import type { EstadoOcupacion, Razon } from "./tipos.ts";
+import type { BloqueoRecord, CanalRecord, NewGuestMinimoInput, OcupacionCalendarioItem, OcupacionParaMovimiento, OcupacionResumen, UnidadRecord } from "./types.ts";
 
 export interface StoredOcupacion {
   id: string;
@@ -149,6 +149,12 @@ export class InMemoryRentasCalendarStore {
     return unidad;
   }
 
+  /** Fase 13 -- selector de unidad del calendario visual, ordenadas por nombre (mismo
+   *  criterio de orden estable que usaría la query real `order by name`). */
+  listUnidades(propertyId: string): UnidadRecord[] {
+    return [...this.unidades.values()].filter((u) => u.propertyId === propertyId).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+  }
+
   findCanalPorCodigo(codigo: string): CanalRecord | null {
     return this.canales.get(codigo) ?? null;
   }
@@ -178,6 +184,32 @@ export class InMemoryRentasCalendarStore {
         razon: o.razon as BloqueoRecord["razon"],
         estado: o.estado,
       }));
+  }
+
+  /** Fase 13 -- `GET .../ocupaciones`: TODA ocupación de la unidad (capa='reserva' Y
+   *  capa='bloqueo', activa Y cancelada), ordenadas por fecha de inicio -- el listado
+   *  unificado que le faltaba al calendario (a diferencia de `listBloqueos` arriba,
+   *  acotado a una sola capa). */
+  listOcupaciones(propertyId: string, unidadId: string): OcupacionCalendarioItem[] {
+    const codigoPorCanalId = new Map([...this.canales.values()].map((c) => [c.id, c.codigo]));
+    return [...this.ocupaciones.values()]
+      .filter((o) => o.propertyId === propertyId && o.unidadId === unidadId)
+      .sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0))
+      .map((o) => {
+        const huesped = o.huespedMinimoId ? (this.huespedes.get(o.huespedMinimoId) ?? null) : null;
+        return {
+          id: o.id,
+          unidadId: o.unidadId,
+          capa: o.capa,
+          rango: { inicio: o.inicio, fin: o.fin },
+          razon: o.razon as Razon,
+          estado: o.estado,
+          canalCodigo: o.canalOrigenId ? (codigoPorCanalId.get(o.canalOrigenId) ?? null) : null,
+          huespedNombre: huesped?.nombre ?? null,
+          huespedContacto: huesped?.contacto ?? null,
+          createdAt: o.createdAt,
+        };
+      });
   }
 
   insertGuestMinimo(input: NewGuestMinimoInput): { id: string } {

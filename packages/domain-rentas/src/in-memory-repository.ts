@@ -44,6 +44,7 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,
@@ -305,6 +306,17 @@ export class InMemoryRentasRepository implements RentasRepository {
 
   async listBloqueos(propertyId: string, unidadId: string): Promise<readonly BloqueoRecord[]> {
     return this.calendarStore.listBloqueos(propertyId, unidadId);
+  }
+
+  // ---- RentasRepository: calendario visual del panel de staff (Fase 13, delegado al
+  // store compartido -- mismo criterio que el resto de este bloque) ----
+
+  async listUnidades(propertyId: string): Promise<readonly UnidadRecord[]> {
+    return this.calendarStore.listUnidades(propertyId);
+  }
+
+  async listOcupaciones(propertyId: string, unidadId: string): Promise<readonly OcupacionCalendarioItem[]> {
+    return this.calendarStore.listOcupaciones(propertyId, unidadId);
   }
 
   // ---- RentasRepository: pricing (lectura, flujo 2 Fase 1) ----

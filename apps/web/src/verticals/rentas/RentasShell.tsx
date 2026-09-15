@@ -3,23 +3,42 @@
 // y el login exitoso navegaba a una ruta que ni siquiera existía en <Routes> —
 // pantalla en blanco). Mismo patrón exacto que HotelesShell.tsx/CitasShell.tsx:
 // resuelve sesión + property UNA vez (vía discovery-client.ts, plumbing nuevo de
-// esta fase — ver su comentario de cabecera) y le da a la página de resumen
-// (pages/Dashboard.tsx) los datos ya resueltos. Estilos inline, sin design system
-// nuevo — mismo criterio que el resto del panel de staff de este repo.
+// esta fase — ver su comentario de cabecera) y le da a las páginas hijas los datos
+// ya resueltos. Estilos inline, sin design system nuevo — mismo criterio que el
+// resto del panel de staff de este repo.
 //
 // A diferencia de HotelesShell (que solo expone la PRIMERA property, porque todas
 // sus páginas hijas ya reciben un propertyId concreto), este shell expone también
-// `properties` completo y la `session` — la única página hija de esta fase
-// (Dashboard) es justamente el landing que lista las properties de la organización
-// y el rol del staff logueado, no una página que opere sobre una sola property.
+// `properties` completo y la `session` — Dashboard (la landing) sigue siendo la
+// página que lista las properties de la organización y el rol del staff logueado.
+//
+// Fase 13 -- agrega el link de nav real a Calendario (NAV_ITEMS/NavLink, mismo
+// patrón que HotelesShell.tsx): hasta esta fase la nav solo tenía un párrafo
+// estático "Resumen" sin ningún link real porque Dashboard era la única página hija.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { NavLink } from "react-router-dom";
 import { clearRentasSession, logout, readPersistedRentasSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
+
+const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
+  { to: "", label: "Resumen" },
+  { to: "calendario", label: "Calendario" },
+];
+
+const linkStyle = (isActive: boolean): CSSProperties => ({
+  display: "block",
+  padding: "8px 12px",
+  borderRadius: 8,
+  fontSize: 14,
+  textDecoration: "none",
+  color: isActive ? "#fff" : "#111827",
+  background: isActive ? "#111827" : "transparent",
+});
 
 const logoutButtonStyle: CSSProperties = {
   marginTop: "auto",
@@ -149,7 +168,11 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
         <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Rentas · {orgSlug}</p>
-        <p style={{ display: "block", padding: "8px 12px", borderRadius: 8, fontSize: 14, color: "#fff", background: "#111827", margin: 0 }}>Resumen</p>
+        {NAV_ITEMS.map((item) => (
+          <NavLink key={item.to} to={`/rentas/${orgSlug}${item.to ? `/${item.to}` : ""}`} end={item.to === ""} style={({ isActive }) => linkStyle(isActive)}>
+            {item.label}
+          </NavLink>
+        ))}
         <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
