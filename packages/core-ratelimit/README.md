@@ -94,6 +94,7 @@ su razón documentada inline. Resumen:
 | `auth:login` | **Cerrado** | Superficie no autenticada de fuerza bruta. |
 | `auth:password-reset` | **Cerrado** | Abrir sin freno es spam de correo/SMS a terceros. |
 | `auth:token-issue` | **Cerrado** | Emisión de tokens — es la puerta, no un endpoint conveniente. |
+| `auth:accept-invite` | **Cerrado** | Canje de invitación no autenticado — mismo riesgo de fuerza bruta que `auth:login`. |
 | `mcp:locks` | **Cerrado** | Controla cerraduras físicas reales. |
 | `mcp:cfdi` | **Cerrado** | Timbra ante el PAC — costo monetario y riesgo de duplicados ante el SAT. |
 | `billing:charge` | **Cerrado** | Dispara cargos/cobros — dinero real moviéndose. |
