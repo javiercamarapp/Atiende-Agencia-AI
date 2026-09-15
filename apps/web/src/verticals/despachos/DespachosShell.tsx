@@ -10,12 +10,35 @@
 // enforcement real es SIEMPRE server-side, ver VER_CIERRE_MENSUAL_ROLES/
 // GESTIONAR_CIERRE_MENSUAL_ROLES/CERRAR_PERIODO_ROLES en roles.ts). Estilos
 // inline, sin design system nuevo — mismo criterio que el resto de este monorepo.
+//
+// Fase 10 — hallazgo de auditoría (severidad ALTA, "un despacho solo puede operar
+// UN contribuyente/cliente"): este Shell fijaba `branches[0]` para siempre,
+// aunque el negocio central de un despacho real es dar servicio a N clientes/
+// contribuyentes y GET .../admin/branches YA devolvía la lista completa (cada
+// branch = un contribuyente distinto, `core.property` org-scoped con múltiples
+// filas posibles — ver admin.ts/postgres-repository.ts, sin cambio de esquema
+// necesario). Ahora expone un selector real ("Contribuyente" en la nav, visible
+// cuando hay más de uno) y resuelve el `propertyId` activo con
+// `resolveActivePropertyId` (admin-client.ts) en vez de descartar el resto de la
+// lista — todas las páginas hijas (Cfdi/Declaraciones/Vencimientos/etc.) ya
+// consumían `ctx.propertyId` sin cachear nada propio, así que cambiar la
+// selección aquí basta para que TODAS refetcheen contra el contribuyente elegido.
+// NO cubierto por esta fase: `despachos.tenant_profile` (RFC/razón social) sigue
+// siendo `organization_id primary key` — UN solo RFC/razón social por
+// organización, no por contribuyente/property — pero ningún archivo de código lo
+// lee todavía (solo existe en la migración), así que no bloquea el selector ni
+// ninguna de las 10 páginas de esta fase, que ya leen/escriben SIEMPRE por
+// `property_id` (invoice/fiscal_deadline/invoice_review, todas RLS-scoped por
+// property). Si en el futuro se necesita mostrar u operar el RFC/razón social
+// POR contribuyente (no solo por despacho), `tenant_profile` necesitaría
+// rediseñarse con `property_id` en la llave (o una tabla nueva) — cambio de
+// esquema real, fuera de alcance aquí.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { clearDespachosSession, logout, readPersistedDespachosSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
-import { fetchBranches } from "./lib/admin-client.ts";
+import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
@@ -61,6 +84,27 @@ const linkStyle = (isActive: boolean): CSSProperties => ({
   background: isActive ? "#111827" : "transparent",
 });
 
+const selectLabelStyle: CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "#6b7280",
+  margin: "0 0 4px",
+};
+
+const selectStyle: CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "6px 8px",
+  borderRadius: 8,
+  border: "1px solid #d1d5db",
+  fontSize: 13,
+  color: "#111827",
+  background: "#fff",
+  boxSizing: "border-box",
+};
+
 const logoutButtonStyle: CSSProperties = {
   marginTop: "auto",
   padding: "8px 12px",
@@ -76,6 +120,11 @@ const logoutButtonStyle: CSSProperties = {
 export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: DespachosShellProps) {
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
   const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
+  // Contribuyente/cliente activo elegido en el selector de abajo -- `null` hasta
+  // que el staff elige uno explícitamente, en cuyo caso `resolveActivePropertyId`
+  // cae al primero de `branches` (mismo fallback que el `branches[0]` fijo de
+  // antes, pero ahora es solo el default inicial, no un techo duro).
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Mismo hallazgo de auditoría que hoteles/restaurantes/citas/licitaciones:
   // /auth/logout ya existe en el backend (compartido entre verticales), solo
@@ -166,17 +215,34 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
     );
   }
 
-  // Despachos opera como property singleton por organización (mismo criterio que
-  // licitaciones/citas §2.1 — un despacho no tiene "propiedades" físicas relevantes
-  // al dominio): el panel usa la primera property hasta que haya un caso de negocio
-  // real que necesite más de una.
-  const propertyId = branches[0]!.propertyId;
+  // Hallazgo de auditoría (severidad ALTA, "un despacho solo puede operar UN
+  // contribuyente/cliente"): un despacho real da servicio a N clientes/
+  // contribuyentes distintos, y GET .../admin/branches ya devolvía la lista
+  // completa (cada branch = un contribuyente, ver admin-client.ts) -- este Shell
+  // simplemente descartaba todo menos `branches[0]`. `resolveActivePropertyId`
+  // respeta la selección del staff en el selector de abajo y solo cae al primero
+  // como default inicial (o si la selección quedó obsoleta).
+  const propertyId = resolveActivePropertyId(branches, selectedPropertyId)!;
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "readonly";
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
         <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Despachos · {orgSlug}</p>
+        {branches.length > 1 ? (
+          <div style={{ margin: "0 0 12px" }}>
+            <label htmlFor="despachos-contribuyente-activo" style={selectLabelStyle}>
+              Contribuyente
+            </label>
+            <select id="despachos-contribuyente-activo" value={propertyId} onChange={(e) => setSelectedPropertyId(e.target.value)} style={selectStyle}>
+              {branches.map((b) => (
+                <option key={b.propertyId} value={b.propertyId}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.to} to={`/despachos/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
             {item.label}

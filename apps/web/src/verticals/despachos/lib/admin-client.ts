@@ -104,3 +104,21 @@ export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string,
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/despachos/${orgSlug}/admin/branches`, token);
   return body.branches;
 }
+
+// Hallazgo de auditoría (severidad ALTA, "un despacho solo puede operar UN
+// contribuyente/cliente"): DespachosShell.tsx fijaba `branches[0]` sin importar
+// cuántos contribuyentes trajera GET .../admin/branches -- aunque cada branch YA
+// es un property real, org-scoped, con múltiples filas posibles (mismo modelo
+// exacto que hoteles/rentas/citas/licitaciones, `core.property`; ver
+// `PostgresDespachosRepository.listPropertiesForOrganization`). No hacía falta
+// ningún cambio de esquema: solo faltaba dejar de descartar el resto de la lista.
+// `resolveActivePropertyId` es la función pura que decide qué branch queda activo
+// dado lo que el selector de la UI tenga elegido -- extraída así (en vez de
+// hardcodearla en el componente) para poder probarla sin depender de un DOM/React
+// renderer, que este repo no tiene configurado (vitest corre en `environment:
+// "node"`, sin jsdom/testing-library -- ver vitest.config.ts).
+export function resolveActivePropertyId(branches: readonly BranchOption[], selectedPropertyId: string | null): string | null {
+  if (branches.length === 0) return null;
+  if (selectedPropertyId !== null && branches.some((b) => b.propertyId === selectedPropertyId)) return selectedPropertyId;
+  return branches[0]!.propertyId;
+}
