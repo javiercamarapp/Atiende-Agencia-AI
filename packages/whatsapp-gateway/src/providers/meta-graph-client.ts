@@ -8,6 +8,56 @@
 // tests usan `FakeWhatsAppGraphClient` (fake-graph-client.ts) o inyectan un
 // `fetchImpl` falso aquí mismo. Ningún test ni build de este cambio usa un
 // WHATSAPP_ACCESS_TOKEN real (ver README.md de este paquete).
+//
+// Hallazgo de auditoría (rubro 17, comunicación transaccional, severidad MEDIA,
+// "soporte de plantillas HSM de WhatsApp ausente") — GAP REAL, documentado aquí
+// honestamente en vez de fingir que este cliente ya lo resuelve:
+// `buildRequestBody` (abajo) SOLO construye `type: "text"` o `type: "interactive"`
+// (botones) -- este cliente NUNCA arma un `type: "template"`, y `OutboundWhatsAppMessagePayload`
+// (../types.ts) no tiene ningún campo de plantilla (nombre/idioma/parámetros) que
+// pudiera pedírselo. Eso es correcto para un mensaje que RESPONDE a uno entrante
+// (el turn-handler de hoteles/restaurantes, siempre dentro de la ventana de 24h que
+// abre el mensaje del usuario) -- pero la política real de Meta (WhatsApp Business
+// Platform, "customer service window") exige una plantilla (HSM) PRE-APROBADA por
+// Meta para CUALQUIER mensaje que el negocio inicia fuera de esa ventana de 24h.
+// Verificado contra el código real que este monorepo YA encola varios mensajes que
+// caen en ese caso -- proactivos, sin garantía de un mensaje entrante reciente de
+// ESE destinatario por WhatsApp:
+//   - `packages/domain-citas/src/reminders.ts` -- el recordatorio de cita 24h antes
+//     (`appointment.reminder_24h`, con botones Confirmar/Cancelar/Reagendar) y las
+//     ofertas/broadcasts de lista de espera (`waitlist.slot_offered`/
+//     `waitlist.slot_available_broadcast`).
+//   - `packages/domain-restaurantes/src/order-notifications.ts` -- la notificación
+//     de cambio de estado de un pedido (`order.status.*`) al cliente, incluso
+//     cuando el pedido se originó por voz/web/admin (sin NINGÚN mensaje de
+//     WhatsApp previo de ese cliente que abra la ventana).
+// Contra Postgres/Meta reales, estos envíos proactivos fuera de ventana Meta los
+// RECHAZA con un 4xx de negocio (ej. código 131047, "re-engagement message") -- el
+// dispatcher (`dispatcher.ts`) ya clasifica un 4xx de negocio como NO reintentable y
+// marca el mensaje `dead` de inmediato (ver el comentario de `sendMessage` más
+// abajo: "no se finge éxito sin evidencia real"), así que el comportamiento actual
+// YA falla honesto (nunca "sent" fingido) -- el hueco real es que ese recordatorio/
+// notificación simplemente NUNCA le llega al destinatario por WhatsApp en
+// producción, sin ninguna plantilla real que lo reemplace.
+//
+// Por qué esto NO se resuelve con código en esta pasada: una plantilla HSM exige un
+// proceso 100% del lado de Meta (Business Manager + WhatsApp Business Account real,
+// redactar el texto exacto de la plantilla, enviarla a revisión de Meta, esperar
+// aprobación -- días, a veces semanas) que ninguna credencial de este entorno
+// habilita (`WHATSAPP_ACCESS_TOKEN` no configurada, ver README de este paquete) --
+// exactamente el mismo tipo de bloqueo que ya documentan `rentasPlantillaNoAprobada`
+// (errors.ts) y el comentario de "sin proveedor SMTP configurado" de
+// `admin-staff.ts`. Construir aquí un `type: "template"` sin ningún nombre de
+// plantilla real que probar sería fingir una capacidad que nadie puede verificar
+// (violaría el mismo principio de "nunca simular éxito"). Cuando exista una
+// plantilla real aprobada por Meta para un evento (`nombre` + `idioma` + variables),
+// la extensión real es: (1) agregar `templateName`/`templateLanguage`/
+// `templateParams` opcionales a `OutboundWhatsAppMessagePayload` (../types.ts), (2)
+// que `buildRequestBody` arme `{ type: "template", template: { name, language: {
+// code }, components: [...] } }` cuando esos campos vengan poblados, (3) que cada
+// encolador (`reminders.ts`/`order-notifications.ts`) los pase en vez de
+// `body`/`buttons` libres. Ninguno de los 3 pasos requiere tocar el dispatcher ni
+// el schema de `messaging_outbox` (el payload ya es jsonb libre).
 import { WhatsAppConfigError, WhatsAppInvalidPayloadError, WhatsAppSendError } from "../errors.ts";
 import type { OutboundWhatsAppMessagePayload, WhatsAppGraphClient, WhatsAppSendResult } from "../types.ts";
 

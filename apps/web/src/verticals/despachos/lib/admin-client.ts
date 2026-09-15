@@ -72,6 +72,33 @@ export async function postJson<T>(
   return (await res.json()) as T;
 }
 
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): mismo `patchJson` que
+// ya tiene licitaciones/lib/admin-client.ts (leído primero como plantilla) — hasta
+// esta pasada este archivo solo tenía `postJson` (nunca PATCH), suficiente para el
+// resto del panel pero no para `PATCH .../admin/staff/miembros/:userId`.
+export async function patchJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  payload: unknown = {},
+  extraHeaders: Record<string, string> = {},
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${t}`, "content-type": "application/json", ...extraHeaders },
+      body: JSON.stringify(payload),
+    }),
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new DespachosAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
 /** Mismo wrapper `withAuthRefresh` que `postJson`, pero para un body de texto
  * crudo (p. ej. un XML de CFDI) en vez de JSON -- `POST
  * /despachos/:propertyId/cfdi/importar-xml` (apps/api/.../despachos/cfdi.ts)

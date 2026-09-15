@@ -72,4 +72,10 @@ export const Errors = {
     new ApiError(400, "staff_invite_token_invalido", "La invitación es inválida, ya fue usada/revocada, o expiró. Pide que te reenvíen la invitación."),
   staffInviteRolInsuficiente: () =>
     new ApiError(403, "staff_invite_rol_insuficiente", "No puedes invitar a un rol con más alcance que el tuyo."),
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+  // restaurantes permite gestionar roles desde el producto") — mismo umbral/mismo
+  // código HTTP que `staffInviteRolInsuficiente`, mensaje propio para no confundir
+  // "invitar" con "editar el rol de alguien ya aceptado" en la UI.
+  staffRoleChangeRolInsuficiente: () =>
+    new ApiError(403, "staff_role_change_rol_insuficiente", "No puedes cambiar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo."),
 };

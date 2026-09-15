@@ -250,3 +250,85 @@ describe("Jerarquía real (canInviteStaff, @atiende/core-authz) -- un admin nunc
     expect(adminInvitaOwner.status).toBe(403);
   });
 });
+
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): verificado que ni
+// siquiera restaurantes podía hacer esto antes de esta pasada (ver
+// packages/db/migrations/0007_update_membership_role.sql para el hallazgo
+// completo, y apps/api/tests/restaurantes-admin-staff.spec.ts para la cobertura
+// exhaustiva de la jerarquía real -- aquí solo se ejercita el wiring propio de
+// citas: prefijo de ruta, roles concretos, `isCitasRole`).
+interface MemberWithRoleResponse {
+  readonly id: string;
+  readonly email: string;
+  readonly fullName: string;
+  readonly verticalRole: string;
+  readonly propertyIds: readonly string[] | null;
+}
+
+describe("GET /v1/citas/properties/:propertyId/admin/staff/miembros y PATCH .../miembros/:userId", () => {
+  it("owner ve a TODOS los miembros ya aceptados con su rol actual", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/admin/staff/miembros`, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { miembros: MemberWithRoleResponse[] };
+    const byId = new Map(body.miembros.map((m) => [m.id, m]));
+    expect(byId.get(ctx.staff.owner.id)?.verticalRole).toBe("owner");
+    expect(byId.get(ctx.staff.staffMember.id)?.verticalRole).toBe("staff");
+  });
+
+  it("staff (fuera de STAFF_INVITE_ROLES) -> 403 al listar o cambiar roles", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const listRes = await app.request(`/v1/citas/properties/${ctx.propertyId}/admin/staff/miembros`, authedGet(ctx.staff.staffMember.token));
+    expect(listRes.status).toBe(403);
+
+    const patchRes = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.owner.id}`,
+      authedJson(ctx.staff.staffMember.token, { verticalRole: "staff" }, "PATCH"),
+    );
+    expect(patchRes.status).toBe(403);
+  });
+
+  it("owner cambia a staff (verticalRole 'staff') a 'admin' -- 200, el cambio persiste en el listado", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.staffMember.id}`,
+      authedJson(ctx.staff.owner.token, { verticalRole: "admin" }, "PATCH"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MemberWithRoleResponse;
+    expect(body.verticalRole).toBe("admin");
+
+    const listado = await app.request(`/v1/citas/properties/${ctx.propertyId}/admin/staff/miembros`, authedGet(ctx.staff.owner.token));
+    const listadoBody = (await listado.json()) as { miembros: MemberWithRoleResponse[] };
+    expect(listadoBody.miembros.find((m) => m.id === ctx.staff.staffMember.id)?.verticalRole).toBe("admin");
+  });
+
+  it("verticalRole desconocido -> 400", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.staffMember.id}`,
+      authedJson(ctx.staff.owner.token, { verticalRole: "gerente" }, "PATCH"),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("un owner nunca puede cambiar SU PROPIO rol -- 400, bloqueado antes de tocar la base de datos", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.owner.id}`,
+      authedJson(ctx.staff.owner.token, { verticalRole: "admin" }, "PATCH"),
+    );
+    expect(res.status).toBe(400);
+  });
+});

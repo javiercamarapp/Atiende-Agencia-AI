@@ -110,15 +110,24 @@ describe("decideLandingPath", () => {
     const session = { ...base, organizations: [{ id: "1", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "repartidor" }] };
     expect(decideLandingPath(session)).toBe("/restaurantes/los-taquitos-de-pm/repartidor");
   });
-  // Hallazgo de auditoría (rubro 11/UX, MEDIO, "login cross-vertical manda al slug
-  // equivocado"): POST /auth/login es genérico a las 6 verticales (mismo JWT), así
-  // que alguien cuya única organización es de OTRA vertical puede autenticarse
-  // igual en /restaurantes/login — esta función debe usar el `vertical` real de la
-  // organización devuelta por el servidor, no asumir "restaurantes" por ser la
-  // única que hoy la llama.
-  it("usa el `vertical` real de la organización, no un hardcode de restaurantes", () => {
-    const session = { ...base, organizations: [{ id: "1", slug: "hotel-del-mar", nombre: "Hotel del Mar", vertical: "hoteles", rol: "owner" }] };
-    expect(decideLandingPath(session)).toBe("/hoteles/hotel-del-mar");
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA): el JWT es
+  // el mismo mecanismo para las 6 verticales -- `session.organizations` puede traer
+  // membresías de OTRAS verticales (un mismo correo con 1 restaurante y 1 hotel). Debe
+  // filtrar por "restaurantes" antes de contar, tanto para no forzar el selector con
+  // una sola organización real como para no navegar jamás a un slug de otra vertical.
+  it("con 1 restaurante + 1 organización de OTRA vertical -> entra directo al restaurante, ignora la otra vertical", () => {
+    const session = {
+      ...base,
+      organizations: [
+        { id: "1", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "owner" },
+        { id: "2", slug: "hotel-caribe", nombre: "Hotel Caribe", vertical: "hoteles", rol: "owner" },
+      ],
+    };
+    expect(decideLandingPath(session)).toBe("/restaurantes/los-taquitos-de-pm");
+  });
+  it("con 0 restaurantes pero 1+ organización de otra vertical -> /sin-organizacion, nunca navega a la otra vertical", () => {
+    const session = { ...base, organizations: [{ id: "2", slug: "hotel-caribe", nombre: "Hotel Caribe", vertical: "hoteles", rol: "owner" }] };
+    expect(decideLandingPath(session)).toBe("/sin-organizacion");
   });
 });
 

@@ -58,6 +58,21 @@ export interface ConfirmacionCitaSummary {
  * resuelve nada. Un tenant con datos raros nunca debe tumbar la corrida de los
  * demás — eso lo maneja el caller (la ruta interna, ver §5.3), que captura por
  * organización y sigue.
+ *
+ * Hallazgo de auditoría (rubro 17, comunicación transaccional, severidad MEDIA,
+ * "soporte de plantillas HSM de WhatsApp ausente"): este `enqueueMessagingOutbox`
+ * de abajo es PROACTIVO (el negocio inicia la conversación 24h antes, sin ninguna
+ * garantía de un mensaje entrante reciente de este cliente) — cae FUERA de la
+ * ventana de 24h de Meta, que exige una plantilla (HSM) pre-aprobada para
+ * cualquier mensaje business-initiated fuera de esa ventana.
+ * `MetaGraphWhatsAppClient` (`@atiende/whatsapp-gateway`) todavía no sabe enviar
+ * `type: "template"` — ver el comentario de cabecera de
+ * `packages/whatsapp-gateway/src/providers/meta-graph-client.ts` (o el README de
+ * ese paquete) para el gap completo y por qué no se resuelve aquí (requiere una
+ * plantilla real aprobada por Meta, credencial/proceso que este entorno no tiene).
+ * Comportamiento actual honesto: Meta real rechaza este envío con un 4xx de
+ * negocio, el dispatcher lo marca `dead` (nunca `sent` fingido) — el recordatorio
+ * simplemente no le llega al cliente por WhatsApp hasta que exista esa plantilla.
  */
 export async function runConfirmacionCitaCore(repo: CitasRepository, organizationId: string, now: Date = new Date()): Promise<ConfirmacionCitaSummary> {
   const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false };
@@ -151,6 +166,12 @@ function matchesWaitlistPreferences(row: WaitlistCandidateRow, providerId: strin
  * Se dispara cuando una cita se cancela/libera un hueco real. Busca en la lista de
  * espera con match FIFO (el que pidió primero, gana primero) + preferencias reales
  * de fecha/franja/servicio/proveedor, y notifica SOLO al primero que matchea.
+ *
+ * Mismo hallazgo de auditoría (rubro 17, "soporte de plantillas HSM ausente") que
+ * `runConfirmacionCitaCore` de arriba: la oferta de hueco es proactiva, fuera de la
+ * ventana de 24h de Meta, y `MetaGraphWhatsAppClient` todavía no sabe enviar
+ * `type: "template"` — ver el comentario de ese hallazgo (arriba) para el detalle
+ * completo.
  */
 export async function runOptimizadorCore(repo: CitasRepository, organizationId: string, timeZone: string, event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string }): Promise<OptimizadorResult> {
   const slotDate = new Date(event.startsAt);
@@ -274,6 +295,10 @@ export interface ListaEsperaSummary {
  * preferida (a diferencia de runOptimizadorCore). Nunca lanza por un candidato
  * individual que ya llegó a su tope: simplemente se salta y sigue con el
  * siguiente en la fila.
+ *
+ * Mismo hallazgo de auditoría (rubro 17, "soporte de plantillas HSM ausente") que
+ * `runConfirmacionCitaCore`/`runOptimizadorCore` de arriba — proactivo, fuera de
+ * ventana de 24h de Meta, sin plantilla HSM disponible en este entorno.
  */
 export async function runListaEsperaCore(
   repo: CitasRepository,

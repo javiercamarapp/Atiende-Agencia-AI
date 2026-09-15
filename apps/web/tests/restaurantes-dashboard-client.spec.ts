@@ -8,7 +8,9 @@ import {
   formatMoney,
   formatPct,
   formatSignedPct,
+  resolveActivePropertyId,
 } from "../src/verticals/restaurantes/dashboard-client.ts";
+import type { BranchOption } from "../src/verticals/restaurantes/dashboard-client.ts";
 
 function fakeFetch(byUrl: Record<string, { status: number; body: unknown }>): typeof fetch {
   return vi.fn(async (input: string) => {
@@ -33,6 +35,40 @@ describe("fetchBranches", () => {
     const fetchImpl = fakeFetch({ "/admin/branches": { status: 403, body: { message: "No perteneces a esta organización." } } });
     await expect(fetchBranches(fetchImpl, "http://api.local", "tok", "los-taquitos")).rejects.toThrow(DashboardError);
     await expect(fetchBranches(fetchImpl, "http://api.local", "tok", "los-taquitos")).rejects.toThrow("No perteneces a esta organización.");
+  });
+});
+
+// Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA, "cadena de
+// restaurantes con 2+ sucursales solo opera la primera"): RestaurantesShell.tsx
+// fijaba `propertyId` a `branches[0]!.propertyId` siempre — mismo patrón (y misma
+// función pura) que ya resolvió esto en hoteles/despachos/rentas, ver
+// `resolveActivePropertyId` de hoteles/lib/discovery-client.ts (leído primero como
+// plantilla). Probada aquí sin depender de un DOM/React renderer (este repo corre
+// vitest en `environment: "node"`, sin jsdom/testing-library).
+describe("resolveActivePropertyId", () => {
+  const centro: BranchOption = { propertyId: "p1", name: "Centro", slug: "centro" };
+  const norte: BranchOption = { propertyId: "p2", name: "Norte", slug: "norte" };
+  const branches: readonly BranchOption[] = [centro, norte];
+
+  it("sin selección todavía (null) -> cae a la primera sucursal de la lista", () => {
+    expect(resolveActivePropertyId(branches, null)).toBe("p1");
+  });
+
+  it("con una sucursal distinta a la primera seleccionada -> la respeta (esto es lo que rompía el branches[0] fijo)", () => {
+    expect(resolveActivePropertyId(branches, "p2")).toBe("p2");
+  });
+
+  it("selección obsoleta (propertyId que ya no está en la lista) -> cae a la primera, no se queda colgado", () => {
+    expect(resolveActivePropertyId(branches, "propertyId-que-ya-no-existe")).toBe("p1");
+  });
+
+  it("una sola sucursal -> siempre esa, sin importar la selección", () => {
+    expect(resolveActivePropertyId([centro], null)).toBe("p1");
+    expect(resolveActivePropertyId([centro], "otro-id")).toBe("p1");
+  });
+
+  it("sin ninguna sucursal -> null (el Shell ya corta antes con su propio mensaje de error, pero la función no debe reventar)", () => {
+    expect(resolveActivePropertyId([], "p1")).toBeNull();
   });
 });
 

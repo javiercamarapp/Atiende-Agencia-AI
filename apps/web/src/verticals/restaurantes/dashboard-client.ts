@@ -129,6 +129,25 @@ export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string,
   return body.branches;
 }
 
+// Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA, "cadena de
+// restaurantes con 2+ sucursales solo opera la primera"): RestaurantesShell.tsx
+// fijaba `branches[0]!.propertyId` sin importar cuántas sucursales trajera
+// `fetchBranches` de arriba, aunque GET .../admin/branches ya devuelve la lista
+// COMPLETA de sucursales activas de la organización -- una cadena real con más de
+// una sucursal jamás podía operar la segunda en adelante desde el panel (Pedidos,
+// Historial, el propio Dashboard de KPIs, todos colgados de ese único `propertyId`
+// fijo). MISMO patrón exacto que ya resolvió esto en hoteles/despachos/rentas
+// (`resolveActivePropertyId` de hoteles/lib/discovery-client.ts, leído primero como
+// plantilla): función pura que respeta la selección del staff en el selector nuevo
+// de RestaurantesShell.tsx y solo cae a la primera sucursal como default inicial (o
+// si la selección persistida quedó obsoleta -- sucursal reasignada/dada de baja
+// entre sesiones).
+export function resolveActivePropertyId(branches: readonly BranchOption[], selectedPropertyId: string | null): string | null {
+  if (branches.length === 0) return null;
+  if (selectedPropertyId !== null && branches.some((b) => b.propertyId === selectedPropertyId)) return selectedPropertyId;
+  return branches[0]!.propertyId;
+}
+
 export async function fetchDashboardData(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,

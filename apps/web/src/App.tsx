@@ -66,6 +66,7 @@ import { AutopsiaPage } from "./verticals/licitaciones/pages/Autopsia.tsx";
 import { RadarRenovacionesPage } from "./verticals/licitaciones/pages/RadarRenovaciones.tsx";
 import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DatosEmpresaPage } from "./verticals/licitaciones/pages/DatosEmpresa.tsx";
+import { StaffPage as LicitacionesStaffPage } from "./verticals/licitaciones/pages/Staff.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
 import { CierreMensualPage } from "./verticals/despachos/pages/CierreMensual.tsx";
@@ -436,6 +437,21 @@ const LicitacionesRadarRenovacionesRoute = shellRoute(LicitacionesShell, "/licit
 const LicitacionesPerfilMatchingRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PerfilMatchingPage {...ctx} />);
 const LicitacionesDatosEmpresaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <DatosEmpresaPage {...ctx} />);
 
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): licitaciones tenía
+// `admin-staff.ts` construido desde una fase anterior pero sin ningún panel que lo
+// llamara — mismo patrón que LicitacionesConvocatoriasRoute de arriba.
+function LicitacionesStaffRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <LicitacionesStaffPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 function DespachosLoginRoute() {
   const navigate = useNavigate();
   return (
@@ -549,6 +565,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/radar-renovaciones" element={<LicitacionesRadarRenovacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/licitaciones/:orgSlug/datos-empresa" element={<LicitacionesDatosEmpresaRoute />} />
+        <Route path="/licitaciones/:orgSlug/staff" element={<LicitacionesStaffRoute />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
         <Route path="/despachos/:orgSlug/cierre-mensual" element={<DespachosCierreMensualRoute />} />

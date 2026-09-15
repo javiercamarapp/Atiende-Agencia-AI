@@ -1,38 +1,37 @@
-// Staff (Fase 14) — hallazgo de auditoría (severidad ALTA, "Invitaciones de staff
-// (Fase 10) sin ninguna UI: imposible dar de alta staff o repartidores desde el
-// producto"): admin-staff.ts ya exponía POST/GET/DELETE .../admin/staff/invitaciones
-// desde Fase 10, y GET .../admin/staff/repartidores desde Fase 12 (ver el comentario
-// de cabecera de ese archivo), pero ningún panel los llamaba todavía. Esta página
-// cierra ese hueco: crear una invitación, ver las pendientes (con su token para
-// copiar/pegar — sin proveedor SMTP configurado, ver comentario de
-// `admin-staff.ts::app.post(collectionPath)`), revocar una pendiente, y ver a los
-// repartidores YA aceptados (reusa `fetchRepartidores`, Fase 12 — no se duplica ese
-// listado). Gateada por `STAFF_INVITE_ROLES` (owner/admin) del lado del CLIENTE
-// (cosmético, ver `RestaurantesShellContext.role`) — el servidor (admin-staff.ts) es
-// SIEMPRE el enforcement real, con la jerarquía fina de `canInviteStaff` encima.
+// Staff — hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): verificado contra el
+// código real que licitaciones tenía `admin-staff.ts` (POST/GET/DELETE
+// invitaciones, ver el hallazgo de auditoría original "alta de organización/staff
+// imposible sin SQL") construido desde una fase anterior, pero NINGÚN panel lo
+// llamaba todavía — a diferencia de restaurantes/despachos/citas, que ya tenían su
+// propio Staff.tsx desde su respectiva Fase 14. Esta página cierra ese hueco
+// completo: crear una invitación, ver las pendientes, revocar una pendiente, Y
+// (el hallazgo específico de esta pasada) cambiar el rol de un staff ya aceptado.
+// Port EXACTO de apps/web/src/verticals/restaurantes/pages/Staff.tsx (leído
+// primero como plantilla) sobre los 6 roles de licitaciones, sin la sección de
+// "repartidores" (licitaciones no tiene ese concepto).
+//
+// Gateada por `STAFF_INVITE_ROLES` (owner/admin) del lado del CLIENTE (cosmético,
+// ver `LicitacionesShellContext.role`) — el servidor (admin-staff.ts) es SIEMPRE
+// el enforcement real, con la jerarquía fina de `canInviteStaff` encima.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import {
-  createStaffInvite,
-  fetchOrgMembers,
-  fetchRepartidores,
-  fetchStaffInvites,
-  revokeStaffInvite,
-  updateStaffRole,
-} from "../lib/staff-client.ts";
-import type { CreatedStaffInvite, OrgMember, RepartidorMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
-import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
+import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
+import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
+import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
 const ROLE_LABELS: Record<StaffVerticalRole, string> = {
-  owner: "Dueño",
-  admin: "Administrador",
-  staff: "Staff (gestión)",
-  repartidor: "Repartidor",
+  owner: "Dueño/a",
+  admin: "Administrador/a",
+  analyst: "Analista",
+  writer: "Redactor/a",
+  reviewer: "Revisor/a",
+  viewer: "Solo lectura",
 };
 
-const ROLE_OPTIONS: readonly StaffVerticalRole[] = ["admin", "staff", "repartidor", "owner"];
+const ROLE_OPTIONS: readonly StaffVerticalRole[] = ["analyst", "writer", "reviewer", "viewer", "admin", "owner"];
 
 function statusLabel(status: string): string {
   if (status === "pending") return "Pendiente";
@@ -42,38 +41,26 @@ function statusLabel(status: string): string {
   return status;
 }
 
-export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+export function StaffPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
-  const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
-  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
-  // restaurantes permite gestionar roles desde el producto"): verificado contra el
-  // código real que ni siquiera restaurantes podía cambiar el rol de un staff YA
-  // ACEPTADO — todo lo de arriba (invites/repartidores) solo cubre alta o lectura.
   const [members, setMembers] = useState<readonly OrgMember[] | null>(null);
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
-  const [verticalRole, setVerticalRole] = useState<StaffVerticalRole>("staff");
+  const [verticalRole, setVerticalRole] = useState<StaffVerticalRole>("analyst");
   const [creating, setCreating] = useState(false);
   const [lastCreated, setLastCreated] = useState<CreatedStaffInvite | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
   async function load() {
+    if (!canManage) return;
     setError(null);
     try {
-      // `fetchRepartidores` está gateado por MANAGER_ROLES (owner/admin/staff, más
-      // amplio) en el servidor -- se pide siempre. `fetchStaffInvites`/
-      // `fetchOrgMembers` están gateados por STAFF_INVITE_ROLES (owner/admin, más
-      // angosto) -- solo se piden cuando `canManage` ya lo anticipa, para no
-      // disparar un 403 esperado en cada carga.
-      setRepartidores(await fetchRepartidores(fetch, apiBaseUrl, token, propertyId));
-      if (canManage) {
-        setInvites(await fetchStaffInvites(fetch, apiBaseUrl, token, propertyId));
-        setMembers(await fetchOrgMembers(fetch, apiBaseUrl, token, propertyId));
-      }
+      setInvites(await fetchStaffInvites(fetch, apiBaseUrl, token, propertyId));
+      setMembers(await fetchOrgMembers(fetch, apiBaseUrl, token, propertyId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el staff.");
     }
@@ -94,6 +81,8 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
 
   useEffect(() => {
     void load();
+    // eslint: mismo criterio que el resto del panel -- este proyecto no tiene
+    // eslint-plugin-react-hooks configurado.
   }, [apiBaseUrl, token, propertyId, canManage]);
 
   async function handleCreate(e: FormEvent) {
@@ -140,7 +129,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
 
       {!canManage && (
         <p style={{ margin: 0, fontSize: 13, color: "#6b7280", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-          Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) solo puedes ver a los repartidores ya activos.
+          Invitar, revocar, o cambiar el rol de staff está reservado a dueños y administradores. Con tu rol actual ({role}) no puedes gestionar el staff de esta empresa.
         </p>
       )}
 
@@ -177,7 +166,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
                 Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
               </p>
               <p style={{ margin: "0 0 6px", fontSize: 12, color: "#374151" }}>
-                Compártele este token — solo se muestra una vez. Debe pegarlo en <code>/aceptar-invitacion</code> junto con su nombre y una contraseña.
+                Se le mandó un correo real con el enlace de activación. Si prefieres compartirlo tú mismo, aquí está el token — solo se muestra una vez.
               </p>
               <code style={{ display: "block", padding: "8px 10px", borderRadius: 6, background: "#fff", border: "1px solid #dbeafe", fontSize: 12, wordBreak: "break-all" }}>{lastCreated.inviteToken}</code>
             </div>
@@ -226,7 +215,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
             — el servidor lo rechaza aunque el rol aparezca en esta lista.
           </p>
           {!members && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-          {members && members.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Todavía no hay ningún staff aceptado en esta organización.</p>}
+          {members && members.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Todavía no hay ningún staff aceptado en esta empresa.</p>}
           {members && members.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {members.map((m) => (
@@ -256,22 +245,6 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
           )}
         </section>
       )}
-
-      <section>
-        <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Repartidores activos</p>
-        {!repartidores && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-        {repartidores && repartidores.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Todavía no hay ningún repartidor aceptado en esta organización.</p>}
-        {repartidores && repartidores.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {repartidores.map((r) => (
-              <div key={r.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>{r.fullName}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{r.email}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
     </div>
   );
 }

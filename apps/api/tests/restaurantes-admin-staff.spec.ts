@@ -382,3 +382,163 @@ describe("Jerarquía real (canInviteStaff, @atiende/core-authz) -- un admin nunc
     expect(adminInvitaOwner.status).toBe(403);
   });
 });
+
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): verificado contra el
+// código real que ni siquiera restaurantes podía cambiar el rol de un staff YA
+// ACEPTADO -- todo el describe de arriba ("Invitar a alguien nuevo") solo fija el
+// rol AL INVITAR, nunca después. Estos dos endpoints (`GET`/`PATCH .../miembros`)
+// cierran ese hueco -- mismo `STAFF_INVITE_ROLES` que invitar, más la jerarquía real
+// de `canInviteStaff` aplicada DOS veces (al rol actual del target y al rol nuevo).
+interface MemberWithRoleResponse {
+  readonly id: string;
+  readonly email: string;
+  readonly fullName: string;
+  readonly verticalRole: string;
+  readonly propertyIds: readonly string[] | null;
+}
+
+describe("GET /v1/restaurantes/:propertyId/admin/staff/miembros", () => {
+  it("owner ve a TODOS los miembros ya aceptados (staff de gestión Y repartidor), con su rol actual", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros`, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { miembros: MemberWithRoleResponse[] };
+    const byId = new Map(body.miembros.map((m) => [m.id, m]));
+    expect(byId.get(ctx.staff.owner.id)?.verticalRole).toBe("owner");
+    expect(byId.get(ctx.staff.staffSucursalA.id)?.verticalRole).toBe("staff");
+    expect(byId.get(ctx.staff.repartidor.id)?.verticalRole).toBe("repartidor");
+    // Nunca al staff de OTRA organización.
+    expect(byId.has(ctx.staff.otroOrgOwner.id)).toBe(false);
+  });
+
+  it("staff (fuera de STAFF_INVITE_ROLES) -> 403, mismo umbral que invitar", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros`, authedGet(ctx.staff.staffSucursalA.token));
+    expect(res.status).toBe(403);
+  });
+
+  it("owner de OTRA organización -> 403 (requirePropertyMembership)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros`, authedGet(ctx.staff.otroOrgOwner.token));
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("PATCH /v1/restaurantes/:propertyId/admin/staff/miembros/:userId -- cambiar el rol de un staff ya aceptado", () => {
+  it("owner cambia a staff (verticalRole 'staff') a 'admin' -- 200, el cambio persiste en el listado", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.staffSucursalA.id}`,
+      authedJson(ctx.staff.owner.token, { verticalRole: "admin" }, "PATCH"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MemberWithRoleResponse;
+    expect(body.verticalRole).toBe("admin");
+
+    const listado = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros`, authedGet(ctx.staff.owner.token));
+    const listadoBody = (await listado.json()) as { miembros: MemberWithRoleResponse[] };
+    expect(listadoBody.miembros.find((m) => m.id === ctx.staff.staffSucursalA.id)?.verticalRole).toBe("admin");
+  });
+
+  it("staff (fuera de STAFF_INVITE_ROLES) intenta cambiar el rol de otro -- 403, mismo umbral que invitar", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.repartidor.id}`,
+      authedJson(ctx.staff.staffSucursalA.token, { verticalRole: "staff" }, "PATCH"),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("verticalRole desconocido -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.staffSucursalA.id}`,
+      authedJson(ctx.staff.owner.token, { verticalRole: "gerente" }, "PATCH"),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("target que no pertenece a esta organización -- 404, nunca se filtra información de otra organización", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.otroOrgOwner.id}`,
+      authedJson(ctx.staff.owner.token, { verticalRole: "staff" }, "PATCH"),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("un owner nunca puede cambiar SU PROPIO rol -- 400, bloqueado ANTES de tocar la base de datos", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.owner.id}`,
+      authedJson(ctx.staff.owner.token, { verticalRole: "admin" }, "PATCH"),
+    );
+    expect(res.status).toBe(400);
+
+    // Su rol sigue siendo "owner" -- el bloqueo de verdad impidió la escritura.
+    const listado = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros`, authedGet(ctx.staff.owner.token));
+    const listadoBody = (await listado.json()) as { miembros: MemberWithRoleResponse[] };
+    expect(listadoBody.miembros.find((m) => m.id === ctx.staff.owner.id)?.verticalRole).toBe("owner");
+  });
+
+  it("un admin NUNCA puede tocar el rol de un owner (jerarquía real, canInviteStaff) -- 403", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    // Sembrar un admin real vía invitación + aceptación (mismo patrón que el describe
+    // de jerarquía de arriba: seedMembership manual en el engine, ver su comentario).
+    const inviteAdmin = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "admin-que-cambia-roles@lostaquitos.mx", verticalRole: "admin" }, "POST"),
+    );
+    const { inviteToken } = (await inviteAdmin.json()) as InviteResponse;
+    const accept = await app.request("/auth/accept-invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: inviteToken, fullName: "Admin Que Cambia Roles", password: "correcto-caballo-batería" }),
+    });
+    const adminToken = ((await accept.json()) as AcceptInviteResponse).token;
+    const me = await app.request("/auth/me", authedGet(adminToken));
+    const adminId = ((await me.json()) as { id: string }).id;
+    (ctx.deps.engine as InMemoryTenancyEngine).seedMembership({ userId: adminId, organizationId: ctx.organizationId, propertyIds: null, platformRole: "admin", verticalRole: "admin" });
+
+    // El admin NUNCA puede tocar al owner (rango mayor).
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.owner.id}`,
+      authedJson(adminToken, { verticalRole: "staff" }, "PATCH"),
+    );
+    expect(res.status).toBe(403);
+
+    // Tampoco puede ASCENDER a nadie por encima de su propio rango ("owner"), aunque
+    // el target sea de rango menor.
+    const asciende = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.staffSucursalA.id}`,
+      authedJson(adminToken, { verticalRole: "owner" }, "PATCH"),
+    );
+    expect(asciende.status).toBe(403);
+
+    // Pero SÍ puede cambiar a alguien de rango menor a otro rol de rango menor.
+    const permitido = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.staffSucursalA.id}`,
+      authedJson(adminToken, { verticalRole: "admin" }, "PATCH"),
+    );
+    expect(permitido.status).toBe(200);
+  });
+});

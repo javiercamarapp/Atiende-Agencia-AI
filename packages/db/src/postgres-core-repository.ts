@@ -21,12 +21,13 @@ import type {
   CreateStaffInviteInput,
   MembershipRow,
   OrganizationMemberRow,
+  OrganizationMemberWithRoleRow,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffInviteStatus,
   StaffUserRow,
 } from "./core-repository.ts";
-import { StaffInviteInvalidError } from "./core-repository.ts";
+import { MembershipRoleUpdateError, StaffInviteInvalidError } from "./core-repository.ts";
 
 interface StaffUserRawRow {
   readonly id: string;
@@ -68,6 +69,26 @@ interface OrganizationMemberRawRow {
   readonly email: string;
   readonly full_name: string;
   readonly property_ids: readonly string[] | null;
+}
+
+interface OrganizationMemberWithRoleRawRow {
+  readonly user_id: string;
+  readonly email: string;
+  readonly full_name: string;
+  readonly platform_role: OrganizationMemberWithRoleRow["platformRole"];
+  readonly vertical_role: string;
+  readonly property_ids: readonly string[] | null;
+}
+
+function mapOrganizationMemberWithRole(row: OrganizationMemberWithRoleRawRow): OrganizationMemberWithRoleRow {
+  return {
+    userId: row.user_id,
+    email: row.email,
+    fullName: row.full_name,
+    platformRole: row.platform_role,
+    verticalRole: row.vertical_role,
+    propertyIds: row.property_ids,
+  };
 }
 
 interface AcceptStaffInviteRawRow {
@@ -210,6 +231,49 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       fullName: row.full_name,
       propertyIds: row.property_ids,
     }));
+  }
+
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+  // restaurantes permite gestionar roles desde el producto") — mismo criterio EXACTO
+  // que `listMembersByVerticalRole` de arriba (función `security definer`,
+  // `core.list_org_members`, ver `migrations/0007_update_membership_role.sql`):
+  // RLS de `core.membership` restringe SELECT a la fila propia, así que sin esta
+  // función un owner/admin autenticado real nunca vería la fila de un compañero.
+  async listOrgMembers(organizationId: string): Promise<readonly OrganizationMemberWithRoleRow[]> {
+    const { rows } = await this.db.query<OrganizationMemberWithRoleRawRow>(`select * from core.list_org_members($1);`, [organizationId]);
+    return rows.map(mapOrganizationMemberWithRole);
+  }
+
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA) — ver el
+  // comentario de cabecera de `core.update_membership_role`
+  // (`migrations/0007_update_membership_role.sql`) para la jerarquía real que la
+  // función SQL aplica (la AUTORIDAD real, nunca solo la capa TS). Igual criterio de
+  // traducción de excepción que `acceptStaffInvite` de abajo: SQLSTATE P0001 ->
+  // error tipado — a diferencia de `StaffInviteInvalidError` (mensaje único a
+  // propósito), aquí se preserva el mensaje real (ver el comentario de
+  // `MembershipRoleUpdateError`, ninguno de sus casos es sensible de ocultar).
+  async updateMemberVerticalRole(
+    organizationId: string,
+    targetUserId: string,
+    newPlatformRole: "owner" | "admin" | "member" | "viewer",
+    newVerticalRole: string,
+  ): Promise<OrganizationMemberWithRoleRow> {
+    try {
+      const { rows } = await this.db.query<OrganizationMemberWithRoleRawRow>(`select * from core.update_membership_role($1, $2, $3, $4);`, [
+        organizationId,
+        targetUserId,
+        newPlatformRole,
+        newVerticalRole,
+      ]);
+      const row = rows[0];
+      if (!row) throw new MembershipRoleUpdateError("el staff indicado no pertenece a esta organización.");
+      return mapOrganizationMemberWithRole(row);
+    } catch (err) {
+      if (err instanceof MembershipRoleUpdateError) throw err;
+      const pgErr = err as { code?: string; message?: string } | null;
+      if (pgErr?.code === "P0001") throw new MembershipRoleUpdateError(pgErr.message ?? "No se pudo cambiar el rol de ese staff.");
+      throw err;
+    }
   }
 
   // ---- CoreRepository — sesión de sistema (igual que login), ver comentario de

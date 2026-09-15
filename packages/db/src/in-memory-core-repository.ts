@@ -22,11 +22,12 @@ import type {
   CreateStaffInviteInput,
   MembershipRow,
   OrganizationMemberRow,
+  OrganizationMemberWithRoleRow,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
 } from "./core-repository.ts";
-import { StaffInviteInvalidError } from "./core-repository.ts";
+import { MembershipRoleUpdateError, StaffInviteInvalidError } from "./core-repository.ts";
 
 export interface SeedOrganization {
   readonly id: string;
@@ -169,6 +170,51 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
         if (!staff) throw new Error(`membership apunta a staff_user inexistente "${m.userId}"`);
         return { userId: staff.id, email: staff.email, fullName: staff.fullName, propertyIds: m.propertyIds };
       });
+  }
+
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+  // restaurantes permite gestionar roles desde el producto") — igual criterio que
+  // `listMembersByVerticalRole` de arriba: en memoria no hay ninguna sesión/RLS que
+  // emular (mismo criterio que el resto de este archivo), solo filtra
+  // `this.memberships` por organización, sin el filtro de `vertical_role`.
+  async listOrgMembers(organizationId: string): Promise<readonly OrganizationMemberWithRoleRow[]> {
+    return this.memberships
+      .filter((m) => m.organizationId === organizationId)
+      .map((m) => {
+        const staff = this.staffById.get(m.userId);
+        if (!staff) throw new Error(`membership apunta a staff_user inexistente "${m.userId}"`);
+        return { userId: staff.id, email: staff.email, fullName: staff.fullName, platformRole: m.platformRole, verticalRole: m.verticalRole, propertyIds: m.propertyIds };
+      })
+      .sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }
+
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA) — a diferencia
+  // de `listOrgMembers`/`listMembersByVerticalRole` (solo lectura, sin emular RLS a
+  // propósito), esta es una ESCRITURA de privilegio: en producción real, la
+  // autoridad completa (rango de `canInviteStaff` aplicado tanto al rol ACTUAL como
+  // al rol NUEVO del target, más el bloqueo de auto-cambio de rol) vive en
+  // `core.update_membership_role` (`security definer`, ver
+  // `migrations/0007_update_membership_role.sql`) -- el caller HTTP (`admin-
+  // staff.ts`) ya reaplica esa MISMA jerarquía en la capa TS ANTES de llamar aquí
+  // (defensa en profundidad, mismo patrón exacto que `canInviteStaff` ya aplica al
+  // invitar), así que esta implementación en memoria solo necesita el caso real que
+  // le falta a esa capa TS: el target simplemente no existe en la organización (ni
+  // el chequeo de rango ni el de auto-cambio dependen de qué adaptador corre por
+  // debajo).
+  async updateMemberVerticalRole(
+    organizationId: string,
+    targetUserId: string,
+    newPlatformRole: "owner" | "admin" | "member" | "viewer",
+    newVerticalRole: string,
+  ): Promise<OrganizationMemberWithRoleRow> {
+    const idx = this.memberships.findIndex((m) => m.organizationId === organizationId && m.userId === targetUserId);
+    if (idx < 0) throw new MembershipRoleUpdateError("el staff indicado no pertenece a esta organización.");
+    const current = this.memberships[idx]!;
+    const updated: SeedMembership = { ...current, platformRole: newPlatformRole, verticalRole: newVerticalRole };
+    this.memberships[idx] = updated;
+    const staff = this.staffById.get(targetUserId);
+    if (!staff) throw new Error(`membership apunta a staff_user inexistente "${targetUserId}"`);
+    return { userId: staff.id, email: staff.email, fullName: staff.fullName, platformRole: updated.platformRole, verticalRole: updated.verticalRole, propertyIds: updated.propertyIds };
   }
 
   // ---- CoreRepository (sesión de sistema, igual que login) ----

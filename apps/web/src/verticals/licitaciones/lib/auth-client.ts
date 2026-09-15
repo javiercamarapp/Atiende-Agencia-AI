@@ -18,8 +18,15 @@ export { login, logout, LoginError, validateLoginForm };
 export type { LoginSession, SessionStorageLike };
 
 export function decideLicitacionesLandingPath(session: LoginSession): string {
-  if (session.organizations.length === 0) return "/sin-organizacion";
-  if (session.organizations.length === 1) return `/licitaciones/${session.organizations[0]!.slug}`;
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA) — mismo
+  // hueco que `decideHotelesLandingPath`: `session.organizations` trae membresías de
+  // TODAS las verticales (JWT único). Filtrar por "licitaciones" antes de contar
+  // evita mandar al selector a alguien con 1 sola empresa participante (porque
+  // también tiene, p. ej., un despacho), o peor, navegar a
+  // `/licitaciones/<slug-de-otra-vertical>`.
+  const deLicitaciones = session.organizations.filter((o) => o.vertical === "licitaciones");
+  if (deLicitaciones.length === 0) return "/sin-organizacion";
+  if (deLicitaciones.length === 1) return `/licitaciones/${deLicitaciones[0]!.slug}`;
   return "/seleccionar-organizacion";
 }
 

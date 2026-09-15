@@ -5,7 +5,16 @@
 // no aquí).
 
 /** Un mensaje de WhatsApp listo para enviar vía Graph API — el "to"/"body"/
- *  "phoneNumberId" ya resueltos, nada de lookups adicionales de este lado. */
+ *  "phoneNumberId" ya resueltos, nada de lookups adicionales de este lado.
+ *
+ *  Hallazgo de auditoría (rubro 17, comunicación transaccional, severidad MEDIA,
+ *  "soporte de plantillas HSM de WhatsApp ausente") — deliberadamente SIN ningún
+ *  campo de plantilla (`templateName`/`templateLanguage`/`templateParams`): ver el
+ *  comentario de cabecera de `providers/meta-graph-client.ts` para el gap completo
+ *  (algunos envíos de este monorepo son proactivos, fuera de la ventana de 24h de
+ *  Meta, y por eso exigirían una plantilla HSM pre-aprobada que este entorno no
+ *  tiene forma de conseguir) y para los 3 pasos exactos que cerrarían esto el día
+ *  que exista una plantilla real aprobada. */
 export interface OutboundWhatsAppMessagePayload {
   /** Número del destinatario en formato E.164 con o sin "+" (Graph API acepta
    *  ambos; se pasa tal cual llegó del encolador). */

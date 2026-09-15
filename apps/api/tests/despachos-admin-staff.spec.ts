@@ -239,3 +239,78 @@ describe("DELETE /despachos/:propertyId/admin/staff/invitaciones/:inviteId -- re
     expect(del.status).toBe(403);
   });
 });
+
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): verificado que ni
+// siquiera restaurantes podía hacer esto antes de esta pasada (ver
+// packages/db/migrations/0007_update_membership_role.sql para el hallazgo
+// completo, y apps/api/tests/restaurantes-admin-staff.spec.ts para la cobertura
+// exhaustiva de la jerarquía real -- aquí solo se ejercita el wiring propio de
+// despachos: prefijo de ruta, roles concretos, `isDespachosRole`).
+function authedPatch(token: string, body: unknown): RequestInit {
+  const raw = JSON.stringify(body);
+  return { method: "PATCH", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "content-length": String(new TextEncoder().encode(raw).byteLength) }, body: raw };
+}
+
+interface MemberWithRoleResponse {
+  readonly id: string;
+  readonly email: string;
+  readonly fullName: string;
+  readonly verticalRole: string;
+  readonly propertyIds: readonly string[] | null;
+}
+
+describe("GET /despachos/:propertyId/admin/staff/miembros y PATCH .../miembros/:userId", () => {
+  it("admin ve a TODOS los miembros ya aceptados con su rol actual", async () => {
+    const ctx = await buildDespachosTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/despachos/${ctx.propertyId}/admin/staff/miembros`, authedJson(ctx.staff.admin.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { miembros: MemberWithRoleResponse[] };
+    const byId = new Map(body.miembros.map((m) => [m.id, m]));
+    expect(byId.get(ctx.staff.admin.id)?.verticalRole).toBe("admin");
+    expect(byId.get(ctx.staff.contador.id)?.verticalRole).toBe("contador");
+  });
+
+  it("contador (fuera de STAFF_INVITE_ROLES) -> 403 al listar o cambiar roles", async () => {
+    const ctx = await buildDespachosTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const listRes = await app.request(`/despachos/${ctx.propertyId}/admin/staff/miembros`, authedJson(ctx.staff.contador.token));
+    expect(listRes.status).toBe(403);
+
+    const patchRes = await app.request(`/despachos/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.auditor.id}`, authedPatch(ctx.staff.contador.token, { verticalRole: "readonly" }));
+    expect(patchRes.status).toBe(403);
+  });
+
+  it("admin cambia a un contador a 'auditor' -- 200, el cambio persiste en el listado", async () => {
+    const ctx = await buildDespachosTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/despachos/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.contador.id}`, authedPatch(ctx.staff.admin.token, { verticalRole: "auditor" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MemberWithRoleResponse;
+    expect(body.verticalRole).toBe("auditor");
+
+    const listado = await app.request(`/despachos/${ctx.propertyId}/admin/staff/miembros`, authedJson(ctx.staff.admin.token));
+    const listadoBody = (await listado.json()) as { miembros: MemberWithRoleResponse[] };
+    expect(listadoBody.miembros.find((m) => m.id === ctx.staff.contador.id)?.verticalRole).toBe("auditor");
+  });
+
+  it("verticalRole desconocido -> 400", async () => {
+    const ctx = await buildDespachosTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/despachos/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.contador.id}`, authedPatch(ctx.staff.admin.token, { verticalRole: "gerente" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("un admin nunca puede cambiar SU PROPIO rol -- 400, bloqueado antes de tocar la base de datos", async () => {
+    const ctx = await buildDespachosTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/despachos/${ctx.propertyId}/admin/staff/miembros/${ctx.staff.admin.id}`, authedPatch(ctx.staff.admin.token, { verticalRole: "contador" }));
+    expect(res.status).toBe(400);
+  });
+});
