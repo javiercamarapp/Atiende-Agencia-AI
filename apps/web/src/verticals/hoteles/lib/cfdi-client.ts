@@ -95,3 +95,15 @@ export async function cancelarCfdi(fetchImpl: typeof fetch, apiBaseUrl: string, 
   if (folioSustitucion) body.folioSustitucion = folioSustitucion;
   return sendJson<{ id: string; estado: string }>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/cfdi/${cfdiId}/cancelar`, token, "POST", body, idempotencyKey);
 }
+
+/** `POST /hoteles/:propertyId/cfdi/:cfdiId/consultar-estado` — hallazgo auditoría:
+ * un CFDI que quedó en `en_proceso_cancelacion` (el ciclo de aceptación/rechazo de
+ * cancelación 2022+ del SAT no es instantáneo) era un callejón sin salida, ninguna
+ * ruta invocaba jamás al PAC de nuevo para saber si terminó `cancelado`. Este botón
+ * manual llama al PAC en vivo; el servidor solo persiste el nuevo estado cuando de
+ * verdad confirma `cancelado` (nunca inventa una transición sobre una respuesta
+ * ambigua). No requiere `Idempotency-Key`: es una consulta de solo lectura contra
+ * el PAC, no una operación de dinero. */
+export async function consultarEstadoCfdi(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, cfdiId: string): Promise<CfdiEmisionSummary & { readonly estadoReal: CfdiEmisionEstado }> {
+  return sendJson<CfdiEmisionSummary & { readonly estadoReal: CfdiEmisionEstado }>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/cfdi/${cfdiId}/consultar-estado`, token, "POST");
+}

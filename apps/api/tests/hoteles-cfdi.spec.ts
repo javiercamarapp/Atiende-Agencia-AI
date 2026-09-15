@@ -4,6 +4,7 @@
 // excluida del subtotal, DSA por cuarto-noche, y cancelación.
 import { beforeEach, describe, expect, it } from "vitest";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
+import type { CancelarInput, CfdiCancelacion, CfdiPort, CfdiTimbrado, CfdiWebhookEvent, DomainCfdiStatus, TimbrarInput } from "@atiende/mcp-cfdi";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildHotelesTestContext } from "./hoteles-fixtures.ts";
 import type { HotelesTestContext } from "./hoteles-fixtures.ts";
@@ -322,5 +323,137 @@ describe("hallazgo auditoría -- PAC sin credenciales responde 503 honesto, nunc
     const stillThere = await ctx.hotelesRepo.findCfdiEmision(ctx.propertyId, id);
     expect(stillThere!.status).toBe("timbrado");
     expect(stillThere!.canceledAt).toBeNull();
+  });
+});
+
+/** Doble de prueba controlable del `CfdiPort` -- a diferencia de
+ * `FakeGenericPacAdapter` (`cancelar` siempre devuelve 'cancelado' de inmediato),
+ * este permite simular el ciclo real de aceptación/rechazo de cancelación 2022+
+ * del SAT: `cancelar` puede devolver 'en_proceso_cancelacion' y `consultarEstado`
+ * se controla por separado, para probar el hallazgo de auditoría 2 (el callejón
+ * sin salida) de punta a punta vía HTTP. */
+class ScriptableCfdiPort implements CfdiPort {
+  public nextCancelarStatus: DomainCfdiStatus = "cancelado";
+  public nextConsultarEstado: DomainCfdiStatus = "cancelado";
+
+  status() {
+    return { provider: "scriptable-test-pac", available: true, simulated: true } as const;
+  }
+
+  async timbrar(input: TimbrarInput): Promise<CfdiTimbrado> {
+    return {
+      uuid: `uuid-${input.folio}`,
+      folio: input.folio,
+      status: "timbrado",
+      selloDigital: "sello-test",
+      fechaTimbrado: new Date().toISOString(),
+      pac: "scriptable-test-pac",
+    };
+  }
+
+  async cancelar(input: CancelarInput): Promise<CfdiCancelacion> {
+    return { uuid: input.uuid, status: this.nextCancelarStatus, fechaSolicitud: new Date().toISOString() };
+  }
+
+  async consultarEstado(_uuid: string): Promise<DomainCfdiStatus> {
+    return this.nextConsultarEstado;
+  }
+
+  async verifyAndNormalizeWebhook(): Promise<CfdiWebhookEvent> {
+    throw new Error("ScriptableCfdiPort: verifyAndNormalizeWebhook no se usa en estos tests.");
+  }
+}
+
+// Hallazgo auditoría 2 — 'en_proceso_cancelacion' era un callejón sin salida:
+// `updateCfdiEmisionCancelacion` escribía `canceled_at = now()` con CUALQUIER
+// status que devolviera el PAC (incluyendo 'en_proceso_cancelacion', no solo
+// 'cancelado'), y ninguna ruta invocaba jamás `CfdiPort.consultarEstado` para
+// saber si el SAT terminó aceptando o rechazando esa cancelación.
+describe("hallazgo auditoría -- 'en_proceso_cancelacion' ya no es un callejón sin salida", () => {
+  it("cancelar con el PAC devolviendo 'en_proceso_cancelacion' NO marca canceladoEn (antes: se marcaba con cualquier status)", async () => {
+    await seedHospedajeCharges(ctx, 1);
+    const pac = new ScriptableCfdiPort();
+    const app = buildApp({ ...ctx.deps, hotelesCfdiPort: pac });
+    const emitido = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-pend-1" }),
+    );
+    const { id } = (await emitido.json()) as CfdiResponse;
+
+    pac.nextCancelarStatus = "en_proceso_cancelacion";
+    const cancelado = await app.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/cancelar`, authedJson(ctx.staff.owner.token, { motivo: "02" }, { "idempotency-key": "cancel-pend-1" }));
+    expect(cancelado.status).toBe(200);
+    const body = (await cancelado.json()) as { estado: string };
+    expect(body.estado).toBe("en_proceso_cancelacion");
+
+    const stored = await ctx.hotelesRepo.findCfdiEmision(ctx.propertyId, id);
+    expect(stored!.status).toBe("en_proceso_cancelacion");
+    expect(stored!.canceledAt).toBeNull();
+  });
+
+  it("POST .../consultar-estado confirma 'cancelado' ante el PAC y AHORA SÍ actualiza el registro (antes: ninguna ruta invocaba consultarEstado)", async () => {
+    await seedHospedajeCharges(ctx, 1);
+    const pac = new ScriptableCfdiPort();
+    const app = buildApp({ ...ctx.deps, hotelesCfdiPort: pac });
+    const emitido = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-pend-2" }),
+    );
+    const { id } = (await emitido.json()) as CfdiResponse;
+
+    pac.nextCancelarStatus = "en_proceso_cancelacion";
+    await app.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/cancelar`, authedJson(ctx.staff.owner.token, { motivo: "02" }, { "idempotency-key": "cancel-pend-2" }));
+
+    // El SAT sigue sin resolver -- consultar de nuevo no debe cambiar nada.
+    pac.nextConsultarEstado = "en_proceso_cancelacion";
+    const sinCambios = await app.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/consultar-estado`, authedJson(ctx.staff.owner.token, {}));
+    expect(sinCambios.status).toBe(200);
+    const sinCambiosBody = (await sinCambios.json()) as { estado: string; estadoReal: string };
+    expect(sinCambiosBody.estado).toBe("en_proceso_cancelacion");
+    expect(sinCambiosBody.estadoReal).toBe("en_proceso_cancelacion");
+    expect((await ctx.hotelesRepo.findCfdiEmision(ctx.propertyId, id))!.canceledAt).toBeNull();
+
+    // El SAT ya confirmó la cancelación -- ahora sí se persiste, con canceladoEn.
+    pac.nextConsultarEstado = "cancelado";
+    const confirmado = await app.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/consultar-estado`, authedJson(ctx.staff.owner.token, {}));
+    expect(confirmado.status).toBe(200);
+    const confirmadoBody = (await confirmado.json()) as { estado: string; estadoReal: string };
+    expect(confirmadoBody.estado).toBe("cancelado");
+    expect(confirmadoBody.estadoReal).toBe("cancelado");
+
+    const stored = await ctx.hotelesRepo.findCfdiEmision(ctx.propertyId, id);
+    expect(stored!.status).toBe("cancelado");
+    expect(stored!.canceledAt).not.toBeNull();
+  });
+
+  it("POST .../consultar-estado sobre un CFDI que NO está en_proceso_cancelacion -> 409 (nada pendiente que consultar)", async () => {
+    await seedHospedajeCharges(ctx, 1);
+    const app = buildApp(ctx.deps);
+    const emitido = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-pend-3" }),
+    );
+    const { id } = (await emitido.json()) as CfdiResponse;
+    const res = await app.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/consultar-estado`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(409);
+  });
+
+  it("POST .../consultar-estado con el CfdiPort real (sin credenciales) -> 503, no 500", async () => {
+    await seedHospedajeCharges(ctx, 1);
+    const pac = new ScriptableCfdiPort();
+    const appFake = buildApp({ ...ctx.deps, hotelesCfdiPort: pac });
+    const emitido = await appFake.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-pend-4" }),
+    );
+    const { id } = (await emitido.json()) as CfdiResponse;
+    pac.nextCancelarStatus = "en_proceso_cancelacion";
+    await appFake.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/cancelar`, authedJson(ctx.staff.owner.token, { motivo: "02" }, { "idempotency-key": "cancel-pend-4" }));
+
+    const appReal = buildApp({ ...ctx.deps, hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()) });
+    const res = await appReal.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/consultar-estado`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("service_unavailable");
   });
 });

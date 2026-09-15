@@ -417,9 +417,67 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       if (isPacUnavailableError(err)) throw pacUnavailableApiError("cancelar el CFDI");
       throw err;
     }
+    // Hallazgo auditoría — el PAC puede devolver 'en_proceso_cancelacion' (el
+    // proceso de aceptación/rechazo de cancelación 2022+ del SAT no es
+    // instantáneo): `updateCfdiEmisionCancelacion` NUNCA marca `canceledAt` salvo
+    // que el status sea 'cancelado' de verdad (ver su propio comentario) -- antes
+    // de este fix se marcaba `canceled_at = now()` con CUALQUIER status devuelto
+    // por el PAC, dejando el registro con fecha de cancelación pero sin haber
+    // cancelado en realidad, y sin ninguna ruta que permitiera consultar el
+    // estado real después (ver endpoint .../consultar-estado más abajo).
     await repo.updateCfdiEmisionCancelacion(cfdiId, cancelacion.status);
 
     return c.json({ id: cfdiId, estado: cancelacion.status });
+  });
+
+  // Hallazgo auditoría — 'en_proceso_cancelacion' era un callejón sin salida: una
+  // vez que el PAC devolvía ese status desde /cancelar, ninguna ruta invocaba
+  // jamás `CfdiPort.consultarEstado`, así que el CFDI se quedaba para siempre sin
+  // confirmar si el SAT terminó aceptando o rechazando la cancelación (y, por el
+  // corto-circuito de idempotencia de arriba y el índice único parcial de
+  // 015_cfdi_hospedaje_reemision_tras_cancelacion.sql, tampoco se podía reemitir
+  // mientras tanto -- correcto, sigue "vigente"). Ruta manual (staff con acceso a
+  // CFDI, mismo rol que cancelar) en vez de un cron interno de plataforma: a
+  // diferencia de los cron sweep de rentas (ver checkout-sweep-cron.ts), aquí no
+  // hay forma de recorrer TODOS los CFDI pendientes cross-organización sin
+  // tropezar con el mismo bloqueador de RLS ya documentado ahí
+  // (`withAppSession({ userId: null })` nunca satisface
+  // `hoteles.can_access_money(property_id)`) -- una ruta manual por CFDI, scopeada
+  // a la property vía `requirePropertyMembership`, evita ese problema y le da al
+  // staff un botón real para desatorar el estado (ver botón en Cfdi.tsx).
+  app.post("/hoteles/:propertyId/cfdi/:cfdiId/consultar-estado", async (c) => {
+    assertVerticalRole(c, CFDI_HOSPEDAJE_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const cfdiId = c.req.param("cfdiId");
+
+    const repo = deps.hotelesRepo(c.get("db"));
+    const cfdi = await repo.findCfdiEmision(propertyId, cfdiId);
+    if (!cfdi) throw Errors.notFound("CFDI no encontrado.");
+    if (!cfdi.uuidFiscal) throw Errors.conflict("Este CFDI no tiene UUID fiscal (no fue timbrado con éxito): no hay nada que consultar contra el PAC.");
+    if (cfdi.status !== "en_proceso_cancelacion") {
+      throw Errors.conflict(`Este CFDI está en estado "${cfdi.status}", no en proceso de cancelación: no hay nada pendiente que consultar contra el PAC.`);
+    }
+
+    let estadoReal: CfdiEmisionRecord["status"];
+    try {
+      estadoReal = await deps.hotelesCfdiPort.consultarEstado(cfdi.uuidFiscal);
+    } catch (err) {
+      if (isPacUnavailableError(err)) throw pacUnavailableApiError("consultar el estado real de la cancelación");
+      throw err;
+    }
+
+    // Solo se persiste cuando el PAC YA confirmó 'cancelado' -- si sigue
+    // 'en_proceso_cancelacion' (SAT todavía no resuelve) o si el PAC informa que
+    // la cancelación fue rechazada, este endpoint es de solo consulta: el estado
+    // almacenado no se toca para no inventar una transición que el motivo de
+    // cancelación conocido no sustenta, y el staff puede reintentar la consulta
+    // más tarde.
+    if (estadoReal === "cancelado") {
+      await repo.updateCfdiEmisionCancelacion(cfdiId, "cancelado");
+    }
+
+    const actual = estadoReal === "cancelado" ? await repo.findCfdiEmision(propertyId, cfdiId) : cfdi;
+    return c.json({ ...serializeCfdi(actual ?? cfdi), estadoReal });
   });
 
   return app;

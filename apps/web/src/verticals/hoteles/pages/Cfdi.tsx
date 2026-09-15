@@ -12,7 +12,7 @@
 // refleja lo que la ruta ya serializa.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { cancelarCfdi, emitirCfdiHospedaje, emitirCfdiPago, fetchCfdisByFolio, MOTIVO_CANCELACION_LABELS } from "../lib/cfdi-client.ts";
+import { cancelarCfdi, consultarEstadoCfdi, emitirCfdiHospedaje, emitirCfdiPago, fetchCfdisByFolio, MOTIVO_CANCELACION_LABELS } from "../lib/cfdi-client.ts";
 import type { CfdiEmisionSummary, MotivoCancelacionSat } from "../lib/cfdi-client.ts";
 import { fetchFolio } from "../lib/folios-client.ts";
 import type { FolioSummary } from "../lib/folios-client.ts";
@@ -112,6 +112,15 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
     await withBusy(() => emitirCfdiPago(fetch, apiBaseUrl, token, propertyId, folioId, paymentId, hospedajeCfdiId, newIdempotencyKey()).then(() => undefined));
   }
 
+  // Hallazgo auditoría — 'en_proceso_cancelacion' era un callejón sin salida (el
+  // PAC nunca se volvía a consultar). Botón manual: llama al PAC en vivo vía
+  // `POST .../consultar-estado`; el servidor solo actualiza el registro cuando de
+  // verdad confirma 'cancelado', así que este botón puede llamarse varias veces
+  // sin riesgo mientras el SAT sigue resolviendo.
+  async function handleConsultarEstado(cfdiId: string) {
+    await withBusy(() => consultarEstadoCfdi(fetch, apiBaseUrl, token, propertyId, cfdiId).then(() => undefined));
+  }
+
   async function handleCancelar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!cancelTargetId) return;
@@ -205,6 +214,16 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
                 <button onClick={() => setCancelTargetId(c.id)} disabled={busy} style={{ marginTop: 10, padding: "5px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}>
                   Cancelar CFDI
                 </button>
+              )}
+              {c.estado === "en_proceso_cancelacion" && (
+                <>
+                  <button onClick={() => void handleConsultarEstado(c.id)} disabled={busy} style={{ marginTop: 10, padding: "5px 12px", borderRadius: 8, border: "1px solid #6b7280", background: "#fff", color: "#374151", fontSize: 12, cursor: "pointer" }}>
+                    Consultar estado real ante el PAC
+                  </button>
+                  <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                    El SAT todavía no confirma si esta cancelación fue aceptada o rechazada. Este botón vuelve a preguntarle al PAC; el estado solo se actualiza aquí si ya confirmó "cancelado".
+                  </p>
+                </>
               )}
               {cancelTargetId === c.id && (
                 <form onSubmit={handleCancelar} style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8, border: "1px solid #fecaca", borderRadius: 8, padding: 10 }}>
