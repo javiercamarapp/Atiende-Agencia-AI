@@ -42,6 +42,8 @@ import type {
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  RoomTypeSummary,
+  GuestSummary,
   StaffScheduleRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
@@ -109,6 +111,25 @@ export interface HotelesRepository {
   // ---- Quotes (flujo 3) — SOLO lectura, ninguna escritura de precio ----
   findRoomType(propertyId: string, roomTypeId: string): Promise<{ id: string } | null>;
   loadNightlyRates(propertyId: string, roomTypeId: string, checkInDate: string, checkOutDate: string): Promise<readonly NightlyRateRecord[]>;
+
+  // ---- Fix hallazgo ALTA — catálogos para el formulario de "crear reserva" del
+  // panel de recepción (ver types.ts::RoomTypeSummary/GuestSummary). Ambos de solo
+  // lectura, cualquier staff de la property (mismo criterio de acceso que
+  // `listReservations`) -- la restricción fina de QUIÉN puede crear la reserva ya la
+  // aplica `MANAGE_RESERVATIONS_ROLES` en la ruta de creación, no aquí. ----
+
+  /** Catálogo completo de tipos de habitación configurados para la property —
+   *  insumo directo del <select> de "tipo de habitación" al crear una reserva. */
+  listRoomTypes(propertyId: string): Promise<readonly RoomTypeSummary[]>;
+
+  /** Búsqueda de huéspedes YA REGISTRADOS de la property por nombre/email/teléfono
+   *  (contains, insensible a mayúsculas) — insumo del autocomplete de "huésped" al
+   *  crear una reserva. `query` `null`/vacío devuelve las primeras `limit` filas
+   *  (orden alfabético) para poblar el autocomplete antes de que el staff escriba
+   *  nada. Esta fase NO agrega un endpoint de alta de huésped nuevo (fuera del
+   *  hallazgo asignado): `guestId` sigue siendo opcional en `POST .../reservas`
+   *  (walk-in sin huésped capturado) exactamente igual que antes. */
+  searchGuests(propertyId: string, query: string | null, limit?: number): Promise<readonly GuestSummary[]>;
 
   // ---- Idempotencia (transversal a folios y F&B) ----
   withIdempotency<T>(params: IdempotencyParams, run: () => Promise<IdempotentResult<T>>): Promise<IdempotentResult<T>>;
@@ -424,6 +445,7 @@ export type { FolioRecord, ChargeRecord, PaymentRecord, NewChargeInput, NewPayme
 export type { ExpenseEntryRecord, NewExpenseEntryInput, PlRevenueByDateRow, PlExpenseByDateRow, PlOccupiedRoomNightsByDateRow } from "./types.ts";
 export type { ConversationMessage, ContactoNoOperativoRecord, NewContactoNoOperativoInput, VoiceAgentConfig, WhatsAppPropertyRoute } from "./types.ts";
 export type { ReservationRecord, NewReservationInput, CancellationPolicyRecord } from "./types.ts";
+export type { RoomTypeSummary, GuestSummary } from "./types.ts";
 export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
 export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";
 export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";

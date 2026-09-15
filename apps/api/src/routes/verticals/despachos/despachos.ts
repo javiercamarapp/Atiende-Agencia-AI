@@ -17,6 +17,7 @@ import { despachosBookkeepingRoutes } from "./bookkeeping.ts";
 import { despachosCierreMensualRoutes } from "./cierre-mensual.ts";
 import { despachosAdminRoutes } from "./admin.ts";
 import { despachosNotificationsRoutes } from "./notifications.ts";
+import { despachosCobranzaRoutes } from "./cobranza.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -39,5 +40,8 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Hallazgo de auditoría (severidad ALTA) — infraestructura de correo real
   // (outbox + dispatch + recordatorios de cobranza), ver notifications.ts.
   app.route("/", despachosNotificationsRoutes(deps));
+  // Hallazgo de auditoría (severidad ALTA) — cobranza (Fase 10) tenía motor +
+  // persistencia completos pero cero rutas HTTP y cero UI, ver cobranza.ts.
+  app.route("/", despachosCobranzaRoutes(deps));
   return app;
 }

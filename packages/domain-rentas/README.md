@@ -45,6 +45,35 @@ de Postgres solo protege `capa='reserva'`; cualquier solape entre capas se regis
 `rentas.conflicto_calendario` (`capa_cruzada`) para revisión humana, nunca como rechazo
 automático.
 
+## Calendario visual del panel de staff (Fase 13)
+
+Cierra el gap identificado por auditoría: reservas.ts (Fase 1) y bloqueos.ts (Fase 4)
+ya exponían crear/modificar/cancelar reservas y crear/listar/liberar bloqueos, pero
+`apps/web` no tenía ningún cliente que los consumiera y, más grave, no existía ningún
+`GET` que devolviera, para una unidad, TODAS sus ocupaciones (reserva de canal Y
+bloqueo) en una sola vista — el listado mínimo para poder pintar un calendario.
+
+- `RentasRepository.listOcupaciones(propertyId, unidadId)` (nuevo) — vista UNIFICADA
+  de `rentas.ocupacion` (ambas capas, activa y cancelada, con `canalCodigo`/
+  `huespedNombre`/`huespedContacto` ya resueltos), a diferencia de `listBloqueos`
+  (Fase 4, acotado a `capa='bloqueo'`). Expuesta como
+  `GET /rentas/:propertyId/unidades/:unidadId/ocupaciones`.
+- `RentasRepository.listUnidades(propertyId)` (nuevo) — plumbing mínimo que también
+  faltaba: hasta esta fase no había forma de que el panel web enumerara las unidades
+  de una property antes de poder pedir nada más específico (mismo criterio que
+  `listPropertiesForOrganization`, Fase 12). Expuesta como
+  `GET /rentas/:propertyId/unidades`.
+- `CALENDARIO_LECTURA_ROLES` (roles.ts, nuevo) — ambas rutas son de solo lectura, así
+  que se abren también a `operador:solo_calendario` (mismo criterio de "lectura más
+  permisiva que escritura" que ya declaraba `SYNC_CALENDARIO_LECTURA_ROLES`).
+  Deliberadamente NO aplicado a `GET .../bloqueos` (Fase 4, sigue con
+  `ESCRITURA_CALENDARIO_ROLES`) — ampliar esa ruta existente es un cambio de
+  comportamiento fuera del alcance de este hallazgo.
+- `apps/web/src/verticals/rentas/pages/Calendario.tsx` (nuevo) — vista real (lista por
+  fecha, no un calendario visual con drag-and-drop) donde el staff ve y gestiona
+  reservas/bloqueos reales de una unidad: crear reserva, crear bloqueo, modificar
+  fechas de una reserva directa, cancelar/liberar.
+
 ## Limpieza/mantenimiento (Fase 8) — tareas, checklist, inventario, incidencias
 
 Port de `rentas/packages/domain/src/limpieza/*` (Lote 5 del origen, BACKLOG E08,

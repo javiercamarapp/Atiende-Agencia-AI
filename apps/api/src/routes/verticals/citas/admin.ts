@@ -23,6 +23,8 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ALL_VERTICALS, DEFAULT_LISTA_ESPERA_LIMIT, MAX_LISTA_ESPERA_LIMIT, runListaEsperaCore, sortWaitlistByPosition } from "@atiende/domain-citas";
 import type {
   AppointmentRecord,
+  AvailabilityOverride,
+  AvailabilityRule,
   CitasRepository,
   CustomerRecord,
   NewProviderInput,
@@ -215,6 +217,88 @@ function optionalNullablePhone(value: unknown, field = "owner_notification_phone
   return value;
 }
 
+// ============================================================================
+// Fase 10 — panel admin: CRUD real de horarios/excepciones (ver diseño Fase 10
+// §1/§2 y repository.ts::NewAvailabilityRuleInput/AvailabilityRulePatch/
+// AvailabilityOverrideInput). Mismo formato "HH:MM"/"HH:MM:SS" que ya devuelve
+// `loadAvailabilityRules` (ver serialización de GET .../providers/:id de arriba) —
+// se valida aquí ANTES de Postgres para un 400 claro en vez del 500 genérico de un
+// `check` constraint (mismo criterio que `optionalTimeZone`/`optionalNullablePhone`).
+// ============================================================================
+const TIME_STRING_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+const OVERRIDE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function requireTimeString(value: unknown, field: string): string {
+  if (typeof value !== "string" || !TIME_STRING_RE.test(value)) {
+    throw Errors.validation(`${field}: se esperaba una hora "HH:MM" o "HH:MM:SS" (ej. "09:00").`);
+  }
+  return value;
+}
+
+function optionalTimeString(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  return requireTimeString(value, field);
+}
+
+function requireDayOfWeek(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 6) {
+    throw Errors.validation("day_of_week: se esperaba un entero de 0 (domingo) a 6 (sábado).");
+  }
+  return value;
+}
+
+function optionalDayOfWeek(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  return requireDayOfWeek(value);
+}
+
+/** Mismo check constraint real que `citas.availability_rules`/`availability_overrides`
+ * (001_citas_schema.sql: `end_time > start_time`) — validado aquí con comparación de
+ * texto, válida porque ambos ya pasaron `TIME_STRING_RE` (cero-rellenados). */
+function assertEndAfterStart(startTime: string, endTime: string): void {
+  if (endTime <= startTime) throw Errors.validation(`end_time ("${endTime}") debe ser posterior a start_time ("${startTime}").`);
+}
+
+function requireOverrideDate(raw: string): string {
+  if (!OVERRIDE_DATE_RE.test(raw) || Number.isNaN(Date.parse(`${raw}T00:00:00Z`))) {
+    throw Errors.validation('El parámetro de fecha debe tener formato "YYYY-MM-DD".');
+  }
+  return raw;
+}
+
+function requireBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") throw Errors.validation(`${field}: se esperaba true/false.`);
+  return value;
+}
+
+/** `reason` es texto libre (motivo del cierre/excepción) — límite defensivo, sin
+ * check constraint real en `citas.availability_overrides.reason` (columna `text`
+ * sin límite). `seen` distingue "no vino en el body" de "vino explícitamente
+ * null" (sí quita el motivo), mismo criterio que `optionalNullablePropertyId`. */
+function optionalNullableReason(value: unknown, seen: boolean): string | null | undefined {
+  if (!seen) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length > 500) {
+    throw Errors.validation("reason: se esperaba un texto de hasta 500 caracteres, o null.");
+  }
+  return value;
+}
+
+function serializeAvailabilityRule(rule: AvailabilityRule) {
+  return { id: rule.id, provider_id: rule.providerId, day_of_week: rule.dayOfWeek, start_time: rule.startTime, end_time: rule.endTime, is_active: rule.isActive };
+}
+
+function serializeAvailabilityOverride(override: AvailabilityOverride) {
+  return {
+    provider_id: override.providerId,
+    override_date: override.overrideDate,
+    is_closed: override.isClosed,
+    start_time: override.startTime,
+    end_time: override.endTime,
+    reason: override.reason,
+  };
+}
+
 function serializeAppointment(appointment: AppointmentRecord) {
   return {
     id: appointment.id,
@@ -310,6 +394,11 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     "/v1/citas/properties/:propertyId/providers/:providerId",
     // Fase 8 — el checkbox real de provider_services (ver FichaProveedor.tsx del origen).
     "/v1/citas/properties/:propertyId/providers/:providerId/services/:serviceId",
+    // Fase 10 — horarios/excepciones reales de un proveedor (ver diseño Fase 10 §1/§2).
+    "/v1/citas/properties/:propertyId/providers/:providerId/availability-rules",
+    "/v1/citas/properties/:propertyId/providers/:providerId/availability-rules/:ruleId",
+    "/v1/citas/properties/:propertyId/providers/:providerId/availability-overrides",
+    "/v1/citas/properties/:propertyId/providers/:providerId/availability-overrides/:overrideDate",
     "/v1/citas/properties/:propertyId/services",
     "/v1/citas/properties/:propertyId/services/:serviceId",
     "/v1/citas/properties/:propertyId/appointments",
@@ -441,6 +530,157 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     await citasRepo.setProviderServiceOffering(providerId, serviceId, offered);
     return c.json({ provider_id: providerId, service_id: serviceId, offered });
+  });
+
+  interface AvailabilityRuleBody {
+    readonly day_of_week?: unknown;
+    readonly start_time?: unknown;
+    readonly end_time?: unknown;
+    readonly is_active?: unknown;
+  }
+
+  // ---- Fase 10 — alta real de una regla de disponibilidad recurrente (cierra el
+  // gap real: sin esto, un negocio nuevo no podía recibir ni una cita porque
+  // `availability.ts` nunca encontraba reglas, ver diseño Fase 10 §1). ----
+  app.post("/v1/citas/properties/:propertyId/providers/:providerId/availability-rules", async (c) => {
+    const organizationId = c.get("organizationId");
+    const providerId = c.req.param("providerId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+
+    const raw = await readJsonCapped<AvailabilityRuleBody>(c.req.raw, 2 * 1024);
+    const dayOfWeek = requireDayOfWeek(raw.day_of_week);
+    const startTime = requireTimeString(raw.start_time, "start_time");
+    const endTime = requireTimeString(raw.end_time, "end_time");
+    assertEndAfterStart(startTime, endTime);
+    const isActive = optionalBoolean(raw.is_active, "is_active");
+
+    const created = await citasRepo.createAvailabilityRule({ providerId, dayOfWeek, startTime, endTime, ...(isActive !== undefined ? { isActive } : {}) });
+    return c.json({ availability_rule: serializeAvailabilityRule(created) }, 201);
+  });
+
+  // ---- Fase 10 — edición real de una regla existente (port de la sección de
+  // horarios que Disponibilidad.tsx no exponía, ver diseño Fase 10 §1). Un campo
+  // ausente del patch deja la columna intacta, mismo criterio que
+  // `ProviderPatch`/`ServicePatch`. ----
+  app.patch("/v1/citas/properties/:propertyId/providers/:providerId/availability-rules/:ruleId", async (c) => {
+    const organizationId = c.get("organizationId");
+    const providerId = c.req.param("providerId");
+    const ruleId = c.req.param("ruleId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+
+    const existingRules = await citasRepo.loadAvailabilityRules(providerId);
+    const existing = existingRules.find((r) => r.id === ruleId);
+    if (!existing) throw Errors.notFound("Regla de disponibilidad no encontrada.");
+
+    const raw = await readJsonCapped<AvailabilityRuleBody>(c.req.raw, 2 * 1024);
+    const dayOfWeek = optionalDayOfWeek(raw.day_of_week);
+    const startTime = optionalTimeString(raw.start_time, "start_time");
+    const endTime = optionalTimeString(raw.end_time, "end_time");
+    const isActive = optionalBoolean(raw.is_active, "is_active");
+    // Se valida la combinación FINAL (patch mezclado sobre la fila existente) —
+    // mismo criterio que el `check (end_time > start_time)` real de
+    // 001_citas_schema.sql, para un 400 claro en vez de un 500 de constraint.
+    assertEndAfterStart(startTime ?? existing.startTime, endTime ?? existing.endTime);
+
+    const updated = await citasRepo.updateAvailabilityRule(providerId, ruleId, {
+      ...(dayOfWeek !== undefined ? { dayOfWeek } : {}),
+      ...(startTime !== undefined ? { startTime } : {}),
+      ...(endTime !== undefined ? { endTime } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    });
+    if (!updated) throw Errors.notFound("Regla de disponibilidad no encontrada.");
+    return c.json({ availability_rule: serializeAvailabilityRule(updated) });
+  });
+
+  // ---- Fase 10 — borrado real de una regla (deja de ofrecer ese horario). ----
+  app.delete("/v1/citas/properties/:propertyId/providers/:providerId/availability-rules/:ruleId", async (c) => {
+    const organizationId = c.get("organizationId");
+    const providerId = c.req.param("providerId");
+    const ruleId = c.req.param("ruleId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+
+    const deleted = await citasRepo.deleteAvailabilityRule(providerId, ruleId);
+    if (!deleted) throw Errors.notFound("Regla de disponibilidad no encontrada.");
+    return c.json({ deleted: true });
+  });
+
+  // ---- Fase 10 — excepciones puntuales (cierre o horario especial de un día
+  // concreto, ver AvailabilityOverrideInput). Lista solo las de hoy en adelante —
+  // el panel edita el futuro, nunca reescribe un cierre ya pasado. ----
+  app.get("/v1/citas/properties/:propertyId/providers/:providerId/availability-overrides", async (c) => {
+    const organizationId = c.get("organizationId");
+    const providerId = c.req.param("providerId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const overrides = await citasRepo.listAvailabilityOverrides(providerId, todayIso);
+    return c.json({ availability_overrides: overrides.map(serializeAvailabilityOverride) });
+  });
+
+  interface AvailabilityOverrideBody {
+    readonly is_closed?: unknown;
+    readonly start_time?: unknown;
+    readonly end_time?: unknown;
+    readonly reason?: unknown;
+  }
+
+  // ---- Fase 10 — alta/edición real de una excepción (upsert real sobre la unique
+  // (provider_id, override_date), ver AvailabilityOverrideInput). `is_closed: true`
+  // ignora start_time/end_time si vinieran (se guardan null, mismo criterio que el
+  // check constraint real de la tabla). ----
+  app.put("/v1/citas/properties/:propertyId/providers/:providerId/availability-overrides/:overrideDate", async (c) => {
+    const organizationId = c.get("organizationId");
+    const providerId = c.req.param("providerId");
+    const overrideDate = requireOverrideDate(c.req.param("overrideDate"));
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+
+    const raw = await readJsonCapped<AvailabilityOverrideBody>(c.req.raw, 2 * 1024);
+    const isClosed = requireBoolean(raw.is_closed, "is_closed");
+    const startTime = isClosed ? null : requireTimeString(raw.start_time, "start_time");
+    const endTime = isClosed ? null : requireTimeString(raw.end_time, "end_time");
+    if (!isClosed) assertEndAfterStart(startTime!, endTime!);
+    const reason = optionalNullableReason(raw.reason, raw.reason !== undefined);
+
+    const upserted = await citasRepo.upsertAvailabilityOverride({
+      providerId,
+      overrideDate,
+      isClosed,
+      startTime,
+      endTime,
+      ...(reason !== undefined ? { reason } : {}),
+    });
+    return c.json({ availability_override: serializeAvailabilityOverride(upserted) });
+  });
+
+  // ---- Fase 10 — borrado real de una excepción (vuelve a regir el horario
+  // recurrente normal para esa fecha). ----
+  app.delete("/v1/citas/properties/:propertyId/providers/:providerId/availability-overrides/:overrideDate", async (c) => {
+    const organizationId = c.get("organizationId");
+    const providerId = c.req.param("providerId");
+    const overrideDate = requireOverrideDate(c.req.param("overrideDate"));
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    if (!provider) throw Errors.notFound("Proveedor no encontrado.");
+
+    const deleted = await citasRepo.deleteAvailabilityOverride(providerId, overrideDate);
+    if (!deleted) throw Errors.notFound("Excepción de disponibilidad no encontrada.");
+    return c.json({ deleted: true });
   });
 
   app.get("/v1/citas/properties/:propertyId/services", async (c) => {

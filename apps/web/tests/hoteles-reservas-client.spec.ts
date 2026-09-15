@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { cancelReservation, createReservation, fetchReservations, isCancellable, NEXT_GENERIC_STATUS, transitionReservation } from "../src/verticals/hoteles/lib/reservas-client.ts";
+import { cancelReservation, createReservation, fetchReservations, fetchRoomTypes, isCancellable, NEXT_GENERIC_STATUS, searchGuests, transitionReservation } from "../src/verticals/hoteles/lib/reservas-client.ts";
 
 const RESERVATION_ROW = {
   id: "res-1",
@@ -70,6 +70,39 @@ describe("cancelReservation", () => {
     }) as unknown as typeof fetch;
     const result = await cancelReservation(fetchImpl, "http://api.local", "tok", "prop-1", "res-1");
     expect(result.estado).toBe("cancelada");
+  });
+});
+
+// Fix hallazgo ALTA — catálogos que reemplazan los inputs de texto libre de
+// roomTypeId/guestId en Reservas.tsx (ver reservas-client.ts, comentario de
+// cabecera de RoomTypeOption/GuestOption).
+describe("fetchRoomTypes", () => {
+  it("pide GET /hoteles/:propertyId/tipos-habitacion", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe("http://api.local/hoteles/prop-1/tipos-habitacion");
+      return new Response(JSON.stringify([{ id: "rt-1", nombre: "Doble Vista al Mar", capacidadMaxima: 2 }]), { status: 200 });
+    }) as unknown as typeof fetch;
+    const result = await fetchRoomTypes(fetchImpl, "http://api.local", "tok", "prop-1");
+    expect(result).toEqual([{ id: "rt-1", nombre: "Doble Vista al Mar", capacidadMaxima: 2 }]);
+  });
+});
+
+describe("searchGuests", () => {
+  it("sin query pide GET /huespedes sin `?q=`", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe("http://api.local/hoteles/prop-1/huespedes");
+      return new Response(JSON.stringify([]), { status: 200 });
+    }) as unknown as typeof fetch;
+    await searchGuests(fetchImpl, "http://api.local", "tok", "prop-1");
+  });
+
+  it("con query codifica `?q=` en la URL", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe("http://api.local/hoteles/prop-1/huespedes?q=ana%20torres");
+      return new Response(JSON.stringify([{ id: "g-1", nombreCompleto: "Ana Torres", email: null, telefono: null }]), { status: 200 });
+    }) as unknown as typeof fetch;
+    const result = await searchGuests(fetchImpl, "http://api.local", "tok", "prop-1", "ana torres");
+    expect(result[0]!.nombreCompleto).toBe("Ana Torres");
   });
 });
 

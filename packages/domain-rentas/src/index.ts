@@ -64,6 +64,7 @@ export { conciliarPayout } from "./finanzas/conciliacion.ts";
 export type { CandidataConciliacion, EstadoConciliacion, LineaConciliada, LineaPayoutEntrada, ResultadoConciliacion, ResumenConciliacion } from "./finanzas/conciliacion.ts";
 
 export {
+  CALENDARIO_LECTURA_ROLES,
   CANCELAR_ROLES,
   ESCRITURA_CALENDARIO_ROLES,
   FINANZAS_ESCRITURA_ROLES,
@@ -96,6 +97,7 @@ export type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,

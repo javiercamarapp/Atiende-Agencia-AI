@@ -310,3 +310,59 @@ describe("GET /hoteles/:propertyId/reservas", () => {
     expect(body.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+// Fix hallazgo ALTA — catálogos que le faltaban al formulario de "crear reserva":
+// sin esto, roomTypeId/guestId solo se podían obtener copiando un UUID a mano desde
+// otro lado (ver reservas.ts, comentario de cabecera de las nuevas rutas).
+describe("GET /hoteles/:propertyId/tipos-habitacion", () => {
+  it("lista el catálogo de tipos de habitación de la property, accesible a cualquier staff", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/hoteles/${ctx.propertyId}/tipos-habitacion`, authedJson(ctx.staff.housekeeping.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string; nombre: string; capacidadMaxima: number }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ id: ctx.roomTypeId, nombre: "Habitación Doble Vista al Mar", capacidadMaxima: 2 });
+  });
+
+  it("una property sin tipos de habitación configurados devuelve una lista vacía, nunca un error", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const otraPropertyId = "00000000-0000-0000-0000-000000000000";
+    // Sin membership a esta property -- 403, no llega ni a preguntarle al repo (mismo
+    // criterio de autorización que el resto de rutas de este archivo).
+    const res = await app.request(`/hoteles/${otraPropertyId}/tipos-habitacion`, authedJson(ctx.staff.owner.token));
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /hoteles/:propertyId/huespedes", () => {
+  it("sin `q` devuelve el catálogo completo de huéspedes de la property", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/hoteles/${ctx.propertyId}/huespedes`, authedJson(ctx.staff.frontdesk.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string; nombreCompleto: string; email: string | null; telefono: string | null }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ id: ctx.guestId, nombreCompleto: "Ana Torres", email: "ana.torres@example.com", telefono: "5511112222" });
+  });
+
+  it("con `q` filtra por nombre/email/teléfono, insensible a mayúsculas", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const porNombre = await app.request(`/hoteles/${ctx.propertyId}/huespedes?q=torres`, authedJson(ctx.staff.frontdesk.token));
+    expect(porNombre.status).toBe(200);
+    expect(((await porNombre.json()) as Array<{ id: string }>).map((g) => g.id)).toEqual([ctx.guestId]);
+
+    const sinMatch = await app.request(`/hoteles/${ctx.propertyId}/huespedes?q=nadie-existe-xyz`, authedJson(ctx.staff.frontdesk.token));
+    expect(sinMatch.status).toBe(200);
+    expect(await sinMatch.json()).toEqual([]);
+  });
+
+  it("cualquier staff de la property puede leer (mismo criterio que GET /reservas), sin rol fino", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/hoteles/${ctx.propertyId}/huespedes`, authedJson(ctx.staff.housekeeping.token));
+    expect(res.status).toBe(200);
+  });
+});

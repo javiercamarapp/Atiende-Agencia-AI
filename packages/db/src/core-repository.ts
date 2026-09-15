@@ -83,6 +83,21 @@ export interface StaffInviteRow {
   readonly createdAt: string;
 }
 
+/** Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
+ *  no tiene UI"): fila mínima de un miembro YA aceptado (`core.membership`, no una
+ *  invitación pendiente) de una organización, para poblar un selector real (ej. "qué
+ *  repartidor le asigno a este pedido"). Deliberadamente SIN `platformRole`/
+ *  `verticalRole` (el caller ya los conoce: los pidió como filtro) ni ningún otro
+ *  campo de `core.staff_user` — solo lo que un selector necesita mostrar/enviar. */
+export interface OrganizationMemberRow {
+  readonly userId: string;
+  readonly email: string;
+  readonly fullName: string;
+  /** null = acceso a TODAS las properties de la organización, misma semántica que
+   *  `MembershipRow.propertyIds`. */
+  readonly propertyIds: readonly string[] | null;
+}
+
 export interface CreateStaffInviteInput {
   readonly email: string;
   readonly organizationId: string;
@@ -168,6 +183,23 @@ export interface CoreStaffRepository {
    *  existía, ya no estaba 'pending', o pertenecía a otra organización (nunca lanza
    *  por "no encontrado" — el caller decide el 404). */
   revokeStaffInvite(id: string, organizationId: string): Promise<boolean>;
+  /** Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un
+   *  pedido no tiene UI"): `PATCH .../admin/orders/:orderId/assign-repartidor`
+   *  (Fase 8, `admin-orders.ts`) es el ÚNICO lugar que despacha un pedido, pero
+   *  hasta esta fase no existía forma de listar QUÉ staff de la organización tiene
+   *  `verticalRole` = "repartidor" para construir un selector real — `admin-staff.ts`
+   *  (esta interfaz) solo exponía invitaciones PENDIENTES, nunca membresías ya
+   *  aceptadas. Genérico a propósito (cualquier vertical puede necesitar "listar los
+   *  miembros con este verticalRole" para su propio selector de asignación, mismo
+   *  criterio que el resto de `core`), acotado a la organización del caller — ver
+   *  `postgres-core-repository.ts` para la razón real (no solo de estilo) de por qué
+   *  esto vive aquí (sesión REAL por-request, `auth.uid()` verdadero) y NUNCA en
+   *  `CoreRepository` (sesión de sistema, `auth.uid()` siempre null — ver ese
+   *  comentario para el gap de RLS que este método corrige de paso en
+   *  `assign-repartidor`). Devuelve SOLO miembros con invitación ya ACEPTADA
+   *  (`core.membership`), nunca invitaciones pendientes — un `pending` no es staff
+   *  real todavía, no puede recibir un pedido despachado. */
+  listMembersByVerticalRole(organizationId: string, verticalRole: string): Promise<readonly OrganizationMemberRow[]>;
 }
 
 /** Lanzado por `acceptStaffInvite` cuando el token no existe, ya no está pendiente, o

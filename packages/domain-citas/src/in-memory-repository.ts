@@ -10,10 +10,13 @@ import type {
   AppointmentActorChannel,
   AppointmentRecord,
   AvailabilityOverride,
+  AvailabilityOverrideInput,
   AvailabilityRule,
+  AvailabilityRulePatch,
   BusyInterval,
   CustomerRecord,
   GoogleSyncStatus,
+  NewAvailabilityRuleInput,
   NewProviderInput,
   NewServiceInput,
   ProviderCalendarAccountRecord,
@@ -396,6 +399,72 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async loadAvailabilityOverride(providerId: string, dateStr: string): Promise<AvailabilityOverride | null> {
     return this.availabilityOverrides.get(`${providerId}:${dateStr}`) ?? null;
+  }
+
+  async listAvailabilityOverrides(providerId: string, fromDateInclusive?: string): Promise<readonly AvailabilityOverride[]> {
+    return [...this.availabilityOverrides.values()]
+      .filter((o) => o.providerId === providerId && (fromDateInclusive === undefined || o.overrideDate >= fromDateInclusive))
+      .sort((a, b) => a.overrideDate.localeCompare(b.overrideDate));
+  }
+
+  // ---- Fase 10 — panel admin: CRUD real de horarios/excepciones (mismas
+  // restricciones de integridad que 001_citas_schema.sql: `id` generado aquí igual
+  // que gen_random_uuid(), ningún método de escritura confía en el caller para el
+  // id de una fila nueva). ----
+  async createAvailabilityRule(input: NewAvailabilityRuleInput): Promise<AvailabilityRule> {
+    const created: AvailabilityRule = {
+      id: randomUUID(),
+      providerId: input.providerId,
+      dayOfWeek: input.dayOfWeek,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      isActive: input.isActive ?? true,
+    };
+    const list = this.availabilityRules.get(input.providerId) ?? [];
+    list.push(created);
+    this.availabilityRules.set(input.providerId, list);
+    return created;
+  }
+
+  async updateAvailabilityRule(providerId: string, ruleId: string, patch: AvailabilityRulePatch): Promise<AvailabilityRule | null> {
+    const list = this.availabilityRules.get(providerId) ?? [];
+    const index = list.findIndex((r) => r.id === ruleId);
+    if (index === -1) return null;
+    const existing = list[index]!;
+    const updated: AvailabilityRule = {
+      ...existing,
+      dayOfWeek: patch.dayOfWeek ?? existing.dayOfWeek,
+      startTime: patch.startTime ?? existing.startTime,
+      endTime: patch.endTime ?? existing.endTime,
+      isActive: patch.isActive ?? existing.isActive,
+    };
+    list[index] = updated;
+    this.availabilityRules.set(providerId, list);
+    return updated;
+  }
+
+  async deleteAvailabilityRule(providerId: string, ruleId: string): Promise<boolean> {
+    const list = this.availabilityRules.get(providerId) ?? [];
+    const next = list.filter((r) => r.id !== ruleId);
+    this.availabilityRules.set(providerId, next);
+    return next.length !== list.length;
+  }
+
+  async upsertAvailabilityOverride(input: AvailabilityOverrideInput): Promise<AvailabilityOverride> {
+    const override: AvailabilityOverride = {
+      providerId: input.providerId,
+      overrideDate: input.overrideDate,
+      isClosed: input.isClosed,
+      startTime: input.isClosed ? null : (input.startTime ?? null),
+      endTime: input.isClosed ? null : (input.endTime ?? null),
+      reason: input.reason ?? null,
+    };
+    this.availabilityOverrides.set(`${input.providerId}:${input.overrideDate}`, override);
+    return override;
+  }
+
+  async deleteAvailabilityOverride(providerId: string, overrideDate: string): Promise<boolean> {
+    return this.availabilityOverrides.delete(`${providerId}:${overrideDate}`);
   }
 
   async loadBusyIntervals(providerId: string, dayStartUtc: string, dayEndUtc: string, excludeAppointmentId?: string): Promise<readonly BusyInterval[]> {

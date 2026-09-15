@@ -3,8 +3,10 @@
 // transición; los botones ofrecidos aquí son solo un espejo de NEXT_STATUSES para
 // no mostrar una acción que el servidor rechazaría).
 import { useEffect, useState } from "react";
-import { fetchOrders, NEXT_STATUSES, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
+import { assignRepartidor, fetchOrders, NEXT_STATUSES, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
+import { fetchRepartidores } from "../lib/staff-client.ts";
+import type { RepartidorMember } from "../lib/staff-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const OPERATIVE_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "problema"];
@@ -18,6 +20,15 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
   const [orders, setOrders] = useState<readonly OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changingId, setChangingId] = useState<string | null>(null);
+  // Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
+  // no tiene UI"): lista de repartidores REALES de la organización (ver
+  // admin-staff.ts::GET .../admin/staff/repartidores) para poblar el selector de abajo.
+  // Estado separado de `orders`/`error` a propósito: si este fetch falla, el selector
+  // simplemente no aparece -- nunca debe tumbar la lista de pedidos, que es la función
+  // principal de esta página.
+  const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
+  const [repartidoresError, setRepartidoresError] = useState<string | null>(null);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
 
   async function load() {
     setError(null);
@@ -39,6 +50,20 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
     void load();
   }, [apiBaseUrl, token, propertyId, status]);
 
+  async function loadRepartidores() {
+    setRepartidoresError(null);
+    try {
+      setRepartidores(await fetchRepartidores(fetch, apiBaseUrl, token, propertyId));
+    } catch (err) {
+      setRepartidores(null);
+      setRepartidoresError(err instanceof Error ? err.message : "No se pudieron cargar los repartidores.");
+    }
+  }
+
+  useEffect(() => {
+    void loadRepartidores();
+  }, [apiBaseUrl, token, propertyId]);
+
   async function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
     setChangingId(order.id);
     setError(null);
@@ -49,6 +74,25 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
       setError(err instanceof Error ? err.message : "No se pudo cambiar el estado del pedido.");
     } finally {
       setChangingId(null);
+    }
+  }
+
+  // Fase 12 — dispara el dispatch real (PATCH .../assign-repartidor) en cuanto se
+  // elige un repartidor del selector; volver a elegir uno distinto reasigna (el
+  // servidor lo permite, no hay restricción de "una sola vez" — ver admin-orders.ts).
+  // Elegir "Sin asignar" (repartidorId vacío) es un no-op: no existe un endpoint de
+  // "desasignar" en el backend, así que nunca se finge uno aquí.
+  async function handleAssignRepartidor(order: OrderSummary, repartidorId: string) {
+    if (!repartidorId) return;
+    setAssigningId(order.id);
+    setError(null);
+    try {
+      await assignRepartidor(fetch, apiBaseUrl, token, propertyId, order.id, repartidorId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo asignar el repartidor.");
+    } finally {
+      setAssigningId(null);
     }
   }
 
@@ -82,6 +126,11 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
           {error}
         </p>
       )}
+      {repartidoresError && (
+        <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 12 }}>
+          No se pudo cargar la lista de repartidores: {repartidoresError}
+        </p>
+      )}
       {!orders && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
       {orders && orders.length === 0 && <p style={{ color: "#6b7280" }}>No hay pedidos en este filtro.</p>}
 
@@ -111,6 +160,32 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
               </span>
             </div>
             <p style={{ margin: "8px 0 0", fontSize: 13, color: "#374151" }}>{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 12, color: "#374151" }}>
+                Repartidor:{" "}
+                <select
+                  value={o.assignedRepartidorId ?? ""}
+                  disabled={assigningId === o.id || !repartidores || repartidores.length === 0}
+                  onChange={(e) => void handleAssignRepartidor(o, e.target.value)}
+                  style={{ padding: "5px 8px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 12 }}
+                >
+                  <option value="">Sin asignar</option>
+                  {repartidores?.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.fullName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {assigningId === o.id && <span style={{ fontSize: 12, color: "#6b7280" }}>Asignando…</span>}
+              {o.estimatedDeliveryAt && (
+                <span style={{ fontSize: 12, color: "#6b7280" }}>ETA {new Date(o.estimatedDeliveryAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</span>
+              )}
+              {repartidores && repartidores.length === 0 && <span style={{ fontSize: 12, color: "#6b7280" }}>Sin repartidores dados de alta en esta organización.</span>}
+            </div>
+            {o.incidentNote && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#991b1b" }}>⚠ {o.incidentNote}</p>}
+
             {NEXT_STATUSES[o.status].length > 0 && (
               <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                 {NEXT_STATUSES[o.status].map((next) => (

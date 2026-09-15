@@ -33,6 +33,7 @@ import type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,
@@ -139,6 +140,21 @@ export interface RentasRepository {
    *  property del panel de staff (RentasShell.tsx), mismo criterio que
    *  `HotelesRepository.listPropertiesForOrganization`. */
   listPropertiesForOrganization(organizationId: string): Promise<readonly RentasPropertySummary[]>;
+
+  // ---- Fase 13 — calendario visual del panel de staff (GET .../unidades,
+  // GET .../unidades/:unidadId/ocupaciones) ----
+
+  /** Unidades de una property, para el selector de unidad del calendario -- mismo
+   *  criterio de alcance que `listPropertiesForOrganization` (Fase 12): plumbing
+   *  mínimo indispensable para que el panel web pueda enumerar lo que existe antes de
+   *  poder pedir nada más específico. */
+  listUnidades(propertyId: string): Promise<readonly UnidadRecord[]>;
+  /** El listado que le faltaba al calendario: TODA ocupación de la unidad (reserva de
+   *  canal Y bloqueo, activa Y cancelada), ordenada por fecha de inicio -- a
+   *  diferencia de `listBloqueos` (Fase 4, solo `capa='bloqueo'`), esta es la vista
+   *  UNIFICADA que un calendario real necesita para pintar ambas capas en una sola
+   *  lista. Ver types.ts::OcupacionCalendarioItem. */
+  listOcupaciones(propertyId: string, unidadId: string): Promise<readonly OcupacionCalendarioItem[]>;
 }
 
 export type {
@@ -159,6 +175,7 @@ export type {
   NewReservaFinancieroInput,
   NewTarifaBaseInput,
   NewTemporadaInput,
+  OcupacionCalendarioItem,
   OcupacionParaCorreo,
   OcupacionParaMovimiento,
   OcupacionResumen,

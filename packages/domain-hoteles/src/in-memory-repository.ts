@@ -47,6 +47,8 @@ import type {
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  RoomTypeSummary,
+  GuestSummary,
   StaffScheduleRecord,
   TaxConfigRecord,
   VoiceAgentConfig,
@@ -163,8 +165,18 @@ interface StoredReservation {
 interface StoredRoomType {
   id: string;
   propertyId: string;
+  name: string;
+  maxOccupancy: number;
   maxOverbookRooms: number;
   overbookingOccupancyThresholdPct: number;
+}
+
+interface StoredGuest {
+  id: string;
+  propertyId: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
 }
 
 interface StoredAvailability {
@@ -208,6 +220,7 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly taxConfigByProperty = new Map<string, TaxConfigRecord>();
   private readonly fnbOrders = new Map<string, FnbOrderRecord & { propertyId: string; organizationId: string }>();
   private readonly roomTypes = new Map<string, StoredRoomType>();
+  private readonly guests = new Map<string, StoredGuest>(); // Fix hallazgo ALTA — catálogo de huéspedes existentes (hoteles.guest).
   private readonly nightlyRates = new Map<string, NightlyRateRecord[]>(); // key: propertyId:roomTypeId
   private readonly idempotencyKeys = new Map<string, StoredIdempotencyRow>(); // key: organizationId:scope:key
 
@@ -325,14 +338,35 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   seedRoomType(
     propertyId: string,
     roomTypeId: string,
-    overbooking?: { maxOverbookRooms?: number; overbookingOccupancyThresholdPct?: number },
+    overbooking?: { maxOverbookRooms?: number; overbookingOccupancyThresholdPct?: number; name?: string; maxOccupancy?: number },
   ): void {
     this.roomTypes.set(roomTypeId, {
       id: roomTypeId,
       propertyId,
+      // `name`/`maxOccupancy` opcionales con default (Fix hallazgo ALTA): la mayoría
+      // de los tests preexistentes solo necesitan un roomTypeId válido para el motor
+      // de cotización/disponibilidad, nunca les importó el nombre -- no romperlos.
+      name: overbooking?.name ?? "Habitación estándar",
+      maxOccupancy: overbooking?.maxOccupancy ?? 2,
       // Mismos defaults que `hoteles.room_type` en migrations/003_availability.sql.
       maxOverbookRooms: overbooking?.maxOverbookRooms ?? 0,
       overbookingOccupancyThresholdPct: overbooking?.overbookingOccupancyThresholdPct ?? 95,
+    });
+  }
+
+  /** Fix hallazgo ALTA — equivalente en memoria de `insert into hoteles.guest(...)`,
+   *  insumo de `searchGuests()`. No existía ningún seed de huésped "genérico" antes
+   *  de este fix (`seedGuestIdentity` es una cosa distinta: la identidad
+   *  lastName/phoneLast4 mínima que expone `loadFolioGuestIdentity` para un huésped
+   *  YA ligado a una reserva concreta, no el catálogo completo de huéspedes de la
+   *  property). */
+  seedGuest(guest: { id: string; propertyId: string; fullName: string; email?: string | null; phone?: string | null }): void {
+    this.guests.set(guest.id, {
+      id: guest.id,
+      propertyId: guest.propertyId,
+      fullName: guest.fullName,
+      email: guest.email ?? null,
+      phone: guest.phone ?? null,
     });
   }
 
@@ -584,6 +618,32 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   async loadNightlyRates(propertyId: string, roomTypeId: string, checkInDate: string, checkOutDate: string): Promise<readonly NightlyRateRecord[]> {
     const rates = this.nightlyRates.get(`${propertyId}:${roomTypeId}`) ?? [];
     return rates.filter((r) => r.date >= checkInDate && r.date <= checkOutDate);
+  }
+
+  // ---- HotelesRepository: Fix hallazgo ALTA — catálogos para "crear reserva" ----
+
+  async listRoomTypes(propertyId: string): Promise<readonly RoomTypeSummary[]> {
+    return [...this.roomTypes.values()]
+      .filter((rt) => rt.propertyId === propertyId)
+      .map((rt) => ({ id: rt.id, name: rt.name, maxOccupancy: rt.maxOccupancy }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async searchGuests(propertyId: string, query: string | null, limit = 20): Promise<readonly GuestSummary[]> {
+    const needle = query?.trim().toLowerCase() ?? "";
+    const matches = [...this.guests.values()].filter((g) => {
+      if (g.propertyId !== propertyId) return false;
+      if (needle.length === 0) return true;
+      return (
+        g.fullName.toLowerCase().includes(needle) ||
+        (g.email?.toLowerCase().includes(needle) ?? false) ||
+        (g.phone?.toLowerCase().includes(needle) ?? false)
+      );
+    });
+    return matches
+      .sort((a, b) => a.fullName.localeCompare(b.fullName))
+      .slice(0, limit)
+      .map((g) => ({ id: g.id, fullName: g.fullName, email: g.email, phone: g.phone }));
   }
 
   // ---- HotelesRepository: Fase 3 — máquina de estados de reservas (H02) ----

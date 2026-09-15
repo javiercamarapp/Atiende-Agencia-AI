@@ -96,6 +96,57 @@ para una fase posterior, cuando el dominio la calcule primero.
 proveedores/servicios/`citas.tenant_config` a `admin.ts`; el párrafo de arriba
 describe el estado en el momento en que se escribió, no el actual.)
 
+(Nota 2: Fase 10 -- ver abajo -- SÍ agregó alta/edición/borrado real de reglas de
+disponibilidad y excepciones puntuales a `admin.ts`. El párrafo de arriba, sobre
+`citas.availability_rules`/`citas.availability_overrides`, tampoco describe ya el
+estado actual.)
+
+## Fase 10 — horarios/excepciones reales desde el panel (cierra el gap MÁS grave de la vertical)
+
+Hasta esta fase, `citas.availability_rules` (horario recurrente semanal por
+proveedor, `001_citas_schema.sql`) no se podía crear ni editar desde NINGUNA capa:
+`CitasRepository` solo exponía `loadAvailabilityRules` (lectura, Fase 1), y
+`Disponibilidad.tsx` (`apps/web`) era de solo lectura ("configurar horarios/
+excepciones todavía no está disponible desde el panel"). Sin una fila de
+`availability_rules`, `availability.ts::computeAvailableSlots` nunca ofrece un
+solo slot — un negocio nuevo dado de alta desde el panel no podía recibir ni una
+cita hasta que alguien insertara reglas por SQL directo.
+
+`CitasRepository` agregó (`packages/domain-citas/src/repository.ts`,
+implementadas en los 2 adaptadores reales):
+
+- `createAvailabilityRule`/`updateAvailabilityRule`/`deleteAvailabilityRule` —
+  mismo criterio que `setProviderServiceOffering`: reciben `providerId` (nunca
+  `organizationId`), porque el caller (`admin.ts`) ya validó la pertenencia vía
+  `findProvider` antes de llamar aquí.
+- `listAvailabilityOverrides` — a diferencia de `loadAvailabilityOverride` (una
+  fecha puntual, el que usa el motor de disponibilidad en cada cálculo de slots),
+  lista TODAS las excepciones de un proveedor para la vista del panel.
+- `upsertAvailabilityOverride`/`deleteAvailabilityOverride` — upsert/borrado real
+  sobre la unique `(provider_id, override_date)`.
+- `AvailabilityOverride` (el tipo) ganó el campo `reason` — columna real de
+  `citas.availability_overrides.reason` (001_citas_schema.sql) que ninguna capa
+  exponía todavía (el motor de disponibilidad nunca la necesitó).
+
+`admin.ts` agregó, con el mismo guard `requirePropertyMembership` que el resto del
+panel:
+
+- `POST/PATCH/DELETE /v1/citas/properties/:propertyId/providers/:providerId/availability-rules(/:ruleId)`
+- `GET /v1/citas/properties/:propertyId/providers/:providerId/availability-overrides`
+  (solo hoy en adelante — el panel edita el futuro, nunca reescribe un cierre ya
+  pasado) y `PUT/DELETE .../availability-overrides/:overrideDate` (upsert real por
+  fecha).
+
+Validación de "HH:MM"/"HH:MM:SS" y `end_time > start_time` ANTES de Postgres
+(mismo criterio que `optionalTimeZone`/`optionalNullablePhone` de este archivo)
+para un 400 claro en vez del 500 genérico de un `check` constraint — el `check`
+real de `001_citas_schema.sql` sigue como última línea de defensa.
+
+`Disponibilidad.tsx` (`apps/web`) dejó de ser de solo lectura: horario semanal
+editable inline (agregar/editar/quitar por día) + sección de excepciones
+(agregar/editar/quitar un cierre u horario especial por fecha, con motivo
+opcional) — ver `apps/web/src/verticals/citas/lib/providers-client.ts`.
+
 ## Fase 9 — agente "Lista de espera (simple)": broadcast manual disparado por el staff
 
 Gap real de paridad cerrado: `citas.appointment_waitlist` (migración

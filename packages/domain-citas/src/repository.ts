@@ -15,10 +15,13 @@ import type {
   AppointmentRecord,
   AppointmentSource,
   AvailabilityOverride,
+  AvailabilityOverrideInput,
   AvailabilityRule,
+  AvailabilityRulePatch,
   BusyInterval,
   CustomerRecord,
   GoogleSyncStatus,
+  NewAvailabilityRuleInput,
   NewProviderInput,
   NewServiceInput,
   ProviderCalendarAccountRecord,
@@ -325,7 +328,36 @@ export interface CitasRepository {
   updateService(organizationId: string, serviceId: string, patch: ServicePatch): Promise<ServiceRecord | null>;
   loadAvailabilityRules(providerId: string): Promise<readonly AvailabilityRule[]>;
   loadAvailabilityOverride(providerId: string, dateStr: string): Promise<AvailabilityOverride | null>;
+  /** Fase 10 — panel admin: lista TODAS las excepciones de un proveedor (vista de
+   * calendario del panel), a diferencia de `loadAvailabilityOverride` (una fecha
+   * puntual, el que usa el motor de disponibilidad en cada cálculo de slots).
+   * `fromDateInclusive`, si viene, acota a excepciones cuyo `overrideDate >=` esa
+   * fecha (el caller pasa "hoy" para no mostrar cierres ya pasados) — sin él,
+   * devuelve todas. Orden ascendente por fecha. */
+  listAvailabilityOverrides(providerId: string, fromDateInclusive?: string): Promise<readonly AvailabilityOverride[]>;
   loadBusyIntervals(providerId: string, dayStartUtc: string, dayEndUtc: string, excludeAppointmentId?: string): Promise<readonly BusyInterval[]>;
+  /** Fase 10 — panel admin: alta real de una regla de disponibilidad recurrente
+   * (ver diseño Fase 10 §1, port de la sección de horarios que Disponibilidad.tsx
+   * no exponía — ver README). El caller (admin.ts) ya validó que
+   * `input.providerId` pertenece a la organización vía `findProvider` antes de
+   * llamar aquí, mismo criterio que `setProviderServiceOffering`. */
+  createAvailabilityRule(input: NewAvailabilityRuleInput): Promise<AvailabilityRule>;
+  /** `ruleId` debe pertenecer a `providerId` — devuelve `null` si no (mismo
+   * criterio que `updateProvider`: nunca edita a ciegas la fila de otro
+   * proveedor). */
+  updateAvailabilityRule(providerId: string, ruleId: string, patch: AvailabilityRulePatch): Promise<AvailabilityRule | null>;
+  /** `true` si `ruleId` existía y pertenecía a `providerId` (y se borró), `false`
+   * si no existía o era de otro proveedor. */
+  deleteAvailabilityRule(providerId: string, ruleId: string): Promise<boolean>;
+  /** Fase 10 — alta/edición real de una excepción puntual (cierre o horario
+   * especial de un día concreto). Upsert real sobre la unique
+   * (provider_id, override_date) de 001_citas_schema.sql — una segunda llamada
+   * para la misma fecha reemplaza la fila existente, mismo criterio que
+   * `upsertTenantConfig`. */
+  upsertAvailabilityOverride(input: AvailabilityOverrideInput): Promise<AvailabilityOverride>;
+  /** `true` si existía una excepción para `overrideDate` (y se borró), `false` si
+   * no había ninguna. */
+  deleteAvailabilityOverride(providerId: string, overrideDate: string): Promise<boolean>;
 
   // ---- Clientes (Flujo 1) ----
   upsertCustomer(organizationId: string, phone: string, name: string, email?: string | null): Promise<CustomerRecord>;

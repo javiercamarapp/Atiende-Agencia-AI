@@ -129,3 +129,102 @@ describe("citas.tenant_config — edición real (Fase 8)", () => {
     expect((await repo.findTenantConfig(organizationId))?.rubro).toBe("psicologo");
   });
 });
+
+describe("citas.availability_rules — CRUD real (Fase 10)", () => {
+  it("crea una regla nueva con los defaults reales", async () => {
+    const { repo, providerId } = buildCitasFixture();
+    const created = await repo.createAvailabilityRule({ providerId, dayOfWeek: 6, startTime: "10:00", endTime: "14:00" });
+    expect(created.dayOfWeek).toBe(6);
+    expect(created.startTime).toBe("10:00");
+    expect(created.endTime).toBe("14:00");
+    expect(created.isActive).toBe(true);
+
+    const rules = await repo.loadAvailabilityRules(providerId);
+    expect(rules.some((r) => r.id === created.id)).toBe(true);
+  });
+
+  it("edita una regla existente — un campo ausente del patch no toca la columna", async () => {
+    const { repo, providerId } = buildCitasFixture();
+    const [rule] = await repo.loadAvailabilityRules(providerId);
+    const updated = await repo.updateAvailabilityRule(providerId, rule!.id, { endTime: "18:00" });
+    expect(updated?.endTime).toBe("18:00");
+    expect(updated?.startTime).toBe(rule!.startTime); // no tocado por el patch
+    expect(updated?.dayOfWeek).toBe(rule!.dayOfWeek); // no tocado por el patch
+  });
+
+  it("editar una regla que no pertenece a ese proveedor devuelve null (nunca a ciegas)", async () => {
+    const { repo, providerId, organizationId } = buildCitasFixture();
+    const created = await repo.createProvider({ organizationId, displayName: "Otro proveedor" });
+    const foreignRule = await repo.createAvailabilityRule({ providerId: created.id, dayOfWeek: 2, startTime: "08:00", endTime: "12:00" });
+
+    const result = await repo.updateAvailabilityRule(providerId, foreignRule.id, { startTime: "00:00" });
+    expect(result).toBeNull();
+    expect((await repo.loadAvailabilityRules(created.id))[0]?.startTime).toBe("08:00");
+  });
+
+  it("borra una regla real — true si existía, false si ya no", async () => {
+    const { repo, providerId } = buildCitasFixture();
+    const created = await repo.createAvailabilityRule({ providerId, dayOfWeek: 0, startTime: "10:00", endTime: "12:00" });
+    expect(await repo.deleteAvailabilityRule(providerId, created.id)).toBe(true);
+    expect(await repo.deleteAvailabilityRule(providerId, created.id)).toBe(false);
+    expect((await repo.loadAvailabilityRules(providerId)).some((r) => r.id === created.id)).toBe(false);
+  });
+
+  it("borrar la regla de OTRO proveedor devuelve false, sin tocarla", async () => {
+    const { repo, providerId, organizationId } = buildCitasFixture();
+    const other = await repo.createProvider({ organizationId, displayName: "Otro proveedor" });
+    const foreignRule = await repo.createAvailabilityRule({ providerId: other.id, dayOfWeek: 3, startTime: "08:00", endTime: "12:00" });
+
+    expect(await repo.deleteAvailabilityRule(providerId, foreignRule.id)).toBe(false);
+    expect((await repo.loadAvailabilityRules(other.id)).some((r) => r.id === foreignRule.id)).toBe(true);
+  });
+});
+
+describe("citas.availability_overrides — CRUD real (Fase 10)", () => {
+  it("upsert crea una excepción de cierre nueva (startTime/endTime se ignoran cuando isClosed:true)", async () => {
+    const { repo, providerId } = buildCitasFixture();
+    const created = await repo.upsertAvailabilityOverride({ providerId, overrideDate: "2027-01-01", isClosed: true, startTime: "09:00", endTime: "10:00", reason: "Año nuevo" });
+    expect(created).toEqual({ providerId, overrideDate: "2027-01-01", isClosed: true, startTime: null, endTime: null, reason: "Año nuevo" });
+  });
+
+  it("upsert de horario especial (no cerrado) conserva start/end", async () => {
+    const { repo, providerId } = buildCitasFixture();
+    const created = await repo.upsertAvailabilityOverride({ providerId, overrideDate: "2027-02-14", isClosed: false, startTime: "10:00", endTime: "13:00" });
+    expect(created.isClosed).toBe(false);
+    expect(created.startTime).toBe("10:00");
+    expect(created.endTime).toBe("13:00");
+    expect(created.reason).toBeNull();
+  });
+
+  it("una segunda llamada a la MISMA fecha reemplaza la fila existente (upsert real)", async () => {
+    const { repo, providerId } = buildCitasFixture();
+    await repo.upsertAvailabilityOverride({ providerId, overrideDate: "2027-03-10", isClosed: true, reason: "Capacitación" });
+    const replaced = await repo.upsertAvailabilityOverride({ providerId, overrideDate: "2027-03-10", isClosed: false, startTime: "09:00", endTime: "12:00", reason: "Horario reducido" });
+
+    expect(replaced.isClosed).toBe(false);
+    expect(replaced.reason).toBe("Horario reducido");
+    const all = await repo.listAvailabilityOverrides(providerId);
+    expect(all.filter((o) => o.overrideDate === "2027-03-10")).toHaveLength(1);
+  });
+
+  it("listAvailabilityOverrides ordena por fecha y respeta fromDateInclusive", async () => {
+    const { repo, providerId } = buildCitasFixture();
+    await repo.upsertAvailabilityOverride({ providerId, overrideDate: "2027-05-05", isClosed: true });
+    await repo.upsertAvailabilityOverride({ providerId, overrideDate: "2027-01-01", isClosed: true });
+    await repo.upsertAvailabilityOverride({ providerId, overrideDate: "2027-03-03", isClosed: true });
+
+    const all = await repo.listAvailabilityOverrides(providerId);
+    expect(all.map((o) => o.overrideDate)).toEqual(["2027-01-01", "2027-03-03", "2027-05-05"]);
+
+    const fromMarch = await repo.listAvailabilityOverrides(providerId, "2027-03-03");
+    expect(fromMarch.map((o) => o.overrideDate)).toEqual(["2027-03-03", "2027-05-05"]);
+  });
+
+  it("borra una excepción real — true si existía, false si ya no", async () => {
+    const { repo, providerId } = buildCitasFixture();
+    await repo.upsertAvailabilityOverride({ providerId, overrideDate: "2027-07-04", isClosed: true });
+    expect(await repo.deleteAvailabilityOverride(providerId, "2027-07-04")).toBe(true);
+    expect(await repo.deleteAvailabilityOverride(providerId, "2027-07-04")).toBe(false);
+    expect(await repo.loadAvailabilityOverride(providerId, "2027-07-04")).toBeNull();
+  });
+});

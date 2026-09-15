@@ -11,12 +11,14 @@ import {
   cancelReservation,
   createReservation,
   fetchReservations,
+  fetchRoomTypes,
   isCancellable,
   NEXT_GENERIC_STATUS,
   RESERVATION_STATUS_LABELS,
+  searchGuests,
   transitionReservation,
 } from "../lib/reservas-client.ts";
-import type { ReservationStatus, ReservationSummary } from "../lib/reservas-client.ts";
+import type { GuestOption, ReservationStatus, ReservationSummary, RoomTypeOption } from "../lib/reservas-client.ts";
 import { fetchFoliosByReservation } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
@@ -35,9 +37,18 @@ export function ReservasPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
+  // Fix hallazgo ALTA — catálogos reales en vez de UUIDs a mano (ver reservas-client.ts
+  // fetchRoomTypes/searchGuests). `roomTypes` se carga completo una vez (catálogo
+  // acotado a la property, ver GET /tipos-habitacion); `guestOptions` es un
+  // autocomplete real contra el servidor: se re-busca en cada tecleo de `guestQuery`
+  // (con debounce), nunca una lista fija cargada una sola vez, porque el catálogo de
+  // huéspedes puede crecer sin límite (a diferencia de tipos de habitación).
+  const [roomTypes, setRoomTypes] = useState<readonly RoomTypeOption[] | null>(null);
   const [roomTypeId, setRoomTypeId] = useState("");
   const [checkInDate, setCheckInDate] = useState("");
   const [checkOutDate, setCheckOutDate] = useState("");
+  const [guestQuery, setGuestQuery] = useState("");
+  const [guestOptions, setGuestOptions] = useState<readonly GuestOption[]>([]);
   const [guestId, setGuestId] = useState("");
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -56,24 +67,60 @@ export function ReservasPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
     void load();
   }, [apiBaseUrl, token, propertyId]);
 
+  // El catálogo de tipos de habitación solo se necesita mientras el formulario está
+  // abierto -- se carga la primera vez que se abre, no en cada render del panel.
+  useEffect(() => {
+    if (!showForm || roomTypes !== null) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const tipos = await fetchRoomTypes(fetch, apiBaseUrl, token, propertyId);
+        if (!cancelled) setRoomTypes(tipos);
+      } catch (err) {
+        if (!cancelled) setFormError(err instanceof Error ? err.message : "No se pudo cargar el catálogo de tipos de habitación.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showForm, roomTypes, apiBaseUrl, token, propertyId]);
+
+  // Autocomplete real de huéspedes -- vuelve a preguntarle al servidor en cada
+  // cambio de `guestQuery` (con debounce de 300ms), incluyendo query vacía (trae el
+  // catálogo completo en orden alfabético, insumo del autocomplete recién abierto
+  // antes de que el staff escriba nada). Solo corre mientras el formulario está
+  // visible -- no dispara peticiones de fondo con el formulario cerrado.
+  useEffect(() => {
+    if (!showForm) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const results = await searchGuests(fetch, apiBaseUrl, token, propertyId, guestQuery);
+          if (!cancelled) setGuestOptions(results);
+        } catch {
+          if (!cancelled) setGuestOptions([]);
+        }
+      })();
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showForm, guestQuery, apiBaseUrl, token, propertyId]);
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
-    if (!roomTypeId.trim()) return setFormError("roomTypeId es requerido.");
+    if (!roomTypeId) return setFormError("Selecciona un tipo de habitación.");
     if (!checkInDate || !checkOutDate) return setFormError("Check-in y check-out son requeridos.");
     setCreating(true);
     try {
-      await createReservation(
-        fetch,
-        apiBaseUrl,
-        token,
-        propertyId,
-        { roomTypeId: roomTypeId.trim(), checkInDate, checkOutDate, guestId: guestId.trim() || undefined },
-        newIdempotencyKey(),
-      );
+      await createReservation(fetch, apiBaseUrl, token, propertyId, { roomTypeId, checkInDate, checkOutDate, guestId: guestId || undefined }, newIdempotencyKey());
       setRoomTypeId("");
       setCheckInDate("");
       setCheckOutDate("");
+      setGuestQuery("");
       setGuestId("");
       setShowForm(false);
       await load();
@@ -142,8 +189,22 @@ export function ReservasPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
       {showForm && (
         <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 420 }}>
           <label style={{ fontSize: 13 }}>
-            Tipo de habitación (roomTypeId)
-            <input value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
+            Tipo de habitación
+            <select value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}>
+              <option value="" disabled>
+                {roomTypes === null ? "Cargando…" : "Selecciona un tipo de habitación"}
+              </option>
+              {roomTypes?.map((rt) => (
+                <option key={rt.id} value={rt.id}>
+                  {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
+                </option>
+              ))}
+            </select>
+            {roomTypes !== null && roomTypes.length === 0 && (
+              <span style={{ display: "block", marginTop: 4, fontSize: 12, color: "#b91c1c" }}>
+                Esta property todavía no tiene tipos de habitación configurados.
+              </span>
+            )}
           </label>
           <div style={{ display: "flex", gap: 10 }}>
             <label style={{ fontSize: 13, flex: 1 }}>
@@ -156,8 +217,32 @@ export function ReservasPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
             </label>
           </div>
           <label style={{ fontSize: 13 }}>
-            Huésped (guestId, opcional)
-            <input value={guestId} onChange={(e) => setGuestId(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
+            Huésped (opcional — busca por nombre, correo o teléfono)
+            <input
+              type="text"
+              value={guestQuery}
+              onChange={(e) => {
+                setGuestQuery(e.target.value);
+                setGuestId("");
+              }}
+              placeholder="Buscar huésped…"
+              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+            />
+            <select
+              value={guestId}
+              onChange={(e) => setGuestId(e.target.value)}
+              size={Math.min(5, guestOptions.length + 1)}
+              style={{ display: "block", width: "100%", marginTop: 6 }}
+            >
+              <option value="">Sin huésped asignado</option>
+              {guestOptions.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nombreCompleto}
+                  {g.telefono ? ` · ${g.telefono}` : ""}
+                  {g.email ? ` · ${g.email}` : ""}
+                </option>
+              ))}
+            </select>
           </label>
           {formError && (
             <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>

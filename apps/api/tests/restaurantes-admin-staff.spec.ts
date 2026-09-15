@@ -246,6 +246,67 @@ describe("DELETE /v1/restaurantes/:propertyId/admin/staff/invitaciones/:inviteId
   });
 });
 
+// Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido no
+// tiene UI: el panel de repartidor siempre estará vacío"): a diferencia del describe de
+// arriba (invitaciones PENDIENTES), este endpoint lista miembros YA ACEPTADOS -- el
+// selector real que necesita `PATCH .../admin/orders/:orderId/assign-repartidor`
+// (ver restaurantes-repartidor-orders.spec.ts para el HTTP end-to-end de ese PATCH,
+// que ahora usa el MISMO mecanismo -- `coreStaffRepo.listMembersByVerticalRole` --
+// para su propia validación).
+describe("GET /v1/restaurantes/:propertyId/admin/staff/repartidores", () => {
+  it("owner ve al repartidor ya sembrado por el fixture, nunca al staff de gestión", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/repartidores`, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { repartidores: Array<{ id: string; email: string; fullName: string }> };
+    expect(body.repartidores).toHaveLength(1);
+    expect(body.repartidores[0]?.id).toBe(ctx.staff.repartidor.id);
+    expect(body.repartidores.map((r) => r.id)).not.toContain(ctx.staff.staffSucursalA.id);
+  });
+
+  it("staff (verticalRole 'staff', SÍ pasa MANAGER_ROLES) también puede listar -- es quien despacha día a día", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/repartidores`, authedGet(ctx.staff.staffSucursalA.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { repartidores: Array<{ id: string }> };
+    expect(body.repartidores.map((r) => r.id)).toContain(ctx.staff.repartidor.id);
+  });
+
+  it("repartidor -- 403, esta es una ruta de gestión (MANAGER_ROLES)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/repartidores`, authedGet(ctx.staff.repartidor.token));
+    expect(res.status).toBe(403);
+  });
+
+  it("owner de OTRA organización nunca ve al repartidor de esta -- 403 (requirePropertyMembership)", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/repartidores`, authedGet(ctx.staff.otroOrgOwner.token));
+    expect(res.status).toBe(403);
+  });
+
+  it("una invitación de repartidor todavía PENDIENTE (nunca aceptada) no aparece en este listado", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "repartidor-pendiente@lostaquitos.mx", verticalRole: "repartidor" }, "POST"),
+    );
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/repartidores`, authedGet(ctx.staff.owner.token));
+    const body = (await res.json()) as { repartidores: Array<{ email: string }> };
+    expect(body.repartidores.map((r) => r.email)).not.toContain("repartidor-pendiente@lostaquitos.mx");
+  });
+});
+
 describe("Jerarquía real (canInviteStaff, @atiende/core-authz) -- un admin nunca da de alta a otro owner", () => {
   it("owner invita a un 'admin'; ese admin SÍ puede invitar 'staff' pero NUNCA 'owner'", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);

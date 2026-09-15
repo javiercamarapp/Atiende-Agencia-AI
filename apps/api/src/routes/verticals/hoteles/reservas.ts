@@ -98,6 +98,15 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.use("/hoteles/:propertyId/reservas", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/hoteles/:propertyId/reservas/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  // Fix hallazgo ALTA — catálogos de solo lectura que le faltaban al formulario de
+  // "crear reserva" (ver HotelesRepository.listRoomTypes/searchGuests): antes de
+  // esto no existía NINGÚN GET de tipos de habitación ni de huéspedes, así que el
+  // panel de recepción exigía pegar un UUID a mano. Mismo montaje que las rutas de
+  // arriba y mismo criterio de acceso que GET /reservas (cualquier staff de la
+  // property puede leer) — la restricción fina de quién puede CREAR la reserva ya la
+  // aplica `MANAGE_RESERVATIONS_ROLES` en el POST de abajo.
+  app.use("/hoteles/:propertyId/tipos-habitacion", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use("/hoteles/:propertyId/huespedes", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   // Superficie mínima consultable (diseño §5) — sin roles finos, cualquier staff de la
   // property puede leer, mismo criterio que GET /pedidos-fnb.
@@ -105,6 +114,28 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const repo = deps.hotelesRepo(c.get("db"));
     const reservas = await repo.listReservations(c.req.param("propertyId"));
     return c.json(reservas.map(serializeReservation));
+  });
+
+  // Fix hallazgo ALTA — catálogo de tipos de habitación de la property (ver
+  // HotelesRepository.listRoomTypes). Insumo directo del <select> de "tipo de
+  // habitación" en el formulario de crear reserva del panel web.
+  app.get("/hoteles/:propertyId/tipos-habitacion", async (c) => {
+    const repo = deps.hotelesRepo(c.get("db"));
+    const tipos = await repo.listRoomTypes(c.req.param("propertyId"));
+    return c.json(tipos.map((t) => ({ id: t.id, nombre: t.name, capacidadMaxima: t.maxOccupancy })));
+  });
+
+  // Fix hallazgo ALTA — búsqueda de huéspedes YA registrados de la property (ver
+  // HotelesRepository.searchGuests). `?q=` es opcional: sin query devuelve las
+  // primeras filas en orden alfabético (insumo de un autocomplete recién abierto).
+  // NO crea huéspedes nuevos (fuera del hallazgo asignado) -- `guestId` sigue siendo
+  // opcional en `POST .../reservas`, mismo criterio de walk-in sin huésped capturado
+  // que ya tenía esta ruta antes de este fix.
+  app.get("/hoteles/:propertyId/huespedes", async (c) => {
+    const repo = deps.hotelesRepo(c.get("db"));
+    const q = c.req.query("q")?.trim() || null;
+    const huespedes = await repo.searchGuests(c.req.param("propertyId"), q);
+    return c.json(huespedes.map((g) => ({ id: g.id, nombreCompleto: g.fullName, email: g.email, telefono: g.phone })));
   });
 
   app.get("/hoteles/:propertyId/reservas/:id", async (c) => {

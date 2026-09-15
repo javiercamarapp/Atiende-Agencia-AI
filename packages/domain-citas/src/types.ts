@@ -13,12 +13,55 @@ export interface AvailabilityRule {
   readonly isActive: boolean;
 }
 
+/** Fase 10 — panel admin: alta real de una regla de disponibilidad recurrente (ver
+ * diseño Fase 10 §1, port de la sección de horarios que Disponibilidad.tsx no
+ * exponía todavía — ver README de la fase). El caller (admin.ts) ya validó que
+ * `providerId` pertenece a la organización vía `findProvider` antes de llamar
+ * aquí, mismo criterio que `setProviderServiceOffering`: el repositorio no vuelve
+ * a pedir `organizationId`. */
+export interface NewAvailabilityRuleInput {
+  readonly providerId: string;
+  readonly dayOfWeek: number; // 0 = domingo .. 6 = sábado
+  readonly startTime: string; // "HH:MM" o "HH:MM:SS"
+  readonly endTime: string;
+  readonly isActive?: boolean;
+}
+
+/** Patch parcial — un campo ausente (`undefined`) deja la columna intacta, mismo
+ * criterio que `ProviderPatch`/`ServicePatch`. */
+export interface AvailabilityRulePatch {
+  readonly dayOfWeek?: number;
+  readonly startTime?: string;
+  readonly endTime?: string;
+  readonly isActive?: boolean;
+}
+
 export interface AvailabilityOverride {
   readonly providerId: string;
   readonly overrideDate: string; // "YYYY-MM-DD"
   readonly isClosed: boolean;
   readonly startTime: string | null;
   readonly endTime: string | null;
+  /** Motivo libre (ej. "Vacaciones", "Capacitación") — columna real de
+   * `citas.availability_overrides.reason` (001_citas_schema.sql), sin exponer
+   * hasta Fase 10: el motor de disponibilidad (availability.ts) nunca la
+   * necesitó, solo el panel al mostrar/editar la excepción. */
+  readonly reason: string | null;
+}
+
+/** Fase 10 — alta/edición real de una excepción puntual (cierre o horario especial
+ * de un día concreto). Upsert real sobre la unique (provider_id, override_date) de
+ * 001_citas_schema.sql: una segunda llamada para la misma fecha reemplaza la fila
+ * existente en vez de violar la unique constraint — mismo criterio que
+ * `upsertTenantConfig`. `startTime`/`endTime` se ignoran (se guardan `null`)
+ * cuando `isClosed` es `true`, igual que el check constraint real de la tabla. */
+export interface AvailabilityOverrideInput {
+  readonly providerId: string;
+  readonly overrideDate: string; // "YYYY-MM-DD"
+  readonly isClosed: boolean;
+  readonly startTime?: string | null;
+  readonly endTime?: string | null;
+  readonly reason?: string | null;
 }
 
 export interface BusyInterval {

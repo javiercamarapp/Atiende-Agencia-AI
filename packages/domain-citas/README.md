@@ -215,3 +215,54 @@ reagendar-cita, y por lo tanto sin disparar nunca al Optimizador.
   broadcast con un botón — hoy solo existe el mecanismo real (dominio + endpoint
   HTTP), sin superficie visual todavía; ninguna página de `apps/web/.../citas`
   mencionaba "lista de espera" antes de esta fase.
+
+## Fase 10 — panel admin: horarios/excepciones reales (cierra el gap MÁS grave de la vertical)
+
+Hallazgo de auditoría (severidad ALTA, el más grave de citas): hasta esta fase,
+`citas.availability_rules` no se podía crear ni editar desde NINGUNA capa —
+`CitasRepository` solo exponía `loadAvailabilityRules` (lectura, Fase 1); no había
+create/update en dominio, ninguna ruta en `admin.ts`, y
+`apps/web/.../Disponibilidad.tsx` era explícitamente de solo lectura ("configurar
+horarios/excepciones todavía no está disponible desde el panel"). Sin una fila de
+`availability_rules`, `availability.ts::computeAvailableSlots` nunca ofrece un
+solo slot — un negocio nuevo dado de alta desde el panel no podía recibir ni una
+cita hasta que alguien insertara reglas por SQL directo.
+
+- `createAvailabilityRule`/`updateAvailabilityRule`/`deleteAvailabilityRule`
+  (`repository.ts::NewAvailabilityRuleInput`/`AvailabilityRulePatch`) — mismo
+  criterio que `setProviderServiceOffering`: reciben `providerId`, nunca
+  `organizationId` — el caller (`admin.ts`) ya validó la pertenencia vía
+  `findProvider` antes de llamar aquí.
+- `listAvailabilityOverrides` (lista TODAS las excepciones de un proveedor, para
+  la vista del panel) + `upsertAvailabilityOverride`/`deleteAvailabilityOverride`
+  (`AvailabilityOverrideInput`) — upsert/borrado real sobre la unique
+  `(provider_id, override_date)` de `001_citas_schema.sql`. A diferencia de
+  `loadAvailabilityOverride` (una fecha puntual, el que usa el motor de
+  disponibilidad en cada cálculo de slots), `listAvailabilityOverrides` es "listar
+  lo que ya existe" para el panel.
+- `AvailabilityOverride` (el tipo) ganó el campo `reason` — columna real de
+  `citas.availability_overrides.reason` que ninguna capa exponía todavía (el
+  motor de disponibilidad nunca la necesitó, solo el panel al editar la
+  excepción).
+- Rutas nuevas (`apps/api/src/routes/verticals/citas/admin.ts`, mismo guard JWT +
+  `requirePropertyMembership` sin `allowedRoles` que el resto del panel):
+  `POST`/`PATCH`/`DELETE properties/:propertyId/providers/:providerId/availability-rules(/:ruleId)`
+  y `GET properties/:propertyId/providers/:providerId/availability-overrides` +
+  `PUT`/`DELETE .../availability-overrides/:overrideDate` (upsert real por fecha,
+  el GET solo lista de hoy en adelante). Valida `"HH:MM"`/`"HH:MM:SS"` y
+  `end_time > start_time` ANTES de Postgres (mismo criterio que
+  `optionalTimeZone`/`optionalNullablePhone` de este archivo) para un 400 claro en
+  vez del 500 genérico de un `check` constraint.
+- `migrations/013_availability_rules_admin_grants_and_policies.sql`: mismo gap y
+  arreglo que `011_citas_admin_backoffice_grants_and_policies.sql` (Fase 8) —
+  `citas.availability_rules`/`citas.availability_overrides` solo traían, desde
+  `migrations/001`, una policy pública de SELECT; nunca una policy `for all` de
+  staff ni un GRANT de escritura al rol `authenticated`. Ninguna de las 2 tablas
+  tiene `organization_id` propio (son hijas de `citas.providers` vía
+  `provider_id`) — la policy nueva resuelve la organización dueña vía join a
+  `citas.providers`, mismo criterio exacto que la policy de `provider_services`
+  de la migración 011.
+- `apps/web/.../Disponibilidad.tsx` dejó de ser de solo lectura: horario semanal
+  editable inline (agregar/editar/quitar regla por día) + sección de excepciones
+  (agregar/editar/quitar un cierre u horario especial por fecha, con motivo
+  opcional) — ver `apps/web/src/verticals/citas/lib/providers-client.ts`.

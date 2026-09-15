@@ -68,3 +68,29 @@ repartidor, centro de ayuda, nav móvil) — `apps/web` sí agrega una página
 mínima y real (`RepartidorPedidosPage`, ver `apps/web/src/verticals/
 restaurantes/README.md` si existe o `pages/Repartidor.tsx`) para no dejar el
 endpoint sin ningún consumidor de UI, pero no reconstruye esa riqueza visual.
+
+Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
+no tiene UI: el panel de repartidor siempre estará vacío"): `assign-repartidor`
+(Fase 8) era el ÚNICO lugar que despacha un pedido, pero no existía ni un
+endpoint para listar QUÉ staff tiene `verticalRole === "repartidor"` ni un
+selector real en `Pedidos.tsx` que lo consumiera. Se agrega:
+
+- `admin-staff.ts` — `GET .../admin/staff/repartidores` (`MANAGER_ROLES`, no
+  `STAFF_INVITE_ROLES`: un manager "staff" despacha pedidos día a día y
+  necesita este selector aunque no pueda invitar). Lista miembros YA
+  ACEPTADOS (`core.membership`) con `verticalRole === "repartidor"` — nunca
+  invitaciones pendientes, que `GET .../admin/staff/invitaciones` ya cubre.
+- Gap real de RLS descubierto y corregido de paso (verificado contra Postgres,
+  nunca contra los tests que usan el repo en memoria sin RLS): la validación
+  de `assign-repartidor` corría en la sesión de SISTEMA de `coreRepo`
+  (`auth.uid()` siempre null), contra una tabla cuya policy de SELECT exige
+  `user_id = auth.uid()` — esa validación era SIEMPRE falsa en producción
+  real, así que el dispatch nunca lograba completarse. Ambos endpoints ahora
+  comparten `deps.coreStaffRepo(c.get("db")).listMembersByVerticalRole(...)`
+  (sesión REAL por-request) sobre la función `security definer`
+  `core.list_org_members_by_vertical_role` (ver
+  `packages/db/migrations/0004_list_org_members_by_vertical_role.sql`).
+- `apps/web` — `Pedidos.tsx` agrega un `<select>` real por pedido (dispara el
+  PATCH en cuanto se elige un repartidor) alimentado por
+  `lib/staff-client.ts::fetchRepartidores` — sin endpoint de "desasignar" en
+  el backend, elegir "Sin asignar" es deliberadamente un no-op.

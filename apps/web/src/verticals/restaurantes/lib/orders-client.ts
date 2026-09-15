@@ -55,6 +55,13 @@ export interface OrderSummary {
   readonly notes: string | null;
   readonly paymentMethod: "efectivo" | "tarjeta" | null;
   readonly createdAt: string;
+  /** Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
+   * no tiene UI"): estos 3 campos ya los devolvía `serializeOrder` de admin-orders.ts
+   * desde la Fase 8 (`assign-repartidor`), pero este tipo nunca los declaraba —
+   * Pedidos.tsx no podía mostrar ni actuar sobre el dispatch de un repartidor. */
+  readonly assignedRepartidorId: string | null;
+  readonly estimatedDeliveryAt: string | null;
+  readonly incidentNote: string | null;
 }
 
 export interface OrderListFilter {
@@ -85,5 +92,24 @@ export async function fetchOrders(fetchImpl: typeof fetch, apiBaseUrl: string, t
 
 export async function updateOrderStatus(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, orderId: string, status: OrderStatus): Promise<OrderSummary> {
   const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/status`, token, "PATCH", { status });
+  return body.order;
+}
+
+// Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido no
+// tiene UI"): cliente real de `PATCH .../admin/orders/:orderId/assign-repartidor`
+// (Fase 8, admin-orders.ts) — el ÚNICO endpoint que despacha un pedido. Sin esta
+// función, ninguna página de apps/web podía siquiera llamarlo.
+export async function assignRepartidor(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  orderId: string,
+  repartidorId: string,
+  estimatedDeliveryAt?: string | null,
+): Promise<OrderSummary> {
+  const payload: { repartidorId: string; estimatedDeliveryAt?: string | null } = { repartidorId };
+  if (estimatedDeliveryAt !== undefined) payload.estimatedDeliveryAt = estimatedDeliveryAt;
+  const body = await sendJson<{ order: OrderSummary }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/orders/${orderId}/assign-repartidor`, token, "PATCH", payload);
   return body.order;
 }

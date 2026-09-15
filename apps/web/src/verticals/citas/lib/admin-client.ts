@@ -11,11 +11,41 @@
 // necesitan, ver `requirePropertyMembership` en apps/api). Llama a
 // GET /v1/citas/:orgSlug/admin/branches (Fase 5 — apps/api/src/routes/verticals/citas/admin.ts),
 // mismo rol que `fetchBranches` de restaurantes/dashboard-client.ts.
+//
+// Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
+// "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
+// redirección"): `fetchJson`/`sendJson` envuelven cada llamada con
+// `withAuthRefresh` (../../../lib/authed-fetch.ts) — un 401 dispara UN intento de
+// POST /auth/refresh con el refreshToken persistido bajo "atiende.citas.session" y
+// reintenta la request original una sola vez con el token nuevo. Firma SIN
+// CAMBIOS: cada caller de este vertical sigue llamándolos exactamente igual.
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
+import { clearCitasSession, persistCitasSession, readPersistedCitasSession } from "./auth-client.ts";
+import type { LoginSession } from "./auth-client.ts";
+
+export { SessionExpiredError };
 
 export class CitasAdminError extends Error {}
 
-export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
-  const res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` } });
+function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
+  const storage = defaultBrowserStorage();
+  return {
+    vertical: "citas",
+    store: {
+      read: () => (storage ? readPersistedCitasSession(storage) : null),
+      persist: (session) => {
+        if (storage) persistCitasSession(storage, session);
+      },
+      clear: () => {
+        if (storage) clearCitasSession(storage);
+      },
+    },
+  };
+}
+
+export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new CitasAdminError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
@@ -32,12 +62,33 @@ export async function postJson<T>(fetchImpl: typeof fetch, url: string, token: s
  * catalog-client.ts de esa vertical): el panel de citas ahora también hace
  * PATCH (editar proveedor/servicio/tenant-config) y PUT (checkbox de
  * provider_services), no solo POST. */
-export async function sendJson<T>(fetchImpl: typeof fetch, url: string, token: string, method: "POST" | "PATCH" | "PUT", payload: unknown = {}): Promise<T> {
-  const res = await fetchImpl(url, {
-    method,
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+export async function sendJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  method: "POST" | "PATCH" | "PUT",
+  payload: unknown = {},
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method,
+      headers: { authorization: `Bearer ${t}`, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new CitasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
+/** Fase 10 — borrar una regla/excepción de disponibilidad (ver
+ * providers-client.ts::deleteAvailabilityRule/deleteAvailabilityOverride). Sin
+ * cuerpo — ninguna ruta DELETE de este panel lo lee. */
+export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
+  const res = await fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
     throw new CitasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);

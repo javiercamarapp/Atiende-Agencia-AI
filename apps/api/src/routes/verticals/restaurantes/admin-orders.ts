@@ -158,6 +158,21 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
   // para `branchId`): debe ser staff REAL de ESTA organización con
   // `verticalRole === "repartidor"`, nunca cualquier uuid (evita asignar un pedido a
   // un owner/admin/staff por error, o a un usuario de otra organización).
+  //
+  // Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
+  // no tiene UI"): la validación de abajo usaba `deps.coreRepo.findMembershipsByUserId`
+  // (sesión de SISTEMA, `auth.uid()` siempre null en `ProductionCoreRepository`) contra
+  // `core.membership`, cuya policy restringe SELECT a `user_id = auth.uid()` -- contra
+  // Postgres real esa consulta SIEMPRE devolvía cero filas, así que
+  // `esRepartidorDeEstaOrg` era SIEMPRE `false` y este PATCH nunca lograba despachar un
+  // pedido en producción (solo "funcionaba" en los tests, que corren contra el repo en
+  // memoria sin RLS). Se corrige usando `deps.coreStaffRepo(c.get("db"))` -- FÁBRICA
+  // por-request con la sesión REAL ya abierta por `dbSession(engine)` (`auth.uid()` =
+  // este mismo staff autenticado que está despachando) -- y la función `security
+  // definer` `core.list_org_members_by_vertical_role` (ver
+  // `packages/db/migrations/0004_list_org_members_by_vertical_role.sql`), MISMO
+  // mecanismo que ahora también sirve el selector real de `GET .../admin/staff/
+  // repartidores` (`admin-staff.ts`).
   app.patch("/v1/restaurantes/:propertyId/admin/orders/:orderId/assign-repartidor", async (c) => {
     assertVerticalRole(c, MANAGER_ROLES);
     const repo = deps.restaurantesRepo(c.get("db"));
@@ -181,8 +196,8 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       estimatedDeliveryAt = new Date(raw.estimatedDeliveryAt).toISOString();
     }
 
-    const memberships = await deps.coreRepo.findMembershipsByUserId(raw.repartidorId);
-    const esRepartidorDeEstaOrg = memberships.some((m) => m.organizationId === organizationId && m.verticalRole === "repartidor");
+    const repartidores = await deps.coreStaffRepo(c.get("db")).listMembersByVerticalRole(organizationId, "repartidor");
+    const esRepartidorDeEstaOrg = repartidores.some((m) => m.userId === raw.repartidorId);
     if (!esRepartidorDeEstaOrg) {
       throw Errors.validation("repartidorId no corresponde a un repartidor de esta organización.");
     }

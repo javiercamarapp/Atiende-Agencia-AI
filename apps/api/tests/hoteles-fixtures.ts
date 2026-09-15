@@ -33,6 +33,9 @@ export interface HotelesTestContext {
   readonly reservationId: string;
   readonly folioId: string;
   readonly roomTypeId: string;
+  /** Fix hallazgo ALTA — huésped YA registrado en el catálogo (hoteles.guest),
+   *  insumo de los tests de `GET /hoteles/:propertyId/huespedes`. */
+  readonly guestId: string;
   readonly staff: {
     readonly owner: { id: string; email: string; password: string; token: string };
     readonly gm: { id: string; email: string; password: string; token: string };
@@ -120,7 +123,11 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
   hotelesRepo.seedStaff({ propertyId, userId: ownerSeed.id, isAdmin: true });
 
   const roomTypeId = randomUUID();
-  hotelesRepo.seedRoomType(propertyId, roomTypeId);
+  hotelesRepo.seedRoomType(propertyId, roomTypeId, { name: "Habitación Doble Vista al Mar", maxOccupancy: 2 });
+  // Fix hallazgo ALTA — huésped real del catálogo (hoteles.guest), insumo de
+  // GET /hoteles/:propertyId/huespedes.
+  const guestId = randomUUID();
+  hotelesRepo.seedGuest({ id: guestId, propertyId, fullName: "Ana Torres", email: "ana.torres@example.com", phone: "5511112222" });
   hotelesRepo.seedNightlyRates(propertyId, roomTypeId, [
     { date: "2026-12-01", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
     { date: "2026-12-02", price: 1500, minStay: 1, closedToArrival: false, closedToDeparture: false },
@@ -200,6 +207,7 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     reservationId,
     folioId: folio!.id,
     roomTypeId,
+    guestId,
     staff: {
       owner: { ...ownerSeed, token: ownerToken },
       gm: { ...gmSeed, token: gmToken },

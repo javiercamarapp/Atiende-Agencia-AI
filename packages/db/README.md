@@ -14,6 +14,15 @@ migración y de `src/core-repository.ts` para el detalle completo). Solo restaur
 expone la ruta HTTP por ahora (`apps/api/src/routes/verticals/restaurantes/
 admin-staff.ts`), el esquema ya queda listo para el resto.
 
+`migrations/0004_list_org_members_by_vertical_role.sql` — hallazgo de auditoría
+(severidad ALTA, "asignar repartidor a un pedido no tiene UI"): `core.list_org_
+members_by_vertical_role()` (función `security definer`, mismo patrón que
+`core.has_property_access`/`core.accept_staff_invite`) lista los miembros YA
+aceptados de una organización con un `vertical_role` exacto — usada por
+`GET .../admin/staff/repartidores` (selector real de repartidores) y corrige de
+paso un gap real de RLS en la validación de `PATCH .../assign-repartidor` (ver
+el comentario de cabecera de la propia migración para el detalle completo).
+
 `src/` — `hashPassword`/`verifyPassword` (scrypt, port literal de
 `hoteles/packages/db/src/password.ts`) y los puertos `CoreRepository`/
 `CoreStaffRepository` (`InMemoryCoreRepository` para tests, `PostgresCoreRepository`
