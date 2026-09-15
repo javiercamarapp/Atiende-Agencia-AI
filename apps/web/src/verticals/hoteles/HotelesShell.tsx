@@ -27,10 +27,12 @@
 // Hallazgo de auditoría (severidad MEDIA/BRANDING): agrega el logo real de la
 // marca (ver lib/atiende-logo.ts) al header del panel — hasta este cambio el único
 // lugar donde un usuario real veía la marca era el correo transaccional. También
-// fija `document.title` real ("Atiende — Hoteles", ver
-// ../../lib/use-document-title.ts) en vez de dejar el título estático de
-// index.html ("Atiende — Restaurantes") sin importar qué vertical estuviera
-// abierta.
+// fija `document.title` real ("Atiende — Hoteles") vía el hook genérico
+// compartido de ../../shell/use-document-title.ts (construido en esta misma
+// ronda de integración por la rama de restaurantes; consolidado aquí al integrar
+// para no duplicar el mismo mecanismo dos veces en la misma SPA) en vez de dejar
+// el título estático de index.html ("Atiende — Restaurantes") sin importar qué
+// vertical estuviera abierta.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -41,7 +43,7 @@ import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
-import { useDocumentTitle } from "../../lib/use-document-title.tsx";
+import { useDocumentTitle } from "../../shell/use-document-title.ts";
 import { ATIENDE_LOGO_DATA_URI } from "../../lib/atiende-logo.ts";
 
 export interface HotelesShellContext {
@@ -141,7 +143,7 @@ const logoutButtonStyle: CSSProperties = {
 };
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
-  useDocumentTitle("Atiende — Hoteles");
+  useDocumentTitle("Hoteles");
 
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
   const [properties, setProperties] = useState<readonly PropertyOption[] | null>(null);
