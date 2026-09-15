@@ -14,8 +14,11 @@
 //
 // Deliberadamente FUERA de esta pieza (alcance de rondas futuras, ver README
 // de este vertical): `GET`/`POST .../submission[/declare]` (declarar que YA
-// se presentó ante el portal), contratos, cobranza e inconformidades -- todo
-// post-adjudicación.
+// se presentó ante el portal), y el alta del contrato mismo con sus
+// documentos/autopsia del fallo/radar de renovaciones -- todo
+// post-adjudicación. Cobranza del contrato e inconformidades ya tienen
+// cliente propio (Fase 15, `lib/contract-billing-client.ts` y
+// `lib/inconformidad-client.ts`).
 import { postJson, defaultAuthCtx, LicitacionesAdminError } from "./admin-client.ts";
 import { withAuthRefresh, apiBaseUrlFromRequestUrl } from "../../../lib/authed-fetch.ts";
 

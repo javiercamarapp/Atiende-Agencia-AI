@@ -123,6 +123,10 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
             <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/contrato`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
               Ver/registrar el contrato post-adjudicación →
             </Link>
+            <br />
+            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/post-adjudicacion`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+              Cobranza del contrato e inconformidades (post-adjudicación) →
+            </Link>
           </>
         )}
       </div>

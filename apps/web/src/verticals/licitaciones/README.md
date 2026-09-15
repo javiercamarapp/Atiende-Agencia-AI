@@ -232,8 +232,58 @@ futuras, ver el punto siguiente.
 
 **Fuera de esta pieza, a propósito** (post-adjudicación, alcance de rondas
 futuras): declarar que el expediente YA se presentó ante el portal
-(`GET`/`POST .../submission[/declare]`), contratos, cobranza e
-inconformidades.
+(`GET`/`POST .../submission[/declare]`), y el alta del contrato mismo
+(documentos, autopsia del fallo, radar de renovaciones) — ver Fase 15 abajo
+para cobranza e inconformidades.
+
+## Fase 15 — post-adjudicación: cobranza del contrato + inconformidades (gap ALTA: "Post-adjudicación completa... = 22 rutas sin UI")
+
+- `pages/PostAdjudicacion.tsx` (ruta
+  `/licitaciones/:orgSlug/convocatorias/:tenderId/post-adjudicacion`,
+  enlazada desde `ConvocatoriaDetalle.tsx` y `Cierre.tsx`) — dos secciones
+  independientes:
+  - **Facturación y cuentas por cobrar** (`contractBilling.ts`): registra una
+    factura contra el contrato ya adjudicado (`POST .../contract/invoices`,
+    WRITE_ROLES), la marca pagada (`POST
+    .../contract/invoices/:invoiceId/mark-paid`) y muestra el resumen de
+    pendiente/vencido (`GET .../contract/receivables`). El vencimiento (17
+    días hábiles desde la verificación de la factura, Art. 73 LAASSP) y la
+    clasificación pendiente/vencida SIEMPRE los recalcula el servidor contra
+    la fecha de hoy — esta pantalla nunca los deriva ni los asume. Exige un
+    contrato ya registrado para la convocatoria (`POST .../contract`,
+    `contracts.ts`, fuera de esta pieza): sin contrato, el 404 real del
+    servidor se muestra explícito en vez de ofrecer un formulario roto.
+  - **Inconformidades contra el fallo** (`inconformidad.ts`): genera un
+    BORRADOR estructurado (hechos/agravios/pruebas capturados a mano,
+    fundamentos legales y plazo — 6 o 10 días hábiles según trate de un
+    tratado, Art. 95 LAASSP — SIEMPRE calculados server-side) con
+    `POST .../inconformidad` (WRITE_ROLES; cada envío crea una VERSIÓN
+    nueva, nunca edita una existente) y lo marca "revisado por abogado" con
+    `POST .../inconformidad/:id/mark-reviewed`
+    (`INCONFORMIDAD_REVIEW_ROLES` — owner/admin/reviewer, deliberadamente
+    SIN analyst/writer: certificar la revisión legal es un rol distinto de
+    redactar o de decidir ir/no ir). El disclaimer del servidor ("BORRADOR —
+    requiere revisión de abogado... NO se presenta ante ninguna autoridad por
+    este sistema, NO constituye asesoría legal") se muestra tal cual, nunca
+    se resume ni se omite.
+  - Gating cosmético por rol en ambas secciones (`WRITE_ROLES`/
+    `INCONFORMIDAD_REVIEW_ROLES` según la acción, mismo criterio que el resto
+    del panel); el servidor (`assertVerticalRole` en `contractBilling.ts`/
+    `inconformidad.ts`) es siempre la barrera real.
+- `lib/contract-billing-client.ts` (nuevo) — `fetchContractInvoices`,
+  `createContractInvoice`, `markContractInvoicePaid`,
+  `fetchReceivablesSummary`, y `ContractNotFoundError` (mapea el 404 explícito
+  de `requireContract` en `contractBilling.ts` a un tipo distinguible, para
+  que la pantalla muestre la explicación correcta en vez de un error
+  genérico).
+- `lib/inconformidad-client.ts` (nuevo) — `fetchInconformidadDrafts`,
+  `createInconformidadDraft`, `markInconformidadReviewed`.
+
+**Fuera de esta pieza, a propósito:** declarar que el expediente YA se
+presentó ante el portal, y todo lo relativo al contrato mismo — su alta
+(`POST .../contract`, `contracts.ts`), documentos/campos extraídos
+(`contractDocuments.ts`), la autopsia del fallo (`falloAutopsy.ts`) y el
+radar de renovaciones (`renewalRadar.ts`) — alcance de otra pieza/ronda.
 
 ## Fase 15 — post-adjudicación, primera porción: contratos + documentos del contrato (gap ALTA: "Post-adjudicación completa (contratos, documentos, cobranza, inconformidades, autopsia, renovaciones) = 22 rutas sin UI")
 
