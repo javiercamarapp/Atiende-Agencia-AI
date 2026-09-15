@@ -37,11 +37,13 @@ import type {
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
+  CreateFromPanelResult,
   CustomerPage,
   EmailOutboxJobRow,
   EmergencyEscalationInput,
   EmergencyEscalationRecord,
   MessagingOutboxRow,
+  NewAppointmentFromPanelInput,
   NewAppointmentInput,
   NoShowResult,
   ProviderCalComAccountRecord,
@@ -606,6 +608,52 @@ export class InMemoryCitasRepository implements CitasRepository {
       };
       this.appointments.set(created.id, created);
       if (idempotencyKey) this.appointmentIdByIdempotencyKey.set(`${input.organizationId}:${idempotencyKey}`, created.id);
+      return { outcome: "created", appointment: created };
+    });
+  }
+
+  // ---- Fase 12 -- alta real de una cita desde el panel de staff (ver
+  // CreateFromPanelResult/postgres-repository.ts para el detalle completo). El
+  // fake NUNCA simula membership/property scoping (el resto de este archivo
+  // tampoco lo hace para cancel/confirm/complete/no-show -- ver esos métodos más
+  // abajo: `_actorUserId` sin usar) -- esa autorización es responsabilidad
+  // EXCLUSIVA de la RLS/RPC de Postgres real (migrations/015), nunca del fake de
+  // pruebas de negocio. Mismo candado + mismo EXCLUDE-equivalente que
+  // createAppointmentIdempotent de arriba.
+  async createAppointmentFromPanel(input: NewAppointmentFromPanelInput): Promise<CreateFromPanelResult> {
+    return this.appointmentLock.run(`create-panel:${input.organizationId}:${input.providerId}`, async () => {
+      const newStart = Date.parse(input.startsAt);
+      const newEnd = Date.parse(input.endsAt);
+      const conflict = [...this.appointments.values()].some(
+        (a) => a.providerId === input.providerId && (["pending", "confirmed", "completed"] as const).includes(a.status as "pending" | "confirmed" | "completed") && overlapsRange(Date.parse(a.startsAt), Date.parse(a.endsAt), newStart, newEnd),
+      );
+      if (conflict) return { outcome: "conflict_slot_taken" };
+
+      const customer = await this.upsertCustomer(input.organizationId, input.customerPhone, input.customerName, input.customerEmail);
+
+      const created: AppointmentRecord = {
+        id: randomUUID(),
+        organizationId: input.organizationId,
+        propertyId: input.propertyId,
+        providerId: input.providerId,
+        serviceId: input.serviceId,
+        customerId: customer.id,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        status: "pending",
+        source: "manual",
+        notes: input.notes,
+        dedupeFingerprint: null,
+        idempotencyKey: null,
+        reminder24hSentAt: null,
+        createdAt: new Date().toISOString(),
+        googleEventId: null,
+        googleSyncStatus: "pending",
+        googleSyncAttempts: 0,
+        googleSyncNextRetryAt: null,
+        googleSyncError: null,
+      };
+      this.appointments.set(created.id, created);
       return { outcome: "created", appointment: created };
     });
   }

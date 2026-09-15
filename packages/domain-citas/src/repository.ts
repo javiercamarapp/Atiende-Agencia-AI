@@ -49,10 +49,18 @@ export type CreateAppointmentResult =
   | { readonly outcome: "conflict_slot_taken" }
   | { readonly outcome: "conflict_idempotency_reused" };
 
+/** `forbidden_out_of_scope` — Fase 12 (hallazgo de auditoría ALTO, ver
+ * errors.ts::AppointmentForbiddenError): el staff SÍ pertenece a la organización
+ * pero su membership no cubre la sucursal de ESTA cita en particular. Presente en
+ * los 4 resultados `*FromPanel` de abajo (cancel/confirm/complete/no-show) —
+ * nunca en los del agente (cancelAppointmentIdempotent/rescheduleAppointmentIdempotent),
+ * que corren con `userId: null` (sesión de sistema, sin `auth.uid()` de staff que
+ * escopar). */
 export type CancelResult =
   | { readonly outcome: "cancelled" | "already_cancelled"; readonly appointment: AppointmentRecord }
   | { readonly outcome: "not_found" }
-  | { readonly outcome: "conflict_invalid_status"; readonly status: string };
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string }
+  | { readonly outcome: "forbidden_out_of_scope"; readonly message?: string };
 
 export type RescheduleResult =
   | { readonly outcome: "rescheduled" | "noop_same_slot"; readonly appointment: AppointmentRecord }
@@ -67,17 +75,49 @@ export type RescheduleResult =
 export type ConfirmResult =
   | { readonly outcome: "confirmed" | "already_confirmed"; readonly appointment: AppointmentRecord }
   | { readonly outcome: "not_found" }
-  | { readonly outcome: "conflict_invalid_status"; readonly status: string };
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string }
+  | { readonly outcome: "forbidden_out_of_scope"; readonly message?: string };
 
 export type CompleteResult =
   | { readonly outcome: "completed" | "already_completed"; readonly appointment: AppointmentRecord }
   | { readonly outcome: "not_found" }
-  | { readonly outcome: "conflict_invalid_status"; readonly status: string };
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string }
+  | { readonly outcome: "forbidden_out_of_scope"; readonly message?: string };
 
 export type NoShowResult =
   | { readonly outcome: "marked_no_show" | "already_no_show"; readonly appointment: AppointmentRecord }
   | { readonly outcome: "not_found" }
-  | { readonly outcome: "conflict_invalid_status"; readonly status: string };
+  | { readonly outcome: "conflict_invalid_status"; readonly status: string }
+  | { readonly outcome: "forbidden_out_of_scope"; readonly message?: string };
+
+/** Fase 12 (hallazgo de auditoría ALTO, "Staff no puede crear citas manualmente
+ * desde la Agenda"): alta real de una cita desde el panel — `citas.
+ * create_appointment_from_panel` (migrations/015). A diferencia de
+ * `createAppointmentIdempotent` (agente, dedupe/idempotency-key de dos niveles),
+ * esta es una acción DELIBERADA de un humano con un solo clic — sin dedupe, mismo
+ * criterio que "confirmar"/"completar" del panel (también sin dedupe). El único
+ * invariante real que nunca se salta es el EXCLUDE using gist (dos citas del mismo
+ * proveedor no pueden traslaparse) -- `conflict_slot_taken` lo reporta. */
+export type CreateFromPanelResult =
+  | { readonly outcome: "created"; readonly appointment: AppointmentRecord }
+  | { readonly outcome: "conflict_slot_taken" }
+  | { readonly outcome: "forbidden_out_of_scope"; readonly message?: string };
+
+export interface NewAppointmentFromPanelInput {
+  readonly organizationId: string;
+  /** Ya resuelto por el caller desde `provider.propertyId` (puede ser `null` — un
+   * proveedor sin sucursal asignada, caso común de negocio de una sola ubicación,
+   * ver diseño Fase 1 §1). */
+  readonly propertyId: string | null;
+  readonly providerId: string;
+  readonly serviceId: string;
+  readonly customerName: string;
+  readonly customerPhone: string;
+  readonly customerEmail: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly notes: string | null;
+}
 
 /** Fase 4 -- "modificar-cita" (cambio de proveedor/servicio sin tocar el horario
  * de inicio). Mismo shape discriminado que RescheduleResult -- misma nota de
@@ -378,6 +418,9 @@ export interface CitasRepository {
 
   // ---- Flujo 1: crear cita ----
   createAppointmentIdempotent(input: NewAppointmentInput, dedupeFingerprint: string, idempotencyKey: string | null): Promise<CreateAppointmentResult>;
+  /** Fase 12 -- alta real de una cita desde el panel de staff (ver
+   * CreateFromPanelResult para el detalle completo del gap que cierra). */
+  createAppointmentFromPanel(input: NewAppointmentFromPanelInput): Promise<CreateFromPanelResult>;
 
   // ---- Fase 2 §1.2/§1.3 — catálogo real para los Server Tools de voz/WhatsApp
   // (listar_servicios/listar_proveedores) — nunca inventado por el LLM. ----

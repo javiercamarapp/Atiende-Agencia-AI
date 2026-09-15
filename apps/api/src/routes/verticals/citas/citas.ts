@@ -11,6 +11,7 @@ import { citasWhatsAppRoutes } from "./whatsapp.ts";
 import { citasGoogleCalendarOAuthRoutes } from "./google-calendar-oauth.ts";
 import { citasGoogleCalendarSyncRoutes } from "./google-calendar-sync.ts";
 import { citasAdminRoutes } from "./admin.ts";
+import { citasAdminStaffRoutes } from "./admin-staff.ts";
 import { citasCalendarProvidersRoutes } from "./calendar-providers.ts";
 import { citasEmailDispatchRoutes } from "./email-dispatch.ts";
 
@@ -27,6 +28,10 @@ export function citasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", citasGoogleCalendarSyncRoutes(deps));
   // Fase 5 — lecturas paginadas para el panel de administración visual.
   app.route("/", citasAdminRoutes(deps));
+  // Fase 12 — alta/gestión de cuentas de staff (invitar/listar/revocar), primer
+  // consumidor real de roles.ts::PLATFORM_ROLE_BY_VERTICAL_ROLE/STAFF_INVITE_ROLES
+  // (ver el comentario de cabecera de admin-staff.ts para el hallazgo completo).
+  app.route("/", citasAdminStaffRoutes(deps));
   // Fase 6 §2 — conectar/desconectar Cal.com/CalDAV por proveedor.
   app.route("/", citasCalendarProvidersRoutes(deps));
   // Fase 6 §3 — dispatcher real del canal de correo (channel='email' del outbox).
