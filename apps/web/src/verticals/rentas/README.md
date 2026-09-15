@@ -70,14 +70,19 @@ nada desde el producto.
   de datos y en este panel, pero el huésped real no recibe ningún mensaje. Conectar un
   canal real es un hallazgo aparte, fuera de alcance de este hallazgo (que era,
   específicamente, la ausencia de UI para la cola de aprobación humana).
-- **Generar un borrador nuevo** (`POST .../conversaciones/:id/borradores`) y crear
-  una conversación (`POST .../conversaciones`) siguen sin cliente web — el hallazgo
-  que cierra esta fase era específicamente la falta de UI para *aprobar/rechazar* lo
-  ya generado, no el flujo de creación (que hoy solo se ejercita desde
-  `apps/api/tests/rentas-mensajeria.spec.ts`). Documentado aquí para que no se lea
-  como un olvido: sin esa UI, la bandeja de esta fase solo mostrará borradores que se
-  hayan generado por API directa (tests, script, o un futuro adaptador de canal real
-  que registre el mensaje entrante y dispare la generación).
+- **Fase 15.1 (cierra el hallazgo anterior)**: `lib/mensajeria-conversaciones-client.ts`
+  agrega el cliente que faltaba para crear una conversación (`POST .../conversaciones`),
+  registrar un mensaje ENTRANTE del huésped (`POST .../conversaciones/:id/mensajes`) y
+  pedirle al agente que redacte un borrador (`POST .../conversaciones/:id/borradores`).
+  El bloque `SimuladorMensajeEntrante` en `pages/Aprobaciones.tsx` encadena las 3
+  llamadas en una sola acción de staff (elige/crea conversación → registra el mensaje
+  → pide el borrador), gateado por el mismo `MENSAJERIA_ESCRITURA_ROLES` que ya usan
+  aprobar/rechazar. Sigue siendo, honestamente, un registro **manual**: el mensaje se
+  manda con `origen: "manual"` porque no existe ningún adaptador real de WhatsApp/
+  Airbnb/Vrbo conectado — mismo aviso, mismo criterio que ya tenía esta página para
+  `SimuladorCanalMensajeria` al aprobar (ver arriba). Antes de esta fase, la bandeja
+  de aprobación SOLO se poblaba generando borradores por API directa (tests, script);
+  ahora un operador puede sembrarla de punta a punta desde el producto.
 
 Fase 16: `pages/Finanzas.tsx` + `lib/finanzas-client.ts` — cierra el hallazgo de
 auditoría ALTA "Finanzas (movimientos, owner statements, payouts/conciliación) sin UI

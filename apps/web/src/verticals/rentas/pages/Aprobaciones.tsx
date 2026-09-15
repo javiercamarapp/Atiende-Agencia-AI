@@ -21,19 +21,33 @@
 // Nota honesta (fuera de alcance de esta fase, NO se oculta): aprobar un borrador
 // hoy dispara `SimuladorCanalMensajeria`, no un adaptador real de WhatsApp/Airbnb/
 // Vrbo -- ver el aviso fijo debajo del encabezado y README.md de este vertical.
+//
+// Fase siguiente -- "la bandeja siempre estará vacía en producción" (hallazgo de
+// auditoría: Aprobaciones.tsx solo aprobaba/rechazaba lo que YA existía, pero no
+// había forma de sembrar una conversación desde cero): agrega el bloque
+// `SimuladorMensajeEntrante`, que encadena los 3 POST que
+// mensajeria-conversaciones-client.ts expone (crear conversación si hace falta,
+// registrar el mensaje entrante, pedirle al agente un borrador) en una sola acción de
+// staff. Sigue siendo, honestamente, un registro MANUAL -- no hay adaptador real de
+// canal conectado (mismo aviso que ya tenía esta página para SimuladorCanalMensajeria,
+// ver más abajo).
 import { useCallback, useEffect, useState } from "react";
-import type { CSSProperties } from "react";
-import { aprobarBorrador, CANAL_LABELS, fetchBandejaAprobacion, rechazarBorrador } from "../lib/mensajeria-client.ts";
-import type { BorradorRecord, ItemBandeja } from "../lib/mensajeria-client.ts";
+import type { CSSProperties, FormEvent } from "react";
+import { aprobarBorrador, CANAL_LABELS, CANALES_MENSAJERIA, fetchBandejaAprobacion, fetchConversaciones, fetchUnidades, rechazarBorrador } from "../lib/mensajeria-client.ts";
+import type { BorradorRecord, CanalMensajeriaCodigo, ConversacionRecord, ItemBandeja, UnidadOption } from "../lib/mensajeria-client.ts";
+import { crearConversacion, generarBorrador, registrarMensajeEntrante } from "../lib/mensajeria-conversaciones-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 const MENSAJERIA_ESCRITURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
+
+const NUEVA_CONVERSACION = "__nueva__";
 
 const cardStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 };
 const primaryButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 600 };
 const secondaryButtonStyle: CSSProperties = { padding: "5px 12px", borderRadius: 8, border: "1px solid #6b7280", background: "#fff", color: "#374151", fontSize: 12, cursor: "pointer" };
 const dangerButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 13, cursor: "pointer", fontWeight: 600 };
 const textareaStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box", fontFamily: "inherit", fontSize: 13 };
+const inputStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
 const noticeStyle: CSSProperties = { margin: 0, fontSize: 13, color: "#065f46", background: "#d1fae5", padding: "8px 12px", borderRadius: 8 };
 const errorStyle: CSSProperties = { color: "#b91c1c", margin: 0, fontSize: 13 };
 const badgeStyle = (bg: string, fg: string): CSSProperties => ({ fontSize: 11, padding: "3px 9px", borderRadius: 999, background: bg, color: fg, whiteSpace: "nowrap" });
@@ -141,6 +155,202 @@ function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar,
   );
 }
 
+interface SimuladorMensajeEntranteProps {
+  readonly apiBaseUrl: string;
+  readonly token: string;
+  readonly propertyId: string;
+  readonly puedeEscribir: boolean;
+  /** Se llama tras registrar el mensaje Y generar el borrador con éxito -- el padre
+   * recarga la bandeja (`fetchBandejaAprobacion`) para que el borrador recién nacido
+   * en `pendiente_aprobacion` aparezca de inmediato. */
+  readonly onGenerado: () => void;
+}
+
+/** Cierra el tramo que faltaba antes de esta fase: no existía ningún cliente web para
+ * abrir una conversación (`POST .../conversaciones`), registrar el mensaje entrante de
+ * un huésped (`POST .../mensajes`) ni pedirle al agente que redacte un borrador
+ * (`POST .../borradores`) -- sin esto, la bandeja de arriba SIEMPRE estaba vacía en
+ * producción. Es, honestamente, un registro MANUAL: no hay adaptador real de
+ * WhatsApp/Airbnb/Vrbo conectado (mismo aviso que ya usa esta página para
+ * `SimuladorCanalMensajeria` al aprobar). Las 3 llamadas (crear conversación si hace
+ * falta, registrar mensaje, generar borrador) se disparan en una sola acción de staff
+ * -- un mensaje sin pedir borrador no tiene ningún efecto visible en la bandeja de
+ * aprobación, así que separarlas en dos botones no le compra nada al operador. */
+function SimuladorMensajeEntrante({ apiBaseUrl, token, propertyId, puedeEscribir, onGenerado }: SimuladorMensajeEntranteProps) {
+  const [unidades, setUnidades] = useState<readonly UnidadOption[] | null>(null);
+  const [unidadId, setUnidadId] = useState<string>("");
+  const [conversaciones, setConversaciones] = useState<readonly ConversacionRecord[] | null>(null);
+  const [conversacionId, setConversacionId] = useState<string>(NUEVA_CONVERSACION);
+  const [canal, setCanal] = useState<CanalMensajeriaCodigo>(CANALES_MENSAJERIA[0]);
+  const [propiedadNombre, setPropiedadNombre] = useState("");
+  const [texto, setTexto] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!puedeEscribir) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const list = await fetchUnidades(fetch, apiBaseUrl, token, propertyId);
+        if (cancelado) return;
+        setUnidades(list);
+        setUnidadId((current) => current || list[0]?.id || "");
+      } catch (err) {
+        if (!cancelado) setFormError(err instanceof Error ? err.message : "No se pudieron cargar las unidades de esta propiedad.");
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId, puedeEscribir]);
+
+  const cargarConversaciones = useCallback(
+    async (uid: string) => {
+      if (!uid) {
+        setConversaciones([]);
+        return;
+      }
+      try {
+        const list = await fetchConversaciones(fetch, apiBaseUrl, token, propertyId, uid);
+        setConversaciones(list);
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : "No se pudieron cargar las conversaciones de esta unidad.");
+      }
+    },
+    [apiBaseUrl, token, propertyId],
+  );
+
+  useEffect(() => {
+    setConversacionId(NUEVA_CONVERSACION);
+    const unidad = unidades?.find((u) => u.id === unidadId);
+    setPropiedadNombre(unidad?.nombre ?? "");
+    void cargarConversaciones(unidadId);
+  }, [unidadId, unidades, cargarConversaciones]);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    if (!unidadId) {
+      setFormError("Selecciona una unidad.");
+      return;
+    }
+    if (!texto.trim()) {
+      setFormError("El mensaje del huésped no puede estar vacío.");
+      return;
+    }
+    if (conversacionId === NUEVA_CONVERSACION && !propiedadNombre.trim()) {
+      setFormError("propiedadNombre es requerido para abrir una conversación nueva.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      let targetConversacionId = conversacionId;
+      if (conversacionId === NUEVA_CONVERSACION) {
+        const conversacion = await crearConversacion(fetch, apiBaseUrl, token, propertyId, unidadId, {
+          canal,
+          propiedadNombre: propiedadNombre.trim(),
+        });
+        targetConversacionId = conversacion.id;
+      }
+
+      const mensaje = await registrarMensajeEntrante(fetch, apiBaseUrl, token, propertyId, unidadId, targetConversacionId, texto.trim());
+      await generarBorrador(fetch, apiBaseUrl, token, propertyId, targetConversacionId, { mensajeEntranteId: mensaje.id });
+
+      setTexto("");
+      await cargarConversaciones(unidadId);
+      setConversacionId(targetConversacionId);
+      onGenerado();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "No se pudo registrar el mensaje y generar el borrador.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!puedeEscribir) {
+    return (
+      <div style={cardStyle}>
+        <h2 style={{ margin: 0, fontSize: 15 }}>Simular mensaje entrante de huésped</h2>
+        <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>Tu rol no puede registrar mensajes ni pedir borradores. Contacta a un admin_gestora u operador con acceso a calendario/mensajería.</p>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={cardStyle}>
+      <div>
+        <h2 style={{ margin: 0, fontSize: 15 }}>Simular mensaje entrante de huésped</h2>
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#92400e" }}>
+          Registro <strong>manual</strong>: no hay adaptador real de WhatsApp, Airbnb ni Vrbo conectado todavía. Usa esto para transcribir un mensaje que el huésped mandó por fuera de este panel y
+          pedirle al agente un borrador de respuesta.
+        </p>
+      </div>
+
+      <label style={{ fontSize: 13 }}>
+        Unidad
+        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} style={inputStyle} disabled={!unidades}>
+          {!unidades && <option value="">Cargando…</option>}
+          {unidades?.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.nombre}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label style={{ fontSize: 13 }}>
+        Conversación
+        <select value={conversacionId} onChange={(e) => setConversacionId(e.target.value)} style={inputStyle} disabled={!conversaciones}>
+          <option value={NUEVA_CONVERSACION}>+ Nueva conversación</option>
+          {conversaciones?.map((c) => (
+            <option key={c.id} value={c.id}>
+              {CANAL_LABELS[c.canal]} · {c.huespedNombre ?? "sin nombre de huésped"} ({c.id})
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {conversacionId === NUEVA_CONVERSACION && (
+        <>
+          <label style={{ fontSize: 13 }}>
+            Canal
+            <select value={canal} onChange={(e) => setCanal(e.target.value as CanalMensajeriaCodigo)} style={inputStyle}>
+              {CANALES_MENSAJERIA.map((c) => (
+                <option key={c} value={c}>
+                  {CANAL_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 13 }}>
+            Nombre de la propiedad (para las plantillas del borrador)
+            <input type="text" value={propiedadNombre} onChange={(e) => setPropiedadNombre(e.target.value)} style={inputStyle} maxLength={200} />
+          </label>
+        </>
+      )}
+
+      <label style={{ fontSize: 13 }}>
+        Mensaje del huésped
+        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} style={textareaStyle} placeholder="Ej. ¿Cuál es la clave del wifi?" />
+      </label>
+
+      {formError && (
+        <p role="alert" style={errorStyle}>
+          {formError}
+        </p>
+      )}
+
+      <div>
+        <button type="submit" disabled={busy || !unidadId} style={primaryButtonStyle}>
+          {busy ? "Registrando…" : "Registrar mensaje y generar borrador"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
   const puedeEscribir = org ? MENSAJERIA_ESCRITURA_ROLES.has(org.rol) : false;
@@ -210,6 +420,17 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
         Nota honesta: aprobar un borrador aquí lo envía a través de un <strong>simulador de canal</strong> (SimuladorCanalMensajeria) — todavía no hay un adaptador real de WhatsApp, Airbnb ni
         Vrbo conectado en este vertical. El mensaje queda registrado como enviado en este panel, pero el huésped real no lo recibe.
       </p>
+
+      <SimuladorMensajeEntrante
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+        puedeEscribir={puedeEscribir}
+        onGenerado={() => {
+          setNotice("Mensaje entrante registrado y borrador generado — revísalo abajo en la bandeja de aprobación.");
+          void cargar();
+        }}
+      />
 
       {notice && <p style={noticeStyle}>{notice}</p>}
       {error && (
