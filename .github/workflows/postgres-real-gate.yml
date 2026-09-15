@@ -1,0 +1,116 @@
+name: Postgres real (gate)
+
+# Qué es esto y por qué existe
+# ------------------------------------------------------------------------------
+# Auditoría final de 20 rubros (fable-5.1) sobre atiende-fusion, rubros 9 y 20:
+# el 0% de la suite de tests (4089+ specs) ejercita Postgres real — TODO corre
+# contra el repositorio en memoria de cada domain-<vertical>, que nunca aplica
+# RLS ni GRANT. `scripts/verify-outbox-grants/` y `scripts/verify-rentas-cron-rls/`
+# ya demostraban (a mano) que levantar un Postgres efímero real, aplicar las
+# migraciones reales de supabase/migrations/, y correr las aserciones de RLS/GRANT
+# ahí es barato y funciona — pero eran scripts que un humano/agente corría
+# puntualmente, nunca un gate de CI. Este workflow institucionaliza eso: cualquier
+# push/PR que rompa un GRANT o una policy RLS ya cubierta por un scripts/verify-*/
+# falla el build automáticamente, sin que nadie tenga que acordarse de correr el
+# script a mano ni leer su salida para juzgar si "se ve bien".
+#
+# Qué SÍ cubre
+# ------------------------------------------------------------------------------
+# - Levanta un Postgres real (servicio `postgres:16` de GitHub Actions — no se
+#   instala nada a mano, GitHub ya lo trae listo).
+# - Aplica, en orden, las migraciones REALES de supabase/migrations/ (el mismo
+#   set que se aplicaría a un proyecto Supabase real).
+# - Corre scripts/verify-real-postgres-ci/run-gate.mjs, que aplica el mock mínimo
+#   de plataforma (bootstrap.sql) + el GRANT de schema que en Supabase real pone
+#   la plataforma (post-migrations.sql), y luego ejecuta CADA escenario de CADA
+#   scripts/verify-*/assertions.sql como su propia verificación automática
+#   pass/fail (no una lectura humana de la salida de psql) — ver el comentario de
+#   cabecera de ese script para el detalle exacto de cómo deriva el resultado
+#   esperado de cada escenario a partir de las convenciones que el propio
+#   assertions.sql ya usaba.
+# - Es auto-descubrible: cualquier scripts/verify-<algo>/ nuevo que tenga
+#   bootstrap.sql + post-migrations.sql + assertions.sql queda cubierto por este
+#   mismo job sin tener que editar este archivo.
+# - Hoy cubre exactamente lo mismo que los dos scripts existentes:
+#     * scripts/verify-outbox-grants/  — GRANT EXECUTE + autorización interna de
+#       enqueue/claim/complete del email outbox (6 verticales) y
+#       organization_notification_recipients (despachos/licitaciones).
+#     * scripts/verify-rentas-cron-rls/ — el escape hatch de sesión-de-sistema en
+#       las policies RLS que tocan checkout-sweep-cron / ical-sync-cron /
+#       checkin-recordatorio / ical-feed-publico de rentas.
+#
+# Qué NO cubre (fuera de alcance de este cambio puntual — ver
+# scripts/verify-real-postgres-ci/README.md para el detalle)
+# ------------------------------------------------------------------------------
+# - NO reemplaza ni corre `npm run typecheck` / `npx vitest run` / lint — ese
+#   tier (repositorio en memoria) sigue sin ningún trigger de CI en este repo;
+#   agregarlo es una decisión de plataforma más amplia, fuera de este hallazgo.
+# - NO ejercita ninguna tabla/función/policy de las 6 verticales que no esté ya
+#   cubierta por un scripts/verify-*/assertions.sql existente — esto NO es un
+#   test de regresión general de todo el esquema, es exactamente el alcance que
+#   cada assertions.sql documenta en su propio README.
+# - NO hace build ni deploy de nada (Vercel u otro): este workflow es
+#   exclusivamente de tests, no tiene ningún paso de publicación.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  postgres-real-gate:
+    name: Migraciones reales + assertions RLS/GRANT contra Postgres real
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Confirmar cliente psql disponible
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Esperar a que el servicio Postgres acepte conexiones
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
+              echo "Postgres listo"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres nunca quedó listo" >&2
+          exit 1
+
+      - name: Migraciones reales + gate de assertions RLS/GRANT (todos los scripts/verify-*/)
+        run: node scripts/verify-real-postgres-ci/run-gate.mjs
