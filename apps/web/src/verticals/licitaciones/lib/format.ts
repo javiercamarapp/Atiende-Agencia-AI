@@ -92,3 +92,50 @@ export const REQUIREMENT_STATUS_LABELS: Record<string, string> = {
 export function formatRequirementStatus(status: string): string {
   return REQUIREMENT_STATUS_LABELS[status] ?? status;
 }
+
+// Fase 15 — post-adjudicación (contrato). Espejo de `CONTRACT_STATES`
+// (domain-licitaciones/contract-lifecycle.ts).
+export const CONTRACT_STATUS_LABELS: Record<string, string> = {
+  adjudicado: "Adjudicado",
+  contrato_firmado_declarado: "Contrato firmado (declarado)",
+  en_ejecucion: "En ejecución",
+  entregado: "Entregado",
+  facturado: "Facturado",
+  pagado: "Pagado",
+  cerrado: "Cerrado",
+  modificado: "Modificado",
+  penalizado: "Penalizado",
+  rescindido: "Rescindido",
+  en_inconformidad: "En inconformidad",
+};
+
+export function formatContractStatus(status: string): string {
+  return CONTRACT_STATUS_LABELS[status] ?? status;
+}
+
+// Espejo de `ContractFieldKey` (domain-licitaciones/contract-extraction.ts).
+export const CONTRACT_FIELD_KEY_LABELS: Record<string, string> = {
+  numero_contrato: "Número de contrato",
+  monto_total: "Monto total",
+  plazo_entrega: "Plazo de entrega",
+  garantia_cumplimiento: "Garantía de cumplimiento",
+  pena_convencional: "Pena convencional",
+  deductiva: "Deductiva",
+  forma_pago: "Forma de pago",
+  administrador_contrato: "Administrador del contrato",
+  cesion_cobro: "Cesión de derechos de cobro",
+};
+
+export function formatContractFieldKey(key: string): string {
+  return CONTRACT_FIELD_KEY_LABELS[key] ?? key;
+}
+
+export const CONTRACT_FIELD_STATUS_LABELS: Record<string, string> = {
+  sugerido: "Sugerido",
+  confirmado: "Confirmado",
+  corregido: "Corregido",
+};
+
+export function formatContractFieldStatus(status: string): string {
+  return CONTRACT_FIELD_STATUS_LABELS[status] ?? status;
+}

@@ -52,6 +52,8 @@ import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/Convocat
 import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
 import { PropuestaTecnicaPage } from "./verticals/licitaciones/pages/PropuestaTecnica.tsx";
 import { CierrePage } from "./verticals/licitaciones/pages/Cierre.tsx";
+import { ContratoPage } from "./verticals/licitaciones/pages/Contrato.tsx";
+import { PostAdjudicacionPage } from "./verticals/licitaciones/pages/PostAdjudicacion.tsx";
 import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
@@ -63,6 +65,8 @@ import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
 import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
 import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
 import { NominaPage } from "./verticals/despachos/pages/Nomina.tsx";
+import { ConciliacionPage } from "./verticals/despachos/pages/Conciliacion.tsx";
+import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCatalogo.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -639,6 +643,28 @@ function LicitacionesCierreRoute() {
   );
 }
 
+function LicitacionesContratoRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <ContratoPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
+function LicitacionesPostAdjudicacionRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <PostAdjudicacionPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 function LicitacionesPerfilMatchingRoute() {
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -759,6 +785,28 @@ function DespachosNominaRoute() {
   );
 }
 
+function DespachosConciliacionRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <ConciliacionPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
+function DespachosMigracionCatalogoRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <MigracionCatalogoPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -818,6 +866,8 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/requisitos" element={<LicitacionesRequisitosRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/propuesta-tecnica" element={<LicitacionesPropuestaTecnicaRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/cierre" element={<LicitacionesCierreRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/contrato" element={<LicitacionesContratoRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/post-adjudicacion" element={<LicitacionesPostAdjudicacionRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
@@ -829,6 +879,8 @@ export function App() {
         <Route path="/despachos/:orgSlug/vencimientos" element={<DespachosVencimientosRoute />} />
         <Route path="/despachos/:orgSlug/declaraciones" element={<DespachosDeclaracionesRoute />} />
         <Route path="/despachos/:orgSlug/nomina" element={<DespachosNominaRoute />} />
+        <Route path="/despachos/:orgSlug/conciliacion" element={<DespachosConciliacionRoute />} />
+        <Route path="/despachos/:orgSlug/migracion-catalogo" element={<DespachosMigracionCatalogoRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

@@ -21,8 +21,10 @@
 //
 // Fuera de esta pieza a propósito (post-adjudicación, alcance de rondas
 // futuras -- ver README de este vertical): declarar que el expediente YA se
-// presentó ante el portal (`GET`/`POST .../submission[/declare]`), contratos,
-// cobranza e inconformidades.
+// presentó ante el portal (`GET`/`POST .../submission[/declare]`), y el alta
+// del contrato mismo con sus documentos/autopsia del fallo/radar de
+// renovaciones. Cobranza del contrato e inconformidades ya tienen pantalla
+// propia (Fase 15, `pages/PostAdjudicacion.tsx`, enlazada arriba).
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -374,6 +376,9 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
         <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
           Corre el checklist de integridad, aprueba el expediente y ensambla/descarga el paquete final antes de presentarlo ante el portal oficial. La declaración de que YA se presentó no vive en esta pantalla todavía.
         </p>
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/post-adjudicacion`} style={{ display: "inline-block", marginTop: 8, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+          Cobranza del contrato e inconformidades (post-adjudicación) →
+        </Link>
       </div>
 
       <section style={sectionCardStyle}>

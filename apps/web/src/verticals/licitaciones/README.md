@@ -232,8 +232,101 @@ futuras, ver el punto siguiente.
 
 **Fuera de esta pieza, a propósito** (post-adjudicación, alcance de rondas
 futuras): declarar que el expediente YA se presentó ante el portal
-(`GET`/`POST .../submission[/declare]`), contratos, cobranza e
-inconformidades.
+(`GET`/`POST .../submission[/declare]`), y el alta del contrato mismo
+(documentos, autopsia del fallo, radar de renovaciones) — ver Fase 15 abajo
+para cobranza e inconformidades.
+
+## Fase 15 — post-adjudicación: cobranza del contrato + inconformidades (gap ALTA: "Post-adjudicación completa... = 22 rutas sin UI")
+
+- `pages/PostAdjudicacion.tsx` (ruta
+  `/licitaciones/:orgSlug/convocatorias/:tenderId/post-adjudicacion`,
+  enlazada desde `ConvocatoriaDetalle.tsx` y `Cierre.tsx`) — dos secciones
+  independientes:
+  - **Facturación y cuentas por cobrar** (`contractBilling.ts`): registra una
+    factura contra el contrato ya adjudicado (`POST .../contract/invoices`,
+    WRITE_ROLES), la marca pagada (`POST
+    .../contract/invoices/:invoiceId/mark-paid`) y muestra el resumen de
+    pendiente/vencido (`GET .../contract/receivables`). El vencimiento (17
+    días hábiles desde la verificación de la factura, Art. 73 LAASSP) y la
+    clasificación pendiente/vencida SIEMPRE los recalcula el servidor contra
+    la fecha de hoy — esta pantalla nunca los deriva ni los asume. Exige un
+    contrato ya registrado para la convocatoria (`POST .../contract`,
+    `contracts.ts`, fuera de esta pieza): sin contrato, el 404 real del
+    servidor se muestra explícito en vez de ofrecer un formulario roto.
+  - **Inconformidades contra el fallo** (`inconformidad.ts`): genera un
+    BORRADOR estructurado (hechos/agravios/pruebas capturados a mano,
+    fundamentos legales y plazo — 6 o 10 días hábiles según trate de un
+    tratado, Art. 95 LAASSP — SIEMPRE calculados server-side) con
+    `POST .../inconformidad` (WRITE_ROLES; cada envío crea una VERSIÓN
+    nueva, nunca edita una existente) y lo marca "revisado por abogado" con
+    `POST .../inconformidad/:id/mark-reviewed`
+    (`INCONFORMIDAD_REVIEW_ROLES` — owner/admin/reviewer, deliberadamente
+    SIN analyst/writer: certificar la revisión legal es un rol distinto de
+    redactar o de decidir ir/no ir). El disclaimer del servidor ("BORRADOR —
+    requiere revisión de abogado... NO se presenta ante ninguna autoridad por
+    este sistema, NO constituye asesoría legal") se muestra tal cual, nunca
+    se resume ni se omite.
+  - Gating cosmético por rol en ambas secciones (`WRITE_ROLES`/
+    `INCONFORMIDAD_REVIEW_ROLES` según la acción, mismo criterio que el resto
+    del panel); el servidor (`assertVerticalRole` en `contractBilling.ts`/
+    `inconformidad.ts`) es siempre la barrera real.
+- `lib/contract-billing-client.ts` (nuevo) — `fetchContractInvoices`,
+  `createContractInvoice`, `markContractInvoicePaid`,
+  `fetchReceivablesSummary`, y `ContractNotFoundError` (mapea el 404 explícito
+  de `requireContract` en `contractBilling.ts` a un tipo distinguible, para
+  que la pantalla muestre la explicación correcta en vez de un error
+  genérico).
+- `lib/inconformidad-client.ts` (nuevo) — `fetchInconformidadDrafts`,
+  `createInconformidadDraft`, `markInconformidadReviewed`.
+
+**Fuera de esta pieza, a propósito:** declarar que el expediente YA se
+presentó ante el portal, y todo lo relativo al contrato mismo — su alta
+(`POST .../contract`, `contracts.ts`), documentos/campos extraídos
+(`contractDocuments.ts`), la autopsia del fallo (`falloAutopsy.ts`) y el
+radar de renovaciones (`renewalRadar.ts`) — alcance de otra pieza/ronda.
+
+## Fase 15 — post-adjudicación, primera porción: contratos + documentos del contrato (gap ALTA: "Post-adjudicación completa (contratos, documentos, cobranza, inconformidades, autopsia, renovaciones) = 22 rutas sin UI")
+
+SOLO contratos + documentos del contrato en esta pieza — cobranza,
+inconformidades, autopsia y renovaciones quedan FUERA a propósito (alcance de
+otro agente en paralelo o de rondas futuras).
+
+- `pages/Contrato.tsx` (ruta
+  `/licitaciones/:orgSlug/convocatorias/:tenderId/contrato`, enlazada desde
+  `ConvocatoriaDetalle.tsx` solo cuando `tender.status === "won"`) —
+  - **Alta + metadatos administrativos** (`POST`/`PATCH .../contract`,
+    `contracts.ts`): registra el `ContractRecord` en estado inicial
+    `"adjudicado"` si todavía no existe uno; el PATCH edita fecha de
+    fin/número de contrato/opción de renovación SIN generar fila de
+    historial (insumo directo del radar de renovaciones, fuera de esta
+    pieza).
+  - **Máquina de estados** (`POST .../contract/transition`): ofrece solo los
+    destinos que `CONTRACT_TRANSITIONS[estado_actual]` permite (espejo local
+    del catálogo cerrado de `contract-lifecycle.ts`, nunca la única
+    barrera — el servidor responde 409 con `allowedNextStates` si algo queda
+    desincronizado). Las transiciones sensibles
+    (rescindir/penalizar/marcar en inconformidad/modificar,
+    `CONTRACT_DECISION_TRANSITIONS`) exigen motivo + rol DECISION_ROLES
+    (owner/admin/analyst); el resto solo WRITE_ROLES y motivo. Historial
+    append-only completo (`GET .../contract/history`) siempre visible debajo.
+  - **Documentos del contrato firmado** (`POST`/`GET .../contract/documents`,
+    `contractDocuments.ts`): sube bytes reales
+    (`fileToBase64`/`MAX_UPLOAD_FILE_BYTES` reexportados de
+    `requirements-client.ts`, mismo límite ~22MB real del servidor). Cada
+    campo que el extractor determinista encuentra
+    (`extractContractFields`) entra como `"sugerido"` — esta pantalla exige
+    confirmarlo o corregirlo uno por uno (`POST .../fields/:fieldId/confirm`)
+    antes de tratarlo como válido, nunca se asume automáticamente.
+- `lib/contract-client.ts` (nuevo) — cliente de las 9 rutas de
+  `contracts.ts`/`contractDocuments.ts`; `fetchContract` trata un 404 "sin
+  contrato registrado todavía" como `null` (mismo criterio que
+  `cierre-client.ts::fetchLatestPackage`), arma su propio `withAuthRefresh`
+  para eso y para el PATCH (`admin-client.ts` no tenía un `patchJson`
+  genérico, y no hacía falta uno para una sola ruta de esta pieza).
+
+**Fuera de esta pieza, a propósito** (alcance de otro agente en paralelo o de
+rondas futuras): cobranza del contrato (`ContractInvoiceRecord`,
+`contract-billing.ts`), inconformidades, autopsia y renovaciones.
 
 ## Explícitamente fuera de esta fase (huecos honestos, no fingidos)
 
