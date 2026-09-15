@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (93 migraciones, timestamps 20240101000001 .. 20240101000093)
+## Orden actual (94 migraciones, timestamps 20240101000001 .. 20240101000094)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -93,6 +93,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 
 93. `packages/domain-licitaciones/migrations/021_company_capabilities_experience_signers_grants.sql` — hallazgo de auditoría (severidad ALTA): la migración 009/15 (`company_capabilities_experience_signers.sql`) creó `licitaciones.company_capability`/`company_experience`/`company_signer` con RLS y policies completas, pero fue la ÚNICA migración de este paquete que crea tablas nuevas y NUNCA agregó el `revoke ... from public, anon; grant select/insert/update ... to authenticated;` que traen las demás (001/003/004/005/006/007/008/010/011/012/013/014/015/016/017/019) — RLS por sí sola no basta, sin el GRANT explícito Postgres responde "permission denied for table ..." antes de evaluar ninguna policy, para cualquier SELECT/INSERT/UPDATE de un usuario `authenticated` real sobre esas 3 tablas, rompiendo en silencio la propuesta técnica (`technical-proposal.ts`) para cualquier requisito mapeado a capacidad/experiencia/firmante en producción (el repositorio en memoria, sin GRANTs de Postgres, nunca lo detectaba). Mismo patrón exacto que las 3 tablas ya migradas: sin GRANT de `delete` a `authenticated` (ninguna de las tres tiene policy de delete). Renumerada de 86 a 93 y de 020 a 021 al integrar (colisión de timestamp y de número de paquete con la migración de grants de outbox de esta misma ronda, ambas ramas construidas en paralelo).
 
+94. `packages/domain-rentas/migrations/015_cron_publico_rls_escape_hatch.sql` — cierra el segundo hallazgo que la migración 90 dejó pendiente y documentado ahí mismo: las LECTURAS de `checkout-sweep-cron.ts`/`ical-sync-cron.ts`/`checkin-recordatorio.ts` (todas bajo `withAppSession({userId: null})`, sesión de sistema con `auth.uid()` NULL) y del feed público `ical-feed-publico.ts` seguían bloqueadas por RLS normal (`core.has_property_access(auth.uid(), property_id)`, siempre `false` con `auth.uid()` NULL) — a diferencia del hallazgo de la 90 (GRANT EXECUTE faltante, error explícito), esto recorría la plataforma completa y encontraba SIEMPRE 0 filas EN SILENCIO. Mismo patrón ya probado en `packages/domain-hoteles/migrations/008_night_audit.sql`: se agrega el escape hatch `auth.uid() is null or <check existente>` a las policies de `rentas.ocupacion`/`rentas.tarea_operativa`/`rentas.checklist_item_tarea` (solo insert)/`rentas.unidad`/`rentas.property_config`/`rentas.conflicto_calendario`/`rentas.canal_feed_externo` (select+update, nunca insert)/`rentas.evento_canal_importado`/`rentas.bloqueo_exportado`, auditadas una por una siguiendo la cadena de llamadas TypeScript real (`packages/domain-rentas/src/`), verificado también contra Postgres real que `INSERT ... RETURNING` exige pasar la policy de SELECT además de la de INSERT. Hallazgo adicional no anticipado por la 90: `rentas.evento_canal_importado`/`rentas.bloqueo_exportado` nunca tuvieron policy de INSERT/UPDATE ni GRANT (solo SELECT) — se agregan ambas, acotadas a `auth.uid() is null` a secas (ningún caller de staff real las escribe). Pendiente, documentado honestamente y no resuelto aquí (afecta a las 6 verticales por igual, no solo a `rentas.*`): `checkin-recordatorio.ts` también hace `JOIN core.organization` (tabla core, no de este paquete) para el nombre del tenant del correo — mismo gap ya aceptado en `008_night_audit.sql` (`citasRepo.listActiveOrganizations()`), requiere su propia decisión de plataforma.
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -100,8 +102,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000093`; usa
-   `20240101000094`, luego `...095`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000094`; usa
+   `20240101000095`, luego `...096`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
