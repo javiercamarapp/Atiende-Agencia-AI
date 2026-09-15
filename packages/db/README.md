@@ -30,11 +30,23 @@ para producción — una sola clase implementa ambas interfaces) que usan las ru
 núcleo de login (`apps/api/src/routes/auth.ts`) y de invitación de staff
 (`apps/api/src/routes/verticals/restaurantes/admin-staff.ts`).
 
-**Todavía reservado**: motor de conexión real (PGlite/embedded-postgres/Postgres
-gestionado) y corredor de migraciones (`db:migrate`/`db:seed` en el `package.json`
-raíz apuntan aquí pero no hay `src/cli.ts` todavía). Sin esa pieza, `apps/api` no
-puede levantar un servidor de producción real todavía — ver el comentario de
-`apps/api/src/index.ts`.
+**Motor de conexión real: YA NO reservado.** `src/managed-postgres-engine.ts`
+(`openManagedPostgres`, port real de `hoteles/packages/db/src/engines.ts`)
+implementa `TenancyEngine`/`TenantDbSession` de `@atiende/core-tenancy` contra
+Postgres gestionado (Supabase), y `apps/api/src/production/deps.ts` lo usa de
+punta a punta para login Y para las rutas de negocio de las 6 verticales (ver
+`docs/DEPLOY.md` §0.2 para el estado completo, actualizado). Actualizado en el
+barrido de documentación de las rondas 13/14/16 — este párrafo antes decía
+"sin esa pieza, apps/api no puede levantar un servidor de producción real
+todavía", que ya no es cierto.
+
+**Lo que SÍ sigue faltando**: un corredor de migraciones/seed PROPIO de este
+paquete — `db:migrate`/`db:seed` en el `package.json` raíz siguen apuntando a
+`packages/db/src/cli.ts`, que no existe. En la práctica esto ya no bloquea nada:
+las migraciones reales se aplican con el CLI de Supabase (`npx supabase db push`
+contra `supabase/migrations/`, ya consolidado — ver `docs/DEPLOY.md` §0.3), así
+que `db:migrate`/`db:seed` quedan como scripts muertos/de conveniencia futura, no
+como una pieza bloqueante.
 
 Numeración de migraciones por bloques (ver el propio `migrations/` de cada paquete):
 `0000–0099` núcleo (aquí), `0100–0199` restaurantes (vive en
