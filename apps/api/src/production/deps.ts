@@ -246,7 +246,7 @@ export function buildProductionDeps(): AppDeps {
     // estén configurados (ver env.ts).
     citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepoForCalendarResolver, env.googleOAuth),
     citasGoogleTokenExchange: exchangeGoogleAuthorizationCode,
-    licitacionesRepo: (db) => new PostgresLicitacionesRepository(db, env.licitacionesStorageDir),
+    licitacionesRepo: (db) => new PostgresLicitacionesRepository(db),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
     // la Ronda 12 documentada en `packages/domain-despachos/migrations/
