@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (92 migraciones, timestamps 20240101000001 .. 20240101000092)
+## Orden actual (93 migraciones, timestamps 20240101000001 .. 20240101000093)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -91,6 +91,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 
 92. `packages/domain-despachos/migrations/008_despachos_audit_log.sql` — corrige una REGRESIÓN real de la propia Ronda 12: `cierre-mensual.ts`/`migracion-catalogo.ts` ya llamaban a `deps.despachosAuditSink.record(...)`, pero en producción ese puerto seguía siendo `notProductionReady<AuditSink>` — cualquier llamada real lanzaba DESPUÉS de que la escritura de negocio (completar tarea/cerrar un período fiscal irreversible/aprobar-rechazar-editar un mapeo) ya había hecho commit dentro de la misma transacción de request, así que el cambio quedaba persistido mientras la UI mostraba un 500. Agrega `despachos.audit_log` (organization_id/actor_user_id/action/payload jsonb/created_at, adaptador MÍNIMO — se aparta a propósito del comentario de la migración 9 que preveía un `core.authz_audit_log` genérico, ver cabecera del propio archivo SQL) con RLS de solo lectura para staff con membership de la organización, y `despachos.record_audit_log()` (`security definer`, mismo patrón exacto que `core.accept_staff_invite`/`core.revoke_refresh_token` de las migraciones 73/77) para insertar desde la sesión de SISTEMA (`ManagedPostgresEngine.withAppSession({userId: null}, ...)`, donde `auth.uid()` es NULL). `apps/api/src/production/deps.ts` conecta `ProductionDespachosAuditSink` (nuevo) a este adaptador real en vez de `notProductionReady`. De paso corrige el residuo del hallazgo original en `POST .../cierre-mensual/periodos/:id/auto-check`: seguía tomando el actor de `raw.userId` (con default `"system"`) en vez de `c.get("userId")`, a diferencia de "completar"/"cerrar" (ya corregidos en la Ronda 12) — mismo hallazgo, mismo remedio, con su propio test HTTP nuevo. Renumerada de 86 a 92 y de 007 a 008 al integrar (colisión de timestamp y de número de paquete con la migración de grants de outbox de esta misma ronda, ambas ramas construidas en paralelo).
 
+93. `packages/domain-licitaciones/migrations/021_company_capabilities_experience_signers_grants.sql` — hallazgo de auditoría (severidad ALTA): la migración 009/15 (`company_capabilities_experience_signers.sql`) creó `licitaciones.company_capability`/`company_experience`/`company_signer` con RLS y policies completas, pero fue la ÚNICA migración de este paquete que crea tablas nuevas y NUNCA agregó el `revoke ... from public, anon; grant select/insert/update ... to authenticated;` que traen las demás (001/003/004/005/006/007/008/010/011/012/013/014/015/016/017/019) — RLS por sí sola no basta, sin el GRANT explícito Postgres responde "permission denied for table ..." antes de evaluar ninguna policy, para cualquier SELECT/INSERT/UPDATE de un usuario `authenticated` real sobre esas 3 tablas, rompiendo en silencio la propuesta técnica (`technical-proposal.ts`) para cualquier requisito mapeado a capacidad/experiencia/firmante en producción (el repositorio en memoria, sin GRANTs de Postgres, nunca lo detectaba). Mismo patrón exacto que las 3 tablas ya migradas: sin GRANT de `delete` a `authenticated` (ninguna de las tres tiene policy de delete). Renumerada de 86 a 93 y de 020 a 021 al integrar (colisión de timestamp y de número de paquete con la migración de grants de outbox de esta misma ronda, ambas ramas construidas en paralelo).
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -98,8 +100,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000092`; usa
-   `20240101000093`, luego `...094`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000093`; usa
+   `20240101000094`, luego `...095`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
