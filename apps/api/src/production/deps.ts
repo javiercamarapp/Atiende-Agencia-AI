@@ -1,13 +1,16 @@
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué:
-// `hotelesPaymentsPort`/`despachosAuditSink` (integraciones sin adaptador/
+// `hotelesPaymentsPort`/`hotelesFraudeAuditSink` (integraciones sin adaptador/
 // credenciales, no relacionadas con RLS). `coreRepo`/`engine` y ahora también
 // `restaurantesRepo`/`hotelesRepo`/`citasRepo`/`licitacionesRepo`/`despachosRepo`/
 // `rentasRepo`/`rentasOwnerPortalRepo` SÍ son reales de punta a punta contra
 // Supabase en cuanto `DATABASE_URL` apunte al proyecto consolidado — estos 7
 // últimos como FÁBRICAS `(db) => new PostgresXRepository(db)`, nunca un objeto ya
-// construido (ver `../deps.ts` para por qué).
+// construido (ver `../deps.ts` para por qué). `despachosAuditSink` TAMPOCO es ya
+// `notProductionReady` — corrige una regresión real de la Ronda 12, ver
+// `./despachos-audit-sink.ts` y `packages/domain-despachos/migrations/
+// 008_despachos_audit_log.sql`.
 //
 // `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler`/`llmGateway`: el
 // bloqueante que quedaba (ningún proveedor LLM real registrado, ver
@@ -68,6 +71,7 @@ import type { AppDeps } from "../deps.ts";
 import { ProductionCoreRepository } from "./core-repository.ts";
 import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-repository.ts";
 import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
+import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -212,7 +216,10 @@ export function buildProductionDeps(): AppDeps {
     // explícito en vez de dejar que `app.onError` lo aplane a un 500 genérico.
     hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()),
     // Falta un adaptador de auditoría real (tabla/servicio dedicado) -- mismo tipo
-    // de gap que `despachosAuditSink` (ver ese comentario abajo), no el de sesión.
+    // de gap que tenía `despachosAuditSink` antes de la migración 007 de
+    // domain-despachos (ver `./despachos-audit-sink.ts`); `hotelesFraudeAuditSink`
+    // queda deliberadamente FUERA de ese cambio (gap propio de hoteles, no pedido
+    // en esa fase) — sigue `notProductionReady` hasta que tenga su propia tabla.
     hotelesFraudeAuditSink: notProductionReady<AuditSink>("hotelesFraudeAuditSink"),
     citasRepo: (db) => new PostgresCitasRepository(db),
     // El turn handler real (LLM real vía @atiende/agent-core::LlmGateway con
@@ -241,7 +248,18 @@ export function buildProductionDeps(): AppDeps {
     citasGoogleTokenExchange: exchangeGoogleAuthorizationCode,
     licitacionesRepo: (db) => new PostgresLicitacionesRepository(db, env.licitacionesStorageDir),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
-    despachosAuditSink: notProductionReady<AuditSink>("despachosAuditSink"),
+    // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
+    // la Ronda 12 documentada en `packages/domain-despachos/migrations/
+    // 008_despachos_audit_log.sql`: `cierre-mensual.ts`/`migracion-catalogo.ts`
+    // llamaban a este puerto DESPUÉS de que su escritura de negocio (completar
+    // tarea/cerrar un período fiscal/decidir un mapeo) ya había hecho commit, así
+    // que el stub que SIEMPRE lanzaba tumbaba esos 5 endpoints con un 500 sobre un
+    // cambio que ya había quedado persistido. `ProductionDespachosAuditSink`
+    // (`./despachos-audit-sink.ts`) escribe a `despachos.audit_log` desde la
+    // sesión de SISTEMA (mismo patrón que `coreRepo` arriba) y nunca lanza (ver
+    // cabecera de ese archivo) -- ese 500-después-del-commit ya no puede ocurrir
+    // por este puerto.
+    despachosAuditSink: new ProductionDespachosAuditSink(engine),
     rentasRepo: (db) => new PostgresRentasRepository(db),
     // Fase 5 -- ambos son código real de producción, no un stub: un feed iCal de
     // canal es una URL pública sin credenciales, así que a diferencia de

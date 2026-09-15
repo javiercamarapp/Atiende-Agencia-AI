@@ -94,6 +94,38 @@ describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
     expect(() => deps.citasTurnHandler.handleInboundMessage({} as never)).toThrow(/sin adaptador de producción todavía/);
   });
 
+  // Corrige una regresión real de la Ronda 12 (ver packages/domain-despachos/
+  // migrations/008_despachos_audit_log.sql para el análisis completo):
+  // cierre-mensual.ts/migracion-catalogo.ts ya llamaban a
+  // `deps.despachosAuditSink.record(...)` en 5 endpoints de escritura
+  // (completar-tarea/cerrar-periodo/auto-check/aprobar/rechazar/editar) mientras el
+  // puerto seguía siendo `notProductionReady` -- SIEMPRE lanzaba, DESPUÉS de que la
+  // escritura de negocio de esos handlers ya había hecho commit en la misma
+  // transacción de request. Esta prueba confirma que ninguno de los puertos que esas
+  // rutas de escritura usan (`despachosRepo`/`despachosAuditSink`) sigue siendo el
+  // Proxy de `notProductionReady` -- mismo criterio de verificación por
+  // `constructor.name` que la prueba de restaurantesRepo/hotelesRepo de arriba,
+  // nunca invoca `.record()` de verdad (evitaría un intento de red real contra el
+  // DATABASE_URL de mentira de este archivo).
+  it("despachosRepo/despachosAuditSink -- ningún puerto usado por las rutas de escritura de cierre-mensual/migracion-catalogo sigue siendo notProductionReady", async () => {
+    const { buildProductionDeps } = await import("../src/production/deps.ts");
+    const deps = buildProductionDeps();
+    const fakeDb = {} as Parameters<typeof deps.despachosRepo>[0];
+    expect(deps.despachosRepo(fakeDb).constructor.name).toBe("PostgresDespachosRepository");
+    expect(deps.despachosAuditSink.constructor.name).toBe("ProductionDespachosAuditSink");
+  });
+
+  // `hotelesFraudeAuditSink` es un gap DISTINTO (auditoría de fraude interno de
+  // hoteles, nunca pedido en la fase que agregó `despachos.audit_log`) -- esta
+  // prueba documenta que sigue fail-closed a propósito, para que quede claro que el
+  // cambio de arriba fue deliberadamente acotado a despachos y no "arregló todo
+  // AuditSink de una pasada".
+  it("hotelesFraudeAuditSink SÍ sigue notProductionReady (gap distinto de hoteles, no tocado por el adaptador de despachosAuditSink)", async () => {
+    const { buildProductionDeps } = await import("../src/production/deps.ts");
+    const deps = buildProductionDeps();
+    expect(() => deps.hotelesFraudeAuditSink.record({ at: new Date().toISOString(), actorUserId: null, action: "test", route: "/test", method: "GET", decision: "denied" })).toThrow(/sin adaptador de producción todavía/);
+  });
+
   it("un request HTTP real que golpea restaurantesRepo con un DATABASE_URL de mentira falla 500 (intento real de conexión, ya no un error de 'no implementado')", async () => {
     const { default: handler } = await import("../src/vercel.ts");
     const body = JSON.stringify({ phone: "9991234567" });

@@ -151,3 +151,68 @@ describe("POST /despachos/:propertyId/cierre-mensual/periodos/:periodoId/cerrar"
     expect(res.status).toBe(403);
   });
 });
+
+describe("POST /despachos/:propertyId/cierre-mensual/periodos/:periodoId/auto-check", () => {
+  it("persiste completedBy = actor de la sesión autenticada (contador), no un valor del body", async () => {
+    const app = buildApp(ctx.deps);
+    const { periodo, tareas } = await abrirPeriodo();
+    const tarea = tareas.find((t) => t.title === "Verificar CFDIs del mes procesados")!;
+
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/auto-check`,
+      authedJson(ctx.staff.contador.token, { moduleState: { cfdi_pending_count: 0 } }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { tareas: Array<{ id: string; completedBy: string | null; status: string }>; completadas: Array<{ id: string }> };
+    const actualizada = body.tareas.find((t) => t.id === tarea.id)!;
+    expect(actualizada.status).toBe("done");
+    expect(actualizada.completedBy).toBe(ctx.staff.contador.id);
+    expect(body.completadas.map((t) => t.id)).toContain(tarea.id);
+  });
+
+  it("hallazgo de seguridad -- un 'userId' spoofeado en el body es IGNORADO (y ya no cae al default 'system'); completedBy sigue siendo el actor de la sesión", async () => {
+    const app = buildApp(ctx.deps);
+    const { periodo, tareas } = await abrirPeriodo();
+    const tarea = tareas.find((t) => t.title === "Verificar CFDIs del mes procesados")!;
+
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/auto-check`,
+      // El cliente autenticado como "contador" intenta atribuir el auto-check al
+      // admin -- el servidor debe ignorarlo por completo (antes de esta corrección,
+      // un `userId` ausente o no-string caía al default `"system"`, y uno presente
+      // se usaba tal cual).
+      authedJson(ctx.staff.contador.token, { moduleState: { cfdi_pending_count: 0 }, userId: ctx.staff.admin.id }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { tareas: Array<{ id: string; completedBy: string | null }> };
+    const actualizada = body.tareas.find((t) => t.id === tarea.id)!;
+    expect(actualizada.completedBy).toBe(ctx.staff.contador.id);
+    expect(actualizada.completedBy).not.toBe(ctx.staff.admin.id);
+    expect(actualizada.completedBy).not.toBe("system");
+
+    const sink = ctx.deps.despachosAuditSink as InstanceType<typeof InMemoryAuditSink>;
+    const entrada = sink.entries.find((e) => e.action === "despachos.cierre-mensual:auto-check" && (e.metadata?.tareaIds as string[] | undefined)?.includes(tarea.id));
+    expect(entrada).toBeDefined();
+    expect(entrada?.actorUserId).toBe(ctx.staff.contador.id);
+  });
+
+  it("sin ninguna tarea auto-completable (el módulo reporta trabajo pendiente) no escribe ninguna entrada de auditoría -- un poll sin efecto no es una acción atribuible", async () => {
+    const app = buildApp(ctx.deps);
+    const { periodo } = await abrirPeriodo();
+
+    // `cfdi_pending_count: 5` hace que el predicado de "cfdi_verificado" (única
+    // tarea sin dependencias, ver templates.ts) falle a propósito -- a diferencia de
+    // un body vacío, donde `Number(undefined ?? 0) === 0` SÍ pasaría (mismo
+    // predicado que arriba) y auto-completaría esa tarea igual.
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/auto-check`,
+      authedJson(ctx.staff.contador.token, { moduleState: { cfdi_pending_count: 5 } }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { completadas: unknown[] };
+    expect(body.completadas).toHaveLength(0);
+
+    const sink = ctx.deps.despachosAuditSink as InstanceType<typeof InMemoryAuditSink>;
+    expect(sink.entries.some((e) => e.action === "despachos.cierre-mensual:auto-check")).toBe(false);
+  });
+});

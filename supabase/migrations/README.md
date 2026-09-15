@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (91 migraciones, timestamps 20240101000001 .. 20240101000091)
+## Orden actual (92 migraciones, timestamps 20240101000001 .. 20240101000092)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -89,6 +89,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 90. `packages/domain-rentas/migrations/014_email_outbox_authenticated_grants.sql` — mismo hallazgo/mismo criterio que la migración 86, aplicado a `rentas.enqueue_messaging_outbox`/`claim_email_outbox_batch`/`complete_email_outbox_job` (migración 66): las 3 fallaban "permission denied" contra Postgres real, incluyendo `reservas.ts::POST .../reservas` (staff autenticado real, no solo el cron de recordatorio de check-in). `claim`/`complete` ahora exigen sesión de sistema; `enqueue_messaging_outbox` exige sesión de sistema O `core.has_property_access(auth.uid(), property_id)` (property-scoped, mismo criterio que hoteles). Esta migración resuelve solo el GRANT roto de estas 3 funciones — las LECTURAS de `checkout-sweep-cron.ts`/`ical-sync-cron.ts`/`checkin-recordatorio.ts` bloqueadas por RLS normal (`core.has_property_access(auth.uid(), property_id)` con `auth.uid()` NULL) y el feed público de `ical-feed-publico.ts` se documentan/resuelven por separado (ver hallazgo de esta misma pasada en `apps/api/src/routes/verticals/rentas/`).
 91. `packages/domain-restaurantes/migrations/012_email_outbox_authenticated_grants.sql` — mismo hallazgo/mismo criterio que la migración 86, aplicado a `restaurantes.enqueue_messaging_outbox` (migración 54) y `restaurantes.claim_email_outbox_batch`/`complete_email_outbox_job` (migración 81): fallaban "permission denied" contra Postgres real, incluyendo `admin-staff.ts::POST .../admin/staff/invitaciones` (staff autenticado real: el correo de invitación de staff quedaba encolado en silencio gracias al `try/catch` best-effort de esa ruta, sin que nadie lo notara). `claim`/`complete` ahora exigen sesión de sistema; `enqueue_messaging_outbox` exige sesión de sistema O membership real de la organización.
 
+92. `packages/domain-despachos/migrations/008_despachos_audit_log.sql` — corrige una REGRESIÓN real de la propia Ronda 12: `cierre-mensual.ts`/`migracion-catalogo.ts` ya llamaban a `deps.despachosAuditSink.record(...)`, pero en producción ese puerto seguía siendo `notProductionReady<AuditSink>` — cualquier llamada real lanzaba DESPUÉS de que la escritura de negocio (completar tarea/cerrar un período fiscal irreversible/aprobar-rechazar-editar un mapeo) ya había hecho commit dentro de la misma transacción de request, así que el cambio quedaba persistido mientras la UI mostraba un 500. Agrega `despachos.audit_log` (organization_id/actor_user_id/action/payload jsonb/created_at, adaptador MÍNIMO — se aparta a propósito del comentario de la migración 9 que preveía un `core.authz_audit_log` genérico, ver cabecera del propio archivo SQL) con RLS de solo lectura para staff con membership de la organización, y `despachos.record_audit_log()` (`security definer`, mismo patrón exacto que `core.accept_staff_invite`/`core.revoke_refresh_token` de las migraciones 73/77) para insertar desde la sesión de SISTEMA (`ManagedPostgresEngine.withAppSession({userId: null}, ...)`, donde `auth.uid()` es NULL). `apps/api/src/production/deps.ts` conecta `ProductionDespachosAuditSink` (nuevo) a este adaptador real en vez de `notProductionReady`. De paso corrige el residuo del hallazgo original en `POST .../cierre-mensual/periodos/:id/auto-check`: seguía tomando el actor de `raw.userId` (con default `"system"`) en vez de `c.get("userId")`, a diferencia de "completar"/"cerrar" (ya corregidos en la Ronda 12) — mismo hallazgo, mismo remedio, con su propio test HTTP nuevo. Renumerada de 86 a 92 y de 007 a 008 al integrar (colisión de timestamp y de número de paquete con la migración de grants de outbox de esta misma ronda, ambas ramas construidas en paralelo).
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -96,8 +98,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000091`; usa
-   `20240101000092`, luego `...093`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000092`; usa
+   `20240101000093`, luego `...094`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el

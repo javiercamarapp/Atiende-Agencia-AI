@@ -142,19 +142,45 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
   app.post("/despachos/:propertyId/cierre-mensual/periodos/:periodoId/auto-check", async (c) => {
     assertVerticalRole(c, GESTIONAR_CIERRE_MENSUAL_ROLES);
-    const raw = await readJsonCapped<{ readonly moduleState?: unknown; readonly userId?: unknown }>(c.req.raw, 32 * 1024);
+    // Residuo del mismo hallazgo de seguridad que "completar"/"cerrar" arriba
+    // (corregido para esas dos rutas en la Ronda 12, no para esta): el actor SIEMPRE
+    // viene de la sesión autenticada (`c.get("userId")`), NUNCA de un campo que el
+    // cliente pueda mandar en el body. Antes de esta corrección el body traía
+    // `userId` en texto libre, con un default silencioso a `"system"` si faltaba —
+    // permitía que cualquier cliente atribuyera las tareas auto-completadas a un
+    // actor arbitrario (o a un `"system"` que ningún staff real es).
+    const raw = await readJsonCapped<{ readonly moduleState?: unknown }>(c.req.raw, 32 * 1024);
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const periodoId = c.req.param("periodoId");
+    const organizationId = c.get("organizationId");
+    const userId = c.get("userId");
     const periodo = await repo.findPeriodoCierre(propertyId, periodoId);
     if (!periodo) throw Errors.notFound("Período de cierre no encontrado.");
     const tareas = await repo.listTareasCierre(periodoId);
     const moduleState = typeof raw.moduleState === "object" && raw.moduleState !== null ? (raw.moduleState as Record<string, unknown>) : {};
-    const userId = typeof raw.userId === "string" ? raw.userId : "system";
     const { tareas: actualizadas, completadas } = autoCheckTareas(tareas, moduleState, userId, new Date().toISOString());
     const persistidas = await repo.replaceTareasCierre(periodoId, actualizadas);
     const periodoActualizado = recomputeOverdue(periodo, persistidas, todayIso());
     if (periodoActualizado.status !== periodo.status) await repo.updatePeriodoCierre(periodoActualizado);
+    // Solo se audita cuando el auto-check de verdad completó algo -- a diferencia de
+    // "completar"/"cerrar" (siempre una decisión explícita de un humano), este
+    // endpoint puede invocarse como un poll sin efecto (`completadas` vacío) cada vez
+    // que un módulo reporta su estado; auditar cada poll sin cambios sería ruido, no
+    // una acción atribuible al actor.
+    if (completadas.length > 0) {
+      await deps.despachosAuditSink.record({
+        at: new Date().toISOString(),
+        actorUserId: userId,
+        actorEmail: c.get("userEmail") ?? null,
+        organizationId,
+        action: "despachos.cierre-mensual:auto-check",
+        route: c.req.path,
+        method: c.req.method,
+        decision: "allowed",
+        metadata: { periodoId, tareaIds: completadas.map((t) => t.id) },
+      });
+    }
     return c.json({ tareas: persistidas, completadas, periodo: periodoActualizado });
   });
 
