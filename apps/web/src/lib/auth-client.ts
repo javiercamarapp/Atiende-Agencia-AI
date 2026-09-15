@@ -119,10 +119,22 @@ export async function logout(fetchImpl: typeof fetch, apiBaseUrl: string, refres
 
 /** A dónde navegar tras un login exitoso — mismo criterio que hoteles (multi-org
  * pide elegir), generalizado: 0 organizaciones (staff invitado sin asignar todavía),
- * exactamente 1 (entra directo), o 2+ (selector, ver POST /auth/select-org). */
+ * exactamente 1 (entra directo), o 2+ (selector, ver POST /auth/select-org).
+ *
+ * Hallazgo de auditoría (severidad ALTA, "el rol repartidor aterriza en un 403
+ * tras login y no tiene forma de descubrir su panel"): con exactamente 1
+ * organización, un repartidor entraba a `/restaurantes/:slug` (el Dashboard de
+ * KPIs, protegido por MANAGER_ROLES) y recibía 403 sin ningún enlace a su panel
+ * real en `/restaurantes/:slug/repartidor` (deliberadamente fuera del nav de
+ * gestión, ver Repartidor.tsx). Se resuelve en el ÚNICO lugar que decide la
+ * landing, sin tocar el nav ni el 403 real del servidor. */
 export function decideLandingPath(session: LoginSession): string {
   if (session.organizations.length === 0) return "/sin-organizacion";
-  if (session.organizations.length === 1) return `/restaurantes/${session.organizations[0]!.slug}`;
+  if (session.organizations.length === 1) {
+    const org = session.organizations[0]!;
+    if (org.rol === "repartidor") return `/restaurantes/${org.slug}/repartidor`;
+    return `/restaurantes/${org.slug}`;
+  }
   return "/seleccionar-organizacion";
 }
 

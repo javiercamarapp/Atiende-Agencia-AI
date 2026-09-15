@@ -102,6 +102,14 @@ describe("decideLandingPath", () => {
     const org = { id: "1", slug: "a", nombre: "A", vertical: "restaurantes", rol: "owner" };
     expect(decideLandingPath({ ...base, organizations: [org, { ...org, id: "2", slug: "b" }] })).toBe("/seleccionar-organizacion");
   });
+  // Hallazgo de auditoría (severidad ALTA, "el rol repartidor aterriza en un 403
+  // tras login y no tiene forma de descubrir su panel"): con exactamente una
+  // organización, un repartidor debe ir a su panel real, no al Dashboard de KPIs
+  // (protegido por MANAGER_ROLES, donde recibiría 403).
+  it("con exactamente una organización y rol repartidor -> entra directo a su panel", () => {
+    const session = { ...base, organizations: [{ id: "1", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "repartidor" }] };
+    expect(decideLandingPath(session)).toBe("/restaurantes/los-taquitos-de-pm/repartidor");
+  });
 });
 
 // Fase 14 — hallazgo de auditoría (severidad ALTA, "Invitaciones de staff sin
