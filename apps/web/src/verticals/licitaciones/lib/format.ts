@@ -139,3 +139,16 @@ export const CONTRACT_FIELD_STATUS_LABELS: Record<string, string> = {
 export function formatContractFieldStatus(status: string): string {
   return CONTRACT_FIELD_STATUS_LABELS[status] ?? status;
 }
+
+// Fase 16 — autopsia del fallo. Espejo de `OWN_PROPOSAL_STATUSES`
+// (domain-licitaciones/fallo-autopsy.ts).
+export const OWN_PROPOSAL_STATUS_LABELS: Record<string, string> = {
+  ganadora: "Ganadora",
+  desechada: "Desechada",
+  no_presentada: "No presentada",
+  desconocido: "Desconocido",
+};
+
+export function formatOwnProposalStatus(status: string): string {
+  return OWN_PROPOSAL_STATUS_LABELS[status] ?? status;
+}

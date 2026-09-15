@@ -328,6 +328,54 @@ otro agente en paralelo o de rondas futuras).
 rondas futuras): cobranza del contrato (`ContractInvoiceRecord`,
 `contract-billing.ts`), inconformidades, autopsia y renovaciones.
 
+## Fase 15 — post-adjudicación, última porción: radar de renovaciones (gap ALTA "Post-adjudicación completa (contratos, documentos, cobranza, inconformidades, autopsia, renovaciones) = 22 rutas sin UI" — junto con la autopsia del fallo, construida en paralelo, esta pieza CIERRA el hallazgo, el último ALTA de licitaciones y, con esto, de las 6 verticales)
+
+SOLO radar de renovaciones en esta pieza — la autopsia del fallo
+(`falloAutopsy.ts`) es alcance de otro agente en paralelo, sin relación con el
+radar salvo compartir la fase.
+
+A diferencia del resto de post-adjudicación (`Contrato.tsx`,
+`PostAdjudicacion.tsx`), que cuelgan de UNA convocatoria concreta
+(`/tenders/:tenderId/...`), `renewalRadar.ts` evalúa TODOS los contratos con
+`endDate` conocida de la ORGANIZACIÓN de una sola vez
+(`/licitaciones/:propertyId/renewals/...`, sin `:tenderId`) — por eso esta
+pieza es una vista TRANSVERSAL en el nav lateral (mismo nivel que
+"Convocatorias"), no una pestaña más del detalle de una convocatoria.
+
+- `pages/RadarRenovaciones.tsx` (ruta
+  `/licitaciones/:orgSlug/radar-renovaciones`, nav lateral en
+  `LicitacionesShell.tsx`) —
+  - **Escanear** (`POST .../renewals/scan`, WRITE_ROLES): umbrales de
+    antelación en días opcionales (input de texto, "90, 60, 30" separados por
+    coma); vacío usa el default del servidor. Idempotente — reescanear
+    dentro de la misma ventana no duplica alertas ya emitidas para el mismo
+    (contrato, umbral), y esta pantalla muestra el resultado tal cual
+    (`evaluatedContracts`/`alertsCreated`) sin inventar que "se generaron N
+    alertas" cuando `alertsCreated` es 0.
+  - **Ver alertas** (`GET .../renewals/alerts`, lectura sin rol
+    restringido): tabla con filtro "solo pendientes" (default on), enriquecida
+    con el título/entidad de la convocatoria (`GET .../tenders`, ya cargado
+    por `ConvocatoriasPage`) solo para mostrarlo — la alerta persistida solo
+    guarda `tenderId`/`contractId`, nunca se inventa un título si la
+    convocatoria no aparece en la lista (se muestra el id crudo). La urgencia
+    (urgente/próxima/seguimiento) se deriva del propio conjunto de
+    `leadDays` presentes en las alertas actuales, mismo criterio que
+    `urgencyForLeadDays` (`renewal-radar.ts`) — duplicado en el cliente,
+    mismo aislamiento que el resto de `lib/*-client.ts`.
+  - **Reconocer** (`POST .../renewals/alerts/:alertId/acknowledge`,
+    WRITE_ROLES): puro registro consultable, sin envío externo real (mismo
+    criterio "honesto" que el resto del radar) — nunca se ofrece a un rol sin
+    permiso de escritura, aunque el enforcement real es siempre server-side.
+  - El límite documentado de `renewal-radar.ts` (detecta desde la fecha de
+    fin del CONTRATO PROPIO, NO cruza convocatorias históricas de la misma
+    entidad sin que exista ya un contrato con fecha de fin) se muestra tal
+    cual en el encabezado de la pantalla, nunca se oculta ni se resume como
+    si el radar predijera más de lo que predice.
+- `lib/renewal-radar-client.ts` (nuevo) — `scanRenewalAlerts`,
+  `fetchRenewalAlerts`, `acknowledgeRenewalAlert`; espejo literal de
+  `RenewalAlertRecord`/`ScanRenewalAlertsResult`
+  (`domain-licitaciones/repository.ts`).
+
 ## Explícitamente fuera de esta fase (huecos honestos, no fingidos)
 
 - **Selector de organización con 2+.** `decideLicitacionesLandingPath` ya
