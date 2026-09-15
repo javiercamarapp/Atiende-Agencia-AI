@@ -18,6 +18,8 @@ import { clearRentasSession, logout, readPersistedRentasSession } from "./lib/au
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
+import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
+import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 
 const logoutButtonStyle: CSSProperties = {
   marginTop: "auto",
@@ -59,6 +61,25 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
     const s = readPersistedRentasSession(window.localStorage);
     setSession(s);
     if (!s) onRequireLogin();
+  }, [onRequireLogin]);
+
+  // Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
+  // "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
+  // redirección"): fetchJson de lib/admin-client.ts/discovery-client.ts ya intenta
+  // un refresh automático ante un 401 (ver ../../lib/authed-fetch.ts); si ESE
+  // refresh también falla dispara SESSION_EXPIRED_EVENT en `window` — este Shell
+  // escucha y reusa el `onRequireLogin` que ya tenía. Filtra por `detail.vertical`
+  // para no reaccionar al session-expired de otra vertical abierta en otra pestaña.
+  useEffect(() => {
+    function handleSessionExpired(event: Event) {
+      const detail = (event as CustomEvent<SessionExpiredEventDetail>).detail;
+      if (detail?.vertical !== "rentas") return;
+      clearRentasSession(window.localStorage);
+      setSession(null);
+      onRequireLogin();
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, [onRequireLogin]);
 
   async function handleLogout() {

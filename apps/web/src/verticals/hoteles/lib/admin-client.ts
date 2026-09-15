@@ -4,10 +4,48 @@
 // lógica de red real con vitest en entorno "node" sin depender de jsdom) y helpers
 // genéricos que nunca inventan un mensaje de error cuando el servidor ya mandó uno
 // real.
+//
+// Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
+// "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
+// redirección"): `fetchJson`/`sendJson` ahora envuelven cada llamada con
+// `withAuthRefresh` (../../../lib/authed-fetch.ts) — un 401 (access token vencido a
+// los 900s por defecto, ver `ACCESS_TOKEN_TTL_SECONDS` en apps/api/src/env.ts)
+// dispara UN intento de POST /auth/refresh con el refreshToken persistido bajo
+// "atiende.hoteles.session" y reintenta la request original una sola vez con el
+// token nuevo. Firma de `fetchJson`/`sendJson` SIN CAMBIOS: cada caller de este
+// repo (fraude-client.ts, folios-client.ts, etc.) sigue llamándolos exactamente
+// igual, sin enterarse de que ahora pueden reintentar por dentro.
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
+import { clearHotelesSession, persistHotelesSession, readPersistedHotelesSession } from "./auth-client.ts";
+import type { LoginSession } from "./auth-client.ts";
+
+export { SessionExpiredError };
+
 export class HotelesAdminError extends Error {}
 
-export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
-  const res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` } });
+/** Construida de nuevo en cada llamada (nunca cacheada a nivel de módulo) para no
+ * tocar `localStorage` hasta que de verdad haga falta (un 401 real) — así los
+ * tests existentes de este archivo, que nunca provocan un 401, siguen corriendo en
+ * el entorno "node" de vitest (sin DOM) sin ningún cambio. */
+function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
+  const storage = defaultBrowserStorage();
+  return {
+    vertical: "hoteles",
+    store: {
+      read: () => (storage ? readPersistedHotelesSession(storage) : null),
+      persist: (session) => {
+        if (storage) persistHotelesSession(storage, session);
+      },
+      clear: () => {
+        if (storage) clearHotelesSession(storage);
+      },
+    },
+  };
+}
+
+export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new HotelesAdminError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
@@ -27,10 +65,13 @@ export async function sendJson<T>(
   method: "POST" | "PATCH",
   payload: unknown = {},
   idempotencyKey?: string,
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
 ): Promise<T> {
-  const headers: Record<string, string> = { authorization: `Bearer ${token}`, "content-type": "application/json" };
-  if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
-  const res = await fetchImpl(url, { method, headers, body: JSON.stringify(payload) });
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => {
+    const headers: Record<string, string> = { authorization: `Bearer ${t}`, "content-type": "application/json" };
+    if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
+    return fetchImpl(url, { method, headers, body: JSON.stringify(payload) });
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
     throw new HotelesAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);

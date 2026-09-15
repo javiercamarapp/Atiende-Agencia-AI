@@ -12,6 +12,8 @@ import { clearHotelesSession, logout, readPersistedHotelesSession } from "./lib/
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
+import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
+import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 
 export interface HotelesShellContext {
   readonly apiBaseUrl: string;
@@ -70,6 +72,29 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
     const s = readPersistedHotelesSession(window.localStorage);
     setSession(s);
     if (!s) onRequireLogin();
+  }, [onRequireLogin]);
+
+  // Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
+  // "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
+  // redirección"): `fetchJson`/`sendJson` de lib/admin-client.ts ya intentan un
+  // refresh automático ante un 401 (ver ../../lib/authed-fetch.ts), pero cuando ESE
+  // refresh también falla (refresh token vencido/revocado, o el staff cerró sesión
+  // en otra pestaña) no tienen ninguna forma de navegar — no son componentes React y
+  // no reciben `onRequireLogin`. Disparan `SESSION_EXPIRED_EVENT` en `window` en su
+  // lugar; este Shell escucha y reusa el `onRequireLogin` que ya tenía para el caso
+  // "no hay sesión persistida". El filtro por `detail.vertical` evita reaccionar al
+  // session-expired de OTRA vertical si el usuario tiene varias pestañas abiertas en
+  // el mismo navegador (cada una con su propia llave de localStorage).
+  useEffect(() => {
+    function handleSessionExpired(event: Event) {
+      const detail = (event as CustomEvent<SessionExpiredEventDetail>).detail;
+      if (detail?.vertical !== "hoteles") return;
+      clearHotelesSession(window.localStorage);
+      setSession(null);
+      onRequireLogin();
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, [onRequireLogin]);
 
   useEffect(() => {

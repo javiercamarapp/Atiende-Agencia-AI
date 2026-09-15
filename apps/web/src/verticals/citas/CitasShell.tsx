@@ -13,6 +13,8 @@ import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
+import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
+import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 
 export interface CitasShellContext {
   readonly apiBaseUrl: string;
@@ -77,6 +79,26 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
     const s = readPersistedCitasSession(window.localStorage);
     setSession(s);
     if (!s) onRequireLogin();
+  }, [onRequireLogin]);
+
+  // Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
+  // "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
+  // redirección"): fetchJson/sendJson de lib/admin-client.ts ya intentan un refresh
+  // automático ante un 401 (ver ../../lib/authed-fetch.ts); si ESE refresh también
+  // falla disparan SESSION_EXPIRED_EVENT en `window` (no son componentes React y no
+  // reciben `onRequireLogin`) — este Shell escucha y reusa el `onRequireLogin` que
+  // ya tenía. Filtra por `detail.vertical` para no reaccionar al session-expired de
+  // otra vertical abierta en otra pestaña.
+  useEffect(() => {
+    function handleSessionExpired(event: Event) {
+      const detail = (event as CustomEvent<SessionExpiredEventDetail>).detail;
+      if (detail?.vertical !== "citas") return;
+      clearCitasSession(window.localStorage);
+      setSession(null);
+      onRequireLogin();
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, [onRequireLogin]);
 
   async function handleLogout() {

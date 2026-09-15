@@ -79,10 +79,41 @@ export interface DashboardData {
   readonly customers: CustomerKpis;
 }
 
+// Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
+// "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
+// redirección"): `fetchJson` envuelve cada llamada con `withAuthRefresh`
+// (../../lib/authed-fetch.ts) — un 401 dispara UN intento de POST /auth/refresh
+// con el refreshToken persistido bajo "atiende.restaurantes.session" (mismo
+// lib/auth-client.ts genérico que ya usa RestaurantesShell.tsx, restaurantes no
+// tiene un lib/auth-client.ts propio como el resto de las verticales) y reintenta
+// la request original una sola vez con el token nuevo. Firma SIN CAMBIOS.
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../lib/authed-fetch.ts";
+import type { AuthedFetchContext } from "../../lib/authed-fetch.ts";
+import { clearSession, persistSession, readPersistedSession } from "../../lib/auth-client.ts";
+import type { LoginSession } from "../../lib/auth-client.ts";
+
+export { SessionExpiredError };
+
 export class DashboardError extends Error {}
 
-async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
-  const res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` } });
+function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
+  const storage = defaultBrowserStorage();
+  return {
+    vertical: "restaurantes",
+    store: {
+      read: () => (storage ? readPersistedSession(storage) : null),
+      persist: (session) => {
+        if (storage) persistSession(storage, session);
+      },
+      clear: () => {
+        if (storage) clearSession(storage);
+      },
+    },
+  };
+}
+
+async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new DashboardError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);

@@ -4,10 +4,43 @@
 // `globalThis.fetch` directo, para poder probar la lógica de red real con vitest en
 // entorno "node" sin depender de jsdom) y helpers genéricos que nunca inventan un
 // mensaje de error cuando el servidor ya mandó uno real.
+//
+// Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
+// "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
+// redirección"): `fetchJson`/`sendJson` envuelven cada llamada con
+// `withAuthRefresh` (../../../lib/authed-fetch.ts) — un 401 dispara UN intento de
+// POST /auth/refresh con el refreshToken persistido bajo
+// "atiende.restaurantes.session" (mismo lib/auth-client.ts genérico que ya usa
+// RestaurantesShell.tsx) y reintenta la request original una sola vez con el
+// token nuevo. Firma SIN CAMBIOS: branches-client.ts/catalog-client.ts/
+// customers-client.ts/orders-client.ts siguen llamándolos exactamente igual.
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
+import { clearSession, persistSession, readPersistedSession } from "../../../lib/auth-client.ts";
+import type { LoginSession } from "../../../lib/auth-client.ts";
+
+export { SessionExpiredError };
+
 export class RestaurantesAdminError extends Error {}
 
-export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string): Promise<T> {
-  const res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` } });
+function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
+  const storage = defaultBrowserStorage();
+  return {
+    vertical: "restaurantes",
+    store: {
+      read: () => (storage ? readPersistedSession(storage) : null),
+      persist: (session) => {
+        if (storage) persistSession(storage, session);
+      },
+      clear: () => {
+        if (storage) clearSession(storage);
+      },
+    },
+  };
+}
+
+export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new RestaurantesAdminError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
@@ -15,12 +48,21 @@ export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: 
   return (await res.json()) as T;
 }
 
-export async function sendJson<T>(fetchImpl: typeof fetch, url: string, token: string, method: "POST" | "PATCH", payload: unknown = {}): Promise<T> {
-  const res = await fetchImpl(url, {
-    method,
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+export async function sendJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  method: "POST" | "PATCH",
+  payload: unknown = {},
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method,
+      headers: { authorization: `Bearer ${t}`, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  );
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
     throw new RestaurantesAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
