@@ -41,11 +41,13 @@ import type {
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
+  CreateFromPanelResult,
   CustomerPage,
   EmailOutboxJobRow,
   EmergencyEscalationInput,
   EmergencyEscalationRecord,
   MessagingOutboxRow,
+  NewAppointmentFromPanelInput,
   NewAppointmentInput,
   NoShowResult,
   ProviderCalComAccountRecord,
@@ -592,6 +594,12 @@ export class PostgresCitasRepository implements CitasRepository {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
       if (code === "AT404") return { outcome: "not_found" };
       if (code === "AT409") return { outcome: "conflict_invalid_status", status: "completed" };
+      // Fase 12 -- solo `cancel_appointment_from_panel` puede lanzar AT403 (staff
+      // fuera del alcance de sucursal de ESTA cita, ver migrations/015 y
+      // errors.ts::AppointmentForbiddenError); `cancel_appointment_idempotent`
+      // (agente, sesión de sistema sin auth.uid() de staff) nunca lo lanza -- esta
+      // rama queda inerte para esa RPC, sin cambiar su comportamiento.
+      if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
       throw err;
     }
   }
@@ -618,6 +626,7 @@ export class PostgresCitasRepository implements CitasRepository {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
       if (code === "AT404") return { outcome: "not_found" };
       if (code === "AT409") return { outcome: "conflict_invalid_status", status: "completed" };
+      if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
       throw err;
     }
   }
@@ -631,6 +640,7 @@ export class PostgresCitasRepository implements CitasRepository {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
       if (code === "AT404") return { outcome: "not_found" };
       if (code === "AT409") return { outcome: "conflict_invalid_status", status: "cancelled" };
+      if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
       throw err;
     }
   }
@@ -644,6 +654,29 @@ export class PostgresCitasRepository implements CitasRepository {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
       if (code === "AT404") return { outcome: "not_found" };
       if (code === "AT409") return { outcome: "conflict_invalid_status", status: "cancelled" };
+      if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
+      throw err;
+    }
+  }
+
+  // ---- Fase 12 -- alta real de una cita desde el panel de staff (hallazgo de
+  // auditoría ALTO, "Staff no puede crear citas manualmente desde la Agenda"), ver
+  // CreateFromPanelResult/migrations/015. Sin dedupe (acción deliberada de un
+  // humano, no un canal reintentable) -- el único invariante real es el EXCLUDE
+  // using gist (AT423 -> conflict_slot_taken), mismo mapeo que
+  // createAppointmentIdempotent de arriba.
+  async createAppointmentFromPanel(input: NewAppointmentFromPanelInput): Promise<CreateFromPanelResult> {
+    try {
+      const { rows } = await this.db.query<{ result: AppointmentRow }>(
+        `select citas.create_appointment_from_panel($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as result;`,
+        [input.organizationId, input.propertyId, input.providerId, input.serviceId, input.customerName, input.customerPhone, input.customerEmail, input.startsAt, input.endsAt, input.notes],
+      );
+      const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
+      return { outcome: "created", appointment };
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+      if (code === "AT423") return { outcome: "conflict_slot_taken" };
+      if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
       throw err;
     }
   }

@@ -5,7 +5,7 @@
 // lugar para "qué es una cita válida" — ver diseño Fase 1 §3.2.
 import { createHash } from "node:crypto";
 import { computeAvailableSlots, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
-import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
+import { AppointmentAlternativesError, AppointmentConflictError, AppointmentForbiddenError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
 import type { CitasRepository } from "./repository.ts";
 import type { AppointmentRecord, CancelAppointmentPayload, CreateAppointmentPayload, ProviderRecord, ReassignAppointmentPayload, RescheduleAppointmentPayload, ServiceRecord, Slot } from "./types.ts";
 
@@ -334,6 +334,70 @@ export async function createAppointment(repo: CitasRepository, rawPayload: Creat
   return result.appointment;
 }
 
+/** Fase 12 -- payload de alta MANUAL de una cita desde el panel de staff (hallazgo
+ * de auditoría ALTO, "Staff no puede crear citas manualmente desde la Agenda"). */
+export interface CreateAppointmentFromPanelPayload {
+  readonly organizationId: string;
+  readonly providerId: string;
+  readonly serviceId: string;
+  readonly customerName: string;
+  readonly customerPhone: string;
+  readonly customerEmail?: string;
+  /** ISO 8601 -- `endsAt` se calcula aquí mismo a partir de `service.durationMinutes`,
+   * el staff nunca lo especifica (mismo criterio que el flujo del agente). */
+  readonly startsAt: string;
+  readonly notes?: string;
+}
+
+/**
+ * Crear una cita a mano desde la Agenda (staff) -- a diferencia de `createAppointment`
+ * (agente/web, `prepareCreateAppointment` valida que el horario caiga DENTRO de la
+ * disponibilidad declarada del proveedor), el panel deliberadamente NO exige esa
+ * validación: un negocio real necesita poder meter una cita "a mano" fuera de
+ * horario (un cliente que llegó sin cita, un hueco que el staff sabe que sí puede
+ * atender aunque `availability_rules` no lo refleje todavía) -- mismo criterio ya
+ * documentado para cancelar/confirmar/completar/no-show desde el panel (roles.ts:
+ * "el origen no restringe por rol", aquí "el origen no exige disponibilidad
+ * declarada para un alta manual"). El único invariante que NUNCA se salta es el
+ * EXCLUDE using gist real (dos citas del mismo proveedor no pueden traslaparse,
+ * `conflict_slot_taken`) -- reusa `resolveProviderAndService` (proveedor/servicio
+ * activos, el proveedor sí ofrece ese servicio) para no duplicar esas 3
+ * validaciones ya probadas por el flujo del agente.
+ */
+export async function createAppointmentFromPanel(repo: CitasRepository, payload: CreateAppointmentFromPanelPayload): Promise<AppointmentRecord> {
+  if (!payload.organizationId?.trim() || !payload.providerId?.trim() || !payload.serviceId?.trim()) {
+    throw new AppointmentValidationError("organizationId, providerId y serviceId son requeridos");
+  }
+  if (!payload.customerName?.trim()) throw new AppointmentValidationError("customer_name es requerido");
+  if (!payload.customerPhone?.trim()) throw new AppointmentValidationError("customer_phone es requerido");
+  const startsAt = new Date(payload.startsAt);
+  if (Number.isNaN(startsAt.getTime())) throw new AppointmentValidationError("starts_at debe ser una fecha ISO 8601 válida");
+
+  const { provider, service } = await resolveProviderAndService(repo, payload.organizationId, payload.providerId, payload.serviceId);
+  const endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
+
+  const result = await repo.createAppointmentFromPanel({
+    organizationId: payload.organizationId,
+    propertyId: provider.propertyId,
+    providerId: provider.id,
+    serviceId: service.id,
+    customerName: payload.customerName.trim(),
+    customerPhone: payload.customerPhone.trim(),
+    customerEmail: payload.customerEmail?.trim() || null,
+    startsAt: startsAt.toISOString(),
+    endsAt: endsAt.toISOString(),
+    notes: payload.notes?.trim() || null,
+  });
+
+  if (result.outcome === "conflict_slot_taken") {
+    throw new AppointmentConflictError("Ese horario ya no está disponible para este proveedor -- alguien más lo tomó primero.");
+  }
+  if (result.outcome === "forbidden_out_of_scope") {
+    throw new AppointmentForbiddenError(result.message ?? "No tienes acceso a la sucursal de este proveedor.");
+  }
+  return result.appointment;
+}
+
 // ============================================================================
 // Flujo 2a — cancelar cita
 // ============================================================================
@@ -345,10 +409,15 @@ export function validateCancelAppointmentPayload(raw: CancelAppointmentPayload):
   return { organizationId: raw.organizationId, appointmentId: raw.appointmentId.trim() };
 }
 
-function resolveCancelOutcome(result: { outcome: "cancelled" | "already_cancelled"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string }): AppointmentRecord {
+function resolveCancelOutcome(
+  result: { outcome: "cancelled" | "already_cancelled"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string } | { outcome: "forbidden_out_of_scope"; message?: string },
+): AppointmentRecord {
   if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
   if (result.outcome === "conflict_invalid_status") {
     throw new AppointmentConflictError(`No se puede cancelar una cita en estado '${result.status}'.`);
+  }
+  if (result.outcome === "forbidden_out_of_scope") {
+    throw new AppointmentForbiddenError(result.message ?? "No tienes acceso a la sucursal de esta cita.");
   }
   return result.appointment;
 }
@@ -383,26 +452,41 @@ export async function cancelAppointmentFromPanel(repo: CitasRepository, organiza
 // repositorio a una excepción tipada o al registro actualizado.
 // ============================================================================
 
-function resolveConfirmOutcome(result: { outcome: "confirmed" | "already_confirmed"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string }): AppointmentRecord {
+function resolveConfirmOutcome(
+  result: { outcome: "confirmed" | "already_confirmed"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string } | { outcome: "forbidden_out_of_scope"; message?: string },
+): AppointmentRecord {
   if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
   if (result.outcome === "conflict_invalid_status") {
     throw new AppointmentConflictError(`No se puede confirmar una cita en estado '${result.status}'.`);
   }
-  return result.appointment;
-}
-
-function resolveCompleteOutcome(result: { outcome: "completed" | "already_completed"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string }): AppointmentRecord {
-  if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
-  if (result.outcome === "conflict_invalid_status") {
-    throw new AppointmentConflictError(`No se puede completar una cita en estado '${result.status}'.`);
+  if (result.outcome === "forbidden_out_of_scope") {
+    throw new AppointmentForbiddenError(result.message ?? "No tienes acceso a la sucursal de esta cita.");
   }
   return result.appointment;
 }
 
-function resolveNoShowOutcome(result: { outcome: "marked_no_show" | "already_no_show"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string }): AppointmentRecord {
+function resolveCompleteOutcome(
+  result: { outcome: "completed" | "already_completed"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string } | { outcome: "forbidden_out_of_scope"; message?: string },
+): AppointmentRecord {
+  if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
+  if (result.outcome === "conflict_invalid_status") {
+    throw new AppointmentConflictError(`No se puede completar una cita en estado '${result.status}'.`);
+  }
+  if (result.outcome === "forbidden_out_of_scope") {
+    throw new AppointmentForbiddenError(result.message ?? "No tienes acceso a la sucursal de esta cita.");
+  }
+  return result.appointment;
+}
+
+function resolveNoShowOutcome(
+  result: { outcome: "marked_no_show" | "already_no_show"; appointment: AppointmentRecord } | { outcome: "not_found" } | { outcome: "conflict_invalid_status"; status: string } | { outcome: "forbidden_out_of_scope"; message?: string },
+): AppointmentRecord {
   if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
   if (result.outcome === "conflict_invalid_status") {
     throw new AppointmentConflictError(`No se puede marcar como no-show una cita en estado '${result.status}'.`);
+  }
+  if (result.outcome === "forbidden_out_of_scope") {
+    throw new AppointmentForbiddenError(result.message ?? "No tienes acceso a la sucursal de esta cita.");
   }
   return result.appointment;
 }
