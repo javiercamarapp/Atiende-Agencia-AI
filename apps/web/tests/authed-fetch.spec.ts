@@ -143,6 +143,29 @@ describe("withAuthRefresh", () => {
     expect(store.calls.cleared).toBe(1);
   });
 
+  it("ctx.refreshPath -> el refresh se pide a ESE path en vez de /auth/refresh (identidad no-staff con su propio endpoint, ej. el portal de propietario de rentas)", async () => {
+    const refreshed = { token: "tok-nuevo", refreshToken: "refresh-nuevo", email: "a@b.com" };
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === "http://api.local/rentas/owner-portal/auth/refresh") return new Response(JSON.stringify(refreshed), { status: 200 });
+      // Nunca debe pedirse el endpoint genérico de staff cuando ctx.refreshPath está fijado.
+      if (url === "http://api.local/auth/refresh") throw new Error("no debería llamarse /auth/refresh cuando ctx.refreshPath está fijado");
+      return new Response(JSON.stringify({ resultado: "ok" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const store = fakeStore({ token: "tok-viejo", refreshToken: "refresh-viejo", email: "a@b.com" });
+    const ctx: AuthedFetchContext<FakeSession> = { vertical: "rentas-owner-portal", store, refreshPath: "/rentas/owner-portal/auth/refresh" };
+
+    let attempt = 0;
+    const res = await withAuthRefresh(fetchImpl, "http://api.local", ctx, "tok-viejo", (t) => {
+      attempt += 1;
+      if (attempt === 1) return Promise.resolve(new Response(JSON.stringify({ message: "expirado" }), { status: 401 }));
+      return fetchImpl("http://api.local/protegido", { headers: { authorization: `Bearer ${t}` } });
+    });
+
+    expect(res.status).toBe(200);
+    expect(store.calls.persisted).toEqual([refreshed]);
+  });
+
   it("el segundo intento (con el token ya refrescado) también responde 401 -> se devuelve esa Response tal cual, sin un tercer intento ni bucle", async () => {
     const refreshed = { token: "tok-nuevo", refreshToken: "r-nuevo", email: "a@b.com" };
     const fetchImpl = vi.fn(async (url: string) => {

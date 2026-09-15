@@ -6,6 +6,7 @@ import {
   fetchPayoutDetalle,
   generarOwnerStatement,
   importarPayout,
+  invitarPropietarioAlPortal,
   registrarMovimiento,
 } from "../src/verticals/rentas/lib/finanzas-client.ts";
 
@@ -258,5 +259,29 @@ describe("importarPayout / fetchPayoutDetalle", () => {
   it("payout no encontrado -> error real (404 del servidor)", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "Payout no encontrado en esta property." }), { status: 404 })) as unknown as typeof fetch;
     await expect(fetchPayoutDetalle(fetchImpl, "http://api.local", "tok", "prop-1", "payout-x")).rejects.toThrow(/Payout no encontrado/);
+  });
+});
+
+describe("invitarPropietarioAlPortal", () => {
+  it("hace POST real a .../owners/:ownerId/portal-invite y devuelve el token emitido", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/rentas/prop-1/owners/owner-1/portal-invite");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(init!.body as string)).toEqual({});
+      return new Response(JSON.stringify({ ownerId: "owner-1", inviteToken: "token-plano-de-un-solo-uso", expiresAt: "2026-02-01T00:00:00.000Z" }), { status: 201 });
+    }) as unknown as typeof fetch;
+
+    const result = await invitarPropietarioAlPortal(fetchImpl, "http://api.local", "tok", "prop-1", "owner-1");
+    expect(result).toEqual({ ownerId: "owner-1", inviteToken: "token-plano-de-un-solo-uso", expiresAt: "2026-02-01T00:00:00.000Z" });
+  });
+
+  it("staff sin FINANZAS_LECTURA_ROLES -> error real (403 del servidor)", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No tienes permiso para esta acción." }), { status: 403 })) as unknown as typeof fetch;
+    await expect(invitarPropietarioAlPortal(fetchImpl, "http://api.local", "tok", "prop-1", "owner-1")).rejects.toThrow(/No tienes permiso/);
+  });
+
+  it("propietario sin ninguna unidad en esta property -> error real (404 del servidor)", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "Propietario no encontrado, o sin ninguna unidad en esta property." }), { status: 404 })) as unknown as typeof fetch;
+    await expect(invitarPropietarioAlPortal(fetchImpl, "http://api.local", "tok", "prop-1", "owner-x")).rejects.toThrow(/sin ninguna unidad/);
   });
 });

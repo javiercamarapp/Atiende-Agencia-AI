@@ -10,8 +10,12 @@
 // Este módulo NO conoce React ni `location.state` ni ninguna vertical concreta a
 // propósito (mismo aislamiento que ya mantiene apps/web/src/lib/auth-client.ts): solo
 // sabe pedir `makeRequest(token)`, reconocer un 401, pedir un refresh nuevo a
-// `{apiBaseUrl}/auth/refresh` con el `refreshToken` que le entregue el `store`
-// inyectado, y reintentar UNA vez. Quién es "el store" (dónde vive la sesión
+// `{apiBaseUrl}{ctx.refreshPath ?? "/auth/refresh"}` con el `refreshToken` que le
+// entregue el `store` inyectado, y reintentar UNA vez. `refreshPath` es opcional
+// (default `/auth/refresh`, el JWT genérico de `@atiende/core-auth` que comparten las
+// 6 verticales de staff) — una identidad no-staff con su propio endpoint de refresh
+// (ver `AuthedFetchContext.refreshPath`) pasa el suyo. Quién es "el store" (dónde vive
+// la sesión
 // persistida: localStorage bajo qué llave) lo decide cada
 // verticals/<vertical>/lib/admin-client.ts (o dashboard-client.ts en restaurantes),
 // reusando exactamente los mismos persist/read/clear que ya expone su propio
@@ -58,6 +62,15 @@ export interface AuthedFetchContext<S extends AuthedSession> {
    * reaccionar al session-expired de citas ni viceversa. */
   readonly vertical: string;
   readonly store: AuthedSessionStore<S>;
+  /** Path (relativo a `apiBaseUrl`) del endpoint de refresh de ESTA sesión —
+   * `"/auth/refresh"` (el default si se omite) para las 6 verticales de staff, que
+   * comparten el JWT genérico de `@atiende/core-auth`. Una identidad NO-staff con su
+   * propio JWT/secreto (ej. el portal de propietario de rentas,
+   * `POST /rentas/owner-portal/auth/refresh`, ver owner-portal.ts) pasa aquí su
+   * propio path en vez de forzar un endpoint que no existe para ella — opcional y
+   * aditivo, ningún caller existente lo pasa hoy, así que su comportamiento no
+   * cambia. */
+  readonly refreshPath?: string;
 }
 
 /** Nombre del evento que dispara este módulo en `window` cuando un refresh falla (o
@@ -139,9 +152,9 @@ function looksLikeFreshSession(value: unknown): value is AuthedSession {
  * completa (mismo shape que login, ver comentario de `AuthedSession`) o `null` si
  * el refresh token ya no sirve (401/400, ver apps/api/src/routes/auth.ts) o la red
  * falló. Nunca lanza: el llamador (`withAuthRefresh`) decide qué hacer con `null`. */
-async function tryRefresh<S extends AuthedSession>(fetchImpl: typeof fetch, apiBaseUrl: string, refreshToken: string): Promise<S | null> {
+async function tryRefresh<S extends AuthedSession>(fetchImpl: typeof fetch, apiBaseUrl: string, refreshToken: string, refreshPath: string): Promise<S | null> {
   try {
-    const res = await fetchImpl(`${apiBaseUrl}/auth/refresh`, {
+    const res = await fetchImpl(`${apiBaseUrl}${refreshPath}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ refreshToken }),
@@ -190,7 +203,7 @@ export async function withAuthRefresh<S extends AuthedSession>(
   if (first.status !== 401) return first;
 
   const previous = ctx.store.read();
-  const refreshed = previous ? await tryRefresh<S>(fetchImpl, apiBaseUrl, previous.refreshToken) : null;
+  const refreshed = previous ? await tryRefresh<S>(fetchImpl, apiBaseUrl, previous.refreshToken, ctx.refreshPath ?? "/auth/refresh") : null;
 
   if (!refreshed) {
     ctx.store.clear();

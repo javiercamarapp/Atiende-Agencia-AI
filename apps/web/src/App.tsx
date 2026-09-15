@@ -36,6 +36,9 @@ import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/p
 import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
 import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
 import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/IcalSync.tsx";
+import { OwnerPortalLoginPage } from "./verticals/rentas/pages/OwnerPortalLogin.tsx";
+import { OwnerPortalActivarPage } from "./verticals/rentas/pages/OwnerPortalActivar.tsx";
+import { OwnerPortalDashboardPage } from "./verticals/rentas/pages/OwnerPortalDashboard.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -468,6 +471,25 @@ function RentasIcalSyncRoute() {
       {(ctx) => <RentasIcalSyncPage {...ctx} />}
     </RentasShell>
   );
+}
+
+/** Portal de propietario (Fase 3 backend, UI de esta fase) — 3 rutas PÚBLICAS, fuera
+ * de RentasShell a propósito: es una identidad completamente distinta de staff (su
+ * propio JWT/secreto, ver owner-portal.ts), nunca pasa por el shell autenticado del
+ * panel de staff. Mismo criterio de aislamiento que /aceptar-invitacion (shell/
+ * AceptarInvitacion.tsx) frente al login/shell de staff. */
+function RentasOwnerPortalLoginRoute() {
+  const navigate = useNavigate();
+  return <OwnerPortalLoginPage apiBaseUrl={API_BASE_URL} onLoggedIn={() => navigate("/rentas/portal-propietario", { replace: true })} />;
+}
+
+function RentasOwnerPortalActivarRoute() {
+  return <OwnerPortalActivarPage apiBaseUrl={API_BASE_URL} />;
+}
+
+function RentasOwnerPortalDashboardRoute() {
+  const navigate = useNavigate();
+  return <OwnerPortalDashboardPage apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/rentas/portal-propietario/login", { replace: true })} />;
 }
 
 function CitasLoginRoute() {
@@ -936,6 +958,14 @@ export function App() {
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
+        {/* Portal de propietario -- rutas literales, react-router-dom v6 ya rankea un
+            segmento literal sobre uno dinámico (:orgSlug) sin importar el orden de
+            declaración, así que "portal-propietario" nunca se confunde con un orgSlug
+            real (a diferencia de Hono en apps/api, ver el comentario de cabecera de
+            rentas.ts sobre por qué ahí SÍ importa el orden de montaje). */}
+        <Route path="/rentas/portal-propietario/login" element={<RentasOwnerPortalLoginRoute />} />
+        <Route path="/rentas/portal-propietario/activar" element={<RentasOwnerPortalActivarRoute />} />
+        <Route path="/rentas/portal-propietario" element={<RentasOwnerPortalDashboardRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />

@@ -21,6 +21,19 @@
 // un catálogo de propietarios de una property ni una lista de payouts ya
 // importados -- `ownerId`/`payoutId` se piden como texto libre, igual que
 // pricing-client.ts documenta la ausencia de un GET de configuración de pricing.
+//
+// Portal de propietario (Fase 3 backend, UI de esta fase): "Invitar a este
+// propietario" en la sección de owner statements llama
+// POST .../owners/:ownerId/portal-invite (owner-portal-invite.ts) -- mismo
+// FINANZAS_LECTURA_ROLES que ya gatea esta sección completa, el servidor
+// re-valida con assertVerticalRole igual que el resto de esta página. El token
+// de invitación se muestra UNA sola vez (nunca se puede recuperar de nuevo) para
+// que staff lo copie/pegue en el mensaje que le mande al propietario -- no hay
+// envío de correo real en este monorepo todavía (ver el comentario de cabecera
+// de owner-portal-invite.ts). El propietario activa su cuenta y consulta sus
+// statements en una superficie SEPARADA de este panel de staff (ver
+// pages/OwnerPortalLogin.tsx/OwnerPortalActivar.tsx/OwnerPortalDashboard.tsx --
+// login propio contra el JWT del portal, nunca el de staff).
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import {
@@ -34,6 +47,7 @@ import {
   fetchUnidades,
   generarOwnerStatement,
   importarPayout,
+  invitarPropietarioAlPortal,
   pesosACentavos,
   porcentajeABasisPoints,
   registrarMovimiento,
@@ -49,6 +63,7 @@ import type {
   OwnerStatementSummary,
   PayoutCreado,
   PayoutDetalle,
+  PortalInviteEmitida,
   UnidadOption,
 } from "../lib/finanzas-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
@@ -449,6 +464,24 @@ function OwnerStatementsSection({ apiBaseUrl, token, propertyId, puedeEscribir }
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ultimoResultado, setUltimoResultado] = useState<string | null>(null);
+  const [invitando, setInvitando] = useState(false);
+  const [invite, setInvite] = useState<PortalInviteEmitida | null>(null);
+  const [errorInvite, setErrorInvite] = useState<string | null>(null);
+
+  async function invitarPropietario() {
+    if (!ownerId.trim()) return setErrorInvite("Ingresa primero el id del propietario arriba.");
+    setErrorInvite(null);
+    setInvite(null);
+    setInvitando(true);
+    try {
+      const resultado = await invitarPropietarioAlPortal(fetch, apiBaseUrl, token, propertyId, ownerId.trim());
+      setInvite(resultado);
+    } catch (err) {
+      setErrorInvite(err instanceof Error ? err.message : "No se pudo invitar a este propietario.");
+    } finally {
+      setInvitando(false);
+    }
+  }
 
   async function cargarStatements(idOwner: string) {
     if (!idOwner.trim()) return setError("Se necesita el id del propietario.");
@@ -491,7 +524,18 @@ function OwnerStatementsSection({ apiBaseUrl, token, propertyId, puedeEscribir }
         <button type="button" onClick={() => cargarStatements(ownerId)} disabled={cargando} style={{ ...secondaryButtonStyle, alignSelf: "flex-end", marginBottom: 4 }}>
           {cargando ? "Consultando…" : "Ver statements"}
         </button>
+        <button type="button" onClick={invitarPropietario} disabled={invitando} style={{ ...secondaryButtonStyle, alignSelf: "flex-end", marginBottom: 4 }}>
+          {invitando ? "Invitando…" : "Invitar a este propietario"}
+        </button>
       </div>
+
+      {errorInvite && <p role="alert" style={errorStyle}>{errorInvite}</p>}
+      {invite && (
+        <p style={noticeStyle}>
+          Invitación creada (vence {invite.expiresAt}). Comparte este token con el propietario para que active su cuenta en el portal:{" "}
+          <code style={{ userSelect: "all", background: "#fff", padding: "1px 4px", borderRadius: 4 }}>{invite.inviteToken}</code>
+        </p>
+      )}
 
       {error && <p role="alert" style={errorStyle}>{error}</p>}
 
