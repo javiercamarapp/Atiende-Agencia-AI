@@ -7,6 +7,7 @@ function cuerpoValido(overrides: Record<string, unknown> = {}) {
   return {
     organizacion: { nombre: "Rentas Cancún Élite", tipoOrganizacion: "empresa_gestora" },
     primeraPropiedad: { nombre: "Depa Zona Hotelera", zonaHoraria: "America/Cancun", moneda: "MXN" },
+    primerasUnidades: [{ nombre: "Depa Zona Hotelera" }],
     admin: { nombreCompleto: "María Torres", correo: "maria@rentas-cancun.mx", password: "correcto-caballo-batería" },
     ...overrides,
   };
@@ -97,6 +98,31 @@ describe("validarCapturaOnboardingRentas", () => {
     expect(JSON.stringify(resultado)).not.toContain("correcto-caballo-batería");
     expect((resultado.admin as Record<string, unknown>).password).toBeUndefined();
   });
+
+  it("rechaza primerasUnidades vacío o ausente -- una property sin ninguna unidad no se registra", () => {
+    expect(() => validarCapturaOnboardingRentas(cuerpoValido({ primerasUnidades: [] }))).toThrow(RentasDomainError);
+    const sinUnidades = cuerpoValido();
+    delete (sinUnidades as Record<string, unknown>).primerasUnidades;
+    expect(() => validarCapturaOnboardingRentas(sinUnidades)).toThrow(RentasDomainError);
+  });
+
+  it("rechaza una unidad sin nombre", () => {
+    expect(() => validarCapturaOnboardingRentas(cuerpoValido({ primerasUnidades: [{ nombre: "  " }] }))).toThrow(RentasDomainError);
+  });
+
+  it("rechaza dos unidades con el mismo nombre (comparación case-insensitive)", () => {
+    expect(() => validarCapturaOnboardingRentas(cuerpoValido({ primerasUnidades: [{ nombre: "Depa 1" }, { nombre: "depa 1" }] }))).toThrow(RentasDomainError);
+  });
+
+  it("rechaza duracionMinimaNoches fuera de rango o no entera", () => {
+    expect(() => validarCapturaOnboardingRentas(cuerpoValido({ primerasUnidades: [{ nombre: "Depa 1", duracionMinimaNoches: 0 }] }))).toThrow(RentasDomainError);
+    expect(() => validarCapturaOnboardingRentas(cuerpoValido({ primerasUnidades: [{ nombre: "Depa 1", duracionMinimaNoches: 1.5 }] }))).toThrow(RentasDomainError);
+  });
+
+  it("acepta varias unidades válidas, con y sin duracionMinimaNoches explícita", () => {
+    const resultado = validarCapturaOnboardingRentas(cuerpoValido({ primerasUnidades: [{ nombre: "Depa 1" }, { nombre: "Depa 2", duracionMinimaNoches: 3 }] }));
+    expect(resultado.primerasUnidades).toEqual([{ nombre: "Depa 1" }, { nombre: "Depa 2", duracionMinimaNoches: 3 }]);
+  });
 });
 
 describe("InMemoryRentasOnboardingRepository", () => {
@@ -105,18 +131,20 @@ describe("InMemoryRentasOnboardingRepository", () => {
     return {
       organizacion: { nombre: captura.organizacion.nombre, slugPropuesto: captura.slugPropuesto, tipoOrganizacion: captura.organizacion.tipoOrganizacion },
       primeraPropiedad: captura.primeraPropiedad,
+      primerasUnidades: captura.primerasUnidades,
       admin: { nombreCompleto: captura.admin.nombreCompleto, correo: captura.admin.correo, passwordHash: "hash-de-prueba" },
       primerOwner: null,
       ...overrides,
     };
   }
 
-  it("crea organización + property + staff admin + configuración inicial, todo enlazado", async () => {
+  it("crea organización + property + al menos una unidad + staff admin + configuración inicial, todo enlazado", async () => {
     const repo = new InMemoryRentasOnboardingRepository();
     const resultado = await repo.registrarTenant(entradaValida());
 
     expect(resultado.requiereVerificacionCorreo).toBe(true);
     expect(resultado.slug).toBe("rentas-cancun-elite");
+    expect(resultado.unidadIds).toHaveLength(1);
 
     const org = repo.findOrganizacionById(resultado.organizationId);
     expect(org?.name).toBe("Rentas Cancún Élite");
@@ -129,6 +157,24 @@ describe("InMemoryRentasOnboardingRepository", () => {
     const staff = repo.findStaffByEmail("maria@rentas-cancun.mx");
     expect(staff?.id).toBe(resultado.staffId);
     expect(staff?.organizationId).toBe(resultado.organizationId);
+
+    const unidades = repo.listUnidadesDePropiedad(resultado.propertyId);
+    expect(unidades).toHaveLength(1);
+    expect(unidades[0]!.name).toBe("Depa Zona Hotelera");
+    expect(unidades[0]!.organizationId).toBe(resultado.organizationId);
+  });
+
+  it("rechaza un registro sin ninguna unidad, incluso saltándose la validación de captura.ts", async () => {
+    const repo = new InMemoryRentasOnboardingRepository();
+    await expect(repo.registrarTenant(entradaValida({ primerasUnidades: [] }))).rejects.toThrow(RentasDomainError);
+  });
+
+  it("liga cada unidad al primer owner cuando primerOwner viene presente", async () => {
+    const repo = new InMemoryRentasOnboardingRepository();
+    const resultado = await repo.registrarTenant(entradaValida({ primerOwner: { nombre: "Juan Dueño", email: "juan@correo.mx" } }));
+    const unidades = repo.listUnidadesDePropiedad(resultado.propertyId);
+    const [owner] = repo.listOwnersDeOrganizacion(resultado.organizationId);
+    expect(unidades[0]!.ownerId).toBe(owner!.id);
   });
 
   it("resuelve una colisión de slug con un sufijo numérico incremental, sin fallar el registro", async () => {

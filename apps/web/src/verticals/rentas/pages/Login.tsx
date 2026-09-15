@@ -7,6 +7,7 @@
 // (empresas gestoras/anfitriones) tiene el staff.
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { decideRentasLandingPath, login, LoginError, persistRentasSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 
@@ -72,6 +73,9 @@ export function RentasLoginPage({ apiBaseUrl, onLoggedIn }: RentasLoginPageProps
         <button type="submit" disabled={submitting} style={{ padding: 10, fontWeight: 600 }}>
           {submitting ? "Entrando…" : "Entrar"}
         </button>
+        <Link to="/rentas/registro" style={{ textAlign: "center", fontSize: 13, color: "#6b7280" }}>
+          ¿No tienes cuenta? Créala aquí
+        </Link>
       </form>
     </main>
   );
