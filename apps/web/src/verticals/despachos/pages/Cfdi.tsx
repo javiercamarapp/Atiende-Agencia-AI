@@ -10,10 +10,18 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchInvoices } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
+import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
+import type { RevisionCfdi } from "../lib/revisiones-client.ts";
 import { formatDate, formatMoney } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const TIPO_LABELS: Record<InvoiceSummary["tipo"], string> = { I: "Ingreso", E: "Egreso", T: "Traslado", P: "Pago", N: "Nómina" };
+
+// Mismo criterio que GESTIONAR_ROLES/CERRAR_ROLES en CierreMensualDetalle.tsx:
+// espejo cosmético (para ocultar botones) de RESOLVER_REVISION_ROLES
+// (@atiende/domain-despachos/src/roles.ts) — el enforcement real es SIEMPRE
+// server-side, en revisiones.ts (assertVerticalRole).
+const RESOLVER_ROLES = new Set(["admin", "contador"]);
 
 function ValidoBadge({ valido }: { valido: boolean }) {
   return (
@@ -23,11 +31,18 @@ function ValidoBadge({ valido }: { valido: boolean }) {
   );
 }
 
-export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug }: DespachosShellContext) {
+export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
   const [invoices, setInvoices] = useState<readonly InvoiceSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [soloRevision, setSoloRevision] = useState(false);
+
+  const [revisiones, setRevisiones] = useState<readonly RevisionCfdi[] | null>(null);
+  const [revisionesLoading, setRevisionesLoading] = useState(false);
+  const [revisionesError, setRevisionesError] = useState<string | null>(null);
+  const [notaDrafts, setNotaDrafts] = useState<Record<string, string>>({});
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -41,11 +56,53 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug }: DespachosSh
     }
   }
 
+  // Cola de revisión humana (hallazgo ALTA): independiente del filtro
+  // "soloRevision" de la tabla de abajo -- GET .../revisiones siempre trae TODAS
+  // las pendientes de la property, sin importar qué esté viendo el usuario en la
+  // tabla de CFDI.
+  async function loadRevisiones() {
+    setRevisionesLoading(true);
+    setRevisionesError(null);
+    try {
+      setRevisiones(await fetchRevisionesPendientes(fetch, apiBaseUrl, token, propertyId));
+    } catch (err) {
+      setRevisionesError(err instanceof Error ? err.message : "No se pudo cargar la cola de revisión.");
+    } finally {
+      setRevisionesLoading(false);
+    }
+  }
+
   useEffect(() => {
     void load();
     // eslint: mismo criterio que el resto del panel -- este proyecto no tiene
     // eslint-plugin-react-hooks configurado.
   }, [apiBaseUrl, token, propertyId, soloRevision]);
+
+  useEffect(() => {
+    void loadRevisiones();
+  }, [apiBaseUrl, token, propertyId]);
+
+  async function handleResolver(reviewId: string, decision: "aprobar" | "rechazar") {
+    setResolveError(null);
+    setResolvingId(reviewId);
+    try {
+      const nota = notaDrafts[reviewId]?.trim() || undefined;
+      if (decision === "aprobar") await aprobarRevision(fetch, apiBaseUrl, token, propertyId, reviewId, nota);
+      else await rechazarRevision(fetch, apiBaseUrl, token, propertyId, reviewId, nota);
+      setNotaDrafts((prev) => {
+        const next = { ...prev };
+        delete next[reviewId];
+        return next;
+      });
+      await Promise.all([loadRevisiones(), load()]);
+    } catch (err) {
+      setResolveError(err instanceof Error ? err.message : "No se pudo resolver la revisión.");
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
+  const invoicesById = new Map((invoices ?? []).map((inv) => [inv.id, inv] as const));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -59,6 +116,76 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug }: DespachosSh
           Solo con revisión humana pendiente
         </label>
       </header>
+
+      <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <h2 style={{ fontSize: 14, margin: 0 }}>Cola de revisión humana</h2>
+          {revisiones && <span style={{ fontSize: 12, color: "#6b7280" }}>{revisiones.length} pendiente(s)</span>}
+        </div>
+
+        {resolveError && (
+          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+            {resolveError}
+          </p>
+        )}
+        {revisionesError && (
+          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+            {revisionesError}
+          </p>
+        )}
+        {revisionesLoading && !revisiones && <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Cargando…</p>}
+        {revisiones && revisiones.length === 0 && !revisionesLoading && <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>No hay CFDI pendientes de revisión humana.</p>}
+
+        {revisiones && revisiones.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {revisiones.map((r) => {
+              const inv = invoicesById.get(r.invoiceId);
+              return (
+                <div key={r.id} style={{ border: "1px solid #f3f4f6", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <Link to={`/despachos/${orgSlug}/cfdi/${r.invoiceId}`} style={{ fontWeight: 600, color: "#111827", textDecoration: "none", fontSize: 13 }}>
+                        {inv ? (inv.emisorNombre ?? inv.rfcEmisor) : r.invoiceId}
+                      </Link>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{r.motivo}</p>
+                    </div>
+                    <span style={{ fontSize: 11, color: "#9ca3af" }}>{formatDate(r.creadoEn)}</span>
+                  </div>
+                  {RESOLVER_ROLES.has(role) ? (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <input
+                        type="text"
+                        placeholder="Nota (opcional)"
+                        value={notaDrafts[r.id] ?? ""}
+                        onChange={(e) => setNotaDrafts((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                        style={{ flex: 1, minWidth: 160, padding: "6px 8px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 12 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleResolver(r.id, "aprobar")}
+                        disabled={resolvingId === r.id}
+                        style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #166534", background: "#dcfce7", color: "#166534", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+                      >
+                        {resolvingId === r.id ? "…" : "Aprobar"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleResolver(r.id, "rechazar")}
+                        disabled={resolvingId === r.id}
+                        style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fee2e2", color: "#b91c1c", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+                      >
+                        {resolvingId === r.id ? "…" : "Rechazar"}
+                      </button>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>Tu rol no puede resolver revisiones (solo admin/contador).</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {error && (
         <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
