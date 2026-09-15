@@ -42,6 +42,18 @@ export function isCancellable(status: ReservationStatus): boolean {
   return status === "cotizada" || status === "confirmada";
 }
 
+// Fix hallazgo auditoría — ruta real del detalle de un folio, para el botón "Ver
+// folio" de Reservas.tsx. ANTES de este fix el componente navegaba con una ruta
+// RELATIVA ("folios/<id>"): react-router v6 la resuelve como hija de la ruta
+// actual ("/hoteles/:orgSlug/reservas/folios/:folioId"), que nunca coincide con la
+// ruta real declarada en App.tsx ("/hoteles/:orgSlug/folios/:folioId") — el botón
+// nunca aterrizaba en el folio. Extraída aquí como función pura (mismo patrón
+// ABSOLUTO con orgSlug que CfdiListado.tsx ya usa) para que quede cubierta por un
+// test sin necesitar montar React Router.
+export function folioDetailPath(orgSlug: string, folioId: string): string {
+  return `/hoteles/${orgSlug}/folios/${folioId}`;
+}
+
 export interface ReservationSummary {
   readonly id: string;
   readonly propertyId: string;

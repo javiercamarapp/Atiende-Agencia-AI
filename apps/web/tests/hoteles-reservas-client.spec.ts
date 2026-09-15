@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { cancelReservation, createReservation, fetchReservations, fetchRoomTypes, isCancellable, NEXT_GENERIC_STATUS, searchGuests, transitionReservation } from "../src/verticals/hoteles/lib/reservas-client.ts";
+import { cancelReservation, createReservation, fetchReservations, fetchRoomTypes, folioDetailPath, isCancellable, NEXT_GENERIC_STATUS, searchGuests, transitionReservation } from "../src/verticals/hoteles/lib/reservas-client.ts";
 
 const RESERVATION_ROW = {
   id: "res-1",
@@ -103,6 +103,22 @@ describe("searchGuests", () => {
     }) as unknown as typeof fetch;
     const result = await searchGuests(fetchImpl, "http://api.local", "tok", "prop-1", "ana torres");
     expect(result[0]!.nombreCompleto).toBe("Ana Torres");
+  });
+});
+
+// Fix hallazgo auditoría — el botón "Ver folio" de Reservas.tsx usaba un
+// navigate relativo roto ("folios/<id>"), que react-router v6 resuelve como hijo
+// de la ruta actual ("/hoteles/:orgSlug/reservas/folios/<id>") en vez de la ruta
+// real del folio declarada en App.tsx ("/hoteles/:orgSlug/folios/:folioId").
+describe("folioDetailPath", () => {
+  it("arma la ruta ABSOLUTA real del folio, con orgSlug (nunca relativa a /reservas)", () => {
+    expect(folioDetailPath("hotel-demo", "folio-42")).toBe("/hoteles/hotel-demo/folios/folio-42");
+  });
+
+  it("nunca es relativa: siempre arranca en /hoteles, no en 'folios/'", () => {
+    const path = folioDetailPath("acme", "f-1");
+    expect(path.startsWith("/hoteles/")).toBe(true);
+    expect(path.startsWith("folios/")).toBe(false);
   });
 });
 

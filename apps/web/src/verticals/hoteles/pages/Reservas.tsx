@@ -12,6 +12,7 @@ import {
   createReservation,
   fetchReservations,
   fetchRoomTypes,
+  folioDetailPath,
   isCancellable,
   NEXT_GENERIC_STATUS,
   RESERVATION_STATUS_LABELS,
@@ -29,7 +30,7 @@ function formatMoney(n: number): string {
 
 const FILTERS: ReadonlyArray<ReservationStatus | "todas"> = ["todas", "confirmada", "check_in", "en_estancia", "check_out", "cerrada", "cancelada"];
 
-export function ReservasPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
+export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShellContext) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<ReservationStatus | "todas">("todas");
   const [reservations, setReservations] = useState<readonly ReservationSummary[] | null>(null);
@@ -167,7 +168,12 @@ export function ReservasPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
         setError("Esta reserva todavía no tiene ningún folio.");
         return;
       }
-      navigate(`folios/${primary.id}`);
+      // Fix hallazgo auditoría — ruta absoluta con orgSlug vía folioDetailPath()
+      // (mismo patrón que CfdiListado.tsx). Un navigate relativo ("folios/x") se
+      // resolvía como hijo de la ruta actual
+      // ("/hoteles/:orgSlug/reservas/folios/x"), que no existe: la ruta real del
+      // folio es "/hoteles/:orgSlug/folios/:folioId" (ver App.tsx).
+      navigate(folioDetailPath(orgSlug, primary.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo abrir el folio de esta reserva.");
     } finally {
