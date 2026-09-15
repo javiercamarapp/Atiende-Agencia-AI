@@ -18,6 +18,11 @@
 //
 // Fase 14 -- agrega el link de nav a Precios (cotizador + configuración de pricing,
 // ver pages/Precios.tsx): mismo patrón, un renglón más en NAV_ITEMS.
+//
+// Fase 15 -- agrega el link de nav a Aprobaciones (bandeja de aprobación de
+// mensajería, ver pages/Aprobaciones.tsx): cierra el hallazgo de auditoría ALTA
+// "la cola de aprobación no tiene botón de aprobar" -- mismo patrón, un renglón más
+// en NAV_ITEMS.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -32,6 +37,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "", label: "Resumen" },
   { to: "calendario", label: "Calendario" },
   { to: "precios", label: "Precios" },
+  { to: "aprobaciones", label: "Aprobaciones" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
