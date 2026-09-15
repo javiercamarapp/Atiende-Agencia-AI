@@ -3,6 +3,7 @@
 // idempotencia por folio (REQ-BO-002), RFC genérico extranjero/global, propina
 // excluida del subtotal, DSA por cuarto-noche, y cancelación.
 import { beforeEach, describe, expect, it } from "vitest";
+import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildHotelesTestContext } from "./hoteles-fixtures.ts";
 import type { HotelesTestContext } from "./hoteles-fixtures.ts";
@@ -245,5 +246,81 @@ describe("POST /hoteles/:propertyId/cfdi/:cfdiId/cancelar", () => {
     const reintentoBody = (await reintento.json()) as CfdiResponse;
     expect(reintentoBody.id).toBe(segundoBody.id);
     expect(await ctx.hotelesRepo.listCfdiEmisiones(ctx.propertyId)).toHaveLength(2);
+  });
+});
+
+// Hallazgo auditoría 1 — en producción `hotelesCfdiPort` es
+// `DualPacCfdiPort(FinkokAdapter, SwSapienAdapter)`, y AMBOS lanzan
+// `PortUnavailableError` de forma INCONDICIONAL en este entorno (sin CSD/
+// credenciales reales de Finkok/SW Sapien, ver comentario de cabecera de esos
+// adaptadores) -- correcto y esperado, este repo no tiene esas credenciales. El
+// bug real era que `app.onError` (app.ts) solo conoce `ApiError`: cualquier otro
+// error se aplanaba a un 500 genérico "Error interno", indistinguible de un bug
+// real. Estos tests usan el `CfdiPort` REAL (no el Fake de `ctx.deps`) para
+// probar el camino honesto: 503 `service_unavailable` con un mensaje claro.
+describe("hallazgo auditoría -- PAC sin credenciales responde 503 honesto, nunca un 500 genérico", () => {
+  it("timbrar CFDI de hospedaje con el CfdiPort real (sin credenciales) -> 503, no 500", async () => {
+    await seedHospedajeCharges(ctx, 1);
+    const deps = { ...ctx.deps, hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()) };
+    const app = buildApp(deps);
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-503-1" }),
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe("service_unavailable");
+    expect(body.message.toLowerCase()).toContain("pac");
+    // Nunca se persiste un CFDI a medias cuando el PAC no está disponible.
+    expect(await ctx.hotelesRepo.listCfdiEmisiones(ctx.propertyId)).toHaveLength(0);
+  });
+
+  it("timbrar el complemento de pago con el CfdiPort real (sin credenciales) -> 503, no 500", async () => {
+    await seedHospedajeCharges(ctx, 1);
+    const appFake = buildApp(ctx.deps);
+    const hospedaje = await appFake.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-503-pago-hosp" }),
+    );
+    const hospedajeBody = (await hospedaje.json()) as CfdiResponse;
+    const { id: paymentId } = await ctx.hotelesRepo.insertPayment({
+      organizationId: ctx.organizationId,
+      propertyId: ctx.propertyId,
+      folioId: ctx.folioId,
+      amount: 1000,
+      method: "tarjeta",
+      status: "capturado",
+    });
+
+    const deps = { ...ctx.deps, hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()) };
+    const appReal = buildApp(deps);
+    const res = await appReal.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi/pago`,
+      authedJson(ctx.staff.owner.token, { paymentId, relacionadoCfdiId: hospedajeBody.id }, { "idempotency-key": "cfdi-503-pago-2" }),
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("service_unavailable");
+  });
+
+  it("cancelar con el CfdiPort real (sin credenciales) -> 503, no 500, y el CFDI sigue timbrado sin tocarse", async () => {
+    await seedHospedajeCharges(ctx, 1);
+    const appFake = buildApp(ctx.deps);
+    const emitido = await appFake.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-503-cancel-1" }),
+    );
+    const { id } = (await emitido.json()) as CfdiResponse;
+
+    const deps = { ...ctx.deps, hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()) };
+    const appReal = buildApp(deps);
+    const res = await appReal.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/cancelar`, authedJson(ctx.staff.owner.token, { motivo: "02" }, { "idempotency-key": "cancel-503-1" }));
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("service_unavailable");
+
+    const stillThere = await ctx.hotelesRepo.findCfdiEmision(ctx.propertyId, id);
+    expect(stillThere!.status).toBe("timbrado");
+    expect(stillThere!.canceledAt).toBeNull();
   });
 });

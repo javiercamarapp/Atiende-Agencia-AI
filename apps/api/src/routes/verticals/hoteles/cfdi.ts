@@ -18,6 +18,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { PortUnavailableError } from "@atiende/mcp-cfdi";
 import {
   CFDI_HOSPEDAJE_ROLES,
   IdempotencyConflictError,
@@ -33,6 +34,30 @@ import {
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+// Hallazgo auditoría — en producción `deps.hotelesCfdiPort` es
+// `DualPacCfdiPort(FinkokAdapter, SwSapienAdapter)`, y AMBOS adaptadores son
+// esqueletos honestos que lanzan `PortUnavailableError` de forma INCONDICIONAL
+// (sin CSD/credenciales reales de Finkok/SW Sapien configuradas en este entorno,
+// ver comentario de cabecera de finkok-adapter.ts/sw-sapien-adapter.ts). Antes de
+// este fix ese error llegaba tal cual a `app.onError` (app.ts), que solo conoce
+// `ApiError` -- cualquier otro error se aplana a un 500 genérico "Error interno",
+// indistinguible en la UI de un bug real. `DualPacCfdiPort.timbrar` envuelve el
+// fallo de ambos PAC en un `AggregateError`; `.cancelar`/`.consultarEstado`
+// intentan el primario y, si falla, propagan tal cual el error del secundario (un
+// `PortUnavailableError` sin envolver). Se detectan ambas formas para responder
+// 503 honesto en vez de un 500 que sugiere un bug.
+function isPacUnavailableError(err: unknown): boolean {
+  if (err instanceof PortUnavailableError) return true;
+  if (err instanceof AggregateError) return err.errors.every((e) => e instanceof PortUnavailableError);
+  return false;
+}
+
+function pacUnavailableApiError(accion: string) {
+  return Errors.serviceUnavailable(
+    `El servicio de timbrado CFDI (PAC) no está disponible en este entorno: no hay credenciales reales de Finkok/SW Sapien configuradas, así que no se pudo ${accion}. Esto es esperado en este ambiente (sin CSD/credenciales de un PAC real) -- configura las variables de entorno del PAC para habilitarlo.`,
+  );
+}
 
 interface EmitirHospedajeBody {
   readonly rfcReceptor?: unknown;
@@ -280,6 +305,7 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.json(result.body as object, result.status as 201);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
+      if (isPacUnavailableError(err)) throw pacUnavailableApiError("timbrar el CFDI de hospedaje");
       throw err;
     }
   });
@@ -359,6 +385,7 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.json(result.body as object, result.status as 201);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
+      if (isPacUnavailableError(err)) throw pacUnavailableApiError("timbrar el complemento de pago");
       throw err;
     }
   });
@@ -383,7 +410,13 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (!cfdi.uuidFiscal) throw Errors.conflict("Este CFDI no tiene UUID fiscal (no fue timbrado con éxito).");
     if (cfdi.status === "cancelado") throw Errors.conflict("Este CFDI ya está cancelado.");
 
-    const cancelacion = await deps.hotelesCfdiPort.cancelar({ uuid: cfdi.uuidFiscal, motivo, folioSustitucion, idempotencyKey });
+    let cancelacion: Awaited<ReturnType<AppDeps["hotelesCfdiPort"]["cancelar"]>>;
+    try {
+      cancelacion = await deps.hotelesCfdiPort.cancelar({ uuid: cfdi.uuidFiscal, motivo, folioSustitucion, idempotencyKey });
+    } catch (err) {
+      if (isPacUnavailableError(err)) throw pacUnavailableApiError("cancelar el CFDI");
+      throw err;
+    }
     await repo.updateCfdiEmisionCancelacion(cfdiId, cancelacion.status);
 
     return c.json({ id: cfdiId, estado: cancelacion.status });

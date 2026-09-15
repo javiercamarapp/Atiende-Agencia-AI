@@ -193,13 +193,23 @@ export function buildProductionDeps(): AppDeps {
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: notProductionReady<PaymentsPort>("hotelesPaymentsPort"),
     hotelesTurnHandler: llmGateway ? buildRealHotelesTurnHandler(engine, llmGateway) : notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
-    // Fase 5 (H5/REQ-BO-001/002) — a diferencia de `hotelesPaymentsPort` (SIN
-    // adaptador real todavía), aquí SÍ se conecta un `CfdiPort` real de punta a
-    // punta: `FinkokAdapter`/`SwSapienAdapter` son esqueletos HONESTOS que fallan
-    // explícito con `PortUnavailableError` mientras falten sus variables de entorno
-    // de credenciales/CSD (ver @atiende/mcp-cfdi/README.md) -- nunca fabrican un
-    // timbrado. No hace falta `notProductionReady` aquí porque el propio adaptador
-    // YA es honesto sobre su disponibilidad vía `status()`.
+    // Fase 5 (H5/REQ-BO-001/002) — Fix hallazgo auditoría (este comentario ANTES
+    // afirmaba incorrectamente que "SÍ se conecta un CfdiPort real de punta a
+    // punta"; es falso en este monorepo, se corrige aquí). `FinkokAdapter`/
+    // `SwSapienAdapter` son esqueletos HONESTOS -- código de integración real
+    // documentado (rutas SOAP/REST, forma del payload) pero SIN CSD/credenciales
+    // reales de Finkok/SW Sapien configuradas en este entorno (no hay cuenta de
+    // ningún PAC dada de alta): `timbrar`/`cancelar`/`consultarEstado` lanzan
+    // `PortUnavailableError` de forma INCONDICIONAL, nunca fabrican un timbrado
+    // falso. En otras palabras: NO hay ningún `CfdiPort` real de punta a punta
+    // conectado hoy -- timbrar/cancelar un CFDI de hospedaje real de un hotel es
+    // imposible en este ambiente hasta que alguien configure las variables de
+    // entorno de credenciales/CSD de un PAC real (ver @atiende/mcp-cfdi/README.md).
+    // No hace falta `notProductionReady` aquí porque el propio adaptador ya es
+    // honesto sobre su disponibilidad vía `status()`, Y (fix de este mismo
+    // hallazgo) `apps/api/.../hoteles/cfdi.ts` ahora traduce ese
+    // `PortUnavailableError`/`AggregateError` a un 503 `service_unavailable`
+    // explícito en vez de dejar que `app.onError` lo aplane a un 500 genérico.
     hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()),
     // Falta un adaptador de auditoría real (tabla/servicio dedicado) -- mismo tipo
     // de gap que `despachosAuditSink` (ver ese comentario abajo), no el de sesión.
