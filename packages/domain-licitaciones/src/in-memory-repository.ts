@@ -8,8 +8,28 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ContractTransitionRejectedError, IdempotencyConflictError } from "./errors.ts";
-import type { GoNoGoDecisionCreateInput, IdempotencyParams, IdempotentResult, LicitacionesRepository, MatchingProfileUpsertInput, TenderUpsertInput, TenderUpsertResult } from "./repository.ts";
+import { CompanyDataDuplicateKeyError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { checkTenderResolution } from "./tender-resolution.ts";
+import type {
+  ApprovedRateCreateInput,
+  ApprovedRateUpdateInput,
+  CompanyCapabilityCreateInput,
+  CompanyCapabilityUpdateInput,
+  CompanyDocumentCreateInput,
+  CompanyDocumentUpdateInput,
+  CompanyExperienceCreateInput,
+  CompanyExperienceUpdateInput,
+  CompanySignerCreateInput,
+  CompanySignerUpdateInput,
+  GoNoGoDecisionCreateInput,
+  IdempotencyParams,
+  IdempotentResult,
+  LicitacionesRepository,
+  MatchingProfileUpsertInput,
+  TenderResolutionCreateInput,
+  TenderUpsertInput,
+  TenderUpsertResult,
+} from "./repository.ts";
 import type {
   AddContractDocumentInput,
   CompanyLessonLearnedRecord,
@@ -45,7 +65,7 @@ import type { RenewalCandidateContract } from "./renewal-radar.ts";
 import { readPackageZip, storeFile, writePackageZip } from "./storage.ts";
 import { requireValidHashedInputs, sealInputs } from "./sealed-inputs.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
-import { sha256Hex } from "./types.ts";
+import { isoNow, sha256Hex } from "./types.ts";
 import { ApprovalWorkflow } from "./approval-workflow.ts";
 import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
 import { ProposalVersionRegistry, buildProposalInputRecords } from "./proposal-version-registry.ts";
@@ -84,6 +104,7 @@ import type {
   RequiredAnnexItem,
   SubmissionRecord,
   TenderRecord,
+  TenderResolutionRecord,
 } from "./types.ts";
 
 /** Serializa operaciones por clave — equivalente en memoria de un row lock de Postgres (mismo patrón que domain-hoteles). */
@@ -153,6 +174,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly tenderAuditLog = new Map<string, { action: string; actorId: string; createdAt: string }[]>(); // tenderId -> entradas (historial)
   private readonly matchingProfiles = new Map<string, MatchingProfileRecord>(); // orgId -> perfil (singleton)
   private readonly goNoGoDecisions = new Map<string, GoNoGoDecisionRecord[]>(); // tenderId -> decisiones (historial, más reciente al final)
+  // ---- Fase 16: resolución won/lost ----
+  private readonly tenderResolutions = new Map<string, TenderResolutionRecord[]>(); // tenderId -> resoluciones (historial, más antigua primero)
   // ---- Fase 5 pieza 2: historial de versiones de convocatoria ----
   private readonly tenderVersionRegistries = new Map<string, TenderVersionRegistry>(); // `${orgId}:${tenderId}` -> registro (historial completo)
   private readonly tenderChangeNotifications = new Map<string, TenderChangeNotificationRecord[]>(); // orgId -> notificaciones (historial, más reciente al final)
@@ -736,6 +759,42 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     return [...(this.goNoGoDecisions.get(tenderId) ?? [])].reverse().sort((a, b) => b.decidedAt.localeCompare(a.decidedAt));
   }
 
+  // ---- Fase 16: resolución won/lost (ver tender-resolution.ts) ----
+
+  async resolveTender(organizationId: string, tenderId: string, input: TenderResolutionCreateInput): Promise<TenderRecord> {
+    const tender = this.tenders.get(tenderId);
+    if (!tender || tender.organizationId !== organizationId) {
+      throw new Error(`Tender "${tenderId}" no encontrado para la organización "${organizationId}".`);
+    }
+    const fromStatus = tender.status ?? "discovered";
+    const check = checkTenderResolution(fromStatus);
+    if (!check.valid) throw new TenderResolutionRejectedError(fromStatus, input.resolution, check.allowedFromStatuses);
+
+    const resolvedAt = isoNow();
+    const record: TenderResolutionRecord = {
+      id: randomUUID(),
+      organizationId,
+      tenderId,
+      resolution: input.resolution,
+      fromStatus,
+      reason: input.reason,
+      resolvedBy: input.actorId,
+      resolvedAt,
+    };
+    const list = this.tenderResolutions.get(tenderId) ?? [];
+    this.tenderResolutions.set(tenderId, [...list, record]);
+
+    const updated: TenderRecord = { ...tender, status: input.resolution, updatedAt: resolvedAt };
+    this.tenders.set(tenderId, updated);
+    return updated;
+  }
+
+  async listTenderResolutions(organizationId: string, tenderId: string): Promise<readonly TenderResolutionRecord[]> {
+    const tender = this.tenders.get(tenderId);
+    if (!tender || tender.organizationId !== organizationId) return [];
+    return this.tenderResolutions.get(tenderId) ?? [];
+  }
+
   // ---- Flujo 1: checklist de integridad ----
 
   async listComplianceItems(organizationId: string, proposalId: string): Promise<readonly ComplianceItemRecord[]> {
@@ -766,6 +825,121 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async listCompanySigners(organizationId: string): Promise<readonly CompanySignerRecord[]> {
     return this.companySigners.get(organizationId) ?? [];
+  }
+
+  // ---- Fase 16: escritura de "datos de empresa" (ver repository.ts para el
+  // porqué -- sin esto, toda propuesta que dependiera de un dato ausente
+  // quedaba PENDIENTE para siempre, sin ningún camino real para capturarlo). ----
+
+  async createCompanyDocument(organizationId: string, input: CompanyDocumentCreateInput): Promise<CompanyDocumentRecord> {
+    const record: CompanyDocumentRecord = { id: randomUUID(), type: input.type, label: input.label, expiresAt: input.expiresAt, approvalStatus: input.approvalStatus ?? "pendiente_aprobacion" };
+    const list = this.companyDocuments.get(organizationId) ?? [];
+    this.companyDocuments.set(organizationId, [...list, record]);
+    return record;
+  }
+
+  async updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord> {
+    const list = this.companyDocuments.get(organizationId) ?? [];
+    const index = list.findIndex((d) => d.id === documentId);
+    if (index === -1) throw new Error(`Documento de empresa "${documentId}" no encontrado para la organización "${organizationId}".`);
+    const updated: CompanyDocumentRecord = { ...list[index]!, ...input };
+    const next = [...list];
+    next[index] = updated;
+    this.companyDocuments.set(organizationId, next);
+    return updated;
+  }
+
+  async createApprovedRate(organizationId: string, input: ApprovedRateCreateInput): Promise<ApprovedRateRecord> {
+    const list = this.approvedRates.get(organizationId) ?? [];
+    if (list.some((r) => r.concept === input.concept)) throw new CompanyDataDuplicateKeyError("tarifa aprobada", input.concept);
+    const record: ApprovedRateRecord = {
+      id: randomUUID(),
+      concept: input.concept,
+      unitPrice: input.unitPrice,
+      currency: "MXN",
+      approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
+      validFrom: input.validFrom ?? isoNow(),
+      validUntil: input.validUntil ?? null,
+    };
+    this.approvedRates.set(organizationId, [...list, record]);
+    return record;
+  }
+
+  async updateApprovedRate(organizationId: string, rateId: string, input: ApprovedRateUpdateInput): Promise<ApprovedRateRecord> {
+    const list = this.approvedRates.get(organizationId) ?? [];
+    const index = list.findIndex((r) => r.id === rateId);
+    if (index === -1) throw new Error(`Tarifa aprobada "${rateId}" no encontrada para la organización "${organizationId}".`);
+    const updated: ApprovedRateRecord = { ...list[index]!, ...input };
+    const next = [...list];
+    next[index] = updated;
+    this.approvedRates.set(organizationId, next);
+    return updated;
+  }
+
+  async listAllApprovedRates(organizationId: string): Promise<readonly ApprovedRateRecord[]> {
+    return this.approvedRates.get(organizationId) ?? [];
+  }
+
+  async createCompanyCapability(organizationId: string, input: CompanyCapabilityCreateInput): Promise<CompanyCapabilityRecord> {
+    const list = this.companyCapabilities.get(organizationId) ?? [];
+    if (list.some((c) => c.name === input.name)) throw new CompanyDataDuplicateKeyError("capacidad", input.name);
+    const record: CompanyCapabilityRecord = {
+      id: randomUUID(),
+      name: input.name,
+      description: input.description,
+      evidenceDocId: input.evidenceDocId ?? null,
+      approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
+    };
+    this.companyCapabilities.set(organizationId, [...list, record]);
+    return record;
+  }
+
+  async updateCompanyCapability(organizationId: string, capabilityId: string, input: CompanyCapabilityUpdateInput): Promise<CompanyCapabilityRecord> {
+    const list = this.companyCapabilities.get(organizationId) ?? [];
+    const index = list.findIndex((c) => c.id === capabilityId);
+    if (index === -1) throw new Error(`Capacidad "${capabilityId}" no encontrada para la organización "${organizationId}".`);
+    const updated: CompanyCapabilityRecord = { ...list[index]!, ...input };
+    const next = [...list];
+    next[index] = updated;
+    this.companyCapabilities.set(organizationId, next);
+    return updated;
+  }
+
+  async createCompanyExperience(organizationId: string, input: CompanyExperienceCreateInput): Promise<CompanyExperienceItemRecord> {
+    const record: CompanyExperienceItemRecord = { id: randomUUID(), description: input.description, evidenceDocId: input.evidenceDocId, approvalStatus: input.approvalStatus ?? "pendiente_aprobacion" };
+    const list = this.companyExperience.get(organizationId) ?? [];
+    this.companyExperience.set(organizationId, [...list, record]);
+    return record;
+  }
+
+  async updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord> {
+    const list = this.companyExperience.get(organizationId) ?? [];
+    const index = list.findIndex((e) => e.id === experienceId);
+    if (index === -1) throw new Error(`Experiencia "${experienceId}" no encontrada para la organización "${organizationId}".`);
+    const updated: CompanyExperienceItemRecord = { ...list[index]!, ...input };
+    const next = [...list];
+    next[index] = updated;
+    this.companyExperience.set(organizationId, next);
+    return updated;
+  }
+
+  async createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord> {
+    const list = this.companySigners.get(organizationId) ?? [];
+    if (list.some((s) => s.role === input.role)) throw new CompanyDataDuplicateKeyError("firmante", input.role);
+    const record: CompanySignerRecord = { id: randomUUID(), name: input.name, role: input.role, authorized: input.authorized ?? false };
+    this.companySigners.set(organizationId, [...list, record]);
+    return record;
+  }
+
+  async updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord> {
+    const list = this.companySigners.get(organizationId) ?? [];
+    const index = list.findIndex((s) => s.id === signerId);
+    if (index === -1) throw new Error(`Firmante "${signerId}" no encontrado para la organización "${organizationId}".`);
+    const updated: CompanySignerRecord = { ...list[index]!, ...input };
+    const next = [...list];
+    next[index] = updated;
+    this.companySigners.set(organizationId, next);
+    return updated;
   }
 
   // ---- Flujo 2: propuesta económica ----

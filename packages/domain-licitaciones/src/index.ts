@@ -15,6 +15,7 @@ export type {
   SubmissionRecord,
   MatchingProfileRecord,
   GoNoGoDecisionRecord,
+  TenderResolutionRecord,
 } from "./types.ts";
 
 export { dateOnlyToMexicoCityIso, timestampToIso, nowIso, resolveExpedienteAsOfIso } from "./dates.ts";
@@ -244,7 +245,11 @@ export { DEFAULT_RENEWAL_LEAD_DAYS, daysBetween as renewalDaysBetween, computeRe
 export type { RenewalCandidateContract, RenewalAlertCandidate, RenewalUrgency, RenewalUpcomingCandidate } from "./renewal-radar.ts";
 
 export { INCONFORMIDAD_REVIEW_ROLES } from "./roles.ts";
-export { ContractTransitionRejectedError } from "./errors.ts";
+export { ContractTransitionRejectedError, TenderResolutionRejectedError, CompanyDataDuplicateKeyError } from "./errors.ts";
+
+// ---- Fase 16: resolución won/lost + escritura de "datos de empresa" ----
+export { TENDER_RESOLUTIONS, TENDER_RESOLVABLE_FROM_STATUSES, isTenderResolution, checkTenderResolution } from "./tender-resolution.ts";
+export type { TenderResolution, TenderResolutionCheckResult } from "./tender-resolution.ts";
 
 export type {
   ContractRecord,
@@ -266,6 +271,18 @@ export type {
   RenewalAlertRecord,
   ScanRenewalAlertsInput,
   ScanRenewalAlertsResult,
+  TenderResolutionCreateInput,
+  CompanyDataApprovalStatus,
+  CompanyDocumentCreateInput,
+  CompanyDocumentUpdateInput,
+  ApprovedRateCreateInput,
+  ApprovedRateUpdateInput,
+  CompanyCapabilityCreateInput,
+  CompanyCapabilityUpdateInput,
+  CompanyExperienceCreateInput,
+  CompanyExperienceUpdateInput,
+  CompanySignerCreateInput,
+  CompanySignerUpdateInput,
 } from "./repository.ts";
 
 // ---- Fase 8: ingesta automática real (compras_mx_historico) + recordatorios de plazo ----

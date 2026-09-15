@@ -15,6 +15,7 @@ import type {
   RequiredAnnexItem,
   MatchingProfileRecord,
   GoNoGoDecisionRecord,
+  TenderResolutionRecord,
 } from "./types.ts";
 import type { Approval, ApprovalScope, ChangeDetected } from "./approval-workflow.ts";
 import type { ExpedienteInputs, HashedInputs } from "./sealed-inputs.ts";
@@ -31,6 +32,7 @@ import type { DecimalString } from "./money.ts";
 import type { InconformidadFundamento, InconformidadViability } from "./inconformidad.ts";
 import type { CriteriaComparisonItem, OwnProposalStatus } from "./fallo-autopsy.ts";
 import type { TenderSourceIngestCandidate } from "./connectors/types.ts";
+import type { TenderResolution } from "./tender-resolution.ts";
 
 // ---- Fase 2 pieza 3: RequirementMatrix / TechnicalProposalBuilder ----
 // Formas de registro deliberadamente con uniones de string LITERALES (no
@@ -233,6 +235,88 @@ export interface ContractTransitionInput {
   readonly reason: string;
   readonly evidenceRef: string | null;
   readonly actorId: string;
+}
+
+// ---------------------------------------------------------------------
+// Fase 16 -- resolución won/lost de una convocatoria (ver tender-resolution.ts).
+// ---------------------------------------------------------------------
+export interface TenderResolutionCreateInput {
+  readonly resolution: TenderResolution;
+  readonly reason: string;
+  readonly actorId: string;
+}
+
+// ---------------------------------------------------------------------
+// Fase 16 -- escritura de "datos de empresa" (company data): hasta esta
+// pieza `LicitacionesRepository` solo exponía lectura (`listCompanyDocuments`/
+// `listApprovedRates`/`listCompanyCapabilities`/`listCompanyExperience`/
+// `listCompanySigners`) -- sin forma de capturar el dato real, toda propuesta
+// (técnica o económica) que dependiera de él quedaba PENDIENTE para siempre
+// (ver `company-data.ts::CompanyDataService`: dato ausente -> "missing"
+// explícito, nunca inventado). `approvalStatus` es escribible por las mismas
+// WRITE_ROLES que el resto de la captura (mismo criterio EXACTO que la
+// migración 009 -- "aprobado" aquí es una marca de captura correcta, no una
+// decisión de riesgo, a diferencia de aprobar el expediente completo).
+// ---------------------------------------------------------------------
+export type CompanyDataApprovalStatus = "aprobado" | "pendiente_aprobacion" | "rechazado";
+
+export interface CompanyDocumentCreateInput {
+  readonly type: string;
+  readonly label: string;
+  readonly expiresAt: string | null;
+  readonly approvalStatus?: CompanyDataApprovalStatus;
+}
+export interface CompanyDocumentUpdateInput {
+  readonly label?: string;
+  readonly expiresAt?: string | null;
+  readonly approvalStatus?: CompanyDataApprovalStatus;
+}
+
+export interface ApprovedRateCreateInput {
+  readonly concept: string;
+  readonly unitPrice: DecimalString;
+  readonly validFrom?: string;
+  readonly validUntil?: string | null;
+  readonly approvalStatus?: CompanyDataApprovalStatus;
+}
+export interface ApprovedRateUpdateInput {
+  readonly unitPrice?: DecimalString;
+  readonly validFrom?: string;
+  readonly validUntil?: string | null;
+  readonly approvalStatus?: CompanyDataApprovalStatus;
+}
+
+export interface CompanyCapabilityCreateInput {
+  readonly name: string;
+  readonly description: string;
+  readonly evidenceDocId?: string | null;
+  readonly approvalStatus?: CompanyDataApprovalStatus;
+}
+export interface CompanyCapabilityUpdateInput {
+  readonly description?: string;
+  readonly evidenceDocId?: string | null;
+  readonly approvalStatus?: CompanyDataApprovalStatus;
+}
+
+export interface CompanyExperienceCreateInput {
+  readonly description: string;
+  readonly evidenceDocId: string;
+  readonly approvalStatus?: CompanyDataApprovalStatus;
+}
+export interface CompanyExperienceUpdateInput {
+  readonly description?: string;
+  readonly evidenceDocId?: string;
+  readonly approvalStatus?: CompanyDataApprovalStatus;
+}
+
+export interface CompanySignerCreateInput {
+  readonly name: string;
+  readonly role: string;
+  readonly authorized?: boolean;
+}
+export interface CompanySignerUpdateInput {
+  readonly name?: string;
+  readonly authorized?: boolean;
 }
 
 export interface ContractDocumentRecord {
@@ -719,6 +803,30 @@ export interface LicitacionesRepository {
   /** Reclama hasta `limit` jobs `channel='email'` pendientes/fallidos -- ver `licitaciones.claim_email_outbox_batch` (migración 018). */
   claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
   completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
+
+  // ---------------------------------------------------------------------
+  // Fase 16 -- resolución won/lost (ver tender-resolution.ts) + escritura de
+  // "datos de empresa" (ver bloque de tipos *CreateInput/*UpdateInput arriba).
+  // ---------------------------------------------------------------------
+
+  /** Valida con `checkTenderResolution` (tender-resolution.ts) -- lanza `TenderResolutionRejectedError` si el `status` actual de la convocatoria no está en `TENDER_RESOLVABLE_FROM_STATUSES`, sin tocar ninguna fila. Si es válida, actualiza `licitaciones.tender.status` y agrega una fila a `licitaciones.tender_resolution` en la MISMA operación. */
+  resolveTender(organizationId: string, tenderId: string, input: TenderResolutionCreateInput): Promise<TenderRecord>;
+  /** Historial COMPLETO e inmutable de resoluciones, más antigua primero (normalmente una sola fila: won/lost son terminales, pero el historial se conserva igual que `contract_status_history`). */
+  listTenderResolutions(organizationId: string, tenderId: string): Promise<readonly TenderResolutionRecord[]>;
+
+  /** Lanza `CompanyDataDuplicateKeyError` -- ninguna clave natural en este bloque (`approved_rate.concept`, `company_capability.name`, `company_signer.role`). `company_document`/`company_experience` no tienen clave natural: crear siempre inserta una fila nueva. */
+  createCompanyDocument(organizationId: string, input: CompanyDocumentCreateInput): Promise<CompanyDocumentRecord>;
+  updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord>;
+  createApprovedRate(organizationId: string, input: ApprovedRateCreateInput): Promise<ApprovedRateRecord>;
+  updateApprovedRate(organizationId: string, rateId: string, input: ApprovedRateUpdateInput): Promise<ApprovedRateRecord>;
+  /** A diferencia de `listApprovedRates` (filtra a solo aprobadas Y vigentes a `asOfIso`, el insumo real del motor económico), esta lista TODAS las tarifas de la organización sin filtrar -- la vista de administración necesita ver/editar también las pendientes/rechazadas/vencidas. */
+  listAllApprovedRates(organizationId: string): Promise<readonly ApprovedRateRecord[]>;
+  createCompanyCapability(organizationId: string, input: CompanyCapabilityCreateInput): Promise<CompanyCapabilityRecord>;
+  updateCompanyCapability(organizationId: string, capabilityId: string, input: CompanyCapabilityUpdateInput): Promise<CompanyCapabilityRecord>;
+  createCompanyExperience(organizationId: string, input: CompanyExperienceCreateInput): Promise<CompanyExperienceItemRecord>;
+  updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord>;
+  createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord>;
+  updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord>;
 }
 
 export type {

@@ -94,3 +94,42 @@ export class ContractTransitionRejectedError extends Error {
     this.name = "ContractTransitionRejectedError";
   }
 }
+
+/**
+ * Fase 16 (post-adjudicación, pieza 0, ver tender-resolution.ts): lanzado por
+ * `LicitacionesRepository.resolveTender()` cuando el `fromStatus` actual de
+ * la convocatoria no está en `TENDER_RESOLVABLE_FROM_STATUSES` -- mismo
+ * criterio exacto que `ContractTransitionRejectedError`, sin fusionarse con
+ * ella porque el catálogo de estados de una convocatoria (`TenderStatus`) y
+ * el de un contrato (`ContractStatus`) son dominios distintos.
+ */
+export class TenderResolutionRejectedError extends Error {
+  constructor(
+    readonly fromStatus: string,
+    readonly resolution: string,
+    readonly allowedFromStatuses: readonly string[],
+  ) {
+    super(
+      `No se puede marcar la convocatoria como "${resolution}" desde el estado "${fromStatus}". Se requiere que ya haya pasado por una decisión "go" real (estados permitidos para resolver: ${allowedFromStatuses.join(", ")}).`,
+    );
+    this.name = "TenderResolutionRejectedError";
+  }
+}
+
+/**
+ * Fase 16 (company data escribible): lanzado al crear un dato de empresa con
+ * clave natural duplicada (`concept` de una tarifa aprobada, `name` de una
+ * capacidad, `role` de un firmante) -- las tres tablas tienen un índice único
+ * (organization_id, <clave>) desde su migración original (001/009); crear un
+ * duplicado nunca actualiza en silencio, el llamador usa el endpoint de
+ * actualización (`PATCH .../:id`) explícitamente.
+ */
+export class CompanyDataDuplicateKeyError extends Error {
+  constructor(
+    readonly resource: string,
+    readonly key: string,
+  ) {
+    super(`Ya existe un registro de "${resource}" con la clave "${key}" para esta organización. Use PATCH .../:id para actualizarlo en vez de crear uno nuevo.`);
+    this.name = "CompanyDataDuplicateKeyError";
+  }
+}

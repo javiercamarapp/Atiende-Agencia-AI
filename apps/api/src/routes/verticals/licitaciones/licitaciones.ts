@@ -23,6 +23,8 @@ import { licitacionesFalloAutopsyRoutes } from "./falloAutopsy.ts";
 import { licitacionesRenewalRadarRoutes } from "./renewalRadar.ts";
 import { licitacionesAdminRoutes } from "./admin.ts";
 import { licitacionesAlertNotificationsRoutes } from "./alertNotifications.ts";
+import { licitacionesResolutionRoutes } from "./resolution.ts";
+import { licitacionesCompanyDataRoutes } from "./companyData.ts";
 
 export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -58,5 +60,10 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 10 — despacho proactivo real (correo) de recordatorios de plazo +
   // alertas de renovación + facturas vencidas de cobranza.
   app.route("/", licitacionesAlertNotificationsRoutes(deps));
+  // Fase 16 — resolución won/lost (post-adjudicación antes inalcanzable) +
+  // escritura de "datos de empresa" (propuestas que antes no podían salir de
+  // PENDIENTE por no tener dónde capturar el dato real).
+  app.route("/", licitacionesResolutionRoutes(deps));
+  app.route("/", licitacionesCompanyDataRoutes(deps));
   return app;
 }

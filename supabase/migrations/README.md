@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (81 migraciones, timestamps 20240101000001 .. 20240101000081)
+## Orden actual (82 migraciones, timestamps 20240101000001 .. 20240101000082)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -74,6 +74,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 
 81. `packages/domain-restaurantes/migrations/011_email_outbox_dispatch.sql` — hallazgo de auditoría (severidad MEDIA, "restaurantes no envía ningún correo: sin plantilla, sin dispatcher, sin remitente — solo WhatsApp"): `restaurantes.messaging_outbox` (migración 54) ya soportaba `channel='email'` en su CHECK desde el día uno, pero ningún código real lo reclamaba — se agregan `restaurantes.claim_email_outbox_batch`/`restaurantes.complete_email_outbox_job` (mismo patrón exacto que la migración 51 de citas/66 de rentas/70 de licitaciones/76 de despachos, acotados a `channel='email'`, sobre la columna real de este dominio `last_error_class`) + `restaurantes.orders.customer_email` (NULLABLE — ninguna tabla de este vertical tenía columna de correo; sin ella la plantilla nueva de "confirmación de pedido por correo" no tiene a quién escribirle) + `create_order_idempotent` (migración 33) actualizada para persistirla. Renumerada de 80 a 81 al integrar (colisión real con la migración de correo de hoteles, ambas ramas construidas en paralelo).
 
+82. `packages/domain-licitaciones/migrations/019_tender_resolution_and_company_data_writes.sql` — hallazgo de auditoría (severidad ALTA, "post-adjudicación inalcanzable: ningún endpoint marca una licitación ganada/perdida, ninguna propuesta puede salir de PENDIENTE"): `licitaciones.tender.status` podía llegar a `'won'`/`'lost'` desde la migración 22 (007_matching_profile.sql, el CHECK ya los admitía) pero ningún endpoint HTTP escribía esa transición — todo el flujo de post-adjudicación de las migraciones 42-47 (contrato/cobranza/inconformidad/autopsia/renovaciones) dependía de un estado que nunca se alcanzaba. Agrega `licitaciones.tender_resolution` (historial inmutable, mismo patrón que `go_no_go_decision` de la migración 23, gateado por `can_decide_org` porque declarar ganada/perdida es una decisión comercial/legal). Además cierra un segundo gap real verificado: `licitaciones.company_document`/`licitaciones.approved_rate` (migración 15/001_licitaciones_schema.sql) solo tenían policy de SELECT desde su creación — a diferencia de `company_capability`/`company_experience`/`company_signer` (migración 23/009), que sí recibieron INSERT/UPDATE con `can_write_org` en su propia migración — así que ninguna propuesta económica o técnica podía dejar de estar "PENDIENTE" ni con el endpoint de escritura correspondiente: RLS lo habría bloqueado en silencio. Se agrega INSERT/UPDATE (`can_write_org`) a esas dos tablas, mismo criterio exacto que las otras tres.
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -81,8 +83,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000081`; usa
-   `20240101000082`, luego `...083`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000082`; usa
+   `20240101000083`, luego `...084`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
