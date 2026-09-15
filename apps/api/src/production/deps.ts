@@ -1,8 +1,7 @@
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
-// completo de qué NO es un adaptador de producción todavía y por qué:
-// `hotelesPaymentsPort` (integración de cobro sin adaptador/credenciales, no
-// relacionada con RLS). `coreRepo`/`engine` y ahora también
+// completo de qué NO es un adaptador de producción todavía y por qué.
+// `coreRepo`/`engine` y ahora también
 // `restaurantesRepo`/`hotelesRepo`/`citasRepo`/`licitacionesRepo`/`despachosRepo`/
 // `rentasRepo`/`rentasOwnerPortalRepo` SÍ son reales de punta a punta contra
 // Supabase en cuanto `DATABASE_URL` apunte al proyecto consolidado — estos 7
@@ -13,6 +12,11 @@
 // 008_despachos_audit_log.sql`. `hotelesFraudeAuditSink` TAMPOCO — ver
 // `./hoteles-fraude-audit-sink.ts` y `packages/domain-hoteles/migrations/
 // 017_fraude_audit_log.sql` (mismo patrón, gap propio de hoteles cerrado aparte).
+// `hotelesPaymentsPort` TAMPOCO — ver `./hoteles-payments-port.ts`: era el único
+// puerto externo de todo el monorepo sin NINGÚN adaptador real (ni siquiera
+// gateado por una credencial faltante) — ahora sigue el mismo criterio que
+// `resend`/`llmProviders`: real en cuanto `STRIPE_SECRET_KEY` esté configurada,
+// `notProductionReady` (503 honesto) mientras no lo esté.
 //
 // `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler`/`llmGateway`: el
 // bloqueante que quedaba (ningún proveedor LLM real registrado, ver
@@ -71,6 +75,7 @@ import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-rep
 import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
+import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -214,7 +219,9 @@ export function buildProductionDeps(): AppDeps {
     restaurantesRepo: (db) => new PostgresRestaurantesRepository(db),
     turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
-    hotelesPaymentsPort: notProductionReady<PaymentsPort>("hotelesPaymentsPort"),
+    hotelesPaymentsPort: env.stripe.secretKey
+      ? new StripeHotelesPaymentsPort(fetch, { secretKey: env.stripe.secretKey })
+      : notProductionReady<PaymentsPort>("hotelesPaymentsPort (falta configurar STRIPE_SECRET_KEY)"),
     hotelesTurnHandler: llmGateway ? buildRealHotelesTurnHandler(engine, llmGateway) : notProductionReady<HotelesWhatsAppTurnHandler>("hotelesTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     // Fase 5 (H5/REQ-BO-001/002) — Fix hallazgo auditoría (este comentario ANTES
     // afirmaba incorrectamente que "SÍ se conecta un CfdiPort real de punta a

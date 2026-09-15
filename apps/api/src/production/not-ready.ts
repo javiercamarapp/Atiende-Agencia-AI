@@ -34,9 +34,11 @@
 //     de pasar por aquí: se construyen reales (turn-handler factory de cada
 //     dominio + el `LlmGateway` compartido), cada llamada con su propia sesión de
 //     Postgres (ver comentario de `production/deps.ts`).
-//   - `hotelesPaymentsPort`: integración de cobro (Stripe/Conekta), sin
-//     adaptador/credenciales dedicadas todavía — no es un repositorio de datos
-//     por-tenant, no depende de RLS, no aplica el patrón de fábrica.
+//   - `hotelesPaymentsPort`: SOLO cuando `STRIPE_SECRET_KEY` no está configurada
+//     (mismo criterio que los turn handlers de arriba) — ver
+//     `production/hoteles-payments-port.ts` para el adaptador real
+//     (PaymentIntents vía `fetch`, sin SDK) y `production/deps.ts` para el
+//     wiring. Ya no falta código, solo la credencial.
 //
 // `despachosAuditSink` YA NO está cubierto por este archivo: dejó de ser
 // `notProductionReady` al agregarse `packages/domain-despachos/migrations/

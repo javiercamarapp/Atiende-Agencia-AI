@@ -58,9 +58,8 @@ falsos) hasta que se configure:
 | `whatsAppDispatcher` (envío saliente real de WhatsApp) | Sin `WHATSAPP_ACCESS_TOKEN` | `.env.example`, `apps/api/src/production/deps.ts` |
 | `citasGoogleCalendarPortResolver` | Sin `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_OAUTH_REDIRECT_BASE_URL` | ídem — devuelve "sin conectar" honesto, nunca error, mientras falten |
 | `hotelesCfdiPort` (timbrar/cancelar CFDI de hospedaje) | Sin credenciales/CSD reales de Finkok NI de SW Sapien | `.env.example` (`FINKOK_*`/`SW_*`), `packages/mcp-servers/cfdi/README.md` |
-| `hotelesPaymentsPort` | Sin adaptador de cobro (Stripe/Conekta) todavía | `apps/api/src/production/not-ready.ts` |
-| `rentasCanalMensajeria` | Sin credencial de partner (Airbnb/Vrbo/Booking.com) — ningún nombre de variable definido aún, es la integración misma la que falta | `packages/domain-rentas/src/mensajeria/` |
-| `rentasOnboardingRepo` (3 de sus 8 métodos: credenciales/invitaciones) | Requieren una sesión `service_role` que este monorepo no aprovisiona todavía | `apps/api/src/production/rentas-onboarding-repository.ts` |
+| `hotelesPaymentsPort` (cobro con tarjeta al huésped de un folio) | Sin `STRIPE_SECRET_KEY` — el adaptador real (PaymentIntents) ya existe | `.env.example`, `apps/api/src/production/hoteles-payments-port.ts` |
+| `rentasCanalMensajeria` | Sin credencial de partner (Airbnb/Vrbo/Booking.com) — es un acuerdo de partner con cada plataforma, no solo una API key; responde 503 honesto ("canal no configurado") mientras tanto | `packages/domain-rentas/src/mensajeria/` |
 
 **Consecuencia práctica:** con `DATABASE_URL` + los secretos de plataforma
 (`JWT_SECRET`, `VOICE_TOOL_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`,
