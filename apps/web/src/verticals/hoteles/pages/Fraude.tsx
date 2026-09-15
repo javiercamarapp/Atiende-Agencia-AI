@@ -46,7 +46,17 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
   }
 
   async function handleResolve(alert: FraudAlertSummary, decision: "confirmar" | "descartar") {
-    const nota = window.prompt(`Nota de decisión (${decision}):`) ?? undefined;
+    // Hallazgo de auditoría (severidad ALTA, "el botón 'Cancelar' del prompt de
+    // confirmación de fraude no aborta la acción"): `window.prompt` devuelve `null`
+    // SOLO cuando el usuario da clic en su botón "Cancelar" (una cadena vacía, en
+    // cambio, significa que dio clic en "Aceptar" sin escribir nada) — el código
+    // anterior colapsaba ambos casos con `?? undefined` y seguía llamando a
+    // `resolveFraudAlert` de todas formas, así que "Cancelar" en el diálogo nativo
+    // nunca abortaba confirmar/descartar la alerta, solo dejaba la nota vacía. Ahora
+    // `nota === null` corta la función ANTES de tocar `setBusyId`/la llamada de red:
+    // ninguna reserva/alerta se resuelve si el staff canceló el diálogo.
+    const nota = window.prompt(`Nota de decisión (${decision}):`);
+    if (nota === null) return;
     setBusyId(alert.id);
     setError(null);
     try {
