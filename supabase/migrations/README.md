@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (80 migraciones, timestamps 20240101000001 .. 20240101000080)
+## Orden actual (81 migraciones, timestamps 20240101000001 .. 20240101000081)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -72,6 +72,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 79. `packages/domain-citas/migrations/013_availability_rules_admin_grants_and_policies.sql` — hallazgo de auditoría (severidad ALTA, "sin horarios de disponibilidad no se puede agendar"): `citas.availability_rules`/`citas.availability_overrides` traían desde 001_citas_schema.sql SOLO una policy pública de SELECT — a diferencia de `citas.providers`/`citas.services`/`citas.tenant_config` (migración 61), nunca tuvieron una policy `for all` de staff ni un GRANT de escritura bajo `authenticated`, y `CitasRepository` solo exponía `loadAvailabilityRules` (lectura). Sin una fila de `availability_rules`, `availability.ts::computeAvailableSlots` nunca ofrece un slot — un negocio nuevo dado de alta desde el panel no podía recibir ni una cita hasta insertar reglas por SQL directo. Mismo patrón exacto que la migración 61 (`provider_services`): GRANT insert/update/delete a `authenticated` + policy `for all` que resuelve la organización dueña vía join a `citas.providers` (ninguna de las 2 tablas tiene `organization_id` propio). Puramente aditiva. Renumerada de 78 a 79 al integrar (colisión real con la migración de repartidor de restaurantes, ambas ramas construidas en paralelo).
 80. `packages/domain-hoteles/migrations/014_email_outbox_dispatch.sql` — hallazgo de auditoría (severidad ALTA, el último pendiente de todo el proyecto verificado directamente contra el código): "Hoteles no envía ningún correo/notificación al huésped" — domain-hoteles no tenía ninguna carpeta `emails/` ni ruta `email-dispatch`, a diferencia de citas/rentas/licitaciones/despachos, que ya la traían completa. Verificado ANTES de escribir la migración: `hoteles.messaging_outbox` (migración 53) YA soportaba `channel='email'` desde su propio CHECK y YA traía `attempts`/`last_error_class` desde el día uno — lo único que faltaba en el esquema era `hoteles.claim_email_outbox_batch`/`hoteles.complete_email_outbox_job`, acotadas a `channel='email'` (mismo patrón exacto que la migración 51 de citas/59 de rentas/70 de licitaciones/76 de despachos), reutilizando la columna `last_error_class` ya existente (120 caracteres) en vez de agregar una columna `last_error` nueva. Junto con esta migración se agregó la infraestructura TS completa que le faltaba (`packages/domain-hoteles/src/emails/layout.ts` con el logo real de la marca, `emails/guest-templates.ts`, `guest-email-notifications.ts`, `email-dispatch.ts`) + la ruta `POST/GET /internal/hoteles/email-dispatch` (mismo patrón que `citas/email-dispatch.ts`), encolando desde los 3 puntos reales del ciclo de vida donde antes no se notificaba al huésped en absoluto: confirmación de reserva (`POST .../reservas`), recibo de folio (`POST .../folios/:folioId/cerrar`) y aviso de CFDI timbrado (`POST .../folios/:folioId/cfdi`).
 
+81. `packages/domain-restaurantes/migrations/011_email_outbox_dispatch.sql` — hallazgo de auditoría (severidad MEDIA, "restaurantes no envía ningún correo: sin plantilla, sin dispatcher, sin remitente — solo WhatsApp"): `restaurantes.messaging_outbox` (migración 54) ya soportaba `channel='email'` en su CHECK desde el día uno, pero ningún código real lo reclamaba — se agregan `restaurantes.claim_email_outbox_batch`/`restaurantes.complete_email_outbox_job` (mismo patrón exacto que la migración 51 de citas/66 de rentas/70 de licitaciones/76 de despachos, acotados a `channel='email'`, sobre la columna real de este dominio `last_error_class`) + `restaurantes.orders.customer_email` (NULLABLE — ninguna tabla de este vertical tenía columna de correo; sin ella la plantilla nueva de "confirmación de pedido por correo" no tiene a quién escribirle) + `create_order_idempotent` (migración 33) actualizada para persistirla. Renumerada de 80 a 81 al integrar (colisión real con la migración de correo de hoteles, ambas ramas construidas en paralelo).
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -79,8 +81,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000080`; usa
-   `20240101000081`, luego `...082`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000081`; usa
+   `20240101000082`, luego `...083`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el

@@ -27,6 +27,7 @@ function serializeOrder(o: Order) {
     customerName: o.customerName,
     customerPhone: o.customerPhone,
     customerAddress: o.customerAddress,
+    customerEmail: o.customerEmail,
     total: o.total,
     status: o.status,
     items: o.items,

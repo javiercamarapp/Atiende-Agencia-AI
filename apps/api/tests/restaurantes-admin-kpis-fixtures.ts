@@ -65,6 +65,7 @@ function makeOrder(overrides: Partial<Order> & { organizationId: string; propert
     customerName: "Cliente de prueba",
     customerPhone: "9990000000",
     customerAddress: null,
+    customerEmail: null,
     branch: null,
     total: 164,
     status: "completado",

@@ -67,6 +67,7 @@ export type {
   MessagingOutboxRow,
   StaffOrderNotificationEventType,
   StaffOrderNotificationRecord,
+  EmailOutboxJobRow,
 } from "./repository.ts";
 export { InMemoryRestaurantesRepository } from "./in-memory-repository.ts";
 export { PostgresRestaurantesRepository } from "./postgres-repository.ts";
@@ -97,8 +98,21 @@ export {
   tryNotifyStaffOrderProblem,
   notifyStaffRepartidorAssignedCore,
   tryNotifyStaffRepartidorAssigned,
+  notifyCustomerOrderConfirmationEmailCore,
+  tryNotifyCustomerOrderConfirmationEmail,
 } from "./order-notifications.ts";
-export type { CustomerOrderNotificationResult } from "./order-notifications.ts";
+export type { CustomerOrderNotificationResult, CustomerOrderConfirmationEmailResult } from "./order-notifications.ts";
+
+// Fase de correo — ver emails/layout.ts, emails/order-templates.ts,
+// emails/staff-invite-template.ts, email-dispatch.ts.
+export { escapeHtml, renderCorreo } from "./emails/layout.ts";
+export type { EtiquetaPlantilla, FilaPlantilla, SeccionPlantilla } from "./emails/layout.ts";
+export { correoConfirmacionPedido } from "./emails/order-templates.ts";
+export type { PedidoCorreo, PedidoCorreoItem, Correo as PedidoCorreoResultado } from "./emails/order-templates.ts";
+export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
+export type { StaffInviteCorreo, StaffInviteVerticalRole, Correo as StaffInviteCorreoResultado } from "./emails/staff-invite-template.ts";
+export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "./email-dispatch.ts";
+export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 
 export { registerCallbackRequest } from "./callback-requests.ts";
 

@@ -42,6 +42,7 @@ import type {
   ChannelStatsRow,
   ConversationMessage,
   CustomerOverviewRow,
+  EmailOutboxJobRow,
   KpiDateRange,
   MessagingOutboxRow,
   NewOrderRecord,
@@ -116,6 +117,7 @@ interface OrderRow {
   readonly customer_name: string;
   readonly customer_phone: string;
   readonly customer_address: string | null;
+  readonly customer_email: string | null;
   readonly branch: string | null;
   readonly total: string;
   readonly status: Order["status"];
@@ -142,6 +144,7 @@ function mapOrder(row: OrderRow): Order {
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
     customerAddress: row.customer_address,
+    customerEmail: row.customer_email,
     branch: row.branch,
     total: Number(row.total),
     status: row.status,
@@ -165,7 +168,7 @@ function mapOrder(row: OrderRow): Order {
 }
 
 const ORDER_COLUMNS =
-  "id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at, assigned_repartidor_id, estimated_delivery_at, incident_note";
+  "id, organization_id, property_id, customer_id, customer_name, customer_phone, customer_address, customer_email, branch, total, status, items, source, notes, payment_method, call_transcript, call_recording_url, dedupe_fingerprint, idempotency_key, created_at, assigned_repartidor_id, estimated_delivery_at, incident_note";
 
 interface CategoryRow {
   readonly id: string;
@@ -464,6 +467,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
             customer_name: order.customerName,
             customer_phone: order.customerPhone,
             customer_address: order.customerAddress,
+            customer_email: order.customerEmail,
             branch: order.branch,
             total: order.total,
             items: order.items,
@@ -585,6 +589,22 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
 
   async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
     await this.db.query(`select restaurantes.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
+  }
+
+  // ============================================================================
+  // Dispatcher real de correo (ver migrations/011_email_outbox_dispatch.sql) —
+  // mismo patrón exacto que @atiende/domain-citas::PostgresCitasRepository, sobre
+  // la columna real de este dominio (`last_error_class`, ver `complete_error` más
+  // abajo de restaurantes.messaging_outbox).
+  // ============================================================================
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string; attempts: number; payload: Record<string, unknown> }>(`select id, organization_id, attempts, payload from restaurantes.claim_email_outbox_batch($1);`, [limit]);
+    return rows.map((r) => ({ id: r.id, organizationId: r.organization_id, attempts: r.attempts, payload: r.payload ?? {} }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    await this.db.query(`select restaurantes.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
   }
 
   // Fase 9 — sentido SALIENTE de `restaurantes.whatsapp_channel_config`

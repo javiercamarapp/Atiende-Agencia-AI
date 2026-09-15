@@ -13,6 +13,7 @@ import { restaurantesAdminOrdersRoutes } from "./admin-orders.ts";
 import { restaurantesAdminCustomersRoutes } from "./admin-customers.ts";
 import { restaurantesAdminStaffRoutes } from "./admin-staff.ts";
 import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
+import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -31,5 +32,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 10 — alta/gestión de cuentas de staff (invitar/listar/revocar), ver el
   // comentario de cabecera de admin-staff.ts para la decisión de diseño completa.
   app.route("/", restaurantesAdminStaffRoutes(deps));
+  // Hallazgo de auditoría — dispatcher real del canal de correo (channel='email'
+  // del outbox), mismo patrón exacto que citasEmailDispatchRoutes.
+  app.route("/", restaurantesEmailDispatchRoutes(deps));
   return app;
 }

@@ -5,7 +5,7 @@
 // product-search.ts::resolveOrderItemsAgainstProducts).
 import { createHash } from "node:crypto";
 import { OrderValidationError } from "./errors.ts";
-import { tryNotifyStaffNewOrder } from "./order-notifications.ts";
+import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { buildComplementNotes, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS } from "./order-quote.ts";
 import { applyPromotionToOrderTotal, normalizePromotionCode } from "./promotions.ts";
@@ -16,6 +16,12 @@ import type { Branch, CreateOrderInput, Order, PersistedOrderItem, Promotion, Pr
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
+
+// Mismo regex exacto que admin-staff.ts::EMAIL_RE y el CHECK de
+// restaurantes.orders.customer_email (migrations/011_email_outbox_dispatch.sql)
+// — validación deliberadamente laxa (formato, no existencia real del buzón):
+// suficiente para no encolar un correo con un valor obviamente inválido.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function toProductoEncontrado(product: { id: string; name: string; description: string | null; categoryName: string | null; price: number }): ProductoEncontrado {
   return {
@@ -100,6 +106,9 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   if (raw.idempotencyKey !== undefined && (typeof raw.idempotencyKey !== "string" || !raw.idempotencyKey.trim() || raw.idempotencyKey.length > 200)) {
     throw new OrderValidationError("idempotencyKey inválido");
   }
+  if (raw.customerEmail !== undefined && raw.customerEmail !== null && raw.customerEmail.trim() !== "" && (typeof raw.customerEmail !== "string" || raw.customerEmail.trim().length > 320 || !EMAIL_RE.test(raw.customerEmail.trim()))) {
+    throw new OrderValidationError("customerEmail inválido");
+  }
   const agentOrder = raw.source === "voice" || raw.source === "whatsapp";
   if (agentOrder && (typeof raw.customerAddress !== "string" || !raw.customerAddress.trim())) {
     throw new OrderValidationError("La dirección completa de entrega es requerida");
@@ -144,6 +153,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     customerName: raw.customerName.trim(),
     customerPhone: voicePhone ?? normalizePhone(raw.customerPhone),
     customerAddress: raw.customerAddress?.trim(),
+    customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
     promoCode: raw.promoCode?.trim() ? normalizePromotionCode(raw.promoCode) : undefined,
   };
 }
@@ -298,6 +308,7 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
       customerName: payload.customerName,
       customerPhone: payload.customerPhone,
       customerAddress: payload.customerAddress ?? null,
+      customerEmail: payload.customerEmail ?? null,
       branch: branch.name,
       total,
       items: orderItems,
@@ -317,6 +328,13 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
   // create_order_idempotent que devuelve el MISMO pedido (misma idempotencyKey o
   // dedupeFingerprint) nunca duplica la notificación.
   await tryNotifyStaffNewOrder(repo, order);
+
+  // Fase de correo — confirmación de pedido por correo real, best-effort e
+  // idempotente por (organizationId, channel, dedupeKey) igual que la línea de
+  // arriba: cuando el cliente no dejó correo (voz/WhatsApp, o web sin llenarlo),
+  // `notifyCustomerOrderConfirmationEmailCore` simplemente no encola nada — ver
+  // order-notifications.ts.
+  await tryNotifyCustomerOrderConfirmationEmail(repo, order);
 
   // Fase 11 — registra el uso real de la promoción DESPUÉS de persistir el pedido
   // (nunca antes: un pedido que falla al crearse no debe consumir un uso). Igual

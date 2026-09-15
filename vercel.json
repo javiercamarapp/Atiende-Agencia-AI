@@ -27,6 +27,7 @@
     { "path": "/internal/citas/confirmacion-cita", "schedule": "0 14 * * *" },
     { "path": "/internal/citas/email-dispatch", "schedule": "5 14 * * *" },
     { "path": "/internal/citas/google-calendar-sync", "schedule": "10 14 * * *" },
-    { "path": "/internal/hoteles/email-dispatch", "schedule": "15 14 * * *" }
+    { "path": "/internal/hoteles/email-dispatch", "schedule": "15 14 * * *" },
+    { "path": "/internal/restaurantes/email-dispatch", "schedule": "20 14 * * *" }
   ]
 }

@@ -39,6 +39,7 @@ import type {
   ChannelStatsRow,
   ConversationMessage,
   CustomerOverviewRow,
+  EmailOutboxJobRow,
   KpiDateRange,
   MessagingOutboxRow,
   NewOrderRecord,
@@ -677,6 +678,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         customerName: order.customerName,
         customerPhone: order.customerPhone,
         customerAddress: order.customerAddress,
+        customerEmail: order.customerEmail,
         branch: order.branch,
         total: order.total,
         status: "pending",
@@ -870,6 +872,31 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     row.attempts = attempts;
     row.lastErrorClass = errorClass.slice(0, 120);
     row.claimedAt = null;
+  }
+
+  // ---- Dispatcher real de correo (migrations/011_email_outbox_dispatch.sql) —
+  // acotado a channel='email' del MISMO outbox de arriba, mismo criterio exacto
+  // que restaurantes.claim_email_outbox_batch/complete_email_outbox_job. ----
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    // Iteración en orden de inserción del Map (equivalente en memoria de `order by
+    // created_at asc` — mismo criterio que claimMessagingOutboxBatch de arriba,
+    // que tampoco ordena explícitamente por la misma razón).
+    const eligible = [...this.outbox.values()]
+      .filter((o) => o.channel === "email" && (o.status === "pending" || o.status === "failed") && o.attempts < 5)
+      .slice(0, Math.max(limit, 0));
+    for (const row of eligible) {
+      row.status = "processing";
+      row.attempts += 1;
+    }
+    return eligible.map((row) => ({ id: row.id, organizationId: row.organizationId, attempts: row.attempts, payload: (row.payload ?? {}) as Record<string, unknown> }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.channel !== "email") return;
+    row.status = status;
+    row.lastErrorClass = error ? error.slice(0, 120) : null;
   }
 
   // ---- Fase 9 — bandeja de notificaciones internas al staff (ver

@@ -134,6 +134,11 @@ export interface CreateOrderInput {
   readonly customerName: string;
   readonly customerPhone: string;
   readonly customerAddress?: string;
+  /** Fase de correo — ver migrations/011_email_outbox_dispatch.sql: opcional a
+   * propósito (restaurantes es voz/WhatsApp-first, ver validateCreateOrderPayload
+   * en orders.ts) — cuando el cliente SÍ lo deja, dispara la confirmación de
+   * pedido por correo real (order-notifications.ts). */
+  readonly customerEmail?: string;
   readonly items: readonly CreateOrderItemInput[];
   readonly source: "web" | "voice" | "whatsapp" | "admin";
   readonly notes?: string;
@@ -158,6 +163,10 @@ export interface Order {
   readonly customerName: string;
   readonly customerPhone: string;
   readonly customerAddress: string | null;
+  /** Fase de correo — ver migrations/011_email_outbox_dispatch.sql. `null` para
+   * cualquier pedido creado antes de esta migración o por un canal (voz/
+   * WhatsApp) que todavía no lo captura. */
+  readonly customerEmail: string | null;
   readonly branch: string | null;
   readonly total: number;
   readonly status: OrderStatus;
