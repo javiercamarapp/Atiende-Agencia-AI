@@ -1131,7 +1131,16 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   }
 
   async findCfdiEmisionByFolio(propertyId: string, folioId: string, tipo: "hospedaje"): Promise<CfdiEmisionRecord | null> {
-    return [...this.cfdiEmisiones.values()].find((c) => c.propertyId === propertyId && c.folioId === folioId && c.tipo === tipo) ?? null;
+    // Fix hallazgo auditoría — desde 015_cfdi_hospedaje_reemision_tras_cancelacion.sql
+    // un folio puede acumular MÁS de un CFDI 'hospedaje' en su historial (los
+    // cancelados quedan; cada reemisión crea uno nuevo). El vigente (no cancelado,
+    // a lo más UNO por el índice único parcial) es el que le importa a quien llama
+    // este método; si no hay ninguno vigente, cae al cancelado más reciente (mismo
+    // criterio de "última verdad" que `listCfdiEmisiones` ya usa para ordenar).
+    const candidatos = [...this.cfdiEmisiones.values()].filter((c) => c.propertyId === propertyId && c.folioId === folioId && c.tipo === tipo);
+    const vigente = candidatos.find((c) => c.status !== "cancelado");
+    if (vigente) return vigente;
+    return candidatos.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] ?? null;
   }
 
   async findCfdiEmisionByPayment(propertyId: string, paymentId: string): Promise<CfdiEmisionRecord | null> {
@@ -1140,13 +1149,20 @@ export class InMemoryHotelesRepository implements HotelesRepository {
 
   async insertCfdiEmision(input: NewCfdiEmisionInput): Promise<CfdiEmisionRecord> {
     return this.cfdiLock.run(`${input.propertyId}:${input.folioId}:${input.tipo}:${input.paymentId ?? ""}`, async () => {
-      // Espejo de los índices únicos parciales de migrations/006_cfdi_hospedaje.sql
-      // (REQ-BO-002): a lo más UN CFDI 'hospedaje' por folio, a lo más UNO 'pago' por
-      // pago -- "on conflict ... do nothing" en Postgres, aquí devuelve el existente
-      // sin duplicar.
+      // Espejo del índice único parcial de
+      // migrations/015_cfdi_hospedaje_reemision_tras_cancelacion.sql (que reemplaza
+      // al de 006_cfdi_hospedaje.sql, REQ-BO-002): a lo más UN CFDI 'hospedaje'
+      // VIGENTE (no cancelado) por folio, a lo más UNO 'pago' por pago -- "on
+      // conflict ... where tipo = 'hospedaje' and status <> 'cancelado' do nothing"
+      // en Postgres, aquí devuelve el existente sin duplicar.
+      //
+      // Fix hallazgo auditoría — un CFDI 'hospedaje' cancelado YA NO cuenta como
+      // "existente" para este corto-circuito: bloqueaba para siempre la
+      // reemisión de un CFDI cancelado, que normalmente SÍ debe poder reemitirse
+      // con un folio fiscal nuevo.
       if (input.tipo === "hospedaje") {
         const existing = await this.findCfdiEmisionByFolio(input.propertyId, input.folioId, "hospedaje");
-        if (existing) return existing;
+        if (existing && existing.status !== "cancelado") return existing;
       } else if (input.paymentId) {
         const existing = await this.findCfdiEmisionByPayment(input.propertyId, input.paymentId);
         if (existing) return existing;

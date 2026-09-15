@@ -1287,8 +1287,17 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   async findCfdiEmisionByFolio(propertyId: string, folioId: string, tipo: "hospedaje"): Promise<CfdiEmisionRecord | null> {
+    // Fix hallazgo auditoría — desde 015_cfdi_hospedaje_reemision_tras_cancelacion.sql
+    // un folio puede acumular MÁS de un CFDI 'hospedaje' en su historial (los
+    // cancelados quedan; cada reemisión crea uno nuevo). El vigente (no cancelado,
+    // a lo más UNO por el índice único parcial) es el que le importa a quien llama
+    // este método; si no hay ninguno vigente, cae al cancelado más reciente (mismo
+    // criterio de "última verdad" que `listCfdiEmisiones` ya usa para ordenar).
     const { rows } = await this.db.query<CfdiEmisionRawRow>(
-      `select ${CFDI_EMISION_COLUMNS} from hoteles.cfdi_emision where property_id = $1 and folio_id = $2 and tipo = $3;`,
+      `select ${CFDI_EMISION_COLUMNS} from hoteles.cfdi_emision
+       where property_id = $1 and folio_id = $2 and tipo = $3
+       order by (status <> 'cancelado') desc, created_at desc
+       limit 1;`,
       [propertyId, folioId, tipo],
     );
     return rows[0] ? mapCfdiEmision(rows[0]) : null;
@@ -1308,7 +1317,7 @@ export class PostgresHotelesRepository implements HotelesRepository {
          (organization_id, property_id, folio_id, tipo, uuid_fiscal, status, pac, subtotal, iva, ish_tasa, ish_monto,
           dsa_monto, total, rfc_receptor, uso_cfdi, metodo_pago, es_extranjero, es_global, es_no_show, related_cfdi_id, payment_id)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-       on conflict (folio_id) where tipo = 'hospedaje' do nothing
+       on conflict (folio_id) where tipo = 'hospedaje' and status <> 'cancelado' do nothing
        returning ${CFDI_EMISION_COLUMNS};`,
       [
         input.organizationId,
@@ -1336,7 +1345,10 @@ export class PostgresHotelesRepository implements HotelesRepository {
     );
     if (inserted.rows[0]) return mapCfdiEmision(inserted.rows[0]);
     // La carrera perdió contra el índice único parcial (REQ-BO-002) -- el CFDI de
-    // hospedaje/pago YA existe, se devuelve tal cual (mismo UUID) sin timbrar dos veces.
+    // hospedaje VIGENTE (no cancelado) / pago YA existe, se devuelve tal cual (mismo
+    // UUID) sin timbrar dos veces. Un hospedaje cancelado NUNCA causa este conflicto
+    // (el índice desde 015_cfdi_hospedaje_reemision_tras_cancelacion.sql lo excluye
+    // a propósito, para permitir reemitirlo).
     const existing =
       input.tipo === "hospedaje" ? await this.findCfdiEmisionByFolio(input.propertyId, input.folioId, "hospedaje") : input.paymentId ? await this.findCfdiEmisionByPayment(input.propertyId, input.paymentId) : null;
     if (!existing) throw new Error(`insertCfdiEmision: conflicto de índice único sin fila existente recuperable (folio=${input.folioId}, tipo=${input.tipo}).`);

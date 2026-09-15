@@ -157,11 +157,20 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const folio = await repo.findFolio(propertyId, folioId);
     if (!folio) throw Errors.notFound("Folio no encontrado.");
 
-    // REQ-BO-002: si este folio YA tiene un CFDI de hospedaje, se devuelve tal cual
-    // (mismo UUID) sin volver a llamar al PAC — verificado ANTES de `withIdempotency`
-    // para que también cubra un reintento con una Idempotency-Key DISTINTA.
+    // REQ-BO-002: si este folio YA tiene un CFDI de hospedaje VIGENTE, se devuelve
+    // tal cual (mismo UUID) sin volver a llamar al PAC — verificado ANTES de
+    // `withIdempotency` para que también cubra un reintento con una Idempotency-Key
+    // DISTINTA.
+    //
+    // Fix hallazgo auditoría — un CFDI "cancelado" NO cuenta para este corto-
+    // circuito: normalmente SÍ debe poder reemitirse con un folio fiscal nuevo
+    // (práctica estándar SAT tras una cancelación), y bloquearlo aquí para
+    // siempre era el bug real. El índice único parcial de la migración
+    // 015_cfdi_hospedaje_reemision_tras_cancelacion.sql (que reemplaza al de
+    // 006_cfdi_hospedaje.sql) ahora solo exige UN hospedaje VIGENTE por folio, no
+    // uno para siempre — este chequeo de aplicación reflaja esa misma regla.
     const existing = await repo.findCfdiEmisionByFolio(propertyId, folioId, "hospedaje");
-    if (existing) return c.json(serializeCfdi(existing), 200);
+    if (existing && existing.status !== "cancelado") return c.json(serializeCfdi(existing), 200);
 
     let receptor: { rfcReceptor: string; usoCfdi: string };
     try {
@@ -207,8 +216,19 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         });
         if (!validacion.ok) throw Errors.cfdiHospedajeInvalido(validacion.issues.map((i) => i.codigo));
 
+        // Fix hallazgo auditoría — el `folio` es la clave de idempotencia del PAC
+        // (mismo criterio que un PAC real de producción: reenviar el mismo folio
+        // con el mismo contenido devuelve el timbrado YA existente en vez de
+        // generar uno nuevo, ver FakeGenericPacAdapter.timbrar). Si este folio de
+        // hospedaje ya tuvo un CFDI cancelado antes (`existing`, resuelto arriba
+        // del `withIdempotency`), reusar el MISMO string de folio para el PAC
+        // congelaría cualquier reemisión al UUID cancelado para siempre —
+        // exactamente el bug que este fix corrige. Se distingue con el id del
+        // CFDI cancelado que se está reemplazando para que el PAC timbre un
+        // comprobante genuinamente nuevo (UUID distinto) en cada reemisión.
+        const pacFolio = existing ? `${folioId}:hospedaje:reemision:${existing.id}` : `${folioId}:hospedaje`;
         const timbrado = await deps.hotelesCfdiPort.timbrar({
-          folio: `${folioId}:hospedaje`,
+          folio: pacFolio,
           rfcEmisor: fiscalConfig.rfcEmisor,
           rfcReceptor: receptor.rfcReceptor,
           subtotal: breakdown.netAmount,

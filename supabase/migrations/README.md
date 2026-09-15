@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (82 migraciones, timestamps 20240101000001 .. 20240101000082)
+## Orden actual (83 migraciones, timestamps 20240101000001 .. 20240101000083)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -76,6 +76,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 
 82. `packages/domain-licitaciones/migrations/019_tender_resolution_and_company_data_writes.sql` — hallazgo de auditoría (severidad ALTA, "post-adjudicación inalcanzable: ningún endpoint marca una licitación ganada/perdida, ninguna propuesta puede salir de PENDIENTE"): `licitaciones.tender.status` podía llegar a `'won'`/`'lost'` desde la migración 22 (007_matching_profile.sql, el CHECK ya los admitía) pero ningún endpoint HTTP escribía esa transición — todo el flujo de post-adjudicación de las migraciones 42-47 (contrato/cobranza/inconformidad/autopsia/renovaciones) dependía de un estado que nunca se alcanzaba. Agrega `licitaciones.tender_resolution` (historial inmutable, mismo patrón que `go_no_go_decision` de la migración 23, gateado por `can_decide_org` porque declarar ganada/perdida es una decisión comercial/legal). Además cierra un segundo gap real verificado: `licitaciones.company_document`/`licitaciones.approved_rate` (migración 15/001_licitaciones_schema.sql) solo tenían policy de SELECT desde su creación — a diferencia de `company_capability`/`company_experience`/`company_signer` (migración 23/009), que sí recibieron INSERT/UPDATE con `can_write_org` en su propia migración — así que ninguna propuesta económica o técnica podía dejar de estar "PENDIENTE" ni con el endpoint de escritura correspondiente: RLS lo habría bloqueado en silencio. Se agrega INSERT/UPDATE (`can_write_org`) a esas dos tablas, mismo criterio exacto que las otras tres.
 
+83. `packages/domain-hoteles/migrations/015_cfdi_hospedaje_reemision_tras_cancelacion.sql` — hallazgo de auditoría (severidad ALTA): reemitir un CFDI de hospedaje tras cancelarlo quedaba bloqueado para siempre. El índice único parcial de la migración 38 (`cfdi_emision_folio_hospedaje_unq`, REQ-BO-002) exigía a lo más UN CFDI 'hospedaje' por folio sin importar su `status` — una vez `cancelado`, el corto-circuito de idempotencia del endpoint (`cfdi.ts`) y el `ON CONFLICT` de `insertCfdiEmision` (`postgres-repository.ts`) devolvían/recreaban ese mismo registro cancelado en vez de timbrar uno nuevo, aunque un CFDI cancelado normalmente SÍ debe poder reemitirse con un folio fiscal nuevo (práctica estándar SAT). Se reemplaza el índice para excluir los cancelados (`where tipo = 'hospedaje' and status <> 'cancelado'`): a lo más UN hospedaje VIGENTE por folio, sin límite de cancelados acumulados en el historial. Acompañada, en la misma rama, del fix de aplicación correspondiente (`cfdi.ts`, `in-memory-repository.ts`, `postgres-repository.ts`, `Cfdi.tsx`). Renumerada de 82 a 83 al integrar (colisión real con la migración de resolución de licitaciones, ambas ramas construidas en paralelo).
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -83,8 +85,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000082`; usa
-   `20240101000083`, luego `...084`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000083`; usa
+   `20240101000084`, luego `...085`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
