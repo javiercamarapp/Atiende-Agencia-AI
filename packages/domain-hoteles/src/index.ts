@@ -88,8 +88,12 @@ export {
   REPUTACION_SUBMIT_ROLES,
   REPUTACION_VIEW_ROLES,
   REPUTACION_ACTION_RESOLVE_ROLES,
+  STAFF_INVITE_ROLES,
 } from "./roles.ts";
 export type { HotelRole } from "./roles.ts";
+
+export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
+export type { StaffInviteCorreo } from "./emails/staff-invite-template.ts";
 
 export { IdempotencyConflictError, FraudAlertAlreadyResolvedError } from "./errors.ts";
 

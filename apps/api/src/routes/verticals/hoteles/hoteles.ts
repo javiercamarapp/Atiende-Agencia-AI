@@ -17,6 +17,7 @@ import { hotelesAsistenciaRoutes } from "./asistencia.ts";
 import { hotelesPlRoutes } from "./pl.ts";
 import { hotelesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { hotelesAdminCatalogoRoutes } from "./admin-catalogo.ts";
+import { hotelesAdminStaffRoutes } from "./admin-staff.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -42,5 +43,10 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fix hallazgo CRÍTICO — alta REAL de catálogo (tipos de habitación/habitaciones
   // físicas/tarifas), ver admin-catalogo.ts.
   app.route("/", hotelesAdminCatalogoRoutes(deps));
+  // Fix hallazgo auditoría (rubro 1, "completitud funcional" — alta de cliente de
+  // principio a fin: organización + property + STAFF + primera venta): hoteles era
+  // la única de las 6 verticales sin forma de invitar staff adicional, ver
+  // admin-staff.ts.
+  app.route("/", hotelesAdminStaffRoutes(deps));
   return app;
 }
