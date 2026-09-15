@@ -27,6 +27,7 @@ import {
   validarCfdiHospedaje,
   validateAnticipoRelacion,
   ReceptorHospedajeInvalidoError,
+  tryEnqueueGuestEmail,
   type CfdiEmisionRecord,
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
@@ -242,6 +243,17 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           relatedCfdiId: body.cfdiRelacionados?.[0] ?? null,
           paymentId: null,
         });
+
+        // Hallazgo ALTA — aviso real por correo al huésped de que su CFDI de
+        // hospedaje ya quedó timbrado (best-effort: sin correo en archivo, o
+        // cualquier otra falla, NUNCA tumba un CFDI ya timbrado y persistido).
+        // Solo si el PAC de verdad devolvió un UUID fiscal (nunca un aviso de
+        // "disponible" sobre un timbrado sin UUID real).
+        if (created.uuidFiscal) {
+          await tryEnqueueGuestEmail(repo, propertyId, organizationId, "cfdi.issued", folio.reservationId, {
+            cfdi: { uuidFiscal: created.uuidFiscal, total: created.total, folioLabel: folio.label },
+          });
+        }
 
         return { status: 201 as const, body: serializeCfdi(created) };
       });

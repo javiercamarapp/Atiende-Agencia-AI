@@ -5,7 +5,7 @@
 // Sirve para tests determinísticos y como fallback dev/CI sin Postgres real — mismo
 // rol que InMemoryRestaurantesRepository.
 import { createHash, randomUUID } from "node:crypto";
-import type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
+import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 import type {
   ActiveHotelProperty,
   AttendanceEventRecord,
@@ -59,6 +59,12 @@ import { isCancellable } from "./reservationStateMachine.ts";
 import { occupancyPct } from "./overbooking.ts";
 import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 import type { UsaliRevenueDepartment } from "./pl/usaliPL.ts";
+
+/** Mismo tope real que `email-dispatch.ts::MAX_EMAIL_DISPATCH_ATTEMPTS` y que el
+ *  `attempts < 5` de `migrations/014_email_outbox_dispatch.sql` — duplicado aquí
+ *  (no importado desde email-dispatch.ts) para que este adaptador en memoria no
+ *  dependa de ese módulo, mismo criterio que domain-citas/domain-rentas. */
+const MAX_IN_MEMORY_EMAIL_ATTEMPTS = 5;
 
 /** Serializa operaciones por clave — equivalente en memoria de
  *  `pg_advisory_xact_lock`/row lock de Postgres. */
@@ -615,6 +621,14 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return { id: rt.id };
   }
 
+  /** Fase 12 — insumo de guest-email-notifications.ts (nombre real del tipo de
+   *  habitación para el correo de confirmación de reserva). */
+  async findRoomTypeSummary(propertyId: string, roomTypeId: string): Promise<RoomTypeSummary | null> {
+    const rt = this.roomTypes.get(roomTypeId);
+    if (!rt || rt.propertyId !== propertyId) return null;
+    return { id: rt.id, name: rt.name, maxOccupancy: rt.maxOccupancy };
+  }
+
   async loadNightlyRates(propertyId: string, roomTypeId: string, checkInDate: string, checkOutDate: string): Promise<readonly NightlyRateRecord[]> {
     const rates = this.nightlyRates.get(`${propertyId}:${roomTypeId}`) ?? [];
     return rates.filter((r) => r.date >= checkInDate && r.date <= checkOutDate);
@@ -644,6 +658,15 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       .sort((a, b) => a.fullName.localeCompare(b.fullName))
       .slice(0, limit)
       .map((g) => ({ id: g.id, fullName: g.fullName, email: g.email, phone: g.phone }));
+  }
+
+  /** Fase 12 — insumo de guest-email-notifications.ts (huésped YA ligado a una
+   *  reserva concreta, a diferencia de `searchGuests`, que es el catálogo completo
+   *  de la property para el autocomplete de "crear reserva"). */
+  async findGuestById(propertyId: string, guestId: string): Promise<GuestSummary | null> {
+    const g = this.guests.get(guestId);
+    if (!g || g.propertyId !== propertyId) return null;
+    return { id: g.id, fullName: g.fullName, email: g.email, phone: g.phone };
   }
 
   // ---- HotelesRepository: Fase 3 — máquina de estados de reservas (H02) ----
@@ -983,6 +1006,33 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     row.claimedAt = null;
   }
 
+  // ---- Fase 12 — dispatcher real de correo (migrations/014), acotado a
+  // channel='email' -- mismo `outbox` Map de arriba, mismo criterio de "nunca
+  // toca una fila channel='whatsapp'" que la migración SQL real. A diferencia de
+  // `claimMessagingOutboxBatch` (lease-based, mismo id puede reclamarse de nuevo
+  // tras `leaseSeconds`), este reclamo incrementa `attempts` de inmediato al
+  // reclamar (mismo criterio que `hoteles.claim_email_outbox_batch` real: sin
+  // columna de lease, un job 'processing' que nunca se completa se queda así
+  // hasta que un humano lo revise -- igual que domain-citas/domain-rentas). ----
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const eligible = [...this.outbox.values()]
+      .filter((o) => o.channel === "email" && (o.status === "pending" || o.status === "failed") && o.attempts < MAX_IN_MEMORY_EMAIL_ATTEMPTS)
+      .slice(0, Math.max(limit, 0));
+    for (const row of eligible) {
+      row.status = "processing";
+      row.attempts += 1;
+    }
+    return eligible.map((row) => ({ id: row.id, propertyId: row.propertyId, organizationId: row.organizationId, attempts: row.attempts, payload: (row.payload ?? {}) as Record<string, unknown> }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    const row = this.outbox.get(id);
+    if (!row || row.channel !== "email") return;
+    row.status = status;
+    row.lastErrorClass = error ? error.slice(0, 120) : null;
+  }
+
   async insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord> {
     const record: ContactoNoOperativoRecord = {
       id: randomUUID(),
@@ -1164,6 +1214,16 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       .filter((p) => p.organizationId === organizationId)
       .map((p) => ({ propertyId: p.propertyId, name: p.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Fase 12 — insumo de guest-email-notifications.ts (nombre real del hotel para
+   *  el saludo/asunto del correo). Espejo de solo-lectura de `core.property`,
+   *  mismo criterio de duplicación deliberada que `organizations`/`properties`
+   *  arriba (ver comentario de cabecera de esos dos campos). */
+  async findPropertyById(propertyId: string): Promise<{ readonly id: string; readonly name: string; readonly organizationId: string } | null> {
+    const p = this.properties.get(propertyId);
+    if (!p) return null;
+    return { id: propertyId, name: p.name, organizationId: p.organizationId };
   }
 
   // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----

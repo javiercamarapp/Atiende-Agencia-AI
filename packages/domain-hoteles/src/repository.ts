@@ -406,6 +406,26 @@ export interface HotelesRepository {
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
 
+  // ---- Fase 12 — dispatcher real de correo (migrations/014) — hallazgo ALTA:
+  // hoteles no enviaba NINGÚN correo/notificación al huésped, a diferencia de
+  // citas/rentas/licitaciones/despachos. Acotado a channel='email' del mismo
+  // `hoteles.messaging_outbox` de arriba — mismo patrón exacto que
+  // `CitasRepository.claimEmailOutboxBatch`/`completeEmailOutboxJob`, nunca toca
+  // una fila channel='whatsapp' (ver email-dispatch.ts). ----
+  claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
+  completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
+
+  // ---- Fase 12 — insumos de lectura para armar el correo real al huésped (ver
+  // guest-email-notifications.ts): nombre/email del huésped ya ligado a la
+  // reserva, nombre real de la property (para el saludo/asunto del correo) y
+  // nombre real del tipo de habitación. Ninguno es nuevo conceptualmente
+  // (`searchGuests`/`listRoomTypes`/`listPropertiesForOrganization` ya exponen
+  // estos mismos datos) — son variantes de "un solo id conocido" que esos 3
+  // listados no cubren. ----
+  findGuestById(propertyId: string, guestId: string): Promise<GuestSummary | null>;
+  findPropertyById(propertyId: string): Promise<{ readonly id: string; readonly name: string; readonly organizationId: string } | null>;
+  findRoomTypeSummary(propertyId: string, roomTypeId: string): Promise<RoomTypeSummary | null>;
+
   // ---- Fase 10 (REQ-BO-010, P0) — back-office financiero: P&L USALI + punto de
   // equilibrio dinámico. El lado de INGRESOS reutiliza `hoteles.charge` (ya
   // existente, mismo motor de agregación por concepto/fecha de negocio que
@@ -439,6 +459,20 @@ export interface MessagingOutboxRow {
   readonly id: string;
   readonly attempts: number;
   readonly payload: unknown;
+}
+
+/** Fila de `hoteles.messaging_outbox` reclamada para despacho real de correo — mismo
+ * shape que `@atiende/domain-citas::EmailOutboxJobRow` (ver email-dispatch.ts). A
+ * diferencia de `MessagingOutboxRow` (el reclamo de WhatsApp, sin
+ * propertyId/organizationId porque el dispatcher de WhatsApp real es un puerto
+ * genérico de plataforma), este SÍ trae ambos porque `email-dispatch.ts` es
+ * self-contained dentro de domain-hoteles. */
+export interface EmailOutboxJobRow {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly attempts: number;
+  readonly payload: Record<string, unknown>;
 }
 
 export type { FolioRecord, ChargeRecord, PaymentRecord, NewChargeInput, NewPaymentInput, FnbOrderRecord, NewFnbOrderInput, NightlyRateRecord, TaxConfigRecord, GuestIdentity } from "./types.ts";

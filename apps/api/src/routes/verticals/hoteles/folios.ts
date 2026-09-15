@@ -24,6 +24,7 @@ import {
   MONEY_ROLES,
   ADMIN_ROLES,
   IdempotencyConflictError,
+  tryEnqueueGuestEmail,
   type ChargeConcept,
   type ChargeRecord,
   type PaymentRecord,
@@ -508,6 +509,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.post("/hoteles/:propertyId/folios/:folioId/cerrar", async (c) => {
     assertVerticalRole(c, MONEY_ROLES);
+    const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const folioId = c.req.param("folioId");
     const verticalRole = c.get("verticalRole")!;
@@ -535,6 +537,16 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const arApprovedBy = motivo === "cuenta_por_cobrar" ? (autorizadoPorUserId ?? userId) : null;
     await repo.closeFolio(folioId, motivo, arApprovedBy);
+
+    // Hallazgo ALTA — recibo real por correo al huésped al cerrar su cuenta
+    // (best-effort: sin correo en archivo, o cualquier otra falla, NUNCA tumba el
+    // cierre de folio ya persistido). Mismos totales que `serializeFolio`/`balance`
+    // de arriba, nunca recalculados aparte.
+    const totalCargos = folio.charges.reduce((sum, ch) => sum + ch.amount + ch.taxAmount, 0);
+    const totalPagos = folio.payments.filter((p) => p.status === "capturado").reduce((sum, p) => sum + p.amount, 0);
+    await tryEnqueueGuestEmail(repo, propertyId, organizationId, "folio.closed", folio.reservationId, {
+      folio: { folioId, label: folio.label, closeReason: motivo, totalCargos, totalPagos, saldo: balance },
+    });
 
     return c.json({ id: folioId, estado: "cerrado", motivoCierre: motivo, saldo: balance });
   });

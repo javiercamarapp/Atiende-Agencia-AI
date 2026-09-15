@@ -15,6 +15,7 @@ import { hotelesHousekeepingRoutes } from "./housekeeping.ts";
 import { hotelesAdminDiscoveryRoutes } from "./admin-discovery.ts";
 import { hotelesAsistenciaRoutes } from "./asistencia.ts";
 import { hotelesPlRoutes } from "./pl.ts";
+import { hotelesEmailDispatchRoutes } from "./email-dispatch.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -34,5 +35,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesAsistenciaRoutes(deps));
   // Fase 10 — REQ-BO-010 (P0): back-office financiero, P&L USALI + punto de equilibrio dinámico.
   app.route("/", hotelesPlRoutes(deps));
+  // Fase 12 — hallazgo ALTA: correo transaccional real al huésped (dispatcher de
+  // `channel='email'` de `hoteles.messaging_outbox`, ver email-dispatch.ts).
+  app.route("/", hotelesEmailDispatchRoutes(deps));
   return app;
 }

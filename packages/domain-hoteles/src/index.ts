@@ -151,7 +151,7 @@ export type {
   GuestSummary,
 } from "./types.ts";
 
-export type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
+export type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, EmailOutboxJobRow } from "./repository.ts";
 export { InMemoryHotelesRepository } from "./in-memory-repository.ts";
 export { PostgresHotelesRepository } from "./postgres-repository.ts";
 
@@ -414,3 +414,18 @@ export type {
   GuestReviewActionRecord,
   NewGuestReviewActionInput,
 } from "./types.ts";
+
+// ---- Fase 12 — hallazgo ALTA (correo transaccional real al huésped): hoteles no
+// enviaba NINGÚN correo/notificación, a diferencia de citas/rentas/licitaciones/
+// despachos, que ya traen esta infraestructura completa. Mismo patrón exacto que
+// domain-citas: emails/layout.ts (marco visual, logo real embebido) +
+// emails/guest-templates.ts (plantillas concretas) + guest-email-notifications.ts
+// (arma y encola el correo real a partir de solo un reservationId) +
+// email-dispatch.ts (envío real vía Resend, fail-closed, con backoff/dead-letter). ----
+export { escapeHtml as guestEmailEscapeHtml, renderCorreo as renderCorreoHuesped } from "./emails/layout.ts";
+export { correoReservaConfirmada, correoFolioRecibo, correoCfdiDisponible } from "./emails/guest-templates.ts";
+export type { Correo as CorreoHuesped, ReservaCorreo, FolioCorreo, CfdiCorreo } from "./emails/guest-templates.ts";
+export { enqueueGuestEmailCore, tryEnqueueGuestEmail } from "./guest-email-notifications.ts";
+export type { GuestEmailEvent, GuestEmailExtra, GuestEmailFolioExtra, GuestEmailCfdiExtra, GuestEmailResult } from "./guest-email-notifications.ts";
+export { sendEmailOutboxJob, dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS } from "./email-dispatch.ts";
+export type { ResendConfig as HotelesResendConfig, EmailDispatchSummary as HotelesEmailDispatchSummary } from "./email-dispatch.ts";
