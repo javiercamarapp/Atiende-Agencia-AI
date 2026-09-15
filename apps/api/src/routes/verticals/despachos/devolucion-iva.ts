@@ -13,6 +13,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   DEVOLUCION_IVA_ROLES,
+  VER_DEVOLUCION_IVA_ROLES,
   recopilarFacturas,
   clasificarIva,
   generarDiotDevolucionIva,
@@ -133,8 +134,13 @@ export function despachosDevolucionIvaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   /** Recopila+clasifica facturas de un periodo, ya sea desde el body o
    * auto-ingeridas desde los invoices ya guardados de esta property (mismo
    * patrón que la ruta DIOT de declaraciones.ts). */
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): ver/clasificar facturas ya ingestadas para
+  // devolución de IVA es lectura -- auditor/readonly SÍ pueden verla
+  // (VER_DEVOLUCION_IVA_ROLES), aunque nunca correr el papel de trabajo completo
+  // (DEVOLUCION_IVA_ROLES, sin cambios, en el resto de rutas de este archivo).
   app.get("/despachos/:propertyId/devolucion-iva/facturas/:periodo", async (c) => {
-    assertVerticalRole(c, DEVOLUCION_IVA_ROLES);
+    assertVerticalRole(c, VER_DEVOLUCION_IVA_ROLES);
     const periodo = c.req.param("periodo");
     if (!/^\d{4}-\d{2}$/.test(periodo)) throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");
     const repo = deps.despachosRepo(c.get("db"));

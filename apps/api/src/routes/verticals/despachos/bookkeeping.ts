@@ -10,6 +10,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   BOOKKEEPING_ROLES,
+  VER_BOOKKEEPING_ROLES,
   predecirCategoria,
   necesitaRevisionHumana,
   generatePoliza,
@@ -88,8 +89,13 @@ export function despachosBookkeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
 
   app.use("/despachos/:propertyId/bookkeeping/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): el catálogo de cuentas base es referencia fija
+  // (sin datos del cliente) -- auditor/readonly SÍ pueden verlo
+  // (VER_BOOKKEEPING_ROLES), aunque nunca clasificar/generar pólizas
+  // (BOOKKEEPING_ROLES, sin cambios, en el resto de rutas de este archivo).
   app.get("/despachos/:propertyId/bookkeeping/catalogo", async (c) => {
-    assertVerticalRole(c, BOOKKEEPING_ROLES);
+    assertVerticalRole(c, VER_BOOKKEEPING_ROLES);
     return c.json({ catalogoCuentas: CATALOGO_CUENTAS_SAT, mapeosDefault: DEFAULT_MAPPINGS });
   });
 

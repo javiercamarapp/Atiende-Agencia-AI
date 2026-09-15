@@ -9,7 +9,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { validarCfdiDespachos, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
+import { validarCfdiDespachos, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, VER_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
 import type { CategoriaContable, DatosCfdiDespachos, DespachosRepository, InvoiceRecord } from "@atiende/domain-despachos";
 import { CfdiXmlParseError, parseCfdiXml } from "@atiende/billing";
 import { Errors } from "../../../errors.ts";
@@ -293,8 +293,12 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     return c.json(serializeInvoice(invoice), 201);
   });
 
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): ver un CFDI ya ingestado es lectura de un
+  // registro ya persistido -- auditor/readonly SÍ pueden verlo (VER_CFDI_ROLES),
+  // aunque nunca ingestar uno nuevo (INGESTA_CFDI_ROLES, sin cambios, arriba).
   app.get("/despachos/:propertyId/cfdi/:invoiceId", async (c) => {
-    assertVerticalRole(c, INGESTA_CFDI_ROLES);
+    assertVerticalRole(c, VER_CFDI_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const invoice = await repo.findInvoice(c.req.param("propertyId"), c.req.param("invoiceId"));
     if (!invoice) throw Errors.notFound("CFDI no encontrado.");
@@ -302,7 +306,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   });
 
   app.get("/despachos/:propertyId/cfdi", async (c) => {
-    assertVerticalRole(c, INGESTA_CFDI_ROLES);
+    assertVerticalRole(c, VER_CFDI_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const soloRevision = c.req.query("requiereRevisionHumana");
     const invoices = await repo.listInvoices(c.req.param("propertyId"), soloRevision !== undefined ? { requiresHumanReview: soloRevision === "true" } : undefined);

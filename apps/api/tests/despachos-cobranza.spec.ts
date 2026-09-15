@@ -116,9 +116,20 @@ describe("GET /despachos/:propertyId/cobranza/cuentas y /resumen -- cartera con 
     expect(resumen.porAntiguedad["31-60"]!.count).toBe(1);
   });
 
-  it("un rol readonly (fuera de VER_COBRANZA_ROLES) no puede consultar la cartera (403)", async () => {
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): VER_COBRANZA_ROLES ahora incluye "readonly"
+  // junto a "auditor" (ambos ven la cartera, ninguno la gestiona -- ver
+  // GESTIONAR_COBRANZA_ROLES, sin cambios, en el resto de este archivo).
+  it("un rol readonly SÍ puede consultar la cartera (VER_COBRANZA_ROLES) -- 200, lectura pura", async () => {
     const app = buildApp(ctx.deps);
     const res = await app.request(`/despachos/${ctx.propertyId}/cobranza/cuentas`, authedJson(ctx.staff.readonly.token));
+    expect(res.status).toBe(200);
+  });
+
+  it("readonly no puede registrar/gestionar cobranza (GESTIONAR_COBRANZA_ROLES) -- 403", async () => {
+    const app = buildApp(ctx.deps);
+    const vencidaHace45 = await ingestarCfdiIngreso();
+    const res = await app.request(`/despachos/${ctx.propertyId}/cobranza/cuentas`, authedJson(ctx.staff.readonly.token, { invoiceId: vencidaHace45.id, fechaVencimiento: fechaHace(45) }));
     expect(res.status).toBe(403);
   });
 });
