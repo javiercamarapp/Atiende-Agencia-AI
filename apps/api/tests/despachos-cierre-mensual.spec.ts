@@ -112,7 +112,7 @@ describe("POST /despachos/:propertyId/cierre-mensual/periodos/:periodoId/cerrar"
     const app = buildApp(ctx.deps);
     const periodo = await abrirPeriodoListoParaCerrar();
 
-    const res = await app.request(`/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/cerrar`, authedJson(ctx.staff.admin.token, {}));
+    const res = await app.request(`/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/cerrar`, authedJson(ctx.staff.admin.token, { confirmacion: "2026-03" }));
     expect(res.status).toBe(200);
     const cerrado = (await res.json()) as { status: string; closedBy: string | null };
     expect(cerrado.status).toBe("closed");
@@ -127,7 +127,7 @@ describe("POST /despachos/:propertyId/cierre-mensual/periodos/:periodoId/cerrar"
       `/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/cerrar`,
       // El cliente autenticado como "admin" intenta atribuir el cierre a otro
       // usuario (o a un id inventado) -- el servidor debe ignorarlo por completo.
-      authedJson(ctx.staff.admin.token, { userId: "usuario-inventado-no-existe" }),
+      authedJson(ctx.staff.admin.token, { userId: "usuario-inventado-no-existe", confirmacion: "2026-03" }),
     );
     expect(res.status).toBe(200);
     const cerrado = (await res.json()) as { closedBy: string | null };
@@ -146,9 +146,50 @@ describe("POST /despachos/:propertyId/cierre-mensual/periodos/:periodoId/cerrar"
 
     const res = await app.request(
       `/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/cerrar`,
-      authedJson(ctx.staff.contador.token, { userId: ctx.staff.admin.id }),
+      authedJson(ctx.staff.contador.token, { userId: ctx.staff.admin.id, confirmacion: "2026-03" }),
     );
     expect(res.status).toBe(403);
+  });
+
+  // Hallazgo de auditoría (severidad ALTA, "cierre-mensual es irreversible y
+  // ejecuta con un clic sin confirmación ni reapertura"): un POST sin la
+  // confirmación explícita del período exacto NUNCA cierra nada.
+  describe("confirmación real (nunca un clic solo)", () => {
+    it("sin `confirmacion` en el body -> 400, el período sigue abierto", async () => {
+      const app = buildApp(ctx.deps);
+      const periodo = await abrirPeriodoListoParaCerrar();
+
+      const res = await app.request(`/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/cerrar`, authedJson(ctx.staff.admin.token, {}));
+      expect(res.status).toBe(400);
+
+      const detalle = await app.request(`/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}`, authedJson(ctx.staff.admin.token));
+      const detalleBody = (await detalle.json()) as { periodo: { status: string } };
+      expect(detalleBody.periodo.status).not.toBe("closed");
+    });
+
+    it("`confirmacion` que no coincide con el período exacto ('2026-03') -> 400, nunca cierra por un texto parecido", async () => {
+      const app = buildApp(ctx.deps);
+      const periodo = await abrirPeriodoListoParaCerrar();
+
+      for (const confirmacion of ["2026-3", "03-2026", "2026-04", "cerrar", ""]) {
+        const res = await app.request(`/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/cerrar`, authedJson(ctx.staff.admin.token, { confirmacion }));
+        expect(res.status).toBe(400);
+      }
+
+      const detalle = await app.request(`/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}`, authedJson(ctx.staff.admin.token));
+      const detalleBody = (await detalle.json()) as { periodo: { status: string } };
+      expect(detalleBody.periodo.status).not.toBe("closed");
+    });
+
+    it("`confirmacion` exacta ('2026-03') -> 200, cierra de verdad", async () => {
+      const app = buildApp(ctx.deps);
+      const periodo = await abrirPeriodoListoParaCerrar();
+
+      const res = await app.request(`/despachos/${ctx.propertyId}/cierre-mensual/periodos/${periodo.id}/cerrar`, authedJson(ctx.staff.admin.token, { confirmacion: "2026-03" }));
+      expect(res.status).toBe(200);
+      const cerrado = (await res.json()) as { status: string };
+      expect(cerrado.status).toBe("closed");
+    });
   });
 });
 
