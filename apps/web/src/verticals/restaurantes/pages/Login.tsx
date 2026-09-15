@@ -13,6 +13,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { decideLandingPath, login, LoginError, persistSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
+import { useDocumentTitle } from "../../../shell/use-document-title.ts";
 
 export interface LoginPageProps {
   readonly apiBaseUrl: string;
@@ -20,6 +21,10 @@ export interface LoginPageProps {
 }
 
 export function RestaurantesLoginPage({ apiBaseUrl, onLoggedIn }: LoginPageProps) {
+  // Hallazgo de auditoría (severidad MEDIA/BRANDING, "Título de pestaña fijo en
+  // 'Restaurantes' para las 6 verticales") — ver use-document-title.ts. Sin sesión
+  // todavía, así que sin orgSlug.
+  useDocumentTitle("Restaurantes");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
