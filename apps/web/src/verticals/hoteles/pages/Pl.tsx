@@ -362,7 +362,6 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
     return () => {
       cancelado = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBaseUrl, token, propertyId, days, reloadToken]);
 
   useEffect(() => {
@@ -378,7 +377,6 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
     return () => {
       cancelado = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBaseUrl, token, propertyId, days, reloadToken]);
 
   function handleExpenseCreated() {

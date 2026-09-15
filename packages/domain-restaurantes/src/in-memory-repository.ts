@@ -146,7 +146,7 @@ interface StoredOrganization {
   readonly name: string;
 }
 
-interface StoredBranch extends Branch {}
+type StoredBranch = Branch;
 
 interface StoredCategory {
   id: string;
@@ -177,9 +177,9 @@ interface StoredBranchProduct {
   isAvailable: boolean;
 }
 
-interface StoredPromotion extends Promotion {}
+type StoredPromotion = Promotion;
 
-interface StoredOrder extends Order {}
+type StoredOrder = Order;
 
 interface StoredKnownZone {
   readonly organizationId: string;
@@ -739,7 +739,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return null;
   }
 
-  async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
+  async claimWhatsAppMessage(organizationId: string, messageId: string, _phoneHash: string): Promise<boolean> {
     return this.whatsappLock.run(`event:${messageId}`, async () => {
       const existing = this.whatsappEvents.get(messageId);
       const now = Date.now();

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { buildComplementNotes, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS } from "../src/order-quote.ts";
-import { OrderValidationError } from "../src/errors.ts";
 import type { ProductoEncontrado } from "../src/types.ts";
 
 const tacos: ProductoEncontrado = { id: "tacos", name: "Tacos de Bistec de Res (orden de 3)", price: 164, packSize: 3, requiresAdultConfirmation: false };

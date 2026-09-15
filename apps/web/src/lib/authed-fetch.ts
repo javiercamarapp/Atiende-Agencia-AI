@@ -227,3 +227,28 @@ export async function withAuthRefresh<S extends AuthedSession>(
 export function apiBaseUrlFromRequestUrl(url: string): string {
   return new URL(url).origin;
 }
+
+/** Extrae el mensaje de error de una `Response` no-ok cuyo cuerpo trae `{ message }`
+ * (forma real de los errores de GET de las 6 verticales, ver `Errors` de
+ * apps/api/src/errors.ts) — nunca inventa un mensaje cuando el servidor ya mandó
+ * uno. `fallback` (armado por el caller con la `url`/`status` reales) se usa solo
+ * si el cuerpo no es JSON válido o no trae `message`. Antes vivía copiado
+ * literalmente dentro de cada `fetchJson` de `verticals/<vertical>/lib/
+ * admin-client.ts` (mismo bloque de 2 líneas x 6 verticales) — riesgo real de
+ * mantenimiento (rubro 7/8 de la auditoría) si el shape de error cambiara y
+ * alguna copia se quedara atrás; consolidado aquí, cada admin-client.ts solo
+ * decide con QUÉ subclase de Error propia lo envuelve. */
+export async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  const body = (await res.json().catch(() => null)) as { message?: string } | null;
+  return body?.message ?? fallback;
+}
+
+/** Igual que `readErrorMessage`, pero para las rutas de escritura (POST/PATCH/
+ * DELETE) cuyo cuerpo de error puede traer `message` O `error` (algunas rutas
+ * viejas de este repo todavía usan `{ error }`, ver comentario de cada
+ * admin-client.ts antes de esta consolidación) — mismo orden de fallback
+ * (`message` primero) que ya usaban las 6 copias. */
+export async function readWriteErrorMessage(res: Response, fallback: string): Promise<string> {
+  const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+  return body?.message ?? body?.error ?? fallback;
+}

@@ -45,10 +45,10 @@
 // del webhook para su propio `repo` de dedupe/lease (ver
 // `routes/verticals/{restaurantes,hoteles,citas}/whatsapp.ts`), nunca comparte
 // una sesión entre requests.
-import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
+import type { HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
-import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { PostgresRestaurantesRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
@@ -58,11 +58,8 @@ import {
   createLlmWhatsAppTurnHandler as createCitasLlmWhatsAppTurnHandler,
   exchangeGoogleAuthorizationCode,
 } from "@atiende/domain-citas";
-import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import { PostgresLicitacionesRepository } from "@atiende/domain-licitaciones";
-import type { DespachosRepository } from "@atiende/domain-despachos";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
-import type { RentasRepository } from "@atiende/domain-rentas";
 import { CanalMensajeriaPartnerPendiente, PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
 import { openManagedPostgres, PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";

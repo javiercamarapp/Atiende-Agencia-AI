@@ -13,7 +13,7 @@
 // POST /auth/refresh con el refreshToken persistido bajo "atiende.despachos.session"
 // y reintenta la request original una sola vez con el token nuevo. Firma SIN
 // CAMBIOS: cada caller de este vertical sigue llamándolos exactamente igual.
-import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError, readErrorMessage, readWriteErrorMessage } from "../../../lib/authed-fetch.ts";
 import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearDespachosSession, persistDespachosSession, readPersistedDespachosSession } from "./auth-client.ts";
 import type { LoginSession } from "./auth-client.ts";
@@ -46,8 +46,7 @@ function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
 export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new DespachosAdminError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);
+    throw new DespachosAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -68,8 +67,7 @@ export async function postJson<T>(
     }),
   );
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new DespachosAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+    throw new DespachosAdminError(await readWriteErrorMessage(res, `No se pudo completar la operación (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -94,8 +92,7 @@ export async function postXml<T>(
     }),
   );
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new DespachosAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+    throw new DespachosAdminError(await readWriteErrorMessage(res, `No se pudo completar la operación (${res.status}).`));
   }
   return (await res.json()) as T;
 }
@@ -107,8 +104,7 @@ export async function postXml<T>(
 export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new DespachosAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+    throw new DespachosAdminError(await readWriteErrorMessage(res, `No se pudo completar la operación (${res.status}).`));
   }
   return (await res.json()) as T;
 }
