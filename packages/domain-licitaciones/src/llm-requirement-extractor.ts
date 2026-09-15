@@ -149,6 +149,16 @@ export class LlmRequirementExtractor implements RequirementExtractor {
           messages: [{ role: "user", content: `Documento: "${doc.documentLabel}" -- Página ${page.page}.\n\nTexto de la página:\n"""\n${page.text}\n"""` }],
           tools: [REGISTRAR_REQUISITO_TOOL],
           temperature: 0,
+          // Hallazgo de auditoría (rubro 10, performance): esta llamada corre dentro
+          // de la transacción por-request que `dbSession` abre para toda la ruta
+          // (`POST .../requirements/extract`) -- sin límite, una llamada colgada al
+          // proveedor de LLM sostiene la conexión de Postgres indefinidamente. Sacar
+          // la llamada del middleware de auth/transacción compartido es el fix
+          // completo, pero requiere reestructurar el wiring de esa ruta (bloqueado
+          // por el clasificador de seguridad como cambio de auth -- ver el propio
+          // comentario de cabecera de technicalProposal.ts). Este timeout acota el
+          // peor caso real por página sin tocar ningún middleware.
+          signal: AbortSignal.timeout(15_000),
         },
       });
 

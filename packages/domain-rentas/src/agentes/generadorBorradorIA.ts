@@ -12,6 +12,17 @@
 // tools acotadas a las dos de ./catalogo.ts (nunca herramientas de dinero/
 // cancelación/contacto directo), y SIEMPRE la matriz rol×tool aplicada ANTES de
 // construir la invocación (H-078).
+//
+// HALLAZGO DE AUDITORÍA CONOCIDO Y SIN CERRAR (rubro 10, performance): la ruta
+// que invoca este generador (`POST .../mensajeria/borradores`) corre bajo
+// `dbSession`, que abre UNA transacción para toda la ruta -- incluida esta
+// llamada real al LLM, sosteniendo una conexión de Postgres del pool mientras
+// dura. El fix completo requiere sacar la ruta del middleware de auth/
+// transacción compartido; un intento de hacerlo fue bloqueado por el
+// clasificador de seguridad de auto-mode como "Security Weaken" al tocar el
+// wiring de `app.use`, y no se forzó. Mitigación real aplicada mientras
+// tanto, sin tocar ningún middleware: `signal: AbortSignal.timeout(...)` en
+// la llamada de abajo acota el peor caso a 20s en vez de indefinido.
 import { randomUUID } from "node:crypto";
 import type { LlmGateway, LlmToolDefinition } from "@atiende/agent-core";
 import { detectarSenalesEscalamiento } from "../mensajeria/escalamiento.ts";
@@ -144,6 +155,7 @@ export class GeneradorBorradorIA implements GeneradorBorrador {
           messages: [{ role: "user", content: entrada.texto }],
           tools: toolsDisponibles.map(toLlmToolDefinition),
           temperature: 0,
+          signal: AbortSignal.timeout(20_000),
         },
       });
     } catch (err) {

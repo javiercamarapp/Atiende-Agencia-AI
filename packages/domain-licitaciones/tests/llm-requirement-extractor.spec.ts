@@ -4,7 +4,7 @@
 // la integración real del gateway compartido, no un mock a medias.
 import { beforeEach, describe, expect, it } from "vitest";
 import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCircuitBreakerStore, LlmGateway } from "@atiende/agent-core";
-import type { LlmCompletionResult } from "@atiende/agent-core";
+import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { LlmRequirementExtractor } from "../src/llm-requirement-extractor.ts";
 import { resetRequirementCounters } from "../src/requirement-matrix.ts";
 import type { TenderDocumentText } from "../src/requirement-matrix.ts";
@@ -15,7 +15,7 @@ beforeEach(() => {
   resetRequirementCounters();
 });
 
-function gatewayWithScript(script: () => LlmCompletionResult): LlmGateway {
+function gatewayWithScript(script: (request: LlmCompletionRequest) => LlmCompletionResult): LlmGateway {
   const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 1, maxTenantDailyUsd: 5 } });
   gateway.registerLadder(ROLE, [new FakeLlmProvider({ id: "fake", script })]);
   return gateway;
@@ -60,6 +60,23 @@ describe("LlmRequirementExtractor -- cada requisito es una tool_call estructurad
     expect(items[0]!.confidence).toBeLessThan(1);
     expect(items[0]!.source).toEqual({ documentId: "bases", documentLabel: "Bases de la convocatoria", page: 5, clause: undefined });
     expect(items[0]!.requiredEvidence).toEqual(["manifestacion_art_50"]);
+  });
+
+  // Hallazgo de auditoría (rubro 10, performance): esta llamada corre dentro de la
+  // transacción por-request de `POST .../requirements/extract` -- sin límite, un
+  // proveedor colgado sostiene la conexión de Postgres indefinidamente. Prueba real
+  // de que la mitigación (AbortSignal.timeout) está efectivamente cableada -- no solo
+  // presente en el tipo -- inspeccionando el request que de verdad recibe el provider.
+  it("acota cada llamada por página con un AbortSignal real, nunca una llamada sin límite", async () => {
+    let signalRecibido: AbortSignal | undefined;
+    const gateway = gatewayWithScript((request) => {
+      signalRecibido = request.signal;
+      return { text: "", model: "fake/model", tokensIn: 5, tokensOut: 5, costUsd: 0 };
+    });
+    const extractor = new LlmRequirementExtractor(gateway, { tenantId: "org-1", role: ROLE });
+    await extractor.extract(DOC);
+    expect(signalRecibido).toBeInstanceOf(AbortSignal);
+    expect(signalRecibido!.aborted).toBe(false);
   });
 
   it('una página sin requisitos (el modelo no llama a ninguna herramienta) produce cero RequirementItem, nunca uno inventado', async () => {
