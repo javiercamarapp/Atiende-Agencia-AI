@@ -5,7 +5,7 @@
 // `serializeInvoice`) — la validación fiscal real (billing + reglas SAT avanzadas)
 // vive por completo en @atiende/domain-despachos; este cliente solo transporta lo
 // que la ruta ya serializa.
-import { fetchJson } from "./admin-client.ts";
+import { fetchJson, postXml } from "./admin-client.ts";
 
 export type TipoComprobante = "I" | "E" | "T" | "P" | "N";
 export type CategoriaContable = "gasto_operativo" | "activo_fijo" | "inversion" | "honorarios" | "nomina" | "sin_clasificar";
@@ -54,4 +54,12 @@ export async function fetchInvoices(fetchImpl: typeof fetch, apiBaseUrl: string,
 
 export async function fetchInvoice(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, invoiceId: string): Promise<InvoiceSummary> {
   return fetchJson<InvoiceSummary>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cfdi/${invoiceId}`, token);
+}
+
+/** `POST /despachos/:propertyId/cfdi/importar-xml` (apps/api/.../despachos/cfdi.ts)
+ * -- recibe el XML crudo de un CFDI 4.0 timbrado y lo hace pasar por el MISMO
+ * motor de validación/ingesta que `POST /cfdi` (ver `ingestarCfdiDespachos` en
+ * esa ruta); este cliente solo transporta el texto del XML tal cual, sin tocarlo. */
+export async function importarCfdiXml(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, xml: string): Promise<InvoiceSummary> {
+  return postXml<InvoiceSummary>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cfdi/importar-xml`, token, xml, "application/xml");
 }

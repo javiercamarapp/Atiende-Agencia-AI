@@ -31,6 +31,25 @@ describe("fetchUnidades", () => {
     const result = await fetchUnidades(fetchImpl, "http://api.local", "tok", "prop-1");
     expect(result).toEqual([{ id: "unidad-1", nombre: "Depa Centro", duracionMinimaNoches: 1 }]);
   });
+
+  // Hallazgo de auditoría "en rentas, una empresa gestora con varias propiedades
+  // solo puede operar la primera" (cierre en RentasShell.tsx/Dashboard.tsx, Fase
+  // 18): Calendario.tsx recibe `propertyId` de RentasShellContext y lo pasa
+  // directo aquí -- este test confirma que el selector de property, al cambiar
+  // `propertyId`, efectivamente cambia QUÉ property pide Calendario.tsx (URLs
+  // distintas, nunca la misma unidad "cacheada" de la property anterior).
+  it("cambiar la property activa del selector pide la URL de la NUEVA property, no la anterior", async () => {
+    const urlsPedidas: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urlsPedidas.push(url);
+      return new Response(JSON.stringify({ unidades: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await fetchUnidades(fetchImpl, "http://api.local", "tok", "prop-1");
+    await fetchUnidades(fetchImpl, "http://api.local", "tok", "prop-2");
+
+    expect(urlsPedidas).toEqual(["http://api.local/rentas/prop-1/unidades", "http://api.local/rentas/prop-2/unidades"]);
+  });
 });
 
 describe("fetchOcupaciones", () => {
@@ -47,6 +66,25 @@ describe("fetchOcupaciones", () => {
   it("sin permiso de calendario -> error real (403 del servidor)", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No tienes el rol requerido para esta acción." }), { status: 403 })) as unknown as typeof fetch;
     await expect(fetchOcupaciones(fetchImpl, "http://api.local", "tok", "prop-1", "unidad-1")).rejects.toThrow(/rol requerido/);
+  });
+
+  // Mismo hallazgo que el test análogo de fetchUnidades arriba: el selector de
+  // property de RentasShell.tsx cambia `propertyId`, y Calendario.tsx vuelve a
+  // pedir las ocupaciones de la unidad seleccionada bajo la NUEVA property.
+  it("cambiar la property activa del selector pide las ocupaciones de la NUEVA property", async () => {
+    const urlsPedidas: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urlsPedidas.push(url);
+      return new Response(JSON.stringify({ ocupaciones: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await fetchOcupaciones(fetchImpl, "http://api.local", "tok", "prop-1", "unidad-1");
+    await fetchOcupaciones(fetchImpl, "http://api.local", "tok", "prop-2", "unidad-1");
+
+    expect(urlsPedidas).toEqual([
+      "http://api.local/rentas/prop-1/unidades/unidad-1/ocupaciones",
+      "http://api.local/rentas/prop-2/unidades/unidad-1/ocupaciones",
+    ]);
   });
 });
 

@@ -139,6 +139,24 @@ export async function fetchTareaDetalle(fetchImpl: typeof fetch, apiBaseUrl: str
   return body.tarea;
 }
 
+export interface CrearTareaManualInput {
+  readonly unidadId: string;
+  readonly tipo: TipoTareaOperativa;
+  readonly prioridad?: PrioridadTareaOperativa;
+  readonly programadaPara: string;
+}
+
+/** Botón "+ Nueva tarea" de MisTareas.tsx -- creación MANUAL (`crearTareaOperativaManual`
+ *  server-side), acotada server-side a `LIMPIEZA_CREACION_MANUAL_ROLES`
+ *  (admin_gestora/operador:acceso_total/operador:calendario_mensajeria, NUNCA el rol
+ *  `limpieza` -- mismo criterio que el resto del panel: gate en el cliente solo por
+ *  UX, el servidor SIEMPRE re-valida). Nace sin ocupación/buffer de calendario -- eso
+ *  solo lo produce el sweep automático de checkout. */
+export async function crearTareaManual(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: CrearTareaManualInput): Promise<TareaOperativaDetalle> {
+  const body = await sendJson<{ tarea: TareaOperativaDetalle }>(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/tareas`, token, "POST", input);
+  return body.tarea;
+}
+
 /** Sin `input.asignadoA`, el servidor auto-asigna a quien llama (botón "Asignarme"
  *  de la cola "sin asignar"). */
 export async function asignarTarea(

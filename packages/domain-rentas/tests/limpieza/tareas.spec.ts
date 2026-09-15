@@ -12,12 +12,13 @@ import {
   completarTarea,
   confirmarBloqueoMantenimiento,
   crearTareaLimpiezaPorCheckout,
+  crearTareaOperativaManual,
   procesarCheckoutsPendientes,
   registrarIncidencia,
   reprogramarTareaPorCambioReserva,
 } from "../../src/limpieza/aplicacion/tareas.ts";
 import { RentasDomainError } from "../../src/errors.ts";
-import { PLANTILLA_CHECKLIST_LIMPIEZA_DEFECTO } from "../../src/limpieza/checklist.ts";
+import { PLANTILLA_CHECKLIST_LIMPIEZA_DEFECTO, PLANTILLA_CHECKLIST_MANTENIMIENTO_DEFECTO } from "../../src/limpieza/checklist.ts";
 import { crearFixtureLimpieza } from "./helpers.ts";
 
 describe("crearTareaLimpiezaPorCheckout", () => {
@@ -136,6 +137,47 @@ describe("procesarCheckoutsPendientes (reemplazo del consumidor de outbox_evento
 
     const resultado = await procesarCheckoutsPendientes(ejecutor);
     expect(resultado.tareasCreadas).toHaveLength(0);
+  });
+});
+
+describe("crearTareaOperativaManual", () => {
+  it("crea la tarea con ocupacion_unidad_id NULL, SIN ningún buffer de calendario, y con la plantilla de checklist de su tipo", async () => {
+    const { ejecutor, unidad, getTarea, listChecklistItems } = await crearFixtureLimpieza();
+
+    const resultado = await crearTareaOperativaManual(ejecutor, { unidadId: unidad.id, tipo: "mantenimiento", programadaPara: "2026-08-01" });
+
+    const tarea = getTarea(resultado.tareaId);
+    expect(tarea?.tipo).toBe("mantenimiento");
+    expect(tarea?.estado).toBe("pendiente");
+    expect(tarea?.prioridad).toBe("media");
+    expect(tarea?.ocupacionUnidadId).toBeNull();
+    expect(tarea?.bufferOcupacionId).toBeNull();
+
+    const items = listChecklistItems(resultado.tareaId);
+    expect(items.map((i) => i.descripcion)).toEqual([...PLANTILLA_CHECKLIST_MANTENIMIENTO_DEFECTO]);
+  });
+
+  it("usa 'media' como prioridad por defecto, y respeta la prioridad explícita cuando se provee", async () => {
+    const { ejecutor, unidad, getTarea } = await crearFixtureLimpieza();
+
+    const defecto = await crearTareaOperativaManual(ejecutor, { unidadId: unidad.id, tipo: "limpieza", programadaPara: "2026-08-01" });
+    expect(getTarea(defecto.tareaId)?.prioridad).toBe("media");
+
+    const urgente = await crearTareaOperativaManual(ejecutor, { unidadId: unidad.id, tipo: "limpieza", prioridad: "urgente", programadaPara: "2026-08-01" });
+    expect(getTarea(urgente.tareaId)?.prioridad).toBe("urgente");
+  });
+
+  it("una tarea de tipo 'inspeccion' nace sin checklist (sin plantilla definida para ese tipo)", async () => {
+    const { ejecutor, unidad, listChecklistItems } = await crearFixtureLimpieza();
+    const resultado = await crearTareaOperativaManual(ejecutor, { unidadId: unidad.id, tipo: "inspeccion", programadaPara: "2026-08-01" });
+    expect(listChecklistItems(resultado.tareaId)).toHaveLength(0);
+  });
+
+  it("lanza unidad_no_encontrada si la unidad no existe", async () => {
+    const { ejecutor } = await crearFixtureLimpieza();
+    await expect(crearTareaOperativaManual(ejecutor, { unidadId: randomUUID(), tipo: "limpieza", programadaPara: "2026-08-01" })).rejects.toMatchObject({
+      code: "unidad_no_encontrada",
+    });
   });
 });
 

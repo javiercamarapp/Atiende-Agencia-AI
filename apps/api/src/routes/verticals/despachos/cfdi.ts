@@ -10,10 +10,18 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { validarCfdiDespachos, InvoiceAlreadyExistsError, INGESTA_CFDI_ROLES, estaPeriodoCerrado } from "@atiende/domain-despachos";
-import type { CategoriaContable, DatosCfdiDespachos, InvoiceRecord } from "@atiende/domain-despachos";
+import type { CategoriaContable, DatosCfdiDespachos, DespachosRepository, InvoiceRecord } from "@atiende/domain-despachos";
+import { CfdiXmlParseError, parseCfdiXml } from "@atiende/billing";
 import { Errors } from "../../../errors.ts";
-import { readJsonCapped } from "../../../http-security.ts";
+import { readJsonCapped, readTextCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+/** Un CFDI real timbrado rara vez pasa de ~100 KB incluso con varias decenas de
+ * conceptos; 512 KB deja margen holgado (complementos, muchos conceptos) sin abrir
+ * la puerta a un XML gigante como vector de denegación de servicio. */
+const MAX_CFDI_XML_BYTES = 512 * 1024;
+
+const TIPOS_COMPROBANTE_VALIDOS = new Set(["I", "E", "T", "P", "N"]);
 
 interface ConceptoBody {
   readonly cantidad?: unknown;
@@ -152,6 +160,89 @@ function resumirMotivoRevision(result: ReturnType<typeof validarCfdiDespachos>, 
   return motivos.length > 0 ? motivos.join("; ") : "requiere confirmación humana";
 }
 
+/** Flujo 1 compartido por AMBAS rutas de ingesta (JSON ya desarmado a mano vía
+ * `POST /cfdi`, y XML crudo del PAC vía `POST /cfdi/importar-xml`) — el único
+ * punto donde se corre `validarCfdiDespachos`, se persiste el invoice y se
+ * encola la revisión humana. Ninguna de las dos rutas duplica esta lógica: solo
+ * difieren en CÓMO llegan a un `DatosCfdiDespachos` (parseando JSON o XML). */
+async function ingestarCfdiDespachos(
+  repo: DespachosRepository,
+  organizationId: string,
+  propertyId: string,
+  datos: DatosCfdiDespachos,
+  categoria: CategoriaContable,
+): Promise<InvoiceRecord> {
+  // Migración 006 (hallazgo de auditoría): `fecha` (fecha REAL de emisión del
+  // CFDI) ahora se persiste en `despachos.invoice.fecha` (columna NOT NULL) —
+  // conciliación bancaria, DIOT, devolución de IVA y declaraciones dependen de
+  // ella para resolver "a qué período pertenece este CFDI" (nunca `createdAt`, la
+  // fecha de INGESTA). Un CFDI real siempre trae su fecha de emisión, así que se
+  // exige aquí en vez de inventar un fallback silencioso.
+  if (!datos.fecha) throw Errors.validation("fecha: se esperaba un texto (fecha de emisión del CFDI, ISO 8601).");
+  const fechaInvoice = datos.fecha.slice(0, 10);
+
+  // Fase 6 (cierre mensual) — bloqueo de edición de movimientos ya cerrados:
+  // funcionalidad NUEVA (ver domain-despachos/src/errors.ts,
+  // `PeriodoCerradoError`, y el comentario de cabecera de
+  // `cierre-mensual/engine.ts` — ni close_management ni monthly_close del
+  // origen Python implementan este bloqueo en ningún punto real de
+  // escritura). Se engancha aquí, en la ingesta de CFDI, porque es el único
+  // flujo de escritura de "movimientos" que ya existe en esta vertical; el
+  // período se resuelve por (property, año, mes) de la FECHA del propio
+  // CFDI (`fechaInvoice`, "YYYY-MM-DD").
+  {
+    const [anioStr, mesStr] = fechaInvoice.split("-");
+    const anio = Number(anioStr);
+    const mes = Number(mesStr);
+    if (Number.isInteger(anio) && Number.isInteger(mes)) {
+      const periodo = await repo.findPeriodoCierrePorAnioMes(propertyId, anio, mes);
+      if (estaPeriodoCerrado(periodo)) throw Errors.despachosPeriodoCerrado(fechaInvoice.slice(0, 7));
+    }
+  }
+
+  const resultado = validarCfdiDespachos(datos);
+
+  try {
+    const invoice = await repo.insertInvoice({
+      organizationId,
+      propertyId,
+      folioFiscal: datos.folioFiscal,
+      tipo: datos.tipo as InvoiceRecord["tipo"],
+      rfcEmisor: datos.rfcEmisor,
+      rfcReceptor: datos.rfcReceptor,
+      emisorNombre: datos.emisorNombre ?? null,
+      subtotal: datos.subtotal,
+      total: datos.total,
+      iva: datos.iva ?? null,
+      descuento: datos.descuento ?? 0,
+      categoria,
+      fecha: fechaInvoice,
+      valido: resultado.ok,
+      issues: resultado.issues,
+      warnings: resultado.warnings,
+      requiresHumanReview: resultado.requiresHumanReview,
+      diot: resultado.diot,
+    });
+
+    // Flujo 2 (cola de revisión humana): gateado ESTRICTAMENTE por el flag
+    // `requiresHumanReview` que acaba de calcular el motor determinista — nunca se
+    // decide "a ojo" en la ruta si un CFDI necesita revisión.
+    if (resultado.requiresHumanReview) {
+      await repo.createReview({
+        organizationId,
+        propertyId,
+        invoiceId: invoice.id,
+        reason: resumirMotivoRevision(resultado, datos.tipo),
+      });
+    }
+
+    return invoice;
+  } catch (err) {
+    if (err instanceof InvoiceAlreadyExistsError) throw Errors.conflict(err.message);
+    throw err;
+  }
+}
+
 export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -166,75 +257,40 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<IngestaCfdiBody>(c.req.raw, 64 * 1024);
     const { categoria, ...datos } = parseIngestaBody(raw);
 
-    // Migración 006 (hallazgo de auditoría): `fecha` (fecha REAL de emisión del
-    // CFDI) ahora se persiste en `despachos.invoice.fecha` (columna NOT NULL) —
-    // conciliación bancaria, DIOT, devolución de IVA y declaraciones dependen de
-    // ella para resolver "a qué período pertenece este CFDI" (nunca `createdAt`, la
-    // fecha de INGESTA). Un CFDI real siempre trae su fecha de emisión, así que se
-    // exige aquí en vez de inventar un fallback silencioso.
-    if (!datos.fecha) throw Errors.validation("fecha: se esperaba un texto (fecha de emisión del CFDI, ISO 8601).");
-    const fechaInvoice = datos.fecha.slice(0, 10);
+    const invoice = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, categoria);
+    return c.json(serializeInvoice(invoice), 201);
+  });
 
-    // Fase 6 (cierre mensual) — bloqueo de edición de movimientos ya cerrados:
-    // funcionalidad NUEVA (ver domain-despachos/src/errors.ts,
-    // `PeriodoCerradoError`, y el comentario de cabecera de
-    // `cierre-mensual/engine.ts` — ni close_management ni monthly_close del
-    // origen Python implementan este bloqueo en ningún punto real de
-    // escritura). Se engancha aquí, en la ingesta de CFDI, porque es el único
-    // flujo de escritura de "movimientos" que ya existe en esta vertical; el
-    // período se resuelve por (property, año, mes) de la FECHA del propio
-    // CFDI (`fechaInvoice`, "YYYY-MM-DD").
-    {
-      const [anioStr, mesStr] = fechaInvoice.split("-");
-      const anio = Number(anioStr);
-      const mes = Number(mesStr);
-      if (Number.isInteger(anio) && Number.isInteger(mes)) {
-        const periodo = await repo.findPeriodoCierrePorAnioMes(propertyId, anio, mes);
-        if (estaPeriodoCerrado(periodo)) throw Errors.despachosPeriodoCerrado(fechaInvoice.slice(0, 7));
-      }
-    }
+  // ALCANCE (ver TAREA): consume el CFDI 4.0 tal como lo entrega el PAC —
+  // camino feliz (un `cfdi:Comprobante`, N conceptos, IVA trasladado estándar,
+  // `tfd:TimbreFiscalDigital` para el folio fiscal). Deliberadamente NO cubre
+  // comercio exterior, complemento de pagos ni nómina vía XML — ver el
+  // encabezado de `@atiende/billing/cfdi/xml-parser.ts` para el detalle exacto
+  // de qué queda fuera. `categoria` nunca viaja en el XML del SAT (es
+  // clasificación contable interna del despacho, no un dato fiscal), así que
+  // entra siempre como "sin_clasificar" — el staff la reclasifica después,
+  // igual que cualquier CFDI ingestado sin categoría explícita por `POST /cfdi`.
+  app.post("/despachos/:propertyId/cfdi/importar-xml", async (c) => {
+    assertVerticalRole(c, INGESTA_CFDI_ROLES);
+    const repo = deps.despachosRepo(c.get("db"));
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId");
+    const xml = await readTextCapped(c.req.raw, MAX_CFDI_XML_BYTES);
 
-    const resultado = validarCfdiDespachos(datos);
-
+    let datos: DatosCfdiDespachos;
     try {
-      const invoice = await repo.insertInvoice({
-        organizationId,
-        propertyId,
-        folioFiscal: datos.folioFiscal,
-        tipo: datos.tipo as InvoiceRecord["tipo"],
-        rfcEmisor: datos.rfcEmisor,
-        rfcReceptor: datos.rfcReceptor,
-        emisorNombre: datos.emisorNombre ?? null,
-        subtotal: datos.subtotal,
-        total: datos.total,
-        iva: datos.iva ?? null,
-        descuento: datos.descuento ?? 0,
-        categoria,
-        fecha: fechaInvoice,
-        valido: resultado.ok,
-        issues: resultado.issues,
-        warnings: resultado.warnings,
-        requiresHumanReview: resultado.requiresHumanReview,
-        diot: resultado.diot,
-      });
-
-      // Flujo 2 (cola de revisión humana): gateado ESTRICTAMENTE por el flag
-      // `requiresHumanReview` que acaba de calcular el motor determinista — nunca se
-      // decide "a ojo" en la ruta si un CFDI necesita revisión.
-      if (resultado.requiresHumanReview) {
-        await repo.createReview({
-          organizationId,
-          propertyId,
-          invoiceId: invoice.id,
-          reason: resumirMotivoRevision(resultado, datos.tipo),
-        });
+      const parsed = parseCfdiXml(xml);
+      if (!TIPOS_COMPROBANTE_VALIDOS.has(parsed.tipo)) {
+        throw Errors.validation(`TipoDeComprobante: '${parsed.tipo}' — se esperaba I|E|T|P|N.`);
       }
-
-      return c.json(serializeInvoice(invoice), 201);
+      datos = { ...parsed, tipo: parsed.tipo as DatosCfdiDespachos["tipo"] };
     } catch (err) {
-      if (err instanceof InvoiceAlreadyExistsError) throw Errors.conflict(err.message);
+      if (err instanceof CfdiXmlParseError) throw Errors.validation(err.message);
       throw err;
     }
+
+    const invoice = await ingestarCfdiDespachos(repo, organizationId, propertyId, datos, "sin_clasificar");
+    return c.json(serializeInvoice(invoice), 201);
   });
 
   app.get("/despachos/:propertyId/cfdi/:invoiceId", async (c) => {

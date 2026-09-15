@@ -65,8 +65,11 @@ export function requestActor(req: Request, secondary = ""): string {
   return `${connectingIp || forwarded || "unknown"}:${secondary.slice(0, 128)}`;
 }
 
-/** Lee y parsea JSON con un límite explícito de bytes — port literal de readJson. */
-export async function readJsonCapped<T = unknown>(req: Request, maxBytes = 64 * 1024): Promise<T> {
+/** Lee el body crudo (texto) con un límite explícito de bytes — mismo candado que
+ * `readJsonCapped` (content-length declarado Y tamaño real, por si el header
+ * miente), reutilizado también por rutas que reciben texto plano en vez de JSON
+ * (p. ej. `POST /despachos/:propertyId/cfdi/importar-xml`, un CFDI XML crudo). */
+export async function readTextCapped(req: Request, maxBytes: number): Promise<string> {
   const length = Number(req.headers.get("content-length") ?? 0);
   if (!Number.isFinite(length) || length < 0 || length > maxBytes) {
     throw Errors.payloadTooLarge();
@@ -75,6 +78,12 @@ export async function readJsonCapped<T = unknown>(req: Request, maxBytes = 64 * 
   if (new TextEncoder().encode(raw).byteLength > maxBytes) {
     throw Errors.payloadTooLarge();
   }
+  return raw;
+}
+
+/** Lee y parsea JSON con un límite explícito de bytes — port literal de readJson. */
+export async function readJsonCapped<T = unknown>(req: Request, maxBytes = 64 * 1024): Promise<T> {
+  const raw = await readTextCapped(req, maxBytes);
   try {
     return JSON.parse(raw) as T;
   } catch {

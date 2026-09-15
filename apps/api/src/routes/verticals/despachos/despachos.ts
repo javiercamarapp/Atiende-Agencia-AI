@@ -14,6 +14,7 @@ import { despachosConciliacionRoutes } from "./conciliacion.ts";
 import { despachosMigracionCatalogoRoutes } from "./migracion-catalogo.ts";
 import { despachosDevolucionIvaRoutes } from "./devolucion-iva.ts";
 import { despachosBookkeepingRoutes } from "./bookkeeping.ts";
+import { despachosContabilidadElectronicaRoutes } from "./contabilidad-electronica.ts";
 import { despachosCierreMensualRoutes } from "./cierre-mensual.ts";
 import { despachosAdminRoutes } from "./admin.ts";
 import { despachosNotificationsRoutes } from "./notifications.ts";
@@ -36,6 +37,11 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // edición de movimientos ya cerrados, este último enganchado en cfdi.ts).
   app.route("/", despachosDevolucionIvaRoutes(deps));
   app.route("/", despachosBookkeepingRoutes(deps));
+  // Hallazgo de auditoría: contabilidad electrónica SAT (Anexo 24) tenía motor
+  // completo (catálogo/balanza/paquete, ver contabilidad-electronica.ts) pero
+  // cero rutas HTTP — la tarea "contabilidad_elect" del cierre mensual solo
+  // comprobaba un booleano manual sin poder generar el paquete real.
+  app.route("/", despachosContabilidadElectronicaRoutes(deps));
   app.route("/", despachosCierreMensualRoutes(deps));
   // Hallazgo de auditoría (severidad ALTA) — infraestructura de correo real
   // (outbox + dispatch + recordatorios de cobranza), ver notifications.ts.

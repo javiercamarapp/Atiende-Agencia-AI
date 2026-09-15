@@ -74,7 +74,51 @@ export async function postJson<T>(
   return (await res.json()) as T;
 }
 
+/** Mismo wrapper `withAuthRefresh` que `postJson`, pero para un body de texto
+ * crudo (p. ej. un XML de CFDI) en vez de JSON -- `POST
+ * /despachos/:propertyId/cfdi/importar-xml` (apps/api/.../despachos/cfdi.ts)
+ * espera el XML tal cual, nunca envuelto en `{ xml: "..." }`. */
+export async function postXml<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  rawBody: string,
+  contentType = "application/xml",
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${t}`, "content-type": contentType },
+      body: rawBody,
+    }),
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new DespachosAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
 export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string): Promise<readonly BranchOption[]> {
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/despachos/${orgSlug}/admin/branches`, token);
   return body.branches;
+}
+
+// Hallazgo de auditoría (severidad ALTA, "un despacho solo puede operar UN
+// contribuyente/cliente"): DespachosShell.tsx fijaba `branches[0]` sin importar
+// cuántos contribuyentes trajera GET .../admin/branches -- aunque cada branch YA
+// es un property real, org-scoped, con múltiples filas posibles (mismo modelo
+// exacto que hoteles/rentas/citas/licitaciones, `core.property`; ver
+// `PostgresDespachosRepository.listPropertiesForOrganization`). No hacía falta
+// ningún cambio de esquema: solo faltaba dejar de descartar el resto de la lista.
+// `resolveActivePropertyId` es la función pura que decide qué branch queda activo
+// dado lo que el selector de la UI tenga elegido -- extraída así (en vez de
+// hardcodearla en el componente) para poder probarla sin depender de un DOM/React
+// renderer, que este repo no tiene configurado (vitest corre en `environment:
+// "node"`, sin jsdom/testing-library -- ver vitest.config.ts).
+export function resolveActivePropertyId(branches: readonly BranchOption[], selectedPropertyId: string | null): string | null {
+  if (branches.length === 0) return null;
+  if (selectedPropertyId !== null && branches.some((b) => b.propertyId === selectedPropertyId)) return selectedPropertyId;
+  return branches[0]!.propertyId;
 }

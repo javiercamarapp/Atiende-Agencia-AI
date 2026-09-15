@@ -2,22 +2,21 @@
 // `RentasOwnerPortalRepository`, sobre el `TenantDbSession` genérico de
 // `@atiende/core-tenancy` (mismo contrato que `PostgresRentasRepository`).
 //
-// ADVERTENCIA DE PRIVILEGIO (léase antes de wirear esto a producción real):
-// `findOwnerCredentialByEmail`/`createPortalInvite`/`consumePortalInvite` leen/escriben
-// `rentas.owner_credential`, que la migración 006 NUNCA otorga en SELECT/INSERT/UPDATE
-// a `authenticated` -- solo `service_role`. Estos tres métodos deben construirse sobre
-// una sesión de privilegio administrativo (equivalente a
-// `ManagedPostgresEngine.admin`), NUNCA sobre la sesión RLS por-request que abre
-// `requireRentasOwnerSession` (`c.get("db")`, usada por los otros cinco métodos) --
-// exactamente el mismo criterio ya documentado para `core.staff_user` en
-// `@atiende/db::PostgresCoreRepository`/`apps/api/src/production/core-repository.ts`
-// ("login ocurre ANTES de que exista una sesión autenticada -- no hay auth.uid() que
-// las policies puedan evaluar todavía").
-//
-// Esta clase, como el resto de `rentasRepo` (Fase 1/2), NO está conectada a Postgres
-// real en este repo todavía (`notProductionReady`, ver
-// apps/api/src/production/deps.ts) -- se documenta el requisito de privilegio para
-// cuando esa conexión se construya, no se finge una garantía que no existe hoy.
+// PRIVILEGIO DE `findOwnerCredentialByEmail`/`createPortalInvite`/`consumePortalInvite`
+// (resuelto en la migración 013, `013_owner_portal_security_definer.sql` -- léela antes
+// de tocar estos tres métodos): leen/escriben `rentas.owner_credential`, que la
+// migración 006 NUNCA otorga en SELECT/INSERT/UPDATE a `authenticated` -- solo
+// `service_role`, que este monorepo no aprovisiona todavía (`ManagedPostgresEngine.admin`
+// es el MISMO rol de mínimo privilegio que `withAppSession`, ver comentario de cabecera
+// de `packages/db/src/managed-postgres-engine.ts`). En vez de requerir esa pieza de
+// infraestructura pendiente, estos tres métodos llaman 3 funciones SQL `security
+// definer` (mismo criterio EXACTO que `core.accept_staff_invite`,
+// `packages/db/migrations/0002_staff_invite_schema.sql`): corren con el privilegio del
+// dueño de la función sobre la MISMA sesión por-request (`this.db`, `authenticated`,
+// con o sin `auth.uid()` según el momento -- login/activación son pre-sesión, invitar
+// corre con `auth.uid()` = staffId real), cada una haciendo su propia verificación de
+// autorización (ver el SQL) en vez de confiar solo en la capa TS. Con esto, los 8
+// métodos del puerto quedan completos contra Postgres real sin `service_role`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type {
   ConsumePortalInviteInput,
@@ -98,17 +97,11 @@ export class PostgresRentasOwnerPortalRepository implements RentasOwnerPortalRep
   constructor(private readonly db: TenantDbSession) {}
 
   async findOwnerCredentialByEmail(email: string): Promise<OwnerCredentialForLogin | null> {
-    // NOTA: rentas.owner.email no tiene índice único -- si dos owners comparten
-    // correo (dato mal capturado por staff), la primera fila con password_hash no
-    // nulo gana; esto es un caso de higiene de datos, no de este diseño (ver §8).
-    const { rows } = await this.db.query<OwnerCredentialRow>(
-      `select oc.owner_id, o.email, oc.password_hash
-       from rentas.owner_credential oc
-       join rentas.owner o on o.id = oc.owner_id
-       where lower(o.email) = lower($1) and oc.password_hash is not null
-       limit 1;`,
-      [email],
-    );
+    // Vía `rentas.find_owner_credential_by_email` (security definer, migración 013) --
+    // `rentas.owner_credential` no otorga SELECT a `authenticated` (migración 006). La
+    // función ya filtra `password_hash is not null` y devuelve a lo más 1 fila (ver
+    // NOTA de higiene de datos en su propio SQL: rentas.owner.email sin índice único).
+    const { rows } = await this.db.query<OwnerCredentialRow>(`select * from rentas.find_owner_credential_by_email($1);`, [email]);
     const row = rows[0];
     if (!row || !row.password_hash) return null;
     return { ownerId: row.owner_id, email: row.email, passwordHash: row.password_hash };
@@ -198,29 +191,24 @@ export class PostgresRentasOwnerPortalRepository implements RentasOwnerPortalRep
   }
 
   async createPortalInvite(input: NewPortalInviteInput): Promise<void> {
-    // Requiere sesión de privilegio administrativo -- ver advertencia de cabecera.
-    await this.db.query(
-      `insert into rentas.owner_credential (owner_id, created_via, created_by, password_reset_token_hash, password_reset_expires_at)
-       values ($1, 'invite', $2, $3, $4)
-       on conflict (owner_id) do update set
-         created_by = excluded.created_by,
-         password_reset_token_hash = excluded.password_reset_token_hash,
-         password_reset_expires_at = excluded.password_reset_expires_at;`,
-      [input.ownerId, input.createdBy, input.tokenHash, input.expiresAt],
-    );
+    // Vía `rentas.create_owner_portal_invite` (security definer, migración 013) --
+    // `created_by` NO se pasa como parámetro: la función lo toma de `auth.uid()`
+    // (`input.createdBy` ya debe coincidir, viene del mismo staff autenticado, ver
+    // owner-portal-invite.ts) y verifica ahí mismo que ese staff tenga acceso real a
+    // una property donde `input.ownerId` tiene una unidad -- nunca confía solo en que
+    // la ruta HTTP ya lo validó.
+    await this.db.query(`select rentas.create_owner_portal_invite($1, $2, $3);`, [input.ownerId, input.tokenHash, input.expiresAt]);
   }
 
   async consumePortalInvite(input: ConsumePortalInviteInput): Promise<{ ownerId: string } | null> {
-    // Requiere sesión de privilegio administrativo -- ver advertencia de cabecera.
-    const { rows } = await this.db.query<{ owner_id: string }>(
-      `update rentas.owner_credential
-       set password_hash = $2, password_reset_token_hash = null, password_reset_expires_at = null
-       where password_reset_token_hash = $1
-         and password_reset_expires_at is not null
-         and password_reset_expires_at > $3::timestamptz
-       returning owner_id;`,
-      [input.tokenHash, input.passwordHash, input.now],
-    );
+    // Vía `rentas.consume_owner_portal_invite` (security definer, migración 013) --
+    // misma validación pending+no-expirado que el SQL que reemplaza, solo que ahora
+    // corre con el privilegio necesario para tocar `rentas.owner_credential`.
+    const { rows } = await this.db.query<{ owner_id: string }>(`select * from rentas.consume_owner_portal_invite($1, $2, $3::timestamptz);`, [
+      input.tokenHash,
+      input.passwordHash,
+      input.now,
+    ]);
     const row = rows[0];
     return row ? { ownerId: row.owner_id } : null;
   }

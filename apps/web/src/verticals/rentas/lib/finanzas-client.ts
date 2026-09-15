@@ -170,6 +170,27 @@ export async function fetchOwnerStatementDetalle(fetchImpl: typeof fetch, apiBas
 }
 
 // ---------------------------------------------------------------------------
+// Invitación al portal de propietario (Fase 3 backend, UI de esta fase) --
+// POST /rentas/:propertyId/owners/:ownerId/portal-invite (owner-portal-invite.ts).
+// FINANZAS_LECTURA_ROLES ya la permite (mismo criterio que ver los owner statements de
+// arriba) -- generar la invitación no es más sensible que ya poder leer sus statements.
+// ---------------------------------------------------------------------------
+
+export interface PortalInviteEmitida {
+  readonly ownerId: string;
+  readonly inviteToken: string;
+  readonly expiresAt: string;
+}
+
+/** El envío por correo real queda fuera de fase (sin proveedor SMTP en el monorepo
+ * todavía, ver el comentario de cabecera de owner-portal-invite.ts) -- el token se
+ * devuelve UNA sola vez aquí, staff lo copia/pega en el mensaje que le mande al
+ * propietario (nunca se puede recuperar de nuevo tras esta respuesta). */
+export async function invitarPropietarioAlPortal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, ownerId: string): Promise<PortalInviteEmitida> {
+  return sendJson(fetchImpl, `${apiBaseUrl}/rentas/${propertyId}/owners/${ownerId}/portal-invite`, token, "POST", {});
+}
+
+// ---------------------------------------------------------------------------
 // Payout de canal + conciliación (Flujo 6, Fase 2 backend, alcance recortado) —
 // POST /rentas/:propertyId/payouts, GET /rentas/:propertyId/payouts/:id.
 // ---------------------------------------------------------------------------

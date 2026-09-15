@@ -56,6 +56,14 @@ export const DEVOLUCION_IVA_ROLES: readonly DespachosRole[] = ["admin", "contado
  * (Fase 6) — mismo criterio. */
 export const BOOKKEEPING_ROLES: readonly DespachosRole[] = ["admin", "contador"];
 
+/** Quién puede generar el paquete de contabilidad electrónica del SAT
+ * (catálogo de cuentas XML, balanza XML, paquete completo) y marcarlo listo
+ * para timbrar — obligación fiscal mensual real, mismo criterio que
+ * DEVOLUCION_IVA_ROLES/BOOKKEEPING_ROLES: son los mismos operadores que
+ * preparan las obligaciones fiscales del cliente, nunca `auditor`/
+ * `readonly`. */
+export const CONTABILIDAD_ELECTRONICA_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
 /** Quién puede ver el checklist/estado de un período de cierre — `auditor`
  * SÍ puede ver (es lectura de un proceso ya corrido, mismo criterio que
  * MIGRACION_CATALOGO_ROLES para lectura de clasificación). */

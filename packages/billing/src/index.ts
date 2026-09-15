@@ -12,6 +12,7 @@ export * as cfdiCatalogs from './cfdi/catalogs.ts';
 export * from './cfdi/rfc.ts';
 export * from './cfdi/validator.ts';
 export * from './cfdi/issuer.ts';
+export * from './cfdi/xml-parser.ts';
 
 export * from './rails/transfer-rail.ts';
 export * from './rails/stripe-rail.ts';

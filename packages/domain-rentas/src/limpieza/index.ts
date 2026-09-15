@@ -29,8 +29,15 @@ export {
   completarTarea,
   confirmarBloqueoMantenimiento,
   crearTareaLimpiezaPorCheckout,
+  crearTareaOperativaManual,
   procesarCheckoutsPendientes,
   registrarIncidencia,
   reprogramarTareaPorCambioReserva,
 } from "./aplicacion/tareas.ts";
-export type { ResultadoConfirmarBloqueoMantenimiento, ResultadoCrearTareaCheckout, ResultadoProcesarCheckouts } from "./aplicacion/tareas.ts";
+export type {
+  EntradaCrearTareaManual,
+  ResultadoConfirmarBloqueoMantenimiento,
+  ResultadoCrearTareaCheckout,
+  ResultadoCrearTareaManual,
+  ResultadoProcesarCheckouts,
+} from "./aplicacion/tareas.ts";

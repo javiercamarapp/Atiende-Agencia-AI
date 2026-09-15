@@ -35,6 +35,10 @@ import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Preci
 import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
 import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
 import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
+import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/IcalSync.tsx";
+import { OwnerPortalLoginPage } from "./verticals/rentas/pages/OwnerPortalLogin.tsx";
+import { OwnerPortalActivarPage } from "./verticals/rentas/pages/OwnerPortalActivar.tsx";
+import { OwnerPortalDashboardPage } from "./verticals/rentas/pages/OwnerPortalDashboard.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -72,6 +76,7 @@ import { ConciliacionPage } from "./verticals/despachos/pages/Conciliacion.tsx";
 import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCatalogo.tsx";
 import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx";
 import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
+import { ContabilidadElectronicaPage } from "./verticals/despachos/pages/ContabilidadElectronica.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -450,6 +455,41 @@ function RentasMisTareasRoute() {
       {(ctx) => <RentasMisTareasPage {...ctx} />}
     </RentasShell>
   );
+}
+
+/** Sincronización de calendario por iCal (Fase 18) — conectar el feed externo de
+ * Airbnb/Booking/Vrbo por unidad + copiar la URL del feed de exportación propio.
+ * Cierra el hallazgo de auditoría "el backend de iCal-sync está completo pero
+ * apps/web no tiene ningún cliente ni pantalla que lo consuma". Mismo patrón de
+ * ruta hija que RentasCalendarioRoute/RentasPreciosRoute/.../RentasMisTareasRoute. */
+function RentasIcalSyncRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasIcalSyncPage {...ctx} />}
+    </RentasShell>
+  );
+}
+
+/** Portal de propietario (Fase 3 backend, UI de esta fase) — 3 rutas PÚBLICAS, fuera
+ * de RentasShell a propósito: es una identidad completamente distinta de staff (su
+ * propio JWT/secreto, ver owner-portal.ts), nunca pasa por el shell autenticado del
+ * panel de staff. Mismo criterio de aislamiento que /aceptar-invitacion (shell/
+ * AceptarInvitacion.tsx) frente al login/shell de staff. */
+function RentasOwnerPortalLoginRoute() {
+  const navigate = useNavigate();
+  return <OwnerPortalLoginPage apiBaseUrl={API_BASE_URL} onLoggedIn={() => navigate("/rentas/portal-propietario", { replace: true })} />;
+}
+
+function RentasOwnerPortalActivarRoute() {
+  return <OwnerPortalActivarPage apiBaseUrl={API_BASE_URL} />;
+}
+
+function RentasOwnerPortalDashboardRoute() {
+  const navigate = useNavigate();
+  return <OwnerPortalDashboardPage apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/rentas/portal-propietario/login", { replace: true })} />;
 }
 
 function CitasLoginRoute() {
@@ -867,6 +907,17 @@ function DespachosBookkeepingRoute() {
   );
 }
 
+function DespachosContabilidadElectronicaRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <ContabilidadElectronicaPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -906,6 +957,15 @@ export function App() {
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
+        <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
+        {/* Portal de propietario -- rutas literales, react-router-dom v6 ya rankea un
+            segmento literal sobre uno dinámico (:orgSlug) sin importar el orden de
+            declaración, así que "portal-propietario" nunca se confunde con un orgSlug
+            real (a diferencia de Hono en apps/api, ver el comentario de cabecera de
+            rentas.ts sobre por qué ahí SÍ importa el orden de montaje). */}
+        <Route path="/rentas/portal-propietario/login" element={<RentasOwnerPortalLoginRoute />} />
+        <Route path="/rentas/portal-propietario/activar" element={<RentasOwnerPortalActivarRoute />} />
+        <Route path="/rentas/portal-propietario" element={<RentasOwnerPortalDashboardRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
@@ -946,6 +1006,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/migracion-catalogo" element={<DespachosMigracionCatalogoRoute />} />
         <Route path="/despachos/:orgSlug/devolucion-iva" element={<DespachosDevolucionIvaRoute />} />
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />
+        <Route path="/despachos/:orgSlug/contabilidad-electronica" element={<DespachosContabilidadElectronicaRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

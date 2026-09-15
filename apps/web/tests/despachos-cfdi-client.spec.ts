@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchInvoice, fetchInvoices } from "../src/verticals/despachos/lib/cfdi-client.ts";
+import { fetchInvoice, fetchInvoices, importarCfdiXml } from "../src/verticals/despachos/lib/cfdi-client.ts";
 
 const SAMPLE_INVOICE = {
   id: "inv1",
@@ -53,5 +53,25 @@ describe("fetchInvoice", () => {
   it("404 -> propaga el mensaje real del servidor", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "CFDI no encontrado." }), { status: 404 })) as unknown as typeof fetch;
     await expect(fetchInvoice(fetchImpl, "http://api.local", "tok", "prop-1", "no-existe")).rejects.toThrow("CFDI no encontrado.");
+  });
+});
+
+describe("importarCfdiXml", () => {
+  it("pide POST .../cfdi/importar-xml con el XML crudo (sin envolverlo en JSON) y devuelve el invoice creado", async () => {
+    const xml = '<cfdi:Comprobante Version="4.0">…</cfdi:Comprobante>';
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/despachos/prop-1/cfdi/importar-xml");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(xml);
+      expect((init?.headers as Record<string, string>)["content-type"]).toBe("application/xml");
+      return new Response(JSON.stringify(SAMPLE_INVOICE), { status: 201 });
+    }) as unknown as typeof fetch;
+    const result = await importarCfdiXml(fetchImpl, "http://api.local", "tok", "prop-1", xml);
+    expect(result).toEqual(SAMPLE_INVOICE);
+  });
+
+  it("400 (XML inválido) -> propaga el mensaje real del servidor", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "XML mal formado." }), { status: 400 })) as unknown as typeof fetch;
+    await expect(importarCfdiXml(fetchImpl, "http://api.local", "tok", "prop-1", "<xml/>")).rejects.toThrow("XML mal formado.");
   });
 });

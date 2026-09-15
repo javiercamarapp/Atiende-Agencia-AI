@@ -26,6 +26,7 @@ import { rentasOnboardingRoutes } from "./onboarding.ts";
 import { rentasAdminDiscoveryRoutes } from "./admin-discovery.ts";
 import { rentasCalendarioRoutes } from "./calendario.ts";
 import { rentasLimpiezaRoutes } from "./limpieza.ts";
+import { rentasCheckoutSweepCronRoutes } from "./checkout-sweep-cron.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -97,5 +98,9 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // incidencias de mantenimiento. Motor transaccional ya existía desde Fase 8 sin
   // ningún HTTP route montado (ver limpieza.ts).
   app.route("/", rentasLimpiezaRoutes(deps));
+  // Cron interno -- dispara procesarCheckoutsPendientes (sweep de checkouts sin
+  // tarea de limpieza vinculada), mismo patrón que rentasIcalSyncCronRoutes arriba:
+  // sin requirePropertyMembership, guardado por x-atiende-internal-secret.
+  app.route("/", rentasCheckoutSweepCronRoutes(deps));
   return app;
 }

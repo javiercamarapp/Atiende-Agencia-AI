@@ -3,11 +3,13 @@
 // auditoría ALTA "el rol `limpieza` sigue sin ninguna vista funcional": el motor
 // transaccional (asignarTarea/completarChecklistItem/completarTarea/
 // registrarIncidencia, Fase 8) llevaba desde entonces sin un solo HTTP route que lo
-// expusiera. Las tareas/inventario de prueba se siembran directo con
-// `rentasRepo.seedTareaOperativa`/`seedItemInventario` (ver el comentario de cabecera
-// de InMemoryRentasCalendarStore.seedTareaOperativa): `crearTareaLimpiezaPorCheckout`
-// sigue sin HTTP/cron que la invoque (documentado como bloqueador honesto, no en el
-// alcance de este hallazgo).
+// expusiera. Las tareas/inventario de la mayoría de los tests se siembran directo
+// con `rentasRepo.seedTareaOperativa`/`seedItemInventario` (ver el comentario de
+// cabecera de InMemoryRentasCalendarStore.seedTareaOperativa) -- salvo el bloque
+// "POST .../tareas (creación manual)" de abajo, que SÍ ejercita el motor real
+// (`crearTareaOperativaManual`) de punta a punta. `procesarCheckoutsPendientes`
+// (creación automática al checkout) tiene su propio cron interno y su propio spec,
+// ver apps/api/tests/rentas-checkout-sweep-cron.spec.ts.
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildRentasTestContext } from "./rentas-fixtures.ts";
@@ -61,6 +63,81 @@ describe("GET /rentas/:propertyId/tareas", () => {
     const app = buildApp(ctx.deps);
     const res = await app.request(`/rentas/${ctx.propertyId}/tareas`, authedJson(ctx.staff.contador.token));
     expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /rentas/:propertyId/tareas (creación manual, crearTareaOperativaManual)", () => {
+  it("admin_gestora crea una tarea de mantenimiento SIN ocupación/buffer de calendario, con la plantilla de checklist de su tipo", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/tareas`,
+      authedJson(ctx.staff.adminGestora.token, { unidadId: ctx.unidadId, tipo: "mantenimiento", programadaPara: "2026-07-15" }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { tarea: { id: string; tipo: string; estado: string; prioridad: string; checklist: Array<{ descripcion: string }> } };
+    expect(body.tarea.tipo).toBe("mantenimiento");
+    expect(body.tarea.estado).toBe("pendiente");
+    expect(body.tarea.prioridad).toBe("media");
+    expect(body.tarea.checklist.length).toBeGreaterThan(0);
+
+    // Visible por la MISMA ruta de listado que usa MisTareas.tsx.
+    const listado = await app.request(`/rentas/${ctx.propertyId}/tareas`, authedJson(ctx.staff.limpieza.token));
+    const listadoBody = (await listado.json()) as { tareas: Array<{ id: string }> };
+    expect(listadoBody.tareas.some((t) => t.id === body.tarea.id)).toBe(true);
+  });
+
+  it("operador:acceso_total puede crear, y respeta la prioridad explícita", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/tareas`,
+      authedJson(ctx.staff.operadorAccesoTotal.token, { unidadId: ctx.unidadId, tipo: "limpieza", prioridad: "urgente", programadaPara: "2026-07-15" }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { tarea: { prioridad: string } };
+    expect(body.tarea.prioridad).toBe("urgente");
+  });
+
+  it("el rol limpieza (opera tareas, pero no decide darlas de alta) recibe 403", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/tareas`,
+      authedJson(ctx.staff.limpieza.token, { unidadId: ctx.unidadId, tipo: "limpieza", programadaPara: "2026-07-15" }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("un rol contador recibe 403", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/tareas`,
+      authedJson(ctx.staff.contador.token, { unidadId: ctx.unidadId, tipo: "limpieza", programadaPara: "2026-07-15" }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("un tipo fuera del catálogo -> 400", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/tareas`,
+      authedJson(ctx.staff.adminGestora.token, { unidadId: ctx.unidadId, tipo: "reparacion_urgente", programadaPara: "2026-07-15" }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("una unidad que no pertenece a esta property -> 404", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/tareas`,
+      authedJson(ctx.staff.adminGestora.token, { unidadId: "00000000-0000-4000-8000-000000000000", tipo: "limpieza", programadaPara: "2026-07-15" }),
+    );
+    expect(res.status).toBe(404);
   });
 });
 

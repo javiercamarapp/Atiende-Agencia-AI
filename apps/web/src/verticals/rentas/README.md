@@ -70,14 +70,19 @@ nada desde el producto.
   de datos y en este panel, pero el huésped real no recibe ningún mensaje. Conectar un
   canal real es un hallazgo aparte, fuera de alcance de este hallazgo (que era,
   específicamente, la ausencia de UI para la cola de aprobación humana).
-- **Generar un borrador nuevo** (`POST .../conversaciones/:id/borradores`) y crear
-  una conversación (`POST .../conversaciones`) siguen sin cliente web — el hallazgo
-  que cierra esta fase era específicamente la falta de UI para *aprobar/rechazar* lo
-  ya generado, no el flujo de creación (que hoy solo se ejercita desde
-  `apps/api/tests/rentas-mensajeria.spec.ts`). Documentado aquí para que no se lea
-  como un olvido: sin esa UI, la bandeja de esta fase solo mostrará borradores que se
-  hayan generado por API directa (tests, script, o un futuro adaptador de canal real
-  que registre el mensaje entrante y dispare la generación).
+- **Fase 15.1 (cierra el hallazgo anterior)**: `lib/mensajeria-conversaciones-client.ts`
+  agrega el cliente que faltaba para crear una conversación (`POST .../conversaciones`),
+  registrar un mensaje ENTRANTE del huésped (`POST .../conversaciones/:id/mensajes`) y
+  pedirle al agente que redacte un borrador (`POST .../conversaciones/:id/borradores`).
+  El bloque `SimuladorMensajeEntrante` en `pages/Aprobaciones.tsx` encadena las 3
+  llamadas en una sola acción de staff (elige/crea conversación → registra el mensaje
+  → pide el borrador), gateado por el mismo `MENSAJERIA_ESCRITURA_ROLES` que ya usan
+  aprobar/rechazar. Sigue siendo, honestamente, un registro **manual**: el mensaje se
+  manda con `origen: "manual"` porque no existe ningún adaptador real de WhatsApp/
+  Airbnb/Vrbo conectado — mismo aviso, mismo criterio que ya tenía esta página para
+  `SimuladorCanalMensajeria` al aprobar (ver arriba). Antes de esta fase, la bandeja
+  de aprobación SOLO se poblaba generando borradores por API directa (tests, script);
+  ahora un operador puede sembrarla de punta a punta desde el producto.
 
 Fase 16: `pages/Finanzas.tsx` + `lib/finanzas-client.ts` — cierra el hallazgo de
 auditoría ALTA "Finanzas (movimientos, owner statements, payouts/conciliación) sin UI
@@ -110,3 +115,44 @@ Fases 1 y 2 del backend, pero ningún cliente web los consumía: `contador`
   Al importar un payout, su id recién creado se precarga automáticamente en el campo
   de consulta (dato real devuelto por el propio POST, nunca inventado). Agregar esos
   catálogos es trabajo de backend fuera del alcance de este hallazgo.
+
+Fase 17: `pages/MisTareas.tsx` — panel operativo real del rol `limpieza` (tareas/
+checklist/inventario/incidencias, motor de `packages/domain-rentas/src/limpieza/*`
+desde la Fase 8). Ver el comentario de cabecera de `RentasShell.tsx` para el detalle
+completo; no documentado aquí en su momento.
+
+Fase 18: `lib/property-selection.ts` + selector real en `RentasShell.tsx` +
+`pages/Dashboard.tsx` clicable — cierra el hallazgo de auditoría "en rentas, una
+empresa gestora con varias propiedades solo puede operar la primera". Hasta esta
+fase `RentasShell.tsx` fijaba `propertyId = properties[0]` para siempre ("hasta que
+haya un selector visual real"), igual que `HotelesShell.tsx` — pero a diferencia de
+hoteles (donde ese atajo se justifica porque la mayoría de sus organizaciones operan
+un solo hotel), en rentas el caso multi-propiedad es **el caso base del vertical**
+(una gestora que administra propiedades de más de un anfitrión), así que el atajo
+dejaba inoperable el caso más común, no una excepción.
+
+- **Selector real**: dropdown en el header del nav de `RentasShell.tsx` cuando la
+  organización tiene 2+ properties (con 1 sola sigue mostrando solo su nombre, mismo
+  criterio visual que `HotelesShell.tsx`). `propertyId`/`setPropertyId` viajan en
+  `RentasShellContext` para que cualquier página hija pueda leer y cambiar la
+  property activa.
+- **Segundo punto de entrada**: `pages/Dashboard.tsx` ya listaba las properties de
+  la organización pero no eran clicables — ahora cada una es un botón real que llama
+  al mismo `setPropertyId` del contexto (no un selector paralelo).
+- **Persistencia (`lib/property-selection.ts`)**: cada ruta de `App.tsx`
+  (`/rentas/:orgSlug/calendario`, `/rentas/:orgSlug/finanzas`, etc.) monta una
+  instancia NUEVA de `<RentasShell>` — no hay un layout persistente entre rutas de
+  React Router en este panel. Sin persistir la selección fuera del `useState` del
+  Shell, cambiar de página (Calendario → Finanzas) resetearía silenciosamente la
+  property activa a la primera, el mismo bug que este hallazgo pide cerrar. Se
+  persiste en `localStorage` bajo `atiende.rentas.selectedProperty.<orgSlug>`,
+  best-effort (nunca lanza si el storage falla al leer/escribir — modo privado,
+  cuota excedida, storage bloqueado — la selección sigue viva en memoria durante la
+  sesión del tab, solo no sobrevive un refresh).
+- **Ninguna página operativa necesitó cambios funcionales**: `Calendario.tsx`,
+  `Precios.tsx`, `Aprobaciones.tsx`, `Finanzas.tsx` y `MisTareas.tsx` ya
+  desestructuraban `propertyId` de `RentasShellContext` (nunca asumían
+  `properties[0]` directamente) y ya lo listaban en el arreglo de dependencias de
+  sus `useEffect` de carga — en cuanto el Shell les pasa un `propertyId` distinto,
+  vuelven a pedir datos automáticamente sin ningún cambio de código en esas 5
+  páginas.
