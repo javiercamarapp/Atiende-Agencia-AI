@@ -18,6 +18,7 @@ import { MANAGER_ROLES, normalizePromotionCode, PROMOTION_CODE_PATTERN } from "@
 import type { Promotion, PromotionType } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -205,6 +206,7 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       ...(maxUses !== undefined ? { maxUses } : {}),
       ...(isActive !== undefined ? { isActive } : {}),
     });
+    logEvent(c, "info", "restaurantes_admin_promocion_creada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), promotionId: created.id, code });
     return c.json({ promotion: serializePromotion(created) }, 201);
   });
 
@@ -252,6 +254,7 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
     };
     const updated = await repo.updatePromotion(organizationId, promotionId, patch);
     if (!updated) throw Errors.notFound("Promoción no encontrada.");
+    logEvent(c, "info", "restaurantes_admin_promocion_actualizada", { actorUserId: c.get("userId"), organizationId, promotionId });
     return c.json({ promotion: serializePromotion(updated) });
   });
 

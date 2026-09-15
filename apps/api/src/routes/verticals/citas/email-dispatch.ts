@@ -30,6 +30,7 @@ import { dispatchPendingEmailJobs } from "@atiende/domain-citas";
 import type { CitasRepository, EmailDispatchSummary } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Límite del drenado INLINE -- deliberadamente chico, mismo criterio que
@@ -94,8 +95,7 @@ export function citasEmailDispatchRoutes(deps: AppDeps): Hono {
     // corrección real es LOGUEAR estructurado con severidad `error` cuando hubo
     // fallos/jobs muertos -- consumible por cualquier integración de logs.
     if (summary.failed > 0 || summary.dead > 0) {
-      console.error("citas email-dispatch: corrida de cron con fallos", {
-        severity: "error",
+      logEvent(c, "error", "citas_email_dispatch_cron_con_fallos", {
         processed: summary.processed,
         failed: summary.failed,
         dead: summary.dead,

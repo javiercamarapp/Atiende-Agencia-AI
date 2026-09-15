@@ -39,6 +39,7 @@ import { correoInvitacionStaff, isRestaurantesRole, MANAGER_ROLES, PLATFORM_ROLE
 import type { OrganizationMemberRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { logEvent } from "../../../logger.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 
@@ -178,6 +179,20 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       console.error("admin-staff: best-effort staff invite email enqueue failed:", err);
     }
 
+    // Hallazgo de auditoría (observabilidad) — trazabilidad de acciones
+    // administrativas de staff: quién (actorUserId), qué (evento), sobre qué
+    // (email/verticalRole invitados) y cuándo (campo `ts` de `logEvent`), con el
+    // `requestId` del propio request para correlacionar contra el resto de logs
+    // de esta misma llamada HTTP (ver `../../../logger.ts`).
+    logEvent(c, "info", "restaurantes_admin_staff_invitado", {
+      actorUserId: staffId,
+      organizationId,
+      propertyIds,
+      inviteId: invite.id,
+      invitedEmail: email,
+      verticalRole,
+    });
+
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);
   });
 
@@ -194,6 +209,7 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const inviteId = c.req.param("inviteId");
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
     if (!revoked) throw Errors.notFound("Invitación no encontrada, ya fue usada, o ya estaba revocada.");
+    logEvent(c, "info", "restaurantes_admin_staff_invitacion_revocada", { actorUserId: c.get("userId"), organizationId, inviteId });
     return c.json({ ok: true });
   });
 
