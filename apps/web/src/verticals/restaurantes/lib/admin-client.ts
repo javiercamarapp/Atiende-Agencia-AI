@@ -69,3 +69,17 @@ export async function sendJson<T>(
   }
   return (await res.json()) as T;
 }
+
+/** Fase 14 — primer DELETE real del panel de restaurantes (revocar una invitación de
+ * staff pendiente, ver staff-client.ts::revokeStaffInvite). Sin cuerpo -- ninguna ruta
+ * DELETE de este vertical lo lee (mismo criterio que citas/lib/admin-client.ts::deleteJson).
+ * Envuelto con `withAuthRefresh` igual que fetchJson/sendJson de arriba, por el mismo
+ * hallazgo de auditoría de la cabecera de este archivo. */
+export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new RestaurantesAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}

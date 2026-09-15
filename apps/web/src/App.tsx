@@ -12,6 +12,8 @@ import { PedidosPage } from "./verticals/restaurantes/pages/Pedidos.tsx";
 import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
 import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
 import { RepartidorPedidosPage } from "./verticals/restaurantes/pages/Repartidor.tsx";
+import { StaffPage } from "./verticals/restaurantes/pages/Staff.tsx";
+import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
@@ -136,6 +138,32 @@ function RestaurantesClienteFichaRoute() {
     <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
       {(ctx) => <RestaurantesClienteFichaPage {...ctx} customerId={customerId} />}
     </RestaurantesShell>
+  );
+}
+
+function RestaurantesStaffRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <StaffPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
+/** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
+ * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
+ * que `*LoginRoute` de abajo (esta página tampoco puede adivinar por sí sola a qué
+ * vertical navegar después de aceptar — usa el `vertical` real de la organización
+ * que la sesión aceptada ya trae, ver decideLandingPathForInvite). */
+function AceptarInvitacionRoute() {
+  const navigate = useNavigate();
+  return (
+    <AceptarInvitacionPage
+      apiBaseUrl={API_BASE_URL}
+      onAccepted={(session, landingPath) => navigate(landingPath, { state: { session, vertical: session.organizations[0]?.vertical, email: session.email } })}
+    />
   );
 }
 
@@ -536,6 +564,10 @@ export function App() {
             roles.ts::REPARTIDOR_ROLES), deliberadamente FUERA del nav de
             RestaurantesShell (ver comentario de cabecera de Repartidor.tsx). */}
         <Route path="/restaurantes/:orgSlug/repartidor" element={<RepartidorPedidosPage />} />
+        <Route path="/restaurantes/:orgSlug/staff" element={<RestaurantesStaffRoute />} />
+        {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
+            AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
+        <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesRootRedirect />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
