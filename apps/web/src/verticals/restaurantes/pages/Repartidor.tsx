@@ -74,7 +74,6 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBaseUrl, token, propertyId]);
 
   async function handleAvanzar(order: RepartidorOrder) {

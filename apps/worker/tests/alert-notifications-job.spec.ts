@@ -113,7 +113,7 @@ describe("runAlertNotificationSweep", () => {
   it("escanea las 3 fuentes y encola un correo real por cada alerta al responsable de la organización", async () => {
     repo.seedNotificationRecipient(organizationId, { email: "owner@empresa.mx", fullName: "Owner" });
 
-    const { tender: tenderDeadline } = await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-deadline", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
+    await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-deadline", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
     const { tender: tenderContract } = await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-renewal" }));
     await repo.createContract(organizationId, tenderContract.id, randomUUID());
     await repo.updateContractMetadata(organizationId, tenderContract.id, { endDate: "2026-11-28" });
