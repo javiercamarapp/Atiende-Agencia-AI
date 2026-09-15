@@ -40,6 +40,7 @@ export interface HotelesShellProps {
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "reservas", label: "Reservas" },
   { to: "mantenimiento", label: "Mantenimiento" },
+  { to: "asistencia", label: "Asistencia" },
   { to: "fraude", label: "Fraude" },
   { to: "cfdi", label: "CFDI" },
 ];
@@ -195,6 +196,15 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
         <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 4px" }}>Hoteles · {orgSlug}</p>
         <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 8px" }}>{properties[0]!.nombre}</p>
+        {/* Fase 16 — hallazgo de auditoría (severidad ALTA, "No hay dashboard por
+            tipo de usuario"): landing real del panel, ver comentario de cabecera de
+            pages/Dashboard.tsx. `end` evita que este link quede marcado activo en
+            cualquier subruta (mismo criterio que "Panel (KPIs)" en
+            RestaurantesShell.tsx). */}
+        <NavLink to={`/hoteles/${orgSlug}`} end style={({ isActive }) => linkStyle(isActive)}>
+          Dashboard
+        </NavLink>
+        <div style={{ height: 1, background: "#f3f4f6", margin: "6px 0" }} />
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.to} to={`/hoteles/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
             {item.label}

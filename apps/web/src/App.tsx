@@ -17,9 +17,11 @@ import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx"
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
+import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
 import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
 import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
+import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
@@ -30,6 +32,7 @@ import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
 import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages/Calendario.tsx";
 import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Precios.tsx";
 import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
+import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -55,6 +58,7 @@ import { CfdiPage } from "./verticals/despachos/pages/Cfdi.tsx";
 import { CfdiDetallePage } from "./verticals/despachos/pages/CfdiDetalle.tsx";
 import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
 import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
+import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -201,12 +205,25 @@ function HotelesLoginRoute() {
   );
 }
 
-/** Redirección al abrir `/hoteles/:orgSlug` a secas — Reservas es la landing real
- * del panel (mismo criterio que CitasRootRedirect: la agenda/reservas es lo primero
- * que necesita ver recepción al entrar). */
-function HotelesRootRedirect() {
+/** Landing real de `/hoteles/:orgSlug` a secas (Fase 16) — hallazgo de auditoría
+ * (severidad ALTA, "No hay dashboard por tipo de usuario: todos aterrizan en
+ * Reservas"): antes de esta fase esta ruta era una redirección forzosa a
+ * `/hoteles/:orgSlug/reservas` para CUALQUIER rol (`HotelesRootRedirect`, ver
+ * historial de git) — owner/gm/accountant no tenían ninguna vista financiera y
+ * housekeeping/maintenance/fnb no tenían ninguna vista propia. Mismo patrón EXACTO
+ * que `RestaurantesDashboardRoute`: el Dashboard se monta DIRECTO en la raíz del
+ * orgSlug, sin redirección aparte — ver comentario de cabecera de
+ * verticals/hoteles/pages/Dashboard.tsx para el detalle de las dos variantes por
+ * rol. */
+function HotelesDashboardRoute() {
+  const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  return <Navigate to={`/hoteles/${orgSlug}/reservas`} replace />;
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesDashboardPage {...ctx} />}
+    </HotelesShell>
+  );
 }
 
 function HotelesReservasRoute() {
@@ -238,6 +255,21 @@ function HotelesMantenimientoRoute() {
   return (
     <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
       {(ctx) => <MantenimientoPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
+/** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
+ * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
+ * checador de autoservicio es para TODO staff autenticado; la sección de
+ * administración dentro de AsistenciaPage se autogatea por `role`). */
+function HotelesAsistenciaRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <AsistenciaPage {...ctx} />}
     </HotelesShell>
   );
 }
@@ -357,6 +389,21 @@ function RentasAprobacionesRoute() {
   return (
     <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
       {(ctx) => <RentasAprobacionesPage {...ctx} />}
+    </RentasShell>
+  );
+}
+
+/** Finanzas (Fase 16) — movimiento por reserva, owner statements, payouts/
+ * conciliación. Cierra el hallazgo de auditoría ALTA "Finanzas sin UI para
+ * admin_gestora ni contador". Mismo patrón de ruta hija que
+ * RentasCalendarioRoute/RentasPreciosRoute/RentasAprobacionesRoute. */
+function RentasFinanzasRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasFinanzasPage {...ctx} />}
     </RentasShell>
   );
 }
@@ -644,6 +691,17 @@ function DespachosVencimientosRoute() {
   );
 }
 
+function DespachosDeclaracionesRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <DeclaracionesPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -666,11 +724,12 @@ export function App() {
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
-        <Route path="/hoteles/:orgSlug" element={<HotelesRootRedirect />} />
+        <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
         <Route path="/hoteles/:orgSlug/folios/:folioId" element={<HotelesFolioRoute />} />
         <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
+        <Route path="/hoteles/:orgSlug/asistencia" element={<HotelesAsistenciaRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
@@ -679,6 +738,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
+        <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
@@ -707,6 +767,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/cfdi/:invoiceId" element={<DespachosCfdiDetalleRoute />} />
         <Route path="/despachos/:orgSlug/cobranza" element={<DespachosCobranzaRoute />} />
         <Route path="/despachos/:orgSlug/vencimientos" element={<DespachosVencimientosRoute />} />
+        <Route path="/despachos/:orgSlug/declaraciones" element={<DespachosDeclaracionesRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

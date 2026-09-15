@@ -117,11 +117,66 @@ fase" abajo, sin cambios):
   cliente-side (~22MB, mismo tope que `storage.ts::decodeBase64Content`
   server-side).
 
-**Fuera de esta pieza, a propósito:** el resto del Flujo 2
-(`POST .../proposal/technical/generate`, `proposalEconomic.ts`, el mapeo de
-cumplimiento `PUT .../requirement-mappings/:topicKey`, aprobaciones y el
-ensamblado del ZIP de cierre) sigue sin pantalla — ver el punto siguiente, sin
-cambios de alcance por esta fase.
+**Fuera de esta pieza, a propósito:** el resto del Flujo 2 (propuesta
+técnica/económica, aprobaciones y el ensamblado del ZIP de cierre) seguía sin
+pantalla en esta fase — la propuesta técnica y la mapeo de cumplimiento se
+construyeron en Fase 12, y la propuesta económica en Fase 13 (ver arriba);
+aprobaciones y el ZIP de cierre siguen en la lista de "fuera de esta fase" más
+abajo.
+
+## Fase 12 — propuesta técnica + mapeo de cumplimiento (gap ALTA: "siguiente paso natural tras RequisitosConvocatoria.tsx")
+
+- `pages/PropuestaTecnica.tsx` (ruta
+  `/licitaciones/:orgSlug/convocatorias/:tenderId/propuesta-tecnica`,
+  enlazada desde `RequisitosConvocatoria.tsx`) — a partir de los requisitos
+  ya extraídos, declara si cada requisito CONDICIONAL aplica al caso
+  concreto, genera la propuesta técnica
+  (`POST .../proposal/technical/generate`, `TechnicalProposalBuilder`,
+  persiste `licitaciones.proposal_section`) y ve el resumen (secciones
+  generadas, bloqueos, requisitos marcados "no aplica"), y mapea/edita cada
+  `topicKey` a su dato de empresa (`PUT .../requirement-mappings/:topicKey`,
+  DECISION_ROLES — más estricto que `WRITE_ROLES`: decisión editorial/de
+  riesgo sobre qué se afirma ante un ente público). Gating cosmético por rol
+  (`WRITE_ROLES`/`DECISION_ROLES` según la acción); el servidor
+  (`assertVerticalRole` en `technicalProposal.ts`) es siempre la barrera
+  real. El backend no expone todavía `GET .../requirement-mappings` — la
+  pantalla no puede precargar un mapeo guardado en una sesión anterior, solo
+  confirma el que el usuario acaba de enviar en la sesión actual.
+- `lib/technical-proposal-client.ts` — `fetchOrCreateProposal`
+  (`GET .../proposal`, `proposalEconomic.ts`, lazy-crea el `ProposalRecord`
+  — prerrequisito compartido de la generación técnica Y económica, ver Fase
+  13), `generateTechnicalProposal`, `upsertRequirementMapping`.
+
+**Fuera de esta pieza, a propósito:** la propuesta ECONÓMICA
+(`proposalEconomic.ts::POST .../economic/generate`), el checklist ejecutable,
+aprobaciones y el ZIP de cierre seguían sin pantalla — ver Fase 13 abajo y
+"Explícitamente fuera de esta fase" más adelante.
+
+## Fase 13 — propuesta económica (gap ALTA: "siguiente paso natural tras la propuesta técnica")
+
+- `pages/PropuestaTecnica.tsx` — sección nueva "Propuesta económica": el
+  staff captura a mano una lista de `{concepto, cantidad}` y genera el
+  cálculo (`POST .../proposal/economic/generate`, `EconomicProposalBuilder`)
+  sobre las tarifas APROBADAS y vigentes a la fecha del acto
+  (`resolveExpedienteAsOfIso`). Regla dura del dominio (REQ-LIC-006/A8),
+  reflejada tal cual en la UI: un solo concepto sin tarifa resoluble bloquea
+  el TOTAL COMPLETO (se listan los conceptos bloqueados con su detalle,
+  nunca un total parcial silencioso). Gating cosmético por `WRITE_ROLES`
+  (mismo set que el resto del panel); el servidor (`assertVerticalRole` en
+  `proposalEconomic.ts`) es siempre la barrera real. Sin dependencia de
+  orden con la propuesta técnica (Fase 12): son dominios independientes
+  (requisitos vs. tarifas de empresa) — la sección económica es visible y
+  operable aunque la técnica no se haya generado todavía.
+- `lib/technical-proposal-client.ts` — `generateEconomicProposal`
+  (`POST .../economic/generate`, con `idempotency-key` nueva por intento —
+  mismo criterio que `generateTechnicalProposal`: un reintento manual nunca
+  reutiliza la key del intento anterior); reutiliza `fetchOrCreateProposal`
+  ya existente (mismo `GET .../proposal` sirve como prerrequisito de ambos
+  flujos, no se duplicó).
+
+**Fuera de esta pieza, a propósito:** checklist/aprobaciones ejecutables, el
+ZIP de cierre del expediente y todo lo post-adjudicación — alcance de rondas
+futuras, ver el punto siguiente.
 
 ## Explícitamente fuera de esta fase (huecos honestos, no fingidos)
 
@@ -136,18 +191,15 @@ cambios de alcance por esta fase.
   ya corrido (por el agente o por una corrida previa vía API) — mostrar un
   dato real sin poder generarlo desde aquí es honesto; fingir un botón
   "ejecutar" que no tiene datos reales que mandar no lo sería.
-- **Propuesta técnica/económica y cierre del expediente** (Flujos 2/3,
-  `proposalEconomic.ts`/`technicalProposal.ts`/`cierre.ts`) — sin pantalla
-  todavía, MÁS ALLÁ de la carga de bases + requisitos extraídos de Fase 11
-  (ver arriba). Sigue siendo la porción más grande de trabajo restante del
-  panel completo (secciones de propuesta, aprobaciones, ensamblado del
-  paquete ZIP, contratos/cobranza/inconformidades/autopsia/renovación de Fase
-  6) — trabajo genuino de varias fases más, no construido aquí. El perfil de
+- **Checklist ejecutable, aprobaciones y cierre del expediente** (Flujos 2/3,
+  `cierre.ts`) — sin pantalla todavía. La propuesta técnica + mapeo de
+  cumplimiento (Fase 12) y la propuesta económica (Fase 13) ya tienen
+  pantalla real (ver arriba); lo que falta es el checklist de integridad
+  EJECUTABLE (`POST .../checklist/run`, ver el punto anterior), las
+  aprobaciones y el ensamblado del paquete ZIP de cierre —
+  trabajo genuino de rondas futuras, no construido aquí. El perfil de
   matching (antes en esta lista) ya tiene pantalla real desde Fase 8, ver
-  arriba. Esta fase deliberadamente completó el prerrequisito compartido
-  (carga de documentos + requisitos, el punto de entrada de TODO el Flujo 2)
-  de forma honesta y con datos reales de punta a punta, en vez de dejar el
-  flujo completo a medias.
+  arriba.
 - **Selector de organización con 2+.** `decideLicitacionesLandingPath` ya
   contempla 2+ organizaciones (`/seleccionar-organizacion`), pero esa ruta no
   existe en `App.tsx` para NINGÚN vertical de este monorepo todavía — mismo

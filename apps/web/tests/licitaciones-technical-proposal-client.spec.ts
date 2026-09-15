@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchOrCreateProposal, generateTechnicalProposal, upsertRequirementMapping } from "../src/verticals/licitaciones/lib/technical-proposal-client.ts";
+import { fetchOrCreateProposal, generateEconomicProposal, generateTechnicalProposal, upsertRequirementMapping } from "../src/verticals/licitaciones/lib/technical-proposal-client.ts";
 
 const PROPOSAL = {
   id: "prop-1",
@@ -56,6 +56,62 @@ describe("generateTechnicalProposal", () => {
   it("404 (sin propuesta creada todavía) -> propaga el mensaje real del servidor", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "Genere primero la propuesta antes de redactar la propuesta técnica." }), { status: 404 })) as unknown as typeof fetch;
     await expect(generateTechnicalProposal(fetchImpl, "http://api.local", "tok", "prop-1", "t1")).rejects.toThrow("Genere primero la propuesta");
+  });
+});
+
+describe("generateEconomicProposal", () => {
+  const totals = { currency: "MXN" as const, subtotal: "1000.00", ivaRate: 0.16, iva: "160.00", total: "1160.00", totalInWords: "MIL CIENTO SESENTA PESOS 00/100 M.N." };
+  const proposalWithTotals = { ...PROPOSAL, ivaRate: 0.16, economicTotals: totals, generationReport: { economic: { usedRateConcepts: ["limpieza"], blockedLineItems: [], totals } } };
+
+  it("hace POST .../proposal/economic/generate con idempotency-key y { lineItems }", async () => {
+    const body = {
+      proposal: proposalWithTotals,
+      economic: {
+        lineItems: [{ concept: "limpieza", quantity: 2, unitPrice: "500.00", subtotal: "1000.00", sourceRef: { kind: "company_data", refId: "rate-1", capturedAt: "2026-01-01T00:00:00Z" } }],
+        blockedLineItems: [],
+        totals,
+      },
+    };
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/licitaciones/prop-1/tenders/t1/proposal/economic/generate");
+      expect(init?.method).toBe("POST");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["idempotency-key"]).toBeTruthy();
+      expect(JSON.parse(init!.body as string)).toEqual({ lineItems: [{ concept: "limpieza", quantity: 2 }] });
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as unknown as typeof fetch;
+    const result = await generateEconomicProposal(fetchImpl, "http://api.local", "tok", "prop-1", "t1", [{ concept: "limpieza", quantity: 2 }]);
+    expect(result).toEqual(body);
+  });
+
+  it("respeta un idempotency-key explícito en vez de generar uno nuevo", async () => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["idempotency-key"]).toBe("fixed-eco-key");
+      return new Response(JSON.stringify({ proposal: proposalWithTotals, economic: { lineItems: [], blockedLineItems: [], totals: null } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await generateEconomicProposal(fetchImpl, "http://api.local", "tok", "prop-1", "t1", [{ concept: "limpieza", quantity: 1 }], "fixed-eco-key");
+  });
+
+  it("concepto sin tarifa aprobada/vigente -> totals null y blockedLineItems con el detalle (REQ-LIC-006/A8, nunca un total parcial)", async () => {
+    const body = {
+      proposal: PROPOSAL,
+      economic: { lineItems: [], blockedLineItems: [{ concept: "concepto-fantasma", status: "missing", detail: 'No hay tarifa registrada para "concepto-fantasma".' }], totals: null },
+    };
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
+    const result = await generateEconomicProposal(fetchImpl, "http://api.local", "tok", "prop-1", "t1", [{ concept: "concepto-fantasma", quantity: 1 }]);
+    expect(result.economic.totals).toBeNull();
+    expect(result.economic.blockedLineItems).toHaveLength(1);
+  });
+
+  it("400 (lineItems inválido) -> propaga el mensaje de validación real", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "lineItems: se esperaba un arreglo no vacío de {concept, quantity}." }), { status: 400 })) as unknown as typeof fetch;
+    await expect(generateEconomicProposal(fetchImpl, "http://api.local", "tok", "prop-1", "t1", [])).rejects.toThrow("lineItems: se esperaba un arreglo no vacío");
+  });
+
+  it("403 (rol sin WRITE_ROLES) -> propaga el mensaje real del servidor", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No tienes permiso para generar la propuesta económica." }), { status: 403 })) as unknown as typeof fetch;
+    await expect(generateEconomicProposal(fetchImpl, "http://api.local", "tok", "prop-1", "t1", [{ concept: "limpieza", quantity: 1 }])).rejects.toThrow("No tienes permiso");
   });
 });
 

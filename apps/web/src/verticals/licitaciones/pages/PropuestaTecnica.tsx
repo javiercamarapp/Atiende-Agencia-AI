@@ -1,20 +1,31 @@
-// Propuesta técnica + mapeo de cumplimiento (Fase 12 pieza acotada) — cierra
-// el hallazgo ALTA de auditoría: "Siguiente paso natural [tras
-// RequisitosConvocatoria.tsx]: generación de la propuesta técnica.
+// Propuesta técnica + económica + mapeo de cumplimiento (Fase 12/13, piezas
+// acotadas) — cierra el hallazgo ALTA de auditoría: "Siguiente paso natural
+// [tras RequisitosConvocatoria.tsx]: generación de la propuesta técnica.
 // technicalProposal.ts expone POST .../proposal/technical/generate y
 // PUT .../requirement-mappings/:topicKey (DECISION_ROLES) -- ninguno tiene
-// cliente ni página."
+// cliente ni página." y su continuación (Fase 13): "Siguiente paso natural
+// tras la propuesta técnica: propuesta económica. proposalEconomic.ts expone
+// GET .../proposal y POST .../economic/generate -- ninguno tiene cliente ni
+// página."
 //
 // Alcance DELIBERADAMENTE acotado a esto: a partir de los requisitos YA
 // extraídos (RequisitosConvocatoria.tsx), (1) declarar explícitamente si
 // cada requisito CONDICIONAL aplica al caso concreto, (2) generar la
 // propuesta técnica (`TechnicalProposalBuilder`, persiste
 // `licitaciones.proposal_section`) y ver el resumen (secciones generadas,
-// bloqueos, requisitos marcados "no aplica"), y (3) mapear/editar cada
+// bloqueos, requisitos marcados "no aplica"), (3) mapear/editar cada
 // `topicKey` a su dato de empresa (DECISION_ROLES) -- decisión editorial/de
-// riesgo sobre qué se afirma ante un ente público. La propuesta ECONÓMICA,
-// aprobaciones, el ZIP de cierre y post-adjudicación quedan FUERA de esta
-// pieza -- son alcance de rondas futuras (ver README de este vertical).
+// riesgo sobre qué se afirma ante un ente público, y (4, Fase 13) generar la
+// propuesta económica (`EconomicProposalBuilder`) a partir de una lista de
+// conceptos + cantidad capturada a mano, gateada por WRITE_ROLES (mismo rol
+// que exige el servidor en `proposal/economic/generate`) -- ninguna
+// restricción de orden entre (2) y (4): el backend no exige que exista una
+// propuesta técnica generada para aceptar la económica (dominios
+// independientes: requisitos técnicos vs. tarifas aprobadas), esta pantalla
+// simplemente las presenta en el orden natural del flujo. El checklist de
+// integridad ejecutable, las aprobaciones, el ZIP de cierre y todo lo
+// post-adjudicación quedan FUERA de esta pieza -- son alcance de rondas
+// futuras (ver README de este vertical).
 //
 // El backend NO expone todavía un `GET .../requirement-mappings` -- solo el
 // PUT (upsert). Esta pantalla no puede, entonces, precargar el mapeo
@@ -28,8 +39,15 @@ import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchRequirementItems } from "../lib/requirements-client.ts";
 import type { RequirementItemRecord } from "../lib/requirements-client.ts";
-import { fetchOrCreateProposal, generateTechnicalProposal, upsertRequirementMapping } from "../lib/technical-proposal-client.ts";
-import type { GenerateTechnicalProposalResult, ProposalRecord, RequirementFulfillmentMappingKind, RequirementFulfillmentMappingRecord } from "../lib/technical-proposal-client.ts";
+import { fetchOrCreateProposal, generateEconomicProposal, generateTechnicalProposal, upsertRequirementMapping } from "../lib/technical-proposal-client.ts";
+import type {
+  EconomicLineItemInput,
+  GenerateEconomicProposalResult,
+  GenerateTechnicalProposalResult,
+  ProposalRecord,
+  RequirementFulfillmentMappingKind,
+  RequirementFulfillmentMappingRecord,
+} from "../lib/technical-proposal-client.ts";
 import { formatRequirementKind, formatObligatoriedad } from "../lib/format.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
@@ -89,6 +107,14 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
   const [savingTopicKey, setSavingTopicKey] = useState<string | null>(null);
   const [mappingErrors, setMappingErrors] = useState<Record<string, string>>({});
   const [savedMappings, setSavedMappings] = useState<Record<string, RequirementFulfillmentMappingRecord>>({});
+
+  // Fase 13 — propuesta económica: filas capturadas a mano (concepto + texto
+  // de cantidad, sin parsear todavía -- se valida recién al enviar, mismo
+  // criterio que el resto del formulario).
+  const [economicRows, setEconomicRows] = useState<{ concept: string; quantity: string }[]>([{ concept: "", quantity: "1" }]);
+  const [economicGenerating, setEconomicGenerating] = useState(false);
+  const [economicError, setEconomicError] = useState<string | null>(null);
+  const [economicResult, setEconomicResult] = useState<GenerateEconomicProposalResult["economic"] | null>(null);
 
   const canGenerate = WRITE_ROLES.has(role);
   const canMap = DECISION_ROLES.has(role);
@@ -166,6 +192,53 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
     }
   }
 
+  function updateEconomicRow(index: number, patch: Partial<{ concept: string; quantity: string }>) {
+    setEconomicRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function addEconomicRow() {
+    setEconomicRows((prev) => [...prev, { concept: "", quantity: "1" }]);
+  }
+
+  function removeEconomicRow(index: number) {
+    setEconomicRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  }
+
+  async function handleGenerateEconomic() {
+    if (!tenderId) return;
+    setEconomicError(null);
+    setEconomicResult(null);
+
+    // Validación cliente-side, espejo de `parseLineItems` en
+    // `proposalEconomic.ts` -- el servidor la vuelve a hacer igual (nunca se
+    // confía en esta), pero un error explícito aquí evita un roundtrip vacío.
+    const lineItems: EconomicLineItemInput[] = [];
+    for (const [i, row] of economicRows.entries()) {
+      const concept = row.concept.trim();
+      if (concept.length === 0) {
+        setEconomicError(`Fila ${i + 1}: el concepto es obligatorio.`);
+        return;
+      }
+      const quantity = Number(row.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        setEconomicError(`Fila ${i + 1}: la cantidad debe ser un número mayor a 0.`);
+        return;
+      }
+      lineItems.push({ concept, quantity });
+    }
+
+    setEconomicGenerating(true);
+    try {
+      const result = await generateEconomicProposal(fetch, apiBaseUrl, token, propertyId, tenderId, lineItems);
+      setEconomicResult(result.economic);
+      setProposal(result.proposal);
+    } catch (err) {
+      setEconomicError(err instanceof Error ? err.message : "No se pudo generar la propuesta económica.");
+    } finally {
+      setEconomicGenerating(false);
+    }
+  }
+
   async function handleSaveMapping(event: FormEvent<HTMLFormElement>, topicKey: string) {
     event.preventDefault();
     const form = mappingFormFor(topicKey);
@@ -199,6 +272,7 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
   if (!tender) return null;
 
   const priorTechnical = proposal?.generationReport?.technical;
+  const priorEconomic = proposal?.generationReport?.economic;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 900 }}>
@@ -416,6 +490,118 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
           </section>
         </>
       )}
+
+      <section style={sectionCardStyle}>
+        <div>
+          <h2 style={{ fontSize: 15, margin: 0 }}>Propuesta económica</h2>
+          <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
+            Captura los conceptos y cantidades de esta propuesta. Cada concepto se resuelve contra las tarifas APROBADAS y vigentes a la fecha del acto -- un solo concepto sin tarifa resoluble bloquea el total completo, nunca se muestra un total parcial.
+          </p>
+        </div>
+
+        {priorEconomic && priorEconomic.totals && (
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
+            Última generación registrada: total ${priorEconomic.totals.total} {priorEconomic.totals.currency} ({priorEconomic.usedRateConcepts?.length ?? 0} concepto(s)).
+          </p>
+        )}
+        {priorEconomic && !priorEconomic.totals && (priorEconomic.blockedLineItems?.length ?? 0) > 0 && (
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Última generación registrada: quedó bloqueada por conceptos sin tarifa resoluble.</p>
+        )}
+
+        {canGenerate ? (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {economicRows.map((row, index) => (
+                <div key={index} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "3 1 220px" }}>
+                    Concepto
+                    <input
+                      value={row.concept}
+                      onChange={(e) => updateEconomicRow(index, { concept: e.target.value })}
+                      placeholder="Servicio de limpieza"
+                      style={inputStyle}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 100px" }}>
+                    Cantidad
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={row.quantity}
+                      onChange={(e) => updateEconomicRow(index, { quantity: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeEconomicRow(index)}
+                    disabled={economicRows.length <= 1}
+                    style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", cursor: economicRows.length <= 1 ? "not-allowed" : "pointer", fontSize: 12 }}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addEconomicRow}
+                style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                + Agregar concepto
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleGenerateEconomic()}
+              disabled={economicGenerating}
+              style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+            >
+              {economicGenerating ? "Generando…" : "Generar propuesta económica"}
+            </button>
+          </>
+        ) : (
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede generar la propuesta económica -- solo lectura.</p>
+        )}
+
+        {economicError && (
+          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+            {economicError}
+          </p>
+        )}
+
+        {economicResult && economicResult.totals && (
+          <div style={{ border: "1px solid #dbeafe", background: "#eff6ff", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1e40af" }}>
+              Subtotal: ${economicResult.totals.subtotal} · IVA ({(economicResult.totals.ivaRate * 100).toFixed(0)}%): ${economicResult.totals.iva} · Total: ${economicResult.totals.total} {economicResult.totals.currency}
+            </p>
+            <p style={{ margin: 0, fontSize: 12, color: "#1e3a8a" }}>{economicResult.totals.totalInWords}</p>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#1e3a8a" }}>
+              {economicResult.lineItems.map((li, i) => (
+                <li key={`${li.concept}-${i}`}>
+                  {li.concept} · cantidad {li.quantity} · precio unitario ${li.unitPrice} · subtotal ${li.subtotal}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {economicResult && !economicResult.totals && (
+          <div style={{ border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#92400e" }}>
+              Sin total: {economicResult.blockedLineItems.length} concepto(s) sin tarifa aprobada/vigente. Corrige el concepto o registra la tarifa y vuelve a generar.
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#92400e" }}>
+              {economicResult.blockedLineItems.map((b, i) => (
+                <li key={`${b.concept}-${i}`}>
+                  {b.concept}: {b.detail}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
