@@ -14,6 +14,7 @@
 
 const FUENTE = `Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
 const FUENTE_TITULO = `'Inter Tight',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
+const LOGO_DATA_URI = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjIwIDQwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxnPgogICAgPHJlY3QgeD0iMCIgeT0iMTAiIHdpZHRoPSIxMyIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iIzdERDNGQyIgLz4KICAgIDxyZWN0IHg9IjQiIHk9IjE4IiB3aWR0aD0iMTMiIGhlaWdodD0iNCIgcng9IjIiIGZpbGw9IiM3REQzRkMiIC8+CiAgICA8cmVjdCB4PSIwIiB5PSIyNiIgd2lkdGg9IjEzIiBoZWlnaHQ9IjQiIHJ4PSIyIiBmaWxsPSIjN0REM0ZDIiAvPgogICAgPGNpcmNsZSBjeD0iMjYiIGN5PSIxMiIgcj0iNSIgZmlsbD0iIzM4QkRGOCIgLz4KICAgIDxwYXRoCiAgICAgIGQ9Ik0xNCAzOCBMMjAgMjYgUTIyIDIyIDI3IDIyIEwzMSAyMiBRMzQgMjIgMzYgMTkgTDM4IDE2IgogICAgICBzdHJva2U9IiMxRDRFRDgiCiAgICAgIHN0cm9rZS13aWR0aD0iNyIKICAgICAgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIgogICAgICBzdHJva2UtbGluZWpvaW49InJvdW5kIgogICAgICBmaWxsPSJub25lIgogICAgLz4KICA8L2c+CiAgPHRleHQgeD0iNTIiIHk9IjMwIiBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzFENEVEOCIgbGV0dGVyLXNwYWNpbmc9Ii0wLjUiPmF0aWVuZGU8L3RleHQ+Cjwvc3ZnPgo=";
 
 export function escapeHtml(t: string): string {
   return t
@@ -62,7 +63,7 @@ export function renderCorreo(s: SeccionPlantilla): string {
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:100%;border-collapse:collapse;">
 
       <tr><td align="left" style="padding:0 0 26px 2px;">
-        <span style="font-family:${FUENTE_TITULO};font-size:20px;font-weight:700;letter-spacing:-0.01em;color:#1D4ED8;">atiende</span>
+        <img src="${LOGO_DATA_URI}" width="96" height="17" alt="atiende" style="display:block;border:0;outline:none;text-decoration:none;">
       </td></tr>
 
       <tr><td bgcolor="#ffffff" style="padding:42px 44px 38px 44px;border:1px solid #e2e8f0;border-radius:16px;">
