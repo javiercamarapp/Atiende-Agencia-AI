@@ -252,11 +252,6 @@ export async function deleteAvailabilityOverride(fetchImpl: typeof fetch, apiBas
  * — el caller (Proveedores.tsx/Configuracion.tsx) navega ahí (`window.location.href`),
  * nunca la abre este módulo directamente (mantiene la lógica de red testeable sin DOM). */
 export async function requestGoogleCalendarConnectUrl(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<string> {
-  const res = await fetchImpl(`${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/google-calendar/connect`, { headers: { authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? `No se pudo iniciar la conexión con Google Calendar (${res.status}).`);
-  }
-  const body = (await res.json()) as { authorize_url: string };
+  const body = await fetchJson<{ authorize_url: string }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/google-calendar/connect`, token);
   return body.authorize_url;
 }
