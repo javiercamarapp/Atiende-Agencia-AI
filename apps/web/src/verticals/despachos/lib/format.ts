@@ -3,6 +3,7 @@
 // aparte de cualquier componente.
 import type { ClosePeriodStatus, TaskCategory, TaskStatus } from "./cierre-mensual-client.ts";
 import type { EstadoVencimiento, PrioridadVencimiento } from "./vencimientos-client.ts";
+import type { DiotTipoOperacion, TablaAplicadaIsr } from "./declaraciones-client.ts";
 
 const MXN_FORMATTER = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 
@@ -58,6 +59,27 @@ const ESTADO_VENCIMIENTO_LABELS: Record<EstadoVencimiento, string> = {
 
 export function formatEstadoVencimiento(estado: EstadoVencimiento): string {
   return ESTADO_VENCIMIENTO_LABELS[estado] ?? estado;
+}
+
+const TABLA_APLICADA_ISR_LABELS: Record<TablaAplicadaIsr, string> = {
+  monthly: "ISR PF mensual",
+  annual: "ISR PF anual",
+  "pm_30%": "ISR PM (30%)",
+  pm_resico: "ISR PM RESICO",
+};
+
+export function formatTablaAplicadaIsr(tabla: TablaAplicadaIsr): string {
+  return TABLA_APLICADA_ISR_LABELS[tabla] ?? tabla;
+}
+
+const DIOT_TIPO_OPERACION_LABELS: Record<DiotTipoOperacion, string> = {
+  "03": "IVA 16%",
+  "06": "IVA 0% / exento",
+  "85": "IVA 8% u otra tasa",
+};
+
+export function formatDiotTipoOperacion(tipo: DiotTipoOperacion): string {
+  return DIOT_TIPO_OPERACION_LABELS[tipo] ?? tipo;
 }
 
 export function formatDateTime(iso: string | null): string {
