@@ -62,3 +62,14 @@ export interface BloqueoExportadoPrevio {
   readonly hashContenido: string;
   readonly sequence: number;
 }
+
+/** Una fila a upsertear en `rentas.bloqueo_exportado`, para el batch de
+ * `RentasCalendarSyncRepository.upsertBloqueosExportadosBatch` (ver ese archivo) --
+ * mismos campos que la firma anterior de `upsertBloqueoExportado`, agrupados en un
+ * solo objeto para poder pasar un arreglo de N sin N parámetros posicionales. */
+export interface EntradaUpsertBloqueoExportado {
+  readonly ocupacionId: string;
+  readonly uidExportado: string;
+  readonly hashContenido: string;
+  readonly sequence: number;
+}

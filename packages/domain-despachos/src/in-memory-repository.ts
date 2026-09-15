@@ -5,7 +5,7 @@
 // que InMemoryHotelesRepository/InMemoryRestaurantesRepository.
 import { randomUUID } from "node:crypto";
 import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
-import type { DespachosRepository, EmailOutboxJobRow, OrganizationNotificationRecipient } from "./repository.ts";
+import type { DespachosRepository, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CollectionEventRecord,
   DeadlineEscalationRecord,
@@ -41,6 +41,16 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly receivables = new Map<string, ReceivableRecord>();
   private readonly receivableByInvoice = new Map<string, string>(); // key: invoiceId -> receivableId
   private readonly collectionEvents = new Map<string, CollectionEventRecord[]>(); // key: receivableId
+
+  /** Contadores de llamadas a los métodos BATCH de cobranza -- expuestos para que los
+   * tests de rendimiento (ver apps/api/tests/despachos-cobranza.spec.ts) verifiquen
+   * que GET .../cobranza/cuentas y GET .../cobranza/resumen ejecutan un número de
+   * llamadas al repositorio FIJO, sin importar cuántas cuentas por cobrar tenga la
+   * cartera (hallazgo de auditoría, rubro 10 "performance y escalabilidad": "cobranza
+   * de despachos con 1+2N queries serializadas"). No forman parte del contrato
+   * `DespachosRepository`. */
+  llamadasFindInvoicesByIds = 0;
+  llamadasListCollectionEventsForReceivables = 0;
 
   // ---- Infraestructura de correo (migración 005) ----
   private readonly notificationRecipients = new Map<string, OrganizationNotificationRecipient[]>(); // orgId -> staff owner/admin
@@ -123,6 +133,16 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     return invoice;
   }
 
+  async findInvoicesByIds(propertyId: string, invoiceIds: readonly string[]): Promise<readonly InvoiceRecord[]> {
+    this.llamadasFindInvoicesByIds += 1;
+    const idSet = new Set(invoiceIds);
+    const resultado: InvoiceRecord[] = [];
+    for (const invoice of this.invoices.values()) {
+      if (invoice.propertyId === propertyId && idSet.has(invoice.id)) resultado.push(invoice);
+    }
+    return resultado;
+  }
+
   async findInvoiceByFolioFiscal(organizationId: string, folioFiscal: string): Promise<InvoiceRecord | null> {
     const id = this.invoiceByOrgFolio.get(`${organizationId}:${folioFiscal}`);
     return id ? (this.invoices.get(id) ?? null) : null;
@@ -138,6 +158,16 @@ export class InMemoryDespachosRepository implements DespachosRepository {
       .filter((i) => filter?.requiresHumanReview === undefined || i.requiresHumanReview === filter.requiresHumanReview)
       .filter((i) => filter?.periodo === undefined || i.fecha.slice(0, 7) === filter.periodo)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage> {
+    const filtered = [...this.invoices.values()]
+      .filter((i) => i.propertyId === propertyId)
+      .filter((i) => opts.requiresHumanReview === undefined || i.requiresHumanReview === opts.requiresHumanReview)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    const items = filtered.slice(opts.offset, opts.offset + opts.limit);
+    const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;
+    return { items, total: filtered.length, nextOffset };
   }
 
   // ---- Cola de revisión humana ----
@@ -436,6 +466,17 @@ export class InMemoryDespachosRepository implements DespachosRepository {
 
   async listCollectionEvents(propertyId: string, receivableId: string): Promise<readonly CollectionEventRecord[]> {
     return (this.collectionEvents.get(receivableId) ?? []).filter((e) => e.propertyId === propertyId);
+  }
+
+  async listCollectionEventsForReceivables(propertyId: string, receivableIds: readonly string[]): Promise<readonly CollectionEventRecord[]> {
+    this.llamadasListCollectionEventsForReceivables += 1;
+    const resultado: CollectionEventRecord[] = [];
+    for (const receivableId of receivableIds) {
+      for (const evento of this.collectionEvents.get(receivableId) ?? []) {
+        if (evento.propertyId === propertyId) resultado.push(evento);
+      }
+    }
+    return resultado;
   }
 
   // ============================================================================

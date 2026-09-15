@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
-import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
+import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
   AttendanceEventRecord,
@@ -990,6 +990,17 @@ export class PostgresHotelesRepository implements HotelesRepository {
       [propertyId],
     );
     return rows.map(mapReservation);
+  }
+
+  async listReservationsPage(propertyId: string, opts: { readonly limit: number; readonly offset: number }): Promise<ReservationPage> {
+    const { rows } = await this.db.query<ReservationRawRow & { total: string }>(
+      `select ${RESERVATION_COLUMNS}, count(*) over ()::text as total from hoteles.reservation where property_id = $1 order by created_at desc limit $2 offset $3;`,
+      [propertyId, opts.limit, opts.offset],
+    );
+    const items = rows.map(mapReservation);
+    const total = rows[0] ? Number(rows[0].total) : 0;
+    const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
+    return { items, total, nextOffset };
   }
 
   async findReservation(propertyId: string, reservationId: string): Promise<ReservationRecord | null> {

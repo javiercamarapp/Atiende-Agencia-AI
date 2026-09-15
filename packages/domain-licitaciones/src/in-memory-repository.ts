@@ -27,6 +27,7 @@ import type {
   LicitacionesRepository,
   MatchingProfileUpsertInput,
   TenderResolutionCreateInput,
+  TenderPage,
   TenderUpsertInput,
   TenderUpsertResult,
 } from "./repository.ts";
@@ -335,6 +336,15 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async listTenders(organizationId: string): Promise<readonly TenderRecord[]> {
     return [...this.tenders.values()].filter((t) => t.organizationId === organizationId);
+  }
+
+  async listTendersPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderPage> {
+    const filtered = [...this.tenders.values()]
+      .filter((t) => t.organizationId === organizationId)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    const items = filtered.slice(opts.offset, opts.offset + opts.limit);
+    const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;
+    return { items, total: filtered.length, nextOffset };
   }
 
   async upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult> {

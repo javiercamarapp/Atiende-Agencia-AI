@@ -5,7 +5,7 @@
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { HallazgoCfdi } from "@atiende/billing";
 import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
-import type { DespachosRepository, EmailOutboxJobRow, OrganizationNotificationRecipient } from "./repository.ts";
+import type { DespachosRepository, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CategoriaContable,
   CollectionEventChannel,
@@ -383,6 +383,12 @@ export class PostgresDespachosRepository implements DespachosRepository {
     return rows[0] ? mapInvoice(rows[0]) : null;
   }
 
+  async findInvoicesByIds(propertyId: string, invoiceIds: readonly string[]): Promise<readonly InvoiceRecord[]> {
+    if (invoiceIds.length === 0) return [];
+    const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where property_id = $1 and id = ANY($2);`, [propertyId, invoiceIds]);
+    return rows.map(mapInvoice);
+  }
+
   async findInvoiceByFolioFiscal(organizationId: string, folioFiscal: string): Promise<InvoiceRecord | null> {
     const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where organization_id = $1 and folio_fiscal = $2;`, [organizationId, folioFiscal]);
     return rows[0] ? mapInvoice(rows[0]) : null;
@@ -407,6 +413,24 @@ export class PostgresDespachosRepository implements DespachosRepository {
     }
     const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where ${conditions.join(" and ")} order by created_at desc;`, params);
     return rows.map(mapInvoice);
+  }
+
+  async listInvoicesPage(propertyId: string, opts: { readonly limit: number; readonly offset: number; readonly requiresHumanReview?: boolean }): Promise<InvoicePage> {
+    const conditions = ["property_id = $1"];
+    const params: unknown[] = [propertyId];
+    if (opts.requiresHumanReview !== undefined) {
+      params.push(opts.requiresHumanReview);
+      conditions.push(`requires_human_review = $${params.length}`);
+    }
+    params.push(opts.limit, opts.offset);
+    const { rows } = await this.db.query<InvoiceRawRow & { total: string }>(
+      `select *, count(*) over ()::text as total from despachos.invoice where ${conditions.join(" and ")} order by created_at desc limit $${params.length - 1} offset $${params.length};`,
+      params,
+    );
+    const items = rows.map(mapInvoice);
+    const total = rows[0] ? Number(rows[0].total) : 0;
+    const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
+    return { items, total, nextOffset };
   }
 
   // ---- Cola de revisión humana ----
@@ -707,6 +731,15 @@ export class PostgresDespachosRepository implements DespachosRepository {
     const { rows } = await this.db.query<CollectionEventRawRow>(
       `select * from despachos.collection_event where property_id = $1 and receivable_id = $2 order by created_at asc;`,
       [propertyId, receivableId],
+    );
+    return rows.map(mapCollectionEvent);
+  }
+
+  async listCollectionEventsForReceivables(propertyId: string, receivableIds: readonly string[]): Promise<readonly CollectionEventRecord[]> {
+    if (receivableIds.length === 0) return [];
+    const { rows } = await this.db.query<CollectionEventRawRow>(
+      `select * from despachos.collection_event where property_id = $1 and receivable_id = ANY($2) order by receivable_id asc, created_at asc;`,
+      [propertyId, receivableIds],
     );
     return rows.map(mapCollectionEvent);
   }

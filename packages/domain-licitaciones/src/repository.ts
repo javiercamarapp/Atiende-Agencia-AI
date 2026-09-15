@@ -76,6 +76,16 @@ export interface IdempotentResult<T> {
   readonly body: T;
 }
 
+/** Página de `listTendersPage` -- mismo criterio de forma que
+ * `CitasRepository::CustomerPage` (@atiende/domain-citas): `total` es el conteo
+ * completo (no solo `items.length`), `nextOffset` es `null` cuando ya no queda
+ * página siguiente. */
+export interface TenderPage {
+  readonly items: readonly TenderRecord[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}
+
 // ---- Fase 3: matching/scoring y go/no-go ----
 
 export interface TenderUpsertInput {
@@ -539,6 +549,15 @@ export interface LicitacionesRepository {
   // ---- Fase 3 pieza 1: alta manual de convocatoria (§6) ----
   /** Lista TODAS las convocatorias de la organización (para `GET .../tenders/matching`, la vista de lista) -- sin paginar en esta fase (mismo criterio de simplicidad que el resto de listas de Fase 1/2). */
   listTenders(organizationId: string): Promise<readonly TenderRecord[]>;
+  /** Versión PAGINADA de `listTenders`, para `GET /licitaciones/:propertyId/tenders`
+   * (el listado que el panel navega) -- hallazgo de auditoría (rubro 10, "performance
+   * y escalabilidad", severidad BAJA: "listados sin paginación en 4 verticales"). Una
+   * organización activa acumula cientos/miles de convocatorias a lo largo de los
+   * años; la query ahora está acotada por `limit`/`offset` reales. `listTenders`
+   * (arriba) se queda INTACTA a propósito -- `matching.ts` la usa para calcular score
+   * contra TODAS las convocatorias, nunca solo una página; paginar esa función
+   * truncaría el matching real. */
+  listTendersPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderPage>;
   /**
    * Crea o actualiza (upsert por `externalId`, ver `TenderUpsertInput`) una
    * convocatoria manual. SIEMPRE fija `source='manual'` server-side (nunca

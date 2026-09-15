@@ -166,6 +166,17 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
   // ---- Fase 6 §1 — guardia de crisis ----
   private readonly tenantConfigs = new Map<string, TenantConfigRecord>();
+
+  /** Contadores de llamadas a los métodos BATCH de enriquecimiento de agenda --
+   * expuestos para que los tests de rendimiento (ver
+   * apps/api/tests/citas-admin.spec.ts) verifiquen que `GET .../appointments`
+   * ejecuta un número de llamadas al repositorio FIJO, sin importar cuántos
+   * proveedores/servicios/clientes DISTINTOS referencien las citas de la página
+   * (hallazgo de auditoría, rubro 10 "performance y escalabilidad": "Agenda de citas
+   * con 1+P+S+C queries por carga"). No forman parte del contrato `CitasRepository`. */
+  llamadasFindProvidersByIds = 0;
+  llamadasFindServicesByIds = 0;
+  llamadasFindCustomersByIds = 0;
   private readonly emergencyEscalations: EmergencyEscalationRecord[] = [];
   // ---- Fase 6 §2 — Cal.com/CalDAV por proveedor ----
   private readonly calcomAccounts = new Map<string, ProviderCalComAccountRecord>(); // por providerId
@@ -321,10 +332,22 @@ export class InMemoryCitasRepository implements CitasRepository {
     return provider;
   }
 
+  async findProvidersByIds(organizationId: string, providerIds: readonly string[]): Promise<readonly ProviderRecord[]> {
+    this.llamadasFindProvidersByIds += 1;
+    const idSet = new Set(providerIds);
+    return [...this.providers.values()].filter((p) => p.organizationId === organizationId && idSet.has(p.id));
+  }
+
   async findService(organizationId: string, serviceId: string): Promise<ServiceRecord | null> {
     const service = this.services.get(serviceId);
     if (!service || service.organizationId !== organizationId) return null;
     return service;
+  }
+
+  async findServicesByIds(organizationId: string, serviceIds: readonly string[]): Promise<readonly ServiceRecord[]> {
+    this.llamadasFindServicesByIds += 1;
+    const idSet = new Set(serviceIds);
+    return [...this.services.values()].filter((s) => s.organizationId === organizationId && idSet.has(s.id));
   }
 
   async providerOffersService(providerId: string, serviceId: string): Promise<boolean> {
@@ -515,6 +538,12 @@ export class InMemoryCitasRepository implements CitasRepository {
     const customer = this.customers.get(customerId);
     if (!customer || customer.organizationId !== organizationId) return null;
     return customer;
+  }
+
+  async findCustomersByIds(organizationId: string, customerIds: readonly string[]): Promise<readonly CustomerRecord[]> {
+    this.llamadasFindCustomersByIds += 1;
+    const idSet = new Set(customerIds);
+    return [...this.customers.values()].filter((c) => c.organizationId === organizationId && idSet.has(c.id));
   }
 
   async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {

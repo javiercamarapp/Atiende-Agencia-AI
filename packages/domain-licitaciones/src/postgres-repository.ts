@@ -27,6 +27,7 @@ import type {
   RecordTenderVersionResult,
   TenderChangeNotificationRecord,
   TenderResolutionCreateInput,
+  TenderPage,
   TenderUpsertInput,
   TenderUpsertResult,
 } from "./repository.ts";
@@ -681,6 +682,17 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   async listTenders(organizationId: string): Promise<readonly TenderRecord[]> {
     const { rows } = await this.db.query<TenderRow>(`select ${TENDER_COLUMNS} from licitaciones.tender where organization_id = $1 order by updated_at desc;`, [organizationId]);
     return rows.map(mapTender);
+  }
+
+  async listTendersPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderPage> {
+    const { rows } = await this.db.query<TenderRow & { total: string }>(
+      `select ${TENDER_COLUMNS}, count(*) over ()::text as total from licitaciones.tender where organization_id = $1 order by updated_at desc limit $2 offset $3;`,
+      [organizationId, opts.limit, opts.offset],
+    );
+    const items = rows.map(mapTender);
+    const total = rows[0] ? Number(rows[0].total) : 0;
+    const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
+    return { items, total, nextOffset };
   }
 
   async upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult> {

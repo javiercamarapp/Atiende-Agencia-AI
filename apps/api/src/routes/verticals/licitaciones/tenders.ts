@@ -22,6 +22,20 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
+// Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA:
+// "listados sin paginación en 4 verticales") -- GET base devolvía TODAS las
+// convocatorias de la organización en un solo array. Una organización activa
+// acumula cientos/miles de convocatorias a lo largo de los años.
+const DEFAULT_TENDERS_LIMIT = 50;
+const MAX_TENDERS_LIMIT = 200;
+
+function parsePositiveInt(raw: string | undefined, fallback: number, max: number): number {
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, max);
+}
+
 interface TenderUpsertBody {
   readonly title?: unknown;
   readonly submissionDeadline?: unknown;
@@ -76,8 +90,20 @@ export function licitacionesTendersRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   app.get(base, async (c) => {
     const repo = deps.licitacionesRepo(c.get("db"));
     const organizationId = c.get("organizationId");
-    const tenders = await repo.listTenders(organizationId);
-    return c.json({ tenders });
+    const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_TENDERS_LIMIT, MAX_TENDERS_LIMIT);
+    const rawOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+
+    // Body sigue siendo `{ tenders: [...] }` (compatibilidad con el cliente ya
+    // existente) -- lo que cambia de verdad es que la QUERY ahora está acotada por
+    // `limit`/`offset` reales (`listTendersPage`, ver
+    // @atiende/domain-licitaciones::repository.ts) en vez de traer TODA la tabla;
+    // `listTenders` (sin paginar) se queda para `matching.ts`, que necesita el
+    // conjunto completo. El total real y el siguiente offset van en headers.
+    const page = await repo.listTendersPage(organizationId, { limit, offset });
+    c.header("X-Total-Count", String(page.total));
+    if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
+    return c.json({ tenders: page.items });
   });
 
   app.get(detailBase, async (c) => {
