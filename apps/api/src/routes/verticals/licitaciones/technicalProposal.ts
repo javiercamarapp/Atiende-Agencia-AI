@@ -37,6 +37,22 @@
 //    fail-closed explícito, nunca fingir una integración que no existe (mismo
 //    principio que `production/not-ready.ts`).
 //
+//    HALLAZGO DE AUDITORÍA CONOCIDO Y SIN CERRAR (rubro 10, performance):
+//    `POST .../requirements/extract` corre bajo `dbSession` (ver el `app.use`
+//    de abajo), que abre UNA transacción para toda la ruta -- incluida la
+//    llamada real a `LlmRequirementExtractor` cuando hay proveedor
+//    configurado, sosteniendo una conexión de Postgres del pool mientras
+//    dura esa llamada. El fix completo requiere sacar esta ruta del
+//    middleware de auth/transacción compartido (dos sesiones cortas propias:
+//    lectura -> LLM fuera de sesión -> escritura) -- un intento de hacerlo
+//    fue bloqueado por el clasificador de seguridad de auto-mode como
+//    "Security Weaken" al tocar el wiring de `app.use`, y no se forzó.
+//    Mitigación real aplicada mientras tanto, sin tocar ningún middleware:
+//    `llm-requirement-extractor.ts` acota cada llamada por página a 15s
+//    (`AbortSignal.timeout`), así que el peor caso ya no es indefinido.
+//    Queda pendiente de una decisión explícita sobre cómo reestructurar el
+//    wiring de auth de esta ruta sin debilitar el chequeo de autorización.
+//
 //  - POST .../proposal/technical/generate (WRITE_ROLES): corre
 //    `TechnicalProposalBuilder` sobre los requisitos ya extraídos +
 //    `licitaciones.company_document` + el mapeo configurado en

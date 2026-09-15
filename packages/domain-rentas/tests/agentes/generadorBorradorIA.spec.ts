@@ -53,6 +53,30 @@ describe("GeneradorBorradorIA — matriz de roles ANTES de llamar al modelo (H-0
   });
 });
 
+describe("GeneradorBorradorIA — acota la llamada al modelo con un timeout real (rubro 10, performance)", () => {
+  // Hallazgo de auditoría conocido: esta llamada corre dentro de la transacción
+  // por-request de `POST .../mensajeria/borradores` -- sin límite, un proveedor
+  // colgado sostiene la conexión de Postgres indefinidamente. Prueba real de que
+  // la mitigación (AbortSignal.timeout) está efectivamente cableada.
+  it("pasa un AbortSignal real y no vencido a gateway.complete", async () => {
+    const gateway = makeGateway();
+    let signalRecibido: AbortSignal | undefined;
+    gateway.registerLadder("mensajeria-rentas", [
+      new FakeLlmProvider({
+        id: "p",
+        script: (request) => {
+          signalRecibido = request.signal;
+          return { text: "", toolCalls: [{ id: "c1", name: NOMBRE_TOOL_PROPONER_BORRADOR, argumentsJson: JSON.stringify({ texto: "hola" }) }], model: "fake", tokensIn: 1, tokensOut: 1, costUsd: 0 };
+        },
+      }),
+    ]);
+    const generador = new GeneradorBorradorIA(gateway, { usuarioId: "u1", rol: "admin_gestora" }, { tenantId: "tenant-1", role: "mensajeria-rentas" });
+    await generador.generar({ texto: "hola", idioma: "es" }, CONTEXTO);
+    expect(signalRecibido).toBeInstanceOf(AbortSignal);
+    expect(signalRecibido!.aborted).toBe(false);
+  });
+});
+
 describe("GeneradorBorradorIA — el modelo NUNCA envía, solo propone (D-006/D-007)", () => {
   it("toma el texto propuesto de la tool call, nunca de completion.text", async () => {
     const gateway = makeGateway();
