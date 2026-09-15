@@ -3,6 +3,7 @@
 // dashboard visual (fuera de alcance explícito de Fase 1, ver el brief).
 import { useNavigate, useParams } from "react-router-dom";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import type { ReactElement, ReactNode } from "react";
 import { RestaurantesLoginPage } from "./verticals/restaurantes/pages/Login.tsx";
 import { RestaurantesDashboardPage } from "./verticals/restaurantes/pages/Dashboard.tsx";
 import { RestaurantesShell } from "./verticals/restaurantes/RestaurantesShell.tsx";
@@ -84,6 +85,43 @@ import { StaffPage as DespachosStaffPage } from "./verticals/despachos/pages/Sta
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
+interface ShellRouteProps<Ctx> {
+  readonly apiBaseUrl: string;
+  readonly orgSlug: string;
+  readonly onRequireLogin: () => void;
+  readonly children: (ctx: Ctx) => ReactNode;
+}
+
+/** Fábrica del wrapper de ruta "orgSlug + Shell + página" que se repetía, letra por
+ * letra salvo 3 nombres (Shell/loginPath/Page), en ~56 de las 73 funciones de este
+ * archivo (rubro 7/8 de la auditoría, "App.tsx con wrappers de ruta casi
+ * idénticos"): leer `orgSlug` de useParams, volver al login del vertical si falta
+ * (nunca renderizar el Shell sin org), y envolver la página en el Shell de esa
+ * vertical con el `onRequireLogin` que la regresa al mismo login. El riesgo real de
+ * mantenimiento que esto cerraba: ese guard/redirect es la MISMA lógica de sesión
+ * copiada 56 veces -- un ajuste ahí (p. ej. pasar más contexto al guard) antes
+ * requería tocar 56 funciones idénticas para no dejar una desincronizada.
+ *
+ * Sigue siendo explícito y buscable en cada `const XRoute = shellRoute(...)` de
+ * abajo cuál Shell/loginPath/página monta cada ruta -- solo el esqueleto mecánico
+ * (hooks + guard + JSX) vive aquí una sola vez. Las rutas con un segmento extra en
+ * la URL (folioId/customerId/providerId/serviceId) o con lógica propia (login,
+ * registro, redirects de landing, portal de propietario) se quedan como función
+ * completa a propósito: forzarlas en esta fábrica genérica (parámetros opcionales,
+ * ramas condicionales) las haría MENOS legibles que hoy, no más. */
+function shellRoute<Ctx>(Shell: (props: ShellRouteProps<Ctx>) => ReactElement | null, loginPath: string, renderPage: (ctx: Ctx) => ReactNode): () => ReactElement | null {
+  return function ShellRoute() {
+    const navigate = useNavigate();
+    const { orgSlug } = useParams<{ orgSlug: string }>();
+    if (!orgSlug) return <Navigate to={loginPath} replace />;
+    return (
+      <Shell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate(loginPath, { replace: true })}>
+        {renderPage}
+      </Shell>
+    );
+  };
+}
+
 function RestaurantesLoginRoute() {
   const navigate = useNavigate();
   return (
@@ -97,71 +135,12 @@ function RestaurantesLoginRoute() {
   );
 }
 
-function RestaurantesDashboardRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
-  return (
-    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
-      {(ctx) => <RestaurantesDashboardPage {...ctx} />}
-    </RestaurantesShell>
-  );
-}
-
-function RestaurantesProductosRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
-  return (
-    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
-      {(ctx) => <ProductosPage {...ctx} />}
-    </RestaurantesShell>
-  );
-}
-
-function RestaurantesSucursalesRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
-  return (
-    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
-      {(ctx) => <SucursalesPage {...ctx} />}
-    </RestaurantesShell>
-  );
-}
-
-function RestaurantesPedidosRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
-  return (
-    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
-      {(ctx) => <PedidosPage {...ctx} />}
-    </RestaurantesShell>
-  );
-}
-
-function RestaurantesHistorialRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
-  return (
-    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
-      {(ctx) => <HistorialPage {...ctx} />}
-    </RestaurantesShell>
-  );
-}
-
-function RestaurantesClientesRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
-  return (
-    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
-      {(ctx) => <RestaurantesClientesListPage {...ctx} />}
-    </RestaurantesShell>
-  );
-}
+const RestaurantesDashboardRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesDashboardPage {...ctx} />);
+const RestaurantesProductosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <ProductosPage {...ctx} />);
+const RestaurantesSucursalesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <SucursalesPage {...ctx} />);
+const RestaurantesPedidosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <PedidosPage {...ctx} />);
+const RestaurantesHistorialRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <HistorialPage {...ctx} />);
+const RestaurantesClientesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesClientesListPage {...ctx} />);
 
 function RestaurantesClienteFichaRoute() {
   const navigate = useNavigate();
@@ -174,30 +153,12 @@ function RestaurantesClienteFichaRoute() {
   );
 }
 
-function RestaurantesStaffRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
-  return (
-    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
-      {(ctx) => <StaffPage {...ctx} />}
-    </RestaurantesShell>
-  );
-}
+const RestaurantesStaffRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <StaffPage {...ctx} />);
 
 // Fase 11 — hallazgo de auditoría (severidad ALTA, "Promociones/códigos de
 // descuento (Fase 11) sin UI"): mismo patrón exacto de ruta que
 // RestaurantesStaffRoute de arriba.
-function RestaurantesPromocionesRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
-  return (
-    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
-      {(ctx) => <PromocionesPage {...ctx} />}
-    </RestaurantesShell>
-  );
-}
+const RestaurantesPromocionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <PromocionesPage {...ctx} />);
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
  * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
@@ -237,27 +198,8 @@ function HotelesLoginRoute() {
  * orgSlug, sin redirección aparte — ver comentario de cabecera de
  * verticals/hoteles/pages/Dashboard.tsx para el detalle de las dos variantes por
  * rol. */
-function HotelesDashboardRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <HotelesDashboardPage {...ctx} />}
-    </HotelesShell>
-  );
-}
-
-function HotelesReservasRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <ReservasPage {...ctx} />}
-    </HotelesShell>
-  );
-}
+const HotelesDashboardRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesDashboardPage {...ctx} />);
+const HotelesReservasRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <ReservasPage {...ctx} />);
 
 function HotelesFolioRoute() {
   const navigate = useNavigate();
@@ -270,69 +212,23 @@ function HotelesFolioRoute() {
   );
 }
 
-function HotelesMantenimientoRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <MantenimientoPage {...ctx} />}
-    </HotelesShell>
-  );
-}
+const HotelesMantenimientoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <MantenimientoPage {...ctx} />);
 
 /** Fase 16 — hallazgo de auditoría (severidad ALTA, "checador de asistencia LFT sin
  * UI"): mismo patrón que HotelesMantenimientoRoute — sin gating de rol aquí (el
  * checador de autoservicio es para TODO staff autenticado; la sección de
  * administración dentro de AsistenciaPage se autogatea por `role`). */
-function HotelesAsistenciaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <AsistenciaPage {...ctx} />}
-    </HotelesShell>
-  );
-}
+const HotelesAsistenciaRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <AsistenciaPage {...ctx} />);
 
-function HotelesFraudeRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <FraudePage {...ctx} />}
-    </HotelesShell>
-  );
-}
-
-function HotelesCfdiListadoRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <HotelesCfdiListadoPage {...ctx} />}
-    </HotelesShell>
-  );
-}
+const HotelesFraudeRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <FraudePage {...ctx} />);
+const HotelesCfdiListadoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesCfdiListadoPage {...ctx} />);
 
 /** Hallazgo de auditoría (severidad ALTA, "P&L USALI (P0)... sin UI", porción
  * restante): back-office de P&L completo (pages/Pl.tsx) — mismo patrón que
  * HotelesMantenimientoRoute/HotelesFraudeRoute (nav gateada cosméticamente por rol
  * en HotelesShell.tsx, no aquí; un rol sin acceso que navegue directo a esta URL ve
  * el 403 real del servidor como mensaje de error dentro de Pl.tsx). */
-function HotelesPlRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <HotelesPlPage {...ctx} />}
-    </HotelesShell>
-  );
-}
+const HotelesPlRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesPlPage {...ctx} />);
 
 /** Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
  * tarifas/huéspedes imposible sin SQL directo"): pantalla de catálogo (pages/
@@ -340,31 +236,13 @@ function HotelesPlRoute() {
  * cosméticamente por rol en HotelesShell.tsx, no aquí; un rol sin acceso que
  * navegue directo a esta URL ve el 403 real del servidor como mensaje de error
  * dentro de Catalogo.tsx). */
-function HotelesCatalogoRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <HotelesCatalogoPage {...ctx} />}
-    </HotelesShell>
-  );
-}
+const HotelesCatalogoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesCatalogoPage {...ctx} />);
 
 /** Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con guardia de
  * alergias: backend real sin pantalla"): mismo patrón que
  * HotelesMantenimientoRoute/HotelesFraudeRoute (nav gateada cosméticamente por rol
  * en HotelesShell.tsx, no aquí). */
-function HotelesPedidosFnbRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
-  return (
-    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
-      {(ctx) => <PedidosFnbPage {...ctx} />}
-    </HotelesShell>
-  );
-}
+const HotelesPedidosFnbRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <PedidosFnbPage {...ctx} />);
 
 function HotelesFolioCfdiRoute() {
   const navigate = useNavigate();
@@ -403,103 +281,40 @@ function RentasRegistroRoute() {
  * hoteles/citas (que redirigen la raíz del orgSlug a una subruta como
  * .../reservas), rentas aún no tiene subpáginas de negocio (ver README) — el
  * dashboard de resumen ES la landing, sin redirect intermedio. */
-function RentasDashboardRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
-  return (
-    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
-      {(ctx) => <RentasDashboardPage {...ctx} />}
-    </RentasShell>
-  );
-}
+const RentasDashboardRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasDashboardPage {...ctx} />);
 
 /** Calendario de reservas y bloqueos (Fase 13) — mismo patrón de ruta hija que
  * HotelesReservasRoute: la sesión + property ya la resuelve RentasShell, esta ruta
  * solo monta la página de negocio dentro de ese shell. */
-function RentasCalendarioRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
-  return (
-    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
-      {(ctx) => <RentasCalendarioPage {...ctx} />}
-    </RentasShell>
-  );
-}
+const RentasCalendarioRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasCalendarioPage {...ctx} />);
 
 /** Cotizador + configuración de pricing (Fase 14) — mismo patrón de ruta hija que
  * RentasCalendarioRoute. */
-function RentasPreciosRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
-  return (
-    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
-      {(ctx) => <RentasPreciosPage {...ctx} />}
-    </RentasShell>
-  );
-}
+const RentasPreciosRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasPreciosPage {...ctx} />);
 
 /** Bandeja de aprobación de mensajería (Fase 15) — cierra el hallazgo de auditoría
  * ALTA "la cola de aprobación no tiene botón de aprobar". Mismo patrón de ruta hija
  * que RentasCalendarioRoute/RentasPreciosRoute. */
-function RentasAprobacionesRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
-  return (
-    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
-      {(ctx) => <RentasAprobacionesPage {...ctx} />}
-    </RentasShell>
-  );
-}
+const RentasAprobacionesRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasAprobacionesPage {...ctx} />);
 
 /** Finanzas (Fase 16) — movimiento por reserva, owner statements, payouts/
  * conciliación. Cierra el hallazgo de auditoría ALTA "Finanzas sin UI para
  * admin_gestora ni contador". Mismo patrón de ruta hija que
  * RentasCalendarioRoute/RentasPreciosRoute/RentasAprobacionesRoute. */
-function RentasFinanzasRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
-  return (
-    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
-      {(ctx) => <RentasFinanzasPage {...ctx} />}
-    </RentasShell>
-  );
-}
+const RentasFinanzasRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasFinanzasPage {...ctx} />);
 
 /** Mis tareas (Fase 17) — panel operativo del rol `limpieza` (tareas/checklist/
  * inventario/incidencias). Cierra el hallazgo de auditoría ALTA "el rol `limpieza`
  * sigue sin ninguna vista funcional". Mismo patrón de ruta hija que
  * RentasCalendarioRoute/RentasPreciosRoute/RentasAprobacionesRoute/RentasFinanzasRoute. */
-function RentasMisTareasRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
-  return (
-    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
-      {(ctx) => <RentasMisTareasPage {...ctx} />}
-    </RentasShell>
-  );
-}
+const RentasMisTareasRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasMisTareasPage {...ctx} />);
 
 /** Sincronización de calendario por iCal (Fase 18) — conectar el feed externo de
  * Airbnb/Booking/Vrbo por unidad + copiar la URL del feed de exportación propio.
  * Cierra el hallazgo de auditoría "el backend de iCal-sync está completo pero
  * apps/web no tiene ningún cliente ni pantalla que lo consuma". Mismo patrón de
  * ruta hija que RentasCalendarioRoute/RentasPreciosRoute/.../RentasMisTareasRoute. */
-function RentasIcalSyncRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
-  return (
-    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
-      {(ctx) => <RentasIcalSyncPage {...ctx} />}
-    </RentasShell>
-  );
-}
+const RentasIcalSyncRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <RentasIcalSyncPage {...ctx} />);
 
 /** Portal de propietario (Fase 3 backend, UI de esta fase) — 3 rutas PÚBLICAS, fuera
  * de RentasShell a propósito: es una identidad completamente distinta de staff (su
@@ -541,27 +356,8 @@ function CitasRootRedirect() {
   return <Navigate to={`/citas/${orgSlug}/agenda`} replace />;
 }
 
-function CitasAgendaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/citas/login" replace />;
-  return (
-    <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
-      {(ctx) => <AgendaPage {...ctx} />}
-    </CitasShell>
-  );
-}
-
-function CitasProveedoresRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/citas/login" replace />;
-  return (
-    <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
-      {(ctx) => <ProveedoresListPage {...ctx} />}
-    </CitasShell>
-  );
-}
+const CitasAgendaRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <AgendaPage {...ctx} />);
+const CitasProveedoresRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <ProveedoresListPage {...ctx} />);
 
 function CitasProveedorFichaRoute() {
   const navigate = useNavigate();
@@ -574,16 +370,7 @@ function CitasProveedorFichaRoute() {
   );
 }
 
-function CitasServiciosRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/citas/login" replace />;
-  return (
-    <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
-      {(ctx) => <ServiciosListPage {...ctx} />}
-    </CitasShell>
-  );
-}
+const CitasServiciosRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <ServiciosListPage {...ctx} />);
 
 function CitasServicioFichaRoute() {
   const navigate = useNavigate();
@@ -596,16 +383,7 @@ function CitasServicioFichaRoute() {
   );
 }
 
-function CitasClientesRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/citas/login" replace />;
-  return (
-    <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
-      {(ctx) => <ClientesListPage {...ctx} />}
-    </CitasShell>
-  );
-}
+const CitasClientesRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <ClientesListPage {...ctx} />);
 
 function CitasClienteFichaRoute() {
   const navigate = useNavigate();
@@ -618,40 +396,12 @@ function CitasClienteFichaRoute() {
   );
 }
 
-function CitasDisponibilidadRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/citas/login" replace />;
-  return (
-    <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
-      {(ctx) => <DisponibilidadPage {...ctx} />}
-    </CitasShell>
-  );
-}
-
-function CitasConfiguracionRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/citas/login" replace />;
-  return (
-    <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
-      {(ctx) => <ConfiguracionPage {...ctx} />}
-    </CitasShell>
-  );
-}
+const CitasDisponibilidadRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <DisponibilidadPage {...ctx} />);
+const CitasConfiguracionRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <ConfiguracionPage {...ctx} />);
 
 // Fase 12 — hallazgo de auditoría ("citas define 3 roles de plataforma pero no los
 // aplica en NINGUNA capa"): mismo patrón exacto que RestaurantesStaffRoute.
-function CitasStaffRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/citas/login" replace />;
-  return (
-    <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
-      {(ctx) => <CitasStaffPage {...ctx} />}
-    </CitasShell>
-  );
-}
+const CitasStaffRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <CitasStaffPage {...ctx} />);
 
 function LicitacionesLoginRoute() {
   const navigate = useNavigate();
@@ -674,126 +424,17 @@ function LicitacionesRootRedirect() {
   return <Navigate to={`/licitaciones/${orgSlug}/convocatorias`} replace />;
 }
 
-function LicitacionesConvocatoriasRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <ConvocatoriasPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesConvocatoriaDetalleRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <ConvocatoriaDetallePage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesRequisitosRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <RequisitosConvocatoriaPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesPropuestaTecnicaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <PropuestaTecnicaPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesCierreRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <CierrePage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesContratoRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <ContratoPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesPostAdjudicacionRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <PostAdjudicacionPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesAutopsiaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <AutopsiaPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesRadarRenovacionesRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <RadarRenovacionesPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesPerfilMatchingRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <PerfilMatchingPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
-
-function LicitacionesDatosEmpresaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
-  return (
-    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
-      {(ctx) => <DatosEmpresaPage {...ctx} />}
-    </LicitacionesShell>
-  );
-}
+const LicitacionesConvocatoriasRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <ConvocatoriasPage {...ctx} />);
+const LicitacionesConvocatoriaDetalleRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <ConvocatoriaDetallePage {...ctx} />);
+const LicitacionesRequisitosRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <RequisitosConvocatoriaPage {...ctx} />);
+const LicitacionesPropuestaTecnicaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PropuestaTecnicaPage {...ctx} />);
+const LicitacionesCierreRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <CierrePage {...ctx} />);
+const LicitacionesContratoRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <ContratoPage {...ctx} />);
+const LicitacionesPostAdjudicacionRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PostAdjudicacionPage {...ctx} />);
+const LicitacionesAutopsiaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <AutopsiaPage {...ctx} />);
+const LicitacionesRadarRenovacionesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <RadarRenovacionesPage {...ctx} />);
+const LicitacionesPerfilMatchingRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <PerfilMatchingPage {...ctx} />);
+const LicitacionesDatosEmpresaRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <DatosEmpresaPage {...ctx} />);
 
 function DespachosLoginRoute() {
   const navigate = useNavigate();
@@ -816,159 +457,20 @@ function DespachosRootRedirect() {
   return <Navigate to={`/despachos/${orgSlug}/cierre-mensual`} replace />;
 }
 
-function DespachosCierreMensualRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <CierreMensualPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosCierreMensualDetalleRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <CierreMensualDetallePage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosCfdiRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <CfdiPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosCfdiDetalleRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <CfdiDetallePage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosCobranzaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <CobranzaPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosVencimientosRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <VencimientosPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosDeclaracionesRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <DeclaracionesPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosNominaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <NominaPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosConciliacionRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <ConciliacionPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosMigracionCatalogoRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <MigracionCatalogoPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosDevolucionIvaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <DevolucionIvaPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosBookkeepingRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <BookkeepingPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosContabilidadElectronicaRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <ContabilidadElectronicaPage {...ctx} />}
-    </DespachosShell>
-  );
-}
-
-function DespachosStaffRoute() {
-  const navigate = useNavigate();
-  const { orgSlug } = useParams<{ orgSlug: string }>();
-  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
-  return (
-    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
-      {(ctx) => <DespachosStaffPage {...ctx} />}
-    </DespachosShell>
-  );
-}
+const DespachosCierreMensualRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualPage {...ctx} />);
+const DespachosCierreMensualDetalleRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CierreMensualDetallePage {...ctx} />);
+const DespachosCfdiRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CfdiPage {...ctx} />);
+const DespachosCfdiDetalleRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CfdiDetallePage {...ctx} />);
+const DespachosCobranzaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <CobranzaPage {...ctx} />);
+const DespachosVencimientosRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <VencimientosPage {...ctx} />);
+const DespachosDeclaracionesRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DeclaracionesPage {...ctx} />);
+const DespachosNominaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <NominaPage {...ctx} />);
+const DespachosConciliacionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ConciliacionPage {...ctx} />);
+const DespachosMigracionCatalogoRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <MigracionCatalogoPage {...ctx} />);
+const DespachosDevolucionIvaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DevolucionIvaPage {...ctx} />);
+const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <BookkeepingPage {...ctx} />);
+const DespachosContabilidadElectronicaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ContabilidadElectronicaPage {...ctx} />);
+const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosStaffPage {...ctx} />);
 
 export function App() {
   return (
