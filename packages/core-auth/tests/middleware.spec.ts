@@ -68,6 +68,87 @@ async function validToken(): Promise<string> {
   );
 }
 
+/**
+ * A diferencia de `fakeEngine` (arriba, sin semántica de commit/rollback — solo sirve
+ * para probar el resto del middleware chain), este motor SÍ modela el mismo contrato
+ * que `ManagedPostgresEngine.withAppSession` (`packages/db/src/managed-postgres-
+ * engine.ts`): éxito → commit, throw → rollback + re-throw. Existe para reproducir el
+ * bug real (ver hallazgo raíz #7 de la auditoría final de 20 rubros: "las
+ * transacciones no son transaccionales contra Postgres real") sin levantar Postgres —
+ * la causa es una interacción de `dbSession` con `Hono#compose` que no depende de qué
+ * motor esté detrás, así que un fake que solo trackea las dos banderas es suficiente
+ * para probarla end-to-end contra la app Hono real.
+ */
+function trackingEngine(): TenancyEngine & { committed: boolean; rolledBack: boolean } {
+  let committed = false;
+  let rolledBack = false;
+  return {
+    // Getters sobre las variables de closure (nunca un `...spread` de sus valores
+    // actuales) — un spread copia el `false` inicial una sola vez; el test leería
+    // para siempre esa copia obsoleta en vez de la mutación real de abajo.
+    get committed() {
+      return committed;
+    },
+    get rolledBack() {
+      return rolledBack;
+    },
+    async withAppSession(_claims, fn) {
+      // Fila de membership válida (mismo shape que usan los tests de
+      // `requirePropertyMembership` más abajo) para que las rutas de estos tests
+      // lleguen realmente al handler en vez de cortar antes con un 403 propio.
+      const session: TenantDbSession = {
+        query: async () => ({ rows: [{ organization_id: "org-real", platform_role: "owner", vertical_role: "gm" }] as never[] }),
+        exec: async () => undefined,
+      };
+      try {
+        const result = await fn(session);
+        committed = true;
+        return result;
+      } catch (err) {
+        rolledBack = true;
+        throw err;
+      }
+    },
+  };
+}
+
+describe("dbSession", () => {
+  // Reproduce el hallazgo raíz #7 de la auditoría final (fable-5.1, 20 rubros): con
+  // `app.onError` registrado globalmente (como en `apps/api/src/app.ts`), Hono atrapa
+  // el throw del handler de la ruta EN EL NIVEL DE DISPATCH MÁS PROFUNDO donde ocurrió
+  // (ver `hono/dist/compose.js`: cada `dispatch(i)` tiene su propio try/catch que
+  // llama a `onError` y devuelve su respuesta SIN relanzar) — la excepción nunca llega
+  // a propagarse de vuelta hasta el `await next()` de `dbSession`, así que sin el fix
+  // (`if (c.error) throw c.error`) `withAppSession` nunca se entera del error y
+  // confirma (commit) escrituras parciales de un handler que en realidad falló.
+  it("hace ROLLBACK, nunca commit, cuando el handler de la ruta lanza un ApiError bajo onError global", async () => {
+    const engine = trackingEngine();
+    const app = buildApp(engine);
+    app.get("/properties/:propertyId/falla", requirePropertyMembership("propertyId"), () => {
+      throw new ApiError(409, "conflict", "escritura simulada que debió revertirse");
+    });
+    const token = await validToken();
+    const res = await app.request("/properties/p1/falla", {
+      headers: { authorization: `Bearer ${token}`, "x-property-id": "p1" },
+    });
+    expect(res.status).toBe(409);
+    expect(engine.rolledBack).toBe(true);
+    expect(engine.committed).toBe(false);
+  });
+
+  it("hace COMMIT cuando el handler de la ruta responde normalmente", async () => {
+    const engine = trackingEngine();
+    const app = buildApp(engine);
+    const token = await validToken();
+    const res = await app.request("/properties/p1/ping", {
+      headers: { authorization: `Bearer ${token}`, "x-property-id": "p1" },
+    });
+    expect(res.status).toBe(200);
+    expect(engine.committed).toBe(true);
+    expect(engine.rolledBack).toBe(false);
+  });
+});
+
 describe("authMiddleware", () => {
   it("401 sin header Authorization", async () => {
     const app = buildApp(fakeEngine([]));

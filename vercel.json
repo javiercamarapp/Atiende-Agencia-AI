@@ -13,6 +13,26 @@
     { "source": "/auth/:path*", "destination": "/api" },
     { "source": "/v1/:path*", "destination": "/api" },
     { "source": "/internal/:path*", "destination": "/api" },
+    {
+      "source": "/hoteles/:path*",
+      "has": [{ "type": "header", "key": "accept", "value": ".*text/html.*" }],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/despachos/:path*",
+      "has": [{ "type": "header", "key": "accept", "value": ".*text/html.*" }],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/licitaciones/:path*",
+      "has": [{ "type": "header", "key": "accept", "value": ".*text/html.*" }],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/rentas/:path*",
+      "has": [{ "type": "header", "key": "accept", "value": ".*text/html.*" }],
+      "destination": "/index.html"
+    },
     { "source": "/hoteles/:path*", "destination": "/api" },
     { "source": "/despachos/:path*", "destination": "/api" },
     { "source": "/licitaciones/:path*", "destination": "/api" },

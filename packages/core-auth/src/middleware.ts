@@ -60,6 +60,21 @@ export function dbSession(engine: TenancyEngine): MiddlewareHandler<CoreAuthHono
     await engine.withAppSession({ userId: c.get("userId") ?? null }, async (session) => {
       c.set("db", session);
       await next();
+      // Hono compone `onError` en CADA nivel del dispatch chain (ver
+      // `compose.js`: cada `dispatch(i)` tiene su propio try/catch que llama a
+      // `onError` y devuelve su respuesta normalmente, SIN volver a lanzar) — el
+      // handler global de `app.onError` en apps/api/src/app.ts atrapa el error del
+      // handler de la ruta ANTES de que la excepción se propague de vuelta hasta
+      // este `await next()`, así que `next()` resuelve normalmente incluso cuando
+      // el request terminó en 4xx/5xx. Sin este chequeo, `withAppSession` nunca ve
+      // el error y confirma (`commit`) escrituras parciales de un handler que
+      // falló. `c.error` es la forma documentada por Hono de recuperar ese error
+      // atrapado más abajo (https://hono.dev/docs/api/context#error) — relanzarlo
+      // aquí hace que el `catch` de `withAppSession` corra `rollback` como se
+      // esperaba.
+      if (c.error) {
+        throw c.error;
+      }
     });
   };
 }
