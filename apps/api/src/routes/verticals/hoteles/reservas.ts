@@ -37,6 +37,7 @@ import {
 import { runNoShowSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -262,6 +263,10 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           // sin correo en archivo, o cualquier otra falla, NUNCA tumba la creación
           // de la reserva ya persistida). Ver @atiende/domain-hoteles::guest-email-notifications.ts.
           await tryEnqueueGuestEmail(repo, propertyId, organizationId, "reservation.created", reservation.id);
+          // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort
+          // del correo recién encolado arriba, mismo `repo`/transacción (ver
+          // comentario de cabecera de email-dispatch.ts).
+          await triggerHotelesEmailDispatchInline(deps, repo);
           return { status: 201, body: serializeReservation(reservation) };
         },
       );

@@ -13,6 +13,8 @@
 import { Hono } from "hono";
 import { extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-citas";
 import { constantTimeEqual } from "../../../http-security.ts";
+import { triggerCitasWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
+import { triggerCitasEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -89,6 +91,21 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
         // `/internal/citas/confirmacion-cita`.
         if (outcome.retryable) hadRetryableFailure = true;
       }
+
+      // Cluster #3 (CRÍTICO) de la auditoría final: intento de envío INLINE
+      // best-effort de la(s) respuesta(s) recién encoladas arriba, en vez de
+      // esperar hasta el cron diario de `/internal/whatsapp/dispatch` (hasta 24h
+      // de latencia real para un producto que se vende como agente
+      // conversacional). Usa el MISMO `citasRepo`/transacción de este request
+      // (nunca abre una sesión nueva) para poder ver la fila que `outcome.reply`
+      // acaba de encolar aunque esta transacción todavía no haya hecho commit —
+      // ver comentario de cabecera de whatsapp-dispatch.ts. Nunca puede convertir
+      // esta respuesta en un error: el cron diario sigue como red de seguridad.
+      await triggerCitasWhatsAppDispatchInline(deps, citasRepo);
+      // El agente también puede haber agendado/cancelado/reagendado una cita
+      // DENTRO de esta misma conversación (llm-turn-handler.ts), lo que encola un
+      // correo real vía tryEnqueueAppointmentEmail — mismo disparo inline.
+      await triggerCitasEmailDispatchInline(deps, citasRepo);
 
       // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
       // mensajes ya procesados quedan idempotentemente saltados por el ledger de
