@@ -141,6 +141,15 @@ describe("golden-set numérico: validarCfdiDespachos (TS) vs validate_cfdi (Pyth
       expect(ts.requiresHumanReview).toBe(py.requires_human_review);
     });
 
+    // CORRECCIÓN FISCAL (auditoría, hallazgo ALTO "DIOT ... devengado incorrecto"):
+    // el caso "10_nomina_metodo_pago_no_pue" tiene `metodoPago: "PPD"` -- desde la
+    // corrección, un CFDI tipo "I" con PPD se EXCLUYE de `proveedoresReportables`
+    // (el pago real, y por tanto el IVA acreditable en DIOT, se reporta cuando
+    // llegue el Complemento de Pago correspondiente, no en el periodo de esta
+    // factura — ver reglas-fiscales-avanzadas.ts). El golden Python capturó el
+    // comportamiento ANTERIOR a esta corrección; ese caso se compara aparte, abajo.
+    if (name === "10_nomina_metodo_pago_no_pue") continue;
+
     it(`${name}: DIOT (reportable + proveedores reportables) idéntico`, () => {
       const ts = validarCfdiDespachos(datos);
       expect(ts.diot.reportable).toBe(py.diot.reportable);
@@ -155,6 +164,16 @@ describe("golden-set numérico: validarCfdiDespachos (TS) vs validate_cfdi (Pyth
       });
     });
   }
+
+  it("10_nomina_metodo_pago_no_pue: CFDI PPD se excluye de DIOT (reportable=false) y deja una referenceNote explicando por qué", () => {
+    const ts = validarCfdiDespachos(CASES["10_nomina_metodo_pago_no_pue"]!);
+    expect(ts.diot.reportable).toBe(false);
+    expect(ts.diot.proveedoresReportables).toEqual([]);
+    expect(ts.referenceNotes.some((n) => n.includes("PPD"))).toBe(true);
+    // La regla de nómina (MetodoPago debe ser PUE) sigue disparando, sin relación
+    // con el cambio de DIOT -- mismo comportamiento que antes de esta corrección.
+    expect(ts.issues.some((i) => i.codigo === "nomina_metodo_pago")).toBe(true);
+  });
 
   // ---- Aserciones de texto exacto para cada uno de los 6 checks avanzados ----
 
