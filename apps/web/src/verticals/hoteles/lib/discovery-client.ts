@@ -15,3 +15,21 @@ export async function fetchProperties(fetchImpl: typeof fetch, apiBaseUrl: strin
   const body = await fetchJson<{ propiedades: readonly PropertyOption[] }>(fetchImpl, `${apiBaseUrl}/v1/hoteles/${orgSlug}/admin/propiedades`, token);
   return body.propiedades;
 }
+
+// Hallazgo de auditoría (severidad ALTA, "cadena con 2+ hoteles solo opera el
+// primero"): HotelesShell.tsx fijaba `properties[0]` sin importar cuántas
+// properties trajera GET .../admin/propiedades — aunque una cadena real con más de
+// un hotel es exactamente el caso que este endpoint ya soporta (devuelve la lista
+// COMPLETA de properties activas de la organización, ver admin-discovery.ts). No
+// hacía falta ningún cambio de esquema/backend: solo faltaba dejar de descartar el
+// resto de la lista. `resolveActivePropertyId` es la función pura que decide qué
+// property queda activa dado lo que el selector de la UI tenga elegido — extraída
+// así (en vez de hardcodearla en el componente), MISMO patrón exacto que
+// `resolveActivePropertyId` de despachos/lib/admin-client.ts (leído primero como
+// plantilla): probarla sin depender de un DOM/React renderer, que este repo no
+// tiene configurado (vitest corre en `environment: "node"`).
+export function resolveActivePropertyId(properties: readonly PropertyOption[], selectedPropertyId: string | null): string | null {
+  if (properties.length === 0) return null;
+  if (selectedPropertyId !== null && properties.some((p) => p.propertyId === selectedPropertyId)) return selectedPropertyId;
+  return properties[0]!.propertyId;
+}
