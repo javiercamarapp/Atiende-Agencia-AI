@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatDateTime, formatMoney, formatPeriodStatus, formatPeriodo, formatTaskCategory, formatTaskStatus } from "../src/verticals/despachos/lib/format.ts";
+import { formatDate, formatDateTime, formatEstadoVencimiento, formatMoney, formatPeriodStatus, formatPeriodo, formatPrioridadVencimiento, formatTaskCategory, formatTaskStatus } from "../src/verticals/despachos/lib/format.ts";
 
 describe("formatMoney", () => {
   it("null -> guion largo, nunca $0", () => {
@@ -31,6 +31,23 @@ describe("formatTaskStatus / formatTaskCategory", () => {
     expect(formatTaskStatus("blocked")).toBe("Bloqueada");
     expect(formatTaskCategory("cfdi")).toBe("CFDI");
     expect(formatTaskCategory("electronica")).toBe("Contabilidad electrónica");
+  });
+});
+
+describe("formatPrioridadVencimiento / formatEstadoVencimiento", () => {
+  it("mapean las 4 prioridades conocidas", () => {
+    expect(formatPrioridadVencimiento("critica")).toBe("Crítica");
+    expect(formatPrioridadVencimiento("alta")).toBe("Alta");
+    expect(formatPrioridadVencimiento("media")).toBe("Media");
+    expect(formatPrioridadVencimiento("baja")).toBe("Baja");
+  });
+
+  it("mapean los 5 estados conocidos", () => {
+    expect(formatEstadoVencimiento("pendiente")).toBe("Pendiente");
+    expect(formatEstadoVencimiento("en_proceso")).toBe("En proceso");
+    expect(formatEstadoVencimiento("completado")).toBe("Completado");
+    expect(formatEstadoVencimiento("vencido")).toBe("Vencido");
+    expect(formatEstadoVencimiento("escalado")).toBe("Escalado");
   });
 });
 

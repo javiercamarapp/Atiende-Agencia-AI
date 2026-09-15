@@ -13,6 +13,7 @@ import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
 import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
 import { RepartidorPedidosPage } from "./verticals/restaurantes/pages/Repartidor.tsx";
 import { StaffPage } from "./verticals/restaurantes/pages/Staff.tsx";
+import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -22,11 +23,13 @@ import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
+import { PedidosFnbPage } from "./verticals/hoteles/pages/PedidosFnb.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
 import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
 import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
 import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages/Calendario.tsx";
 import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Precios.tsx";
+import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -42,6 +45,7 @@ import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.ts
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
 import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
+import { PropuestaTecnicaPage } from "./verticals/licitaciones/pages/PropuestaTecnica.tsx";
 import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
@@ -50,6 +54,7 @@ import { CierreMensualDetallePage } from "./verticals/despachos/pages/CierreMens
 import { CfdiPage } from "./verticals/despachos/pages/Cfdi.tsx";
 import { CfdiDetallePage } from "./verticals/despachos/pages/CfdiDetalle.tsx";
 import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
+import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -154,6 +159,20 @@ function RestaurantesStaffRoute() {
   );
 }
 
+// Fase 11 — hallazgo de auditoría (severidad ALTA, "Promociones/códigos de
+// descuento (Fase 11) sin UI"): mismo patrón exacto de ruta que
+// RestaurantesStaffRoute de arriba.
+function RestaurantesPromocionesRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <PromocionesPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
  * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
  * que `*LoginRoute` de abajo (esta página tampoco puede adivinar por sí sola a qué
@@ -245,6 +264,21 @@ function HotelesCfdiListadoRoute() {
   );
 }
 
+/** Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con guardia de
+ * alergias: backend real sin pantalla"): mismo patrón que
+ * HotelesMantenimientoRoute/HotelesFraudeRoute (nav gateada cosméticamente por rol
+ * en HotelesShell.tsx, no aquí). */
+function HotelesPedidosFnbRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <PedidosFnbPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
 function HotelesFolioCfdiRoute() {
   const navigate = useNavigate();
   const { orgSlug, folioId } = useParams<{ orgSlug: string; folioId: string }>();
@@ -309,6 +343,20 @@ function RentasPreciosRoute() {
   return (
     <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
       {(ctx) => <RentasPreciosPage {...ctx} />}
+    </RentasShell>
+  );
+}
+
+/** Bandeja de aprobación de mensajería (Fase 15) — cierra el hallazgo de auditoría
+ * ALTA "la cola de aprobación no tiene botón de aprobar". Mismo patrón de ruta hija
+ * que RentasCalendarioRoute/RentasPreciosRoute. */
+function RentasAprobacionesRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasAprobacionesPage {...ctx} />}
     </RentasShell>
   );
 }
@@ -487,6 +535,17 @@ function LicitacionesRequisitosRoute() {
   );
 }
 
+function LicitacionesPropuestaTecnicaRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <PropuestaTecnicaPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 function LicitacionesPerfilMatchingRoute() {
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -574,6 +633,17 @@ function DespachosCobranzaRoute() {
   );
 }
 
+function DespachosVencimientosRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <VencimientosPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -591,6 +661,7 @@ export function App() {
             RestaurantesShell (ver comentario de cabecera de Repartidor.tsx). */}
         <Route path="/restaurantes/:orgSlug/repartidor" element={<RepartidorPedidosPage />} />
         <Route path="/restaurantes/:orgSlug/staff" element={<RestaurantesStaffRoute />} />
+        <Route path="/restaurantes/:orgSlug/promociones" element={<RestaurantesPromocionesRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
@@ -601,11 +672,13 @@ export function App() {
         <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
+        <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
+        <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
@@ -624,6 +697,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/requisitos" element={<LicitacionesRequisitosRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/propuesta-tecnica" element={<LicitacionesPropuestaTecnicaRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
@@ -632,6 +706,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/cfdi" element={<DespachosCfdiRoute />} />
         <Route path="/despachos/:orgSlug/cfdi/:invoiceId" element={<DespachosCfdiDetalleRoute />} />
         <Route path="/despachos/:orgSlug/cobranza" element={<DespachosCobranzaRoute />} />
+        <Route path="/despachos/:orgSlug/vencimientos" element={<DespachosVencimientosRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

@@ -2,6 +2,7 @@
 // licitaciones/lib/format.ts: funciones puras, sin estado, probadas con vitest
 // aparte de cualquier componente.
 import type { ClosePeriodStatus, TaskCategory, TaskStatus } from "./cierre-mensual-client.ts";
+import type { EstadoVencimiento, PrioridadVencimiento } from "./vencimientos-client.ts";
 
 const MXN_FORMATTER = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 
@@ -39,6 +40,24 @@ export function formatDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric" });
+}
+
+const PRIORIDAD_VENCIMIENTO_LABELS: Record<PrioridadVencimiento, string> = { critica: "Crítica", alta: "Alta", media: "Media", baja: "Baja" };
+
+export function formatPrioridadVencimiento(prioridad: PrioridadVencimiento): string {
+  return PRIORIDAD_VENCIMIENTO_LABELS[prioridad] ?? prioridad;
+}
+
+const ESTADO_VENCIMIENTO_LABELS: Record<EstadoVencimiento, string> = {
+  pendiente: "Pendiente",
+  en_proceso: "En proceso",
+  completado: "Completado",
+  vencido: "Vencido",
+  escalado: "Escalado",
+};
+
+export function formatEstadoVencimiento(estado: EstadoVencimiento): string {
+  return ESTADO_VENCIMIENTO_LABELS[estado] ?? estado;
 }
 
 export function formatDateTime(iso: string | null): string {

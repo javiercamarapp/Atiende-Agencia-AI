@@ -20,6 +20,14 @@ export interface HotelesShellContext {
   readonly token: string;
   readonly propertyId: string;
   readonly orgSlug: string;
+  /** Rol de la vertical del staff en ESTA organización (owner/gm/frontdesk/
+   * reservations/housekeeping/maintenance/fnb/accountant, ver
+   * domain-hoteles/src/roles.ts) — Fase 15, mismo criterio ya usado por
+   * RestaurantesShell.tsx/DespachosShell.tsx/LicitacionesShell.tsx: cosmético,
+   * para ocultar en el nav/UI acciones que el servidor rechazaría igual
+   * (TOMAR_PEDIDO_ROLES/CONFIRMAR_COCINA_ROLES en roles.ts, exigidas por
+   * assertVerticalRole en pedidosFnb.ts, son SIEMPRE el enforcement real). */
+  readonly role: string;
 }
 
 export interface HotelesShellProps {
@@ -35,6 +43,14 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "fraude", label: "Fraude" },
   { to: "cfdi", label: "CFDI" },
 ];
+
+// Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con guardia de
+// alergias: backend real sin pantalla"): mismo `TOMAR_PEDIDO_ROLES` que
+// domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de
+// `role` arriba) — solo oculta el link "Pedidos F&B" del nav para quien el
+// servidor rechazaría de todas formas (403 en pedidosFnb.ts), nunca la única
+// barrera. housekeeping/maintenance/reservations/accountant nunca lo ven.
+const PEDIDOS_FNB_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "fnb"]);
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
   display: "block",
@@ -169,6 +185,10 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
   // selector visual real (fuera de alcance de esta fase — la mayoría de las
   // organizaciones de hoteles de esta fase operan un solo hotel).
   const propertyId = properties[0]!.propertyId;
+  // Fail-closed: si por lo que sea la organización activa no aparece en la sesión
+  // (no debería pasar, ver decideHotelesLandingPath), cae al rol operativo MÁS bajo
+  // de HOTEL_ROLES (nunca uno que active gates administrativos/de F&B de más).
+  const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "housekeeping";
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -180,11 +200,20 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
             {item.label}
           </NavLink>
         ))}
+        {/* Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con
+            guardia de alergias: backend real sin pantalla"): ver
+            PEDIDOS_FNB_NAV_ROLES arriba. */}
+        {PEDIDOS_FNB_NAV_ROLES.has(role) && (
+          <NavLink to={`/hoteles/${orgSlug}/pedidos-fnb`} style={({ isActive }) => linkStyle(isActive)}>
+            Pedidos F&amp;B
+          </NavLink>
+        )}
+        <p style={{ fontSize: 11, color: "#9ca3af", margin: "16px 0 0" }}>Rol: {role}</p>
         <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
       </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug })}</div>
+      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}</div>
     </div>
   );
 }

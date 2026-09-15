@@ -248,6 +248,11 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
         <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Requisitos extraídos ({items?.length ?? 0})</h2>
         {items && items.length === 0 && <p style={{ fontSize: 13, color: "#6b7280" }}>Todavía no hay requisitos extraídos para esta convocatoria -- sube un documento de bases arriba.</p>}
         {items && items.length > 0 && (
+          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`} style={{ display: "inline-block", marginBottom: 12, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+            Generar propuesta técnica y mapear requisitos →
+          </Link>
+        )}
+        {items && items.length > 0 && (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>

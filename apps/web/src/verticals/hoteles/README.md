@@ -35,6 +35,24 @@ inyectado para poder probar la lógica de red con vitest en entorno "node"):
 - `pages/Fraude.tsx` (`lib/fraude-client.ts`) — cola de fraude interno: ejecutar
   escaneo determinista (nunca LLM) y confirmar/descartar alertas.
 
+Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con guardia de
+alergias: backend real sin pantalla"): `GET/POST pedidos-fnb`, `GET .../:orderId`,
+`POST .../confirmar-cocina` y `POST .../asegurar-seguridad`
+(`apps/api/.../pedidosFnb.ts`) ya estaban montados y probados del lado del
+servidor, pero el rol `fnb` no tenía ninguna superficie en el panel:
+
+- `pages/PedidosFnb.tsx` (`lib/pedidos-fnb-client.ts`) — tomar pedido (roomId +
+  platillos + notas + flag de alergia), confirmar en cocina y asegurar la guardia
+  de seguridad al huésped. El link "Pedidos F&B" del nav de `HotelesShell.tsx` y
+  los botones de confirmar/asegurar se ocultan cosméticamente según
+  `TOMAR_PEDIDO_ROLES`/`CONFIRMAR_COCINA_ROLES` (mismo espejo de
+  `domain-hoteles/src/roles.ts` que ya usa `RestaurantesShell.tsx` con
+  `STAFF_NAV_ROLES`) — el enforcement real sigue siendo `assertVerticalRole` en
+  `pedidosFnb.ts`, nunca el cliente. El botón "Asegurar seguridad" se deshabilita
+  cuando `puedeAsegurarSeguridad` (calculado en vivo por el servidor desde
+  `fnbAllergyGuard.ts`) es `false`, para que el staff vea la regla de negocio en
+  vez de descubrirla con un 409.
+
 ## Explícitamente pendiente después de esta fase
 
 Portado real, no fingido — lo que sigue sin UI, para que quede honesto en vez de
@@ -42,8 +60,6 @@ asumido:
 
 - **CFDI de hospedaje** (`apps/api/.../cfdi.ts`) — emitir/consultar/cancelar CFDI
   no tiene página propia todavía.
-- **Pedidos F&B** (`apps/api/.../pedidosFnb.ts`) — sin pantalla de toma/confirmación
-  de pedidos de alimentos y bebidas (la Fase 1 original mencionaba esto explícito).
 - **Night audit** (`apps/api/.../night-audit.ts`) — sin panel de corridas/resumen.
 - **Turnos de housekeeping/lavandería** (REQ-HK-008) — el endpoint LFT existe, la
   UI de publicar/consultar turnos no.

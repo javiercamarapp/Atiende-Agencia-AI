@@ -32,3 +32,48 @@ de `packages/domain-rentas/src/roles.ts`) — el servidor sigue re-validando con
 archivos: `pricing-config.ts` nunca expuso un GET que liste la configuración ya
 guardada, así que la página muestra "configurado en esta sesión" en vez de un
 historial persistente. El panel de finanzas visual sigue fuera de alcance.
+
+Fase 15: `pages/Aprobaciones.tsx` + `lib/mensajeria-client.ts` — cierra el hallazgo de
+auditoría ALTA "Mensajería con aprobación humana obligatoria: la cola de aprobación no
+tiene botón de aprobar". `mensajeria-conversaciones.ts` y `mensajeria-borradores.ts`
+(GET/POST generar borrador, POST aprobar, POST rechazar, POST intento-automatico) ya
+estaban montados y probados desde la Fase 7 (H-059), pero ningún cliente web los
+consumía: el principio de diseño "un agente redacta y no sale hasta que alguien lo
+aprueba" vivía solo en el backend — en la práctica nadie podía aprobar ni rechazar
+nada desde el producto.
+
+- **Bandeja real, no un log**: el backend nunca expuso un GET "borradores pendientes
+  de toda la property" (`RentasMensajeriaRepository.listBorradores` exige
+  `conversacionId`, ver `packages/domain-rentas/src/mensajeria/repository.ts`). La
+  página arma la bandeja en el cliente recorriendo `GET .../unidades` →
+  `GET .../unidades/:id/conversaciones` → `GET .../conversaciones/:id/borradores`
+  (`fetchBandejaAprobacion`), y ordena primero las conversaciones con al menos un
+  borrador `pendiente_aprobacion`. Aceptable para el volumen real de una property de
+  rentas (pocas unidades, pocas conversaciones activas); no escala a cientos de
+  unidades sin un endpoint agregador nuevo — fuera de alcance de esta fase.
+- **Aprobar/Rechazar** están gateados en el CLIENTE por
+  `MENSAJERIA_ESCRITURA_ROLES = ["admin_gestora", "operador:acceso_total",
+  "operador:calendario_mensajeria"]` (mismo valor real de
+  `packages/domain-rentas/src/roles.ts`), mismo patrón que `PRICING_ESCRITURA_ROLES`
+  en Precios.tsx — el servidor SIEMPRE re-valida con `assertVerticalRole`, este gate
+  es solo UX.
+- **No se expone ningún botón para `POST .../intento-automatico`**: ese endpoint es
+  el punto de prueba de auditoría de "un proceso automático nunca puede enviar sin
+  aprobación humana" (siempre lanza un error tipado), no una acción que un operador
+  deba disparar desde el producto.
+- **Nota honesta, deliberadamente NO corregida en esta fase** (documentada también
+  como aviso fijo en la propia página): aprobar un borrador dispara
+  `SimuladorCanalMensajeria` (`packages/domain-rentas/src/mensajeria/canalMensajeria.ts`),
+  no un adaptador real de WhatsApp/Airbnb/Vrbo — no existe todavía ningún adaptador
+  real de canal conectado para rentas. El borrador queda marcado `enviado` en la base
+  de datos y en este panel, pero el huésped real no recibe ningún mensaje. Conectar un
+  canal real es un hallazgo aparte, fuera de alcance de este hallazgo (que era,
+  específicamente, la ausencia de UI para la cola de aprobación humana).
+- **Generar un borrador nuevo** (`POST .../conversaciones/:id/borradores`) y crear
+  una conversación (`POST .../conversaciones`) siguen sin cliente web — el hallazgo
+  que cierra esta fase era específicamente la falta de UI para *aprobar/rechazar* lo
+  ya generado, no el flujo de creación (que hoy solo se ejercita desde
+  `apps/api/tests/rentas-mensajeria.spec.ts`). Documentado aquí para que no se lea
+  como un olvido: sin esa UI, la bandeja de esta fase solo mostrará borradores que se
+  hayan generado por API directa (tests, script, o un futuro adaptador de canal real
+  que registre el mensaje entrante y dispare la generación).
