@@ -9,8 +9,10 @@ dist/
 coverage/
 .vercel/
 
-# Generado en build time por scripts/build-vercel-function.mjs (ver vercel.json
-# buildCommand) -- nunca es la fuente canónica, esa sigue viviendo en
-# apps/api/src/vercel.ts. Bundle autocontenido de ~1-2 MB, no tiene sentido versionarlo.
-/api/index.js
+# api/index.js.map SÍ se ignora (sourcemap del bundle, ~1-2 MB, sin valor fuera de
+# depurar un deploy puntual). api/index.js NO se ignora -- ver el comentario en ese
+# mismo archivo del repo: Vercel exige que exista en el árbol de git para validar
+# `vercel.json::functions` ANTES de correr el buildCommand (hallazgo real, ver
+# scripts/build-vercel-function.mjs); el placeholder versionado aquí se sobreescribe
+# siempre con el bundle real en cada build.
 /api/index.js.map

@@ -16,6 +16,14 @@
 // solo node_modules externos) a un solo `.js` de antemano, en build time -- así en
 // runtime Node solo ejecuta JavaScript plano, sin ninguna sintaxis de TypeScript que
 // stripping nativo pueda rechazar.
+//
+// `api/index.js` SÍ está versionado en git (ver el comentario de cabecera de ese
+// mismo archivo y de `.gitignore`) -- Vercel valida `vercel.json::functions` contra
+// el árbol de archivos tal como lo clona de git, ANTES de correr este script; sin un
+// archivo ya presente en esa ruta, ningún deploy real llega siquiera a ejecutar este
+// build (hallazgo real de infraestructura, 2026-09-15 -- todo deploy de la sesión
+// anterior falló exactamente así). Este script SIEMPRE sobreescribe ese placeholder
+// con el bundle real.
 import { build } from "esbuild";
 import { mkdirSync } from "node:fs";
 
