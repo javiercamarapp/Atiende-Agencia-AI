@@ -108,6 +108,29 @@ describe("InMemoryLicitacionesRepository -- idempotencia", () => {
     await repo.withIdempotency({ organizationId: ORG, scope: "checklist.run", key: "k1", body: { a: 1 } }, run);
     await expect(repo.withIdempotency({ organizationId: ORG, scope: "checklist.run", key: "k1", body: { a: 2 } }, run)).rejects.toThrow(IdempotencyConflictError);
   });
+
+  // Fix hallazgo auditoría (rubro 2, "Idempotency-Key queda envenenada ante error
+  // no-Postgres") — mismo fix/misma regresión que domain-hoteles: un error de
+  // `run()` nunca debe dejar la key envenenada para siempre.
+  it("run() lanzando un error NUNCA envenena la key -- un reintento legítimo después SÍ completa", async () => {
+    const repo = repoWithTender();
+    let intentos = 0;
+    const run = async () => {
+      intentos += 1;
+      if (intentos === 1) throw new Error("conector externo no disponible (timeout)");
+      return { status: 201, body: { ok: true } };
+    };
+
+    await expect(repo.withIdempotency({ organizationId: ORG, scope: "checklist.run", key: "k2", body: { a: 1 } }, run)).rejects.toThrow(
+      "conector externo no disponible",
+    );
+
+    // Antes del fix, este segundo intento lanzaba "La solicitud original con este
+    // Idempotency-Key aún no terminó de procesarse." para siempre.
+    const result = await repo.withIdempotency({ organizationId: ORG, scope: "checklist.run", key: "k2", body: { a: 1 } }, run);
+    expect(result).toEqual({ status: 201, body: { ok: true } });
+    expect(intentos).toBe(2);
+  });
 });
 
 describe("InMemoryLicitacionesRepository -- computeCurrentInputsHash", () => {

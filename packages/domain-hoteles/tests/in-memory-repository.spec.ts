@@ -52,6 +52,32 @@ describe("InMemoryHotelesRepository.withIdempotency", () => {
     expect(a.body).toBe("a");
     expect(b.body).toBe("b");
   });
+
+  // Fix hallazgo auditoría (rubro 2, "Idempotency-Key queda envenenada ante error
+  // no-Postgres") — un error de `run()` (p.ej. el PAC/pasarela de pago cayó, un
+  // timeout de red) NUNCA debe dejar la key marcada como "en proceso" para
+  // siempre: un reintento LEGÍTIMO con la MISMA key, una vez resuelto el problema
+  // externo, debe poder completarse.
+  it("run() lanzando un error NUNCA envenena la key -- un reintento legítimo después SÍ completa", async () => {
+    const repo = repoWithFolio();
+    let intentos = 0;
+    const run = async () => {
+      intentos += 1;
+      if (intentos === 1) throw new Error("PAC no disponible (network timeout)");
+      return { status: 201, body: { id: "cfdi-real" } };
+    };
+
+    await expect(repo.withIdempotency({ organizationId: ORG, scope: "cfdi.hospedaje", key: "k3", body: { a: 1 } }, run)).rejects.toThrow(
+      "PAC no disponible",
+    );
+
+    // Antes del fix, este segundo intento (mismo key/body, después de que run()
+    // falló) lanzaba "La solicitud original con este Idempotency-Key aún no
+    // terminó de procesarse." para siempre -- nunca se recuperaba.
+    const result = await repo.withIdempotency({ organizationId: ORG, scope: "cfdi.hospedaje", key: "k3", body: { a: 1 } }, run);
+    expect(result).toEqual({ status: 201, body: { id: "cfdi-real" } });
+    expect(intentos).toBe(2);
+  });
 });
 
 describe("InMemoryHotelesRepository -- guardia anti-doble-captura (charge_folio_stay_date_hospedaje_idx)", () => {
