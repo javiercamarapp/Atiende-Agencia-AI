@@ -55,6 +55,7 @@ import { CierrePage } from "./verticals/licitaciones/pages/Cierre.tsx";
 import { ContratoPage } from "./verticals/licitaciones/pages/Contrato.tsx";
 import { PostAdjudicacionPage } from "./verticals/licitaciones/pages/PostAdjudicacion.tsx";
 import { AutopsiaPage } from "./verticals/licitaciones/pages/Autopsia.tsx";
+import { RadarRenovacionesPage } from "./verticals/licitaciones/pages/RadarRenovaciones.tsx";
 import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
@@ -679,6 +680,17 @@ function LicitacionesAutopsiaRoute() {
   );
 }
 
+function LicitacionesRadarRenovacionesRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <RadarRenovacionesPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 function LicitacionesPerfilMatchingRoute() {
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -905,6 +917,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/contrato" element={<LicitacionesContratoRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/post-adjudicacion" element={<LicitacionesPostAdjudicacionRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/autopsia" element={<LicitacionesAutopsiaRoute />} />
+        <Route path="/licitaciones/:orgSlug/radar-renovaciones" element={<LicitacionesRadarRenovacionesRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
