@@ -29,12 +29,30 @@ describe("GET /rentas/:propertyId/unidades", () => {
     expect(res.status).toBe(200);
   });
 
-  it("contador (sin rol de calendario) no puede listar unidades -- 403", async () => {
+  // Hallazgo de auditoría: `contador` y `limpieza` tienen pantallas construidas
+  // específicamente para ellos (Finanzas.tsx "Movimiento por reserva" y MisTareas.tsx
+  // "Reportar incidencia") que dependían de este mismo GET y no podían usarlas.
+  // CALENDARIO_LECTURA_ROLES ahora los incluye (ver roles.ts) -- comportamiento
+  // cambiado intencionalmente respecto al test anterior ("contador ... no puede
+  // listar unidades -- 403").
+  it("contador (agregado a CALENDARIO_LECTURA_ROLES) SÍ puede listar unidades -- 200", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);
 
     const res = await app.request(`/rentas/${ctx.propertyId}/unidades`, authedJson(ctx.staff.contador.token));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { unidades: Array<{ id: string; nombre: string }> };
+    expect(body.unidades).toHaveLength(1);
+  });
+
+  it("limpieza (agregado a CALENDARIO_LECTURA_ROLES) SÍ puede listar unidades -- 200", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/rentas/${ctx.propertyId}/unidades`, authedJson(ctx.staff.limpieza.token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { unidades: Array<{ id: string; nombre: string }> };
+    expect(body.unidades).toHaveLength(1);
   });
 
   it("sin token -- 401", async () => {
@@ -123,12 +141,24 @@ describe("GET /rentas/:propertyId/unidades/:unidadId/ocupaciones", () => {
     expect(res.status).toBe(200);
   });
 
-  it("contador (sin rol de calendario) no puede leer el listado de ocupaciones -- 403", async () => {
+  // Mismo hallazgo que el describe de arriba (GET .../unidades): CALENDARIO_LECTURA_ROLES
+  // es el Set que gatea ambas rutas de calendario.ts, así que `contador` y `limpieza`
+  // quedan igualmente desbloqueados aquí -- comportamiento cambiado intencionalmente
+  // respecto al test anterior ("contador ... no puede leer el listado -- 403").
+  it("contador (agregado a CALENDARIO_LECTURA_ROLES) SÍ puede leer el listado de ocupaciones -- 200", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);
 
     const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/ocupaciones`, authedJson(ctx.staff.contador.token));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+  });
+
+  it("limpieza (agregado a CALENDARIO_LECTURA_ROLES) SÍ puede leer el listado de ocupaciones -- 200", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/ocupaciones`, authedJson(ctx.staff.limpieza.token));
+    expect(res.status).toBe(200);
   });
 
   it("una unidad que no pertenece a esta property -> 404 (defensa en profundidad)", async () => {

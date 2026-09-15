@@ -38,11 +38,25 @@ export const ESCRITURA_CALENDARIO_ROLES: readonly RentasVerticalRole[] = ["admin
 // leer). Deliberadamente NO reutilizado por `GET .../bloqueos` (bloqueos.ts, Fase 4):
 // esa ruta ya existía antes de esta fase con ESCRITURA_CALENDARIO_ROLES y tocarla es
 // un cambio de comportamiento fuera del alcance de este hallazgo.
+//
+// `contador` y `limpieza` (hallazgo de auditoría: "2 roles no pueden usar pantallas
+// que se construyeron específicamente para ellos") se agregan aquí por el mismo
+// criterio de "lectura, nunca escritura": `contador` ya podía LEER finanzas
+// (FINANZAS_LECTURA_ROLES) pero la sección "Movimiento por reserva" de Finanzas.tsx
+// (fetchUnidades/fetchOcupaciones) depende de este mismo GET .../unidades para poder
+// elegir la reserva -- sin este rol aquí, esa sección nunca cargaba para `contador`.
+// `limpieza` ya podía leer/escribir inventario e incidencias (LIMPIEZA_OPERACION_ROLES,
+// ver ../limpieza/*) pero el selector de unidad de "Reportar incidencia" en
+// MisTareas.tsx depende del mismo GET .../unidades. Ninguno de los dos entra a
+// ESCRITURA_CALENDARIO_ROLES (ese Set sigue intacto, sin tocarse): ambos siguen sin
+// poder crear/modificar/cancelar reservas ni bloqueos.
 export const CALENDARIO_LECTURA_ROLES: readonly RentasVerticalRole[] = [
   "admin_gestora",
   "operador:acceso_total",
   "operador:calendario_mensajeria",
   "operador:solo_calendario",
+  "contador",
+  "limpieza",
 ];
 
 // Cancelar exige el nivel más alto (equivalente a H-018 del origen: "cancelar es una
