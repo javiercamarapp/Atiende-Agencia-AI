@@ -27,6 +27,23 @@ describe("decideHotelesLandingPath", () => {
     const org = { id: "1", slug: "a", nombre: "A", vertical: "hoteles", rol: "owner" };
     expect(decideHotelesLandingPath({ ...base, organizations: [org, { ...org, id: "2", slug: "b" }] })).toBe("/seleccionar-organizacion");
   });
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA): el JWT es
+  // el mismo mecanismo para las 6 verticales -- `session.organizations` puede traer
+  // membresías de OTRAS verticales (un mismo correo con 1 hotel y 1 restaurante).
+  it("con 1 hotel + 1 organización de OTRA vertical -> entra directo al hotel, ignora la otra vertical", () => {
+    const session = {
+      ...base,
+      organizations: [
+        { id: "1", slug: "hotel-caribe", nombre: "Hotel Caribe", vertical: "hoteles", rol: "gm" },
+        { id: "2", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "owner" },
+      ],
+    };
+    expect(decideHotelesLandingPath(session)).toBe("/hoteles/hotel-caribe");
+  });
+  it("con 0 hoteles pero 1+ organización de otra vertical -> /sin-organizacion, nunca navega a la otra vertical", () => {
+    const session = { ...base, organizations: [{ id: "2", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "owner" }] };
+    expect(decideHotelesLandingPath(session)).toBe("/sin-organizacion");
+  });
 });
 
 describe("persistHotelesSession / readPersistedHotelesSession / clearHotelesSession", () => {

@@ -22,8 +22,19 @@ export type { LoginSession, SessionStorageLike };
  * cubre el caso contrario sin repetir el bug de mezclar org_id de una organización con
  * el rol de otra). */
 export function decideHotelesLandingPath(session: LoginSession): string {
-  if (session.organizations.length === 0) return "/sin-organizacion";
-  if (session.organizations.length === 1) return `/hoteles/${session.organizations[0]!.slug}`;
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA): el JWT es
+  // el mismo mecanismo para las 6 verticales (ver cabecera de este archivo) y
+  // `session.organizations` trae TODAS las membresías del staff, sin importar de qué
+  // vertical son (un mismo correo puede tener, p. ej., 1 hotel Y 1 restaurante). Esta
+  // función decidía 0/1/2+ sobre `session.organizations.length` sin filtrar por
+  // "hoteles" primero -- un staff con 1 hotel + 1 restaurante entraba al selector
+  // genérico en vez de ir directo a su único hotel, y (peor) uno con 1 sola membresía
+  // pero en OTRA vertical (organizations[0] no es de hoteles) navegaba a
+  // `/hoteles/<slug-de-otra-vertical>`, una ruta sin sentido. Se filtra por vertical
+  // ANTES de contar, igual que ya hace `shell/SeleccionarOrganizacion.tsx`.
+  const deHoteles = session.organizations.filter((o) => o.vertical === "hoteles");
+  if (deHoteles.length === 0) return "/sin-organizacion";
+  if (deHoteles.length === 1) return `/hoteles/${deHoteles[0]!.slug}`;
   return "/seleccionar-organizacion";
 }
 

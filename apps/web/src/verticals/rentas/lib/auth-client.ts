@@ -19,8 +19,14 @@ export type { LoginSession, SessionStorageLike };
  * asignar todavía), exactamente 1 (entra directo a ESA organización de rentas), o 2+
  * (selector, ver POST /auth/select-org) — mismo criterio que hoteles/restaurantes. */
 export function decideRentasLandingPath(session: LoginSession): string {
-  if (session.organizations.length === 0) return "/sin-organizacion";
-  if (session.organizations.length === 1) return `/rentas/${session.organizations[0]!.slug}`;
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA) — mismo
+  // hueco que `decideHotelesLandingPath`: `session.organizations` trae membresías de
+  // TODAS las verticales (JWT único). Filtrar por "rentas" antes de contar evita
+  // mandar al selector a alguien con 1 sola organización de rentas (porque también
+  // tiene, p. ej., un hotel), o peor, navegar a `/rentas/<slug-de-otra-vertical>`.
+  const deRentas = session.organizations.filter((o) => o.vertical === "rentas");
+  if (deRentas.length === 0) return "/sin-organizacion";
+  if (deRentas.length === 1) return `/rentas/${deRentas[0]!.slug}`;
   return "/seleccionar-organizacion";
 }
 

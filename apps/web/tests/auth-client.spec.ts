@@ -110,6 +110,25 @@ describe("decideLandingPath", () => {
     const session = { ...base, organizations: [{ id: "1", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "repartidor" }] };
     expect(decideLandingPath(session)).toBe("/restaurantes/los-taquitos-de-pm/repartidor");
   });
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA): el JWT es
+  // el mismo mecanismo para las 6 verticales -- `session.organizations` puede traer
+  // membresías de OTRAS verticales (un mismo correo con 1 restaurante y 1 hotel). Debe
+  // filtrar por "restaurantes" antes de contar, tanto para no forzar el selector con
+  // una sola organización real como para no navegar jamás a un slug de otra vertical.
+  it("con 1 restaurante + 1 organización de OTRA vertical -> entra directo al restaurante, ignora la otra vertical", () => {
+    const session = {
+      ...base,
+      organizations: [
+        { id: "1", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "owner" },
+        { id: "2", slug: "hotel-caribe", nombre: "Hotel Caribe", vertical: "hoteles", rol: "owner" },
+      ],
+    };
+    expect(decideLandingPath(session)).toBe("/restaurantes/los-taquitos-de-pm");
+  });
+  it("con 0 restaurantes pero 1+ organización de otra vertical -> /sin-organizacion, nunca navega a la otra vertical", () => {
+    const session = { ...base, organizations: [{ id: "2", slug: "hotel-caribe", nombre: "Hotel Caribe", vertical: "hoteles", rol: "owner" }] };
+    expect(decideLandingPath(session)).toBe("/sin-organizacion");
+  });
 });
 
 // Fase 14 — hallazgo de auditoría (severidad ALTA, "Invitaciones de staff sin

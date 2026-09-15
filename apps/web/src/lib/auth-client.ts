@@ -129,9 +129,20 @@ export async function logout(fetchImpl: typeof fetch, apiBaseUrl: string, refres
  * gestión, ver Repartidor.tsx). Se resuelve en el ÚNICO lugar que decide la
  * landing, sin tocar el nav ni el 403 real del servidor. */
 export function decideLandingPath(session: LoginSession): string {
-  if (session.organizations.length === 0) return "/sin-organizacion";
-  if (session.organizations.length === 1) {
-    const org = session.organizations[0]!;
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA): el JWT es
+  // el mismo mecanismo para las 6 verticales (ver cabecera de este archivo) y
+  // `session.organizations` trae TODAS las membresías del staff, sin importar de qué
+  // vertical son. Esta función (y su equivalente por vertical: hoteles/citas/
+  // despachos/licitaciones/rentas) decidía 0/1/2+ sobre `session.organizations.length`
+  // sin filtrar por "restaurantes" primero -- un staff con 1 restaurante + 1 hotel
+  // entraba al selector genérico en vez de ir directo a su único restaurante, y (peor)
+  // uno con 1 sola membresía pero en OTRA vertical navegaba a
+  // `/restaurantes/<slug-de-otra-vertical>`. Se filtra por vertical ANTES de contar,
+  // igual que ya hace `shell/SeleccionarOrganizacion.tsx`.
+  const deRestaurantes = session.organizations.filter((o) => o.vertical === "restaurantes");
+  if (deRestaurantes.length === 0) return "/sin-organizacion";
+  if (deRestaurantes.length === 1) {
+    const org = deRestaurantes[0]!;
     if (org.rol === "repartidor") return `/restaurantes/${org.slug}/repartidor`;
     return `/restaurantes/${org.slug}`;
   }
