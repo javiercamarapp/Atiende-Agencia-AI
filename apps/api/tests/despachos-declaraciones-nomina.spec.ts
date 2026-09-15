@@ -86,14 +86,18 @@ describe("POST /despachos/:propertyId/declaraciones/isr/pm", () => {
 });
 
 describe("POST /despachos/:propertyId/declaraciones/isr/pm-resico", () => {
-  it("invoca el motor real (cruce contra calcularIsrPmResico, ya cubierto por golden-set aparte)", async () => {
+  it("invoca el motor real: tasa PLANA 30% sobre flujo de efectivo (ingresosCobrados - deduccionesAutorizadas), nunca una tabla progresiva", async () => {
     const app = buildApp(ctx.deps);
-    const res = await app.request(`/despachos/${ctx.propertyId}/declaraciones/isr/pm-resico`, authedJson(ctx.staff.contador.token, { ingresoMensual: 25000 }));
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/declaraciones/isr/pm-resico`,
+      authedJson(ctx.staff.contador.token, { ingresosCobrados: 25000, deduccionesAutorizadas: 5000 }),
+    );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { tipoContribuyente: string; tablaAplicada: string; isrBruto: number };
+    const body = (await res.json()) as { tipoContribuyente: string; tablaAplicada: string; isrBruto: number; baseGravable: number };
     expect(body.tipoContribuyente).toBe("PM");
     expect(body.tablaAplicada).toBe("pm_resico");
-    expect(body.isrBruto).toBeGreaterThan(0);
+    expect(body.baseGravable).toBe(20000); // 25000 - 5000
+    expect(body.isrBruto).toBe(6000); // 20000 * 0.30
   });
 });
 
@@ -162,10 +166,17 @@ describe("GET /despachos/:propertyId/declaraciones/diot/:periodo -- agregación 
     expect(res.status).toBe(400);
   });
 
-  it("readonly/auditor no pueden ver la agregación DIOT -- 403", async () => {
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): ver la DIOT ya agregada desde invoices
+  // persistidos es lectura pura -- readonly/auditor SÍ pueden verla
+  // (VER_DECLARACIONES_ROLES), aunque nunca calcular ISR (ver el describe de
+  // arriba).
+  it("readonly/auditor SÍ pueden ver la agregación DIOT -- 200 (lectura pura)", async () => {
     const app = buildApp(ctx.deps);
-    const res = await app.request(`/despachos/${ctx.propertyId}/declaraciones/diot/2026-07`, authedJson(ctx.staff.readonly.token));
-    expect(res.status).toBe(403);
+    const resReadonly = await app.request(`/despachos/${ctx.propertyId}/declaraciones/diot/2026-07`, authedJson(ctx.staff.readonly.token));
+    expect(resReadonly.status).toBe(200);
+    const resAuditor = await app.request(`/despachos/${ctx.propertyId}/declaraciones/diot/2026-07`, authedJson(ctx.staff.auditor.token));
+    expect(resAuditor.status).toBe(200);
   });
 });
 
@@ -213,6 +224,14 @@ function payloadXmlNomina(overrides: Record<string, unknown> = {}) {
         rfcReceptor: "PEAA850101ABC",
         domicilioFiscalReceptor: "01000",
         folio: "F0001",
+        // nomina12:Receptor -- ver corrección hallazgo "XML de nómina 1.2 no
+        // valida contra el XSD real del SAT" (@atiende/domain-despachos/nomina/xml-nomina.ts).
+        curp: "PEAA850101HDFRRN08",
+        numEmpleado: "EMP001",
+        tipoContrato: "01",
+        tipoRegimen: "02",
+        periodicidadPago: "05",
+        claveEntFed: "CMX",
       },
     ],
     emisor: {

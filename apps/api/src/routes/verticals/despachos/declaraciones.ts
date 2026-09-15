@@ -27,7 +27,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, agregarDiot, DECLARACIONES_ROLES } from "@atiende/domain-despachos";
+import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, agregarDiot, DECLARACIONES_ROLES, VER_DECLARACIONES_ROLES } from "@atiende/domain-despachos";
 import type { RegistroDiotCandidato } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -45,7 +45,8 @@ interface IsrPmBody {
 }
 
 interface IsrPmResicoBody {
-  readonly ingresoMensual?: unknown;
+  readonly ingresosCobrados?: unknown;
+  readonly deduccionesAutorizadas?: unknown;
   readonly pagosProvisionales?: unknown;
 }
 
@@ -84,12 +85,26 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   app.post("/despachos/:propertyId/declaraciones/isr/pm-resico", async (c) => {
     assertVerticalRole(c, DECLARACIONES_ROLES);
     const raw = await readJsonCapped<IsrPmResicoBody>(c.req.raw, 8 * 1024);
-    const resultado = calcularIsrPmResico(requireNumber(raw.ingresoMensual, "ingresoMensual"), optionalNumber(raw.pagosProvisionales, "pagosProvisionales", 0));
+    // RESICO PM (Art. 206/209 LISR): tasa fija 30% sobre flujo de efectivo
+    // (ingresos efectivamente cobrados − deducciones autorizadas efectivamente
+    // pagadas) — corrección del hallazgo CRÍTICO #2, ver isr-engine.ts.
+    // `deduccionesAutorizadas` es opcional (default 0): si se omite, el ISR
+    // resultante sobreestima la base real en vez de fabricar una deducción que
+    // nadie proveyó.
+    const resultado = calcularIsrPmResico(requireNumber(raw.ingresosCobrados, "ingresosCobrados"), {
+      deduccionesAutorizadas: optionalNumber(raw.deduccionesAutorizadas, "deduccionesAutorizadas", 0),
+      pagosProvisionales: optionalNumber(raw.pagosProvisionales, "pagosProvisionales", 0),
+    });
     return c.json(resultado);
   });
 
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): ver la DIOT ya agregada desde invoices
+  // persistidos es lectura pura -- auditor/readonly SÍ pueden verla
+  // (VER_DECLARACIONES_ROLES), aunque nunca calcular ISR (DECLARACIONES_ROLES,
+  // sin cambios, arriba).
   app.get("/despachos/:propertyId/declaraciones/diot/:periodo", async (c) => {
-    assertVerticalRole(c, DECLARACIONES_ROLES);
+    assertVerticalRole(c, VER_DECLARACIONES_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const periodo = c.req.param("periodo");
@@ -119,6 +134,10 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         ivaTrasladado: inv.iva ?? 0,
         ivaAcreditable: inv.iva ?? 0,
         tasaIva: p.tasaIva ?? (inv.iva != null && inv.subtotal > 0 ? inv.iva / inv.subtotal : 0),
+        // Naturaleza real de la operación, NUNCA derivada de la tasa de IVA (ver
+        // DiotTipoOperacion / corrección hallazgo "DIOT con tasa mal codificada") —
+        // ausente -> agregarDiot() usa "85" (Otros).
+        tipoOperacion: p.tipoOperacion ?? null,
         tipoCambio: p.tipoCambio ?? 1,
         moneda: p.moneda ?? "MXN",
         // `invoice.fecha` (migración 006) es la fecha REAL de emisión del CFDI, NOT

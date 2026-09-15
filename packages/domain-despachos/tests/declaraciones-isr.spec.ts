@@ -3,36 +3,36 @@
 // que no requieren el intérprete Python (comportamiento ya cubierto ahí).
 import { describe, expect, it } from "vitest";
 import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, aplicarTablaIsr } from "../src/declaraciones/isr-engine.ts";
-import { ISR_PF_MENSUAL_2025, ISR_PM_TASA } from "../src/declaraciones/isr-tablas.ts";
+import { ISR_MENSUAL_2026, ISR_PM_TASA } from "../src/declaraciones/isr-tablas.ts";
 
 describe("aplicarTablaIsr", () => {
   it("devuelve 0 para base gravable = 0 sin tocar la tabla", () => {
-    expect(aplicarTablaIsr(0, ISR_PF_MENSUAL_2025)).toBe(0);
+    expect(aplicarTablaIsr(0, ISR_MENSUAL_2026)).toBe(0);
   });
 
   it("devuelve 0 para base gravable negativa (nunca ISR negativo)", () => {
-    expect(aplicarTablaIsr(-100, ISR_PF_MENSUAL_2025)).toBe(0);
+    expect(aplicarTablaIsr(-100, ISR_MENSUAL_2026)).toBe(0);
   });
 
   it("clasifica por el límite inferior del tramo SIGUIENTE, no por el límite superior propio", () => {
-    // Un valor igual al límite inferior de tramo 1 (416.35) debe caer en tramo 1, no
-    // en tramo 0, aunque esté "cerca" del límite superior de tramo 0 (416.34).
-    const r = aplicarTablaIsr(416.35, ISR_PF_MENSUAL_2025);
-    expect(r).toBe(7.99); // cuota fija exacta de tramo 1, excedente = 0
+    // Un valor igual al límite inferior de tramo 1 (844.60) debe caer en tramo 1, no
+    // en tramo 0, aunque esté "cerca" del límite superior de tramo 0 (844.59).
+    const r = aplicarTablaIsr(844.6, ISR_MENSUAL_2026);
+    expect(r).toBe(16.22); // cuota fija exacta de tramo 1, excedente = 0
   });
 
   it("el excedente se calcula sobre el límite inferior de la tabla, nunca sobre el monto total", () => {
-    // tramo 1: (416.35, ..., 7.99, 0.064). En 1000: excedente = 1000 - 416.35 = 583.65
-    const r = aplicarTablaIsr(1000, ISR_PF_MENSUAL_2025);
-    expect(r).toBeCloseTo(7.99 + 583.65 * 0.064, 2);
+    // tramo 1: (844.60, ..., 16.22, 0.064). En 1000: excedente = 1000 - 844.60 = 155.40
+    const r = aplicarTablaIsr(1000, ISR_MENSUAL_2026);
+    expect(r).toBeCloseTo(16.22 + 155.4 * 0.064, 2);
     // Si el bug fuera "tasa marginal sobre el monto total", daría 1000*0.064=64, muy
-    // distinto del resultado correcto (~44.34) — este assert falla si alguien
+    // distinto del resultado correcto (~26.17) — este assert falla si alguien
     // reintroduce ese bug.
     expect(r).not.toBeCloseTo(1000 * 0.064, 2);
   });
 
   it("el último tramo no tiene techo (sin `upper` que lo limite)", () => {
-    const r = aplicarTablaIsr(50_000_000, ISR_PF_MENSUAL_2025);
+    const r = aplicarTablaIsr(50_000_000, ISR_MENSUAL_2026);
     expect(r).toBeGreaterThan(0);
     expect(Number.isFinite(r)).toBe(true);
   });
@@ -96,10 +96,23 @@ describe("calcularIsrPm", () => {
 });
 
 describe("calcularIsrPmResico", () => {
-  it("aplica la tabla progresiva RESICO PM (6 tramos)", () => {
+  it("aplica tasa PLANA de 30% sobre flujo de efectivo, NUNCA una tabla progresiva (hallazgo CRÍTICO #2)", () => {
     const r = calcularIsrPmResico(30000);
     expect(r.tablaAplicada).toBe("pm_resico");
-    expect(r.isrBruto).toBeGreaterThan(0);
+    expect(r.isrBruto).toBe(9000); // 30000 * 0.30, no una tarifa por tramos
+    expect(r.tasaEfectiva).toBe(0.3);
+  });
+
+  it("resta las deducciones autorizadas pagadas antes de aplicar la tasa (flujo de efectivo, Art. 208 LISR)", () => {
+    const r = calcularIsrPmResico(100000, { deduccionesAutorizadas: 40000 });
+    expect(r.baseGravable).toBe(60000);
+    expect(r.isrBruto).toBe(18000); // (100000 - 40000) * 0.30
+  });
+
+  it("deducciones mayores al ingreso -> flujo de efectivo 0, ISR 0 (nunca negativo)", () => {
+    const r = calcularIsrPmResico(10000, { deduccionesAutorizadas: 50000 });
+    expect(r.baseGravable).toBe(0);
+    expect(r.isrBruto).toBe(0);
   });
 
   it("ingreso negativo produce ISR 0", () => {
@@ -108,10 +121,9 @@ describe("calcularIsrPmResico", () => {
     expect(r.isrBruto).toBe(0);
   });
 
-  it("preserva la cuota fija de 4 decimales del último tramo sin truncar a 2 antes de sumar", () => {
-    // Límite inferior exacto del último tramo: isrBruto debe ser exactamente la cuota
-    // fija de 4 decimales redondeada a 2 (86799.1675 -> 86799.17), no 86799.16/.18.
-    const r = calcularIsrPmResico(3500000.01);
-    expect(r.isrBruto).toBe(86799.17);
+  it("isrNeto = max(0, isrBruto - pagosProvisionales)", () => {
+    const r = calcularIsrPmResico(100000, { pagosProvisionales: 20000 });
+    expect(r.isrBruto).toBe(30000); // 100000 * 0.30
+    expect(r.isrNeto).toBe(10000); // 30000 - 20000
   });
 });

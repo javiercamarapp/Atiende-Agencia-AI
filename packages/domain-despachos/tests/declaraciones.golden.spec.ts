@@ -1,39 +1,26 @@
-// Golden-set numérico (Fase 2 despachos, OBLIGATORIO — ver diseño §4) — compara,
-// campo por campo, el output del motor Python REAL (`calculate_isr_pf`,
-// `calculate_isr_pm`, `calculate_isr_pm_resico`, `aggregate_diot` de
-// b2b_ai/features/declaraciones/engine.py, capturado en
-// tests/fixtures/golden-declaraciones-output.json vía
-// tests/fixtures/golden_gen_declaraciones.py, corrido contra el intérprete real del
-// repo `despachos`) contra el motor TS nuevo (`calcularIsrPf`/`calcularIsrPm`/
-// `calcularIsrPmResico`/`agregarDiot`).
+// Golden-set numérico (Fase 2 despachos) — DIOT únicamente.
 //
-// 63 casos: 20 (ISR PF mensual, límites de los 10 tramos) + 20 (ISR PF anual) +
-// 12 (ISR PM RESICO, límites de los 6 tramos) + 3 (ISR PF: cero/negativo/pagos
-// provisionales) + 5 (ISR PM: básico/cero/negativo/pagos provisionales/redondeo) +
-// 3 (DIOT: multi-factura+genérico, mismo RFC dos tasas, moneda extranjera+frontera
-// 8%). Cada caso de límite de tramo se generó PROGRAMÁTICAMENTE desde la tabla real
-// (ver el script), no transcrito a mano.
+// CORRECCIÓN FISCAL (auditoría, hallazgos CRÍTICOS #1/#2 y ALTO "DIOT con tasa mal
+// codificada"): este archivo comparaba antes también ISR PF/PM/PM-RESICO contra
+// `tests/fixtures/golden-declaraciones-output.json` — una captura de un motor Python
+// de referencia cuyas tablas ISR resultaron NO coincidir con el Anexo 8 SAT/DOF real
+// (ver declaraciones/isr-tablas.ts) y cuyo RESICO PM aplicaba por error la tabla
+// progresiva de RESICO PF (ver isr-engine.ts). Esa fixture ya NO es una fuente de
+// verdad fiscal válida para ISR: se retiraron esas secciones de aquí. La corrección
+// numérica de ISR PF/PM/PM-RESICO está cubierta directamente en
+// declaraciones-isr.spec.ts, con assertions explícitas contra los valores oficiales
+// verificados (no contra una fixture capturada de un sistema con datos incorrectos).
 //
-// Si algún caso no coincidiera, el criterio (diseño §4, tarea) es corregir el TS,
-// nunca ajustar el golden para que pase.
+// La parte de DIOT (`aggregate_diot`) sí se conserva: la fixture sigue siendo válida
+// para los montos/agrupación por RFC — solo se ajustaron los campos `tipoOperacion`
+// esperados, que la fixture capturó con la derivación incorrecta "tasa de IVA ->
+// tipo de operación" (ver corrección del hallazgo "DIOT con tasa mal codificada" en
+// diot-aggregate.ts): ahora se comparan por separado, no contra `tipo_operacion` de
+// la fixture.
 import { describe, expect, it } from "vitest";
 import golden from "./fixtures/golden-declaraciones-output.json" with { type: "json" };
-import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico } from "../src/declaraciones/isr-engine.ts";
 import { agregarDiot } from "../src/declaraciones/diot-aggregate.ts";
 import type { RegistroDiotCandidato } from "../src/declaraciones/types.ts";
-
-type GoldenIsr = {
-  entrada: { baseGravable?: number; utilidadFiscal?: number; pagosProvisionales?: number };
-  resultado: {
-    base_gravable: number;
-    isr_bruto: number;
-    tasa_efectiva: number;
-    tipo_contribuyente: string;
-    tabla_aplicada: string;
-    isr_neto: number;
-    pagos_provisionales: number;
-  };
-};
 
 type GoldenDiotInvoice = {
   rfc_emisor: string;
@@ -76,91 +63,9 @@ type GoldenDiot = {
 
 const goldenEntries = Object.entries(golden) as [string, unknown][];
 
-function isrPfMensualCases() {
-  return goldenEntries.filter(([name]) => name.startsWith("isr_pf_mensual_tramo") || name === "isr_pf_mensual_cero" || name === "isr_pf_mensual_negativo");
-}
-function isrPfAnualCases() {
-  return goldenEntries.filter(([name]) => name.startsWith("isr_pf_anual_tramo"));
-}
-function isrPmResicoCases() {
-  return goldenEntries.filter(([name]) => name.startsWith("isr_pm_resico_tramo"));
-}
-function isrPmCases() {
-  return goldenEntries.filter(([name]) => name.startsWith("isr_pm_") && !name.startsWith("isr_pm_resico"));
-}
 function diotCases() {
   return goldenEntries.filter(([name]) => name.startsWith("diot_"));
 }
-
-describe("golden-set numérico: ISR PF mensual (TS) vs calculate_isr_pf (Python real)", () => {
-  for (const [name, raw] of isrPfMensualCases()) {
-    const { entrada, resultado } = raw as GoldenIsr;
-    it(`${name}: base=${entrada.baseGravable} -> isrBruto=${resultado.isr_bruto}`, () => {
-      const ts = calcularIsrPf(entrada.baseGravable!, { annual: false });
-      expect(ts.baseGravable).toBe(resultado.base_gravable);
-      expect(ts.isrBruto).toBe(resultado.isr_bruto);
-      expect(ts.tasaEfectiva).toBe(resultado.tasa_efectiva);
-      expect(ts.isrNeto).toBe(resultado.isr_neto);
-      expect(ts.tablaAplicada).toBe("monthly");
-    });
-  }
-
-  it("isr_pf_mensual_con_pagos_provisionales: mismo isrNeto que Python", () => {
-    const { entrada, resultado } = golden.isr_pf_mensual_con_pagos_provisionales as unknown as GoldenIsr;
-    const ts = calcularIsrPf(entrada.baseGravable!, { annual: false, pagosProvisionales: entrada.pagosProvisionales });
-    expect(ts.isrBruto).toBe(resultado.isr_bruto);
-    expect(ts.isrNeto).toBe(resultado.isr_neto);
-  });
-});
-
-describe("golden-set numérico: ISR PF anual (TS) vs calculate_isr_pf(annual=True) (Python real)", () => {
-  for (const [name, raw] of isrPfAnualCases()) {
-    const { entrada, resultado } = raw as GoldenIsr;
-    it(`${name}: base=${entrada.baseGravable} -> isrBruto=${resultado.isr_bruto}`, () => {
-      const ts = calcularIsrPf(entrada.baseGravable!, { annual: true });
-      expect(ts.baseGravable).toBe(resultado.base_gravable);
-      expect(ts.isrBruto).toBe(resultado.isr_bruto);
-      expect(ts.tasaEfectiva).toBe(resultado.tasa_efectiva);
-      expect(ts.isrNeto).toBe(resultado.isr_neto);
-      expect(ts.tablaAplicada).toBe("annual");
-    });
-  }
-});
-
-describe("golden-set numérico: ISR PM RESICO mensual (TS) vs calculate_isr_pm_resico (Python real)", () => {
-  for (const [name, raw] of isrPmResicoCases()) {
-    const { entrada, resultado } = raw as GoldenIsr;
-    it(`${name}: ingreso=${entrada.baseGravable} -> isrBruto=${resultado.isr_bruto}`, () => {
-      const ts = calcularIsrPmResico(entrada.baseGravable!);
-      expect(ts.baseGravable).toBe(resultado.base_gravable);
-      expect(ts.isrBruto).toBe(resultado.isr_bruto);
-      expect(ts.tasaEfectiva).toBe(resultado.tasa_efectiva);
-      expect(ts.isrNeto).toBe(resultado.isr_neto);
-      expect(ts.tablaAplicada).toBe("pm_resico");
-    });
-  }
-
-  it("isr_pm_resico_tramo5_lower: preserva la cuota fija de 4 decimales (86799.1675) del último tramo", () => {
-    const { resultado } = golden.isr_pm_resico_tramo5_lower as unknown as GoldenIsr;
-    const ts = calcularIsrPmResico(3500000.01);
-    expect(ts.isrBruto).toBe(resultado.isr_bruto);
-    expect(ts.isrBruto).toBe(86799.17);
-  });
-});
-
-describe("golden-set numérico: ISR PM tasa fija 30% (TS) vs calculate_isr_pm (Python real)", () => {
-  for (const [name, raw] of isrPmCases()) {
-    const { entrada, resultado } = raw as GoldenIsr;
-    it(`${name}: utilidad=${entrada.utilidadFiscal} -> isrBruto=${resultado.isr_bruto}`, () => {
-      const ts = calcularIsrPm(entrada.utilidadFiscal!, entrada.pagosProvisionales ?? 0);
-      expect(ts.baseGravable).toBe(resultado.base_gravable);
-      expect(ts.isrBruto).toBe(resultado.isr_bruto);
-      expect(ts.tasaEfectiva).toBe(resultado.tasa_efectiva);
-      expect(ts.isrNeto).toBe(resultado.isr_neto);
-      expect(ts.tablaAplicada).toBe("pm_30%");
-    });
-  }
-});
 
 function toCandidato(inv: GoldenDiotInvoice): RegistroDiotCandidato {
   return {
@@ -176,10 +81,22 @@ function toCandidato(inv: GoldenDiotInvoice): RegistroDiotCandidato {
   };
 }
 
-describe("golden-set numérico: DIOT (TS) vs aggregate_diot (Python real)", () => {
+describe("golden-set numérico: DIOT (TS) vs aggregate_diot (montos/agrupación por RFC)", () => {
+  // `tipoOperacion` se compara aparte (no contra `tipo_operacion` de la fixture,
+  // que capturó la derivación incorrecta "tasa de IVA -> tipo de operación" — ver
+  // cabecera del archivo): ninguno de los candidatos de esta fixture trae un
+  // override explícito, así que el TS corregido siempre cae a "85" (Otros). El
+  // efecto colateral real es que filas que la fixture separaba por tasa de IVA
+  // ahora se agrupan juntas (mismo rfc, mismo tipoOperacion="85") — por eso los
+  // casos cuyo `entrada` tiene un RFC repetido con distinta tasa (p. ej. "caso B")
+  // producen MENOS registros que `total_records` de la fixture; se comparan aparte
+  // más abajo en vez de con esta comparación genérica.
+  const CASOS_CON_AGRUPACION_DISTINTA = new Set(["diot_caso_b_mismo_rfc_dos_tasas"]);
+
   for (const [name, raw] of diotCases()) {
+    if (CASOS_CON_AGRUPACION_DISTINTA.has(name)) continue;
     const { entrada, resultado } = raw as GoldenDiot;
-    it(`${name}: mismos registros agregados (orden, montos, tipoOperacion)`, () => {
+    it(`${name}: mismos registros agregados (orden, montos)`, () => {
       const candidatos = entrada.invoices.map(toCandidato);
       const ts = agregarDiot(candidatos, entrada.rfcContribuyente, entrada.periodo);
 
@@ -188,7 +105,7 @@ describe("golden-set numérico: DIOT (TS) vs aggregate_diot (Python real)", () =
         const tsRec = ts.registros[idx]!;
         expect(tsRec.rfcTercero).toBe(pyRec.rfc_tercero);
         expect(tsRec.nombre).toBe(pyRec.nombre);
-        expect(tsRec.tipoOperacion).toBe(pyRec.tipo_operacion);
+        expect(tsRec.tipoOperacion).toBe("85"); // ver nota arriba: nunca derivado de tasaIva
         expect(tsRec.moneda).toBe(pyRec.moneda);
         expect(tsRec.tipoCambio).toBe(pyRec.tipo_cambio);
         expect(tsRec.fecha).toBe(pyRec.fecha);
@@ -210,20 +127,29 @@ describe("golden-set numérico: DIOT (TS) vs aggregate_diot (Python real)", () =
   }
 
   it("caso A: RFC genérico se filtra sin importar el monto ($999,999 desaparece)", () => {
-    const { resultado } = golden.diot_caso_a_multi_factura_generico_filtrado as unknown as GoldenDiot;
-    expect(resultado.total_records).toBe(1);
-    expect(resultado.records[0]!.count).toBe(2);
-    expect(resultado.records[0]!.monto_neto).toBe(8000);
+    const { entrada } = golden.diot_caso_a_multi_factura_generico_filtrado as unknown as GoldenDiot;
+    const ts = agregarDiot(entrada.invoices.map(toCandidato), entrada.rfcContribuyente, entrada.periodo);
+    expect(ts.registros.length).toBe(1);
+    expect(ts.registros[0]!.count).toBe(2);
+    expect(ts.registros[0]!.montoNeto).toBe(8000);
   });
 
-  it("caso B: mismo RFC con dos tasas de IVA produce DOS registros (llave rfc+tipoOperacion)", () => {
-    const { resultado } = golden.diot_caso_b_mismo_rfc_dos_tasas as unknown as GoldenDiot;
-    expect(resultado.total_records).toBe(2);
+  it("caso B: mismo RFC con dos tasas de IVA y SIN tipoOperacion explícito produce UN solo registro (ya no se fragmenta por tasa — corrección hallazgo DIOT)", () => {
+    const { entrada } = golden.diot_caso_b_mismo_rfc_dos_tasas as unknown as GoldenDiot;
+    const ts = agregarDiot(entrada.invoices.map(toCandidato), entrada.rfcContribuyente, entrada.periodo);
+    expect(ts.registros.length).toBe(1);
+    expect(ts.registros[0]!.tipoOperacion).toBe("85");
+    expect(ts.registros[0]!.montoNeto).toBe(30000); // 10000 + 20000
+    expect(ts.registros[0]!.ivaTrasladado16).toBe(1600);
+    expect(ts.registros[0]!.ivaTrasladado0).toBe(0);
+    expect(ts.registros[0]!.count).toBe(2);
   });
 
   it("caso C: IVA de frontera 8% cae en ivaExento, no en un campo de 8% (no existe)", () => {
-    const { resultado } = golden.diot_caso_c_moneda_extranjera_y_frontera_8pct as unknown as GoldenDiot;
-    const frontera = resultado.records.find((r) => r.tipo_operacion === "85")!;
-    expect(frontera.iva_exento).toBe(320);
+    const { entrada } = golden.diot_caso_c_moneda_extranjera_y_frontera_8pct as unknown as GoldenDiot;
+    const ts = agregarDiot(entrada.invoices.map(toCandidato), entrada.rfcContribuyente, entrada.periodo);
+    const frontera = ts.registros.find((r) => r.rfcTercero === "FRO010101YY2")!;
+    expect(frontera.ivaExento).toBe(320);
+    expect(frontera.tipoOperacion).toBe("85");
   });
 });

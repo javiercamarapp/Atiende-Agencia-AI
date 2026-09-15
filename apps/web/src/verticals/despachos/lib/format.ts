@@ -66,17 +66,20 @@ const TABLA_APLICADA_ISR_LABELS: Record<TablaAplicadaIsr, string> = {
   monthly: "ISR PF mensual",
   annual: "ISR PF anual",
   "pm_30%": "ISR PM (30%)",
-  pm_resico: "ISR PM RESICO",
+  pm_resico: "ISR PM RESICO (30% flujo de efectivo)",
 };
 
 export function formatTablaAplicadaIsr(tabla: TablaAplicadaIsr): string {
   return TABLA_APLICADA_ISR_LABELS[tabla] ?? tabla;
 }
 
+// Catálogo REAL de "tipo de operación" DIOT (Regla 3.10.7 RMF) — NO es la tasa de
+// IVA de la factura (esa se ve en las columnas IVA 16%/0%/exento de la tabla; ver
+// corrección del hallazgo "DIOT con tasa mal codificada").
 const DIOT_TIPO_OPERACION_LABELS: Record<DiotTipoOperacion, string> = {
-  "03": "IVA 16%",
-  "06": "IVA 0% / exento",
-  "85": "IVA 8% u otra tasa",
+  "03": "Servicios profesionales",
+  "06": "Arrendamiento de inmuebles",
+  "85": "Otros",
 };
 
 export function formatDiotTipoOperacion(tipo: DiotTipoOperacion): string {
