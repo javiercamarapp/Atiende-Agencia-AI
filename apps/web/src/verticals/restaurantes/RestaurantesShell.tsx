@@ -20,6 +20,12 @@ export interface RestaurantesShellContext {
   readonly token: string;
   readonly propertyId: string;
   readonly orgSlug: string;
+  /** Rol de la vertical del staff en ESTA organización (owner/admin/staff/repartidor,
+   * ver domain-restaurantes/src/roles.ts) — Fase 14, mismo criterio ya usado por
+   * DespachosShell.tsx/LicitacionesShell.tsx: cosmético, para ocultar en el nav/UI
+   * acciones que el servidor rechazaría igual (STAFF_INVITE_ROLES en admin-staff.ts
+   * es SIEMPRE el enforcement real). */
+  readonly role: string;
 }
 
 export interface RestaurantesShellProps {
@@ -36,6 +42,12 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "historial", label: "Historial" },
   { to: "clientes", label: "Clientes" },
 ];
+
+/** Fase 14 — mismo `STAFF_INVITE_ROLES` que `domain-restaurantes/src/roles.ts`
+ * (duplicado aquí a propósito, ver el comentario de `StaffVerticalRole` en
+ * lib/staff-client.ts): solo oculta el link "Staff" del nav para quien el servidor
+ * rechazaría de todas formas (403 en admin-staff.ts) — nunca la única barrera. */
+const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
   display: "block",
@@ -156,6 +168,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // Igual que el Dashboard de KPIs (Fase 3): usa la primera sucursal hasta que haya
   // un selector visual real (fuera de alcance de esta fase, ver diseño §1).
   const propertyId = branches[0]!.propertyId;
+  const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "staff";
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -170,11 +183,19 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
             {item.label}
           </NavLink>
         ))}
+        {/* Fase 14 — hallazgo de auditoría (severidad ALTA, "Invitaciones de staff sin
+            ninguna UI"): ver STAFF_NAV_ROLES arriba. */}
+        {STAFF_NAV_ROLES.has(role) && (
+          <NavLink to={`/restaurantes/${orgSlug}/staff`} style={({ isActive }) => linkStyle(isActive)}>
+            Staff
+          </NavLink>
+        )}
+        <p style={{ fontSize: 11, color: "#9ca3af", margin: "16px 0 0" }}>Rol: {role}</p>
         <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
       </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug })}</div>
+      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}</div>
     </div>
   );
 }

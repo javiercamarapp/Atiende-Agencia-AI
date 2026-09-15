@@ -33,6 +33,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "reservas", label: "Reservas" },
   { to: "mantenimiento", label: "Mantenimiento" },
   { to: "fraude", label: "Fraude" },
+  { to: "cfdi", label: "CFDI" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({

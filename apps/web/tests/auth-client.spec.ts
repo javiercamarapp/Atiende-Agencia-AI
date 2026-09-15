@@ -1,5 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { clearSession, decideLandingPath, login, logout, LoginError, persistSession, readPersistedSession, validateLoginForm } from "../src/lib/auth-client.ts";
+import {
+  acceptInvite,
+  clearSession,
+  decideLandingPath,
+  login,
+  logout,
+  LoginError,
+  persistSession,
+  readPersistedSession,
+  validateAcceptInviteForm,
+  validateLoginForm,
+} from "../src/lib/auth-client.ts";
 import type { LoginSession, SessionStorageLike } from "../src/lib/auth-client.ts";
 
 function fakeStorage(): SessionStorageLike {
@@ -90,6 +101,48 @@ describe("decideLandingPath", () => {
   it("con 2+ organizaciones -> selector (igual que hoteles con multi-hotel)", () => {
     const org = { id: "1", slug: "a", nombre: "A", vertical: "restaurantes", rol: "owner" };
     expect(decideLandingPath({ ...base, organizations: [org, { ...org, id: "2", slug: "b" }] })).toBe("/seleccionar-organizacion");
+  });
+});
+
+// Fase 14 — hallazgo de auditoría (severidad ALTA, "Invitaciones de staff sin
+// ninguna UI"): cliente real de POST /auth/accept-invite (routes/auth.ts).
+describe("validateAcceptInviteForm", () => {
+  it("exige token, fullName y una contraseña de al menos 8 caracteres", () => {
+    expect(validateAcceptInviteForm({ token: "", fullName: "X", password: "12345678" })).toMatch(/token/i);
+    expect(validateAcceptInviteForm({ token: "tok", fullName: "  ", password: "12345678" })).toMatch(/nombre/i);
+    expect(validateAcceptInviteForm({ token: "tok", fullName: "X", password: "corta" })).toMatch(/8 caracteres/i);
+    expect(validateAcceptInviteForm({ token: "tok", fullName: "X", password: "12345678" })).toBeNull();
+  });
+});
+
+describe("acceptInvite", () => {
+  it("llama POST /auth/accept-invite con el body correcto y devuelve la sesión ya autenticada", async () => {
+    const session: LoginSession = {
+      token: "t",
+      refreshToken: "r",
+      email: "invitado@x.mx",
+      organizations: [{ id: "1", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "repartidor" }],
+    };
+    const fetchImpl = fakeFetch(200, session);
+    const result = await acceptInvite(fetchImpl, "http://api.local", { token: "  el-token  ", fullName: "  Invitado Real  ", password: "correcto-caballo-batería" });
+    expect(result).toEqual(session);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://api.local/auth/accept-invite",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ token: "el-token", fullName: "Invitado Real", password: "correcto-caballo-batería" }) }),
+    );
+  });
+
+  it("token inválido/expirado/ya usado (400 del servidor) -> mensaje real propagado", async () => {
+    const fetchImpl = fakeFetch(400, { code: "staff_invite_token_invalido", message: "La invitación es inválida, ya fue usada/revocada, o expiró." });
+    await expect(acceptInvite(fetchImpl, "http://api.local", { token: "x", fullName: "X", password: "12345678" })).rejects.toThrow(
+      "La invitación es inválida, ya fue usada/revocada, o expiró.",
+    );
+  });
+
+  it("nunca llama a fetch si la validación local ya falla (contraseña corta)", async () => {
+    const fetchImpl = fakeFetch(200, {});
+    await expect(acceptInvite(fetchImpl, "http://api.local", { token: "x", fullName: "X", password: "corta" })).rejects.toThrow(LoginError);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 

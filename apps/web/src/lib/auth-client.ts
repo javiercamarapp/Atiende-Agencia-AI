@@ -23,6 +23,48 @@ export interface LoginSession {
 
 export class LoginError extends Error {}
 
+/** Fase 14 — hallazgo de auditoría (severidad ALTA, "Invitaciones de staff sin
+ * ninguna UI"): cliente real de `POST /auth/accept-invite` (ver
+ * `apps/api/src/routes/auth.ts`) — mismo motivo que el resto de este archivo (login/
+ * logout): aceptar una invitación es JWT propio genérico a las 6 verticales, no una
+ * acción de negocio de restaurantes (aunque restaurantes sea, por ahora, la única
+ * vertical que expone crear invitaciones — ver el comentario de cabecera de
+ * `verticals/restaurantes/lib/admin-staff.ts`). Vive junto a `login` porque devuelve
+ * exactamente la misma forma de sesión (`issueSession` del lado del servidor es
+ * literalmente el mismo helper para login/refresh/accept-invite). */
+export interface AcceptInviteInput {
+  readonly token: string;
+  readonly fullName: string;
+  readonly password: string;
+}
+
+export function validateAcceptInviteForm(input: AcceptInviteInput): string | null {
+  if (!input.token.trim()) return "Pega el token de invitación que te compartieron.";
+  if (!input.fullName.trim()) return "Escribe tu nombre completo.";
+  if (input.password.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
+  return null;
+}
+
+/** `fetchImpl` inyectado (nunca `globalThis.fetch` directo) — mismo criterio que
+ * `login` de arriba, para poder probar la lógica real de red con vitest sin DOM. */
+export async function acceptInvite(fetchImpl: typeof fetch, apiBaseUrl: string, input: AcceptInviteInput): Promise<LoginSession> {
+  const validationError = validateAcceptInviteForm(input);
+  if (validationError) throw new LoginError(validationError);
+
+  const res = await fetchImpl(`${apiBaseUrl}/auth/accept-invite`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: input.token.trim(), fullName: input.fullName.trim(), password: input.password }),
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new LoginError(body?.message ?? "No se pudo aceptar la invitación. Verifica el token e intenta de nuevo.");
+  }
+
+  return (await res.json()) as LoginSession;
+}
+
 export function validateLoginForm(email: string, password: string): string | null {
   if (!email.trim()) return "Escribe tu correo.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Ese correo no parece válido.";

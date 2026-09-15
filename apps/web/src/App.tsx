@@ -12,16 +12,21 @@ import { PedidosPage } from "./verticals/restaurantes/pages/Pedidos.tsx";
 import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
 import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
 import { RepartidorPedidosPage } from "./verticals/restaurantes/pages/Repartidor.tsx";
+import { StaffPage } from "./verticals/restaurantes/pages/Staff.tsx";
+import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
 import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
+import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
+import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
 import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
 import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
 import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages/Calendario.tsx";
+import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Precios.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -36,6 +41,7 @@ import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx"
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
+import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
 import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
@@ -137,6 +143,32 @@ function RestaurantesClienteFichaRoute() {
   );
 }
 
+function RestaurantesStaffRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <StaffPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
+/** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
+ * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
+ * que `*LoginRoute` de abajo (esta página tampoco puede adivinar por sí sola a qué
+ * vertical navegar después de aceptar — usa el `vertical` real de la organización
+ * que la sesión aceptada ya trae, ver decideLandingPathForInvite). */
+function AceptarInvitacionRoute() {
+  const navigate = useNavigate();
+  return (
+    <AceptarInvitacionPage
+      apiBaseUrl={API_BASE_URL}
+      onAccepted={(session, landingPath) => navigate(landingPath, { state: { session, vertical: session.organizations[0]?.vertical, email: session.email } })}
+    />
+  );
+}
+
 function HotelesLoginRoute() {
   const navigate = useNavigate();
   return (
@@ -202,6 +234,28 @@ function HotelesFraudeRoute() {
   );
 }
 
+function HotelesCfdiListadoRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesCfdiListadoPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
+function HotelesFolioCfdiRoute() {
+  const navigate = useNavigate();
+  const { orgSlug, folioId } = useParams<{ orgSlug: string; folioId: string }>();
+  if (!orgSlug || !folioId) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesCfdiPage {...ctx} folioId={folioId} />}
+    </HotelesShell>
+  );
+}
+
 function RentasLoginRoute() {
   const navigate = useNavigate();
   return (
@@ -242,6 +296,19 @@ function RentasCalendarioRoute() {
   return (
     <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
       {(ctx) => <RentasCalendarioPage {...ctx} />}
+    </RentasShell>
+  );
+}
+
+/** Cotizador + configuración de pricing (Fase 14) — mismo patrón de ruta hija que
+ * RentasCalendarioRoute. */
+function RentasPreciosRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasPreciosPage {...ctx} />}
     </RentasShell>
   );
 }
@@ -409,6 +476,17 @@ function LicitacionesConvocatoriaDetalleRoute() {
   );
 }
 
+function LicitacionesRequisitosRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <RequisitosConvocatoriaPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 function LicitacionesPerfilMatchingRoute() {
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -512,15 +590,22 @@ export function App() {
             roles.ts::REPARTIDOR_ROLES), deliberadamente FUERA del nav de
             RestaurantesShell (ver comentario de cabecera de Repartidor.tsx). */}
         <Route path="/restaurantes/:orgSlug/repartidor" element={<RepartidorPedidosPage />} />
+        <Route path="/restaurantes/:orgSlug/staff" element={<RestaurantesStaffRoute />} />
+        {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
+            AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
+        <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesRootRedirect />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
         <Route path="/hoteles/:orgSlug/folios/:folioId" element={<HotelesFolioRoute />} />
+        <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />
         <Route path="/hoteles/:orgSlug/mantenimiento" element={<HotelesMantenimientoRoute />} />
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
+        <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
+        <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
@@ -538,6 +623,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/requisitos" element={<LicitacionesRequisitosRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />

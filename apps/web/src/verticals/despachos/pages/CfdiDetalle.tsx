@@ -5,8 +5,15 @@ import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { fetchInvoice } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
+import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
+import type { RevisionCfdi } from "../lib/revisiones-client.ts";
 import { formatDate, formatMoney } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
+
+// Mismo criterio que en Cfdi.tsx: espejo cosmético de RESOLVER_REVISION_ROLES
+// (@atiende/domain-despachos/src/roles.ts) -- el enforcement real vive en
+// revisiones.ts (assertVerticalRole), server-side.
+const RESOLVER_ROLES = new Set(["admin", "contador"]);
 
 const CATEGORIA_LABELS: Record<InvoiceSummary["categoria"], string> = {
   gasto_operativo: "Gasto operativo",
@@ -26,11 +33,23 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug }: DespachosShellContext) {
+export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const [invoice, setInvoice] = useState<InvoiceSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Hallazgo de auditoría severidad ALTA: el backend de revisiones
+  // (GET/POST .../revisiones*, revisiones.ts) existía completo pero esta pantalla
+  // solo pintaba el texto estático "Requiere revisión humana", sin cliente ni
+  // botón. `GET .../revisiones` solo trae las PENDIENTES (repo.listPendingReviews,
+  // sin filtro de estado) -- no hay endpoint para revisiones ya resueltas salvo por
+  // id conocido, así que "no aparece en la cola" se interpreta como "ya resuelta".
+  const [revision, setRevision] = useState<RevisionCfdi | null>(null);
+  const [revisionLoading, setRevisionLoading] = useState(false);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
+  const [nota, setNota] = useState("");
+  const [resolviendo, setResolviendo] = useState(false);
 
   useEffect(() => {
     if (!invoiceId) return;
@@ -52,6 +71,41 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug }: Desp
     };
   }, [apiBaseUrl, token, propertyId, invoiceId]);
 
+  async function loadRevision() {
+    if (!invoiceId) return;
+    setRevisionLoading(true);
+    setRevisionError(null);
+    try {
+      const pendientes = await fetchRevisionesPendientes(fetch, apiBaseUrl, token, propertyId);
+      setRevision(pendientes.find((r) => r.invoiceId === invoiceId) ?? null);
+    } catch (err) {
+      setRevisionError(err instanceof Error ? err.message : "No se pudo cargar el estado de revisión.");
+    } finally {
+      setRevisionLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadRevision();
+  }, [apiBaseUrl, token, propertyId, invoiceId]);
+
+  async function handleResolver(decision: "aprobar" | "rechazar") {
+    if (!revision) return;
+    setResolviendo(true);
+    setRevisionError(null);
+    try {
+      const notaTrim = nota.trim() || undefined;
+      if (decision === "aprobar") await aprobarRevision(fetch, apiBaseUrl, token, propertyId, revision.id, notaTrim);
+      else await rechazarRevision(fetch, apiBaseUrl, token, propertyId, revision.id, notaTrim);
+      setNota("");
+      await loadRevision();
+    } catch (err) {
+      setRevisionError(err instanceof Error ? err.message : "No se pudo resolver la revisión.");
+    } finally {
+      setResolviendo(false);
+    }
+  }
+
   if (!invoiceId) return <p role="alert">CFDI no especificado.</p>;
   if (loading && !invoice) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
   if (error) return <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>;
@@ -71,6 +125,58 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug }: Desp
           {invoice.valido ? "Válido" : "Con hallazgos"} {invoice.requiereRevisionHumana && "· Requiere revisión humana"}
         </p>
       </header>
+
+      {invoice.requiereRevisionHumana && (
+        <div style={{ border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          <h2 style={{ fontSize: 14, margin: 0, color: "#991b1b" }}>Revisión humana</h2>
+
+          {revisionError && (
+            <p role="alert" style={{ fontSize: 13, color: "#b91c1c", margin: 0 }}>
+              {revisionError}
+            </p>
+          )}
+          {revisionLoading && !revision && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Cargando estado de revisión…</p>}
+
+          {!revisionLoading && !revision && !revisionError && <p style={{ fontSize: 13, color: "#166534", margin: 0 }}>Esta revisión ya fue resuelta (aprobada o rechazada).</p>}
+
+          {revision && (
+            <>
+              <p style={{ fontSize: 13, color: "#374151", margin: 0 }}>{revision.motivo}</p>
+              {RESOLVER_ROLES.has(role) ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <textarea
+                    placeholder="Nota de la decisión (opcional)"
+                    value={nota}
+                    onChange={(e) => setNota(e.target.value)}
+                    rows={2}
+                    style={{ padding: 8, borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, resize: "vertical", fontFamily: "inherit" }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleResolver("aprobar")}
+                      disabled={resolviendo}
+                      style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #166534", background: "#dcfce7", color: "#166534", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+                    >
+                      {resolviendo ? "…" : "Aprobar"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleResolver("rechazar")}
+                      disabled={resolviendo}
+                      style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fee2e2", color: "#b91c1c", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+                    >
+                      {resolviendo ? "…" : "Rechazar"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol no puede resolver revisiones (solo admin/contador).</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
         <Field label="RFC emisor" value={invoice.rfcEmisor} />

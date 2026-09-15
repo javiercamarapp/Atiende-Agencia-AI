@@ -58,3 +58,37 @@ export const COMPLIANCE_RESULT_LABELS: Record<string, string> = {
 export function formatComplianceResult(result: string): string {
   return COMPLIANCE_RESULT_LABELS[result] ?? result;
 }
+
+export const REQUIREMENT_KIND_LABELS: Record<string, string> = {
+  tecnico: "Técnico",
+  economico: "Económico",
+  legal: "Legal",
+  administrativo: "Administrativo",
+  anexo: "Anexo",
+};
+
+export function formatRequirementKind(kind: string): string {
+  return REQUIREMENT_KIND_LABELS[kind] ?? kind;
+}
+
+export const OBLIGATORIEDAD_LABELS: Record<string, string> = {
+  obligatorio: "Obligatorio",
+  opcional: "Opcional",
+  condicional: "Condicional",
+};
+
+export function formatObligatoriedad(value: string): string {
+  return OBLIGATORIEDAD_LABELS[value] ?? value;
+}
+
+export const REQUIREMENT_STATUS_LABELS: Record<string, string> = {
+  pendiente: "Pendiente",
+  en_progreso: "En progreso",
+  cumplido: "Cumplido",
+  bloqueado: "Bloqueado",
+  no_evaluable: "No evaluable",
+};
+
+export function formatRequirementStatus(status: string): string {
+  return REQUIREMENT_STATUS_LABELS[status] ?? status;
+}

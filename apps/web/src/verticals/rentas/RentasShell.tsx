@@ -15,6 +15,9 @@
 // Fase 13 -- agrega el link de nav real a Calendario (NAV_ITEMS/NavLink, mismo
 // patrón que HotelesShell.tsx): hasta esta fase la nav solo tenía un párrafo
 // estático "Resumen" sin ningún link real porque Dashboard era la única página hija.
+//
+// Fase 14 -- agrega el link de nav a Precios (cotizador + configuración de pricing,
+// ver pages/Precios.tsx): mismo patrón, un renglón más en NAV_ITEMS.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -28,6 +31,7 @@ import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "", label: "Resumen" },
   { to: "calendario", label: "Calendario" },
+  { to: "precios", label: "Precios" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
