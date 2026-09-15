@@ -4,6 +4,7 @@
 import type { ClosePeriodStatus, TaskCategory, TaskStatus } from "./cierre-mensual-client.ts";
 import type { EstadoVencimiento, PrioridadVencimiento } from "./vencimientos-client.ts";
 import type { DiotTipoOperacion, TablaAplicadaIsr } from "./declaraciones-client.ts";
+import type { EstadoMapeoMigracion, TipoMatchMigracion } from "./migracion-catalogo-client.ts";
 
 const MXN_FORMATTER = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 
@@ -80,6 +81,28 @@ const DIOT_TIPO_OPERACION_LABELS: Record<DiotTipoOperacion, string> = {
 
 export function formatDiotTipoOperacion(tipo: DiotTipoOperacion): string {
   return DIOT_TIPO_OPERACION_LABELS[tipo] ?? tipo;
+}
+
+const TIPO_MATCH_MIGRACION_LABELS: Record<TipoMatchMigracion, string> = {
+  exacto: "Exacto",
+  alerta_riesgo: "Alerta de riesgo",
+  fuzzy: "Aproximado",
+  sin_match: "Sin match",
+};
+
+export function formatTipoMatchMigracion(tipo: TipoMatchMigracion): string {
+  return TIPO_MATCH_MIGRACION_LABELS[tipo] ?? tipo;
+}
+
+const ESTADO_MAPEO_MIGRACION_LABELS: Record<EstadoMapeoMigracion, string> = {
+  pendiente: "Pendiente",
+  aprobado: "Aprobado",
+  rechazado: "Rechazado",
+  editado: "Editado",
+};
+
+export function formatEstadoMapeoMigracion(estado: EstadoMapeoMigracion): string {
+  return ESTADO_MAPEO_MIGRACION_LABELS[estado] ?? estado;
 }
 
 export function formatDateTime(iso: string | null): string {
