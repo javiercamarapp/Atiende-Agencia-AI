@@ -63,6 +63,7 @@ import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
 import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
 import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
 import { NominaPage } from "./verticals/despachos/pages/Nomina.tsx";
+import { ConciliacionPage } from "./verticals/despachos/pages/Conciliacion.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -759,6 +760,17 @@ function DespachosNominaRoute() {
   );
 }
 
+function DespachosConciliacionRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <ConciliacionPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -829,6 +841,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/vencimientos" element={<DespachosVencimientosRoute />} />
         <Route path="/despachos/:orgSlug/declaraciones" element={<DespachosDeclaracionesRoute />} />
         <Route path="/despachos/:orgSlug/nomina" element={<DespachosNominaRoute />} />
+        <Route path="/despachos/:orgSlug/conciliacion" element={<DespachosConciliacionRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>
