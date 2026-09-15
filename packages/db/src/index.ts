@@ -5,6 +5,7 @@ export type {
   StaffUserRow,
   MembershipRow,
   OrganizationMemberRow,
+  OrganizationMemberWithRoleRow,
   StaffInviteRow,
   StaffInviteStatus,
   CreateStaffInviteInput,
@@ -12,7 +13,7 @@ export type {
   AcceptStaffInviteResult,
   RevokeRefreshTokenInput,
 } from "./core-repository.ts";
-export { StaffInviteInvalidError } from "./core-repository.ts";
+export { StaffInviteInvalidError, MembershipRoleUpdateError } from "./core-repository.ts";
 export { InMemoryCoreRepository } from "./in-memory-core-repository.ts";
 export type { SeedOrganization, SeedMembership } from "./in-memory-core-repository.ts";
 export { PostgresCoreRepository } from "./postgres-core-repository.ts";

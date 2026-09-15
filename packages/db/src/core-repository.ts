@@ -110,6 +110,26 @@ export interface OrganizationMemberRow {
   readonly propertyIds: readonly string[] | null;
 }
 
+/** Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+ *  restaurantes permite gestionar roles desde el producto"): verificado contra el
+ *  código real que ni siquiera restaurantes podía cambiar el rol de un staff YA
+ *  ACEPTADO (`admin-staff.ts` solo fija el rol AL INVITAR) — fila de un miembro ya
+ *  aceptado CON su rol actual, para la tabla nueva del panel ("Staff activo") y
+ *  para devolver el resultado real de `updateMemberVerticalRole`. Distinta de
+ *  `OrganizationMemberRow` (Fase 12, deliberadamente sin rol — ese selector ya
+ *  conoce el rol, lo pidió como filtro) — aquí el rol ES el dato que la UI necesita
+ *  mostrar/editar. */
+export interface OrganizationMemberWithRoleRow {
+  readonly userId: string;
+  readonly email: string;
+  readonly fullName: string;
+  readonly platformRole: "owner" | "admin" | "member" | "viewer";
+  readonly verticalRole: string;
+  /** null = acceso a TODAS las properties de la organización, misma semántica que
+   *  `MembershipRow.propertyIds`. */
+  readonly propertyIds: readonly string[] | null;
+}
+
 export interface CreateStaffInviteInput {
   readonly email: string;
   readonly organizationId: string;
@@ -225,6 +245,32 @@ export interface CoreStaffRepository {
    *  (`core.membership`), nunca invitaciones pendientes — un `pending` no es staff
    *  real todavía, no puede recibir un pedido despachado. */
   listMembersByVerticalRole(organizationId: string, verticalRole: string): Promise<readonly OrganizationMemberRow[]>;
+  /** Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+   *  restaurantes permite gestionar roles desde el producto"): TODOS los miembros ya
+   *  ACEPTADOS de la organización (con su rol actual), para poblar la tabla "Staff
+   *  activo" del panel — generaliza `listMembersByVerticalRole` sin el filtro de
+   *  `verticalRole`. Mismo criterio de sesión REAL por-request (nunca
+   *  `CoreRepository`) que esa función — ver `postgres-core-repository.ts` para el
+   *  porqué (RLS de `core.membership` restringe SELECT a la fila propia; la función
+   *  SQL `security definer` es la única forma de ver a un COMPAÑERO). */
+  listOrgMembers(organizationId: string): Promise<readonly OrganizationMemberWithRoleRow[]>;
+  /** Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA): cambia el rol
+   *  (`platformRole` + `verticalRole`) de un staff YA ACEPTADO de la organización —
+   *  el hueco real que el hallazgo señalaba (ver el comentario de cabecera de la
+   *  migración `0007_update_membership_role.sql`). Lanza `MembershipRoleUpdateError`
+   *  si el caller no tiene autoridad suficiente (no es admin/owner, intenta tocar a
+   *  alguien de más alcance, intenta ascender por encima de su propio rango, o
+   *  intenta cambiar su PROPIO rol — bloqueado siempre, ver la migración), o si
+   *  `targetUserId` no pertenece a esta organización. El caller ya validó que
+   *  `newVerticalRole` es un valor válido PARA SU vertical (mismo criterio que
+   *  `createStaffInvite`/`isRestaurantesRole`) antes de llamar — este método no
+   *  conoce el string concreto, igual que el resto de `core`. */
+  updateMemberVerticalRole(
+    organizationId: string,
+    targetUserId: string,
+    newPlatformRole: "owner" | "admin" | "member" | "viewer",
+    newVerticalRole: string,
+  ): Promise<OrganizationMemberWithRoleRow>;
 }
 
 /** Lanzado por `acceptStaffInvite` cuando el token no existe, ya no está pendiente, o
@@ -236,5 +282,18 @@ export class StaffInviteInvalidError extends Error {
   constructor() {
     super("La invitación es inválida, ya fue usada/revocada, o expiró.");
     this.name = "StaffInviteInvalidError";
+  }
+}
+
+/** Lanzado por `updateMemberVerticalRole` — a diferencia de `StaffInviteInvalidError`
+ *  (un solo mensaje genérico a propósito, para no filtrarle detalle a un atacante),
+ *  aquí SÍ se preserva el mensaje real: ningún caso (rango insuficiente, auto-cambio
+ *  de rol, target ajeno a la organización) es sensible de ocultar — son las mismas
+ *  razones que ya explica `canInviteStaff`/`STAFF_INVITE_ROLES` al invitar, y verlas
+ *  tal cual ayuda a quien intenta usar el selector a entender por qué falló. */
+export class MembershipRoleUpdateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MembershipRoleUpdateError";
   }
 }

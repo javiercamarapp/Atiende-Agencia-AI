@@ -22,7 +22,8 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { canInviteStaff } from "@atiende/core-authz";
 import type { PlatformRole } from "@atiende/core-tenancy";
 import { correoInvitacionStaff, isLicitacionesRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-licitaciones";
-import type { StaffInviteRow } from "@atiende/db";
+import { MembershipRoleUpdateError } from "@atiende/db";
+import type { OrganizationMemberWithRoleRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -50,13 +51,39 @@ function serializeInvite(invite: StaffInviteRow) {
   };
 }
 
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): mismo hueco real que
+// restaurantes tenía antes de esta pasada (ver
+// packages/db/migrations/0007_update_membership_role.sql para el hallazgo
+// completo) — `POST collectionPath` de arriba solo fija el rol AL INVITAR, ningún
+// endpoint cambiaba el de un staff YA ACEPTADO. Port EXACTO de
+// restaurantes/admin-staff.ts (leído primero como plantilla) sobre
+// `LICITACIONES_ROLES`/`isLicitacionesRole` en vez de las de restaurantes.
+function serializeMemberWithRole(member: OrganizationMemberWithRoleRow) {
+  return {
+    id: member.userId,
+    email: member.email,
+    fullName: member.fullName,
+    verticalRole: member.verticalRole,
+    propertyIds: member.propertyIds,
+  };
+}
+
+interface UpdateMemberRoleBody {
+  readonly verticalRole?: unknown;
+}
+
 export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   const collectionPath = "/v1/licitaciones/:propertyId/admin/staff/invitaciones";
   const itemPath = "/v1/licitaciones/:propertyId/admin/staff/invitaciones/:inviteId";
+  const miembrosPath = "/v1/licitaciones/:propertyId/admin/staff/miembros";
+  const miembroItemPath = "/v1/licitaciones/:propertyId/admin/staff/miembros/:userId";
 
   app.use(collectionPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(itemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(miembrosPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(miembroItemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.post(collectionPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
@@ -154,6 +181,51 @@ export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
     if (!revoked) throw Errors.notFound("Invitación no encontrada, ya fue usada, o ya estaba revocada.");
     return c.json({ ok: true });
+  });
+
+  app.get(miembrosPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(organizationId);
+    return c.json({ miembros: members.map(serializeMemberWithRole) });
+  });
+
+  // Cambia el `verticalRole`/`platformRole` de un staff YA ACEPTADO — mismas dos
+  // capas de autorización que `POST collectionPath` (invitar): `assertVerticalRole`
+  // + `canInviteStaff` aplicado dos veces (rol actual del target y rol nuevo). La
+  // AUTORIDAD real es `core.update_membership_role` (`security definer`, ver la
+  // migración) — ver el comentario completo en restaurantes/admin-staff.ts.
+  app.patch(miembroItemPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const callerUserId = c.get("userId");
+    const targetUserId = c.req.param("userId");
+
+    if (targetUserId === callerUserId) throw Errors.validation("No puedes cambiar tu propio rol.");
+
+    const raw = await readJsonCapped<UpdateMemberRoleBody>(c.req.raw, 1 * 1024);
+    if (typeof raw.verticalRole !== "string" || !isLicitacionesRole(raw.verticalRole)) {
+      throw Errors.validation("verticalRole inválido — se esperaba uno de: owner, admin, analyst, writer, reviewer, viewer.");
+    }
+    const newVerticalRole = raw.verticalRole;
+    const newPlatformRole: PlatformRole = PLATFORM_ROLE_BY_VERTICAL_ROLE[newVerticalRole];
+
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(organizationId);
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw Errors.notFound("Ese staff no pertenece a esta organización.");
+
+    const callerPlatformRole = c.get("platformRole");
+    if (!callerPlatformRole || !canInviteStaff(callerPlatformRole, target.platformRole) || !canInviteStaff(callerPlatformRole, newPlatformRole)) {
+      throw Errors.staffRoleChangeRolInsuficiente();
+    }
+
+    try {
+      const updated = await deps.coreStaffRepo(c.get("db")).updateMemberVerticalRole(organizationId, targetUserId, newPlatformRole, newVerticalRole);
+      return c.json(serializeMemberWithRole(updated));
+    } catch (err) {
+      if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);
+      throw err;
+    }
   });
 
   return app;

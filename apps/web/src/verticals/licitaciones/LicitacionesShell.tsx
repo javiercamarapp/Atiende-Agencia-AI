@@ -43,6 +43,14 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "datos-empresa", label: "Datos de la empresa" },
 ];
 
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): mismo `STAFF_INVITE_ROLES`
+// que domain-licitaciones/src/roles.ts (duplicado aquí a propósito, ver el
+// comentario de `role` de `LicitacionesShellContext`) — solo oculta el link
+// "Staff" del nav para quien el servidor rechazaría de todas formas (403 en
+// admin-staff.ts), nunca la única barrera.
+const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
+
 const linkStyle = (isActive: boolean): CSSProperties => ({
   display: "block",
   padding: "8px 12px",
@@ -179,6 +187,14 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
             {item.label}
           </NavLink>
         ))}
+        {/* Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+            restaurantes permite gestionar roles desde el producto"): ver
+            STAFF_NAV_ROLES arriba. */}
+        {STAFF_NAV_ROLES.has(role) && (
+          <NavLink to={`/licitaciones/${orgSlug}/staff`} style={({ isActive }) => linkStyle(isActive)}>
+            Staff
+          </NavLink>
+        )}
         <p style={{ fontSize: 11, color: "#9ca3af", margin: "16px 0 0" }}>Rol: {role}</p>
         <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}

@@ -125,6 +125,21 @@ export async function patchJson<T>(
   return (await res.json()) as T;
 }
 
+// Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+// restaurantes permite gestionar roles desde el producto"): licitaciones tenía
+// `admin-staff.ts` (POST/GET/DELETE invitaciones) construido desde una fase
+// anterior pero NUNCA expuesto en ningún panel — este archivo no tenía `deleteJson`
+// porque nada lo necesitaba todavía. Mismo `deleteJson` que ya usan
+// restaurantes/despachos/citas (leídos primero como plantilla).
+export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new LicitacionesAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
 export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string): Promise<readonly BranchOption[]> {
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${orgSlug}/admin/branches`, token);
   return body.branches;

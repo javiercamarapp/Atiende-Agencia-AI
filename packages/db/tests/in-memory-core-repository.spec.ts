@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryCoreRepository } from "../src/in-memory-core-repository.ts";
-import { StaffInviteInvalidError } from "../src/core-repository.ts";
+import { MembershipRoleUpdateError, StaffInviteInvalidError } from "../src/core-repository.ts";
 
 describe("InMemoryCoreRepository", () => {
   it("resuelve staff por email y por id, null si no existe", async () => {
@@ -253,6 +253,54 @@ describe("InMemoryCoreRepository — invitación de staff (Fase 10)", () => {
     });
 
     expect(await repo.listMembersByVerticalRole("org-1", "repartidor")).toEqual([]);
+  });
+
+  // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
+  // restaurantes permite gestionar roles desde el producto"): a diferencia de
+  // `listMembersByVerticalRole` (filtra por un `verticalRole` exacto), esto trae
+  // TODOS los miembros ya aceptados de la organización con su rol actual -- la
+  // tabla nueva "Staff activo" del panel.
+  it("listOrgMembers trae TODOS los miembros ya aceptados de la organización (sin filtro de rol), ordenados por nombre", async () => {
+    const repo = new InMemoryCoreRepository();
+    repo.addOrganization({ id: "org-1", slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
+    repo.addOrganization({ id: "org-2", slug: "otro", name: "Otro Restaurante", vertical: "restaurantes" });
+    seedOwner(repo);
+    repo.addStaff({ id: "rep-1", email: "rep1@x.mx", fullName: "Ana Repartidora", passwordHash: "h", createdVia: "invite", emailVerifiedAt: "2026-01-01T00:00:00.000Z" });
+    repo.addMembership({ userId: "rep-1", organizationId: "org-1", platformRole: "member", verticalRole: "repartidor", propertyIds: ["prop-1"] });
+    repo.addStaff({ id: "de-otra-org", email: "otra@x.mx", fullName: "De Otra Organización", passwordHash: "h", createdVia: "seed", emailVerifiedAt: null });
+    repo.addMembership({ userId: "de-otra-org", organizationId: "org-2", platformRole: "owner", verticalRole: "owner", propertyIds: null });
+
+    const miembros = await repo.listOrgMembers("org-1");
+    expect(miembros.map((m) => m.userId)).toEqual(["rep-1", "owner-1"]); // orden alfabético: "Ana Repartidora" < "Dueño"
+    expect(miembros.find((m) => m.userId === "owner-1")).toMatchObject({ platformRole: "owner", verticalRole: "owner" });
+    expect(miembros.find((m) => m.userId === "rep-1")).toMatchObject({ platformRole: "member", verticalRole: "repartidor", propertyIds: ["prop-1"] });
+    expect(miembros.map((m) => m.userId)).not.toContain("de-otra-org");
+  });
+
+  it("updateMemberVerticalRole cambia platformRole+verticalRole y el cambio persiste en listOrgMembers", async () => {
+    const repo = new InMemoryCoreRepository();
+    seedOwner(repo);
+    repo.addStaff({ id: "staff-1", email: "staff@x.mx", fullName: "Staff Uno", passwordHash: "h", createdVia: "seed", emailVerifiedAt: null });
+    repo.addMembership({ userId: "staff-1", organizationId: "org-1", platformRole: "member", verticalRole: "staff", propertyIds: null });
+
+    const result = await repo.updateMemberVerticalRole("org-1", "staff-1", "admin", "admin");
+    expect(result).toMatchObject({ userId: "staff-1", platformRole: "admin", verticalRole: "admin" });
+
+    const miembros = await repo.listOrgMembers("org-1");
+    expect(miembros.find((m) => m.userId === "staff-1")).toMatchObject({ platformRole: "admin", verticalRole: "admin" });
+  });
+
+  it("updateMemberVerticalRole lanza MembershipRoleUpdateError si el target no pertenece a esa organización", async () => {
+    const repo = new InMemoryCoreRepository();
+    repo.addOrganization({ id: "org-1", slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
+    repo.addOrganization({ id: "org-2", slug: "otro", name: "Otro Restaurante", vertical: "restaurantes" });
+    seedOwner(repo);
+    repo.addStaff({ id: "de-otra-org", email: "otra@x.mx", fullName: "De Otra Organización", passwordHash: "h", createdVia: "seed", emailVerifiedAt: null });
+    repo.addMembership({ userId: "de-otra-org", organizationId: "org-2", platformRole: "owner", verticalRole: "owner", propertyIds: null });
+
+    await expect(repo.updateMemberVerticalRole("org-1", "de-otra-org", "admin", "admin")).rejects.toThrow(MembershipRoleUpdateError);
+    // Nunca se filtró/tocó la membership de la otra organización.
+    expect((await repo.listOrgMembers("org-2")).find((m) => m.userId === "de-otra-org")?.verticalRole).toBe("owner");
   });
 
   it("revokeStaffInvite marca 'revoked' y ya no aparece en listPendingStaffInvites; devuelve false si no existe/no es de esa org", async () => {
