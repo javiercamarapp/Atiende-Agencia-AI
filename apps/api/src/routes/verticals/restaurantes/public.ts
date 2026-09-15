@@ -34,6 +34,10 @@ interface CreateOrderBody {
   readonly customer_name?: unknown;
   readonly customer_phone?: unknown;
   readonly customer_address?: unknown;
+  /** Fase de correo — ver migrations/011_email_outbox_dispatch.sql: solo el
+   * canal `web` (este handler) puede capturarlo hoy; la Server Tool de voz
+   * (más abajo) no expone este campo todavía. */
+  readonly customer_email?: unknown;
   readonly items?: readonly CreateOrderItemBody[];
   readonly source?: unknown;
   readonly notes?: unknown;
@@ -55,6 +59,7 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
     customerName: typeof body.customer_name === "string" ? body.customer_name : "",
     customerPhone: typeof body.customer_phone === "string" ? body.customer_phone : "",
     customerAddress: typeof body.customer_address === "string" ? body.customer_address : undefined,
+    customerEmail: typeof body.customer_email === "string" ? body.customer_email : undefined,
     items: Array.isArray(body.items)
       ? body.items.map((item) => ({
           productId: typeof item.product_id === "string" ? item.product_id : undefined,

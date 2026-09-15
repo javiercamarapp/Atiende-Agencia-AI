@@ -9,6 +9,7 @@ import { createOrder } from "../src/orders.ts";
 import { changeAssignedOrderStatus, changeOrderStatus } from "../src/order-lifecycle.ts";
 import {
   notifyCustomerOnOrderStatusChangeCore,
+  notifyCustomerOrderConfirmationEmailCore,
   notifyStaffNewOrderCore,
   notifyStaffOrderProblemCore,
   notifyStaffRepartidorAssignedCore,
@@ -231,5 +232,50 @@ describe("listStaffOrderNotifications / acknowledgeStaffOrderNotification", () =
   it("reconocer un id inexistente lanza (nunca silencioso)", async () => {
     const fixture = buildRestaurantFixture();
     await expect(fixture.repo.acknowledgeStaffOrderNotification(fixture.organizationId, randomUUID(), "actor-1")).rejects.toThrow(/no encontrada/);
+  });
+});
+
+// Hallazgo de auditoría (severidad MEDIA, "restaurantes no envía ningún correo:
+// sin plantilla, sin dispatcher, sin remitente — solo WhatsApp"): confirmación de
+// pedido por correo REAL cuando el cliente deja un correo (ver
+// migrations/011_email_outbox_dispatch.sql, orders.ts::createOrder).
+describe("notifyCustomerOrderConfirmationEmailCore", () => {
+  it("sin correo del cliente, no encola nada (el WhatsApp de siempre ya lo cubre)", async () => {
+    const fixture = buildRestaurantFixture();
+    const order = await seedOrder(fixture); // sin customerEmail
+    const result = await notifyCustomerOrderConfirmationEmailCore(fixture.repo, order);
+    expect(result).toEqual({ enqueued: false, reason: "no_email" });
+    expect(fixture.repo.getOutbox().filter((o) => o.channel === "email")).toHaveLength(0);
+  });
+
+  it("con correo real del cliente, encola channel='email' con to/subject/html/text reales del pedido", async () => {
+    const fixture = buildRestaurantFixture();
+    const order = await seedOrder(fixture, { customerEmail: "cliente@example.com" });
+    const result = await notifyCustomerOrderConfirmationEmailCore(fixture.repo, order);
+    expect(result).toEqual({ enqueued: true });
+
+    const job = fixture.repo.getOutbox().find((o) => o.channel === "email" && o.eventType === "order.created.email");
+    expect(job).toBeDefined();
+    const payload = job!.payload as { to: string; subject: string; html: string; text: string };
+    expect(payload.to).toBe("cliente@example.com");
+    expect(payload.subject).toContain("Pedido confirmado");
+    expect(payload.html).toContain("Deb"); // customerName del fixture, escapado en el HTML
+    expect(payload.text).toContain("Coca-Cola");
+  });
+
+  it("createOrder (el flujo real) encola el correo automáticamente cuando el pedido trae customerEmail — sin llamada extra del caller", async () => {
+    const fixture = buildRestaurantFixture();
+    const order = await seedOrder(fixture, { customerEmail: "auto@example.com" });
+    expect(order.customerEmail).toBe("auto@example.com");
+    const job = fixture.repo.getOutbox().find((o) => o.channel === "email" && o.dedupeKey === `order-confirmation:${order.id}`);
+    expect(job).toBeDefined();
+  });
+
+  it("dedupeKey fijo por pedido — un reintento del mismo evento nunca duplica la fila", async () => {
+    const fixture = buildRestaurantFixture();
+    const order = await seedOrder(fixture, { customerEmail: "dup@example.com" });
+    await notifyCustomerOrderConfirmationEmailCore(fixture.repo, order); // createOrder ya encoló una vez; esto es un segundo intento real
+    const jobs = fixture.repo.getOutbox().filter((o) => o.channel === "email" && o.eventType === "order.created.email");
+    expect(jobs).toHaveLength(1);
   });
 });

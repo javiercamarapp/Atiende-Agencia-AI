@@ -51,6 +51,12 @@ export interface NewOrderRecord {
   readonly customerName: string;
   readonly customerPhone: string;
   readonly customerAddress: string | null;
+  /** Fase de correo — ver migrations/011_email_outbox_dispatch.sql: solo el
+   * canal `web` lo captura hoy (validateCreateOrderPayload en orders.ts); voz/
+   * WhatsApp siguen sin capturarlo, `null` en ese caso, sin que eso rompa nada
+   * (el correo de confirmación simplemente no se encola, ver
+   * order-notifications.ts::notifyCustomerOrderConfirmationEmailCore). */
+  readonly customerEmail: string | null;
   readonly branch: string | null;
   readonly total: number;
   readonly items: readonly PersistedOrderItem[];
@@ -223,6 +229,10 @@ export interface RestaurantesRepository {
   markMessagingOutboxSent(id: string): Promise<void>;
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
+  // ---- Dispatcher real de correo (migrations/011_email_outbox_dispatch.sql) —
+  // acotado a channel='email', ver EmailOutboxJobRow arriba. ----
+  claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
+  completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
   /** Único `phone_number_id` real conectado de la organización (ver
    * `restaurantes.whatsapp_channel_config`, migrations/001) — a diferencia de
    * `resolveOrganizationByPhoneNumberId` (arriba, la ruta INVERSA que usa el webhook
@@ -370,6 +380,21 @@ export interface MessagingOutboxRow {
   readonly id: string;
   readonly attempts: number;
   readonly payload: unknown;
+}
+
+// ============================================================================
+// Fase de correo — dispatcher de correo (ver email-dispatch.ts). Acotado a
+// channel='email' de `restaurantes.messaging_outbox` — nunca toca una fila
+// channel='whatsapp' (ese dispatcher es `claimMessagingOutboxBatch` de arriba,
+// consumido por @atiende/whatsapp-gateway). Mismo shape/patrón exacto que
+// @atiende/domain-citas::EmailOutboxJobRow.
+// ============================================================================
+
+export interface EmailOutboxJobRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly attempts: number;
+  readonly payload: Record<string, unknown>;
 }
 
 /** Los 3 eventos reales que dispara `order-notifications.ts` — mismo CHECK que

@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
-import type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
+import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
 import type {
   ActiveHotelProperty,
   AttendanceEventRecord,
@@ -785,6 +785,17 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return rows[0] ?? null;
   }
 
+  /** Fase 12 — insumo de guest-email-notifications.ts (nombre real del tipo de
+   *  habitación para el correo de confirmación de reserva). */
+  async findRoomTypeSummary(propertyId: string, roomTypeId: string): Promise<RoomTypeSummary | null> {
+    const { rows } = await this.db.query<{ id: string; name: string; max_occupancy: number }>(
+      `select id, name, max_occupancy from hoteles.room_type where id = $1 and property_id = $2;`,
+      [roomTypeId, propertyId],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, name: row.name, maxOccupancy: row.max_occupancy } : null;
+  }
+
   async loadNightlyRates(propertyId: string, roomTypeId: string, checkInDate: string, checkOutDate: string): Promise<readonly NightlyRateRecord[]> {
     const { rows } = await this.db.query<{
       date: string;
@@ -834,6 +845,18 @@ export class PostgresHotelesRepository implements HotelesRepository {
       [propertyId, `%${needle}%`, limit],
     );
     return rows.map((r) => ({ id: r.id, fullName: r.full_name, email: r.email, phone: r.phone }));
+  }
+
+  /** Fase 12 — insumo de guest-email-notifications.ts (huésped YA ligado a una
+   *  reserva concreta, a diferencia de `searchGuests`, que es el catálogo completo
+   *  de la property para el autocomplete de "crear reserva"). */
+  async findGuestById(propertyId: string, guestId: string): Promise<GuestSummary | null> {
+    const { rows } = await this.db.query<{ id: string; full_name: string; email: string | null; phone: string | null }>(
+      `select id, full_name, email, phone from hoteles.guest where id = $1 and property_id = $2;`,
+      [guestId, propertyId],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, fullName: row.full_name, email: row.email, phone: row.phone } : null;
   }
 
   // ---- HotelesRepository: Fase 3 — máquina de estados de reservas (H02) ----
@@ -1360,6 +1383,21 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return rows.map((row) => ({ propertyId: row.property_id, name: row.name }));
   }
 
+  /** Fase 12 — insumo de guest-email-notifications.ts (nombre real del hotel para
+   *  el saludo/asunto del correo). A diferencia de `listPropertiesForOrganization`
+   *  (todas las properties activas de una organización, insumo del selector del
+   *  panel), este busca UNA property por id sin filtrar por `status` -- el correo
+   *  de un evento real (reserva/folio/CFDI) de una property que se desactivó
+   *  después sigue debiendo mostrar su nombre real. */
+  async findPropertyById(propertyId: string): Promise<{ readonly id: string; readonly name: string; readonly organizationId: string } | null> {
+    const { rows } = await this.db.query<{ id: string; name: string; organization_id: string }>(
+      `select id, name, organization_id from core.property where id = $1;`,
+      [propertyId],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, name: row.name, organizationId: row.organization_id } : null;
+  }
+
   // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
 
   async listActiveHotelProperties(): Promise<readonly ActiveHotelProperty[]> {
@@ -1743,5 +1781,21 @@ export class PostgresHotelesRepository implements HotelesRepository {
       [propertyId, desde, hasta],
     );
     return Number(rows[0]?.total ?? 0);
+  }
+
+  // ============================================================================
+  // Fase 12 — dispatcher real de correo al huésped (ver migrations/014_email_outbox_dispatch.sql)
+  // ============================================================================
+
+  async claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]> {
+    const { rows } = await this.db.query<{ id: string; property_id: string; organization_id: string; attempts: number; payload: Record<string, unknown> }>(
+      `select id, property_id, organization_id, attempts, payload from hoteles.claim_email_outbox_batch($1);`,
+      [limit],
+    );
+    return rows.map((r) => ({ id: r.id, propertyId: r.property_id, organizationId: r.organization_id, attempts: r.attempts, payload: r.payload ?? {} }));
+  }
+
+  async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
+    await this.db.query(`select hoteles.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
   }
 }

@@ -35,7 +35,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { canInviteStaff } from "@atiende/core-authz";
 import type { PlatformRole } from "@atiende/core-tenancy";
-import { isRestaurantesRole, MANAGER_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-restaurantes";
+import { correoInvitacionStaff, isRestaurantesRole, MANAGER_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-restaurantes";
 import type { OrganizationMemberRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -149,11 +149,35 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       expiresAt,
     });
 
-    // El envío por correo real queda fuera de fase (sin proveedor SMTP configurado
-    // para este flujo) — mismo criterio "honesto" que
-    // `rentasOwnerPortalInviteRoutes`: quien invita copia/pega este token en el
-    // mensaje que le mande al invitado. Se devuelve UNA sola vez: solo el hash
-    // persiste, nunca se puede recuperar de nuevo tras esta respuesta.
+    // Hallazgo de auditoría cerrado en esta misma pasada: hasta ahora el envío por
+    // correo real quedaba fuera de fase (mismo criterio "honesto" que
+    // `rentasOwnerPortalInviteRoutes`, que TODAVÍA no lo cierra) — quien invita
+    // tenía que copiar/pegar este token a mano. Ahora se encola además el correo
+    // real vía `restaurantes.messaging_outbox` (channel='email',
+    // @atiende/domain-restaurantes::email-dispatch.ts drena el envío real, ver
+    // email-dispatch.ts de este mismo directorio) con el enlace de activación ya
+    // armado — best-effort: un fallo al encolar el correo NUNCA debe revertir la
+    // invitación que sí quedó creada. El token se sigue devolviendo UNA sola vez
+    // en la respuesta HTTP (solo el hash persiste, nunca se puede recuperar de
+    // nuevo) por si quien invita prefiere compartirlo por otro medio.
+    try {
+      const acceptUrl = `${deps.env.appBaseUrl}/aceptar-invitacion?token=${encodeURIComponent(tokenPlain)}`;
+      const correo = correoInvitacionStaff({
+        email,
+        verticalRole,
+        acceptUrl,
+        expiresAtTexto: new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(expiresAt)),
+      });
+      await deps.restaurantesRepo(c.get("db")).enqueueMessagingOutbox(organizationId, "email", "staff.invite", `staff-invite:${invite.id}`, {
+        to: email,
+        subject: correo.asunto,
+        html: correo.html,
+        text: correo.texto,
+      });
+    } catch (err) {
+      console.error("admin-staff: best-effort staff invite email enqueue failed:", err);
+    }
+
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);
   });
 

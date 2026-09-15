@@ -25,6 +25,7 @@
 // pedido — best-effort real, nunca deben tumbar la operación principal (crear el
 // pedido, mover el estado) solo porque el AVISO falló. Mismo patrón exacto que
 // `@atiende/domain-citas::appointment-email-notifications.ts::tryEnqueueAppointmentEmail`.
+import { correoConfirmacionPedido } from "./emails/order-templates.ts";
 import type { Order, OrderStatus } from "./types.ts";
 import type { RestaurantesRepository, StaffOrderNotificationEventType } from "./repository.ts";
 
@@ -165,5 +166,71 @@ export async function tryNotifyStaffRepartidorAssigned(repo: RestaurantesReposit
     await notifyStaffRepartidorAssignedCore(repo, order);
   } catch (err) {
     console.error("order-notifications: best-effort staff order.assigned_repartidor failed:", err);
+  }
+}
+
+// ============================================================================
+// Fase de correo — CONFIRMACIÓN DE PEDIDO POR CORREO (hallazgo de auditoría,
+// severidad MEDIA): "restaurantes no envía ningún correo: sin plantilla, sin
+// dispatcher, sin remitente — solo WhatsApp". A diferencia de las notificaciones
+// de arriba (WhatsApp real vía messaging_outbox / bandeja de staff), esta es la
+// PRIMERA vez que este dominio encola `channel: 'email'` — ver
+// emails/order-templates.ts y migrations/011_email_outbox_dispatch.sql (agrega
+// `restaurantes.orders.customer_email`, capturado hoy solo desde el canal
+// `web`, ver orders.ts::validateCreateOrderPayload).
+//
+// Mismo criterio de "sin correo en archivo no es un error" que
+// @atiende/domain-citas::appointment-email-notifications.ts::
+// enqueueAppointmentEmailCore: la mayoría de clientes de este vertical solo
+// dejan teléfono (voz/WhatsApp) — el correo de confirmación simplemente no
+// aplica para ellos, la confirmación por WhatsApp (arriba) ya los cubre.
+// ============================================================================
+
+export interface CustomerOrderConfirmationEmailResult {
+  readonly enqueued: boolean;
+  readonly reason?: "no_email";
+}
+
+/**
+ * Encola (si el cliente dejó correo real) la confirmación de pedido —
+ * SIEMPRE en el momento de creación, nunca por cambio de estado (a diferencia
+ * de `notifyCustomerOnOrderStatusChangeCore`, que reacciona a transiciones):
+ * el gap real es "el cliente nunca recibe nada al hacer su pedido si no dejó
+ * WhatsApp/teléfono verificable", no un aviso de progreso. `dedupeKey` fijo por
+ * pedido (sin status) porque este evento ocurre una sola vez en la vida de un
+ * pedido — nunca hay una segunda "confirmación de creación" real que deba
+ * generar un segundo correo.
+ */
+export async function notifyCustomerOrderConfirmationEmailCore(repo: RestaurantesRepository, order: Order): Promise<CustomerOrderConfirmationEmailResult> {
+  if (!order.customerEmail) return { enqueued: false, reason: "no_email" };
+
+  const correo = correoConfirmacionPedido({
+    clienteNombre: order.customerName,
+    branch: order.branch,
+    items: order.items,
+    total: order.total,
+    customerAddress: order.customerAddress,
+    paymentMethod: order.paymentMethod,
+  });
+
+  await repo.enqueueMessagingOutbox(order.organizationId, "email", "order.created.email", `order-confirmation:${order.id}`, {
+    to: order.customerEmail,
+    subject: correo.asunto,
+    html: correo.html,
+    text: correo.texto,
+  });
+  return { enqueued: true };
+}
+
+/** Variante best-effort — la que de verdad llama `orders.ts::createOrder`: un
+ * pedido YA se creó con éxito en la base de datos; que el cliente no haya
+ * dejado correo, o que esto falle por cualquier otra razón, NUNCA debe
+ * convertirse en un error para quien está creando el pedido. Mismo principio
+ * que `tryNotifyStaffNewOrder` de arriba. */
+export async function tryNotifyCustomerOrderConfirmationEmail(repo: RestaurantesRepository, order: Order): Promise<void> {
+  try {
+    await notifyCustomerOrderConfirmationEmailCore(repo, order);
+  } catch (err) {
+    console.error("order-notifications: best-effort customer order confirmation email enqueue failed:", err);
   }
 }

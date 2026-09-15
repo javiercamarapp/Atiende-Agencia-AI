@@ -29,6 +29,7 @@ import {
   evaluateCancellation,
   roundCurrency,
   IdempotencyConflictError,
+  tryEnqueueGuestEmail,
   type HotelRole,
   type ReservationStatus,
   type ReservationRecord,
@@ -219,6 +220,10 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           // real (diseño §1: "el folio principal se crea al confirmar") — esta fase
           // salta `cotizada`, así que creación y confirmación son la misma operación.
           await repo.ensurePrimaryFolio(propertyId, organizationId, reservation.id);
+          // Hallazgo ALTA — correo real de confirmación al huésped (best-effort:
+          // sin correo en archivo, o cualquier otra falla, NUNCA tumba la creación
+          // de la reserva ya persistida). Ver @atiende/domain-hoteles::guest-email-notifications.ts.
+          await tryEnqueueGuestEmail(repo, propertyId, organizationId, "reservation.created", reservation.id);
           return { status: 201, body: serializeReservation(reservation) };
         },
       );

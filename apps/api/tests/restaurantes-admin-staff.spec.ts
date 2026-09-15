@@ -118,6 +118,31 @@ describe("POST /v1/restaurantes/:propertyId/admin/staff/invitaciones", () => {
     );
     expect(res.status).toBe(403);
   });
+
+  // Hallazgo de auditoría cerrado en esta misma pasada: hasta ahora el token solo se
+  // devolvía en la respuesta HTTP, sin ningún canal de envío real -- ver el comentario
+  // de cabecera de admin-staff.ts. Verifica el encolado REAL en
+  // `restaurantes.messaging_outbox` (channel='email'), nunca solo que la respuesta
+  // HTTP siga trayendo el token (eso ya lo cubre el primer test de este describe).
+  it("además de devolver el token, encola el correo real de invitación (channel='email') con el enlace de activación", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/restaurantes/${ctx.propertyIdA}/admin/staff/invitaciones`,
+      authedJson(ctx.staff.owner.token, { email: "correo-real@lostaquitos.mx", verticalRole: "staff" }, "POST"),
+    );
+    expect(res.status).toBe(201);
+    const { inviteToken } = (await res.json()) as InviteResponse;
+
+    const job = ctx.restaurantesRepo.getOutbox().find((o) => o.channel === "email" && o.eventType === "staff.invite");
+    expect(job).toBeDefined();
+    expect(job?.status).toBe("pending");
+    const payload = job?.payload as { to: string; subject: string; html: string; text: string };
+    expect(payload.to).toBe("correo-real@lostaquitos.mx");
+    expect(payload.html).toContain(encodeURIComponent(inviteToken));
+    expect(payload.text).toContain(inviteToken);
+  });
 });
 
 describe("POST /auth/accept-invite -- el invitado acepta y queda vinculado", () => {
