@@ -29,7 +29,12 @@ export interface BranchOption {
   readonly name: string;
 }
 
-function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
+// Exportado (antes privado del módulo) para que otros clientes de esta
+// vertical que necesitan hablar HTTP crudo -- p. ej. `cierre-client.ts`
+// descargando el ZIP del expediente, una respuesta binaria que `fetchJson`
+// no puede envolver -- construyan la MISMA `withAuthRefresh` que ya usan
+// `fetchJson`/`postJson`, en vez de duplicar la resolución de sesión.
+export function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
   const storage = defaultBrowserStorage();
   return {
     vertical: "licitaciones",

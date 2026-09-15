@@ -178,28 +178,65 @@ aprobaciones y el ZIP de cierre seguían sin pantalla — ver Fase 13 abajo y
 ZIP de cierre del expediente y todo lo post-adjudicación — alcance de rondas
 futuras, ver el punto siguiente.
 
+## Fase 14 — cierre del expediente: checklist ejecutable + aprobaciones + paquete final (gap ALTA: "cierre del flujo central tras propuesta técnica+económica")
+
+- `pages/Cierre.tsx` (ruta
+  `/licitaciones/:orgSlug/convocatorias/:tenderId/cierre`, enlazada desde
+  `PropuestaTecnica.tsx` y `ConvocatoriaDetalle.tsx`) — cierra el ciclo
+  central de la convocatoria antes de la presentación:
+  - **Checklist de integridad EJECUTABLE** (`POST .../checklist/run`,
+    `checklist.ts`, L1 · Flujo 1): el staff declara metadatos REALES (nunca
+    inventados) del paquete que va a subir al portal oficial —
+    filename/extensión/tamaño reales de cada `File` elegido vía
+    `<input type="file">` (sin subir contenido: el checklist solo valida
+    metadatos, no revisa el archivo), páginas opcionales, los límites del
+    portal destino (`FormatLimitsConfig`, varían por convocatoria/plataforma,
+    por eso se declaran aquí en vez de asumirse), las firmas requeridas
+    (`SignatureRequirement[]` — el sistema NUNCA firma ni simula firma, solo
+    registra que el staff confirma que ya se firmó fuera del sistema) y qué
+    anexos obligatorios ya extraídos (`requirements-client.ts`, filtro
+    `requirementKind === "anexo" && obligatoriedad === "obligatorio"`, mismo
+    criterio que `listRequiredAnnexes` server-side) están efectivamente
+    presentes. `ConvocatoriaDetalle.tsx` sigue mostrando el resumen de solo
+    lectura; esta pantalla es la que lo VUELVE A CORRER.
+  - **Aprobación del expediente** (`POST .../expediente/approval`,
+    DECISION_ROLES — owner/admin/analyst, más estricto que `WRITE_ROLES`):
+    el único gate real hacia "listo" (`PackageAssembler` lo deriva, nunca se
+    declara desde el cliente). Y **aprobación granular por sección**
+    (`POST .../proposal/sections/:sectionKey/approval`, mismas
+    DECISION_ROLES) sobre los 6 `sectionKey` que el servidor puede generar
+    (`technical:tecnica/legal/administrativa/anexos`,
+    `economic:carta/anexo`) — revisión incremental que NO gatea "listo" por
+    sí sola (`buildManifest` solo consume aprobaciones de alcance
+    "expediente", ver comentario de cabecera de `cierre-client.ts`); sin
+    `GET` que liste qué secciones existen realmente para esta convocatoria en
+    particular, así que se ofrecen los 6 alcances posibles tal cual el
+    servidor los nombra.
+  - **Ensamblado y descarga del paquete final** (`POST .../package/assemble`,
+    `GET .../package/latest`, `GET .../package/download`): el estado
+    "borrador"/"listo" mostrado SIEMPRE es el que el servidor acaba de
+    recalcular contra el expediente vivo (AE-14) — un 409 al descargar (el
+    último "listo" guardado dejó de serlo) se muestra explícito con los
+    motivos, nunca se descarga un ZIP potencialmente obsoleto
+    (REQ-LIC-009). La descarga real dispara el `Blob` recibido como archivo
+    del navegador (`URL.createObjectURL` + `<a download>` sintético).
+- `lib/checklist-client.ts` — `runChecklist` nuevo junto al `fetchChecklist`
+  ya existente desde Fase 7 (mismo archivo, mismo contrato de tipos que
+  `IntegrityChecklist` en `domain-licitaciones`).
+- `lib/cierre-client.ts` (nuevo) — `approveExpediente`,
+  `approveProposalSection`, `assemblePackage`, `fetchLatestPackage` (trata un
+  404 "nunca se ensambló nada" como `null`, no como error) y
+  `downloadPackage` (respuesta binaria — el único cliente HTTP del panel que
+  no puede reusar `fetchJson`/`postJson`, arma su propio `withAuthRefresh`
+  reexportando `defaultAuthCtx` de `admin-client.ts`).
+
+**Fuera de esta pieza, a propósito** (post-adjudicación, alcance de rondas
+futuras): declarar que el expediente YA se presentó ante el portal
+(`GET`/`POST .../submission[/declare]`), contratos, cobranza e
+inconformidades.
+
 ## Explícitamente fuera de esta fase (huecos honestos, no fingidos)
 
-- **`POST .../checklist/run` no tiene UI.** Exige `FileArtifact[]` reales
-  (nombre/extensión/tamaño/páginas de los documentos YA SUBIDOS al
-  expediente), `FormatLimitsConfig`, `SignatureRequirement[]` y
-  `presentAnnexRefs` — este panel no construye esa pantalla todavía (la carga
-  de PDF que sí existe desde Fase 11, `RequisitosConvocatoria.tsx`, alimenta
-  `.../requirements/extract`, un endpoint distinto; no produce el
-  `FileArtifact[]` que `checklist/run` necesita).
-  `ConvocatoriaDetalle.tsx` SÍ muestra, de solo lectura, el último resultado
-  ya corrido (por el agente o por una corrida previa vía API) — mostrar un
-  dato real sin poder generarlo desde aquí es honesto; fingir un botón
-  "ejecutar" que no tiene datos reales que mandar no lo sería.
-- **Checklist ejecutable, aprobaciones y cierre del expediente** (Flujos 2/3,
-  `cierre.ts`) — sin pantalla todavía. La propuesta técnica + mapeo de
-  cumplimiento (Fase 12) y la propuesta económica (Fase 13) ya tienen
-  pantalla real (ver arriba); lo que falta es el checklist de integridad
-  EJECUTABLE (`POST .../checklist/run`, ver el punto anterior), las
-  aprobaciones y el ensamblado del paquete ZIP de cierre —
-  trabajo genuino de rondas futuras, no construido aquí. El perfil de
-  matching (antes en esta lista) ya tiene pantalla real desde Fase 8, ver
-  arriba.
 - **Selector de organización con 2+.** `decideLicitacionesLandingPath` ya
   contempla 2+ organizaciones (`/seleccionar-organizacion`), pero esa ruta no
   existe en `App.tsx` para NINGÚN vertical de este monorepo todavía — mismo
