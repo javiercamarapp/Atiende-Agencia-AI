@@ -72,6 +72,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "migracion-catalogo", label: "Migración de catálogo" },
   { to: "devolucion-iva", label: "Devolución de IVA" },
   { to: "bookkeeping", label: "Bookkeeping" },
+  { to: "contabilidad-electronica", label: "Contabilidad electrónica" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({

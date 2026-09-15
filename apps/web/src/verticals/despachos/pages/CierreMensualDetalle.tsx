@@ -163,6 +163,11 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
                   <span style={{ fontSize: 11, color: "#9ca3af" }}>{formatTaskCategory(t.category)}</span>
                 </div>
                 <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>{t.description}</p>
+                {t.category === "electronica" && (
+                  <Link to={`/despachos/${orgSlug}/contabilidad-electronica`} style={{ fontSize: 12, color: "#111827", textDecoration: "underline" }}>
+                    Ir a Contabilidad electrónica →
+                  </Link>
+                )}
                 {t.completedAt && <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 0" }}>Completada {formatDate(t.completedAt)}</p>}
               </div>
               {puedeCompletar && (
