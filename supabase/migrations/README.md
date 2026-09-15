@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (84 migraciones, timestamps 20240101000001 .. 20240101000084)
+## Orden actual (85 migraciones, timestamps 20240101000001 .. 20240101000085)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -80,6 +80,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 
 84. `packages/domain-despachos/migrations/006_invoice_fecha.sql` — hallazgo de auditoría (severidad ALTA, "`despachos.invoice` nunca persiste la fecha real de emisión del CFDI aunque la ingesta sí la recibe"): agrega `despachos.invoice.fecha` (`date not null default current_date`, el default solo como red de seguridad de un `ADD COLUMN NOT NULL` — la ingesta real siempre la manda explícita) + `invoice_fecha_idx (property_id, fecha)`. Antes de esta migración la única fecha que sobrevivía por invoice era `created_at` (fecha de INGESTA) o, para un CFDI tipo 'I' con subtotal>0, `diot.proveedoresReportables[0].fecha` — eso rompía conciliación bancaria (conciliaba contra `created_at` en vez de la fecha real del CFDI, así que con tolerancia de días ningún CFDI cargado días después del movimiento bancario hacía match) y dejaba fuera del filtro por período (`listInvoices({periodo})`) a cualquier CFDI que no fuera tipo 'I' con subtotal>0 (E/T/P/N, o un 'I' con subtotal=0) en DIOT/devolución de IVA/declaraciones. `apps/api/src/routes/verticals/despachos/cfdi.ts` (ingesta), `conciliacion.ts`, `devolucion-iva.ts` y `declaraciones.ts`, y `packages/domain-despachos/src/{postgres,in-memory}-repository.ts` (`listInvoices({periodo})` ahora resuelve contra la columna `fecha`, no contra el jsonb de DIOT) se corrigieron en la misma rama para leer/escribir la columna directamente. Renumerada de 82 a 84 al integrar (colisión real de timestamp con las migraciones de licitaciones y hoteles de esta misma ronda, las tres ramas construidas en paralelo).
 
+85. `packages/domain-rentas/migrations/013_owner_portal_security_definer.sql` — cierra el gap de privilegio documentado desde la migración 29/30 (`006_owner_portal_schema.sql`/`007_owner_portal_core_organization_policy.sql`) y en `apps/api/src/production/rentas-owner-portal-repository.ts`: `findOwnerCredentialByEmail`/`createPortalInvite`/`consumePortalInvite` tocan `rentas.owner_credential`, que NUNCA otorga SELECT/INSERT/UPDATE a `authenticated` (solo a `service_role`, que este monorepo no aprovisiona todavía). Mismo criterio exacto que `core.accept_staff_invite` (migración 73/`0002_staff_invite_schema.sql`): 3 funciones `security definer` (`rentas.find_owner_credential_by_email`/`rentas.create_owner_portal_invite`/`rentas.consume_owner_portal_invite`), cada una con su propia verificación de autorización (la de invitar reusa `core.has_property_access` para exigir que el staff invitante tenga acceso real a una property donde el propietario tiene una unidad — mismo invariante que `findOwnerConUnidadesEnProperty` ya exige en TS, reforzado aquí como autoridad real). `ProductionRentasOwnerPortalRepository` deja de necesitar `notProductionReady` para estos 3 métodos — el portal de propietario de Fase 3 queda con los 8 métodos de su puerto completos contra Postgres real, sin requerir `service_role`. Acompañada, en la misma rama, del cambio correspondiente en `packages/domain-rentas/src/owner-portal/postgres-repository.ts` y `apps/api/src/production/rentas-owner-portal-repository.ts`, y de la primera UI web del portal (`apps/web/src/verticals/rentas/pages/Finanzas.tsx` — botón "Invitar a este propietario" — y `apps/web/src/verticals/rentas/pages/OwnerPortal*.tsx`).
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -87,8 +89,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000084`; usa
-   `20240101000085`, luego `...086`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000085`; usa
+   `20240101000086`, luego `...087`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el

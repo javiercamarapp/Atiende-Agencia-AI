@@ -1,31 +1,23 @@
-// ProductionRentasOwnerPortalRepository — adaptador real de `RentasOwnerPortalRepository`
-// para producción, envuelve `PostgresRentasOwnerPortalRepository` (@atiende/domain-rentas)
-// construido sobre la sesión RLS por-request (`TenantDbSession`, ver ../deps.ts).
+// ProductionRentasOwnerPortalRepository — adaptador de producción de
+// `RentasOwnerPortalRepository`, envuelve `PostgresRentasOwnerPortalRepository`
+// (@atiende/domain-rentas) construido sobre la sesión RLS por-request
+// (`TenantDbSession`, ver ../deps.ts).
 //
-// Los 5 métodos de solo lectura del portal (findOwnerProfile/listOwnerOrganizaciones/
-// listUnidadesPropietario/listOwnerStatementsPropietario/
-// findOwnerStatementDetallePropietario) delegan directo — funcionan correctamente
-// contra RLS real con la sesión que abre `requireRentasOwnerSession`
-// (`engine.withAppSession({ userId: ownerId }, ...)`, ver
-// routes/verticals/rentas/owner-portal.ts).
-//
-// Los otros 3 (findOwnerCredentialByEmail/createPortalInvite/consumePortalInvite) leen
-// o escriben `rentas.owner_credential`, que la migración 006 NUNCA otorga en
-// SELECT/INSERT/UPDATE a `authenticated` -- solo a `service_role` (ver advertencia de
-// cabecera de domain-rentas/src/owner-portal/postgres-repository.ts). Este monorepo NO
-// provisiona todavía una conexión de `service_role` real (`ManagedPostgresEngine.admin`
-// es el MISMO rol de mínimo privilegio que `withAppSession`, sin claims -- nunca
-// `service_role`, ver packages/db/src/managed-postgres-engine.ts) -- exactamente el
-// mismo tipo de gap que ya cubre `production/not-ready.ts` para `hotelesPaymentsPort`/
-// `despachosAuditSink` (adaptador real existe, falta la infraestructura de privilegio
-// que lo respalde), pero acotado aquí a SOLO estos 3 métodos de un puerto que por lo
-// demás SÍ está completo. En vez de dejar a estos 3 golpear Postgres real y fallar con
-// un "permission denied for table" críptico (o, peor, deslizar `engine.admin` y
-// arriesgar un comportamiento silenciosamente incorrecto si las políticas cambiaran),
-// fallan aquí con el mismo error explícito y accionable que el resto del código de
-// producción no listo -- mientras la decisión de aprovisionar `service_role` no se
-// tome (fuera de alcance de este cambio: es infraestructura de conexión, no el gap de
-// sesión-por-request que este cambio sí resuelve).
+// Los 8 métodos del puerto delegan directo — incluyendo, desde la migración 013
+// (`packages/domain-rentas/migrations/013_owner_portal_security_definer.sql`),
+// `findOwnerCredentialByEmail`/`createPortalInvite`/`consumePortalInvite`: aunque
+// `rentas.owner_credential` sigue sin otorgar SELECT/INSERT/UPDATE a `authenticated`
+// (migración 006, solo `service_role`, que este monorepo no aprovisiona todavía), esos
+// tres métodos ahora llaman funciones SQL `security definer` (mismo criterio exacto
+// que `core.accept_staff_invite`, `packages/db/migrations/0002_staff_invite_schema.sql`)
+// que corren con el privilegio del dueño de la función sobre la MISMA sesión
+// por-request que abre `requireRentasOwnerSession`/`requirePropertyMembership` — nunca
+// requieren `engine.admin`/`service_role` real. Ver el comentario de cabecera de
+// `domain-rentas/src/owner-portal/postgres-repository.ts` para el detalle de qué
+// verifica cada función (`create_owner_portal_invite`, en particular, reusa
+// `core.has_property_access` para exigir que el staff invitante tenga acceso real a
+// una property donde el propietario tiene una unidad — nunca confía solo en que la
+// ruta HTTP ya lo validó).
 import type {
   ConsumePortalInviteInput,
   FiltroOwnerPortalStatements,
@@ -40,13 +32,6 @@ import type {
 } from "@atiende/domain-rentas";
 import { PostgresRentasOwnerPortalRepository } from "@atiende/domain-rentas";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { notProductionReady } from "./not-ready.ts";
-
-function requirePrivilegedSession<T extends object>(methodName: string): T {
-  return notProductionReady<T>(
-    `rentasOwnerPortalRepo.${methodName} (requiere una sesión de service_role -- ver production/rentas-owner-portal-repository.ts)`,
-  );
-}
 
 export class ProductionRentasOwnerPortalRepository implements RentasOwnerPortalRepository {
   private readonly delegate: PostgresRentasOwnerPortalRepository;
@@ -76,14 +61,14 @@ export class ProductionRentasOwnerPortalRepository implements RentasOwnerPortalR
   }
 
   findOwnerCredentialByEmail(email: string): Promise<OwnerCredentialForLogin | null> {
-    return requirePrivilegedSession<{ findOwnerCredentialByEmail(email: string): Promise<OwnerCredentialForLogin | null> }>("findOwnerCredentialByEmail").findOwnerCredentialByEmail(email);
+    return this.delegate.findOwnerCredentialByEmail(email);
   }
 
   createPortalInvite(input: NewPortalInviteInput): Promise<void> {
-    return requirePrivilegedSession<{ createPortalInvite(input: NewPortalInviteInput): Promise<void> }>("createPortalInvite").createPortalInvite(input);
+    return this.delegate.createPortalInvite(input);
   }
 
   consumePortalInvite(input: ConsumePortalInviteInput): Promise<{ ownerId: string } | null> {
-    return requirePrivilegedSession<{ consumePortalInvite(input: ConsumePortalInviteInput): Promise<{ ownerId: string } | null> }>("consumePortalInvite").consumePortalInvite(input);
+    return this.delegate.consumePortalInvite(input);
   }
 }

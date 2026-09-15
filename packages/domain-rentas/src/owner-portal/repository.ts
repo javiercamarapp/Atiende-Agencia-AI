@@ -14,15 +14,13 @@
 //
 // `findOwnerCredentialByEmail`/`createPortalInvite`/`consumePortalInvite` tocan
 // `rentas.owner_credential`, que NUNCA otorga SELECT a `authenticated` (ver migración
-// 006) -- en el adaptador Postgres real, estos tres deben construirse sobre una sesión
-// de privilegio administrativo (nunca la sesión RLS por-request de `c.get("db")`),
-// exactamente el mismo criterio ya documentado para `core.staff_user` en
-// `@atiende/db::PostgresCoreRepository`/`apps/api/src/production/core-repository.ts`.
-// Esa construcción por-request queda diferida al mismo momento en que `rentasRepo`
-// (Fase 1/2) se conecte a Postgres real en producción -- hoy ninguno de los dos está
-// wireado (`notProductionReady`, ver apps/api/src/production/deps.ts), así que no hay
-// regresión posible: se documenta el requisito, no se finge una garantía que no existe
-// todavía.
+// 006). Resuelto en la migración 013 (`013_owner_portal_security_definer.sql`) con 3
+// funciones SQL `security definer` -- mismo criterio exacto que `core.accept_staff_invite`
+// (`packages/db/migrations/0002_staff_invite_schema.sql`) -- así que el adaptador
+// Postgres real (`PostgresRentasOwnerPortalRepository`) sí puede construirse sobre la
+// MISMA sesión RLS por-request que los otros cinco métodos (`c.get("db")`); ver el
+// comentario de cabecera de `postgres-repository.ts` para el detalle de qué verifica
+// cada función.
 import type {
   ConsumePortalInviteInput,
   FiltroOwnerPortalStatements,
