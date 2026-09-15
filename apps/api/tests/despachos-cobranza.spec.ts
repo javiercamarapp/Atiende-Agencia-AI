@@ -132,6 +132,38 @@ describe("GET /despachos/:propertyId/cobranza/cuentas y /resumen -- cartera con 
     const res = await app.request(`/despachos/${ctx.propertyId}/cobranza/cuentas`, authedJson(ctx.staff.readonly.token, { invoiceId: vencidaHace45.id, fechaVencimiento: fechaHace(45) }));
     expect(res.status).toBe(403);
   });
+
+  // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad MEDIA):
+  // "cobranza de despachos con 1+2N queries serializadas". Con N=5 cuentas en la
+  // cartera, el repositorio debe recibir exactamente UNA llamada a
+  // `findInvoicesByIds` y UNA a `listCollectionEventsForReceivables` por request --
+  // nunca una por cuenta (antes: N `findInvoice` + N `listCollectionEvents`).
+  it("con N=5 cuentas en la cartera, resuelve invoices/historial en llamadas FIJAS al repositorio, nunca una por cuenta", async () => {
+    const app = buildApp(ctx.deps);
+    const N = 5;
+    for (let i = 0; i < N; i += 1) {
+      const invoice = await ingestarCfdiIngreso({ folioFiscal: randomUUID() });
+      await app.request(`/despachos/${ctx.propertyId}/cobranza/cuentas`, authedJson(ctx.staff.contador.token, { invoiceId: invoice.id, fechaVencimiento: fechaHace(10 + i) }));
+    }
+
+    ctx.despachosRepo.llamadasFindInvoicesByIds = 0;
+    ctx.despachosRepo.llamadasListCollectionEventsForReceivables = 0;
+
+    const listRes = await app.request(`/despachos/${ctx.propertyId}/cobranza/cuentas`, authedJson(ctx.staff.auditor.token));
+    expect(listRes.status).toBe(200);
+    expect(await listRes.json()).toHaveLength(N);
+    expect(ctx.despachosRepo.llamadasFindInvoicesByIds).toBe(1);
+    expect(ctx.despachosRepo.llamadasListCollectionEventsForReceivables).toBe(1);
+
+    ctx.despachosRepo.llamadasFindInvoicesByIds = 0;
+    ctx.despachosRepo.llamadasListCollectionEventsForReceivables = 0;
+
+    const resumenRes = await app.request(`/despachos/${ctx.propertyId}/cobranza/resumen`, authedJson(ctx.staff.auditor.token));
+    expect(resumenRes.status).toBe(200);
+    expect(((await resumenRes.json()) as { totalCount: number }).totalCount).toBe(N);
+    expect(ctx.despachosRepo.llamadasFindInvoicesByIds).toBe(1);
+    expect(ctx.despachosRepo.llamadasListCollectionEventsForReceivables).toBe(1);
+  });
 });
 
 describe("POST /despachos/:propertyId/cobranza/cuentas/:id/pagar -- cierra el reloj", () => {

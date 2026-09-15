@@ -74,9 +74,39 @@ function etapaSugeridaPorAtraso(diasVencido: number): CobranzaReminderStage {
   return chosen;
 }
 
+function historialDesdeEventos(eventos: readonly { readonly etapa: string; readonly respuesta: string | null }[]): readonly HistorialCobranzaEntry[] {
+  return eventos.map((e) => ({ tipoRecordatorio: e.etapa, respuesta: e.respuesta }));
+}
+
 async function construirHistorial(repo: DespachosRepository, propertyId: string, receivableId: string): Promise<readonly HistorialCobranzaEntry[]> {
   const eventos = await repo.listCollectionEvents(propertyId, receivableId);
-  return eventos.map((e) => ({ tipoRecordatorio: e.etapa, respuesta: e.respuesta }));
+  return historialDesdeEventos(eventos);
+}
+
+// Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad MEDIA):
+// "cobranza de despachos con 1+2N queries serializadas" -- `GET .../cobranza/cuentas`
+// y `GET .../cobranza/resumen` armaban, para cada cuenta de la cartera, un
+// `findInvoice`+`listCollectionEvents` propios (2 queries por cuenta, sin importar que
+// corrieran en paralelo vía `Promise.all` -- el COSTO en queries reales sigue siendo
+// 1+2N). Esto resuelve el invoice y el historial de TODA la cartera en 2 llamadas
+// agregadas (`findInvoicesByIds`/`listCollectionEventsForReceivables`, ver
+// @atiende/domain-despachos::repository.ts), sin importar cuántas cuentas tenga.
+async function enriquecerCartera(repo: DespachosRepository, propertyId: string, cuentas: readonly ReceivableRecord[]): Promise<{ invoicesPorId: Map<string, InvoiceRecord>; historialPorCuenta: Map<string, readonly HistorialCobranzaEntry[]> }> {
+  const invoiceIds = [...new Set(cuentas.map((c) => c.invoiceId))];
+  const receivableIds = cuentas.map((c) => c.id);
+
+  const [invoices, eventos] = await Promise.all([repo.findInvoicesByIds(propertyId, invoiceIds), repo.listCollectionEventsForReceivables(propertyId, receivableIds)]);
+
+  const invoicesPorId = new Map(invoices.map((inv) => [inv.id, inv]));
+  const eventosPorCuenta = new Map<string, { readonly etapa: string; readonly respuesta: string | null }[]>();
+  for (const evento of eventos) {
+    const lista = eventosPorCuenta.get(evento.receivableId) ?? [];
+    lista.push(evento);
+    eventosPorCuenta.set(evento.receivableId, lista);
+  }
+  const historialPorCuenta = new Map(cuentas.map((c) => [c.id, historialDesdeEventos(eventosPorCuenta.get(c.id) ?? [])] as const));
+
+  return { invoicesPorId, historialPorCuenta };
 }
 
 function serializeReceivable(r: ReceivableRecord, invoice: InvoiceRecord | null, diasVencido: number, score: number) {
@@ -132,14 +162,14 @@ export function despachosCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const today = todayIso();
 
     const cuentas = await repo.listReceivables(propertyId, filter);
-    const serializadas = await Promise.all(
-      cuentas.map(async (cuenta) => {
-        const [invoice, historial] = await Promise.all([repo.findInvoice(propertyId, cuenta.invoiceId), construirHistorial(repo, propertyId, cuenta.id)]);
-        const diasVencido = diasVencidoCartera(cuenta.fechaVencimiento, today);
-        const score = cuenta.pagadoEn ? 1 : scoreCobrabilidadCartera(diasVencido, historial);
-        return serializeReceivable(cuenta, invoice, diasVencido, score);
-      }),
-    );
+    const { invoicesPorId, historialPorCuenta } = await enriquecerCartera(repo, propertyId, cuentas);
+    const serializadas = cuentas.map((cuenta) => {
+      const invoice = invoicesPorId.get(cuenta.invoiceId) ?? null;
+      const historial = historialPorCuenta.get(cuenta.id) ?? [];
+      const diasVencido = diasVencidoCartera(cuenta.fechaVencimiento, today);
+      const score = cuenta.pagadoEn ? 1 : scoreCobrabilidadCartera(diasVencido, historial);
+      return serializeReceivable(cuenta, invoice, diasVencido, score);
+    });
     return c.json(serializadas);
   });
 
@@ -151,19 +181,19 @@ export function despachosCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const today = todayIso();
 
     const pendientes = await repo.listReceivables(propertyId, { pendiente: true });
-    const cuentas: CuentaPorCobrarConScore[] = await Promise.all(
-      pendientes.map(async (cuenta) => {
-        const [invoice, historial] = await Promise.all([repo.findInvoice(propertyId, cuenta.invoiceId), construirHistorial(repo, propertyId, cuenta.id)]);
-        const diasVencido = diasVencidoCartera(cuenta.fechaVencimiento, today);
-        return {
-          facturaId: invoice?.folioFiscal ?? cuenta.invoiceId,
-          nombreCliente: cuenta.clienteNombre ?? "Cliente sin nombre capturado",
-          monto: invoice?.total ?? 0,
-          fechaVencimiento: cuenta.fechaVencimiento,
-          score: scoreCobrabilidadCartera(diasVencido, historial),
-        };
-      }),
-    );
+    const { invoicesPorId, historialPorCuenta } = await enriquecerCartera(repo, propertyId, pendientes);
+    const cuentas: CuentaPorCobrarConScore[] = pendientes.map((cuenta) => {
+      const invoice = invoicesPorId.get(cuenta.invoiceId) ?? null;
+      const historial = historialPorCuenta.get(cuenta.id) ?? [];
+      const diasVencido = diasVencidoCartera(cuenta.fechaVencimiento, today);
+      return {
+        facturaId: invoice?.folioFiscal ?? cuenta.invoiceId,
+        nombreCliente: cuenta.clienteNombre ?? "Cliente sin nombre capturado",
+        monto: invoice?.total ?? 0,
+        fechaVencimiento: cuenta.fechaVencimiento,
+        score: scoreCobrabilidadCartera(diasVencido, historial),
+      };
+    });
     return c.json(resumenCobranza(cuentas, today));
   });
 
