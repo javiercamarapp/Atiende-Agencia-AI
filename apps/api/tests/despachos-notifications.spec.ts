@@ -44,6 +44,7 @@ describe("POST /internal/despachos/cobranza-reminders", () => {
       warnings: [],
       requiresHumanReview: false,
       diot: { proveedoresReportables: [], reportable: false },
+      fecha: "2026-08-01",
     });
     // Vence hoy -- coincide EXACTO con la etapa 'vencimiento' (offset 0), ver
     // cobranza/engine.ts::etapaRecordatorioCobranzaHoy.

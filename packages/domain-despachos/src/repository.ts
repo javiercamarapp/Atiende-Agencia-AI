@@ -53,13 +53,19 @@ export interface DespachosRepository {
   insertInvoice(input: NewInvoiceInput): Promise<InvoiceRecord>;
   findInvoice(propertyId: string, invoiceId: string): Promise<InvoiceRecord | null>;
   findInvoiceByFolioFiscal(organizationId: string, folioFiscal: string): Promise<InvoiceRecord | null>;
-  /** `filter.periodo` (Fase 2, aditivo — ver diseño declaraciones §3, `repository.ts`):
-   * "YYYY-MM", filtra a los invoices cuyo `diot.proveedoresReportables` contenga al
-   * menos un registro para ese período — es el filtro que habilita
-   * `GET /despachos/:propertyId/diot/:periodo` (Fase 3+: agregar DIOT sin releer CFDI
-   * crudos, aplanando `proveedoresReportables` de cada invoice y llamando
-   * `agregarDiot()`). No requiere migración de esquema nueva: se resuelve contra el
-   * jsonb `diot` ya persistido en `invoice` (migrations/001). */
+  /** `filter.periodo` (Fase 2, aditivo; corregido en migración 006): "YYYY-MM",
+   * filtra a los invoices cuya `fecha` real de emisión (columna `despachos.
+   * invoice.fecha`, migración 006) caiga en ese período — es el filtro que habilita
+   * `GET /despachos/:propertyId/diot/:periodo` (agregar DIOT sin releer CFDI crudos,
+   * aplanando `proveedoresReportables` de cada invoice y llamando `agregarDiot()`) y
+   * los endpoints de devolución de IVA por período. Antes de la migración 006 se
+   * resolvía contra el jsonb `diot.proveedoresReportables`, que solo existe para un
+   * CFDI tipo 'I' con subtotal>0 — cualquier otro tipo (E/T/P/N), o un 'I' con
+   * subtotal=0, desaparecía del período sin importar su fecha real. Ahora se
+   * resuelve directo contra `fecha`, así que incluye TODOS los tipos de CFDI de la
+   * property que caigan en el período — el llamador decide si además filtra por
+   * `diot.reportable` (como hace la agregación DIOT real, que solo reporta
+   * proveedores tipo 'I'). */
   listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]>;
 
   // ---- Cola de revisión humana (flujo 2) ----

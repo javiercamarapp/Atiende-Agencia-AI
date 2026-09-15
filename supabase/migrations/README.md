@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (83 migraciones, timestamps 20240101000001 .. 20240101000083)
+## Orden actual (84 migraciones, timestamps 20240101000001 .. 20240101000084)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -78,6 +78,8 @@ sus propias migraciones (en su código, tests, docs) usando las rutas originales
 
 83. `packages/domain-hoteles/migrations/015_cfdi_hospedaje_reemision_tras_cancelacion.sql` — hallazgo de auditoría (severidad ALTA): reemitir un CFDI de hospedaje tras cancelarlo quedaba bloqueado para siempre. El índice único parcial de la migración 38 (`cfdi_emision_folio_hospedaje_unq`, REQ-BO-002) exigía a lo más UN CFDI 'hospedaje' por folio sin importar su `status` — una vez `cancelado`, el corto-circuito de idempotencia del endpoint (`cfdi.ts`) y el `ON CONFLICT` de `insertCfdiEmision` (`postgres-repository.ts`) devolvían/recreaban ese mismo registro cancelado en vez de timbrar uno nuevo, aunque un CFDI cancelado normalmente SÍ debe poder reemitirse con un folio fiscal nuevo (práctica estándar SAT). Se reemplaza el índice para excluir los cancelados (`where tipo = 'hospedaje' and status <> 'cancelado'`): a lo más UN hospedaje VIGENTE por folio, sin límite de cancelados acumulados en el historial. Acompañada, en la misma rama, del fix de aplicación correspondiente (`cfdi.ts`, `in-memory-repository.ts`, `postgres-repository.ts`, `Cfdi.tsx`). Renumerada de 82 a 83 al integrar (colisión real con la migración de resolución de licitaciones, ambas ramas construidas en paralelo).
 
+84. `packages/domain-despachos/migrations/006_invoice_fecha.sql` — hallazgo de auditoría (severidad ALTA, "`despachos.invoice` nunca persiste la fecha real de emisión del CFDI aunque la ingesta sí la recibe"): agrega `despachos.invoice.fecha` (`date not null default current_date`, el default solo como red de seguridad de un `ADD COLUMN NOT NULL` — la ingesta real siempre la manda explícita) + `invoice_fecha_idx (property_id, fecha)`. Antes de esta migración la única fecha que sobrevivía por invoice era `created_at` (fecha de INGESTA) o, para un CFDI tipo 'I' con subtotal>0, `diot.proveedoresReportables[0].fecha` — eso rompía conciliación bancaria (conciliaba contra `created_at` en vez de la fecha real del CFDI, así que con tolerancia de días ningún CFDI cargado días después del movimiento bancario hacía match) y dejaba fuera del filtro por período (`listInvoices({periodo})`) a cualquier CFDI que no fuera tipo 'I' con subtotal>0 (E/T/P/N, o un 'I' con subtotal=0) en DIOT/devolución de IVA/declaraciones. `apps/api/src/routes/verticals/despachos/cfdi.ts` (ingesta), `conciliacion.ts`, `devolucion-iva.ts` y `declaraciones.ts`, y `packages/domain-despachos/src/{postgres,in-memory}-repository.ts` (`listInvoices({periodo})` ahora resuelve contra la columna `fecha`, no contra el jsonb de DIOT) se corrigieron en la misma rama para leer/escribir la columna directamente. Renumerada de 82 a 84 al integrar (colisión real de timestamp con las migraciones de licitaciones y hoteles de esta misma ronda, las tres ramas construidas en paralelo).
+
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
@@ -85,8 +87,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000083`; usa
-   `20240101000084`, luego `...085`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000084`; usa
+   `20240101000085`, luego `...086`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el

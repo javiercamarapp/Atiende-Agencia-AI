@@ -33,6 +33,7 @@ function invoiceInput(overrides: Partial<NewInvoiceInput> = {}): NewInvoiceInput
     warnings: [],
     requiresHumanReview: false,
     diot: { proveedoresReportables: [], reportable: false },
+    fecha: "2026-08-01",
     ...overrides,
   };
 }

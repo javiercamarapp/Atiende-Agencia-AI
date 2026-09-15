@@ -25,6 +25,7 @@ function invoiceInput(overrides: Partial<NewInvoiceInput> = {}): NewInvoiceInput
     warnings: [],
     requiresHumanReview: true,
     diot: { proveedoresReportables: [], reportable: true },
+    fecha: "2026-01-15",
     ...overrides,
   };
 }
@@ -58,6 +59,32 @@ describe("InMemoryDespachosRepository — invoices", () => {
     const repo = new InMemoryDespachosRepository();
     const created = await repo.insertInvoice(invoiceInput({ propertyId: "prop-1" }));
     expect(await repo.findInvoice("prop-2", created.id)).toBeNull();
+  });
+
+  // Migración 006 (hallazgo de auditoría): `listInvoices({ periodo })` debe resolver
+  // contra la columna real `fecha`, no contra el jsonb de DIOT -- antes de la
+  // migración, un CFDI sin `diot.proveedoresReportables` (cualquier tipo distinto de
+  // "I" con subtotal>0) desaparecía del período por completo sin importar su fecha
+  // real.
+  it("REQ: listInvoices filtra por período usando la columna 'fecha', no el jsonb de DIOT -- incluye CFDI no reportables en DIOT", async () => {
+    const repo = new InMemoryDespachosRepository();
+    // Nota de crédito (tipo E) real: nunca produce `diot.proveedoresReportables`
+    // (ver reglas-fiscales-avanzadas.ts) -- con el filtro viejo esto NUNCA aparecía
+    // en ningún período, sin importar su fecha real.
+    const notaCredito = await repo.insertInvoice(
+      invoiceInput({ tipo: "E", diot: { proveedoresReportables: [], reportable: false }, requiresHumanReview: false, fecha: "2026-07-12" }),
+    );
+    // Mismo período, pero SÍ reportable en DIOT (tipo "I" con subtotal>0) -- debe
+    // seguir apareciendo también.
+    const ingreso = await repo.insertInvoice(invoiceInput({ tipo: "I", fecha: "2026-07-03" }));
+    // Otro período -- debe quedar excluido.
+    await repo.insertInvoice(invoiceInput({ tipo: "I", fecha: "2026-08-01" }));
+
+    const julio = await repo.listInvoices(notaCredito.propertyId, { periodo: "2026-07" });
+    expect(julio.map((i) => i.id).sort()).toEqual([notaCredito.id, ingreso.id].sort());
+
+    const agosto = await repo.listInvoices(notaCredito.propertyId, { periodo: "2026-08" });
+    expect(agosto).toHaveLength(1);
   });
 });
 

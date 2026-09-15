@@ -84,6 +84,33 @@ describe("POST /despachos/:propertyId/cfdi — ingesta y validación (end-to-end
     const res = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.readonly.token, cfdiIngresoConDiot()));
     expect(res.status).toBe(403);
   });
+
+  // Migración 006 (hallazgo de auditoría): la ingesta ya recibía `fecha` (usada
+  // para el bloqueo de período cerrado) pero nunca la persistía en
+  // `despachos.invoice` -- la única fecha que sobrevivía era `createdAt` (fecha de
+  // INGESTA), rompiendo conciliación bancaria/DIOT/devolución de IVA/declaraciones.
+  it("REQ: la ingesta persiste la fecha REAL de emisión del CFDI (columna 'fecha', no createdAt)", async () => {
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot({ fecha: "2026-07-01T10:00:00" })));
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id: string; fecha: string };
+    // Persistida como fecha (YYYY-MM-DD), truncando la hora del CFDI.
+    expect(body.fecha).toBe("2026-07-01");
+
+    const invoice = await ctx.despachosRepo.findInvoice(ctx.propertyId, body.id);
+    expect(invoice?.fecha).toBe("2026-07-01");
+    // Nunca igual a `createdAt` (fecha de ingesta, "ahora") salvo coincidencia --
+    // aquí la fecha real del CFDI es muy anterior al momento en que corre el test.
+    expect(invoice?.createdAt.slice(0, 10)).not.toBe("2026-07-01");
+  });
+
+  it("REQ: sin 'fecha' en el body, la ingesta se rechaza con 400 (la columna es NOT NULL, nunca se inventa una fecha)", async () => {
+    const app = buildApp(ctx.deps);
+    const sinFecha: Record<string, unknown> = cfdiIngresoConDiot();
+    delete sinFecha.fecha;
+    const res = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, sinFecha));
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("cola de revisión humana — flujo 2, gateado por requiresHumanReview", () => {
