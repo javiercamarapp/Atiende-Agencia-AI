@@ -124,7 +124,7 @@ export function hotelesFraudeRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           route: c.req.path,
           method: c.req.method,
           decision: "allowed",
-          metadata: { alertaId: record.id, folioId: finding.folioId, cargoId: finding.chargeId, pagoId: finding.paymentId },
+          metadata: { propertyId, alertaId: record.id, folioId: finding.folioId, cargoId: finding.chargeId, pagoId: finding.paymentId },
         });
       }
 
@@ -174,7 +174,7 @@ export function hotelesFraudeRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         route: c.req.path,
         method: c.req.method,
         decision: "allowed",
-        metadata: { alertaId: resolved.id, patron: resolved.pattern, nota },
+        metadata: { propertyId, alertaId: resolved.id, patron: resolved.pattern, nota },
       });
       return resolved;
     } catch (err) {

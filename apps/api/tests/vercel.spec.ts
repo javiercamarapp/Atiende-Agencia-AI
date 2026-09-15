@@ -115,15 +115,17 @@ describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
     expect(deps.despachosAuditSink.constructor.name).toBe("ProductionDespachosAuditSink");
   });
 
-  // `hotelesFraudeAuditSink` es un gap DISTINTO (auditoría de fraude interno de
-  // hoteles, nunca pedido en la fase que agregó `despachos.audit_log`) -- esta
-  // prueba documenta que sigue fail-closed a propósito, para que quede claro que el
-  // cambio de arriba fue deliberadamente acotado a despachos y no "arregló todo
-  // AuditSink de una pasada".
-  it("hotelesFraudeAuditSink SÍ sigue notProductionReady (gap distinto de hoteles, no tocado por el adaptador de despachosAuditSink)", async () => {
+  // `hotelesFraudeAuditSink` YA NO es el gap distinto que documentaba esta prueba --
+  // cerrado por `packages/domain-hoteles/migrations/017_fraude_audit_log.sql` +
+  // `production/hoteles-fraude-audit-sink.ts` (`ProductionHotelesFraudeAuditSink`),
+  // mismo patrón exacto que `ProductionDespachosAuditSink` de la prueba de arriba.
+  // Confirma que el puerto ya NO es el Proxy de `notProductionReady` -- nunca invoca
+  // `.record()` de verdad (evitaría un intento de red real contra el DATABASE_URL
+  // de mentira de este archivo).
+  it("hotelesFraudeAuditSink -- ya NO sigue notProductionReady (cierra el gap propio de hoteles que despachosAuditSink dejaba pendiente)", async () => {
     const { buildProductionDeps } = await import("../src/production/deps.ts");
     const deps = buildProductionDeps();
-    expect(() => deps.hotelesFraudeAuditSink.record({ at: new Date().toISOString(), actorUserId: null, action: "test", route: "/test", method: "GET", decision: "denied" })).toThrow(/sin adaptador de producción todavía/);
+    expect(deps.hotelesFraudeAuditSink.constructor.name).toBe("ProductionHotelesFraudeAuditSink");
   });
 
   it("un request HTTP real que golpea restaurantesRepo con un DATABASE_URL de mentira falla 500 (intento real de conexión, ya no un error de 'no implementado')", async () => {
