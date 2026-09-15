@@ -6,13 +6,33 @@
 // componente resuelve su propia sesión/property, mismo patrón de useEffect que
 // RestaurantesShell, pero sin ese nav. Estilos inline, sin design system nuevo —
 // mismo criterio que el resto de este vertical (ver Pedidos.tsx).
+//
+// Ronda 13 — hallazgo de auditoría (severidad ALTA, "único consumidor autenticado de
+// apps/web que no escucha SESSION_EXPIRED_EVENT"): al estar FUERA de
+// RestaurantesShell (por lo de arriba: un repartidor nunca debe ver ese nav de
+// gestión), este componente nunca heredó el listener que sí tiene RestaurantesShell
+// (ver su comentario ~línea 92) para cuando `withAuthRefresh` (repartidor-client.ts,
+// usado por fetchAssignedOrders/updateAssignedOrderStatus) agota su refresh y dispara
+// `SESSION_EXPIRED_EVENT`. Sin ese listener, `SessionExpiredError.message` se pintaba
+// como cualquier otro error de carga (`setError(err.message)` en `load()`/
+// `handleAvanzar()`/`handleReportarIncidencia()` de `RepartidorPedidosView`, sin
+// tocar) y el repartidor se quedaba viendo "Tu sesión expiró..." sin botón ni
+// redirección — el mismo síntoma que el hallazgo original, aunque la ronda 12 ya
+// había corregido el refresh en sí. El fix es el MISMO patrón que RestaurantesShell:
+// escuchar el evento en `RepartidorPedidosPage` (el componente de nivel de ruta, con
+// acceso a `useNavigate`), filtrar por vertical con `isSessionExpiredEventForRepartidor`
+// (repartidor-client.ts) y, si aplica, `clearSession` + `navigate("/restaurantes/
+// login", { replace: true })` — igual que el `useEffect` de "sin sesión" que ya tenía
+// esta página unas líneas abajo.
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { readPersistedSession } from "../../../lib/auth-client.ts";
+import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { fetchBranches } from "../dashboard-client.ts";
-import { fetchAssignedOrders, REPARTIDOR_NEXT_STATUS, updateAssignedOrderStatus } from "../lib/repartidor-client.ts";
+import { fetchAssignedOrders, isSessionExpiredEventForRepartidor, REPARTIDOR_NEXT_STATUS, updateAssignedOrderStatus } from "../lib/repartidor-client.ts";
 import type { RepartidorOrder, RepartidorOrderStatus } from "../lib/repartidor-client.ts";
+import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
+import type { SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
 
 const STATUS_LABELS: Record<RepartidorOrderStatus, string> = {
   pending: "Recibido",
@@ -190,6 +210,20 @@ export function RepartidorPedidosPage() {
     const s = readPersistedSession(window.localStorage);
     setSession(s);
     if (!s) navigate("/restaurantes/login", { replace: true });
+  }, [navigate]);
+
+  // Ver comentario de cabecera de este archivo — mismo criterio exacto que el
+  // `useEffect` de RestaurantesShell.tsx que escucha `SESSION_EXPIRED_EVENT`.
+  useEffect(() => {
+    function handleSessionExpired(event: Event) {
+      const detail = (event as CustomEvent<SessionExpiredEventDetail>).detail;
+      if (!isSessionExpiredEventForRepartidor(detail)) return;
+      clearSession(window.localStorage);
+      setSession(null);
+      navigate("/restaurantes/login", { replace: true });
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, [navigate]);
 
   useEffect(() => {

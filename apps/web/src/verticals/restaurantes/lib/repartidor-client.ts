@@ -16,11 +16,35 @@
 // `readPersistedSession` (ver su comentario de cabecera), así que reusa exactamente
 // el store, no uno nuevo.
 import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
-import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
+import type { AuthedFetchContext, SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
 import { clearSession, persistSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 
 export { SessionExpiredError };
+
+/** Ronda 13 — hallazgo de auditoría (severidad ALTA, "Repartidor.tsx es el ÚNICO
+ * consumidor autenticado de apps/web que no escucha SESSION_EXPIRED_EVENT"): la
+ * ronda 12 cerró "withAuthRefresh en repartidor-client.ts" (el wrapper SÍ intenta un
+ * refresh ante un 401, ver `fetchJson` arriba), pero cuando ESE refresh también falla
+ * `withAuthRefresh` limpia la sesión y dispara `SESSION_EXPIRED_EVENT` en `window` —
+ * un evento que hasta esta ronda NADIE escuchaba en Repartidor.tsx (a diferencia de
+ * RestaurantesShell.tsx, ver su comentario ~línea 92). El resultado: el repartidor se
+ * quedaba viendo el `.message` de `SessionExpiredError` ("Tu sesión expiró...")
+ * pintado como error de carga, sin botón ni redirección — el síntoma original del
+ * hallazgo que la ronda 12 declaró cerrado.
+ *
+ * Este predicado es la MISMA condición que ya usa el `useEffect` de
+ * RestaurantesShell.tsx (filtrar por `detail.vertical`, para no reaccionar al
+ * session-expired de otra vertical abierta en otra pestaña) — extraída aquí como
+ * función pura (sin `window`/React) para poder probarla en el entorno "node" de
+ * vitest sin renderizar el componente (este repo no trae infraestructura de testing
+ * de componentes React — sin jsdom/happy-dom ni @testing-library, ver
+ * vitest.config.ts: `environment: "node"` — así que Repartidor.tsx importa y usa
+ * exactamente esta función en su listener en vez de duplicar el `!==` inline, y el
+ * test de este archivo cubre la lógica real, no una reimplementación paralela). */
+export function isSessionExpiredEventForRepartidor(detail: SessionExpiredEventDetail | undefined): boolean {
+  return detail?.vertical === "restaurantes";
+}
 
 export type RepartidorOrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema";
 
