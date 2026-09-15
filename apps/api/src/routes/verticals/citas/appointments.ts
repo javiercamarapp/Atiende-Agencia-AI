@@ -11,6 +11,7 @@ import { consumeRateLimit, createAppointment, tryEnqueueAppointmentEmail, tryTri
 import type { CitasRepository, CreateAppointmentPayload } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
+import { triggerCitasEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface CreateAppointmentBody {
@@ -101,6 +102,11 @@ export function citasAppointmentsRoutes(deps: AppDeps): Hono {
         // creada; antes de esta fase el payload encolado aquí solo traía
         // {appointment_id}, sin contenido real que un dispatcher pudiera enviar.
         await tryEnqueueAppointmentEmail(citasRepo, org.id, "appointment.created", appointment.id);
+        // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort
+        // del correo recién encolado arriba, mismo `citasRepo`/transacción (ver
+        // comentario de cabecera de email-dispatch.ts), en vez de esperar al cron
+        // diario de /internal/citas/email-dispatch.
+        await triggerCitasEmailDispatchInline(deps, citasRepo);
         // Fase 3 §5 — intento inmediato de sincronizar con Google Calendar. La fila
         // ya quedó en google_sync_status='pending' de forma atómica dentro de
         // create_appointment_idempotent; tryTriggerGoogleSync absorbe cualquier

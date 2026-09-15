@@ -17,6 +17,7 @@
 import { Hono } from "hono";
 import { extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, resolvePropertyByPhoneNumberId, verifyMetaSignature } from "@atiende/domain-hoteles";
 import { constantTimeEqual } from "../../../http-security.ts";
+import { triggerHotelesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -88,6 +89,12 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
         // verdad vía Graph API.
         if (outcome.retryable) hadRetryableFailure = true;
       }
+
+      // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
+      // best-effort que citas/whatsapp.ts, ver comentario de cabecera de
+      // whatsapp-dispatch.ts para el detalle de por qué reutiliza este mismo
+      // `repo`/transacción en vez de abrir una sesión nueva.
+      await triggerHotelesWhatsAppDispatchInline(deps, repo);
 
       return c.json({ ok: !hadRetryableFailure }, hadRetryableFailure ? 500 : 200);
     });

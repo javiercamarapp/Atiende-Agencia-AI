@@ -14,6 +14,7 @@ import { REPARTIDOR_ROLES, changeAssignedOrderStatus, isOrderStatus, OrderStatus
 import type { Order } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 function serializeOrder(o: Order) {
@@ -98,6 +99,11 @@ export function restaurantesRepartidorOrdersRoutes(deps: AppDeps): Hono<CoreAuth
 
     try {
       const updated = await changeAssignedOrderStatus(repo, organizationId, repartidorId, order, raw.status, incidentNote);
+      // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
+      // best-effort que admin-orders.ts::PATCH .../status (changeAssignedOrderStatus
+      // también puede encolar el WhatsApp al cliente vía
+      // tryNotifyCustomerOnOrderStatusChange), mismo `repo`/transacción.
+      await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
       return c.json({ order: serializeOrder(updated) });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);

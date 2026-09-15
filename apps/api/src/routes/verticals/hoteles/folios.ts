@@ -31,6 +31,7 @@ import {
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const CHARGE_CONCEPT_VALUES = new Set<ChargeConcept>(["hospedaje", "ab", "extras", "ajuste", "propina", "otro"]);
@@ -547,6 +548,10 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     await tryEnqueueGuestEmail(repo, propertyId, organizationId, "folio.closed", folio.reservationId, {
       folio: { folioId, label: folio.label, closeReason: motivo, totalCargos, totalPagos, saldo: balance },
     });
+    // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort del
+    // correo recién encolado arriba, mismo `repo`/transacción (ver comentario de
+    // cabecera de email-dispatch.ts), en vez de esperar al cron diario.
+    await triggerHotelesEmailDispatchInline(deps, repo);
 
     return c.json({ id: folioId, estado: "cerrado", motivoCierre: motivo, saldo: balance });
   });

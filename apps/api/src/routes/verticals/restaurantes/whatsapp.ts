@@ -13,6 +13,8 @@
 import { Hono } from "hono";
 import { extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-restaurantes";
 import { constantTimeEqual } from "../../../http-security.ts";
+import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
+import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -84,6 +86,16 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         // verdad vía Graph API.
         if (outcome.retryable) hadRetryableFailure = true;
       }
+
+      // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
+      // best-effort que citas/whatsapp.ts, ver comentario de cabecera de
+      // whatsapp-dispatch.ts. También cubre el caso real de que el turno del
+      // agente haya creado un pedido dentro de ESTA misma conversación
+      // (llm-turn-handler.ts::createOrder), que además de la respuesta de texto
+      // puede encolar una confirmación por correo — ver
+      // triggerRestaurantesEmailDispatchInline en email-dispatch.ts.
+      await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
+      await triggerRestaurantesEmailDispatchInline(deps, repo);
 
       // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
       // mensajes ya procesados quedan idempotentemente saltados por el ledger de
