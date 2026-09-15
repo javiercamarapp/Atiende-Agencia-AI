@@ -1,12 +1,14 @@
 # verify-rentas-cron-rls
 
-Verificación manual, opt-in, de
+Verificación de
 `packages/domain-rentas/migrations/015_cron_publico_rls_escape_hatch.sql` contra un
 Postgres **real** — algo que el resto de la suite (`npm test`) no puede hacer, porque
 usa el repositorio en memoria de `domain-rentas`, que nunca aplica RLS ni GRANT (ver
 el comentario de cabecera de `packages/db/src/managed-postgres-engine.ts`). Mismo
 patrón exacto que `scripts/verify-outbox-grants/` (Ronda 14, migraciones 86-91) — ver
-ese directorio para el precedente.
+ese directorio para el precedente. Corre a mano vía `run.sh` (ver abajo) Y
+automáticamente en cada PR/push vía `.github/workflows/postgres-real-gate.yml`
+(ver sección "CI" abajo).
 
 ## Qué demuestra
 
@@ -64,9 +66,25 @@ el mismo gap ya documentado y aceptado en
 listActiveOrganizations()`), una decisión de plataforma que afecta a las 6
 verticales por igual.
 
+## CI
+
+Este script (`bootstrap.sql` + `post-migrations.sql` + `assertions.sql`) SÍ
+corre en CI, automáticamente, en cada PR/push — ver
+`.github/workflows/postgres-real-gate.yml` y
+`scripts/verify-real-postgres-ci/README.md`. Ese runner ejecuta cada uno de los
+18 escenarios de `assertions.sql` como su propia verificación pass/fail (no una
+lectura humana de la salida de `psql`), así que una policy RLS que se rompa en
+esta migración falla el build.
+
+`run.sh` (este directorio) sigue existiendo por separado para correr la misma
+verificación a mano contra un Postgres local efímero — útil para investigar un
+fallo con más detalle o releer el comportamiento real sin depender de GitHub
+Actions.
+
 ## Por qué no es parte de `npm test`
 
-Mismo motivo que `scripts/verify-outbox-grants/README.md`: este monorepo no tiene
-todavía ningún tier de pruebas contra Postgres real en CI. Este script queda como
-verificación reproducible y documentada de este fix específico, ejecutable a mano
-cuando haga falta releer/confirmar el comportamiento real.
+Mismo motivo que `scripts/verify-outbox-grants/README.md`: este monorepo no
+tiene todavía ningún tier de pruebas contra Postgres real dentro de
+`npm test`/`vitest` — agregarlo ahí es una decisión de plataforma más amplia,
+fuera del alcance de este hallazgo. El gate de CI descrito arriba cubre
+específicamente este fix sin depender de ese tier general.
