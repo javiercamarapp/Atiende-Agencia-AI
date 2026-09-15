@@ -101,6 +101,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "devolucion-iva", label: "Devolución de IVA" },
   { to: "bookkeeping", label: "Bookkeeping" },
   { to: "contabilidad-electronica", label: "Contabilidad electrónica" },
+  { to: "staff", label: "Staff" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({

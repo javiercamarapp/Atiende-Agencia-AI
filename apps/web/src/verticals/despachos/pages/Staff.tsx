@@ -1,0 +1,192 @@
+// Staff — hallazgo de auditoría (severidad ALTA, "Alta de organización/staff
+// imposible sin SQL"): admin-staff.ts ya expone POST/GET/DELETE
+// .../despachos/:propertyId/admin/staff/invitaciones, pero ningún panel los
+// llamaba todavía. Esta página cierra ese hueco: crear una invitación, ver las
+// pendientes (con su token para copiar/pegar además del correo real que ya se
+// encola best-effort, ver admin-staff.ts), y revocar una pendiente. Port EXACTO
+// de apps/web/src/verticals/restaurantes/pages/Staff.tsx (leído primero como
+// plantilla) sobre los 4 roles de despachos, sin la sección de "repartidores"
+// (despachos no tiene un rol análogo con selector propio en otra ruta).
+//
+// Gateada por `STAFF_INVITE_ROLES` (solo admin) del lado del CLIENTE (cosmético,
+// ver `DespachosShellContext.role`) — el servidor (admin-staff.ts) es SIEMPRE el
+// enforcement real, con la jerarquía fina de `canInviteStaff` encima.
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import { createStaffInvite, fetchStaffInvites, revokeStaffInvite } from "../lib/staff-client.ts";
+import type { CreatedStaffInvite, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
+import type { DespachosShellContext } from "../DespachosShell.tsx";
+
+// Mismo conjunto que STAFF_INVITE_ROLES (@atiende/domain-despachos/roles.ts) --
+// cosmético, el servidor aplica exactamente el mismo filtro vía assertVerticalRole
+// en las 3 rutas de admin-staff.ts. Nunca la única barrera.
+const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["admin"]);
+
+const ROLE_LABELS: Record<StaffVerticalRole, string> = {
+  admin: "Administrador",
+  contador: "Contador",
+  auditor: "Auditor",
+  readonly: "Solo lectura",
+};
+
+const ROLE_OPTIONS: readonly StaffVerticalRole[] = ["contador", "auditor", "readonly", "admin"];
+
+function statusLabel(status: string): string {
+  if (status === "pending") return "Pendiente";
+  if (status === "accepted") return "Aceptada";
+  if (status === "revoked") return "Revocada";
+  if (status === "expired") return "Expirada";
+  return status;
+}
+
+export function StaffPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
+  const canManage = STAFF_INVITE_ROLES.has(role);
+
+  const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [email, setEmail] = useState("");
+  const [verticalRole, setVerticalRole] = useState<StaffVerticalRole>("contador");
+  const [creating, setCreating] = useState(false);
+  const [lastCreated, setLastCreated] = useState<CreatedStaffInvite | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  async function load() {
+    setError(null);
+    try {
+      if (canManage) setInvites(await fetchStaffInvites(fetch, apiBaseUrl, token, propertyId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cargar el staff.");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint: mismo criterio que el resto del panel -- este proyecto no tiene
+    // eslint-plugin-react-hooks configurado.
+  }, [apiBaseUrl, token, propertyId, canManage]);
+
+  async function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setCreating(true);
+    setError(null);
+    setLastCreated(null);
+    try {
+      const created = await createStaffInvite(fetch, apiBaseUrl, token, propertyId, { email: email.trim().toLowerCase(), verticalRole });
+      setLastCreated(created);
+      setEmail("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo crear la invitación.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleRevoke(inviteId: string) {
+    setRevokingId(inviteId);
+    setError(null);
+    try {
+      await revokeStaffInvite(fetch, apiBaseUrl, token, propertyId, inviteId);
+      if (lastCreated?.id === inviteId) setLastCreated(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo revocar la invitación.");
+    } finally {
+      setRevokingId(null);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 720 }}>
+      <h1 style={{ fontSize: 20, margin: 0 }}>Staff</h1>
+
+      {error && (
+        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
+          {error}
+        </p>
+      )}
+
+      {!canManage && (
+        <p style={{ margin: 0, fontSize: 13, color: "#6b7280", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
+          Invitar o revocar staff está reservado al administrador del despacho. Tu rol actual ({role}) no tiene acceso a esta página.
+        </p>
+      )}
+
+      {canManage && (
+        <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
+          <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Invitar a alguien nuevo</p>
+          <form onSubmit={handleCreate} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              type="email"
+              placeholder="correo@ejemplo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, minWidth: 220 }}
+            />
+            <select value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </select>
+            <button type="submit" disabled={creating} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}>
+              {creating ? "Invitando…" : "Invitar"}
+            </button>
+          </form>
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: "#9ca3af" }}>
+            No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.
+          </p>
+
+          {lastCreated && (
+            <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+              <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600 }}>
+                Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
+              </p>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#374151" }}>
+                Ya se encoló un correo real con el enlace de activación. Si prefieres compartirlo tú mismo, aquí está el token — solo se muestra una vez.
+              </p>
+              <code style={{ display: "block", padding: "8px 10px", borderRadius: 6, background: "#fff", border: "1px solid #dbeafe", fontSize: 12, wordBreak: "break-all" }}>{lastCreated.inviteToken}</code>
+            </div>
+          )}
+        </section>
+      )}
+
+      {canManage && (
+        <section>
+          <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Invitaciones pendientes</p>
+          {!invites && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
+          {invites && invites.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>No hay ninguna invitación pendiente.</p>}
+          {invites && invites.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {invites.map((inv) => (
+                <div
+                  key={inv.id}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}
+                >
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>{inv.email}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
+                      {ROLE_LABELS[inv.verticalRole]} · {statusLabel(inv.status)} · expira {new Date(inv.expiresAt).toLocaleString("es-MX")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleRevoke(inv.id)}
+                    disabled={revokingId === inv.id}
+                    style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}
+                  >
+                    {revokingId === inv.id ? "Revocando…" : "Revocar"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
