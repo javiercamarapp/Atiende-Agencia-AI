@@ -28,6 +28,11 @@
     { "path": "/internal/citas/email-dispatch", "schedule": "5 14 * * *" },
     { "path": "/internal/citas/google-calendar-sync", "schedule": "10 14 * * *" },
     { "path": "/internal/hoteles/email-dispatch", "schedule": "15 14 * * *" },
-    { "path": "/internal/restaurantes/email-dispatch", "schedule": "20 14 * * *" }
+    { "path": "/internal/restaurantes/email-dispatch", "schedule": "20 14 * * *" },
+    { "path": "/internal/despachos/cobranza-reminders", "schedule": "25 14 * * *" },
+    { "path": "/internal/despachos/email-dispatch", "schedule": "30 14 * * *" },
+    { "path": "/internal/rentas/email-dispatch", "schedule": "35 14 * * *" },
+    { "path": "/internal/rentas/checkin-recordatorio", "schedule": "40 14 * * *" },
+    { "path": "/internal/rentas/ical-sync", "schedule": "45 14 * * *" }
   ]
 }

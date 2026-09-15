@@ -1,7 +1,10 @@
-// Fase 9 — POST /internal/rentas/email-dispatch: drena el canal `email` de
+// Fase 9 — GET/POST /internal/rentas/email-dispatch: drena el canal `email` de
 // `rentas.messaging_outbox` vía Resend. Mismo patrón/guard EXACTO que
-// apps/api/.../citas/email-dispatch.ts y .../rentas/ical-sync-cron.ts (header
-// x-atiende-internal-secret, pensada para un scheduler externo). Fail-closed real:
+// apps/api/.../hoteles/email-dispatch.ts y .../citas/email-dispatch.ts: acepta GET
+// (Vercel Cron, que solo dispara GET con `Authorization: Bearer <CRON_SECRET>`) y
+// POST (header manual `x-atiende-internal-secret`/tests), gateada por
+// `internalOrCronSecretMatches` (ver comentario de cabecera de
+// `http-security.ts::internalOrCronSecretMatches`). Fail-closed real:
 // sin RESEND_API_KEY configurada (deps.env.resend.apiKey === null), cada job falla
 // explícito — la ruta responde 200 igual (el fallo por job ya quedó reflejado en el
 // resumen; esto es un barrido periódico, no una operación que deba tumbar el
@@ -10,14 +13,14 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
-import { secretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function rentasEmailDispatchRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
-  app.post("/internal/rentas/email-dispatch", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
+  app.on(["GET", "POST"], "/internal/rentas/email-dispatch", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por

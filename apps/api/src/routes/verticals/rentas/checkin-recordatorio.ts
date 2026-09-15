@@ -1,22 +1,22 @@
-// Fase 9 — POST /internal/rentas/checkin-recordatorio: corrida periódica real del
-// recordatorio de check-in (24-48h antes, ver
+// Fase 9 — GET/POST /internal/rentas/checkin-recordatorio: corrida periódica real
+// del recordatorio de check-in (24-48h antes, ver
 // @atiende/domain-rentas::runRecordatorioCheckInCore). Mismo patrón/guard EXACTO
-// que apps/api/.../citas/reminders.ts y .../rentas/ical-sync-cron.ts (header
-// x-atiende-internal-secret, pensada para ser invocada por un scheduler externo —
-// Vercel Cron / Supabase cron; quién la dispara y cada cuánto es una decisión de
-// infraestructura pendiente, igual que el resto de crons internos de este
-// monorepo).
+// que apps/api/.../hoteles/email-dispatch.ts y .../citas/reminders.ts: acepta GET
+// (Vercel Cron, que solo dispara GET con `Authorization: Bearer <CRON_SECRET>`) y
+// POST (header manual `x-atiende-internal-secret`/tests), gateada por
+// `internalOrCronSecretMatches` (ver comentario de cabecera de
+// `http-security.ts::internalOrCronSecretMatches`).
 import { Hono } from "hono";
 import { runRecordatorioCheckInCore } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
-import { secretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function rentasCheckInRecordatorioRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
-  app.post("/internal/rentas/checkin-recordatorio", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
+  app.on(["GET", "POST"], "/internal/rentas/checkin-recordatorio", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (ver comentario de cabecera de checkin-reminders.ts: sin loop por

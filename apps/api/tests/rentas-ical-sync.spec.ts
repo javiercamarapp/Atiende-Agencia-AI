@@ -136,4 +136,24 @@ describe("POST /internal/rentas/ical-sync (cron real)", () => {
     const estadoBody = (await estado.json()) as { feed: { ultima_sincronizacion_exitosa_en: string | null } };
     expect(estadoBody.feed.ultima_sincronizacion_exitosa_en).not.toBeNull();
   });
+
+  // Wiring real del scheduler (vercel.json::crons): Vercel Cron SIEMPRE dispara
+  // GET, nunca POST, y solo sabe mandar el secreto como
+  // `Authorization: Bearer <CRON_SECRET>` -- nunca el header custom
+  // `x-atiende-internal-secret`. Ver internalOrCronSecretMatches (http-security.ts).
+  it("GET con Authorization: Bearer <secreto> (forma real en que Vercel Cron invoca la ruta) también autentica", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/rentas/ical-sync", { method: "GET", headers: { authorization: `Bearer ${TEST_ENV.internalSecret}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  it("GET sin ningún secreto responde 401", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/rentas/ical-sync", { method: "GET" });
+    expect(res.status).toBe(401);
+  });
 });
