@@ -33,6 +33,33 @@
 // POR contribuyente (no solo por despacho), `tenant_profile` necesitaría
 // rediseñarse con `property_id` en la llave (o una tabla nueva) — cambio de
 // esquema real, fuera de alcance aquí.
+//
+// Fase 19 — hallazgo de auditoría (severidad ALTA, "el selector real de
+// contribuyente de la Fase 10 vive en un useState que se resetea cada vez que se
+// navega"): App.tsx monta una instancia NUEVA de este Shell por cada una de las 14
+// rutas Despachos*Route (`/despachos/:orgSlug/cfdi`, `/despachos/:orgSlug/
+// declaraciones`, etc. — no hay un layout persistente entre rutas de React Router
+// aquí, mismo motivo que llevó a rentas a necesitar lib/property-selection.ts en la
+// misma ronda). Sin persistir la selección fuera del componente, un contador que
+// elige el contribuyente B en CFDI y navega a Declaraciones volvía a ver los datos
+// del contribuyente A (el primero, vía `resolveActivePropertyId(branches, null)`)
+// sin ningún aviso. `selectedPropertyId` ahora se inicializa leyendo
+// lib/property-selection.ts (persistido bajo la llave de esta organización) y
+// `handleSelectProperty` persiste cada cambio — mismo patrón exacto que
+// RentasShell.tsx.
+//
+// Hallazgo relacionado (misma fase): varias páginas "calculadora" de despachos
+// (Conciliacion/DevolucionIva/Bookkeeping/Declaraciones/Nomina/
+// ContabilidadElectronica) guardan en su propio useState el resultado calculado
+// para el contribuyente activo, sin limpiarlo cuando `ctx.propertyId` cambia
+// DENTRO de la misma instancia de Shell (cambiar el selector sin navegar) — el
+// resultado en pantalla quedaba siendo el del contribuyente anterior hasta que el
+// usuario disparaba el cálculo de nuevo manualmente. La forma más barata de
+// corregirlo sin tocar cada página es remontar el árbol de `children(...)` cuando
+// cambia `propertyId`: `key={propertyId}` en el `<div>` que los envuelve fuerza a
+// React a destruir y recrear esas páginas (con todo su estado local) cada vez que
+// el contribuyente activo cambia, exactamente como si se hubiera navegado a una
+// ruta nueva.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -40,6 +67,7 @@ import { clearDespachosSession, logout, readPersistedDespachosSession } from "./
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
+import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 
@@ -124,8 +152,14 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
   // Contribuyente/cliente activo elegido en el selector de abajo -- `null` hasta
   // que el staff elige uno explícitamente, en cuyo caso `resolveActivePropertyId`
   // cae al primero de `branches` (mismo fallback que el `branches[0]` fijo de
-  // antes, pero ahora es solo el default inicial, no un techo duro).
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  // antes, pero ahora es solo el default inicial, no un techo duro). Fase 19 --
+  // inicializado leyendo lib/property-selection.ts (persistido para este
+  // `orgSlug`) para que sobreviva a que App.tsx monte una instancia NUEVA de este
+  // Shell al navegar a otra ruta del panel (ver comentario de cabecera del
+  // archivo); `resolveActivePropertyId` ya tolera un valor persistido que quedó
+  // obsoleto (branch reasignado/dado de baja entre sesiones), así que no hace
+  // falta validarlo aquí.
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(() => readPersistedPropertyId(window.localStorage, orgSlug));
   const [error, setError] = useState<string | null>(null);
   // Mismo hallazgo de auditoría que hoteles/restaurantes/citas/licitaciones:
   // /auth/logout ya existe en el backend (compartido entre verticales), solo
@@ -226,6 +260,15 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
   const propertyId = resolveActivePropertyId(branches, selectedPropertyId)!;
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "readonly";
 
+  // Fase 19 -- handler real del selector: actualiza el estado de React (recalcula
+  // `children(ctx)` con el nuevo propertyId de inmediato, vía la `key={propertyId}`
+  // de abajo) y persiste la selección best-effort (ver lib/property-selection.ts)
+  // para que sobreviva a navegar a otra ruta del panel o a un refresh de página.
+  function handleSelectProperty(nextPropertyId: string) {
+    setSelectedPropertyId(nextPropertyId);
+    persistPropertyId(window.localStorage, orgSlug, nextPropertyId);
+  }
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -235,7 +278,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
             <label htmlFor="despachos-contribuyente-activo" style={selectLabelStyle}>
               Contribuyente
             </label>
-            <select id="despachos-contribuyente-activo" value={propertyId} onChange={(e) => setSelectedPropertyId(e.target.value)} style={selectStyle}>
+            <select id="despachos-contribuyente-activo" value={propertyId} onChange={(e) => handleSelectProperty(e.target.value)} style={selectStyle}>
               {branches.map((b) => (
                 <option key={b.propertyId} value={b.propertyId}>
                   {b.name}
@@ -254,7 +297,21 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
       </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}</div>
+      {/* Fase 19 -- `key={propertyId}` fuerza a React a desmontar/remontar las
+          páginas hijas cuando el contribuyente activo cambia DENTRO de la misma
+          instancia de Shell (selector, sin navegar) -- corrige el hallazgo
+          relacionado en el que Conciliacion/DevolucionIva/Bookkeeping/
+          Declaraciones/Nomina/ContabilidadElectronica conservaban en pantalla el
+          resultado calculado para el contribuyente anterior porque su estado local
+          de cálculo no se limpiaba solo porque `ctx.propertyId` cambiara (ver
+          comentario de cabecera del archivo). Páginas que no cachean ningún
+          resultado propio (Cfdi/Vencimientos/etc., que ya refetchean por
+          `useEffect` con `propertyId` en su arreglo de dependencias) no cambian de
+          comportamiento: un remount con las mismas dependencias dispara el mismo
+          fetch que ya disparaban. */}
+      <div key={propertyId} style={{ flex: 1, padding: 24, overflow: "auto" }}>
+        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+      </div>
     </div>
   );
 }
