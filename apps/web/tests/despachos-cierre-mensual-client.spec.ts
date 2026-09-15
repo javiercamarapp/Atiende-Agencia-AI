@@ -47,32 +47,38 @@ describe("crearPeriodo", () => {
 });
 
 describe("completarTareaCierre", () => {
-  it("manda POST .../tareas/:id/completar con userId y devuelve las tareas actualizadas", async () => {
+  // El actor lo determina el servidor a partir de la sesión autenticada -- ver
+  // apps/api/.../despachos/cierre-mensual.ts. Esta función ya NO manda userId en el
+  // body (mandarlo permitía atribuir la tarea a cualquier usuario, o dejarla vacía).
+  it("manda POST .../tareas/:id/completar SIN userId propio y devuelve las tareas actualizadas", async () => {
     const tareas = [{ id: "t1", status: "done" }];
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/cierre-mensual/periodos/p1/tareas/t1/completar");
-      expect(init?.body).toBe(JSON.stringify({ userId: "u1" }));
+      expect(init?.body).toBe(JSON.stringify({}));
       return new Response(JSON.stringify({ tareas }), { status: 200 });
     }) as unknown as typeof fetch;
-    const result = await completarTareaCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1", "t1", "u1");
+    const result = await completarTareaCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1", "t1");
     expect(result).toEqual(tareas);
   });
 });
 
 describe("cerrarPeriodoCierre", () => {
-  it("manda POST .../cerrar y devuelve el período cerrado", async () => {
+  // Mismo criterio que completarTareaCierre: el actor lo determina el servidor, esta
+  // función ya no manda userId.
+  it("manda POST .../cerrar SIN userId propio y devuelve el período cerrado", async () => {
     const periodo = { id: "p1", status: "closed" };
-    const fetchImpl = vi.fn(async (url: string) => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/cierre-mensual/periodos/p1/cerrar");
+      expect(init?.body).toBe(JSON.stringify({}));
       return new Response(JSON.stringify(periodo), { status: 200 });
     }) as unknown as typeof fetch;
-    const result = await cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1", "u1");
+    const result = await cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1");
     expect(result).toEqual(periodo);
   });
 
   it("409 (tareas requeridas sin completar) -> propaga el mensaje real", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No se puede cerrar: 3 tarea(s) requerida(s) sin completar." }), { status: 409 })) as unknown as typeof fetch;
-    await expect(cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1", "u1")).rejects.toThrow("No se puede cerrar");
+    await expect(cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1")).rejects.toThrow("No se puede cerrar");
   });
 });
 

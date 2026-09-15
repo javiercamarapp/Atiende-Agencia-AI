@@ -122,7 +122,6 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   const [clasificando, setClasificando] = useState(false);
   const [clasificarResultado, setClasificarResultado] = useState<string | null>(null);
 
-  const [decididoPor, setDecididoPor] = useState("");
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
   const [rowActions, setRowActions] = useState<Record<string, RowActionState>>({});
 
@@ -187,15 +186,10 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   }
 
   async function handleAprobar(m: MapeoMigracionCuenta) {
-    if (!decididoPor.trim()) {
-      setRowState(m.id, { loading: false, message: "Falta indicar quién decide (\"Decidido por\", arriba de la tabla).", isError: true });
-      return;
-    }
     const draft = draftDe(m.id);
     setRowState(m.id, { loading: true, message: null, isError: false });
     try {
       await aprobarMapeoMigracion(fetch, apiBaseUrl, token, propertyId, m.id, {
-        decididoPor: decididoPor.trim(),
         nota: draft.nota.trim() || undefined,
         estrategiaConciliacionSaldos: draft.estrategiaConciliacionSaldos.trim() || undefined,
       });
@@ -207,10 +201,6 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   }
 
   async function handleRechazar(m: MapeoMigracionCuenta) {
-    if (!decididoPor.trim()) {
-      setRowState(m.id, { loading: false, message: "Falta indicar quién decide (\"Decidido por\", arriba de la tabla).", isError: true });
-      return;
-    }
     const draft = draftDe(m.id);
     if (!draft.nota.trim()) {
       setRowState(m.id, { loading: false, message: "Rechazar requiere una nota con el motivo.", isError: true });
@@ -218,7 +208,7 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
     }
     setRowState(m.id, { loading: true, message: null, isError: false });
     try {
-      await rechazarMapeoMigracion(fetch, apiBaseUrl, token, propertyId, m.id, { decididoPor: decididoPor.trim(), nota: draft.nota.trim() });
+      await rechazarMapeoMigracion(fetch, apiBaseUrl, token, propertyId, m.id, { nota: draft.nota.trim() });
       setRowState(m.id, { loading: false, message: "Rechazado.", isError: false });
       await load();
     } catch (err) {
@@ -227,10 +217,6 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   }
 
   async function handleEditar(m: MapeoMigracionCuenta) {
-    if (!decididoPor.trim()) {
-      setRowState(m.id, { loading: false, message: "Falta indicar quién decide (\"Decidido por\", arriba de la tabla).", isError: true });
-      return;
-    }
     const draft = draftDe(m.id);
     if (!draft.destinoCuentaId.trim()) {
       setRowState(m.id, { loading: false, message: "Editar requiere el id de la cuenta destino corregida.", isError: true });
@@ -243,7 +229,6 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
     setRowState(m.id, { loading: true, message: null, isError: false });
     try {
       await editarMapeoMigracion(fetch, apiBaseUrl, token, propertyId, m.id, {
-        decididoPor: decididoPor.trim(),
         destinoCuentaId: draft.destinoCuentaId.trim(),
         nota: draft.nota.trim(),
         estrategiaConciliacionSaldos: draft.estrategiaConciliacionSaldos.trim() || undefined,
@@ -333,18 +318,6 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
             ))}
           </select>
         </label>
-        {puedeGestionar && (
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
-            Decidido por *
-            <input
-              type="text"
-              placeholder="tu nombre o usuario"
-              value={decididoPor}
-              onChange={(e) => setDecididoPor(e.target.value)}
-              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-            />
-          </label>
-        )}
       </div>
 
       {loading && !mapeos && <p style={{ color: "#6b7280" }}>Cargando…</p>}

@@ -75,50 +75,55 @@ describe("fetchMapeoMigracion", () => {
   });
 });
 
+// `decididoPor` ya NO se manda desde el cliente en ninguna de las 3 decisiones: el
+// servidor lo toma de la sesión autenticada (ver apps/api/.../despachos/
+// migracion-catalogo.ts) -- mandarlo desde aquí permitía atribuir la decisión a
+// cualquier usuario, o dejarla vacía.
+
 describe("aprobarMapeoMigracion", () => {
-  it("manda POST .../mapeos/:id/aprobar con decididoPor/nota/estrategia", async () => {
+  it("manda POST .../mapeos/:id/aprobar SIN decididoPor propio, con nota/estrategia", async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/migracion-catalogo/mapeos/m1/aprobar");
       expect(init?.method).toBe("POST");
-      expect(init?.body).toBe(JSON.stringify({ decididoPor: "contador-1", nota: "ok", estrategiaConciliacionSaldos: "promedio" }));
+      expect(init?.body).toBe(JSON.stringify({ nota: "ok", estrategiaConciliacionSaldos: "promedio" }));
       return new Response(JSON.stringify({ ...MAPEO, aprobadoPor: "contador-1" }), { status: 200 });
     }) as unknown as typeof fetch;
-    const result = await aprobarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { decididoPor: "contador-1", nota: "ok", estrategiaConciliacionSaldos: "promedio" });
+    const result = await aprobarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { nota: "ok", estrategiaConciliacionSaldos: "promedio" });
     expect(result.aprobadoPor).toBe("contador-1");
   });
 
   it("409 (guardia N:1 sin estrategia) -> propaga el mensaje real del servidor", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "se requiere estrategiaConciliacionSaldos" }), { status: 409 })) as unknown as typeof fetch;
-    await expect(aprobarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { decididoPor: "contador-1" })).rejects.toThrow("estrategiaConciliacionSaldos");
+    await expect(aprobarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", {})).rejects.toThrow("estrategiaConciliacionSaldos");
   });
 });
 
 describe("rechazarMapeoMigracion", () => {
-  it("manda POST .../mapeos/:id/rechazar con decididoPor/nota", async () => {
+  it("manda POST .../mapeos/:id/rechazar SIN decididoPor propio, con nota", async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/migracion-catalogo/mapeos/m1/rechazar");
-      expect(init?.body).toBe(JSON.stringify({ decididoPor: "contador-1", nota: "no corresponde" }));
+      expect(init?.body).toBe(JSON.stringify({ nota: "no corresponde" }));
       return new Response(JSON.stringify({ ...MAPEO, estado: "rechazado" }), { status: 200 });
     }) as unknown as typeof fetch;
-    const result = await rechazarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { decididoPor: "contador-1", nota: "no corresponde" });
+    const result = await rechazarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { nota: "no corresponde" });
     expect(result.estado).toBe("rechazado");
   });
 });
 
 describe("editarMapeoMigracion", () => {
-  it("manda POST .../mapeos/:id/editar con decididoPor/destinoCuentaId/nota", async () => {
+  it("manda POST .../mapeos/:id/editar SIN decididoPor propio, con destinoCuentaId/nota", async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/migracion-catalogo/mapeos/m1/editar");
-      expect(init?.body).toBe(JSON.stringify({ decididoPor: "contador-1", destinoCuentaId: "d999", nota: "corrección" }));
+      expect(init?.body).toBe(JSON.stringify({ destinoCuentaId: "d999", nota: "corrección" }));
       return new Response(JSON.stringify({ ...MAPEO, estado: "editado", destinoCuentaId: "d999" }), { status: 200 });
     }) as unknown as typeof fetch;
-    const result = await editarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { decididoPor: "contador-1", destinoCuentaId: "d999", nota: "corrección" });
+    const result = await editarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { destinoCuentaId: "d999", nota: "corrección" });
     expect(result.estado).toBe("editado");
     expect(result.destinoCuentaId).toBe("d999");
   });
 
   it("nota vacía -> 500/error de dominio propagado", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "nota obligatoria" }), { status: 500 })) as unknown as typeof fetch;
-    await expect(editarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { decididoPor: "contador-1", destinoCuentaId: "d999", nota: "" })).rejects.toThrow("nota obligatoria");
+    await expect(editarMapeoMigracion(fetchImpl, "http://api.local", "tok", "prop-1", "m1", { destinoCuentaId: "d999", nota: "" })).rejects.toThrow("nota obligatoria");
   });
 });

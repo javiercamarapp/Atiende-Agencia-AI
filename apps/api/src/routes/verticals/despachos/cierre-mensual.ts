@@ -101,17 +101,38 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
   app.post("/despachos/:propertyId/cierre-mensual/periodos/:periodoId/tareas/:tareaId/completar", async (c) => {
     assertVerticalRole(c, GESTIONAR_CIERRE_MENSUAL_ROLES);
-    const raw = await readJsonCapped<{ readonly userId?: unknown }>(c.req.raw, 2 * 1024);
+    // El actor SIEMPRE viene de la sesión autenticada (`c.get("userId")`), NUNCA de
+    // un campo que el cliente pueda mandar en el body -- mismo patrón que
+    // revisiones.ts/cfdi.ts. Antes de esta corrección la ruta confiaba en
+    // `raw.userId` (texto libre del body), permitiendo que cualquier cliente
+    // atribuyera la tarea a otro usuario o la dejara vacía (la UI mandaba "").
+    // El body ya no tiene campos que necesitemos, pero se sigue leyendo/capando
+    // (igual que el resto de rutas de este archivo) para no aceptar un payload
+    // sin límite de tamaño.
+    await readJsonCapped<Record<string, unknown>>(c.req.raw, 2 * 1024);
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const periodoId = c.req.param("periodoId");
+    const organizationId = c.get("organizationId");
+    const userId = c.get("userId");
     const periodo = await repo.findPeriodoCierre(propertyId, periodoId);
     if (!periodo) throw Errors.notFound("Período de cierre no encontrado.");
     const tareas = await repo.listTareasCierre(periodoId);
-    const userId = typeof raw.userId === "string" ? raw.userId : "";
     try {
-      const actualizadas = completarTarea(tareas, c.req.param("tareaId"), userId, new Date().toISOString());
+      const tareaId = c.req.param("tareaId");
+      const actualizadas = completarTarea(tareas, tareaId, userId, new Date().toISOString());
       const persistidas = await repo.replaceTareasCierre(periodoId, actualizadas);
+      await deps.despachosAuditSink.record({
+        at: new Date().toISOString(),
+        actorUserId: userId,
+        actorEmail: c.get("userEmail") ?? null,
+        organizationId,
+        action: "despachos.cierre-mensual:completar-tarea",
+        route: c.req.path,
+        method: c.req.method,
+        decision: "allowed",
+        metadata: { periodoId, tareaId },
+      });
       return c.json({ tareas: persistidas });
     } catch (err) {
       if (err instanceof TareaCierreEstadoInvalidoError) throw Errors.conflict(err.message);
@@ -139,17 +160,33 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
   app.post("/despachos/:propertyId/cierre-mensual/periodos/:periodoId/cerrar", async (c) => {
     assertVerticalRole(c, CERRAR_PERIODO_ROLES);
-    const raw = await readJsonCapped<{ readonly userId?: unknown }>(c.req.raw, 2 * 1024);
+    // Cierre de período: acción IRREVERSIBLE sobre un período fiscal (sin
+    // reapertura implementada, ver CierreMensualDetalle.tsx). El actor SIEMPRE
+    // viene de la sesión autenticada, NUNCA de `raw.userId` -- ver comentario del
+    // handler de "completar" arriba, mismo hallazgo.
+    await readJsonCapped<Record<string, unknown>>(c.req.raw, 2 * 1024);
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const periodoId = c.req.param("periodoId");
+    const organizationId = c.get("organizationId");
+    const userId = c.get("userId");
     const periodo = await repo.findPeriodoCierre(propertyId, periodoId);
     if (!periodo) throw Errors.notFound("Período de cierre no encontrado.");
     const tareas = await repo.listTareasCierre(periodoId);
-    const userId = typeof raw.userId === "string" ? raw.userId : "";
     try {
       const cerrado = cerrarPeriodo(periodo, tareas, userId, new Date().toISOString());
       const persistido = await repo.updatePeriodoCierre(cerrado);
+      await deps.despachosAuditSink.record({
+        at: new Date().toISOString(),
+        actorUserId: userId,
+        actorEmail: c.get("userEmail") ?? null,
+        organizationId,
+        action: "despachos.cierre-mensual:cerrar-periodo",
+        route: c.req.path,
+        method: c.req.method,
+        decision: "allowed",
+        metadata: { periodoId, anio: persistido.year, mes: persistido.month },
+      });
       return c.json(persistido);
     } catch (err) {
       if (err instanceof CierreValidacionError) throw Errors.conflict(err.message);
