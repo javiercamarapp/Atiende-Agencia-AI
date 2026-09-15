@@ -1,0 +1,25 @@
+-- El rol de conexión de producción (`authenticated`, ver
+-- `packages/db/src/managed-postgres-engine.ts` — nunca `service_role`) nunca recibió
+-- `GRANT USAGE ON SCHEMA` para ninguno de los 7 schemas de este monorepo (core,
+-- citas, hoteles, restaurantes, despachos, licitaciones, rentas). Ninguno de ellos
+-- es el schema `public` que Supabase expone/otorga por convención.
+--
+-- Verificado contra Postgres real (94 migraciones reales aplicadas a una instancia
+-- efímera, sin ningún paso manual fuera de este repo): `set role authenticated;
+-- select 1 from hoteles.room_type;` falla con `permiso denegado al esquema hoteles`
+-- — y lo mismo para los otros 6 schemas. Esto invalida, contra Postgres real, los
+-- 297 GRANT de tabla/función que sí existen en las migraciones anteriores (dan
+-- SELECT/INSERT/UPDATE/EXECUTE sobre objetos dentro de un schema al que el rol
+-- nunca pudo ni siquiera entrar) — incluye login, checkout, y los outbox de correo/
+-- WhatsApp ya arreglados en las migraciones 86-91, que dependían silenciosamente de
+-- que este GRANT ya existiera fuera del repo.
+--
+-- Un comentario anterior en `scripts/verify-outbox-grants/bootstrap.sql` asumía que
+-- "esto lo hace la plataforma Supabase al exponer un schema, no una migración de
+-- este repo" — esa suposición no está documentada como cierta en ningún lugar de
+-- Supabase para schemas fuera de `public`, y la app nunca usa PostgREST para
+-- acceder a estos schemas de todos modos (conecta con `pg` directo vía
+-- `managed-postgres-engine.ts`). Se deja de depender de un paso manual/tribal y se
+-- hace explícito aquí.
+grant usage on schema core, citas, hoteles, restaurantes, despachos, licitaciones, rentas
+  to authenticated, anon;
