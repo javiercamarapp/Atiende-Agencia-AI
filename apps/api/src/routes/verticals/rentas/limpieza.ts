@@ -20,19 +20,38 @@
 // -- además de quien ya puede escribir calendario" -- `contador`/
 // `operador:solo_calendario` nunca operan tareas de limpieza, ni siquiera para leer).
 //
-// Deliberadamente NO expone `crearTareaLimpiezaPorCheckout`/
-// `procesarCheckoutsPendientes` (creación automática de tareas al checkout) ni
-// `confirmarBloqueoMantenimiento` (confirmación de bloqueo de calendario por una
-// incidencia grave, acotada a `LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES`) -- ninguno de los
-// dos está en el alcance del hallazgo que cierra esta fase (4 capacidades
-// concretas: listar tareas asignadas, marcar checklist, reportar incidencia,
-// registrar movimiento de inventario), y agregarlos sería un hallazgo aparte
-// (documentado honestamente como bloqueador conocido, no fingido como resuelto).
+// Deliberadamente NO expone `confirmarBloqueoMantenimiento` (confirmación de bloqueo
+// de calendario por una incidencia grave, acotada a
+// `LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES`) -- fuera del alcance del hallazgo que cierra
+// esta fase (4 capacidades concretas: listar tareas asignadas, marcar checklist,
+// reportar incidencia, registrar movimiento de inventario), documentado honestamente
+// como bloqueador conocido, no fingido como resuelto.
+//
+// Ronda posterior -- cierra el hallazgo "en rentas no existe ninguna forma de que
+// nazca una tarea de limpieza en producción": `crearTareaLimpiezaPorCheckout`/
+// `procesarCheckoutsPendientes` (creación automática al checkout, Fase 8) seguían sin
+// ningún disparador real (ver apps/api/.../rentas/checkout-sweep-cron.ts, cron
+// interno separado -- mismo patrón que ical-sync-cron.ts/email-dispatch.ts, NUNCA
+// montado aquí porque no es una acción de staff con sesión). Esta misma ronda agrega
+// el POST .../tareas de abajo para creación MANUAL (`crearTareaOperativaManual`):
+// admin_gestora/operador pueden dar de alta una tarea ad-hoc (mantenimiento/
+// inspección/limpieza fuera del sweep) sin esperar a un checkout real -- acotado a
+// `LIMPIEZA_CREACION_MANUAL_ROLES` (roles.ts: decisión de gestión, NUNCA abierta al
+// rol `limpieza`, que solo opera la tarea una vez creada).
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { asignarTarea, completarChecklistItem, completarTarea, LIMPIEZA_OPERACION_ROLES, registrarIncidencia, RentasDomainError } from "@atiende/domain-rentas";
-import type { ConsumoInventario, EstadoTareaOperativa, SeveridadIncidencia } from "@atiende/domain-rentas";
+import {
+  asignarTarea,
+  completarChecklistItem,
+  completarTarea,
+  crearTareaOperativaManual,
+  LIMPIEZA_CREACION_MANUAL_ROLES,
+  LIMPIEZA_OPERACION_ROLES,
+  registrarIncidencia,
+  RentasDomainError,
+} from "@atiende/domain-rentas";
+import type { ConsumoInventario, EstadoTareaOperativa, PrioridadTareaOperativa, SeveridadIncidencia, TipoTareaOperativa } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -41,6 +60,8 @@ import { mapRentasDomainError } from "./reservas.ts";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ESTADOS_TAREA_VALIDOS: readonly EstadoTareaOperativa[] = ["pendiente", "asignada", "en_progreso", "completada", "bloqueada", "cancelada"];
 const SEVERIDADES_VALIDAS: readonly SeveridadIncidencia[] = ["leve", "moderada", "grave"];
+const TIPOS_TAREA_VALIDOS: readonly TipoTareaOperativa[] = ["limpieza", "mantenimiento", "inspeccion"];
+const PRIORIDADES_VALIDAS: readonly PrioridadTareaOperativa[] = ["baja", "media", "alta", "urgente"];
 const MAX_FOTOS_POR_CHECKLIST_ITEM = 10;
 const MAX_CONSUMOS_POR_TAREA = 50;
 
@@ -153,6 +174,28 @@ function requireOptionalRango(raw: unknown): { inicio: string; fin: string } | n
   return { inicio: requireFecha(r.inicio, "propuestaBloqueoRango.inicio"), fin: requireFecha(r.fin, "propuestaBloqueoRango.fin") };
 }
 
+interface CrearTareaManualBody {
+  readonly unidadId?: unknown;
+  readonly tipo?: unknown;
+  readonly prioridad?: unknown;
+  readonly programadaPara?: unknown;
+}
+
+function requireTipoTarea(value: unknown): TipoTareaOperativa {
+  if (typeof value !== "string" || !(TIPOS_TAREA_VALIDOS as readonly string[]).includes(value)) {
+    throw Errors.validation(`tipo: se esperaba uno de ${TIPOS_TAREA_VALIDOS.join(", ")}.`);
+  }
+  return value as TipoTareaOperativa;
+}
+
+function requireOptionalPrioridad(value: unknown): PrioridadTareaOperativa | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !(PRIORIDADES_VALIDAS as readonly string[]).includes(value)) {
+    throw Errors.validation(`prioridad: se esperaba uno de ${PRIORIDADES_VALIDAS.join(", ")}.`);
+  }
+  return value as PrioridadTareaOperativa;
+}
+
 export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -181,6 +224,40 @@ export function rentasLimpiezaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const tareas = await repo.listTareas(propertyId, filtro);
     return c.json({ tareas }, 200);
+  });
+
+  // ---- POST .../tareas: creación MANUAL de una tarea (limpieza/mantenimiento/
+  // inspección) fuera del sweep automático de checkout -- botón "+ Nueva tarea" de
+  // MisTareas.tsx. Acotada a LIMPIEZA_CREACION_MANUAL_ROLES, MÁS estricta que
+  // LIMPIEZA_OPERACION_ROLES de arriba: el rol `limpieza` puede listar/operar la
+  // tarea una vez creada pero nunca decide por su cuenta darla de alta (roles.ts ya
+  // documenta el porqué). Nace SIEMPRE sin `ocupacionUnidadId`/buffer de calendario
+  // (ver crearTareaOperativaManual) -- para vincular una tarea a un checkout real, el
+  // único camino sigue siendo el sweep automático (checkout-sweep-cron.ts). ----
+  app.post(tareasBase, async (c) => {
+    assertVerticalRole(c, LIMPIEZA_CREACION_MANUAL_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const db = c.get("db");
+    const repo = deps.rentasRepo(db);
+
+    const raw = await readJsonCapped<CrearTareaManualBody>(c.req.raw, 2 * 1024);
+    const unidadId = requireOptionalString(raw.unidadId, "unidadId", 100);
+    if (!unidadId) throw Errors.validation("unidadId: es obligatorio.");
+    const unidad = await repo.findUnidad(propertyId, unidadId);
+    if (!unidad) throw Errors.notFound("unidadId: no corresponde a una unidad de esta property.");
+
+    const tipo = requireTipoTarea(raw.tipo);
+    const prioridad = requireOptionalPrioridad(raw.prioridad);
+    const programadaPara = requireFecha(raw.programadaPara, "programadaPara");
+
+    try {
+      const resultado = await crearTareaOperativaManual(db, { unidadId, tipo, prioridad, programadaPara });
+      const tarea = await repo.findTareaDetalle(propertyId, resultado.tareaId);
+      return c.json({ tarea }, 201);
+    } catch (err) {
+      if (err instanceof RentasDomainError) throw mapRentasDomainError(err);
+      throw err;
+    }
   });
 
   app.get(tareaDetallePath, async (c) => {

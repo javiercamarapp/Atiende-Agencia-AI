@@ -33,6 +33,7 @@
     { "path": "/internal/despachos/email-dispatch", "schedule": "30 14 * * *" },
     { "path": "/internal/rentas/email-dispatch", "schedule": "35 14 * * *" },
     { "path": "/internal/rentas/checkin-recordatorio", "schedule": "40 14 * * *" },
-    { "path": "/internal/rentas/ical-sync", "schedule": "45 14 * * *" }
+    { "path": "/internal/rentas/ical-sync", "schedule": "45 14 * * *" },
+    { "path": "/internal/rentas/checkout-sweep", "schedule": "50 14 * * *" }
   ]
 }
