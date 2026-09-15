@@ -143,13 +143,27 @@ Project → Settings → Environment Variables. Vercel nunca lee tu `.env` local
 que pegarlas a mano o con `vercel env add`.
 
 **Además, agrega `CRON_SECRET` con el MISMO valor que `INTERNAL_SECRET`.**
-`vercel.json::crons` (3 crons diarios, vertical citas — recordatorio 24h, dispatcher
-de correo, reconciliación de Google Calendar; ver
-`apps/worker/src/jobs/citas/README.md`) dispara un GET real a cada
-`/internal/citas/*` que Vercel autentica mandando
-`Authorization: Bearer $CRON_SECRET` — sin esa variable configurada, el cron sigue
-disparándose pero la ruta responde 401 (fail-closed, nunca despacha nada sin
-autenticarse).
+`vercel.json::crons` (16 crons diarios a la fecha, uno por cada dispatcher/reminder
+interno de cada vertical — citas, hoteles, restaurantes, despachos, rentas,
+licitaciones, más el dispatcher de WhatsApp de plataforma; ver
+`apps/worker/src/jobs/citas/README.md`) dispara un GET real a cada `/internal/*`
+que Vercel autentica mandando `Authorization: Bearer $CRON_SECRET` — sin esa
+variable configurada, el cron sigue disparándose pero la ruta responde 401
+(fail-closed, nunca despacha nada sin autenticarse).
+
+**ADVERTENCIA sin verificar desde este repo — revisar en el dashboard antes de
+confiar en que estos 16 crons realmente corran:** la documentación pública de
+Vercel para el plan Hobby (gratis) históricamente limita no solo la frecuencia
+(máximo una vez al día por cron, que aquí sí se cumple — cada entrada usa un
+horario fijo diario) sino también el **número total de cron jobs por proyecto**
+(en distintos momentos ese tope ha sido tan bajo como 2). Este código no puede
+consultar el plan ni la cuota real de la cuenta de Vercel del operador — solo se
+puede documentar la sospecha. Antes de depender de que TODOS estos crons se
+disparen en producción, entra a Vercel → Project → Settings → Cron Jobs (o a la
+página de precios/límites vigente) y confirma cuántos permite el plan actual; si
+excede el tope, la consola de Vercel normalmente rechaza el deploy o desactiva los
+crons sobrantes en silencio, y ninguno de los dispatchers de este repo lo notaría
+por sí solo.
 
 ### (g) `vercel --prod` — revisa esto antes de correrlo
 1. Ya hay `vercel.json` en esta rama — un build ahora mismo SÍ compila (`apps/web` +

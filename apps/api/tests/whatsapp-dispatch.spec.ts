@@ -105,6 +105,35 @@ describe("POST /internal/whatsapp/dispatch", () => {
     expect(res.status).toBe(401);
   });
 
+  // Wiring real del scheduler (vercel.json::crons): Vercel Cron SIEMPRE dispara
+  // GET, nunca POST, y solo sabe mandar el secreto como
+  // `Authorization: Bearer <CRON_SECRET>` — nunca el header custom
+  // `x-atiende-internal-secret`. Ver internalOrCronSecretMatches (http-security.ts).
+  // Antes de este fix la ruta era app.post-only con secretMatches, así que esta
+  // forma de invocación (la única que Vercel Cron sabe usar) hubiera dado 404.
+  it("GET con Authorization: Bearer <secreto> (forma real en que Vercel Cron invoca la ruta) también autentica", async () => {
+    const ctx = buildDispatchTestContext({ withDispatcher: true });
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/whatsapp/dispatch", { method: "GET", headers: { authorization: `Bearer ${ctx.deps.env.internalSecret}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  it("GET sin ningún secreto responde 401", async () => {
+    const ctx = buildDispatchTestContext({ withDispatcher: true });
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/whatsapp/dispatch", { method: "GET" });
+    expect(res.status).toBe(401);
+  });
+
+  it("GET con un Bearer incorrecto responde 401", async () => {
+    const ctx = buildDispatchTestContext({ withDispatcher: true });
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/internal/whatsapp/dispatch", { method: "GET", headers: { authorization: "Bearer secreto-equivocado" } });
+    expect(res.status).toBe(401);
+  });
+
   it("responde 503 explícito cuando no hay WHATSAPP_ACCESS_TOKEN configurado (whatsAppDispatcher undefined) — nunca finge un envío", async () => {
     const ctx = buildDispatchTestContext({ withDispatcher: false });
     const app = buildApp(ctx.deps);
