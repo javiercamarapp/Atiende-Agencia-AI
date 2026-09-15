@@ -138,6 +138,56 @@ export function decideLandingPath(session: LoginSession): string {
   return "/seleccionar-organizacion";
 }
 
+/** Misma lógica que `decideLandingPath`, pero sin asumir "restaurantes" en el caso
+ * de 1 sola organización: la usa `shell/AceptarInvitacion.tsx` (Fase 14, aceptar
+ * invitación), donde SÍ se conoce el `vertical` real de la organización que trajo la
+ * sesión (la invitación lo fijó), así que se usa ese en vez del hardcode que
+ * `decideLandingPath` todavía tiene para el flujo de login.
+ *
+ * Vive aquí (junto a `decideLandingPath`, no en el componente) por el mismo motivo
+ * que el resto de este archivo: poder probarla con vitest en entorno "node" sin
+ * arrastrar JSX/react-router-dom al typecheck de un `.ts` de test (`tsc` con el
+ * tsconfig raíz, que no trae `--jsx`, no puede resolver un import directo de un
+ * `.tsx` — ver `apps/web/tsconfig.json` vs. `tsconfig.json` raíz).
+ *
+ * Hallazgo de auditoría (severidad ALTA, "2 puntos de entrada restantes con el bug
+ * de landing-path para repartidor/staff invitado"): esta función copiaba el caso de
+ * 1-sola-organización de `decideLandingPath` pero se dejó el chequeo de `org.rol` en
+ * el camino — un repartidor (o cualquier rol no-gestor) que aceptaba su invitación
+ * aterrizaba en el Dashboard de KPIs (protegido por MANAGER_ROLES) y recibía 403 sin
+ * ningún enlace a su panel real en `/restaurantes/:slug/repartidor` (ver
+ * Repartidor.tsx) — exactamente el mismo síntoma que `decideLandingPath` ya resuelve
+ * para el flujo de login. Se generaliza igual: por ahora repartidor es un rol
+ * exclusivo de restaurantes, pero el chequeo es por `org.rol`, no por vertical, para
+ * no tener que tocar esta función el día que otra vertical sume su propio rol de
+ * "solo panel operativo, sin dashboard de gestión". */
+export function decideLandingPathForInvite(session: LoginSession): string {
+  if (session.organizations.length === 0) return "/sin-organizacion";
+  if (session.organizations.length === 1) {
+    const org = session.organizations[0]!;
+    if (org.rol === "repartidor") return `/${org.vertical}/${org.slug}/repartidor`;
+    return `/${org.vertical}/${org.slug}`;
+  }
+  return "/seleccionar-organizacion";
+}
+
+/** A dónde navegar al elegir una organización de la lista en
+ * `shell/SeleccionarOrganizacion.tsx` — mismo criterio de rol que
+ * `decideLandingPath`/`decideLandingPathForInvite` de arriba, y vive aquí por el
+ * mismo motivo (ver el comentario de `decideLandingPathForInvite`): probarla con
+ * vitest sin arrastrar JSX al typecheck de un `.ts` de test.
+ *
+ * Hallazgo de auditoría (severidad ALTA, "2 puntos de entrada restantes con el bug
+ * de landing-path para repartidor/staff invitado"): `SeleccionarOrganizacionPage`
+ * navegaba siempre a `/<vertical>/<slug>` (el Dashboard de KPIs) sin importar el rol
+ * de la organización elegida — un repartidor con 2+ organizaciones de restaurantes
+ * que escogía aquí terminaba igual en un 403 (MANAGER_ROLES), en vez de en su panel
+ * real `/restaurantes/:slug/repartidor` (ver Repartidor.tsx). */
+export function decideOrganizacionSeleccionadaPath(vertical: string, org: OrganizationSummary): string {
+  if (org.rol === "repartidor") return `/${vertical}/${org.slug}/repartidor`;
+  return `/${vertical}/${org.slug}`;
+}
+
 export interface SessionStorageLike {
   setItem(key: string, value: string): void;
   getItem(key: string): string | null;
