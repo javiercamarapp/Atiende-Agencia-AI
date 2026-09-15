@@ -18,10 +18,19 @@ import { createGoNoGoDecision, fetchGoNoGoDecisions } from "../lib/go-no-go-clie
 import type { GoNoGoDecision, GoNoGoDecisionValue } from "../lib/go-no-go-client.ts";
 import { fetchChecklist } from "../lib/checklist-client.ts";
 import type { ChecklistSummary } from "../lib/checklist-client.ts";
+import { fetchTenderResolutions, resolveTender } from "../lib/resolution-client.ts";
+import type { TenderResolutionRecord, TenderResolutionValue } from "../lib/resolution-client.ts";
 import { formatComplianceResult, formatDate, formatDeadline, formatEligibility, formatMoney, formatTenderStatus } from "../lib/format.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const GO_NO_GO_ROLES = new Set(["owner", "admin", "analyst", "reviewer"]);
+// Marcar ganada/perdida es una decisión comercial/legal -- DECISION_ROLES
+// exacto (sin "reviewer"), mismo criterio que el servidor (resolution.ts).
+const RESOLUTION_ROLES = new Set(["owner", "admin", "analyst"]);
+// Espejo local de `TENDER_RESOLVABLE_FROM_STATUSES` (tender-resolution.ts) --
+// solo cosmético (oculta el formulario cuando el servidor lo rechazaría
+// igual con 409); la validación real vive SIEMPRE en el servidor.
+const RESOLVABLE_FROM_STATUSES = new Set(["go", "in_progress", "submitted"]);
 
 const RESULT_COLORS: Record<string, { bg: string; fg: string }> = {
   verde: { bg: "#dcfce7", fg: "#166534" },
@@ -40,6 +49,7 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [decisions, setDecisions] = useState<readonly GoNoGoDecision[]>([]);
   const [checklist, setChecklist] = useState<ChecklistSummary | null>(null);
+  const [resolutions, setResolutions] = useState<readonly TenderResolutionRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,20 +57,26 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
   const [submitting, setSubmitting] = useState<GoNoGoDecisionValue | null>(null);
   const [decisionError, setDecisionError] = useState<string | null>(null);
 
+  const [resolutionReasonText, setResolutionReasonText] = useState("");
+  const [resolvingAs, setResolvingAs] = useState<TenderResolutionValue | null>(null);
+  const [resolutionError, setResolutionError] = useState<string | null>(null);
+
   async function load(id: string) {
     setLoading(true);
     setError(null);
     try {
-      const [tenderData, matchData, decisionsData, checklistData] = await Promise.all([
+      const [tenderData, matchData, decisionsData, checklistData, resolutionsData] = await Promise.all([
         fetchTender(fetch, apiBaseUrl, token, propertyId, id),
         fetchMatchingDetail(fetch, apiBaseUrl, token, propertyId, id),
         fetchGoNoGoDecisions(fetch, apiBaseUrl, token, propertyId, id),
         fetchChecklist(fetch, apiBaseUrl, token, propertyId, id),
+        fetchTenderResolutions(fetch, apiBaseUrl, token, propertyId, id),
       ]);
       setTender(tenderData);
       setMatch(matchData);
       setDecisions(decisionsData);
       setChecklist(checklistData);
+      setResolutions(resolutionsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la convocatoria.");
     } finally {
@@ -92,6 +108,30 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
       setDecisionError(err instanceof Error ? err.message : "No se pudo registrar la decisión.");
     } finally {
       setSubmitting(null);
+    }
+  }
+
+  async function handleResolve(resolution: TenderResolutionValue) {
+    if (!tenderId) return;
+    setResolutionError(null);
+    const reason = resolutionReasonText.trim();
+    if (reason.length === 0) {
+      setResolutionError("Escribe un motivo.");
+      return;
+    }
+    setResolvingAs(resolution);
+    try {
+      // El servidor SIEMPRE revalida la transición en vivo (`checkTenderResolution`,
+      // tender-resolution.ts) -- un 409 aquí significa que el estado actual de
+      // la convocatoria ya no admite esta resolución (p. ej. cambió mientras
+      // esta pantalla estaba abierta), nunca se aplica a medias.
+      await resolveTender(fetch, apiBaseUrl, token, propertyId, tenderId, { resolution, reason });
+      setResolutionReasonText("");
+      await load(tenderId);
+    } catch (err) {
+      setResolutionError(err instanceof Error ? err.message : "No se pudo registrar la resolución.");
+    } finally {
+      setResolvingAs(null);
     }
   }
 
@@ -229,6 +269,56 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
           </div>
         ) : (
           <p style={{ fontSize: 12, color: "#9ca3af" }}>Tu rol ({role}) no puede tomar decisiones go/no-go.</p>
+        )}
+      </section>
+
+      <section>
+        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Resolución (ganada / perdida)</h2>
+        {resolutions.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+            {resolutions.map((r) => (
+              <div key={r.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <strong style={{ color: r.resolution === "won" ? "#166534" : "#991b1b" }}>{r.resolution === "won" ? "GANADA" : "PERDIDA"}</strong>
+                  <span style={{ color: "#6b7280" }}>{formatDate(r.resolvedAt)}</span>
+                </div>
+                <p style={{ margin: "4px 0 0" }}>{r.reason}</p>
+                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Resuelta desde el estado "{formatTenderStatus(r.fromStatus)}".</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tender.status === "won" || tender.status === "lost" ? (
+          <p style={{ fontSize: 13, color: "#6b7280" }}>
+            Esta convocatoria ya se resolvió como {tender.status === "won" ? "ganada" : "perdida"} -- es un estado terminal, no admite una nueva resolución.
+          </p>
+        ) : !RESOLUTION_ROLES.has(role) ? (
+          <p style={{ fontSize: 12, color: "#9ca3af" }}>Tu rol ({role}) no puede marcar una convocatoria ganada/perdida (se requiere owner/admin/analyst).</p>
+        ) : !RESOLVABLE_FROM_STATUSES.has(tender.status ?? "discovered") ? (
+          <p style={{ fontSize: 13, color: "#6b7280" }}>
+            Todavía no se puede resolver: se requiere una decisión "Go" primero (estado actual: "{formatTenderStatus(tender.status)}"). Nunca se salta directo de una convocatoria sin decisión a ganada/perdida.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 460 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+              Motivo
+              <textarea value={resolutionReasonText} onChange={(e) => setResolutionReasonText(e.target.value)} rows={2} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontFamily: "inherit" }} />
+            </label>
+            {resolutionError && (
+              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+                {resolutionError}
+              </p>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" onClick={() => void handleResolve("won")} disabled={resolvingAs !== null} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #166534", background: "#166534", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                {resolvingAs === "won" ? "Guardando…" : "Marcar ganada"}
+              </button>
+              <button type="button" onClick={() => void handleResolve("lost")} disabled={resolvingAs !== null} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #991b1b", background: "#fff", color: "#991b1b", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                {resolvingAs === "lost" ? "Guardando…" : "Marcar perdida"}
+              </button>
+            </div>
+          </div>
         )}
       </section>
 

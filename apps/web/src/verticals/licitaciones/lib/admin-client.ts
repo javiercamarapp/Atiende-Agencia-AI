@@ -103,6 +103,19 @@ export async function putJson<T>(
   return (await res.json()) as T;
 }
 
+export async function patchJson<T>(fetchImpl: typeof fetch, url: string, token: string, payload: unknown = {}, extraHeaders: Record<string, string> = {}): Promise<T> {
+  const res = await fetchImpl(url, {
+    method: "PATCH",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...extraHeaders },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new LicitacionesAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
 export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string): Promise<readonly BranchOption[]> {
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${orgSlug}/admin/branches`, token);
   return body.branches;

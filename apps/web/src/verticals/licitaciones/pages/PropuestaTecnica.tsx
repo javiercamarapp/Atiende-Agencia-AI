@@ -289,6 +289,10 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
         <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} style={{ display: "inline-block", marginTop: 8, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
           Correr checklist, aprobar y ensamblar el paquete de cierre →
         </Link>
+        <br />
+        <Link to={`/licitaciones/${orgSlug}/datos-empresa`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+          Capturar/aprobar documentos, tarifas, capacidades, experiencia y firmantes de la empresa →
+        </Link>
       </div>
 
       {technicalItems.length === 0 && (
