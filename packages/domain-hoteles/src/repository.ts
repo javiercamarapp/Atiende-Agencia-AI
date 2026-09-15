@@ -68,6 +68,16 @@ export interface IdempotentResult<T> {
   readonly body: T;
 }
 
+/** Página de `listReservationsPage` -- mismo criterio de forma que
+ * `CitasRepository::CustomerPage` (@atiende/domain-citas): `total` es el conteo
+ * completo (no solo `items.length`), `nextOffset` es `null` cuando ya no queda
+ * página siguiente. */
+export interface ReservationPage {
+  readonly items: readonly ReservationRecord[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}
+
 export interface HotelesRepository {
   // ---- Folios/cargos (flujo 1) ----
   findFolio(propertyId: string, folioId: string): Promise<FolioRecord | null>;
@@ -235,6 +245,15 @@ export interface HotelesRepository {
    *  imposibles de probar/usar desde el front) — no enumerado explícitamente en la
    *  lista de firmas de §3.3, pero requerido literalmente por §5. */
   listReservations(propertyId: string): Promise<readonly ReservationRecord[]>;
+  /** Versión PAGINADA de `listReservations`, para `GET /hoteles/:propertyId/reservas`
+   * (el listado que el panel de recepción navega) -- hallazgo de auditoría (rubro 10,
+   * "performance y escalabilidad", severidad BAJA: "listados sin paginación en 4
+   * verticales"). Un hotel activo acumula miles de reservas a lo largo de los años;
+   * la query ahora está acotada por `limit`/`offset` reales en vez de traer TODA la
+   * tabla en un solo array. `listReservations` (arriba) se queda intacta -- hoy no
+   * tiene otro consumidor, pero cambiar su contrato es una decisión distinta a
+   * agregar el camino paginado que la ruta HTTP necesita. */
+  listReservationsPage(propertyId: string, opts: { readonly limit: number; readonly offset: number }): Promise<ReservationPage>;
 
   findReservation(propertyId: string, reservationId: string): Promise<ReservationRecord | null>;
 

@@ -171,4 +171,44 @@ describe("GET /rentas/:propertyId/unidades/:unidadId/ocupaciones", () => {
     );
     expect(res.status).toBe(404);
   });
+
+  // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA):
+  // "listados sin paginación en 4 verticales" -- devolvía TODO el historial de
+  // ocupaciones de la unidad en un solo array. Con N=5 bloqueos y limit=2, la query
+  // debe quedar ACOTADA (nunca "todo de una vez"), y X-Total-Count/X-Next-Offset
+  // deben permitir recorrer las 5 sin duplicar ni omitir ninguna.
+  it("con N=5 ocupaciones y limit=2, la query queda acotada -- X-Total-Count/X-Next-Offset recorren las 5 sin duplicar ni omitir", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const N = 5;
+    for (let i = 0; i < N; i += 1) {
+      const dia = String(10 + i * 3).padStart(2, "0");
+      const diaFin = String(11 + i * 3).padStart(2, "0");
+      const res = await app.request(
+        `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/bloqueos`,
+        authedJson(ctx.staff.adminGestora.token, { rango: { inicio: `2027-06-${dia}`, fin: `2027-06-${diaFin}` }, razon: "MANTENIMIENTO" }),
+      );
+      expect(res.status).toBe(201);
+    }
+
+    const idsVistos = new Set<string>();
+    let offset = 0;
+    let paginas = 0;
+    for (;;) {
+      const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/ocupaciones?limit=2&offset=${offset}`, authedJson(ctx.staff.adminGestora.token));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-total-count")).toBe(String(N));
+      const body = (await res.json()) as { ocupaciones: { id: string }[] };
+      expect(body.ocupaciones.length).toBeLessThanOrEqual(2);
+      for (const o of body.ocupaciones) idsVistos.add(o.id);
+      paginas += 1;
+      const nextOffset = res.headers.get("x-next-offset");
+      if (nextOffset === null) break;
+      offset = Number(nextOffset);
+      expect(paginas).toBeLessThan(10);
+    }
+
+    expect(idsVistos.size).toBe(N);
+    expect(paginas).toBe(3); // ceil(5/2)
+  });
 });

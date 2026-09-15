@@ -156,7 +156,7 @@ export type {
   NewGuestInput,
 } from "./types.ts";
 
-export type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, EmailOutboxJobRow } from "./repository.ts";
+export type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, EmailOutboxJobRow, ReservationPage } from "./repository.ts";
 export { InMemoryHotelesRepository } from "./in-memory-repository.ts";
 export { PostgresHotelesRepository } from "./postgres-repository.ts";
 

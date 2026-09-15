@@ -4,7 +4,7 @@
 // esquema `rentas` de migrations/001-003 (RLS real vía `core.has_property_access`/
 // funciones propias del schema `rentas`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import type { RentasRepository } from "./repository.ts";
+import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatement } from "./finanzas/statement.ts";
 import type { CandidataConciliacion, EstadoConciliacion, LineaConciliada } from "./finanzas/conciliacion.ts";
 import type { RangoFechas } from "./tipos.ts";
@@ -222,6 +222,49 @@ export class PostgresRentasRepository implements RentasRepository {
       huespedContacto: row.huesped_contacto,
       createdAt: row.created_at,
     }));
+  }
+
+  async listOcupacionesPage(propertyId: string, unidadId: string, opts: { readonly limit: number; readonly offset: number }): Promise<OcupacionCalendarioPage> {
+    const { rows } = await this.db.query<{
+      id: string;
+      unidad_id: string;
+      inicio: string;
+      fin: string;
+      capa: "reserva" | "bloqueo";
+      razon: OcupacionCalendarioItem["razon"];
+      estado: OcupacionCalendarioItem["estado"];
+      canal_codigo: string | null;
+      huesped_nombre: string | null;
+      huesped_contacto: string | null;
+      created_at: string;
+      total: string;
+    }>(
+      `select o.id, o.unidad_id, lower(o.rango)::text as inicio, upper(o.rango)::text as fin, o.capa, o.razon, o.estado,
+              c.codigo as canal_codigo, g.nombre as huesped_nombre, g.contacto as huesped_contacto, o.created_at::text as created_at,
+              count(*) over ()::text as total
+       from rentas.ocupacion o
+       left join rentas.canal c on c.id = o.canal_origen_id
+       left join rentas.guest_minimo g on g.id = o.huesped_minimo_id
+       where o.property_id = $1 and o.unidad_id = $2
+       order by lower(o.rango)
+       limit $3 offset $4;`,
+      [propertyId, unidadId, opts.limit, opts.offset],
+    );
+    const items = rows.map((row) => ({
+      id: row.id,
+      unidadId: row.unidad_id,
+      capa: row.capa,
+      rango: { inicio: row.inicio, fin: row.fin },
+      razon: row.razon,
+      estado: row.estado,
+      canalCodigo: row.canal_codigo,
+      huespedNombre: row.huesped_nombre,
+      huespedContacto: row.huesped_contacto,
+      createdAt: row.created_at,
+    }));
+    const total = rows[0] ? Number(rows[0].total) : 0;
+    const nextOffset = opts.offset + items.length < total ? opts.offset + items.length : null;
+    return { items, total, nextOffset };
   }
 
   async insertGuestMinimo(input: NewGuestMinimoInput): Promise<{ id: string }> {

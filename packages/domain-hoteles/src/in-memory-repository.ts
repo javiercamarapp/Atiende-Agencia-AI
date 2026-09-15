@@ -5,7 +5,7 @@
 // Sirve para tests determinísticos y como fallback dev/CI sin Postgres real — mismo
 // rol que InMemoryRestaurantesRepository.
 import { createHash, randomUUID } from "node:crypto";
-import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow } from "./repository.ts";
+import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
   AttendanceEventRecord,
@@ -787,6 +787,16 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       .filter((r) => r.propertyId === propertyId)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
       .map((r) => this.toReservationRecord(r));
+  }
+
+  async listReservationsPage(propertyId: string, opts: { readonly limit: number; readonly offset: number }): Promise<ReservationPage> {
+    const filtered = [...this.reservations.values()]
+      .filter((r) => r.propertyId === propertyId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .map((r) => this.toReservationRecord(r));
+    const items = filtered.slice(opts.offset, opts.offset + opts.limit);
+    const nextOffset = opts.offset + items.length < filtered.length ? opts.offset + items.length : null;
+    return { items, total: filtered.length, nextOffset };
   }
 
   async findReservation(propertyId: string, reservationId: string): Promise<ReservationRecord | null> {

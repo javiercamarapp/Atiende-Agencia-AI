@@ -104,6 +104,51 @@ describe("POST /licitaciones/:propertyId/tenders -- alta/actualización manual (
   });
 });
 
+// Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA):
+// "listados sin paginación en 4 verticales" -- GET base/tenders devolvía TODAS las
+// convocatorias de la organización en un solo array. Con N=5 convocatorias y
+// limit=2, la query debe quedar ACOTADA (nunca "todo de una vez"), y
+// X-Total-Count/X-Next-Offset deben permitir recorrer las 5 sin duplicar ni omitir.
+describe("GET /licitaciones/:propertyId/tenders -- paginado real (offset/limit)", () => {
+  it("con N=5 convocatorias nuevas (+1 ya sembrada por el fixture) y limit=2, la query queda acotada -- X-Total-Count/X-Next-Offset recorren todas sin duplicar ni omitir", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const NUEVAS = 5;
+    const TOTAL = NUEVAS + 1; // +1: buildLicitacionesTestContext ya siembra ctx.tenderId.
+    for (let i = 0; i < NUEVAS; i += 1) {
+      const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders`, authedJson(ctx.staff.writer.token, { title: `Convocatoria ${i}`, externalId: `LA-PAGINA-${i}/2026` }));
+      expect(res.status).toBe(201);
+    }
+
+    const idsVistos = new Set<string>();
+    let offset = 0;
+    let paginas = 0;
+    for (;;) {
+      const res = await app.request(`/licitaciones/${ctx.propertyId}/tenders?limit=2&offset=${offset}`, authedJson(ctx.staff.owner.token));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-total-count")).toBe(String(TOTAL));
+      const body = (await res.json()) as { tenders: { id: string }[] };
+      expect(body.tenders.length).toBeLessThanOrEqual(2);
+      for (const t of body.tenders) idsVistos.add(t.id);
+      paginas += 1;
+      const nextOffset = res.headers.get("x-next-offset");
+      if (nextOffset === null) break;
+      offset = Number(nextOffset);
+      expect(paginas).toBeLessThan(10);
+    }
+
+    expect(idsVistos.size).toBe(TOTAL);
+    expect(idsVistos.has(ctx.tenderId)).toBe(true);
+    expect(paginas).toBe(3); // ceil(6/2)
+
+    // `GET .../tenders/matching` (sin paginar, ver listTenders) sigue viendo TODAS --
+    // paginar el listado del panel nunca debe truncar el matching real.
+    const matchingRes = await app.request(`/licitaciones/${ctx.propertyId}/tenders/matching`, authedJson(ctx.staff.owner.token));
+    const matchingBody = (await matchingRes.json()) as { results: unknown[] };
+    expect(matchingBody.results).toHaveLength(TOTAL);
+  });
+});
+
 describe("GET/PUT /licitaciones/:propertyId/matching-profile (§5)", () => {
   it("sin configurar todavía -> GET devuelve el perfil 'vacío' explícito, nunca 404", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);

@@ -120,7 +120,7 @@ export type {
   UnidadRecord,
 } from "./types.ts";
 
-export type { RentasRepository } from "./repository.ts";
+export type { RentasRepository, OcupacionCalendarioPage } from "./repository.ts";
 export { InMemoryRentasRepository } from "./in-memory-repository.ts";
 export { PostgresRentasRepository } from "./postgres-repository.ts";
 export { InMemoryRentasCalendarStore } from "./calendar-store.ts";

@@ -26,6 +26,20 @@ import { CALENDARIO_LECTURA_ROLES } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 
+// Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad BAJA:
+// "listados sin paginación en 4 verticales") -- GET .../ocupaciones devolvía TODO el
+// historial de ocupaciones de la unidad (reservas Y bloqueos, activas Y canceladas)
+// en un solo array. Una unidad con años de operación acumula cientos de filas.
+const DEFAULT_OCUPACIONES_LIMIT = 100;
+const MAX_OCUPACIONES_LIMIT = 300;
+
+function parsePositiveInt(raw: string | undefined, fallback: number, max: number): number {
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, max);
+}
+
 export function rentasCalendarioRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -54,8 +68,19 @@ export function rentasCalendarioRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const unidad = await repo.findUnidad(propertyId, unidadId);
     if (!unidad) throw Errors.notFound("Unidad no encontrada en esta property.");
 
-    const ocupaciones = await repo.listOcupaciones(propertyId, unidadId);
-    return c.json({ ocupaciones }, 200);
+    const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_OCUPACIONES_LIMIT, MAX_OCUPACIONES_LIMIT);
+    const rawOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+
+    // Body sigue siendo `{ ocupaciones: [...] }` (compatibilidad con el cliente ya
+    // existente) -- lo que cambia de verdad es que la QUERY ahora está acotada por
+    // `limit`/`offset` reales (`listOcupacionesPage`, ver
+    // @atiende/domain-rentas::repository.ts) en vez de traer TODO el historial; el
+    // total real y el siguiente offset van en headers para quien sí quiera paginar.
+    const page = await repo.listOcupacionesPage(propertyId, unidadId, { limit, offset });
+    c.header("X-Total-Count", String(page.total));
+    if (page.nextOffset !== null) c.header("X-Next-Offset", String(page.nextOffset));
+    return c.json({ ocupaciones: page.items }, 200);
   });
 
   return app;

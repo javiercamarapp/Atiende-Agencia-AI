@@ -57,6 +57,16 @@ import type {
   UnidadRecord,
 } from "./types.ts";
 
+/** Página de `listOcupacionesPage` -- mismo criterio de forma que
+ * `CitasRepository::CustomerPage` (@atiende/domain-citas): `total` es el conteo
+ * completo (no solo `items.length`), `nextOffset` es `null` cuando ya no queda
+ * página siguiente. */
+export interface OcupacionCalendarioPage {
+  readonly items: readonly OcupacionCalendarioItem[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}
+
 export interface RentasRepository {
   // ---- Calendario / anti-doble-reserva (flujo 1) ----
   findUnidad(propertyId: string, unidadId: string): Promise<UnidadRecord | null>;
@@ -160,6 +170,16 @@ export interface RentasRepository {
    *  UNIFICADA que un calendario real necesita para pintar ambas capas en una sola
    *  lista. Ver types.ts::OcupacionCalendarioItem. */
   listOcupaciones(propertyId: string, unidadId: string): Promise<readonly OcupacionCalendarioItem[]>;
+  /** Versión PAGINADA de `listOcupaciones`, para `GET .../unidades/:unidadId/
+   * ocupaciones` (el calendario que el panel navega) -- hallazgo de auditoría (rubro
+   * 10, "performance y escalabilidad", severidad BAJA: "listados sin paginación en 4
+   * verticales"). Una unidad con años de operación acumula cientos de ocupaciones
+   * (reservas Y bloqueos, activas Y canceladas); la query ahora está acotada por
+   * `limit`/`offset` reales en vez de traer TODO el historial en un solo array.
+   * `listOcupaciones` (arriba) se queda intacta -- hoy no tiene otro consumidor, pero
+   * cambiar su contrato es una decisión distinta a agregar el camino paginado que la
+   * ruta HTTP necesita. */
+  listOcupacionesPage(propertyId: string, unidadId: string, opts: { readonly limit: number; readonly offset: number }): Promise<OcupacionCalendarioPage>;
 
   // ---- Fase 17 — panel operativo del rol `limpieza` (tareas/checklist/inventario/
   // incidencias). Las ESCRITURAS de este módulo (asignar/completar checklist/

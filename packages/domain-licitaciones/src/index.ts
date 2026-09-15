@@ -180,6 +180,7 @@ export type {
   RequirementFulfillmentMappingRecord,
   TenderUpsertInput,
   TenderUpsertResult,
+  TenderPage,
   MatchingProfileUpsertInput,
   GoNoGoDecisionCreateInput,
 } from "./repository.ts";
