@@ -105,6 +105,24 @@ describe("GET /rentas/:propertyId/unidades/:unidadId/canales/:canalCodigo/feed.i
     const res = await app.request(`/rentas/${ctx.propertyId}/unidades/00000000-0000-0000-0000-000000000000/canales/airbnb/feed.ics`);
     expect(res.status).toBe(404);
   });
+
+  // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad MEDIA):
+  // "feed iCal público de rentas... sin rate-limit" -- esta ruta es pública/sin auth
+  // por diseño, así que el freno real tiene que vivir aquí (nunca en un middleware de
+  // sesión que esta ruta no usa). El backend en memoria de @atiende/core-ratelimit se
+  // resetea antes de cada test (ver test-setup/reset-rate-limiter.ts), mismo patrón
+  // que auth.spec.ts.
+  it("más de 30 solicitudes en la misma ventana desde la misma IP responde 429", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    let lastStatus = 0;
+    for (let i = 0; i < 31; i += 1) {
+      const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/canales/booking/feed.ics`);
+      lastStatus = res.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
 });
 
 describe("POST /internal/rentas/ical-sync (cron real)", () => {

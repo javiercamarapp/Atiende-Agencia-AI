@@ -12,7 +12,7 @@ import type { RangoFechas } from "../tipos.ts";
 import type { UidActivoInterno } from "./reconciliacion.ts";
 import { ESTADO_FEED_INICIAL, type EstadoFeedCanal } from "./cuarentena.ts";
 import type { RentasCalendarSyncRepository } from "./repository.ts";
-import type { BloqueoExportadoPrevio, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
+import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 interface StoredFeedExterno {
   id: string;
@@ -57,6 +57,15 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
   private readonly eventosImportados = new Map<string, StoredEventoImportado>(); // key: unidadId:canalId:uid
   private readonly bloqueosExportados = new Map<string, StoredBloqueoExportado>(); // key: ocupacionId:canalId
   private readonly zonasHorarias = new Map<string, string>(); // key: propertyId
+
+  /** Contadores de llamadas a los métodos BATCH de export -- expuestos para que los
+   * tests de rendimiento (ver domain-rentas/tests/sync-motor.spec.ts) verifiquen que
+   * `exportarFeedParaUnidad` ejecuta un número de llamadas al repositorio FIJO, sin
+   * importar cuántas ocupaciones tenga la unidad (hallazgo de auditoría, rubro 10
+   * "performance y escalabilidad": "feed iCal público... ejecuta 3+2N queries por
+   * request"). No forman parte del contrato `RentasCalendarSyncRepository`. */
+  llamadasFindBloqueosExportadosPrevios = 0;
+  llamadasUpsertBloqueosExportadosBatch = 0;
 
   constructor(private readonly calendarStore: InMemoryRentasCalendarStore) {}
 
@@ -235,13 +244,21 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
       .map((o) => ({ id: o.id, inicio: o.inicio, fin: o.fin, razon: o.razon }));
   }
 
-  async findBloqueoExportadoPrevio(ocupacionId: string, canalId: string): Promise<BloqueoExportadoPrevio | null> {
-    const fila = this.bloqueosExportados.get(`${ocupacionId}:${canalId}`);
-    return fila ? { hashContenido: fila.hashContenido, sequence: fila.sequence } : null;
+  async findBloqueosExportadosPrevios(ocupacionIds: readonly string[], canalId: string): Promise<Map<string, BloqueoExportadoPrevio>> {
+    this.llamadasFindBloqueosExportadosPrevios += 1;
+    const resultado = new Map<string, BloqueoExportadoPrevio>();
+    for (const ocupacionId of ocupacionIds) {
+      const fila = this.bloqueosExportados.get(`${ocupacionId}:${canalId}`);
+      if (fila) resultado.set(ocupacionId, { hashContenido: fila.hashContenido, sequence: fila.sequence });
+    }
+    return resultado;
   }
 
-  async upsertBloqueoExportado(_organizationId: string, _propertyId: string, ocupacionId: string, canalId: string, uidExportado: string, hashContenido: string, sequence: number): Promise<void> {
-    this.bloqueosExportados.set(`${ocupacionId}:${canalId}`, { ocupacionId, canalId, uidExportado, hashContenido, sequence });
+  async upsertBloqueosExportadosBatch(_organizationId: string, _propertyId: string, canalId: string, entradas: readonly EntradaUpsertBloqueoExportado[]): Promise<void> {
+    this.llamadasUpsertBloqueosExportadosBatch += 1;
+    for (const entrada of entradas) {
+      this.bloqueosExportados.set(`${entrada.ocupacionId}:${canalId}`, { ocupacionId: entrada.ocupacionId, canalId, uidExportado: entrada.uidExportado, hashContenido: entrada.hashContenido, sequence: entrada.sequence });
+    }
   }
 
   /** Espejo del solape usado por reservas/bloqueos, expuesto por si alguna prueba de

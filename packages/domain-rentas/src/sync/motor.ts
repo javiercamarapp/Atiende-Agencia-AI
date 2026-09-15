@@ -315,9 +315,19 @@ export interface ContextoExportacion {
 export async function exportarFeedParaUnidad(ctx: ContextoExportacion, nombreCalendario: string): Promise<FeedExportado> {
   const activas = await ctx.syncRepo.listOcupacionesActivasBloqueantes(ctx.unidadId);
 
+  // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad MEDIA):
+  // "feed iCal público de rentas... ejecuta 3+2N queries por request" -- antes, este
+  // bucle llamaba a `findBloqueoExportadoPrevio` UNA VEZ POR OCUPACIÓN. Ahora resuelve
+  // el bookkeeping previo de TODAS las ocupaciones activas en una sola consulta
+  // agregada (ver ./repository.ts::findBloqueosExportadosPrevios).
+  const previos = await ctx.syncRepo.findBloqueosExportadosPrevios(
+    activas.map((fila) => fila.id),
+    ctx.canalId,
+  );
+
   const bloqueos: BloqueoExportable[] = [];
   for (const fila of activas) {
-    const previo = await ctx.syncRepo.findBloqueoExportadoPrevio(fila.id, ctx.canalId);
+    const previo = previos.get(fila.id) ?? null;
     const hashNuevo = calcularHashContenidoBloqueo({ unidadId: ctx.unidadId, dtstart: fila.inicio, dtend: fila.fin, razon: fila.razon as BloqueoExportable["razon"] });
     const sequenceAnterior = previo?.sequence ?? -1;
     const sequence = previo?.hashContenido === hashNuevo ? Math.max(sequenceAnterior, 0) : sequenceAnterior + 1;
@@ -327,11 +337,19 @@ export async function exportarFeedParaUnidad(ctx: ContextoExportacion, nombreCal
 
   const feed = exportarFeedIcs(nombreCalendario, bloqueos);
 
-  for (const bloqueo of bloqueos) {
-    const uid = construirUidExportado(bloqueo.ocupacionId);
-    const hash = feed.hashesPorOcupacion.get(bloqueo.ocupacionId)!;
-    await ctx.syncRepo.upsertBloqueoExportado(ctx.organizationId, ctx.propertyId, bloqueo.ocupacionId, ctx.canalId, uid, hash, bloqueo.sequence);
-  }
+  // Mismo hallazgo que arriba: un solo upsert multi-fila para TODOS los bloqueos del
+  // ciclo, en vez de un upsert por bloqueo dentro de un bucle.
+  await ctx.syncRepo.upsertBloqueosExportadosBatch(
+    ctx.organizationId,
+    ctx.propertyId,
+    ctx.canalId,
+    bloqueos.map((bloqueo) => ({
+      ocupacionId: bloqueo.ocupacionId,
+      uidExportado: construirUidExportado(bloqueo.ocupacionId),
+      hashContenido: feed.hashesPorOcupacion.get(bloqueo.ocupacionId)!,
+      sequence: bloqueo.sequence,
+    })),
+  );
 
   return feed;
 }

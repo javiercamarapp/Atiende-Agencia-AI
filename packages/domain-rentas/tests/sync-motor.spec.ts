@@ -253,4 +253,40 @@ describe("exportarFeedParaUnidad", () => {
     const seq = (ics: string) => Number(ics.match(/SEQUENCE:(\d+)/)![1]);
     expect(seq(feed1.contenidoIcs)).toBe(seq(feed2.contenidoIcs));
   });
+
+  // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad MEDIA):
+  // "feed iCal público de rentas... ejecuta 3+2N queries por request" -- antes, este
+  // motor llamaba a `findBloqueoExportadoPrevio`/`upsertBloqueoExportado` UNA VEZ POR
+  // OCUPACIÓN ACTIVA (2N llamadas). Verifica que, con N ocupaciones activas, el
+  // repositorio recibe exactamente UNA llamada de lectura y UNA de escritura por
+  // corrida -- nunca una por ocupación -- y que el contenido exportado sigue siendo
+  // correcto para las N.
+  it("con N ocupaciones activas, ejecuta un número de llamadas al repositorio FIJO (1 lectura + 1 escritura), nunca 2N", async () => {
+    const { organizationId, propertyId, unidad, canalBooking, syncRepo, db } = await crearFixture();
+
+    const N = 6;
+    for (let i = 0; i < N; i++) {
+      const inicio = `2027-08-${String(1 + i * 3).padStart(2, "0")}`;
+      const fin = `2027-08-${String(2 + i * 3).padStart(2, "0")}`;
+      await crearReservaConfirmada(db, { organizationId, propertyId, unidadId: unidad.id, rango: { inicio, fin }, estado: "confirmado", bloqueante: true });
+    }
+
+    const feed1 = await exportarFeedParaUnidad({ syncRepo, organizationId, propertyId, unidadId: unidad.id, canalId: canalBooking.id }, "Unidad 1");
+    expect(feed1.hashesPorOcupacion.size).toBe(N);
+    expect((feed1.contenidoIcs.match(/BEGIN:VEVENT/g) ?? []).length).toBe(N);
+
+    // El punto del hallazgo: sin importar N, exactamente UNA llamada de lectura y UNA
+    // de escritura -- antes eran N+N (una por ocupación en cada fase del bucle).
+    expect(syncRepo.llamadasFindBloqueosExportadosPrevios).toBe(1);
+    expect(syncRepo.llamadasUpsertBloqueosExportadosBatch).toBe(1);
+
+    // Segunda corrida sin cambios: sigue siendo 1+1 llamadas totales (nunca 2N más),
+    // y el SEQUENCE de cada ocupación se mantiene estable (mismo criterio que el test
+    // de arriba, ahora con N ocupaciones en vez de 1).
+    const feed2 = await exportarFeedParaUnidad({ syncRepo, organizationId, propertyId, unidadId: unidad.id, canalId: canalBooking.id }, "Unidad 1");
+    expect(syncRepo.llamadasFindBloqueosExportadosPrevios).toBe(2);
+    expect(syncRepo.llamadasUpsertBloqueosExportadosBatch).toBe(2);
+    const secuencias = (ics: string) => [...ics.matchAll(/SEQUENCE:(\d+)/g)].map((m) => Number(m[1])).sort();
+    expect(secuencias(feed2.contenidoIcs)).toEqual(secuencias(feed1.contenidoIcs));
+  });
 });
