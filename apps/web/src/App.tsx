@@ -45,6 +45,7 @@ import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.ts
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
 import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
+import { PropuestaTecnicaPage } from "./verticals/licitaciones/pages/PropuestaTecnica.tsx";
 import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
@@ -534,6 +535,17 @@ function LicitacionesRequisitosRoute() {
   );
 }
 
+function LicitacionesPropuestaTecnicaRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <PropuestaTecnicaPage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 function LicitacionesPerfilMatchingRoute() {
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -685,6 +697,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/requisitos" element={<LicitacionesRequisitosRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/propuesta-tecnica" element={<LicitacionesPropuestaTecnicaRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
