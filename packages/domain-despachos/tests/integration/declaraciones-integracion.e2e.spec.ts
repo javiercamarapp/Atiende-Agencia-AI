@@ -8,12 +8,12 @@
 // agregarDiot(...)" — sin releer los CFDI crudos.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { InMemoryDespachosRepository } from "../src/in-memory-repository.ts";
-import { validarCfdiDespachos } from "../src/cfdi/reglas-fiscales-avanzadas.ts";
-import type { DatosCfdiDespachos } from "../src/cfdi/reglas-fiscales-avanzadas.ts";
-import { agregarDiot } from "../src/declaraciones/diot-aggregate.ts";
-import type { RegistroDiotCandidato } from "../src/declaraciones/types.ts";
-import type { InvoiceRecord, NewInvoiceInput } from "../src/types.ts";
+import { InMemoryDespachosRepository } from "../../src/in-memory-repository.ts";
+import { validarCfdiDespachos } from "../../src/cfdi/reglas-fiscales-avanzadas.ts";
+import type { DatosCfdiDespachos } from "../../src/cfdi/reglas-fiscales-avanzadas.ts";
+import { agregarDiot } from "../../src/declaraciones/diot-aggregate.ts";
+import type { RegistroDiotCandidato } from "../../src/declaraciones/types.ts";
+import type { InvoiceRecord, NewInvoiceInput } from "../../src/types.ts";
 
 function cfdiIngreso(overrides: Partial<DatosCfdiDespachos> = {}): DatosCfdiDespachos {
   return {

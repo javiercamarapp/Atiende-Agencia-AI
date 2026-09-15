@@ -8,5 +8,5 @@
     "moduleResolution": "Bundler",
     "baseUrl": "."
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
 }
