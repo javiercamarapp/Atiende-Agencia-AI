@@ -27,6 +27,7 @@ import type {
   OwnerPortalProfileBase,
   OwnerPortalStatementDetalle,
   OwnerPortalStatementSummary,
+  RevokeOwnerRefreshTokenInput,
   UnidadPropietarioRecord,
 } from "./types.ts";
 import type { RentasOwnerPortalRepository } from "./repository.ts";
@@ -211,5 +212,21 @@ export class PostgresRentasOwnerPortalRepository implements RentasOwnerPortalRep
     ]);
     const row = rows[0];
     return row ? { ownerId: row.owner_id } : null;
+  }
+
+  // ---- Hallazgo de auditoría (severidad ALTA, "el portal de propietario no tiene
+  // logout/revocación real de sesión") -- vía `rentas.revoke_owner_refresh_token`/
+  // `rentas.is_owner_refresh_token_revoked` (security definer, migración 017): el rol
+  // `authenticated` sin `auth.uid()` (sesión de sistema, mismo momento que login/
+  // refresh de propietario) no tiene GRANT directo sobre
+  // `rentas.revoked_owner_refresh_token`. ----
+
+  async revokeOwnerRefreshToken(input: RevokeOwnerRefreshTokenInput): Promise<void> {
+    await this.db.query(`select rentas.revoke_owner_refresh_token($1, $2, $3);`, [input.jti, input.ownerId, input.expiresAt]);
+  }
+
+  async isOwnerRefreshTokenRevoked(jti: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ revoked: boolean }>(`select rentas.is_owner_refresh_token_revoked($1) as revoked;`, [jti]);
+    return rows[0]?.revoked ?? false;
   }
 }

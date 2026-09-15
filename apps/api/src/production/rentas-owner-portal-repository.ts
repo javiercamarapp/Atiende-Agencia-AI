@@ -28,6 +28,7 @@ import type {
   OwnerPortalStatementDetalle,
   OwnerPortalStatementSummary,
   RentasOwnerPortalRepository,
+  RevokeOwnerRefreshTokenInput,
   UnidadPropietarioRecord,
 } from "@atiende/domain-rentas";
 import { PostgresRentasOwnerPortalRepository } from "@atiende/domain-rentas";
@@ -70,5 +71,13 @@ export class ProductionRentasOwnerPortalRepository implements RentasOwnerPortalR
 
   consumePortalInvite(input: ConsumePortalInviteInput): Promise<{ ownerId: string } | null> {
     return this.delegate.consumePortalInvite(input);
+  }
+
+  revokeOwnerRefreshToken(input: RevokeOwnerRefreshTokenInput): Promise<void> {
+    return this.delegate.revokeOwnerRefreshToken(input);
+  }
+
+  isOwnerRefreshTokenRevoked(jti: string): Promise<boolean> {
+    return this.delegate.isOwnerRefreshTokenRevoked(jti);
   }
 }

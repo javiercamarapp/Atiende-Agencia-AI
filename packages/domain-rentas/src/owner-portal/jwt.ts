@@ -25,6 +25,7 @@
 // `core-auth::signAccessToken` para aceptar cualquier claims shape sería tocar el
 // núcleo compartido para un caso de una sola vertical (ver diseño §7, condición de
 // disparo explícita para cuándo SÍ ameritaría extraer algo genérico a core-auth).
+import { randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify, errors as joseErrors } from "jose";
 
 export interface RentasPropertyOwnerAccessTokenClaims {
@@ -35,6 +36,20 @@ export interface RentasPropertyOwnerAccessTokenClaims {
 
 export interface RentasPropertyOwnerRefreshTokenClaims {
   readonly sub: string;
+  /** Identificador único del token (RFC 7519 `jti`) -- hallazgo de auditoría
+   * (severidad ALTA, "el portal de propietario (owner-portal) no tiene logout/
+   * revocación real de sesión"): mismo motivo exacto que
+   * `@atiende/core-auth::RefreshTokenClaims.jti` (staff) -- sin él, ningún endpoint
+   * de logout podría revocar UN refresh token concreto sin invalidar todos los de
+   * ese propietario. Se persiste en `rentas.revoked_owner_refresh_token` (jti, nunca
+   * el JWT completo) al cerrar sesión -- ver
+   * `apps/api/src/routes/verticals/rentas/owner-portal.ts::/auth/logout` y
+   * `RentasOwnerPortalRepository.revokeOwnerRefreshToken`. */
+  readonly jti: string;
+  /** Epoch seconds (`exp` estándar de JWT) -- declarado aquí, mismo motivo que
+   * `RefreshTokenClaims.exp` de core-auth: el caller de logout necesita
+   * `expires_at` sin volver a decodificar el JWT a mano. */
+  readonly exp: number;
   readonly type: "rentas_property_owner_refresh";
 }
 
@@ -64,6 +79,7 @@ export async function signRentasPropertyOwnerRefreshToken(sub: string, secret: s
     .setIssuedAt()
     .setExpirationTime(`${ttlSeconds}s`)
     .setSubject(sub)
+    .setJti(randomUUID())
     .sign(secretKey(secret));
 }
 

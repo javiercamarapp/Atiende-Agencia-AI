@@ -112,6 +112,26 @@ export async function ownerPortalActivar(fetchImpl: typeof fetch, apiBaseUrl: st
   }
 }
 
+/** Hallazgo de auditoría (severidad ALTA, "el portal de propietario no tiene logout/
+ * revocación real de sesión") -- `POST /rentas/owner-portal/auth/logout` (nuevo, ver
+ * owner-portal.ts) revoca de verdad el refresh token del lado del servidor.
+ * BEST-EFFORT a propósito, mismo criterio que `logout` genérico de staff
+ * (`../../../lib/auth-client.ts`): si la red falla, el logout LOCAL (borrar la sesión
+ * del navegador, ver `clearOwnerPortalSession`) debe seguir funcionando igual -- el
+ * caller SIEMPRE debe llamar `clearOwnerPortalSession` después, pase lo que pase aquí. */
+export async function ownerPortalLogout(fetchImpl: typeof fetch, apiBaseUrl: string, refreshToken: string): Promise<void> {
+  try {
+    await fetchImpl(`${apiBaseUrl}/rentas/owner-portal/auth/logout`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    // Sin red, API caída, lo que sea -- el logout local no depende de que este POST
+    // haya llegado, ver comentario de arriba.
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Lectura autenticada: me / unidades / statements (requireRentasOwnerSession).
 // ---------------------------------------------------------------------------
