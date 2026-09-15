@@ -15,6 +15,7 @@ import { MANAGER_ROLES, REPARTIDOR_ROLES, changeOrderStatus, isOrderStatus, Orde
 import type { Order, StaffOrderNotificationRecord } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
 
@@ -144,6 +145,13 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
 
     try {
       const updated = await changeOrderStatus(repo, organizationId, order, raw.status);
+      // Cluster #3 (CRÍTICO) de la auditoría final — `changeOrderStatus` ya
+      // encoló internamente (best-effort) el WhatsApp al cliente si el nuevo
+      // status aplica (tryNotifyCustomerOnOrderStatusChange, ver
+      // order-notifications.ts); disparo inline del drenado, mismo
+      // `repo`/transacción (ver comentario de cabecera de
+      // routes/internal/whatsapp-dispatch.ts), en vez de esperar al cron diario.
+      await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
       return c.json({ order: serializeOrder(updated) });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);

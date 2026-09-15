@@ -14,6 +14,7 @@ import {
   OwnerPortalError,
   ownerPortalActivar,
   ownerPortalLogin,
+  ownerPortalLogout,
   SessionExpiredError,
   validateOwnerPortalActivarForm,
   validateOwnerPortalLoginForm,
@@ -81,6 +82,33 @@ describe("ownerPortalLogin", () => {
       throw new Error("no debería llamarse");
     }) as unknown as typeof fetch;
     await expect(ownerPortalLogin(fetchImpl, "http://api.local", "", "")).rejects.toThrow(OwnerPortalError);
+  });
+});
+
+// Hallazgo de auditoría (severidad ALTA, "el portal de propietario no tiene logout/
+// revocación real de sesión") — ver POST /rentas/owner-portal/auth/logout en
+// apps/api/src/routes/verticals/rentas/owner-portal.ts.
+describe("ownerPortalLogout", () => {
+  it("llama POST /rentas/owner-portal/auth/logout con el refreshToken en el body", async () => {
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/rentas/owner-portal/auth/logout");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(init!.body as string)).toEqual({ refreshToken: "un-refresh-token" });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await ownerPortalLogout(fetchImpl, "http://api.local", "un-refresh-token");
+  });
+
+  it("best-effort: nunca lanza aunque la red falle (el logout local no puede depender de este POST)", async () => {
+    const fetchImpl = (async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+    await expect(ownerPortalLogout(fetchImpl, "http://api.local", "un-refresh-token")).resolves.toBeUndefined();
+  });
+
+  it("best-effort: nunca lanza aunque el servidor responda con error", async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ code: "internal_error" }), { status: 500 })) as unknown as typeof fetch;
+    await expect(ownerPortalLogout(fetchImpl, "http://api.local", "un-refresh-token")).resolves.toBeUndefined();
   });
 });
 

@@ -12,6 +12,7 @@
     "@atiende/billing": "*",
     "@atiende/core-auth": "*",
     "@atiende/core-authz": "*",
+    "@atiende/core-ratelimit": "*",
     "@atiende/core-tenancy": "*",
     "@atiende/db": "*",
     "@atiende/domain-restaurantes": "*",

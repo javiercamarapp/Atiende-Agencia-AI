@@ -22,6 +22,7 @@ import { licitacionesInconformidadRoutes } from "./inconformidad.ts";
 import { licitacionesFalloAutopsyRoutes } from "./falloAutopsy.ts";
 import { licitacionesRenewalRadarRoutes } from "./renewalRadar.ts";
 import { licitacionesAdminRoutes } from "./admin.ts";
+import { licitacionesAdminStaffRoutes } from "./admin-staff.ts";
 import { licitacionesAlertNotificationsRoutes } from "./alertNotifications.ts";
 import { licitacionesResolutionRoutes } from "./resolution.ts";
 import { licitacionesCompanyDataRoutes } from "./companyData.ts";
@@ -57,6 +58,10 @@ export function licitacionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // de este directorio: la Fase 1 solo construyó el login, sin este endpoint el
   // panel no tenía ningún camino real para entrar a ninguna pantalla).
   app.route("/", licitacionesAdminRoutes(deps));
+  // Hallazgo de auditoría (severidad ALTA, "alta de organización/staff imposible
+  // sin SQL") — CRUD real de invitaciones de staff, mismo patrón que
+  // restaurantesAdminStaffRoutes (ver el comentario de cabecera de admin-staff.ts).
+  app.route("/", licitacionesAdminStaffRoutes(deps));
   // Fase 10 — despacho proactivo real (correo) de recordatorios de plazo +
   // alertas de renovación + facturas vencidas de cobranza.
   app.route("/", licitacionesAlertNotificationsRoutes(deps));

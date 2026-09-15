@@ -173,7 +173,8 @@ function IsrPmForm({ ctx }: { ctx: DespachosShellContext }) {
 }
 
 function IsrPmResicoForm({ ctx }: { ctx: DespachosShellContext }) {
-  const [ingresoMensual, setIngresoMensual] = useState("");
+  const [ingresosCobrados, setIngresosCobrados] = useState("");
+  const [deduccionesAutorizadas, setDeduccionesAutorizadas] = useState("");
   const [pagosProvisionales, setPagosProvisionales] = useState("");
   const [resultado, setResultado] = useState<IsrResultado | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -182,15 +183,16 @@ function IsrPmResicoForm({ ctx }: { ctx: DespachosShellContext }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    const ingreso = Number(ingresoMensual);
+    const ingreso = Number(ingresosCobrados);
     if (!Number.isFinite(ingreso)) {
-      setError("Ingreso mensual inválido.");
+      setError("Ingresos cobrados inválidos.");
       return;
     }
     setLoading(true);
     try {
       const r = await calcularIsrPmResico(fetch, ctx.apiBaseUrl, ctx.token, ctx.propertyId, {
-        ingresoMensual: ingreso,
+        ingresosCobrados: ingreso,
+        deduccionesAutorizadas: deduccionesAutorizadas.trim() ? Number(deduccionesAutorizadas) : undefined,
         pagosProvisionales: pagosProvisionales.trim() ? Number(pagosProvisionales) : undefined,
       });
       setResultado(r);
@@ -205,13 +207,18 @@ function IsrPmResicoForm({ ctx }: { ctx: DespachosShellContext }) {
     <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 340 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Ingreso mensual acumulable *
-          <input type="number" step="0.01" value={ingresoMensual} onChange={(e) => setIngresoMensual(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
+          Ingresos efectivamente cobrados en el mes *
+          <input type="number" step="0.01" value={ingresosCobrados} onChange={(e) => setIngresosCobrados(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+          Deducciones autorizadas efectivamente pagadas
+          <input type="number" step="0.01" value={deduccionesAutorizadas} onChange={(e) => setDeduccionesAutorizadas(e.target.value)} placeholder="0" style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           Pagos provisionales ya realizados
           <input type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
         </label>
+        <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>RESICO PM: tasa fija de 30% sobre flujo de efectivo (ingresos cobrados − deducciones pagadas), Art. 206/209 LISR.</p>
         {error && (
           <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
             {error}

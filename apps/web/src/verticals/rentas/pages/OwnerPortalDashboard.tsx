@@ -10,13 +10,22 @@
 // ("rentas-owner-portal", ver lib/owner-portal-client.ts) para no chocar con la
 // sesión de STAFF de rentas abierta en el mismo navegador.
 //
-// No hay `POST /rentas/owner-portal/auth/logout` en el backend (owner-portal.ts solo
-// expone login/refresh/set-password/me/unidades/statements) -- "cerrar sesión" aquí
-// es honesto: solo borra la sesión local, sin pretender revocar nada del lado del
-// servidor (documentado, no un stub disfrazado).
+// Hallazgo de auditoría (severidad ALTA, "el portal de propietario (owner-portal) no
+// tiene logout/revocación real de sesión") -- CERRADO: `handleLogout` ahora llama
+// `POST /rentas/owner-portal/auth/logout` (ver owner-portal.ts + owner-portal-client.ts)
+// ANTES de borrar la sesión local, revocando de verdad el refresh token del lado del
+// servidor (mismo criterio que el logout de staff, `HotelesShell.tsx`/etc.).
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { clearOwnerPortalSession, fetchOwnerPortalMe, fetchOwnerPortalStatementDetalle, fetchOwnerPortalStatements, fetchOwnerPortalUnidades, readPersistedOwnerPortalSession } from "../lib/owner-portal-client.ts";
+import {
+  clearOwnerPortalSession,
+  fetchOwnerPortalMe,
+  fetchOwnerPortalStatementDetalle,
+  fetchOwnerPortalStatements,
+  fetchOwnerPortalUnidades,
+  ownerPortalLogout,
+  readPersistedOwnerPortalSession,
+} from "../lib/owner-portal-client.ts";
 import type { OwnerPortalMe, OwnerPortalSession, OwnerPortalStatementDetalle, OwnerPortalStatementSummary, OwnerPortalUnidad } from "../lib/owner-portal-client.ts";
 import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
@@ -95,11 +104,18 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
     }
   }
 
-  function handleLogout() {
-    // Mejor esfuerzo, honesto (ver comentario de cabecera): no hay endpoint de
-    // logout del portal de propietario todavía -- solo borra la sesión local.
+  const [cerrandoSesion, setCerrandoSesion] = useState(false);
+
+  async function handleLogout() {
+    if (!session) return;
+    setCerrandoSesion(true);
+    // Revoca el refresh token del lado del servidor ANTES de borrar localStorage --
+    // best-effort (ver comentario de ownerPortalLogout), pero siempre intentado
+    // primero para que el logout sea real, no solo local.
+    await ownerPortalLogout(fetch, apiBaseUrl, session.refreshToken);
     clearOwnerPortalSession(window.localStorage);
     setSession(null);
+    setCerrandoSesion(false);
     onRequireLogin();
   }
 
@@ -117,8 +133,8 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
             </p>
           )}
         </div>
-        <button type="button" onClick={handleLogout} style={logoutButtonStyle}>
-          Cerrar sesión
+        <button type="button" onClick={() => void handleLogout()} disabled={cerrandoSesion} style={logoutButtonStyle}>
+          {cerrandoSesion ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
       </header>
 

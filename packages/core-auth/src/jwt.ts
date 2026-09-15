@@ -40,6 +40,15 @@ export interface RefreshTokenClaims {
    * calcular `expires_at` de la fila de revocación sin volver a decodificar el JWT a
    * mano. */
   readonly exp: number;
+  /** Epoch seconds (`iat` estándar de JWT) — jose ya lo agrega al payload por
+   * `setIssuedAt()` (ver `signRefreshToken` abajo); se declara aquí (hallazgo de
+   * auditoría, rubro 2, severidad ALTA: "no hay forma de invalidar sesiones activas
+   * de un usuario") para que POST /auth/refresh pueda rechazar un refresh token
+   * emitido ANTES de `core.staff_user.sessions_revoked_at` — el corte que
+   * POST /auth/revoke-sessions establece para invalidar TODOS los refresh tokens de
+   * un usuario de una sola vez, sin necesitar enumerar sus `jti` individuales (ver
+   * `packages/db/migrations/0006_revoke_all_sessions.sql`). */
+  readonly iat: number;
   readonly type: "refresh";
 }
 

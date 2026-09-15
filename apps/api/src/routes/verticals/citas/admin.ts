@@ -20,7 +20,19 @@
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { ALL_VERTICALS, DEFAULT_LISTA_ESPERA_LIMIT, MAX_LISTA_ESPERA_LIMIT, runListaEsperaCore, sortWaitlistByPosition } from "@atiende/domain-citas";
+import {
+  ALL_VERTICALS,
+  AppointmentConflictError,
+  AppointmentForbiddenError,
+  AppointmentValidationError,
+  createAppointmentFromPanel,
+  DEFAULT_LISTA_ESPERA_LIMIT,
+  MAX_LISTA_ESPERA_LIMIT,
+  runListaEsperaCore,
+  sortWaitlistByPosition,
+  tryEnqueueAppointmentEmail,
+  tryTriggerGoogleSync,
+} from "@atiende/domain-citas";
 import type {
   AppointmentRecord,
   AvailabilityOverride,
@@ -793,6 +805,63 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     };
     const updated = await citasRepo.upsertTenantConfig(organizationId, patch);
     return c.json({ tenant_config: serializeTenantConfig(updated) });
+  });
+
+  interface CreateAppointmentBody {
+    readonly provider_id?: unknown;
+    readonly service_id?: unknown;
+    readonly customer_name?: unknown;
+    readonly customer_phone?: unknown;
+    readonly customer_email?: unknown;
+    readonly starts_at?: unknown;
+    readonly notes?: unknown;
+  }
+
+  // ---- Fase 12 — hallazgo de auditoría (ALTO, "Staff no puede crear citas
+  // manualmente desde la Agenda"): alta real de una cita a mano desde el panel —
+  // a diferencia de POST /v1/citas/:orgSlug/appointments (appointments.ts, agente/
+  // web, exige que el horario caiga dentro de la disponibilidad declarada), esta
+  // ruta deliberadamente NO lo exige (ver el comentario de cabecera de
+  // createAppointmentFromPanel en domain-citas/src/appointments.ts) — el único
+  // invariante real que nunca se salta es el EXCLUDE using gist (dos citas del
+  // mismo proveedor no pueden traslaparse). Mismo guard que el resto de este
+  // archivo (requirePropertyMembership, sin distinción de rol — roles.ts). ----
+  app.post("/v1/citas/properties/:propertyId/appointments", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<CreateAppointmentBody>(c.req.raw, 4 * 1024);
+
+    const providerId = requireNonEmptyString(raw.provider_id, "provider_id", 100);
+    const serviceId = requireNonEmptyString(raw.service_id, "service_id", 100);
+    const customerName = requireNonEmptyString(raw.customer_name, "customer_name", 160);
+    const customerPhone = requireNonEmptyString(raw.customer_phone, "customer_phone", 32);
+    const customerEmail = optionalNonEmptyString(raw.customer_email, "customer_email", 200);
+    const startsAt = requireNonEmptyString(raw.starts_at, "starts_at", 40);
+    if (Number.isNaN(Date.parse(startsAt))) throw Errors.validation('starts_at: se esperaba una fecha ISO 8601 válida.');
+    const notes = optionalNonEmptyString(raw.notes, "notes", 2000);
+
+    try {
+      const appointment = await createAppointmentFromPanel(citasRepo, {
+        organizationId,
+        providerId,
+        serviceId,
+        customerName,
+        customerPhone,
+        ...(customerEmail !== undefined ? { customerEmail } : {}),
+        startsAt,
+        ...(notes !== undefined ? { notes } : {}),
+      });
+      // Mismo best-effort que el resto de este vertical (nunca convierte la
+      // respuesta 201 en un error, ver appointments.ts/appointments-lifecycle.ts).
+      await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.created", appointment.id);
+      await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+      return c.json({ appointment: serializeAppointment(appointment) }, 201);
+    } catch (err) {
+      if (err instanceof AppointmentForbiddenError) throw Errors.forbidden(err.message);
+      if (err instanceof AppointmentConflictError) throw Errors.conflict(err.message);
+      if (err instanceof AppointmentValidationError) throw Errors.validation(err.message);
+      throw err;
+    }
   });
 
   // ---- Agenda (vista mes/semana) — GET .../appointments?from=<ISO>&to=<ISO>&provider_id=<uuid> ----

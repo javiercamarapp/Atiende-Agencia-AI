@@ -65,20 +65,30 @@ describe("completarTareaCierre", () => {
 describe("cerrarPeriodoCierre", () => {
   // Mismo criterio que completarTareaCierre: el actor lo determina el servidor, esta
   // función ya no manda userId.
-  it("manda POST .../cerrar SIN userId propio y devuelve el período cerrado", async () => {
+  //
+  // Hallazgo de auditoría (severidad ALTA, "cierre-mensual es irreversible y ejecuta
+  // con un clic sin confirmación ni reapertura"): ahora manda `confirmacion` tal
+  // cual la escribió el usuario -- el servidor exige que coincida con el período
+  // exacto (cierre-mensual.ts).
+  it("manda POST .../cerrar con `confirmacion` y devuelve el período cerrado", async () => {
     const periodo = { id: "p1", status: "closed" };
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/cierre-mensual/periodos/p1/cerrar");
-      expect(init?.body).toBe(JSON.stringify({}));
+      expect(init?.body).toBe(JSON.stringify({ confirmacion: "2026-03" }));
       return new Response(JSON.stringify(periodo), { status: 200 });
     }) as unknown as typeof fetch;
-    const result = await cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1");
+    const result = await cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1", "2026-03");
     expect(result).toEqual(periodo);
   });
 
   it("409 (tareas requeridas sin completar) -> propaga el mensaje real", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No se puede cerrar: 3 tarea(s) requerida(s) sin completar." }), { status: 409 })) as unknown as typeof fetch;
-    await expect(cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1")).rejects.toThrow("No se puede cerrar");
+    await expect(cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1", "2026-03")).rejects.toThrow("No se puede cerrar");
+  });
+
+  it("400 (confirmación que no coincide con el período) -> propaga el mensaje real", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: 'confirmacion: escribe "2026-03" (el período exacto que se va a cerrar) para confirmar. Esta acción es irreversible.' }), { status: 400 })) as unknown as typeof fetch;
+    await expect(cerrarPeriodoCierre(fetchImpl, "http://api.local", "tok", "prop-1", "p1", "texto-equivocado")).rejects.toThrow("Esta acción es irreversible");
   });
 });
 

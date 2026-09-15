@@ -18,6 +18,17 @@
 // policies aditivas de la migración 006; estas rutas son defensa en profundidad, igual
 // que `requirePropertyMembership` hoy es una segunda capa sobre RLS para staff (mismo
 // principio, actor distinto).
+//
+// `POST .../auth/logout` -- hallazgo de auditoría (severidad ALTA, "el portal de
+// propietario (owner-portal) no tiene logout/revocación real de sesión") -- CERRADO:
+// mismo mecanismo/mismo criterio EXACTO que `POST /auth/logout` de staff
+// (`apps/api/src/routes/auth.ts`, ver su comentario de cabecera para el detalle
+// completo): revoca el `jti` del refresh token presentado (`rentas.
+// revoke_owner_refresh_token`, migración 017) -- `POST .../auth/refresh` (abajo)
+// rechaza cualquier refresh token cuyo `jti` ya fue revocado, aunque el JWT en sí siga
+// siendo criptográficamente válido. Idempotente y sin filtrar información (mismo
+// criterio que el logout de staff): un refreshToken ya inválido/expirado/inexistente
+// responde 200 igual que uno válido.
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler, Next } from "hono";
 import type { TenantDbSession } from "@atiende/core-tenancy";
@@ -127,9 +138,11 @@ export function rentasOwnerPortalRoutes(deps: AppDeps): Hono<RentasOwnerPortalHo
     if (typeof body.refreshToken !== "string" || !body.refreshToken) throw Errors.validation("refreshToken requerido");
 
     let ownerId: string;
+    let jti: string;
     try {
       const claims = await verifyRentasPropertyOwnerRefreshToken(body.refreshToken, deps.env.rentasOwnerJwtSecret);
       ownerId = claims.sub;
+      jti = claims.jti;
     } catch {
       throw Errors.unauthorized("Refresh token inválido o expirado.");
     }
@@ -139,10 +152,47 @@ export function rentasOwnerPortalRoutes(deps: AppDeps): Hono<RentasOwnerPortalHo
     // autenticadas (findOwnerProfile SÍ es uno de los 5 métodos de solo lectura).
     return deps.engine.withAppSession({ userId: ownerId }, async (db) => {
       const repo = deps.rentasOwnerPortalRepo(db);
+      // Hallazgo de auditoría (severidad ALTA, "el portal de propietario no tiene
+      // logout/revocación real de sesión"): un refresh token cuyo `jti` ya fue
+      // revocado (`POST .../auth/logout`, abajo) no puede reemitir sesión, aunque el
+      // JWT en sí siga siendo criptográficamente válido y no haya expirado todavía --
+      // mismo criterio exacto que `POST /auth/refresh` de staff.
+      if (await repo.isOwnerRefreshTokenRevoked(jti)) throw Errors.unauthorized("Refresh token inválido o expirado.");
       const profile = await repo.findOwnerProfile(ownerId);
       if (!profile || !profile.email) throw Errors.unauthorized();
       return c.json(await issueOwnerSession(deps, ownerId, profile.email), 200);
     });
+  });
+
+  // Hallazgo de auditoría (severidad ALTA, "el portal de propietario (owner-portal) no
+  // tiene logout/revocación real de sesión") -- ver el comentario de cabecera de este
+  // archivo para el detalle completo. Sin `requireRentasOwnerSession`: mismo criterio
+  // que `/auth/refresh` -- el actor se identifica por el refresh token mismo (su
+  // `sub`/`jti`), no por un Bearer access token ya verificado (cerrar sesión debe
+  // seguir funcionando aunque el access token ya haya expirado).
+  app.post("/rentas/owner-portal/auth/logout", async (c) => {
+    const body = await readJsonCapped<{ refreshToken?: unknown }>(c.req.raw, 2 * 1024);
+    if (typeof body.refreshToken !== "string" || !body.refreshToken) throw Errors.validation("refreshToken requerido");
+
+    let claims: Awaited<ReturnType<typeof verifyRentasPropertyOwnerRefreshToken>> | null = null;
+    try {
+      claims = await verifyRentasPropertyOwnerRefreshToken(body.refreshToken, deps.env.rentasOwnerJwtSecret);
+    } catch {
+      // Ya inválido/expirado -- nada que revocar, logout de todas formas "tiene
+      // éxito" (idempotente, sin filtrar información -- mismo criterio que el logout
+      // de staff).
+    }
+
+    if (claims) {
+      const ownerId = claims.sub;
+      const jti = claims.jti;
+      const expiresAt = new Date(claims.exp * 1000).toISOString();
+      await deps.engine.withAppSession({ userId: ownerId }, async (db) => {
+        await deps.rentasOwnerPortalRepo(db).revokeOwnerRefreshToken({ jti, ownerId, expiresAt });
+      });
+    }
+
+    return c.json({ ok: true }, 200);
   });
 
   // Consume la invitación de un solo uso emitida por staff (ver

@@ -44,14 +44,14 @@ describe("calcularIsrPm", () => {
 });
 
 describe("calcularIsrPmResico", () => {
-  it("manda POST .../declaraciones/isr/pm-resico con ingresoMensual", async () => {
+  it("manda POST .../declaraciones/isr/pm-resico con ingresosCobrados/deduccionesAutorizadas (flujo de efectivo, tasa plana 30%)", async () => {
     const resultado: IsrResultado = { ...ISR_PF_RESULT, tablaAplicada: "pm_resico" };
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/despachos/prop-1/declaraciones/isr/pm-resico");
-      expect(init?.body).toBe(JSON.stringify({ ingresoMensual: 20000, pagosProvisionales: undefined }));
+      expect(init?.body).toBe(JSON.stringify({ ingresosCobrados: 20000, deduccionesAutorizadas: 5000, pagosProvisionales: undefined }));
       return new Response(JSON.stringify(resultado), { status: 200 });
     }) as unknown as typeof fetch;
-    const result = await calcularIsrPmResico(fetchImpl, "http://api.local", "tok", "prop-1", { ingresoMensual: 20000 });
+    const result = await calcularIsrPmResico(fetchImpl, "http://api.local", "tok", "prop-1", { ingresosCobrados: 20000, deduccionesAutorizadas: 5000 });
     expect(result).toEqual(resultado);
   });
 });

@@ -44,6 +44,14 @@ interface EmpleadoFila {
   domicilioFiscalReceptor: string;
   regimenFiscalReceptor: string;
   folio: string;
+  // nomina12:Receptor (XSD real, obligatorio para /generar-xml) -- ver corrección
+  // hallazgo "XML de nómina 1.2 no valida contra el XSD real del SAT".
+  curp: string;
+  numEmpleado: string;
+  tipoContrato: string;
+  tipoRegimen: string;
+  periodicidadPago: string;
+  claveEntFed: string;
 }
 
 let filaSeq = 0;
@@ -61,6 +69,12 @@ function nuevaFila(): EmpleadoFila {
     domicilioFiscalReceptor: "",
     regimenFiscalReceptor: "",
     folio: "",
+    curp: "",
+    numEmpleado: "",
+    tipoContrato: "",
+    tipoRegimen: "",
+    periodicidadPago: "",
+    claveEntFed: "",
   };
 }
 
@@ -253,9 +267,22 @@ export function NominaPage(ctx: DespachosShellContext) {
       setErrorXml("Completa los datos fiscales del emisor (RFC, nombre, régimen fiscal y lugar de expedición).");
       return;
     }
-    const faltante = empleados.find((f) => !f.rfcReceptor.trim() || !f.domicilioFiscalReceptor.trim() || !f.folio.trim());
+    const faltante = empleados.find(
+      (f) =>
+        !f.rfcReceptor.trim() ||
+        !f.domicilioFiscalReceptor.trim() ||
+        !f.folio.trim() ||
+        !f.curp.trim() ||
+        !f.numEmpleado.trim() ||
+        !f.tipoContrato.trim() ||
+        !f.tipoRegimen.trim() ||
+        !f.periodicidadPago.trim() ||
+        !f.claveEntFed.trim(),
+    );
     if (faltante) {
-      setErrorXml(`Falta RFC receptor, domicilio fiscal o folio del empleado "${faltante.nombre || faltante.employeeId || "sin nombre"}".`);
+      setErrorXml(
+        `Falta un dato obligatorio del empleado "${faltante.nombre || faltante.employeeId || "sin nombre"}" (RFC receptor, domicilio fiscal, folio, CURP, número de empleado, tipo de contrato, tipo de régimen, periodicidad de pago o entidad federativa).`,
+      );
       return;
     }
 
@@ -277,6 +304,12 @@ export function NominaPage(ctx: DespachosShellContext) {
         domicilioFiscalReceptor: f.domicilioFiscalReceptor.trim(),
         regimenFiscalReceptor: f.regimenFiscalReceptor.trim() || undefined,
         folio: f.folio.trim(),
+        curp: f.curp.trim().toUpperCase(),
+        numEmpleado: f.numEmpleado.trim(),
+        tipoContrato: f.tipoContrato.trim(),
+        tipoRegimen: f.tipoRegimen.trim(),
+        periodicidadPago: f.periodicidadPago.trim(),
+        claveEntFed: f.claveEntFed.trim().toUpperCase(),
       })),
       emisor: {
         rfc: emisorRfc.trim(),
@@ -428,8 +461,12 @@ export function NominaPage(ctx: DespachosShellContext) {
               </label>
             </div>
 
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>
+              Tipo contrato/régimen/periodicidad usan los catálogos c_TipoContrato, c_TipoRegimen y c_PeriodicidadPago del Anexo 20 del SAT (p. ej. tipo contrato "01" = tiempo indeterminado, régimen "02" =
+              Sueldos, periodicidad "05" = Mensual, "04" = Quincenal). Entidad federativa usa el catálogo c_Estado (p. ej. "CMX", "JAL", "NLE").
+            </p>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 760 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 1100 }}>
                 <thead>
                   <tr style={{ textAlign: "left", color: "#6b7280" }}>
                     <th style={{ padding: "4px 6px" }}>Empleado</th>
@@ -438,6 +475,12 @@ export function NominaPage(ctx: DespachosShellContext) {
                     <th style={{ padding: "4px 6px" }}>CP fiscal receptor *</th>
                     <th style={{ padding: "4px 6px" }}>Régimen fiscal receptor</th>
                     <th style={{ padding: "4px 6px" }}>Folio *</th>
+                    <th style={{ padding: "4px 6px" }}>CURP *</th>
+                    <th style={{ padding: "4px 6px" }}>No. empleado *</th>
+                    <th style={{ padding: "4px 6px" }}>Tipo contrato *</th>
+                    <th style={{ padding: "4px 6px" }}>Tipo régimen *</th>
+                    <th style={{ padding: "4px 6px" }}>Periodicidad *</th>
+                    <th style={{ padding: "4px 6px" }}>Ent. federativa *</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -458,6 +501,24 @@ export function NominaPage(ctx: DespachosShellContext) {
                       </td>
                       <td style={{ padding: "4px 6px" }}>
                         <input value={f.folio} onChange={(e) => actualizarFila(f.key, { folio: e.target.value })} style={inputStyle} />
+                      </td>
+                      <td style={{ padding: "4px 6px" }}>
+                        <input value={f.curp} onChange={(e) => actualizarFila(f.key, { curp: e.target.value })} maxLength={18} style={{ ...inputStyle, width: 170 }} />
+                      </td>
+                      <td style={{ padding: "4px 6px" }}>
+                        <input value={f.numEmpleado} onChange={(e) => actualizarFila(f.key, { numEmpleado: e.target.value })} style={{ ...inputStyle, width: 110 }} />
+                      </td>
+                      <td style={{ padding: "4px 6px" }}>
+                        <input value={f.tipoContrato} onChange={(e) => actualizarFila(f.key, { tipoContrato: e.target.value })} placeholder="01" style={{ ...inputStyle, width: 70 }} />
+                      </td>
+                      <td style={{ padding: "4px 6px" }}>
+                        <input value={f.tipoRegimen} onChange={(e) => actualizarFila(f.key, { tipoRegimen: e.target.value })} placeholder="02" style={{ ...inputStyle, width: 70 }} />
+                      </td>
+                      <td style={{ padding: "4px 6px" }}>
+                        <input value={f.periodicidadPago} onChange={(e) => actualizarFila(f.key, { periodicidadPago: e.target.value })} placeholder="05" style={{ ...inputStyle, width: 70 }} />
+                      </td>
+                      <td style={{ padding: "4px 6px" }}>
+                        <input value={f.claveEntFed} onChange={(e) => actualizarFila(f.key, { claveEntFed: e.target.value })} placeholder="CMX" maxLength={3} style={{ ...inputStyle, width: 70 }} />
                       </td>
                     </tr>
                   ))}

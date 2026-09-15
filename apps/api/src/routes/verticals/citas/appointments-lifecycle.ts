@@ -43,6 +43,7 @@ import {
 import type { AppointmentRecord, CitasRepository } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
+import { triggerCitasEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface RescheduleBody {
@@ -82,7 +83,7 @@ async function resolveOrganizationOrNotFound(citasRepo: CitasRepository, orgSlug
 }
 
 /** Best-effort: nunca bloquea la respuesta de cancelar/reagendar si falla. */
-async function tryNotifyWaitlistAndEmail(citasRepo: CitasRepository, organizationId: string, providerId: string, serviceId: string, previousStartsAt: string, newStartsAt: string, appointmentId: string) {
+async function tryNotifyWaitlistAndEmail(deps: AppDeps, citasRepo: CitasRepository, organizationId: string, providerId: string, serviceId: string, previousStartsAt: string, newStartsAt: string, appointmentId: string) {
   try {
     const provider = await citasRepo.findProvider(organizationId, providerId);
     const timeZone = await citasRepo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
@@ -93,6 +94,9 @@ async function tryNotifyWaitlistAndEmail(citasRepo: CitasRepository, organizatio
   // Fase 6 §3 — arma el correo real (to/subject/html) a partir de la cita ya
   // reagendada; ya es best-effort internamente (tryEnqueueAppointmentEmail).
   await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.rescheduled", appointmentId, { previousStartsAt });
+  // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort del
+  // correo recién encolado arriba, ver comentario de cabecera de email-dispatch.ts.
+  await triggerCitasEmailDispatchInline(deps, citasRepo);
 }
 
 /** Best-effort: cancelar SIEMPRE libera el horario de la cita — a diferencia de
@@ -146,6 +150,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
         const appointment = await cancelAppointment(citasRepo, { organizationId: org.id, appointmentId });
         await tryNotifyWaitlistAfterCancel(citasRepo, org.id, appointment);
         await tryEnqueueAppointmentEmail(citasRepo, org.id, "appointment.cancelled", appointment.id);
+        await triggerCitasEmailDispatchInline(deps, citasRepo);
         // Fase 3 §5 — la fila ya quedó en 'pending_cancel'/'skipped' de forma atómica
         // dentro de cancel_appointment_idempotent; best-effort real, nunca puede
         // convertir esta respuesta 200 en un error.
@@ -178,7 +183,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
           actorChannel: raw.actor_channel === "voice" || raw.actor_channel === "whatsapp" || raw.actor_channel === "web" || raw.actor_channel === "manual" ? raw.actor_channel : undefined,
           actorNote: typeof raw.actor_note === "string" ? raw.actor_note : undefined,
         });
-        await tryNotifyWaitlistAndEmail(citasRepo, org.id, appointment.providerId, appointment.serviceId, previousStartsAt, appointment.startsAt, appointment.id);
+        await tryNotifyWaitlistAndEmail(deps, citasRepo, org.id, appointment.providerId, appointment.serviceId, previousStartsAt, appointment.startsAt, appointment.id);
         // Fase 3 §5 — reschedule_appointment_idempotent ya dejó 'pending' (si había
         // google_event_id) de forma atómica; best-effort real.
         await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
@@ -227,6 +232,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
         // hacían aunque fuera con el payload incompleto). El cliente ahora sí se
         // entera si le cambiaron el proveedor/servicio de su cita.
         await tryEnqueueAppointmentEmail(citasRepo, org.id, "appointment.modified", appointment.id);
+        await triggerCitasEmailDispatchInline(deps, citasRepo);
         // Fase 3 §5 — reassign_appointment_idempotent ya dejó 'pending' (si había
         // google_event_id) de forma atómica; best-effort real.
         await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
@@ -255,6 +261,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       const appointment = await cancelAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryNotifyWaitlistAfterCancel(citasRepo, organizationId, appointment);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.cancelled", appointment.id);
+      await triggerCitasEmailDispatchInline(deps, citasRepo);
       // Fase 3 §5 — mismo best-effort que la cancelación del agente.
       await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });
@@ -290,6 +297,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
     try {
       const appointment = await confirmAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.confirmed", appointment.id);
+      await triggerCitasEmailDispatchInline(deps, citasRepo);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
@@ -311,6 +319,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
     try {
       const appointment = await completeAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.completed", appointment.id);
+      await triggerCitasEmailDispatchInline(deps, citasRepo);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
@@ -332,6 +341,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
     try {
       const appointment = await markAppointmentNoShowFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.no_show", appointment.id);
+      await triggerCitasEmailDispatchInline(deps, citasRepo);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);

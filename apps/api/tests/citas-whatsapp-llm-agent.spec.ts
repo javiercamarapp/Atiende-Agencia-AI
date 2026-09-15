@@ -24,7 +24,7 @@ import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiend
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, SimuladorCanalMensajeria } from "@atiende/domain-rentas";
 import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
@@ -155,6 +155,7 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     rentasOnboardingRepo: (_db) => new InMemoryRentasOnboardingRepository(),
     rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
     rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
+    rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
   };

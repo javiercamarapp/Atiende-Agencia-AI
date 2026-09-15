@@ -17,6 +17,7 @@ import { despachosBookkeepingRoutes } from "./bookkeeping.ts";
 import { despachosContabilidadElectronicaRoutes } from "./contabilidad-electronica.ts";
 import { despachosCierreMensualRoutes } from "./cierre-mensual.ts";
 import { despachosAdminRoutes } from "./admin.ts";
+import { despachosAdminStaffRoutes } from "./admin-staff.ts";
 import { despachosNotificationsRoutes } from "./notifications.ts";
 import { despachosCobranzaRoutes } from "./cobranza.ts";
 
@@ -25,6 +26,9 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 9 — resolución de propertyId(s) desde el slug de la organización, primer
   // eslabón que necesita CUALQUIER pantalla nueva del panel web (ver admin.ts).
   app.route("/", despachosAdminRoutes(deps));
+  // Hallazgo de auditoría (severidad ALTA) — "Alta de organización/staff imposible
+  // sin SQL", ver admin-staff.ts.
+  app.route("/", despachosAdminStaffRoutes(deps));
   app.route("/", despachosCfdiRoutes(deps));
   app.route("/", despachosRevisionesRoutes(deps));
   app.route("/", despachosVencimientosRoutes(deps));

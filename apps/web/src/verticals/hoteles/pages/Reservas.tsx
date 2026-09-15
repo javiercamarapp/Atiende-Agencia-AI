@@ -8,9 +8,12 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  assignRoom,
   cancelReservation,
+  createGuest,
   createReservation,
   fetchReservations,
+  fetchRooms,
   fetchRoomTypes,
   folioDetailPath,
   isCancellable,
@@ -19,9 +22,10 @@ import {
   searchGuests,
   transitionReservation,
 } from "../lib/reservas-client.ts";
-import type { GuestOption, ReservationStatus, ReservationSummary, RoomTypeOption } from "../lib/reservas-client.ts";
+import type { GuestOption, ReservationStatus, ReservationSummary, RoomOption, RoomTypeOption } from "../lib/reservas-client.ts";
 import { fetchFoliosByReservation } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
+import { ConfirmModal } from "../components/ConfirmModal.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 function formatMoney(n: number): string {
@@ -37,6 +41,11 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
+  // confirmación: cancelar reserva... ejecuta de inmediato con un clic"): la
+  // reserva pendiente de confirmar cancelación en el modal de abajo -- `null`
+  // significa que el modal está cerrado. Ver components/ConfirmModal.tsx.
+  const [pendingCancel, setPendingCancel] = useState<ReservationSummary | null>(null);
 
   // Fix hallazgo ALTA — catálogos reales en vez de UUIDs a mano (ver reservas-client.ts
   // fetchRoomTypes/searchGuests). `roomTypes` se carga completo una vez (catálogo
@@ -53,6 +62,26 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
   const [guestId, setGuestId] = useState("");
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
+  // tarifas/huéspedes imposible sin SQL directo") — alta de huésped inline, sin
+  // salir del formulario de "crear reserva". `showNewGuestForm` alterna un
+  // formulario mínimo (nombre/email/teléfono); al crear, el huésped nuevo queda
+  // seleccionado de inmediato (mismo `guestId` que ya usaba el <select> existente).
+  const [showNewGuestForm, setShowNewGuestForm] = useState(false);
+  const [newGuestName, setNewGuestName] = useState("");
+  const [newGuestEmail, setNewGuestEmail] = useState("");
+  const [newGuestPhone, setNewGuestPhone] = useState("");
+  const [creatingGuest, setCreatingGuest] = useState(false);
+
+  // Fix hallazgo CRÍTICO ("asignación de habitación al reservar") — `assigningId`
+  // es la reserva cuyo selector de habitación está abierto (`null` = ninguno);
+  // `roomsByReservation` cachea las habitaciones YA pedidas por reservationId, para
+  // no volver a pedir el mismo tipo de habitación dos veces si el staff abre/cierra
+  // el selector varias veces.
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [roomsByReservation, setRoomsByReservation] = useState<Record<string, readonly RoomOption[]>>({});
+  const [assigningRoomId, setAssigningRoomId] = useState<string | null>(null);
 
   async function load() {
     setError(null);
@@ -132,6 +161,74 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
     }
   }
 
+  // Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
+  // tarifas/huéspedes imposible sin SQL directo") — alta real de huésped desde el
+  // mismo formulario de "crear reserva" (antes de esto, `guestId` solo podía
+  // apuntar a un huésped ya sembrado por SQL directo). El huésped nuevo queda
+  // seleccionado de inmediato (`setGuestId`), listo para "Crear reserva". Función
+  // plana (NO un handler de <form onSubmit>) a propósito: este formulario mínimo
+  // vive DENTRO del <form onSubmit={handleCreate}> de "crear reserva" -- HTML no
+  // permite anidar un <form> dentro de otro, así que el botón de abajo la invoca
+  // directo por `onClick`, sin evento de submit que prevenir.
+  async function handleCreateGuest() {
+    setFormError(null);
+    if (!newGuestName.trim()) return setFormError("El nombre del huésped es requerido.");
+    setCreatingGuest(true);
+    try {
+      const guest = await createGuest(fetch, apiBaseUrl, token, propertyId, {
+        nombreCompleto: newGuestName.trim(),
+        email: newGuestEmail.trim() || undefined,
+        telefono: newGuestPhone.trim() || undefined,
+      });
+      setGuestOptions((prev) => [guest, ...prev]);
+      setGuestId(guest.id);
+      setGuestQuery(guest.nombreCompleto);
+      setNewGuestName("");
+      setNewGuestEmail("");
+      setNewGuestPhone("");
+      setShowNewGuestForm(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "No se pudo crear el huésped.");
+    } finally {
+      setCreatingGuest(false);
+    }
+  }
+
+  // Fix hallazgo CRÍTICO ("asignación de habitación al reservar") — abre/cierra el
+  // selector de habitación de una reserva; pide las habitaciones del TIPO de
+  // habitación de esa reserva la primera vez que se abre (cacheadas por
+  // reservationId en `roomsByReservation`, nunca vuelve a pedirlas si ya las tiene).
+  async function handleToggleAssign(reservation: ReservationSummary) {
+    if (assigningId === reservation.id) {
+      setAssigningId(null);
+      return;
+    }
+    setAssigningId(reservation.id);
+    setAssigningRoomId(reservation.roomId);
+    if (roomsByReservation[reservation.id]) return;
+    try {
+      const rooms = await fetchRooms(fetch, apiBaseUrl, token, propertyId, reservation.roomTypeId);
+      setRoomsByReservation((prev) => ({ ...prev, [reservation.id]: rooms }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudieron cargar las habitaciones de este tipo.");
+    }
+  }
+
+  async function handleConfirmAssign(reservation: ReservationSummary) {
+    if (!assigningRoomId) return;
+    setBusyId(reservation.id);
+    setError(null);
+    try {
+      await assignRoom(fetch, apiBaseUrl, token, propertyId, reservation.id, assigningRoomId);
+      setAssigningId(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo asignar la habitación.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleTransition(reservation: ReservationSummary, toStatus: ReservationStatus) {
     setBusyId(reservation.id);
     setError(null);
@@ -145,7 +242,17 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
     }
   }
 
-  async function handleCancel(reservation: ReservationSummary) {
+  // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
+  // confirmación"): abrir el modal ya NO cancela nada por sí solo -- solo la
+  // ejecuta `handleConfirmCancel`, disparada por el botón de confirmar del modal
+  // real (ver components/ConfirmModal.tsx, "modal, no window.confirm").
+  function handleCancel(reservation: ReservationSummary) {
+    setPendingCancel(reservation);
+  }
+
+  async function handleConfirmCancel() {
+    const reservation = pendingCancel;
+    if (!reservation) return;
     setBusyId(reservation.id);
     setError(null);
     try {
@@ -154,6 +261,10 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cancelar la reserva.");
     } finally {
+      // Cierra el modal SIEMPRE (éxito o error) -- un fallo del servidor debe ser
+      // visible en el banner de error de la página, nunca quedar oculto detrás del
+      // overlay del modal (z-index 1000, por encima de ese banner).
+      setPendingCancel(null);
       setBusyId(null);
     }
   }
@@ -250,6 +361,39 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
               ))}
             </select>
           </label>
+          {/* Fix hallazgo CRÍTICO ("...huéspedes imposible sin SQL directo") --
+              alta real de huésped sin salir de este formulario. */}
+          <button
+            type="button"
+            onClick={() => setShowNewGuestForm((v) => !v)}
+            style={{ alignSelf: "flex-start", fontSize: 12, padding: "4px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#374151", cursor: "pointer" }}
+          >
+            {showNewGuestForm ? "Cancelar alta de huésped" : "+ Huésped nuevo"}
+          </button>
+          {showNewGuestForm && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, border: "1px dashed #d1d5db", borderRadius: 8, padding: 10 }}>
+              <label style={{ fontSize: 12 }}>
+                Nombre completo
+                <input value={newGuestName} onChange={(e) => setNewGuestName(e.target.value)} style={{ display: "block", width: "100%", padding: 6, marginTop: 2 }} />
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Email (opcional)
+                <input value={newGuestEmail} onChange={(e) => setNewGuestEmail(e.target.value)} style={{ display: "block", width: "100%", padding: 6, marginTop: 2 }} />
+              </label>
+              <label style={{ fontSize: 12 }}>
+                Teléfono (opcional)
+                <input value={newGuestPhone} onChange={(e) => setNewGuestPhone(e.target.value)} style={{ display: "block", width: "100%", padding: 6, marginTop: 2 }} />
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleCreateGuest()}
+                disabled={creatingGuest}
+                style={{ padding: 8, fontSize: 12, fontWeight: 600, borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer" }}
+              >
+                {creatingGuest ? "Creando…" : "Crear y seleccionar huésped"}
+              </button>
+            </div>
+          )}
           {formError && (
             <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
               {formError}
@@ -295,6 +439,8 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                   <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
                     Tipo de habitación: {r.roomTypeId} · {r.guestId ? `Huésped: ${r.guestId}` : "Sin huésped asignado"}
                   </p>
+                  {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") */}
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{r.roomId ? `Habitación asignada: ${r.roomId}` : "Sin habitación asignada"}</p>
                 </div>
                 <span style={{ alignSelf: "flex-start", fontSize: 12, padding: "3px 10px", borderRadius: 999, background: r.estado === "cancelada" ? "#fee2e2" : "#f3f4f6", color: r.estado === "cancelada" ? "#991b1b" : "#374151" }}>
                   {RESERVATION_STATUS_LABELS[r.estado]}
@@ -310,16 +456,56 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
                     {busyId === r.id ? "…" : `Marcar ${RESERVATION_STATUS_LABELS[next]}`}
                   </button>
                 )}
+                {r.estado !== "cancelada" && (
+                  <button onClick={() => void handleToggleAssign(r)} disabled={busyId === r.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #6b7280", background: "#fff", color: "#374151", fontSize: 12, cursor: "pointer" }}>
+                    {assigningId === r.id ? "Cerrar" : r.roomId ? "Cambiar habitación" : "Asignar habitación"}
+                  </button>
+                )}
                 {cancelable && (
-                  <button onClick={() => void handleCancel(r)} disabled={busyId === r.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}>
+                  <button onClick={() => handleCancel(r)} disabled={busyId === r.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}>
                     Cancelar
                   </button>
                 )}
               </div>
+              {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") --
+                  selector inline, sin salir de la lista de reservas. */}
+              {assigningId === r.id && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                  <select value={assigningRoomId ?? ""} onChange={(e) => setAssigningRoomId(e.target.value || null)} style={{ padding: 6, fontSize: 12 }}>
+                    <option value="" disabled>
+                      {roomsByReservation[r.id] === undefined ? "Cargando…" : "Selecciona una habitación"}
+                    </option>
+                    {roomsByReservation[r.id]?.map((room) => (
+                      <option key={room.id} value={room.id}>
+                        {room.codigo} ({room.estado})
+                      </option>
+                    ))}
+                  </select>
+                  {roomsByReservation[r.id]?.length === 0 && <span style={{ fontSize: 12, color: "#b91c1c" }}>Este tipo de habitación no tiene habitaciones físicas creadas todavía (ver Catálogo).</span>}
+                  <button
+                    onClick={() => void handleConfirmAssign(r)}
+                    disabled={busyId === r.id || !assigningRoomId}
+                    style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 12, cursor: "pointer" }}
+                  >
+                    {busyId === r.id ? "…" : "Confirmar asignación"}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
+
+      <ConfirmModal
+        open={pendingCancel !== null}
+        title="Cancelar reserva"
+        message={pendingCancel ? `¿Cancelar la reserva ${pendingCancel.checkInDate} → ${pendingCancel.checkOutDate}? Esta acción libera la disponibilidad reservada y puede aplicar una penalización de cancelación.` : ""}
+        confirmLabel="Sí, cancelar reserva"
+        cancelLabel="Volver"
+        busy={pendingCancel !== null && busyId === pendingCancel.id}
+        onConfirm={() => void handleConfirmCancel()}
+        onCancel={() => setPendingCancel(null)}
+      />
     </div>
   );
 }

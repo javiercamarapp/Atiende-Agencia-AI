@@ -51,6 +51,7 @@ function aplanarParaDiot(invoice: InvoiceRecord): RegistroDiotCandidato[] {
     ivaTrasladado: invoice.iva ?? 0,
     ivaAcreditable: Number(p.ivaAcreditable),
     tasaIva: p.tasaIva ?? 0.16,
+    tipoOperacion: p.tipoOperacion ?? undefined,
     tipoCambio: p.tipoCambio ?? 1,
     moneda: p.moneda ?? "MXN",
     fecha: p.fecha ?? "",
@@ -88,11 +89,14 @@ describe("integración e2e: CFDI -> validarCfdiDespachos -> repositorio (filtro 
       return repo.insertInvoice(input);
     }
 
-    // 2 CFDI del mismo proveedor en julio 2026 (16% IVA).
-    await ingerir(cfdiIngreso({ fecha: "2026-07-05T09:00:00", fechaTimbrado: "2026-07-05T09:02:00", subtotal: 5000, total: 5800, iva: 800 }));
-    await ingerir(cfdiIngreso({ fecha: "2026-07-20T09:00:00", fechaTimbrado: "2026-07-20T09:02:00", subtotal: 3000, total: 3480, iva: 480 }));
+    // 2 CFDI del mismo proveedor en julio 2026 (16% IVA), clasificados explícitamente
+    // por el contador como servicios profesionales ("03") -- tipoOperacion NUNCA se
+    // deriva de la tasa de IVA (ver corrección hallazgo "DIOT con tasa mal
+    // codificada", diot-aggregate.ts).
+    await ingerir(cfdiIngreso({ fecha: "2026-07-05T09:00:00", fechaTimbrado: "2026-07-05T09:02:00", subtotal: 5000, total: 5800, iva: 800, tipoOperacion: "03" }));
+    await ingerir(cfdiIngreso({ fecha: "2026-07-20T09:00:00", fechaTimbrado: "2026-07-20T09:02:00", subtotal: 3000, total: 3480, iva: 480, tipoOperacion: "03" }));
     // 1 CFDI del mismo proveedor pero de OTRO período (junio 2026) — no debe colarse.
-    await ingerir(cfdiIngreso({ fecha: "2026-06-15T09:00:00", fechaTimbrado: "2026-06-15T09:02:00", subtotal: 9999, total: 11598.84, iva: 1599.84 }));
+    await ingerir(cfdiIngreso({ fecha: "2026-06-15T09:00:00", fechaTimbrado: "2026-06-15T09:02:00", subtotal: 9999, total: 11598.84, iva: 1599.84, tipoOperacion: "03" }));
     // 1 CFDI de un RFC genérico en julio — debe desaparecer en la agregación DIOT
     // (RMF 3.10.7), aunque sí quede persistido como invoice.
     await ingerir(cfdiIngreso({ rfcEmisor: "XAXX010101000", emisorNombre: "PUBLICO EN GENERAL", fecha: "2026-07-10T09:00:00", fechaTimbrado: "2026-07-10T09:02:00" }));
@@ -153,6 +157,9 @@ describe("integración e2e: CFDI -> validarCfdiDespachos -> repositorio (filtro 
 
     const candidatos = aplanarParaDiot(invoice);
     const diot = agregarDiot(candidatos, "DESP010101AB1", "2026-07");
-    expect(diot.registros[0]!.tipoOperacion).toBe("03");
+    // Sin tipoOperacion explícito en el CFDI de entrada -> "85" (Otros), nunca
+    // derivado de la tasa de IVA (16%) — ver corrección hallazgo "DIOT con tasa mal
+    // codificada".
+    expect(diot.registros[0]!.tipoOperacion).toBe("85");
   });
 });

@@ -26,8 +26,10 @@ import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
 import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
+import { CatalogoPage as HotelesCatalogoPage } from "./verticals/hoteles/pages/Catalogo.tsx";
 import { PedidosFnbPage } from "./verticals/hoteles/pages/PedidosFnb.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
+import { RentasRegistroPage } from "./verticals/rentas/pages/Registro.tsx";
 import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
 import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
 import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages/Calendario.tsx";
@@ -49,6 +51,7 @@ import { ServicioFichaPage, ServiciosListPage } from "./verticals/citas/pages/Se
 import { ClienteFichaPage, ClientesListPage } from "./verticals/citas/pages/Clientes.tsx";
 import { DisponibilidadPage } from "./verticals/citas/pages/Disponibilidad.tsx";
 import { ConfiguracionPage } from "./verticals/citas/pages/Configuracion.tsx";
+import { StaffPage as CitasStaffPage } from "./verticals/citas/pages/Staff.tsx";
 import { LicitacionesLoginPage } from "./verticals/licitaciones/pages/Login.tsx";
 import { LicitacionesShell } from "./verticals/licitaciones/LicitacionesShell.tsx";
 import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.tsx";
@@ -77,6 +80,7 @@ import { MigracionCatalogoPage } from "./verticals/despachos/pages/MigracionCata
 import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx";
 import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
 import { ContabilidadElectronicaPage } from "./verticals/despachos/pages/ContabilidadElectronica.tsx";
+import { StaffPage as DespachosStaffPage } from "./verticals/despachos/pages/Staff.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -330,6 +334,23 @@ function HotelesPlRoute() {
   );
 }
 
+/** Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
+ * tarifas/huéspedes imposible sin SQL directo"): pantalla de catálogo (pages/
+ * Catalogo.tsx) — mismo patrón que HotelesPlRoute/HotelesFraudeRoute (nav gateada
+ * cosméticamente por rol en HotelesShell.tsx, no aquí; un rol sin acceso que
+ * navegue directo a esta URL ve el 403 real del servidor como mensaje de error
+ * dentro de Catalogo.tsx). */
+function HotelesCatalogoRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesCatalogoPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
 /** Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con guardia de
  * alergias: backend real sin pantalla"): mismo patrón que
  * HotelesMantenimientoRoute/HotelesFraudeRoute (nav gateada cosméticamente por rol
@@ -368,6 +389,13 @@ function RentasLoginRoute() {
       onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "rentas", email: session.email } })}
     />
   );
+}
+
+/** Hallazgo de auditoría (severidad CRÍTICA, "el onboarding self-serve de rentas
+ * está bloqueado en producción y ni siquiera tiene pantalla") — pantalla real de
+ * alta (organización + property + unidades), sin sesión previa. */
+function RentasRegistroRoute() {
+  return <RentasRegistroPage apiBaseUrl={API_BASE_URL} />;
 }
 
 /** Landing real del panel de rentas (Fase 12) — cierra el hallazgo "login de rentas
@@ -608,6 +636,19 @@ function CitasConfiguracionRoute() {
   return (
     <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
       {(ctx) => <ConfiguracionPage {...ctx} />}
+    </CitasShell>
+  );
+}
+
+// Fase 12 — hallazgo de auditoría ("citas define 3 roles de plataforma pero no los
+// aplica en NINGUNA capa"): mismo patrón exacto que RestaurantesStaffRoute.
+function CitasStaffRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/citas/login" replace />;
+  return (
+    <CitasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/citas/login", { replace: true })}>
+      {(ctx) => <CitasStaffPage {...ctx} />}
     </CitasShell>
   );
 }
@@ -918,6 +959,17 @@ function DespachosContabilidadElectronicaRoute() {
   );
 }
 
+function DespachosStaffRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <DespachosStaffPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -950,7 +1002,9 @@ export function App() {
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
+        <Route path="/hoteles/:orgSlug/catalogo" element={<HotelesCatalogoRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
+        <Route path="/rentas/registro" element={<RentasRegistroRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
@@ -979,6 +1033,7 @@ export function App() {
         <Route path="/citas/:orgSlug/clientes/:customerId" element={<CitasClienteFichaRoute />} />
         <Route path="/citas/:orgSlug/disponibilidad" element={<CitasDisponibilidadRoute />} />
         <Route path="/citas/:orgSlug/configuracion" element={<CitasConfiguracionRoute />} />
+        <Route path="/citas/:orgSlug/staff" element={<CitasStaffRoute />} />
         <Route path="/licitaciones/login" element={<LicitacionesLoginRoute />} />
         <Route path="/licitaciones/:orgSlug" element={<LicitacionesRootRedirect />} />
         <Route path="/licitaciones/:orgSlug/convocatorias" element={<LicitacionesConvocatoriasRoute />} />
@@ -1007,6 +1062,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/devolucion-iva" element={<DespachosDevolucionIvaRoute />} />
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />
         <Route path="/despachos/:orgSlug/contabilidad-electronica" element={<DespachosContabilidadElectronicaRoute />} />
+        <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

@@ -12,7 +12,7 @@ import type { ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, G
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, SimuladorCanalMensajeria } from "@atiende/domain-rentas";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -30,7 +30,14 @@ export interface CitasTestContext {
   readonly propertyId: string;
   readonly providerId: string;
   readonly serviceId: string;
-  readonly staff: { readonly owner: { readonly id: string; readonly email: string; readonly password: string; readonly token: string } };
+  readonly staff: {
+    readonly owner: { readonly id: string; readonly email: string; readonly password: string; readonly token: string };
+    /** Fase 12 — verticalRole "staff" (platformRole "member", ver
+     * domain-citas/src/roles.ts::PLATFORM_ROLE_BY_VERTICAL_ROLE) -- fuera de
+     * STAFF_INVITE_ROLES (owner/admin), para los tests de admin-staff.ts que
+     * verifican que "staff" nunca puede invitar. */
+    readonly staffMember: { readonly id: string; readonly email: string; readonly password: string; readonly token: string };
+  };
 }
 
 async function signInAndGetToken(app: TestApp, email: string, password: string): Promise<string> {
@@ -84,6 +91,13 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
   const ownerPassword = "correcto-caballo-batería";
   coreRepo.addStaff({ id: ownerId, email: ownerEmail, fullName: "Dueña", passwordHash: await hashPassword(ownerPassword), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
   coreRepo.addMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
+
+  const staffMemberId = randomUUID();
+  const staffMemberEmail = "staff@clinica-dental-sonrisas.mx";
+  const staffMemberPassword = "correcto-caballo-batería";
+  coreRepo.addStaff({ id: staffMemberId, email: staffMemberEmail, fullName: "Staff", passwordHash: await hashPassword(staffMemberPassword), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+  coreRepo.addMembership({ userId: staffMemberId, organizationId, platformRole: "member", verticalRole: "staff", propertyIds: null });
+  engine.seedMembership({ userId: staffMemberId, organizationId, platformRole: "member", verticalRole: "staff", propertyIds: null });
   engine.seedMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
 
   // Fase 3 — `createGoogleCalendarPortResolver` real (resolución de cuenta
@@ -128,12 +142,40 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     rentasOnboardingRepo: (_db) => new InMemoryRentasOnboardingRepository(),
     rentasCalendarSyncRepo: (_db) => new InMemoryRentasCalendarSyncRepository(new InMemoryRentasCalendarStore()),
     rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
+    rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
   };
 
   const app = buildApp(deps);
   const ownerToken = await signInAndGetToken(app, ownerEmail, ownerPassword);
+  const staffMemberToken = await signInAndGetToken(app, staffMemberEmail, staffMemberPassword);
 
-  return { deps, citasRepo, organizationId, propertyId, providerId, serviceId, staff: { owner: { id: ownerId, email: ownerEmail, password: ownerPassword, token: ownerToken } } };
+  return {
+    deps,
+    citasRepo,
+    organizationId,
+    propertyId,
+    providerId,
+    serviceId,
+    staff: {
+      owner: { id: ownerId, email: ownerEmail, password: ownerPassword, token: ownerToken },
+      staffMember: { id: staffMemberId, email: staffMemberEmail, password: staffMemberPassword, token: staffMemberToken },
+    },
+  };
+}
+
+export function authedGet(token: string): RequestInit {
+  return { method: "GET", headers: { authorization: `Bearer ${token}` } };
+}
+
+/** Fase 12 — mismo helper que restaurantes-admin-kpis-fixtures.ts::authedJson,
+ * reusado aquí en vez de reinventado. */
+export function authedJson(token: string, body?: unknown, method?: "GET" | "POST" | "PATCH" | "DELETE"): RequestInit {
+  const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+  if (body === undefined) return { method: method ?? "GET", headers };
+  const raw = JSON.stringify(body);
+  headers["content-type"] = "application/json";
+  headers["content-length"] = String(new TextEncoder().encode(raw).byteLength);
+  return { method: method ?? "POST", body: raw, headers };
 }

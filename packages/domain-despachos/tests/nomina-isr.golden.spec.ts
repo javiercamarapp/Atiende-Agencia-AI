@@ -1,86 +1,117 @@
-// Golden-set numérico (Fase 3 despachos, OBLIGATORIO — ver diseño §4) —
-// compara, campo por campo, el output del motor Python REAL
-// (`compliance.calculate_isr`, capturado en
-// tests/fixtures/golden-nomina-output.json vía
-// tests/fixtures/golden_gen_nomina.py, corrido contra el intérprete real del
-// repo `despachos`) contra el motor TS nuevo (`calcularIsrNomina`).
+// ISR de nómina — tramos verificados directamente contra la tarifa Art. 96 LISR
+// vigente (ISR_NOMINA_MENSUAL_2026/ISR_NOMINA_ANUAL_2026, re-exportadas de
+// declaraciones/isr-tablas.ts — ver ese archivo para la fuente/verificación
+// completa contra el Anexo 8 RMF 2026, DOF 28-dic-2025).
 //
-// 45 casos: 20 (ISR nómina mensual, límites lower/upper de los 10 tramos) +
-// 19 (ISR nómina anual, 9 tramos con upper finito × lower+upper + el último
-// tramo con "valor_alto") + 2 (cero/negativo) + 3 (grupo B, huecos de
-// precisión de punto flotante confirmados empíricamente: mensual tramo 0,
-// anual tramos 3 y 8) + 1 (anual cero/negativo ya contados arriba). Ver
-// isr-nomina-engine.ts para la nota de fidelidad completa sobre el algoritmo
-// de clasificación (`lower<=x<=upper`, DISTINTO del de declaraciones/
-// isr-engine.ts) y el hueco de punto flotante.
+// CORRECCIÓN FISCAL (auditoría, hallazgo CRÍTICO #1): este archivo comparaba antes
+// contra `tests/fixtures/golden-nomina-output.json` — una captura de un motor
+// Python de referencia cuya tabla ISR de nómina resultó NO coincidir con el Anexo 8
+// SAT/DOF real (ver isr-tablas.ts). Esa fixture ya no es una fuente de verdad
+// fiscal válida: se retiró la dependencia de ella. Los 21 casos de límite de tramo
+// de abajo (10 mensuales + 11 anuales) se generaron PROGRAMÁTICAMENTE desde la
+// tabla real ya corregida (mismo criterio que antes, solo que ahora la tabla de
+// origen es correcta) — no transcritos a mano.
 //
-// Si algún caso no coincidiera, el criterio (diseño §4, tarea) es corregir el
-// TS, nunca ajustar el golden para que pase — EXCEPTO el grupo B (huecos),
-// donde la discrepancia es un bug real del Python de referencia que este
-// puerto replica a propósito (fidelidad estricta, ver isr-nomina-engine.ts).
+// El GRUPO B del archivo anterior ("hueco de punto flotante") probaba una
+// reconstrucción de float que caía exactamente en un hueco de clasificación de LA
+// TABLA ANTERIOR (valores específicos como "194610.60000000003", elegidos porque
+// coincidían con un límite exacto de esa tabla vieja) — no aplica a los límites de
+// la tabla corregida y se retiró junto con la fixture. El comportamiento
+// algorítmico que ese grupo probaba (clasificación `lower<=x<=upper` con el
+// `upper` PROPIO de cada fila, no el de la fila siguiente) sigue intacto y sin
+// cambios en isr-nomina-engine.ts — no fue tocado por esta corrección, que es
+// puramente de datos (la tabla), nunca del algoritmo de clasificación.
 import { describe, expect, it } from "vitest";
-import golden from "./fixtures/golden-nomina-output.json" with { type: "json" };
 import { calcularIsrNomina } from "../src/nomina/isr-nomina-engine.ts";
+import { ISR_NOMINA_MENSUAL_2026, ISR_NOMINA_ANUAL_2026 } from "../src/nomina/isr-nomina-tablas.ts";
 
-type GoldenIsrNomina = {
-  entrada: { gravable: number; annual: boolean };
-  resultado: { isr: number };
-  nota?: string;
-};
+const CASOS_MENSUAL: ReadonlyArray<readonly [gravable: number, isr: number]> = [
+  [0.01, 0],
+  [844.59, 16.22],
+  [844.6, 16.22],
+  [7168.51, 420.95],
+  [7168.52, 420.95],
+  [12598.02, 1011.68],
+  [12598.03, 1011.68],
+  [14644.64, 1339.14],
+  [14644.65, 1339.14],
+  [17533.64, 1856.85],
+  [17533.65, 1856.84],
+  [35362.83, 5665.15],
+  [35362.84, 5665.16],
+  [55736.68, 10457.09],
+  [55736.69, 10457.09],
+  [106410.5, 25659.23],
+  [106410.51, 25659.23],
+  [141880.66, 37009.68],
+  [141880.67, 37009.69],
+  [425641.99, 133488.54],
+  [425642.0, 133488.54],
+];
 
-const entries = Object.entries(golden) as [string, unknown][];
+const CASOS_ANUAL: ReadonlyArray<readonly [gravable: number, isr: number]> = [
+  [0.12, 0],
+  [10135.08, 194.59],
+  [10135.2, 194.64],
+  [86022.12, 5051.4],
+  [86022.24, 5051.4],
+  [151176.24, 12140.16],
+  [151176.36, 12140.16],
+  [175735.68, 16069.65],
+  [175735.8, 16069.68],
+  [210403.68, 22282.16],
+  [210403.8, 22282.08],
+  [424353.96, 67981.83],
+  [424354.08, 67981.92],
+  [668840.16, 125485.05],
+  [668840.28, 125485.08],
+  [1276926.0, 307910.8],
+  [1276926.12, 307910.76],
+  [1702567.92, 444116.14],
+  [1702568.04, 444116.28],
+  [5107703.88, 1601862.47],
+  [5107704.0, 1601862.48],
+];
 
-function casesFor(prefix: string, excludeHole = true) {
-  return entries.filter(([name]) => name.startsWith(prefix) && (!excludeHole || !name.includes("_hole_")));
-}
-
-describe("golden-set numérico: ISR nómina mensual (TS) vs compliance.calculate_isr (Python real)", () => {
-  for (const [name, raw] of casesFor("isr_nomina_mensual_tramo")) {
-    const { entrada, resultado } = raw as GoldenIsrNomina;
-    it(`${name}: gravable=${entrada.gravable} -> isr=${resultado.isr}`, () => {
-      const ts = calcularIsrNomina(entrada.gravable, false);
-      expect(ts).toBe(resultado.isr);
+describe("calcularIsrNomina — mensual (ISR_NOMINA_MENSUAL_2026, 11 tramos)", () => {
+  for (const [gravable, isr] of CASOS_MENSUAL) {
+    it(`gravable=${gravable} -> isr=${isr}`, () => {
+      expect(calcularIsrNomina(gravable, false)).toBe(isr);
     });
   }
 
-  it("isr_nomina_mensual_cero: gravable=0 -> isr=0", () => {
-    const { resultado } = golden.isr_nomina_mensual_cero as unknown as GoldenIsrNomina;
-    expect(calcularIsrNomina(0)).toBe(resultado.isr);
+  it("gravable=0 -> isr=0", () => {
+    expect(calcularIsrNomina(0)).toBe(0);
   });
 
-  it("isr_nomina_mensual_negativo: gravable negativo -> isr=0 sin tocar la tabla", () => {
-    const { entrada, resultado } = golden.isr_nomina_mensual_negativo as unknown as GoldenIsrNomina;
-    expect(calcularIsrNomina(entrada.gravable, false)).toBe(resultado.isr);
+  it("gravable negativo -> isr=0 sin tocar la tabla", () => {
+    expect(calcularIsrNomina(-100, false)).toBe(0);
+  });
+
+  it("la tabla mensual tiene exactamente 11 tramos", () => {
+    expect(ISR_NOMINA_MENSUAL_2026.length).toBe(11);
   });
 });
 
-describe("golden-set numérico: ISR nómina anual (TS) vs compliance.calculate_isr(annual=True) (Python real)", () => {
-  for (const [name, raw] of casesFor("isr_nomina_anual_tramo")) {
-    const { entrada, resultado } = raw as GoldenIsrNomina;
-    it(`${name}: gravable=${entrada.gravable} -> isr=${resultado.isr}`, () => {
-      const ts = calcularIsrNomina(entrada.gravable, true);
-      expect(ts).toBe(resultado.isr);
+describe("calcularIsrNomina — anual (ISR_NOMINA_ANUAL_2026, 11 tramos)", () => {
+  for (const [gravable, isr] of CASOS_ANUAL) {
+    it(`gravable=${gravable} -> isr=${isr}`, () => {
+      expect(calcularIsrNomina(gravable, true)).toBe(isr);
     });
   }
+
+  it("la tabla anual tiene exactamente 11 tramos", () => {
+    expect(ISR_NOMINA_ANUAL_2026.length).toBe(11);
+  });
 });
 
-describe("golden-set numérico GRUPO B: hueco de punto flotante en clasificación de tramo (CRÍTICO, diseño §5.1) — replicado a propósito, fidelidad estricta", () => {
-  const holeCases = entries.filter(([name]) => name.includes("_hole_"));
-
-  it("hay al menos un caso de hueco confirmado empíricamente contra el intérprete real", () => {
-    expect(holeCases.length).toBeGreaterThan(0);
+describe("calcularIsrNomina — clasificación con el `upper` PROPIO de cada fila (no el `lower` de la fila siguiente)", () => {
+  // ver isr-nomina-engine.ts: a diferencia de declaraciones/isr-engine.ts, este
+  // motor clasifica con `lower<=x<=upper` leído directamente de la tabla.
+  it("un valor justo en el límite superior de un tramo clasifica EN ese tramo, no en el siguiente", () => {
+    // Tramo 1 mensual: [844.6, 7168.51, 16.22, 0.064] -> en el upper exacto,
+    // excedente = 7168.51 - 844.6 = 6323.91, isr = 16.22 + 6323.91*0.064 = 420.95
+    // (mismo valor que el lower del tramo 2, por continuidad de la tabla oficial).
+    expect(calcularIsrNomina(7168.51, false)).toBe(420.95);
   });
-
-  for (const [name, raw] of holeCases) {
-    const { entrada, resultado, nota } = raw as GoldenIsrNomina;
-    it(`${name}: gravable=${entrada.gravable} (reconstruido) -> isr=${resultado.isr} (retención perdida en silencio) — ${nota}`, () => {
-      const ts = calcularIsrNomina(entrada.gravable, entrada.annual);
-      // El TS reproduce EXACTAMENTE el mismo hueco que el Python: 0, no el
-      // ISR "correcto" que un literal decimal limpio produciría en ese mismo
-      // tramo. Esto es el comportamiento observado a propósito, no un bug
-      // del puerto — ver isr-nomina-engine.ts.
-      expect(ts).toBe(resultado.isr);
-      expect(ts).toBe(0);
-    });
-  }
 });

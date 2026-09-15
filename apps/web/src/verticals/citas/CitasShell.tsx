@@ -27,6 +27,13 @@ export interface CitasShellContext {
    * suscripción — mismo patrón ya usado para `role` en
    * DespachosShell.tsx/LicitacionesShell.tsx: `session.organizations.find`. */
   readonly orgId: string;
+  /** Fase 12 — hallazgo de auditoría ("citas define 3 roles de plataforma pero no
+   * los aplica en NINGUNA capa"): mismo patrón exacto que DespachosShell.tsx/
+   * LicitacionesShell.tsx (`session.organizations.find((o) => o.slug ===
+   * orgSlug)?.rol`) — cosmético del lado del cliente (ocultar el formulario de
+   * invitar cuando el rol no alcanza), el enforcement real sigue siendo SIEMPRE el
+   * servidor (admin-staff.ts::assertVerticalRole + canInviteStaff). */
+  readonly role: string;
 }
 
 export interface CitasShellProps {
@@ -43,6 +50,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "clientes", label: "Clientes" },
   { to: "disponibilidad", label: "Disponibilidad" },
   { to: "configuracion", label: "Configuración" },
+  { to: "staff", label: "Staff" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
@@ -166,6 +174,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   // entre varias (mismo criterio que restaurantes/pages/Dashboard.tsx).
   const propertyId = branches[0]!.propertyId;
   const orgId = session.organizations.find((o) => o.slug === orgSlug)?.id ?? "";
+  const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "staff";
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -180,7 +189,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
       </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId })}</div>
+      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role })}</div>
     </div>
   );
 }

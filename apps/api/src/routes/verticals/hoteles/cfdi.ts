@@ -33,6 +33,7 @@ import {
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 // Hallazgo auditoría — en producción `deps.hotelesCfdiPort` es
@@ -298,6 +299,10 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           await tryEnqueueGuestEmail(repo, propertyId, organizationId, "cfdi.issued", folio.reservationId, {
             cfdi: { uuidFiscal: created.uuidFiscal, total: created.total, folioLabel: folio.label },
           });
+          // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline
+          // best-effort del correo recién encolado arriba, mismo
+          // `repo`/transacción (ver comentario de cabecera de email-dispatch.ts).
+          await triggerHotelesEmailDispatchInline(deps, repo);
         }
 
         return { status: 201 as const, body: serializeCfdi(created) };

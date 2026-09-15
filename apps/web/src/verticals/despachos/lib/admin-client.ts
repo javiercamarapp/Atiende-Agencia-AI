@@ -100,6 +100,19 @@ export async function postXml<T>(
   return (await res.json()) as T;
 }
 
+/** Mismo wrapper `withAuthRefresh` que `postJson`, para DELETE sin body -- hallazgo
+ * de auditoría (severidad ALTA, "Alta de organización/staff imposible sin SQL"):
+ * revocar una invitación de staff (admin-staff.ts) es la primera necesidad real de
+ * este verbo en despachos. */
+export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new DespachosAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
 export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string): Promise<readonly BranchOption[]> {
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/despachos/${orgSlug}/admin/branches`, token);
   return body.branches;

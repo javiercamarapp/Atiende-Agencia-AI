@@ -18,6 +18,7 @@ import {
 import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { originAllowed, readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
+import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface CreateOrderItemBody {
@@ -120,6 +121,12 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
 
       try {
         const order = await createOrder(repo, input);
+        // Cluster #3 (CRÍTICO) de la auditoría final — `createOrder` ya encoló
+        // internamente (best-effort) la confirmación por correo al cliente si
+        // dejó correo (tryNotifyCustomerOrderConfirmationEmail, ver
+        // order-notifications.ts); disparo inline del drenado, mismo
+        // `repo`/transacción, en vez de esperar al cron diario.
+        await triggerRestaurantesEmailDispatchInline(deps, repo);
         return c.json({ order });
       } catch (err) {
         if (err instanceof OrderConflictError) throw Errors.conflict(err.message);

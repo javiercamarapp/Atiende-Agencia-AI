@@ -154,6 +154,7 @@ export type {
   OwnerPortalProfileBase,
   OwnerPortalStatementDetalle,
   OwnerPortalStatementSummary,
+  RevokeOwnerRefreshTokenInput,
   UnidadPropietarioRecord,
 } from "./owner-portal/types.ts";
 
@@ -238,17 +239,15 @@ export type { RecordatorioCheckInSummary } from "./checkin-reminders.ts";
 // ---------------------------------------------------------------------------
 // Onboarding self-serve del tenant de rentas (Fase 11) -- ver src/onboarding/*.
 // Cierra el gap identificado por auditoría: el repo original permite que un cliente
-// nuevo se dé de alta a sí mismo (organización + primera propiedad + admin +
-// configuración inicial de rentas, un solo submit); en atiende-fusion,
-// `core.organization`/`core.property`/`core.staff_user`/`core.membership` son
-// service_role-write-only (gap de plataforma real, documentado en
-// ./onboarding/repository.ts junto con su solución conocida -- mismo patrón
-// `security definer` que `core.accept_staff_invite`). Esta fase construye la
-// porción de rentas que SÍ es del paquete: validación/normalización de la captura
-// (./onboarding/captura.ts) + el puerto de persistencia con su adaptador real (SQL
-// correcto, sin mocks) listo para conectarse en cuanto esa decisión de plataforma se
-// tome -- ver apps/api/src/production/rentas-onboarding-repository.ts para cómo se
-// documenta el bloqueo en la capa de aplicación.
+// nuevo se dé de alta a sí mismo (organización + primera propiedad + al menos una
+// unidad + admin + configuración inicial de rentas, un solo submit). Hallazgo de
+// auditoría (severidad CRÍTICA, "el onboarding self-serve de rentas está bloqueado en
+// producción") -- CERRADO: `rentas.register_tenant_onboarding` (función `security
+// definer`, ver `packages/domain-rentas/migrations/
+// 016_onboarding_security_definer.sql`, mismo patrón que `core.accept_staff_invite`)
+// ya escribe `core.organization`/`core.property`/`core.staff_user`/`core.membership`
+// y el resto de `rentas.*` sin necesitar `service_role` -- ver
+// apps/api/src/production/rentas-onboarding-repository.ts para el wiring real.
 // ---------------------------------------------------------------------------
 export { validarCapturaOnboardingRentas, slugificarNombreOrganizacion } from "./onboarding/captura.ts";
 export type {
@@ -259,6 +258,7 @@ export type {
   CapturaOnboardingPropiedadInput,
   CapturaOnboardingRentasInput,
   CapturaOnboardingRentasValidada,
+  CapturaOnboardingUnidadInput,
   NuevoTenantRentasInput,
   ResultadoRegistroTenantRentas,
   TipoOrganizacionRentas,

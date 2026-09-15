@@ -37,6 +37,7 @@ import {
 import { runNoShowSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
+import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -78,6 +79,19 @@ interface ProcesarNoShowBody {
   readonly asOfDate?: unknown;
 }
 
+// Fix hallazgo CRÍTICO — alta de huésped real (ver POST .../huespedes abajo).
+interface CrearHuespedBody {
+  readonly nombreCompleto?: unknown;
+  readonly email?: unknown;
+  readonly telefono?: unknown;
+}
+
+// Fix hallazgo CRÍTICO — asignación de habitación FÍSICA al reservar (ver
+// PATCH .../reservas/:id/asignar-habitacion abajo).
+interface AsignarHabitacionBody {
+  readonly roomId?: unknown;
+}
+
 function serializeReservation(r: ReservationRecord) {
   return {
     id: r.id,
@@ -91,6 +105,10 @@ function serializeReservation(r: ReservationRecord) {
     penalizacionCancelacion: r.cancellationPenaltyAmount,
     canceladaEn: r.canceledAt,
     creadaEn: r.createdAt,
+    // Fix hallazgo CRÍTICO ("asignación de habitación al reservar") — `null` hasta
+    // que el staff asigna una habitación física concreta, ver
+    // PATCH .../reservas/:id/asignar-habitacion.
+    roomId: r.roomId,
   };
 }
 
@@ -129,14 +147,35 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fix hallazgo ALTA — búsqueda de huéspedes YA registrados de la property (ver
   // HotelesRepository.searchGuests). `?q=` es opcional: sin query devuelve las
   // primeras filas en orden alfabético (insumo de un autocomplete recién abierto).
-  // NO crea huéspedes nuevos (fuera del hallazgo asignado) -- `guestId` sigue siendo
-  // opcional en `POST .../reservas`, mismo criterio de walk-in sin huésped capturado
-  // que ya tenía esta ruta antes de este fix.
   app.get("/hoteles/:propertyId/huespedes", async (c) => {
     const repo = deps.hotelesRepo(c.get("db"));
     const q = c.req.query("q")?.trim() || null;
     const huespedes = await repo.searchGuests(c.req.param("propertyId"), q);
     return c.json(huespedes.map((g) => ({ id: g.id, nombreCompleto: g.fullName, email: g.email, telefono: g.phone })));
+  });
+
+  // Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
+  // tarifas/huéspedes imposible sin SQL directo") — hasta este endpoint,
+  // `guestId` en `POST .../reservas` SOLO podía apuntar a un huésped YA sembrado
+  // por SQL directo (`GET .../huespedes` de arriba era puramente de lectura); ahora
+  // recepción puede registrar uno real desde el mismo formulario de "crear
+  // reserva". `guestId` sigue siendo opcional en `POST .../reservas` (walk-in sin
+  // huésped capturado sigue soportado, sin cambio de comportamiento ahí). Mismo
+  // gate que crear una reserva (`MANAGE_RESERVATIONS_ROLES`, ver
+  // migrations/018_admin_catalogo_alta.sql: `hoteles.can_manage_reservations()`).
+  app.post("/hoteles/:propertyId/huespedes", async (c) => {
+    assertVerticalRole(c, MANAGE_RESERVATIONS_ROLES);
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId");
+    const raw = await readJsonCapped<CrearHuespedBody>(c.req.raw, 2 * 1024);
+
+    if (typeof raw.nombreCompleto !== "string" || raw.nombreCompleto.trim().length === 0) throw Errors.validation("nombreCompleto requerido.");
+    const email = typeof raw.email === "string" && raw.email.trim().length > 0 ? raw.email.trim() : null;
+    const telefono = typeof raw.telefono === "string" && raw.telefono.trim().length > 0 ? raw.telefono.trim() : null;
+
+    const repo = deps.hotelesRepo(c.get("db"));
+    const guest = await repo.insertGuest({ propertyId, organizationId, fullName: raw.nombreCompleto.trim(), email, phone: telefono });
+    return c.json({ id: guest.id, nombreCompleto: guest.fullName, email: guest.email, telefono: guest.phone }, 201);
   });
 
   app.get("/hoteles/:propertyId/reservas/:id", async (c) => {
@@ -224,6 +263,10 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           // sin correo en archivo, o cualquier otra falla, NUNCA tumba la creación
           // de la reserva ya persistida). Ver @atiende/domain-hoteles::guest-email-notifications.ts.
           await tryEnqueueGuestEmail(repo, propertyId, organizationId, "reservation.created", reservation.id);
+          // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort
+          // del correo recién encolado arriba, mismo `repo`/transacción (ver
+          // comentario de cabecera de email-dispatch.ts).
+          await triggerHotelesEmailDispatchInline(deps, repo);
           return { status: 201, body: serializeReservation(reservation) };
         },
       );
@@ -298,6 +341,39 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     }
 
     return c.json(serializeReservation(canceled));
+  });
+
+  // Fix hallazgo CRÍTICO ("asignación de habitación al reservar") — la reserva
+  // SIEMPRE se crea contra un `roomTypeId` (disponibilidad agregada por tipo, ver
+  // `POST .../reservas` arriba); esta ruta es la única forma de decidir el número
+  // de cuarto FÍSICO concreto, igual que en un PMS real (recepción asigna al
+  // check-in, o antes si ya se sabe). Mismo gate que crear/cancelar una reserva
+  // (`MANAGE_RESERVATIONS_ROLES`) -- asignar habitación es la misma familia de
+  // decisión operativa de front-of-house.
+  app.patch("/hoteles/:propertyId/reservas/:id/asignar-habitacion", async (c) => {
+    assertVerticalRole(c, MANAGE_RESERVATIONS_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const reservationId = c.req.param("id");
+    const raw = await readJsonCapped<AsignarHabitacionBody>(c.req.raw, 1024);
+    if (typeof raw.roomId !== "string" || raw.roomId.length === 0) throw Errors.validation("roomId requerido.");
+
+    const repo = deps.hotelesRepo(c.get("db"));
+    const reservation = await repo.findReservation(propertyId, reservationId);
+    if (!reservation) throw Errors.notFound("Reserva no encontrada.");
+
+    const room = await repo.findRoom(propertyId, raw.roomId);
+    if (!room) throw Errors.notFound("Habitación no encontrada en esta property.");
+    // Validación de dominio ANTES de escribir (mismo reparto de responsabilidad que
+    // `canTransition`/`transitionReservation`): la habitación asignada DEBE ser del
+    // mismo tipo de habitación que la reserva -- nunca se le asigna al huésped un
+    // cuarto de un tipo distinto al que cotizó/pagó.
+    if (room.roomTypeId !== reservation.roomTypeId) {
+      throw Errors.validation(`La habitación "${room.code}" es de un tipo de habitación distinto al de esta reserva.`);
+    }
+
+    const updated = await repo.assignRoomToReservation(propertyId, reservationId, raw.roomId);
+    if (!updated) throw Errors.notFound("Reserva no encontrada."); // carrera: se borró/dejó de existir entre el findReservation y aquí.
+    return c.json(serializeReservation(updated));
   });
 
   // Job de no-show por HTTP — ADMIN_ROLES dispara el proceso, pero la transición

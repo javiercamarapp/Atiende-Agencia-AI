@@ -160,6 +160,79 @@ export interface GuestSummary {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
+// tarifas/huéspedes imposible sin SQL directo -- POST /reservas depende de
+// tarifas sembradas manualmente"): hasta este cambio `hoteles.room_type`/
+// `hoteles.room`/`hoteles.rate_plan`/`hoteles.guest` solo tenían GRANT de
+// SELECT para `authenticated` (ver el comentario de la migración 001: "gestión
+// de catálogo (insert/update) queda fuera de Fase 1... INSERT/UPDATE quedan
+// solo para service_role") -- sin una sola tarifa sembrada por SQL directo,
+// `POST .../reservas` SIEMPRE fallaba con `sin_tarifa` (quote.ts), sin que el
+// panel tuviera ninguna forma de sembrarla. Ver migrations/018_admin_catalogo_alta.sql
+// para el GRANT/policy real que habilita estos 4 métodos nuevos.
+//
+// Deliberadamente FUERA de este cambio (documentado, no un olvido): alta de
+// ORGANIZACIÓN/PROPERTY (`core.organization`/`core.property`) -- ambas tablas
+// son núcleo COMPARTIDO por las 6 verticales y solo otorgan INSERT a
+// `service_role` (packages/db/migrations/0001_core_schema.sql), que este
+// monorepo no aprovisiona (ver el mismo gap ya documentado en
+// `packages/domain-rentas/src/onboarding/repository.ts` y, decisión IDÉNTICA
+// ya tomada en este mismo repo, `packages/domain-restaurantes/migrations/
+// 007_admin_backoffice_grants_and_policies.sql`: "Ampliar esa policy es una
+// decisión de plataforma completa, fuera del alcance de una fase de un solo
+// vertical"). Crear una property nueva sigue requiriendo el mismo alta manual
+// que ya requería antes de este cambio.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface NewRoomTypeInput {
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly name: string;
+  readonly maxOccupancy: number;
+}
+
+export interface RoomSummary {
+  readonly id: string;
+  readonly code: string;
+  readonly status: "disponible" | "ocupada" | "sucia" | "fuera_de_servicio" | "mantenimiento";
+  readonly roomTypeId: string;
+}
+
+export interface NewRoomInput {
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly roomTypeId: string;
+  readonly code: string;
+}
+
+/** Body real de "crear tarifa" -- un solo submit siembra un RANGO de fechas (no una
+ * fecha a la vez, que obligaría a N clics para una temporada completa) con el mismo
+ * precio/reglas para todas. Un segundo submit que traslape fechas ya sembradas las
+ * SOBREESCRIBE (`ON CONFLICT (room_type_id, date) DO UPDATE`, mismo índice único ya
+ * existente desde migrations/001) -- corregir el precio de una temporada ya cargada
+ * no exige borrar primero. */
+export interface NewRatePlanRangeInput {
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly roomTypeId: string;
+  readonly startDate: string;
+  readonly endDate: string;
+  readonly price: number;
+  readonly currency: string;
+  readonly minStay: number;
+  readonly closedToArrival: boolean;
+  readonly closedToDeparture: boolean;
+}
+
+export interface NewGuestInput {
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly fullName: string;
+  readonly email: string | null;
+  readonly phone: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Fase 3 — máquina de estados de reservas (H02, ver diseño Fase 3 §1/§3.3). El
 // `status` de una fila real siempre es un `ReservationStatus` (enum en Postgres desde
 // migrations/005_reservas_estado.sql) — la validez de una TRANSICIÓN concreta la decide
@@ -186,6 +259,18 @@ export interface ReservationRecord {
   readonly cancellationPenaltyAmount: number | null;
   readonly canceledAt: string | null;
   readonly createdAt: string;
+  /** Fix hallazgo CRÍTICO ("asignación de habitación al reservar"): `null` hasta que
+   *  el staff asigna una habitación FÍSICA concreta (`hoteles.room`) a la reserva vía
+   *  `HotelesRepository.assignRoomToReservation` — la reserva en sí SIEMPRE se crea
+   *  contra un `roomTypeId` (tipo de habitación, disponibilidad agregada por tipo,
+   *  ver `bookAvailability`), nunca contra una habitación concreta; el número de
+   *  cuarto real es una decisión operativa posterior (recepción/night-audit), igual
+   *  que en un PMS real. Ninguna validación de traslape por fecha entre dos reservas
+   *  que compartan la MISMA habitación se hace hoy (limitación documentada, ver el
+   *  comentario de cabecera de `assignRoomToReservation`) -- la disponibilidad real
+   *  sigue siendo por TIPO de habitación (`hoteles.availability`), esta asignación es
+   *  solo el número de cuarto que se le comunica al huésped. */
+  readonly roomId: string | null;
 }
 
 export interface NewReservationInput {

@@ -18,6 +18,7 @@ import type {
   OwnerPortalProfileBase,
   OwnerPortalStatementDetalle,
   OwnerPortalStatementSummary,
+  RevokeOwnerRefreshTokenInput,
   UnidadPropietarioRecord,
 } from "./types.ts";
 import type { RentasOwnerPortalRepository } from "./repository.ts";
@@ -75,6 +76,7 @@ export class InMemoryRentasOwnerPortalRepository implements RentasOwnerPortalRep
   private readonly ownerStatements: SeedOwnerStatementInput[] = [];
   private readonly credentialsByOwnerId = new Map<string, StoredCredential>();
   private readonly invitesByTokenHash = new Map<string, StoredInvite>();
+  private readonly revokedRefreshJtis = new Set<string>();
 
   // ---- seeding ----
 
@@ -209,6 +211,17 @@ export class InMemoryRentasOwnerPortalRepository implements RentasOwnerPortalRep
       passwordHash: input.passwordHash,
     });
     return { ownerId: invite.ownerId };
+  }
+
+  // ---- Hallazgo de auditoría (severidad ALTA, "el portal de propietario no tiene
+  // logout/revocación real de sesión") ----
+
+  async revokeOwnerRefreshToken(input: RevokeOwnerRefreshTokenInput): Promise<void> {
+    this.revokedRefreshJtis.add(input.jti);
+  }
+
+  async isOwnerRefreshTokenRevoked(jti: string): Promise<boolean> {
+    return this.revokedRefreshJtis.has(jti);
   }
 
   private toSummary(s: SeedOwnerStatementInput): OwnerPortalStatementSummary {

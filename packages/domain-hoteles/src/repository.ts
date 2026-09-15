@@ -29,10 +29,14 @@ import type {
   NewExpenseEntryInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
+  NewGuestInput,
   NewHousekeepingShiftInput,
   NewMaintenanceTicketInput,
   NewPaymentInput,
+  NewRatePlanRangeInput,
   NewReservationInput,
+  NewRoomInput,
+  NewRoomTypeInput,
   NewStaffScheduleInput,
   NightAuditRunRecord,
   NightlyRateRecord,
@@ -42,6 +46,7 @@ import type {
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  RoomSummary,
   RoomTypeSummary,
   GuestSummary,
   StaffScheduleRecord,
@@ -126,10 +131,63 @@ export interface HotelesRepository {
    *  (contains, insensible a mayúsculas) — insumo del autocomplete de "huésped" al
    *  crear una reserva. `query` `null`/vacío devuelve las primeras `limit` filas
    *  (orden alfabético) para poblar el autocomplete antes de que el staff escriba
-   *  nada. Esta fase NO agrega un endpoint de alta de huésped nuevo (fuera del
-   *  hallazgo asignado): `guestId` sigue siendo opcional en `POST .../reservas`
-   *  (walk-in sin huésped capturado) exactamente igual que antes. */
+   *  nada. */
   searchGuests(propertyId: string, query: string | null, limit?: number): Promise<readonly GuestSummary[]>;
+
+  // ---- Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
+  // tarifas/huéspedes imposible sin SQL directo") — alta REAL de catálogo desde el
+  // producto. Ver migrations/018_admin_catalogo_alta.sql para el GRANT/policy que
+  // habilita estos 6 métodos (antes solo SELECT). `NewRoomTypeInput`/`NewRoomInput`/
+  // `NewRatePlanRangeInput`/`NewGuestInput`/`RoomSummary` en types.ts, ver el
+  // comentario de cabecera ahí para por qué alta de ORGANIZACIÓN/PROPERTY queda
+  // deliberadamente fuera de este cambio. ----
+
+  /** Crea un tipo de habitación nuevo — `unique (property_id, name)` ya existe desde
+   *  migrations/001, así que un nombre duplicado en la MISMA property lanza (el
+   *  caller HTTP lo traduce a 409, mismo criterio que `StaffInviteInvalidError`). */
+  insertRoomType(input: NewRoomTypeInput): Promise<RoomTypeSummary>;
+
+  /** Habitaciones físicas (`hoteles.room`) de un tipo de habitación concreto —
+   *  insumo del selector de "asignar habitación" al reservar. `roomTypeId` `null`
+   *  trae TODAS las habitaciones de la property (insumo de un catálogo general,
+   *  aunque el flujo real de asignación siempre filtra por tipo). */
+  listRooms(propertyId: string, roomTypeId?: string | null): Promise<readonly RoomSummary[]>;
+
+  findRoom(propertyId: string, roomId: string): Promise<RoomSummary | null>;
+
+  /** Crea una habitación física nueva dentro de un tipo de habitación ya existente —
+   *  `unique (property_id, code)` ya existe desde migrations/001 (un número de
+   *  cuarto no se repite dentro de la misma property, sin importar el tipo), así que
+   *  un código duplicado lanza (409, mismo criterio que `insertRoomType`). Nace
+   *  siempre en `status = 'disponible'` (default de la columna). */
+  insertRoom(input: NewRoomInput): Promise<RoomSummary>;
+
+  /** Siembra/corrige tarifa real para un RANGO de fechas de un tipo de habitación —
+   *  la pieza que de verdad bloqueaba `POST .../reservas` con `sin_tarifa`
+   *  (quote.ts) cuando nadie había sembrado `hoteles.rate_plan` por SQL directo.
+   *  `ON CONFLICT (room_type_id, date) DO UPDATE` (mismo índice único de
+   *  migrations/001): un rango que traslapa fechas ya sembradas las SOBREESCRIBE,
+   *  nunca falla por duplicado. Devuelve cuántas fechas se escribieron (para que la
+   *  ruta HTTP confirme al staff "se sembraron N noches" en vez de un 200 opaco). */
+  upsertRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }>;
+
+  /** Alta de huésped nuevo — antes de este cambio `guestId` en `POST .../reservas`
+   *  solo podía apuntar a un huésped YA sembrado por SQL directo (`searchGuests` era
+   *  puramente de lectura); ahora recepción puede registrar uno real desde el
+   *  formulario de "crear reserva". */
+  insertGuest(input: NewGuestInput): Promise<GuestSummary>;
+
+  /** Asigna una habitación FÍSICA concreta a una reserva ya existente — `null` si la
+   *  reserva no existe en esta property (el caller HTTP valida ANTES que
+   *  `room.roomTypeId === reservation.roomTypeId`, esta escritura no lo revalida por
+   *  su cuenta, mismo reparto de responsabilidad que `transitionReservation`/
+   *  `canTransition`). LIMITACIÓN DOCUMENTADA (ver types.ts::ReservationRecord.roomId):
+   *  no valida traslape de fechas contra otra reserva que ya tenga asignada la MISMA
+   *  habitación — la disponibilidad real sigue siendo por TIPO de habitación
+   *  (`hoteles.availability`/`bookAvailability`), esta asignación es solo el número
+   *  de cuarto comunicado al huésped/housekeeping, no una segunda fuente de verdad
+   *  de disponibilidad. */
+  assignRoomToReservation(propertyId: string, reservationId: string, roomId: string): Promise<ReservationRecord | null>;
 
   // ---- Idempotencia (transversal a folios y F&B) ----
   withIdempotency<T>(params: IdempotencyParams, run: () => Promise<IdempotentResult<T>>): Promise<IdempotentResult<T>>;
@@ -479,7 +537,7 @@ export type { FolioRecord, ChargeRecord, PaymentRecord, NewChargeInput, NewPayme
 export type { ExpenseEntryRecord, NewExpenseEntryInput, PlRevenueByDateRow, PlExpenseByDateRow, PlOccupiedRoomNightsByDateRow } from "./types.ts";
 export type { ConversationMessage, ContactoNoOperativoRecord, NewContactoNoOperativoInput, VoiceAgentConfig, WhatsAppPropertyRoute } from "./types.ts";
 export type { ReservationRecord, NewReservationInput, CancellationPolicyRecord } from "./types.ts";
-export type { RoomTypeSummary, GuestSummary } from "./types.ts";
+export type { RoomTypeSummary, GuestSummary, RoomSummary, NewRoomTypeInput, NewRoomInput, NewRatePlanRangeInput, NewGuestInput } from "./types.ts";
 export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
 export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";
 export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";

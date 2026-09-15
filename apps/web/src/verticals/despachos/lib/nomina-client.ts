@@ -98,6 +98,14 @@ export interface EmployeeXmlNominaBody extends EmployeePayrollInputBody {
   readonly domicilioFiscalReceptor: string;
   readonly regimenFiscalReceptor?: string;
   readonly folio: string;
+  // nomina12:Receptor (XSD real) -- ver corrección hallazgo "XML de nómina 1.2 no
+  // valida contra el XSD real del SAT", @atiende/domain-despachos/nomina/xml-nomina.ts.
+  readonly curp: string;
+  readonly numEmpleado: string;
+  readonly tipoContrato: string;
+  readonly tipoRegimen: string;
+  readonly periodicidadPago: string;
+  readonly claveEntFed: string;
 }
 
 export interface GenerarXmlNominaInput {

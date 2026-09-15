@@ -10,7 +10,7 @@ describe('ENDPOINT_POLICIES — tabla explícita fail-open/fail-closed', () => {
   });
 
   it('las superficies no-autenticadas o con efecto físico/fiscal/monetario están CERRADAS', () => {
-    for (const category of ['auth:login', 'auth:password-reset', 'auth:token-issue', 'mcp:locks', 'mcp:cfdi', 'billing:charge', 'admin']) {
+    for (const category of ['auth:login', 'auth:password-reset', 'auth:token-issue', 'auth:accept-invite', 'mcp:locks', 'mcp:cfdi', 'billing:charge', 'admin']) {
       expect(resolvePolicy(category).failMode, category).toBe('closed');
     }
   });

@@ -52,6 +52,18 @@ export interface StaffUserRow {
   readonly passwordHash: string | null;
   readonly createdVia: "seed" | "invite" | "registro_autoservicio" | "google";
   readonly emailVerifiedAt: string | null;
+  /** ISO 8601 o null — hallazgo de auditoría (rubro 2, severidad ALTA: "no hay forma
+   *  de invalidar sesiones activas de un usuario"). Cualquier refresh token con `iat`
+   *  (epoch seconds) anterior a este valor se trata como revocado en POST
+   *  /auth/refresh, sin importar si su `jti` individual está en
+   *  `core.revoked_refresh_token` — el corte que fija POST /auth/revoke-sessions para
+   *  cerrar TODAS las sesiones de un usuario sin enumerar cada `jti` emitido (nunca se
+   *  guardó una tabla de sesiones activas, solo de revocadas). `null` = nunca se pidió
+   *  una revocación masiva para este usuario. Opcional (`?`) para no romper los
+   *  fixtures existentes que construyen un `StaffUserRow` literal sin necesitarlo —
+   *  ver `InMemoryCoreRepository.findStaffByEmail`/`findStaffById`, que lo completan
+   *  con `null` cuando no se fijó explícito. */
+  readonly sessionsRevokedAt?: string | null;
 }
 
 export interface MembershipRow {
@@ -172,6 +184,19 @@ export interface CoreRepository {
    *  navegador que lo pidió, sin impedir que ESE MISMO refresh token (ya copiado o
    *  interceptado) siga sirviendo para sacar access tokens nuevos. */
   isRefreshTokenRevoked(jti: string): Promise<boolean>;
+  /** POST /auth/revoke-sessions — hallazgo de auditoría (rubro 2, severidad ALTA: "no
+   *  hay forma de invalidar sesiones activas de un usuario", ej. tras cambio de
+   *  contraseña o sospecha de compromiso). Marca `core.staff_user.sessions_revoked_at
+   *  = now()` para este usuario: cualquier refresh token emitido ANTES de esta llamada
+   *  deja de servir en /auth/refresh (ver `isRefreshTokenRevoked`/comentario de
+   *  `sessionsRevokedAt` arriba) sin necesitar conocer/enumerar cada `jti` individual
+   *  en circulación. El access token ya emitido sigue vivo hasta su propio `exp`
+   *  (mismo trade-off ya documentado para `revokeRefreshToken`/logout). Siempre self-
+   *  service: el caller (`apps/api/src/routes/auth.ts`) pasa SIEMPRE el `userId` de la
+   *  sesión autenticada actual (`c.get("userId")`), nunca un id arbitrario recibido
+   *  del body — revocar las sesiones de OTRO usuario (ej. un admin forzando el cierre
+   *  de sesión de un empleado) queda fuera de esta pasada. */
+  revokeAllRefreshTokens(userId: string): Promise<void>;
 }
 
 /** Ver el comentario de cabecera del archivo para por qué esta interfaz vive

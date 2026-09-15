@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { InvoiceReviewAlreadyResolvedError, RESOLVER_REVISION_ROLES } from "@atiende/domain-despachos";
+import { InvoiceReviewAlreadyResolvedError, RESOLVER_REVISION_ROLES, VER_REVISIONES_ROLES } from "@atiende/domain-despachos";
 import type { InvoiceReviewRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -42,15 +42,19 @@ export function despachosRevisionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
   app.use("/despachos/:propertyId/revisiones/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/despachos/:propertyId/revisiones", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): ver la cola es lectura de un registro ya
+  // persistido -- auditor/readonly SÍ pueden verla (VER_REVISIONES_ROLES), aunque
+  // nunca resolverla (RESOLVER_REVISION_ROLES, sin cambios, abajo).
   app.get("/despachos/:propertyId/revisiones", async (c) => {
-    assertVerticalRole(c, RESOLVER_REVISION_ROLES);
+    assertVerticalRole(c, VER_REVISIONES_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const pendientes = await repo.listPendingReviews(c.req.param("propertyId"));
     return c.json(pendientes.map(serializeReview));
   });
 
   app.get("/despachos/:propertyId/revisiones/:reviewId", async (c) => {
-    assertVerticalRole(c, RESOLVER_REVISION_ROLES);
+    assertVerticalRole(c, VER_REVISIONES_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const review = await repo.findReview(c.req.param("propertyId"), c.req.param("reviewId"));
     if (!review) throw Errors.notFound("Revisión no encontrada.");

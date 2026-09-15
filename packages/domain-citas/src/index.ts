@@ -26,12 +26,12 @@ export type {
   Slot,
 } from "./types.ts";
 
-export { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
+export { AppointmentAlternativesError, AppointmentConflictError, AppointmentForbiddenError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
 
 export { computeAvailableSlots, dayOfWeekInTimeZone, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 export type { ComputeAvailableSlotsInput } from "./availability.ts";
 
-export { CITAS_ROLES, isCitasRole, PLATFORM_ROLE_BY_VERTICAL_ROLE } from "./roles.ts";
+export { CITAS_ROLES, isCitasRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "./roles.ts";
 export type { CitasRole } from "./roles.ts";
 
 export { actorHash, consumeRateLimit, requestActor } from "./rate-limit.ts";
@@ -45,11 +45,13 @@ export type {
   ConnectProviderCalendarAccountInput,
   ConversationMessage,
   CreateAppointmentResult,
+  CreateFromPanelResult,
   CustomerPage,
   EmailOutboxJobRow,
   EmergencyEscalationInput,
   EmergencyEscalationRecord,
   MessagingOutboxRow,
+  NewAppointmentFromPanelInput,
   NewAppointmentInput,
   NoShowResult,
   ReassignResult,
@@ -96,6 +98,7 @@ export {
   completeAppointmentFromPanel,
   confirmAppointmentFromPanel,
   createAppointment,
+  createAppointmentFromPanel,
   findAppointmentsForCustomerPhone,
   isValidVoiceConversationId,
   markAppointmentNoShowFromPanel,
@@ -111,7 +114,7 @@ export {
   validateReassignAppointmentPayload,
   validateRescheduleAppointmentPayload,
 } from "./appointments.ts";
-export type { CustomerAppointmentSummary, PreparedAppointment, PreparedReassign, PreparedReschedule, QueryAvailabilityInput, ReassignOutcome, RescheduleOutcome } from "./appointments.ts";
+export type { CreateAppointmentFromPanelPayload, CustomerAppointmentSummary, PreparedAppointment, PreparedReassign, PreparedReschedule, QueryAvailabilityInput, ReassignOutcome, RescheduleOutcome } from "./appointments.ts";
 
 export { lookupCitasCustomer } from "./customers.ts";
 export type { CitasCustomerContext, UpcomingAppointmentContext } from "./customers.ts";
@@ -200,6 +203,8 @@ export { escapeHtml, renderCorreo } from "./emails/layout.ts";
 export type { EtiquetaPlantilla, FilaPlantilla, SeccionPlantilla } from "./emails/layout.ts";
 export { correoCitaCancelada, correoCitaCreada, correoCitaModificada, correoCitaReagendada, correoCitaRecordatorio } from "./emails/appointment-templates.ts";
 export type { CitaCorreo, CitaReagendadaCorreo, Correo } from "./emails/appointment-templates.ts";
+export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
+export type { StaffInviteCorreo, StaffInviteVerticalRole } from "./emails/staff-invite-template.ts";
 export { enqueueAppointmentEmailCore, tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
 export type { AppointmentEmailEvent, AppointmentEmailExtra, AppointmentEmailResult } from "./appointment-email-notifications.ts";
 export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "./email-dispatch.ts";

@@ -1,8 +1,8 @@
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué:
-// `hotelesPaymentsPort`/`hotelesFraudeAuditSink` (integraciones sin adaptador/
-// credenciales, no relacionadas con RLS). `coreRepo`/`engine` y ahora también
+// `hotelesPaymentsPort` (integración de cobro sin adaptador/credenciales, no
+// relacionada con RLS). `coreRepo`/`engine` y ahora también
 // `restaurantesRepo`/`hotelesRepo`/`citasRepo`/`licitacionesRepo`/`despachosRepo`/
 // `rentasRepo`/`rentasOwnerPortalRepo` SÍ son reales de punta a punta contra
 // Supabase en cuanto `DATABASE_URL` apunte al proyecto consolidado — estos 7
@@ -10,7 +10,9 @@
 // construido (ver `../deps.ts` para por qué). `despachosAuditSink` TAMPOCO es ya
 // `notProductionReady` — corrige una regresión real de la Ronda 12, ver
 // `./despachos-audit-sink.ts` y `packages/domain-despachos/migrations/
-// 008_despachos_audit_log.sql`.
+// 008_despachos_audit_log.sql`. `hotelesFraudeAuditSink` TAMPOCO — ver
+// `./hoteles-fraude-audit-sink.ts` y `packages/domain-hoteles/migrations/
+// 017_fraude_audit_log.sql` (mismo patrón, gap propio de hoteles cerrado aparte).
 //
 // `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler`/`llmGateway`: el
 // bloqueante que quedaba (ningún proveedor LLM real registrado, ver
@@ -48,7 +50,7 @@ import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { PostgresRestaurantesRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import type { CitasRepository, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
+import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
   createDefaultConversationGuard,
@@ -60,9 +62,8 @@ import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import { PostgresLicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
-import type { AuditSink } from "@atiende/core-authz";
 import type { RentasRepository } from "@atiende/domain-rentas";
-import { PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
+import { CanalMensajeriaPartnerPendiente, PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
 import { openManagedPostgres, PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
@@ -72,6 +73,7 @@ import { ProductionCoreRepository } from "./core-repository.ts";
 import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-repository.ts";
 import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
+import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -127,6 +129,40 @@ function buildRealCitasTurnHandler(engine: TenancyEngine, gateway: NonNullable<A
   };
 }
 
+/**
+ * Hallazgo de auditoría (ALTO, "El puerto de Google Calendar sigue
+ * notProductionReady (muerto)"): ANTES de este cambio, `citasGoogleCalendarPortResolver`
+ * se construía con `createGoogleCalendarPortResolver(citasRepoForCalendarResolver,
+ * env.googleOAuth)` donde `citasRepoForCalendarResolver` era un
+ * `notProductionReady<CitasRepository>` FIJO -- así que, incluso el día en que
+ * alguien configure GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL reales, la
+ * PRIMERA llamada real a `repo.findProviderCalendarAccount(...)` dentro del
+ * resolver (google-calendar-factory.ts) habría lanzado "sin adaptador de
+ * producción todavía" -- el puerto quedaba estructuralmente MUERTO, sin ninguna
+ * combinación de variables de entorno capaz de activarlo. Mismo patrón EXACTO que
+ * `buildRealCitasTurnHandler` de arriba (el mismo gap de "sesión por-request", ya
+ * resuelto ahí): el resolver es un singleton de PROCESO (`ResolveCalendarPort`,
+ * sin parámetro de sesión), pero cada invocación abre su PROPIA sesión de sistema
+ * (`engine.withAppSession({userId: null}, ...)`, nunca `service_role` -- este
+ * monorepo no lo aprovisiona) y construye el repo real DENTRO de ese callback.
+ *
+ * Sin `GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL` configuradas en este
+ * entorno (`env.googleOAuth === null`, el estado real de desarrollo hoy) el
+ * resolver sigue devolviendo `null` de inmediato -- exactamente "sin conectar",
+ * NUNCA un error, NUNCA un 500 silencioso (`calendar-sync.ts::syncOneAppointmentRow`
+ * ya trata cualquier `null` como skip permanente) -- se evita abrir una sesión de
+ * Postgres cuando ni siquiera hay credenciales de plataforma que resolver. Con
+ * credenciales reales configuradas, la resolución (`findProviderCalendarAccount`/
+ * `resolveProviderCalendarRefreshToken`/`rotateProviderCalendarRefreshToken`) SÍ
+ * corre contra un `PostgresCitasRepository` real -- el puerto completo (contrato +
+ * dos adaptadores + `RealGoogleCalendarPort` sobre `fetch`, ver
+ * google-calendar-port.ts) queda de punta a punta funcional, no solo "menos roto".
+ */
+function buildRealGoogleCalendarPortResolver(engine: TenancyEngine, config: GoogleOAuthPlatformConfig | null): ResolveCalendarPort {
+  if (!config) return async () => null; // credenciales de plataforma pendientes -- ver env.ts::googleOAuth
+  return (providerId) => engine.withAppSession({ userId: null }, (db) => createGoogleCalendarPortResolver(new PostgresCitasRepository(db), config)(providerId));
+}
+
 let cached: AppDeps | undefined;
 
 /**
@@ -152,20 +188,6 @@ export function buildProductionDeps(): AppDeps {
   }
 
   const engine = openManagedPostgres({ connectionString: databaseUrl });
-
-  // Repo dedicado y SIN sesión real, solo para construir
-  // `citasGoogleCalendarPortResolver` (ver comentario más abajo) — la resolución del
-  // puerto de Google Calendar por-providerId es una función singleton
-  // (`ResolveCalendarPort = (providerId) => Promise<...>`, sin parámetro de sesión),
-  // así que no puede recibir un `TenantDbSession` por-request como el resto de
-  // `citasRepo`. Ligarla al mismo `citasRepo` de abajo no es posible (una fábrica no
-  // es un `CitasRepository`) y cambiar la forma de `ResolveCalendarPort` para que
-  // reciba sesión por-llamada es una decisión de arquitectura aparte (mismo tipo de
-  // gap que `turnHandler`/`citasTurnHandler`, fuera de alcance de este cambio) — así
-  // que, igual que antes de este cambio, cualquier intento real de resolver un
-  // calendario en producción sigue fallando explícito en vez de fingir que ya
-  // funciona.
-  const citasRepoForCalendarResolver = notProductionReady<CitasRepository>("citasRepo (usado por citasGoogleCalendarPortResolver)");
 
   // Gateway LLM real — `undefined` si NINGÚN proveedor (Anthropic/OpenAI/
   // OpenRouter) tiene API key configurada, ver ./llm-gateway.ts. Se construye UNA
@@ -215,12 +237,17 @@ export function buildProductionDeps(): AppDeps {
     // `PortUnavailableError`/`AggregateError` a un 503 `service_unavailable`
     // explícito en vez de dejar que `app.onError` lo aplane a un 500 genérico.
     hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()),
-    // Falta un adaptador de auditoría real (tabla/servicio dedicado) -- mismo tipo
-    // de gap que tenía `despachosAuditSink` antes de la migración 007 de
-    // domain-despachos (ver `./despachos-audit-sink.ts`); `hotelesFraudeAuditSink`
-    // queda deliberadamente FUERA de ese cambio (gap propio de hoteles, no pedido
-    // en esa fase) — sigue `notProductionReady` hasta que tenga su propia tabla.
-    hotelesFraudeAuditSink: notProductionReady<AuditSink>("hotelesFraudeAuditSink"),
+    // Adaptador real (ya NO `notProductionReady`) — cierra el gap propio de hoteles
+    // que la migración 008 de domain-despachos dejaba explícitamente pendiente (ver
+    // `packages/domain-hoteles/migrations/017_fraude_audit_log.sql`): mientras este
+    // puerto siguiera lanzando siempre, `POST .../fraude/escaneos` (hallazgo nuevo) y
+    // `POST .../fraude/alertas/:id/{confirmar,descartar}` tumbaban el request con un
+    // 500 DESPUÉS de que `recordFraudAlert`/`resolveFraudAlert` ya habían hecho
+    // commit. `ProductionHotelesFraudeAuditSink` (`./hoteles-fraude-audit-sink.ts`)
+    // escribe a `hoteles.fraude_audit_log` desde la sesión de SISTEMA (mismo patrón
+    // que `despachosAuditSink` de abajo) y nunca lanza — ese 500-después-del-commit
+    // ya no puede ocurrir por este puerto.
+    hotelesFraudeAuditSink: new ProductionHotelesFraudeAuditSink(engine),
     citasRepo: (db) => new PostgresCitasRepository(db),
     // El turn handler real (LLM real vía @atiende/agent-core::LlmGateway con
     // roles/proveedores registrados, ver ./llm-gateway.ts) ya se construye aquí en
@@ -236,17 +263,18 @@ export function buildProductionDeps(): AppDeps {
     // funcione correctamente.
     citasTurnHandler: llmGateway ? buildRealCitasTurnHandler(engine, llmGateway) : notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     citasConversationGuard: createDefaultConversationGuard(),
-    // Fase 3 §4/§9 — el resolver SÍ se construye real (misma lógica de
-    // resolución/rotación de token que el resto de producción), pero ligado al repo
-    // dedicado de arriba (ver ese comentario) en vez del `citasRepo` real de líneas
-    // arriba — cualquier intento real de resolverlo sigue fallando con un error
-    // explícito y accionable, nunca silenciosamente `null` fingiendo "sin conectar".
-    // El intercambio de código SÍ es real y no depende de citasRepo (solo llama a
-    // Google) — se activa en cuanto `GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL`
-    // estén configurados (ver env.ts).
-    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepoForCalendarResolver, env.googleOAuth),
+    // Hallazgo de auditoría (ALTO, "El puerto de Google Calendar sigue
+    // notProductionReady (muerto)") -- ver buildRealGoogleCalendarPortResolver más
+    // arriba para el detalle completo: el resolver ya NO está ligado a un repo
+    // permanentemente `notProductionReady` -- cada invocación abre su propia
+    // sesión de sistema real (mismo patrón que `citasTurnHandler`). Sin
+    // `GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL` configuradas (estado real
+    // de este entorno, ver env.ts) sigue devolviendo `null` de inmediato -- "sin
+    // conectar" honesto, nunca un error. El intercambio de código SÍ es real y no
+    // depende de citasRepo (solo llama a Google).
+    citasGoogleCalendarPortResolver: buildRealGoogleCalendarPortResolver(engine, env.googleOAuth),
     citasGoogleTokenExchange: exchangeGoogleAuthorizationCode,
-    licitacionesRepo: (db) => new PostgresLicitacionesRepository(db, env.licitacionesStorageDir),
+    licitacionesRepo: (db) => new PostgresLicitacionesRepository(db),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de
     // la Ronda 12 documentada en `packages/domain-despachos/migrations/
@@ -271,6 +299,13 @@ export function buildProductionDeps(): AppDeps {
     // Fase 7 -- mismo criterio que rentasRepo/rentasCalendarSyncRepo: sesión RLS
     // por-request real, ningún stub (ver migrations/009_rentas_mensajeria_schema.sql).
     rentasMensajeriaRepo: (db) => new PostgresRentasMensajeriaRepository(db),
+    // Hallazgo de auditoría (severidad CRÍTICA, "la mensajería de rentas es un
+    // simulador que nunca toca un canal real") -- `CanalMensajeriaPartnerPendiente`
+    // es un esqueleto HONESTO (mismo criterio que `hotelesCfdiPort` justo arriba):
+    // sin credencial real de partner de Airbnb/Vrbo/Booking.com (ninguna está
+    // configurada en este entorno), `enviarMensajeAprobado` SIEMPRE lanza en vez de
+    // fingir un envío -- la ruta (`mensajeria-borradores.ts`) responde 503 explícito.
+    rentasCanalMensajeria: (canal) => new CanalMensajeriaPartnerPendiente(canal),
     // Los 5 métodos de solo lectura del portal SÍ quedan reales aquí (sesión RLS
     // por-request, igual que el resto). Los otros 3 (credenciales/invitaciones)
     // requieren una sesión de `service_role` que este monorepo no aprovisiona

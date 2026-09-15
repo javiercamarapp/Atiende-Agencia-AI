@@ -14,6 +14,7 @@ import { fetchBranches } from "./dashboard-client.ts";
 import type { BranchOption } from "./dashboard-client.ts";
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
+import { useDocumentTitle } from "../../shell/use-document-title.ts";
 
 export interface RestaurantesShellContext {
   readonly apiBaseUrl: string;
@@ -75,6 +76,11 @@ const logoutButtonStyle: CSSProperties = {
 };
 
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
+  // Hallazgo de auditoría (severidad MEDIA/BRANDING, "Título de pestaña fijo en
+  // 'Restaurantes' para las 6 verticales"): ver el comentario de cabecera de
+  // use-document-title.ts — mecanismo genérico, esta es solo la integración de
+  // restaurantes.
+  useDocumentTitle("Restaurantes", orgSlug);
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
   const [branches, setBranches] = useState<readonly BranchOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);

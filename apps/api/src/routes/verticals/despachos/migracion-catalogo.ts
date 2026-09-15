@@ -11,6 +11,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   MIGRACION_CATALOGO_ROLES,
+  VER_MIGRACION_CATALOGO_ROLES,
   DECIDIR_MAPEO_MIGRACION_ROLES,
   clasificarCatalogo,
   aprobarMapeo,
@@ -122,8 +123,14 @@ export function despachosMigracionCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHo
     return c.json({ mapeos: mapeos.map(serializeMapeo) });
   });
 
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): ver los mapeos y su clasificación sugerida es
+  // lectura de un análisis, no una decisión -- auditor/readonly SÍ pueden verlos
+  // (VER_MIGRACION_CATALOGO_ROLES), aunque nunca correr el clasificador
+  // (MIGRACION_CATALOGO_ROLES, arriba) ni decidir un mapeo
+  // (DECIDIR_MAPEO_MIGRACION_ROLES, abajo).
   app.get("/despachos/:propertyId/migracion-catalogo/mapeos", async (c) => {
-    assertVerticalRole(c, MIGRACION_CATALOGO_ROLES);
+    assertVerticalRole(c, VER_MIGRACION_CATALOGO_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const estadoParam = c.req.query("estado");
@@ -133,7 +140,7 @@ export function despachosMigracionCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHo
   });
 
   app.get("/despachos/:propertyId/migracion-catalogo/mapeos/:mapeoId", async (c) => {
-    assertVerticalRole(c, MIGRACION_CATALOGO_ROLES);
+    assertVerticalRole(c, VER_MIGRACION_CATALOGO_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const mapeo = await repo.findMapeoMigracion(c.req.param("propertyId"), c.req.param("mapeoId"));
     if (!mapeo) throw Errors.notFound(`No existe el mapeo "${c.req.param("mapeoId")}".`);

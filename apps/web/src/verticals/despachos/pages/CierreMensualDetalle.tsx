@@ -40,6 +40,14 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   const [cerrando, setCerrando] = useState(false);
   const [reporte, setReporte] = useState<ReporteCierre | null>(null);
   const [cargandoReporte, setCargandoReporte] = useState(false);
+  // Hallazgo de auditoría (severidad ALTA, "cierre-mensual es irreversible y
+  // ejecuta con un clic sin confirmación ni reapertura"): el primer clic solo
+  // abre este panel -- cerrar de verdad exige teclear el período exacto y dar
+  // un SEGUNDO clic. El servidor (cierre-mensual.ts) exige el mismo texto de
+  // todas formas, así que esto no es solo cosmético del lado del cliente: sin
+  // él, cada intento devolvería 400.
+  const [confirmando, setConfirmando] = useState(false);
+  const [textoConfirmacion, setTextoConfirmacion] = useState("");
 
   async function load() {
     if (!periodoId) return;
@@ -79,7 +87,9 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
     setActionError(null);
     setCerrando(true);
     try {
-      await cerrarPeriodoCierre(fetch, apiBaseUrl, token, propertyId, periodoId);
+      await cerrarPeriodoCierre(fetch, apiBaseUrl, token, propertyId, periodoId, textoConfirmacion.trim());
+      setConfirmando(false);
+      setTextoConfirmacion("");
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "No se pudo cerrar el período.");
@@ -107,6 +117,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   if (!detalle) return null;
 
   const { periodo, tareas, estado } = detalle;
+  const periodoTexto = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
@@ -124,12 +135,72 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
             {periodo.closedAt && ` · Cerrado ${formatDate(periodo.closedAt)}`}
           </p>
         </div>
-        {periodo.status !== "closed" && CERRAR_ROLES.has(role) && (
-          <button onClick={handleCerrar} disabled={cerrando} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-            {cerrando ? "Cerrando…" : "Cerrar período"}
+        {periodo.status !== "closed" && CERRAR_ROLES.has(role) && !confirmando && (
+          <button
+            onClick={() => {
+              setActionError(null);
+              setTextoConfirmacion("");
+              setConfirmando(true);
+            }}
+            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+          >
+            Cerrar período
           </button>
         )}
       </header>
+
+      {/* Hallazgo de auditoría (severidad ALTA, "cierre-mensual es irreversible y
+          ejecuta con un clic sin confirmación ni reapertura"): un solo clic ya NO
+          cierra nada -- hay que teclear el período exacto que se ve en pantalla y
+          dar un segundo clic. El servidor exige el mismo texto de todas formas
+          (cierre-mensual.ts), así que esto no es solo un candado cosmético. */}
+      {periodo.status !== "closed" && CERRAR_ROLES.has(role) && confirmando && (
+        <div style={{ border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#991b1b" }}>Confirmar cierre de {formatPeriodo(periodo.year, periodo.month)}</p>
+          <p style={{ margin: 0, fontSize: 13, color: "#7f1d1d" }}>
+            Esta acción es <strong>irreversible</strong> — no hay forma de reabrir el período desde el producto. Bloquea la edición de todos los movimientos de{" "}
+            {formatPeriodo(periodo.year, periodo.month)}.
+          </p>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#7f1d1d" }}>
+            Escribe exactamente <code>{periodoTexto}</code> para confirmar
+            <input
+              autoFocus
+              value={textoConfirmacion}
+              onChange={(e) => setTextoConfirmacion(e.target.value)}
+              placeholder={periodoTexto}
+              style={{ padding: 8, borderRadius: 6, border: "1px solid #fca5a5", fontSize: 13, maxWidth: 200 }}
+            />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleCerrar}
+              disabled={cerrando || textoConfirmacion.trim() !== periodoTexto}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #b91c1c",
+                background: textoConfirmacion.trim() === periodoTexto ? "#b91c1c" : "#fca5a5",
+                color: "#fff",
+                cursor: textoConfirmacion.trim() === periodoTexto ? "pointer" : "not-allowed",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {cerrando ? "Cerrando…" : "Confirmar cierre irreversible"}
+            </button>
+            <button
+              onClick={() => {
+                setConfirmando(false);
+                setTextoConfirmacion("");
+              }}
+              disabled={cerrando}
+              style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 13 }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>

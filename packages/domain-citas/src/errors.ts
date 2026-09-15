@@ -7,6 +7,19 @@ export class AppointmentConflictError extends AppointmentValidationError {}
 export class AppointmentNotFoundError extends AppointmentValidationError {}
 
 /**
+ * Hallazgo de auditoría (ALTO, "citas ignora :propertyId en su scoping"): un staff
+ * con membership restringida a la sucursal A puede operar (cancelar/confirmar/
+ * completar/marcar no-show/crear) una cita de la sucursal B de la MISMA
+ * organización, porque las RPC `*_from_panel` (migrations/002, 010) solo
+ * verificaban membership de ORGANIZACIÓN, nunca de property — igual de laxo que la
+ * RLS de citas.appointments/providers antes de migrations/015. Deliberadamente NO
+ * extiende AppointmentValidationError (que mapea a 400): un 403 real, distinto de
+ * "no encontrada"/"formato inválido", para que la ruta lo traduzca con
+ * `Errors.forbidden()`.
+ */
+export class AppointmentForbiddenError extends Error {}
+
+/**
  * Un conflicto de horario (fuera de disponibilidad real, o el EXCLUDE USING gist
  * real de la base de datos rechazó el UPDATE porque alguien más tomó ese hueco
  * primero) que además trae alternativas REALES — calculadas con el mismo motor que

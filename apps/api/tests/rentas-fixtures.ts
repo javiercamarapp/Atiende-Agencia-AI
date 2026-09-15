@@ -11,7 +11,7 @@ import { hashPassword, InMemoryCoreRepository } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine, SimuladorCanalMensajeria } from "@atiende/domain-rentas";
 import type { RentasVerticalRole } from "@atiende/domain-rentas";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -151,6 +151,11 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
     rentasCalendarSyncRepo: (_db) => rentasCalendarSyncRepo,
     rentasIcalFeedPort: rentasIcalFeedPort,
     rentasMensajeriaRepo: (_db) => rentasMensajeriaRepo,
+    // Test double real (no un mock) -- SÍ completa la transición 'aprobado' ->
+    // 'enviado' para poder probar el resto del flujo de aprobación sin depender de
+    // un canal real (ver CanalMensajeriaPartnerPendiente para el adaptador honesto
+    // de producción, que SIEMPRE lanza sin credenciales de partner).
+    rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasOnboardingRepo: (_db) => rentasOnboardingRepo,
     llmGateway: options.llmGateway,
     citasRepo: (_db) => new InMemoryCitasRepository(),

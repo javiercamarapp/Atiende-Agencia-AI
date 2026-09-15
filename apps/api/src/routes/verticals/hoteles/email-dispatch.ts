@@ -14,11 +14,54 @@
 // forma además del header manual `x-atiende-internal-secret` que usan los
 // tests/invocaciones manuales — mismo secreto (`INTERNAL_SECRET`), dos formas de
 // mandarlo.
+//
+// CLUSTER #3 de la auditoría final (CRÍTICO, mismo hallazgo raíz que
+// routes/internal/whatsapp-dispatch.ts): este cron diario sigue siendo la red de
+// seguridad de respaldo, pero YA NO es el único disparador — cada acción de
+// apps/api/src/routes/verticals/hoteles/{folios,reservas,cfdi}.ts que encola un
+// correo real (`tryEnqueueGuestEmail`) llama `triggerHotelesEmailDispatchInline`
+// (exportado abajo) justo después, en la MISMA transacción/repo, para intentar
+// el envío YA en vez de esperar al cron.
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-hoteles";
+import type { HotelesEmailDispatchSummary, HotelesRepository } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+/** Mismo criterio que INLINE_BATCH_SIZE de citas/email-dispatch.ts. */
+const INLINE_BATCH_SIZE = 5;
+
+/** Cuerpo real de la ruta de cron — extraído para que
+ *  `triggerHotelesEmailDispatchInline` no duplique la llamada a
+ *  `dispatchPendingEmailJobs`; a diferencia del disparo inline, ESTA función
+ *  abre su propia sesión de sistema (correcto para el cron). */
+export async function runHotelesEmailDispatch(deps: AppDeps): Promise<HotelesEmailDispatchSummary> {
+  return deps.engine.withAppSession({ userId: null }, async (db) => {
+    const hotelesRepo = deps.hotelesRepo(db);
+    return dispatchPendingEmailJobs(hotelesRepo, deps.env.resend);
+  });
+}
+
+/**
+ * Disparo inline best-effort — mismo principio que
+ * `triggerCitasEmailDispatchInline` de citas/email-dispatch.ts: llamar justo
+ * después de que `tryEnqueueGuestEmail` haya encolado (o no) un correo real,
+ * pasando el MISMO `hotelesRepo` ya abierto en la transacción de ESE request
+ * (nunca una sesión nueva, ver comentario de cabecera de esa función gemela).
+ * Un fallo aquí NUNCA se propaga al caller HTTP — el correo ya quedó en el
+ * outbox y el cron diario (red de seguridad de respaldo) lo recoge después.
+ */
+export async function triggerHotelesEmailDispatchInline(deps: AppDeps, hotelesRepo: HotelesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  try {
+    const summary = await dispatchPendingEmailJobs(hotelesRepo, deps.env.resend, { batchSize });
+    if (summary.dead > 0) {
+      console.error(`hoteles email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
+    }
+  } catch (err) {
+    console.error("hoteles email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+  }
+}
 
 export function hotelesEmailDispatchRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -29,17 +72,28 @@ export function hotelesEmailDispatchRoutes(deps: AppDeps): Hono {
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por
     // organización), misma sesión de sistema que hoteles/night-audit.ts.
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
-      const hotelesRepo = deps.hotelesRepo(db);
-      const summary = await dispatchPendingEmailJobs(hotelesRepo, deps.env.resend);
-      return c.json({
-        ok: true,
+    const summary = await runHotelesEmailDispatch(deps);
+
+    // HALLAZGO ALTO de la auditoría final — mismo criterio documentado en
+    // citas/email-dispatch.ts: se deja el status code en 200 (contrato de Vercel
+    // Cron), la corrección real es loguear estructurado con severidad `error`.
+    if (summary.failed > 0 || summary.dead > 0) {
+      console.error("hoteles email-dispatch: corrida de cron con fallos", {
+        severity: "error",
         processed: summary.processed,
-        sent: summary.sent,
         failed: summary.failed,
         dead: summary.dead,
         errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
       });
+    }
+
+    return c.json({
+      ok: true,
+      processed: summary.processed,
+      sent: summary.sent,
+      failed: summary.failed,
+      dead: summary.dead,
+      errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
     });
   });
 

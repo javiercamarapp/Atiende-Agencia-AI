@@ -13,7 +13,7 @@ import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDe
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository } from "@atiende/domain-rentas";
+import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, SimuladorCanalMensajeria } from "@atiende/domain-rentas";
 import { FakeWhatsAppGraphClient, WhatsAppOutboundDispatcher, WhatsAppSendError } from "@atiende/whatsapp-gateway";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
@@ -89,6 +89,7 @@ function buildDispatchTestContext(opts: { readonly withDispatcher: boolean; read
     rentasOnboardingRepo: (_db) => new InMemoryRentasOnboardingRepository(),
     rentasCalendarSyncRepo: (_db) => rentasCalendarSyncRepoUnused,
     rentasMensajeriaRepo: (_db) => rentasMensajeriaRepoUnused,
+    rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
     whatsAppDispatcher,

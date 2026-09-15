@@ -52,7 +52,11 @@ export async function calcularIsrPmResico(
   apiBaseUrl: string,
   token: string,
   propertyId: string,
-  input: { readonly ingresoMensual: number; readonly pagosProvisionales?: number },
+  // RESICO PM = 30% plano sobre flujo de efectivo (ingresos cobrados − deducciones
+  // pagadas), no una tabla progresiva -- ver isr-engine.ts (corrección hallazgo
+  // CRÍTICO #2). `deduccionesAutorizadas` es opcional: sin ella, el resultado
+  // sobreestima el ISR real en vez de asumir una deducción que nadie dio.
+  input: { readonly ingresosCobrados: number; readonly deduccionesAutorizadas?: number; readonly pagosProvisionales?: number },
 ): Promise<IsrResultado> {
   return postJson<IsrResultado>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/declaraciones/isr/pm-resico`, token, input);
 }

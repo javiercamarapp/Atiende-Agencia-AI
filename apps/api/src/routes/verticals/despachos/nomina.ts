@@ -30,7 +30,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { procesarNomina, generarXmlCfdiNomina, NOMINA_ROLES, TIPOS_NOMINA } from "@atiende/domain-despachos";
-import type { EmployeePayrollInput, PayrollPeriodInput, DatosEmisorNominaXml, DatosReceptorNominaXml, TipoNomina } from "@atiende/domain-despachos";
+import type { EmployeePayrollInput, PayrollPeriodInput, DatosEmisorNominaXml, DatosReceptorNominaXml, DatosLaboralesNominaXml, TipoNomina } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -113,6 +113,15 @@ interface EmployeeXmlBody extends EmployeeBody {
   readonly domicilioFiscalReceptor?: unknown;
   readonly regimenFiscalReceptor?: unknown;
   readonly folio?: unknown;
+  // Datos laborales exigidos por nomina12:Receptor (XSD real, ver corrección
+  // hallazgo "XML de nómina 1.2 no valida contra el XSD real del SAT") —
+  // ver xml-nomina.ts::DatosLaboralesNominaXml.
+  readonly curp?: unknown;
+  readonly numEmpleado?: unknown;
+  readonly tipoContrato?: unknown;
+  readonly tipoRegimen?: unknown;
+  readonly periodicidadPago?: unknown;
+  readonly claveEntFed?: unknown;
 }
 
 interface GenerarXmlNominaBody {
@@ -144,6 +153,7 @@ function parseTipoNomina(value: unknown): TipoNomina | undefined {
 
 interface EmpleadoXmlDatos {
   readonly receptor: DatosReceptorNominaXml;
+  readonly datosLaborales: DatosLaboralesNominaXml;
   readonly folio: string;
 }
 
@@ -165,6 +175,16 @@ function parseEmployeesXml(raw: unknown): { readonly payrollInputs: readonly Emp
       nombre: optionalString(e.nombreReceptor, `employees[${i}].nombreReceptor`) ?? requireString(e.nombre, `employees[${i}].nombre`),
       domicilioFiscalReceptor: requireString(e.domicilioFiscalReceptor, `employees[${i}].domicilioFiscalReceptor`),
       regimenFiscalReceptor: optionalString(e.regimenFiscalReceptor, `employees[${i}].regimenFiscalReceptor`),
+    },
+    // nomina12:Receptor -- ver corrección hallazgo "XML de nómina 1.2 no valida
+    // contra el XSD real del SAT" (xml-nomina.ts): obligatorios, sin defaults.
+    datosLaborales: {
+      curp: requireString(e.curp, `employees[${i}].curp`),
+      numEmpleado: requireString(e.numEmpleado, `employees[${i}].numEmpleado`),
+      tipoContrato: requireString(e.tipoContrato, `employees[${i}].tipoContrato`),
+      tipoRegimen: requireString(e.tipoRegimen, `employees[${i}].tipoRegimen`),
+      periodicidadPago: requireString(e.periodicidadPago, `employees[${i}].periodicidadPago`),
+      claveEntFed: requireString(e.claveEntFed, `employees[${i}].claveEntFed`),
     },
     folio: requireString(e.folio, `employees[${i}].folio`),
   }));
@@ -210,14 +230,20 @@ export function despachosNominaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const comprobantes = periodo.employees.map((empleado, i) => {
       const datos = datosXml[i]!;
       try {
-        const xml = generarXmlCfdiNomina(empleado, emisor, datos.receptor, {
-          year: periodo.year,
-          month: periodo.month,
-          diasPagados: empleado.diasPagados,
-          tipoNomina,
-          serie,
-          folio: datos.folio,
-        });
+        const xml = generarXmlCfdiNomina(
+          empleado,
+          emisor,
+          datos.receptor,
+          {
+            year: periodo.year,
+            month: periodo.month,
+            diasPagados: empleado.diasPagados,
+            tipoNomina,
+            serie,
+            folio: datos.folio,
+          },
+          datos.datosLaborales,
+        );
         return { employeeId: empleado.employeeId, folio: datos.folio, xml };
       } catch (err) {
         // `generarXmlCfdiNomina` lanza `Error` plano para input inválido (RFC mal

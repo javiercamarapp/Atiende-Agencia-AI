@@ -63,6 +63,11 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
     reason:
       'Emisión/canje de tokens (JWT, OAuth) vía packages/core-auth. Mismo criterio que /api/mcp/oauth/token en el proyecto origen: es la puerta, no un endpoint conveniente.',
   },
+  'auth:accept-invite': {
+    failMode: 'closed',
+    reason:
+      'Superficie NO autenticada de canje de invitación (POST /auth/accept-invite, packages/core-auth vía apps/api/src/routes/auth.ts) — quien la llama todavía no probó nada, solo trae un token de invitación de un solo uso. Mismo riesgo que auth:login: fuerza bruta contra el token (o contra el password que fija en el mismo request) sin ningún freno hasta este hallazgo.',
+  },
   'mcp:locks': {
     failMode: 'closed',
     reason:

@@ -3,11 +3,12 @@
 // ../owner-portal/in-memory-repository.ts): modela su propio recorte de
 // `core.organization`/`core.property`/`core.staff_user`/`core.membership`/
 // `rentas.organization_perfil`/`rentas.property_config`/`rentas.owner`/
-// `rentas.owner_organization`, sin depender de `InMemoryCoreRepository` ni de
-// `InMemoryRentasTenancyEngine`. Es lo que permite probar de verdad la lógica de
-// negocio (resolución de colisión de slug, rechazo de correo duplicado) sin Postgres
-// -- ver ./postgres-repository.ts para el equivalente real de producción (bloqueado
-// hoy por el gap de plataforma documentado en ./repository.ts).
+// `rentas.owner_organization`/`rentas.unidad`, sin depender de `InMemoryCoreRepository`
+// ni de `InMemoryRentasTenancyEngine`. Es lo que permite probar de verdad la lógica de
+// negocio (resolución de colisión de slug, rechazo de correo duplicado, alta de
+// unidades) sin Postgres -- ver ./postgres-repository.ts para el equivalente real de
+// producción (que llama a `rentas.register_tenant_onboarding`, la misma lógica en
+// SQL).
 import { randomUUID } from "node:crypto";
 import { RentasDomainError } from "../errors.ts";
 import type { NuevoTenantRentasInput, ResultadoRegistroTenantRentas } from "./tipos.ts";
@@ -43,12 +44,22 @@ interface StoredOwner {
   readonly organizationIds: string[];
 }
 
+interface StoredUnidad {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly ownerId: string | null;
+  readonly name: string;
+  readonly duracionMinimaNoches: number;
+}
+
 export class InMemoryRentasOnboardingRepository implements RentasOnboardingRepository {
   private readonly organizaciones = new Map<string, StoredOrganization>();
   private readonly propiedades = new Map<string, StoredProperty>();
   private readonly staffPorId = new Map<string, StoredStaff>();
   private readonly staffPorCorreo = new Map<string, StoredStaff>();
   private readonly owners = new Map<string, StoredOwner>();
+  private readonly unidades = new Map<string, StoredUnidad>();
 
   /** Mismo criterio de resolución de colisión que documenta ./repository.ts: nunca
    * falla el registro completo por un choque de slug, apenda un sufijo numérico
@@ -70,6 +81,12 @@ export class InMemoryRentasOnboardingRepository implements RentasOnboardingRepos
   async registrarTenant(input: NuevoTenantRentasInput): Promise<ResultadoRegistroTenantRentas> {
     if (this.staffPorCorreo.has(input.admin.correo)) {
       throw new RentasDomainError("onboarding_organizacion_duplicada", `Ya existe una cuenta registrada con el correo "${input.admin.correo}".`);
+    }
+    // Mismo guardia que `rentas.register_tenant_onboarding` (migración 016) -- una
+    // property sin al menos una unidad queda inútil, `captura.ts` ya lo exige antes
+    // de llegar aquí, pero el adaptador nunca confía SOLO en la capa de validación.
+    if (input.primerasUnidades.length === 0) {
+      throw new RentasDomainError("onboarding_datos_invalidos", "se requiere al menos una unidad (primerasUnidades).");
     }
 
     const slug = this.resolverSlugLibre(input.organizacion.slugPropuesto);
@@ -100,8 +117,9 @@ export class InMemoryRentasOnboardingRepository implements RentasOnboardingRepos
     this.staffPorId.set(staffId, staff);
     this.staffPorCorreo.set(staff.email, staff);
 
+    let ownerId: string | null = null;
     if (input.primerOwner) {
-      const ownerId = randomUUID();
+      ownerId = randomUUID();
       this.owners.set(ownerId, {
         id: ownerId,
         name: input.primerOwner.nombre,
@@ -110,7 +128,20 @@ export class InMemoryRentasOnboardingRepository implements RentasOnboardingRepos
       });
     }
 
-    return { organizationId, propertyId, staffId, slug, requiereVerificacionCorreo: true };
+    const unidadIds = input.primerasUnidades.map((u) => {
+      const unidadId = randomUUID();
+      this.unidades.set(unidadId, {
+        id: unidadId,
+        organizationId,
+        propertyId,
+        ownerId,
+        name: u.nombre,
+        duracionMinimaNoches: u.duracionMinimaNoches ?? 1,
+      });
+      return unidadId;
+    });
+
+    return { organizationId, propertyId, staffId, slug, unidadIds, requiereVerificacionCorreo: true };
   }
 
   // ---- Accesores de solo-lectura para pruebas (mismo criterio que
@@ -131,5 +162,9 @@ export class InMemoryRentasOnboardingRepository implements RentasOnboardingRepos
 
   listOwnersDeOrganizacion(organizationId: string): readonly StoredOwner[] {
     return [...this.owners.values()].filter((owner) => owner.organizationIds.includes(organizationId));
+  }
+
+  listUnidadesDePropiedad(propertyId: string): readonly StoredUnidad[] {
+    return [...this.unidades.values()].filter((u) => u.propertyId === propertyId);
   }
 }

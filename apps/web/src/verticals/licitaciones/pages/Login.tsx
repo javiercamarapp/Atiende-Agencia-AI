@@ -6,10 +6,11 @@
 // sesión de otra vertical abierta en el mismo navegador. Real, no un stub:
 // maneja error real, loading real, y redirección real según cuántas
 // organizaciones tiene el staff.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { decideLicitacionesLandingPath, login, LoginError, persistLicitacionesSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
+import { ATIENDE_LOGO_DATA_URI, LICITACIONES_TAB_TITLE } from "../lib/brand.ts";
 
 export interface LicitacionesLoginPageProps {
   readonly apiBaseUrl: string;
@@ -21,6 +22,12 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Hallazgo de auditoría ("título de pestaña fijo en 'Restaurantes'") — ver
+  // el comentario de `LICITACIONES_TAB_TITLE` en lib/brand.ts.
+  useEffect(() => {
+    document.title = LICITACIONES_TAB_TITLE;
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,6 +47,7 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
   return (
     <main style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" }}>
       <form onSubmit={handleSubmit} style={{ width: "min(360px, 90vw)", display: "flex", flexDirection: "column", gap: 12 }} noValidate>
+        <img src={ATIENDE_LOGO_DATA_URI} alt="atiende" width={96} height={17} style={{ display: "block", marginBottom: 8 }} />
         <h1 style={{ fontSize: 20, marginBottom: 4 }}>Entrar a tu expediente</h1>
         <label htmlFor="email">
           Correo

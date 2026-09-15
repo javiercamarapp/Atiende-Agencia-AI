@@ -1,0 +1,30 @@
+-- Hallazgo de auditoría (severidad ALTA, "policy letra muerta"): revisadas TODAS
+-- las policies `for all`/`for insert`/`for update`/`for delete` de
+-- `packages/domain-hoteles/migrations/*.sql` cruzándolas contra los GRANT de tabla
+-- existentes (`grep -Hn "grant .* on hoteles\."`), mismo método que
+-- `packages/domain-citas/migrations/016_catalogo_publico_scoped_y_dead_policies.sql`
+-- (ver su cabecera "HALLAZGO B" para el detalle del método completo).
+--
+-- CIERRA (único gap real de hoteles): `hoteles.voice_agent_config`
+-- (`004_voz_whatsapp_fase2.sql`) trae policy "staff admin ve/gestiona el secreto
+-- de voz de su property" `for all` desde el día uno, pero su GRANT (misma
+-- migración, línea 321) solo cubre `select, update` para `authenticated` -- nunca
+-- INSERT. `upsertVoiceAgentConfig` (postgres-repository.ts) hace un
+-- `insert into hoteles.voice_agent_config (...) on conflict (property_id) do
+-- update` real, llamado únicamente desde `POST /hoteles/:propertyId/voz/config`
+-- (voice-tools.ts, staff panel real: `authMiddleware` + `requirePropertyMembership`).
+-- La PRIMERA vez que una property configura su agente de voz (fila nueva, sin
+-- conflicto que resolver) el INSERT falla con "permission denied" en producción
+-- real -- solo una property que YA tenía la fila (creada por otra vía, p. ej. un
+-- seed manual) puede "actualizar" su secreto hoy.
+--
+-- Revisadas y descartadas (no son gaps reales, no se tocan): el resto de
+-- políticas `for all`/`for insert`/`for update`/`for delete` de hoteles
+-- (`folio`/`charge`/`payment`/`fnb_order`/`idempotency_key`/`cfdi_emision`/
+-- `reservation`/`fraud_alert`/`night_audit_run`/`attendance_log`/`staff_schedule`/
+-- `revenue_engine_gate`/`revenue_backtest_run`/`expense_entry`/
+-- `maintenance_ticket`) ya tienen el GRANT que su policy necesita para cada
+-- operación que el código real ejercita; `housekeeping_shift` (insert+delete, sin
+-- policy de update) también está completo.
+
+grant insert on hoteles.voice_agent_config to authenticated;

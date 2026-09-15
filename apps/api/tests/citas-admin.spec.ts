@@ -150,6 +150,120 @@ describe("GET /v1/citas/properties/:propertyId/appointments — agenda", () => {
   });
 });
 
+// Fase 12 — hallazgo de auditoría (ALTO, "Staff no puede crear citas manualmente
+// desde la Agenda"): alta real a mano (createAppointmentFromPanel, ver admin.ts).
+describe("POST /v1/citas/properties/:propertyId/appointments — Fase 12 (alta manual desde el panel)", () => {
+  function jsonPost(token: string, body: unknown): RequestInit {
+    const raw = JSON.stringify(body);
+    return { method: "POST", body: raw, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "content-length": String(new TextEncoder().encode(raw).byteLength) } };
+  }
+
+  it("staff crea una cita a mano -- 201, ends_at calculado a partir de la duración del servicio, status 'pending', source 'manual'", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/appointments`,
+      jsonPost(ctx.staff.owner.token, {
+        provider_id: ctx.providerId,
+        service_id: ctx.serviceId,
+        customer_name: "Cliente Sin Cita",
+        customer_phone: "9998887766",
+        starts_at: MONDAY_10AM_MERIDA,
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { appointment: { id: string; status: string; source: string; starts_at: string; ends_at: string } };
+    expect(body.appointment.status).toBe("pending");
+    expect(body.appointment.source).toBe("manual");
+    expect(body.appointment.starts_at).toBe(MONDAY_10AM_MERIDA);
+    // El servicio sembrado dura 30 minutos (ver citas-fixtures.ts).
+    expect(body.appointment.ends_at).toBe("2026-09-14T16:30:00.000Z");
+
+    // La cita creada aparece de inmediato en la agenda del mismo rango.
+    const agenda = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments?from=${RANGE_FROM}&to=${RANGE_TO}`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    const agendaBody = (await agenda.json()) as { appointments: readonly { id: string; customer_name: string }[] };
+    expect(agendaBody.appointments.map((a) => a.id)).toContain(body.appointment.id);
+    expect(agendaBody.appointments[0]!.customer_name).toBe("Cliente Sin Cita");
+  });
+
+  it("a diferencia del alta del agente, NO exige que el horario caiga dentro de la disponibilidad declarada -- el staff puede meter una cita fuera de horario a propósito", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    // Domingo (day_of_week=0) -- ninguna regla de disponibilidad sembrada cubre ese
+    // día (citas-fixtures.ts solo siembra lunes-viernes), así que el flujo del
+    // agente (createAppointment) lo rechazaría con AppointmentConflictError.
+    const SUNDAY_NOON = "2026-09-13T18:00:00.000Z";
+
+    const res = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/appointments`,
+      jsonPost(ctx.staff.owner.token, {
+        provider_id: ctx.providerId,
+        service_id: ctx.serviceId,
+        customer_name: "Cita Fuera De Horario",
+        customer_phone: "9991110000",
+        starts_at: SUNDAY_NOON,
+      }),
+    );
+    expect(res.status).toBe(201);
+  });
+
+  it("dos citas traslapadas del MISMO proveedor -- la segunda responde 409 (EXCLUDE using gist real, nunca se permite el doble-booking)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const primera = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/appointments`,
+      jsonPost(ctx.staff.owner.token, { provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Primera", customer_phone: "9990000001", starts_at: MONDAY_10AM_MERIDA }),
+    );
+    expect(primera.status).toBe(201);
+
+    const segunda = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/appointments`,
+      jsonPost(ctx.staff.owner.token, { provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Segunda", customer_phone: "9990000002", starts_at: MONDAY_10AM_MERIDA }),
+    );
+    expect(segunda.status).toBe(409);
+  });
+
+  it("provider_id de un proveedor inexistente -- 400", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/appointments`,
+      jsonPost(ctx.staff.owner.token, { provider_id: randomUUID(), service_id: ctx.serviceId, customer_name: "X", customer_phone: "9990000000", starts_at: MONDAY_10AM_MERIDA }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("customer_phone ausente -- 400, nunca crea la cita", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/appointments`,
+      jsonPost(ctx.staff.owner.token, { provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "Sin Teléfono", starts_at: MONDAY_10AM_MERIDA }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("starts_at inválido -- 400", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/v1/citas/properties/${ctx.propertyId}/appointments`,
+      jsonPost(ctx.staff.owner.token, { provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "X", customer_phone: "9990000000", starts_at: "no-es-una-fecha" }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rechaza sin JWT (401)", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const raw = JSON.stringify({ provider_id: ctx.providerId, service_id: ctx.serviceId, customer_name: "X", customer_phone: "9990000000", starts_at: MONDAY_10AM_MERIDA });
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments`, { method: "POST", body: raw, headers: { "content-type": "application/json" } });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("GET /v1/citas/properties/:propertyId/customers(/:customerId) — clientes", () => {
   it("lista clientes reales (creados por upsertCustomer al crear una cita) y pagina", async () => {
     const ctx = await buildCitasTestContext(buildApp);

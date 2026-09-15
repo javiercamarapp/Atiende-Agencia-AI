@@ -87,6 +87,33 @@ describe("InMemoryCoreRepository — revocación de refresh tokens (logout)", ()
   });
 });
 
+// Hallazgo de auditoría (rubro 2, severidad ALTA, "no hay forma de invalidar sesiones
+// activas de un usuario") — ver packages/db/migrations/0006_revoke_all_sessions.sql.
+describe("InMemoryCoreRepository — revocación de TODAS las sesiones de un usuario", () => {
+  it("findStaffById/findStaffByEmail traen sessionsRevokedAt null antes de revocar", async () => {
+    const repo = new InMemoryCoreRepository();
+    repo.addStaff({ id: "staff-1", email: "a@x.mx", fullName: "A", passwordHash: null, createdVia: "seed", emailVerifiedAt: null });
+
+    expect((await repo.findStaffById("staff-1"))?.sessionsRevokedAt).toBeNull();
+    expect((await repo.findStaffByEmail("a@x.mx"))?.sessionsRevokedAt).toBeNull();
+  });
+
+  it("revokeAllRefreshTokens fija sessionsRevokedAt (ISO 8601) para ESE usuario, sin tocar a otros", async () => {
+    const repo = new InMemoryCoreRepository();
+    repo.addStaff({ id: "staff-1", email: "a@x.mx", fullName: "A", passwordHash: null, createdVia: "seed", emailVerifiedAt: null });
+    repo.addStaff({ id: "staff-2", email: "b@x.mx", fullName: "B", passwordHash: null, createdVia: "seed", emailVerifiedAt: null });
+
+    await repo.revokeAllRefreshTokens("staff-1");
+
+    const revoked = await repo.findStaffById("staff-1");
+    expect(typeof revoked?.sessionsRevokedAt).toBe("string");
+    expect(new Date(revoked!.sessionsRevokedAt!).toString()).not.toBe("Invalid Date");
+
+    // staff-2 nunca se tocó.
+    expect((await repo.findStaffById("staff-2"))?.sessionsRevokedAt).toBeNull();
+  });
+});
+
 describe("InMemoryCoreRepository — invitación de staff (Fase 10)", () => {
   function seedOwner(repo: InMemoryCoreRepository) {
     repo.addOrganization({ id: "org-1", slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });

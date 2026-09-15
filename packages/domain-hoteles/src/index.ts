@@ -149,6 +149,11 @@ export type {
   CancellationPolicyRecord,
   RoomTypeSummary,
   GuestSummary,
+  RoomSummary,
+  NewRoomTypeInput,
+  NewRoomInput,
+  NewRatePlanRangeInput,
+  NewGuestInput,
 } from "./types.ts";
 
 export type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, EmailOutboxJobRow } from "./repository.ts";
