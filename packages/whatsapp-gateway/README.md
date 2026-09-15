@@ -77,3 +77,46 @@ const summary = await dispatcher.dispatchPending(createCitasMessagingOutboxPort(
 
 En tests, sustituye `MetaGraphWhatsAppClient` por `FakeWhatsAppGraphClient` — nunca
 toca la red, deja que el test decida por llamada si falla y con qué error.
+
+## Gap conocido: sin soporte de plantillas HSM (rubro 17 de la auditoría)
+
+`MetaGraphWhatsAppClient` (`providers/meta-graph-client.ts`) solo construye
+mensajes `type: "text"` o `type: "interactive"` — nunca `type: "template"`, y
+`OutboundWhatsAppMessagePayload` (`types.ts`) no tiene ningún campo de plantilla
+(nombre/idioma/parámetros). Eso es correcto para una respuesta DENTRO de la ventana
+de 24h que abre un mensaje entrante (el turn-handler de hoteles/restaurantes), pero
+la política real de WhatsApp Business Platform exige una plantilla (HSM)
+PRE-APROBADA por Meta para cualquier mensaje que el negocio inicia FUERA de esa
+ventana. Verificado contra el código real: este monorepo ya encola varios envíos
+así —
+
+- `packages/domain-citas/src/reminders.ts` — recordatorio de cita 24h antes
+  (`appointment.reminder_24h`) y ofertas/broadcasts de lista de espera
+  (`waitlist.slot_offered`/`waitlist.slot_available_broadcast`).
+- `packages/domain-restaurantes/src/order-notifications.ts` — notificación de
+  cambio de estado de pedido (`order.status.*`), incluso cuando el pedido se
+  originó por voz/web/admin (sin ningún WhatsApp previo del cliente).
+
+Contra Meta real, estos envíos proactivos fuera de ventana se rechazan con un 4xx
+de negocio (ej. código 131047) — `WhatsAppOutboundDispatcher` ya clasifica eso como
+no reintentable y marca el mensaje `dead` de inmediato (nunca finge `sent`), así que
+el comportamiento actual ya falla honesto. El hueco real es que ese recordatorio/
+notificación simplemente nunca le llega al destinatario por WhatsApp en producción.
+
+**Por qué esto no se resuelve con código en esta pasada**: una plantilla HSM exige
+un proceso 100% del lado de Meta (Business Manager + WhatsApp Business Account real,
+redactar el texto exacto, enviarlo a revisión de Meta, esperar aprobación — días,
+a veces semanas) que ninguna credencial de este entorno habilita
+(`WHATSAPP_ACCESS_TOKEN` no configurada). Construir un `type: "template"` sin
+ningún nombre de plantilla real que probar sería fingir una capacidad que nadie
+puede verificar. **Cuando exista una plantilla real aprobada por Meta**, la
+extensión real son 3 pasos, ninguno de los cuales toca el dispatcher ni el schema
+de `messaging_outbox` (el payload ya es jsonb libre):
+
+1. Agregar `templateName`/`templateLanguage`/`templateParams` opcionales a
+   `OutboundWhatsAppMessagePayload`.
+2. Que `buildRequestBody` (meta-graph-client.ts) arme
+   `{ type: "template", template: { name, language: { code }, components: [...] } }`
+   cuando esos campos vengan poblados.
+3. Que cada encolador (`reminders.ts`/`order-notifications.ts`) los pase en vez de
+   `body`/`buttons` libres para los eventos proactivos listados arriba.
