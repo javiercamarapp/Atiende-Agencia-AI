@@ -13,6 +13,7 @@ import { HistorialPage } from "./verticals/restaurantes/pages/Historial.tsx";
 import { ClienteFichaPage as RestaurantesClienteFichaPage, ClientesListPage as RestaurantesClientesListPage } from "./verticals/restaurantes/pages/Clientes.tsx";
 import { RepartidorPedidosPage } from "./verticals/restaurantes/pages/Repartidor.tsx";
 import { StaffPage } from "./verticals/restaurantes/pages/Staff.tsx";
+import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -152,6 +153,20 @@ function RestaurantesStaffRoute() {
   return (
     <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
       {(ctx) => <StaffPage {...ctx} />}
+    </RestaurantesShell>
+  );
+}
+
+// Fase 11 — hallazgo de auditoría (severidad ALTA, "Promociones/códigos de
+// descuento (Fase 11) sin UI"): mismo patrón exacto de ruta que
+// RestaurantesStaffRoute de arriba.
+function RestaurantesPromocionesRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/restaurantes/login" replace />;
+  return (
+    <RestaurantesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/restaurantes/login", { replace: true })}>
+      {(ctx) => <PromocionesPage {...ctx} />}
     </RestaurantesShell>
   );
 }
@@ -619,6 +634,7 @@ export function App() {
             RestaurantesShell (ver comentario de cabecera de Repartidor.tsx). */}
         <Route path="/restaurantes/:orgSlug/repartidor" element={<RepartidorPedidosPage />} />
         <Route path="/restaurantes/:orgSlug/staff" element={<RestaurantesStaffRoute />} />
+        <Route path="/restaurantes/:orgSlug/promociones" element={<RestaurantesPromocionesRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />

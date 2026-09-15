@@ -41,6 +41,9 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "pedidos", label: "Pedidos" },
   { to: "historial", label: "Historial" },
   { to: "clientes", label: "Clientes" },
+  // Fase 11 — hallazgo de auditoría (severidad ALTA, "Promociones/códigos de
+  // descuento (Fase 11) sin UI"): ver Promociones.tsx/promotions-client.ts.
+  { to: "promociones", label: "Promociones" },
 ];
 
 /** Fase 14 — mismo `STAFF_INVITE_ROLES` que `domain-restaurantes/src/roles.ts`
