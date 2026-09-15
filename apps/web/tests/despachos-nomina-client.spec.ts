@@ -87,6 +87,12 @@ describe("generarXmlNomina", () => {
           rfcReceptor: "PEAA850101ABC",
           domicilioFiscalReceptor: "01000",
           folio: "F0001",
+          curp: "PEAA850101HDFRRN08",
+          numEmpleado: "EMP001",
+          tipoContrato: "01",
+          tipoRegimen: "02",
+          periodicidadPago: "05",
+          claveEntFed: "CMX",
         },
       ],
       emisor: { rfc: "DESP010101AB1", nombre: "DESPACHO DE PRUEBA SA DE CV", regimenFiscal: "601", lugarExpedicion: "06600" },
@@ -100,7 +106,22 @@ describe("generarXmlNomina", () => {
     await expect(
       generarXmlNomina(fetchImpl, "http://api.local", "tok", "prop-1", {
         period: { month: 7, year: 2026 },
-        employees: [{ employeeId: "e1", nombre: "Ana", salarioBruto: 15000, rfcReceptor: "PEAA850101ABC", domicilioFiscalReceptor: "", folio: "F0001" }],
+        employees: [
+          {
+            employeeId: "e1",
+            nombre: "Ana",
+            salarioBruto: 15000,
+            rfcReceptor: "PEAA850101ABC",
+            domicilioFiscalReceptor: "",
+            folio: "F0001",
+            curp: "PEAA850101HDFRRN08",
+            numEmpleado: "EMP001",
+            tipoContrato: "01",
+            tipoRegimen: "02",
+            periodicidadPago: "05",
+            claveEntFed: "CMX",
+          },
+        ],
         emisor: { rfc: "DESP010101AB1", nombre: "X", regimenFiscal: "601", lugarExpedicion: "06600" },
       }),
     ).rejects.toThrow("domicilioFiscalReceptor");

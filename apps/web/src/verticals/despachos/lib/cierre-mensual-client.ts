@@ -106,8 +106,15 @@ export async function completarTareaCierre(
   return body.tareas;
 }
 
-export async function cerrarPeriodoCierre(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodoId: string): Promise<ClosePeriod> {
-  return postJson<ClosePeriod>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos/${periodoId}/cerrar`, token, {});
+/** `confirmacion` -- hallazgo de auditoría (severidad ALTA, "cierre-mensual es
+ * irreversible y ejecuta con un clic sin confirmación ni reapertura"): el
+ * servidor exige el período exacto ("AAAA-MM") escrito por quien cierra, no
+ * solo un clic (ver cierre-mensual.ts::app.post(".../cerrar")). Este cliente
+ * no calcula ni asume ese valor -- lo recibe tal cual lo escribió el usuario
+ * en CierreMensualDetalle.tsx, para que un bug de formato aquí nunca finja
+ * una confirmación que nadie tecleó. */
+export async function cerrarPeriodoCierre(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodoId: string, confirmacion: string): Promise<ClosePeriod> {
+  return postJson<ClosePeriod>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos/${periodoId}/cerrar`, token, { confirmacion });
 }
 
 export async function fetchReporteCierre(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodoId: string): Promise<ReporteCierre> {

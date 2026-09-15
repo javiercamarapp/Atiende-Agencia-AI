@@ -29,6 +29,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   CONTABILIDAD_ELECTRONICA_ROLES,
+  VER_CONTABILIDAD_ELECTRONICA_ROLES,
   CATALOGO_ANEXO24_BASE,
   crearCatalogoBase,
   generarXmlCatalogo,
@@ -165,9 +166,15 @@ export function despachosContabilidadElectronicaRoutes(deps: AppDeps): Hono<Core
   app.use("/despachos/:propertyId/contabilidad-electronica/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   /** Catálogo Anexo 24 base del SAT — para que la UI lo muestre/edite antes
-   * de generar el XML (mismo rol que GET /bookkeeping/catalogo). */
+   * de generar el XML (mismo rol que GET /bookkeeping/catalogo).
+   *
+   * Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+   * ninguna ruta lo usa realmente"): es referencia fija (sin datos del cliente) --
+   * auditor/readonly SÍ pueden verla (VER_CONTABILIDAD_ELECTRONICA_ROLES), aunque
+   * nunca generar el paquete (CONTABILIDAD_ELECTRONICA_ROLES, sin cambios, en el
+   * resto de rutas de este archivo). */
   app.get("/despachos/:propertyId/contabilidad-electronica/catalogo-base", async (c) => {
-    assertVerticalRole(c, CONTABILIDAD_ELECTRONICA_ROLES);
+    assertVerticalRole(c, VER_CONTABILIDAD_ELECTRONICA_ROLES);
     return c.json({ catalogo: CATALOGO_ANEXO24_BASE });
   });
 

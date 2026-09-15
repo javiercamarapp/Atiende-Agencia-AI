@@ -26,12 +26,16 @@ describe("GET /despachos/:propertyId/contabilidad-electronica/catalogo-base", ()
     expect(body.catalogo).toEqual(CATALOGO_ANEXO24_BASE);
   });
 
-  it("readonly/auditor no pueden -- 403", async () => {
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): este catálogo es referencia fija (sin datos
+  // del cliente) -- readonly/auditor SÍ pueden verlo (VER_CONTABILIDAD_ELECTRONICA_ROLES),
+  // aunque nunca generar el paquete (ver el resto de este describe block).
+  it("readonly/auditor SÍ pueden ver el catálogo base -- 200 (lectura pura)", async () => {
     const app = buildApp(ctx.deps);
     const resReadonly = await app.request(`/despachos/${ctx.propertyId}/contabilidad-electronica/catalogo-base`, authedJson(ctx.staff.readonly.token));
-    expect(resReadonly.status).toBe(403);
+    expect(resReadonly.status).toBe(200);
     const resAuditor = await app.request(`/despachos/${ctx.propertyId}/contabilidad-electronica/catalogo-base`, authedJson(ctx.staff.auditor.token));
-    expect(resAuditor.status).toBe(403);
+    expect(resAuditor.status).toBe(200);
   });
 });
 

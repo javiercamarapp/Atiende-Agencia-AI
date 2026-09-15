@@ -190,7 +190,7 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     // reapertura implementada, ver CierreMensualDetalle.tsx). El actor SIEMPRE
     // viene de la sesión autenticada, NUNCA de `raw.userId` -- ver comentario del
     // handler de "completar" arriba, mismo hallazgo.
-    await readJsonCapped<Record<string, unknown>>(c.req.raw, 2 * 1024);
+    const raw = await readJsonCapped<{ readonly confirmacion?: unknown }>(c.req.raw, 2 * 1024);
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
     const periodoId = c.req.param("periodoId");
@@ -198,6 +198,24 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const userId = c.get("userId");
     const periodo = await repo.findPeriodoCierre(propertyId, periodoId);
     if (!periodo) throw Errors.notFound("Período de cierre no encontrado.");
+
+    // Hallazgo de auditoría (severidad ALTA, "cierre-mensual es irreversible y
+    // ejecuta con un clic sin confirmación ni reapertura"): cerrar un período
+    // fiscal no puede depender solo de que el botón correcto esté enfrente del
+    // usuario en el momento correcto -- un doble clic, una tecla Enter en un
+    // formulario equivocado, o un script que reintenta un POST fallido pueden
+    // cerrar el período real sin que nadie lo haya decidido conscientemente en
+    // ESE instante. Se exige que el llamador escriba/confirme explícitamente
+    // CUÁL período está cerrando ("AAAA-MM", el mismo que ya ve en pantalla) --
+    // igual que "escribe el nombre del recurso para confirmar" en el resto del
+    // producto para acciones destructivas. Sin reapertura implementada (ver
+    // comentario de cabecera), esta confirmación es la única salvaguarda real
+    // entre un clic accidental y una acción sin marcha atrás.
+    const esperado = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
+    if (raw.confirmacion !== esperado) {
+      throw Errors.validation(`confirmacion: escribe "${esperado}" (el período exacto que se va a cerrar) para confirmar. Esta acción es irreversible.`);
+    }
+
     const tareas = await repo.listTareasCierre(periodoId);
     try {
       const cerrado = cerrarPeriodo(periodo, tareas, userId, new Date().toISOString());

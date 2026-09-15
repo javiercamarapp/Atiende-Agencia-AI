@@ -8,6 +8,7 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   GESTION_VENCIMIENTOS_ROLES,
+  VER_VENCIMIENTOS_ROLES,
   calcularVencimientosDelPeriodo,
   diasHasta,
   decidirEscalamiento,
@@ -52,8 +53,13 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   app.use("/despachos/:propertyId/vencimientos/*", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use("/despachos/:propertyId/vencimientos", authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
+  // Hallazgo de auditoría (severidad MEDIO, "el rol 'readonly' está definido pero
+  // ninguna ruta lo usa realmente"): listar vencimientos es lectura de un
+  // calendario ya persistido -- auditor/readonly SÍ pueden verlo
+  // (VER_VENCIMIENTOS_ROLES), aunque nunca calcular/completar/escalar
+  // (GESTION_VENCIMIENTOS_ROLES, sin cambios, abajo).
   app.get("/despachos/:propertyId/vencimientos", async (c) => {
-    assertVerticalRole(c, GESTION_VENCIMIENTOS_ROLES);
+    assertVerticalRole(c, VER_VENCIMIENTOS_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const estado = c.req.query("estado");
     const deadlines = await repo.listDeadlines(c.req.param("propertyId"), estado ? { estado } : undefined);

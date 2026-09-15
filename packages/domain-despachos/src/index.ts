@@ -6,15 +6,20 @@ export type { DatosCfdiDespachos, ResultadoValidacionCfdiDespachos, DiotResult, 
 
 // ---- Declaraciones ISR/IVA/RESICO + DIOT (Fase 2) ----
 export {
+  ISR_MENSUAL_2025,
+  ISR_ANUAL_2025,
+  ISR_MENSUAL_2026,
+  ISR_ANUAL_2026,
   ISR_PF_MENSUAL_2025,
   ISR_PF_ANUAL_2025,
+  RESICO_PF_MENSUAL,
   ISR_PM_MENSUAL_RESICO,
   ISR_PM_TASA,
 } from "./declaraciones/isr-tablas.ts";
 export type { TablaIsr, FilaTablaIsr } from "./declaraciones/isr-tablas.ts";
 
 export { aplicarTablaIsr, calcularIsrPf, calcularIsrPm, calcularIsrPmResico } from "./declaraciones/isr-engine.ts";
-export type { OpcionesIsrPf } from "./declaraciones/isr-engine.ts";
+export type { OpcionesIsrPf, OpcionesIsrPmResico } from "./declaraciones/isr-engine.ts";
 
 export { agregarDiot, esRfcGenerico } from "./declaraciones/diot-aggregate.ts";
 
@@ -45,8 +50,8 @@ export type {
   PayrollPeriod,
   PayrollPeriodInput,
 } from "./nomina/types.ts";
-export { generarXmlCfdiNomina, TIPOS_NOMINA } from "./nomina/xml-nomina.ts";
-export type { DatosEmisorNominaXml, DatosReceptorNominaXml, DatosPeriodoNominaXml, TipoNomina } from "./nomina/xml-nomina.ts";
+export { generarXmlCfdiNomina, TIPOS_NOMINA, CLAVES_ENT_FED } from "./nomina/xml-nomina.ts";
+export type { DatosEmisorNominaXml, DatosReceptorNominaXml, DatosPeriodoNominaXml, DatosLaboralesNominaXml, TipoNomina } from "./nomina/xml-nomina.ts";
 
 export type {
   IsrResultado,
@@ -86,16 +91,24 @@ export type {
 export {
   DESPACHOS_ROLES,
   isDespachosRole,
+  VER_REVISIONES_ROLES,
   RESOLVER_REVISION_ROLES,
+  VER_CFDI_ROLES,
   INGESTA_CFDI_ROLES,
+  VER_VENCIMIENTOS_ROLES,
   GESTION_VENCIMIENTOS_ROLES,
+  VER_DECLARACIONES_ROLES,
   DECLARACIONES_ROLES,
   NOMINA_ROLES,
   CONCILIACION_ROLES,
+  VER_MIGRACION_CATALOGO_ROLES,
   MIGRACION_CATALOGO_ROLES,
   DECIDIR_MAPEO_MIGRACION_ROLES,
+  VER_DEVOLUCION_IVA_ROLES,
   DEVOLUCION_IVA_ROLES,
+  VER_BOOKKEEPING_ROLES,
   BOOKKEEPING_ROLES,
+  VER_CONTABILIDAD_ELECTRONICA_ROLES,
   CONTABILIDAD_ELECTRONICA_ROLES,
   VER_CIERRE_MENSUAL_ROLES,
   GESTIONAR_CIERRE_MENSUAL_ROLES,
@@ -103,6 +116,7 @@ export {
   VER_COBRANZA_ROLES,
   GESTIONAR_COBRANZA_ROLES,
   ADMIN_ROLES,
+  STAFF_INVITE_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
@@ -398,6 +412,8 @@ export { escapeHtml, renderCorreo } from "./emails/layout.ts";
 export type { EtiquetaPlantilla, FilaPlantilla, SeccionPlantilla } from "./emails/layout.ts";
 export { correoEscalamientoVencimiento } from "./emails/vencimiento-templates.ts";
 export type { EscalamientoVencimientoCorreo, Correo as CorreoVencimiento } from "./emails/vencimiento-templates.ts";
+export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
+export type { StaffInviteCorreo, Correo as CorreoInvitacionStaff } from "./emails/staff-invite-template.ts";
 export { enqueueEscalationEmailCore, tryEnqueueEscalationEmail } from "./vencimientos/email-notifications.ts";
 export type { EscalationEmailEnqueueResult } from "./vencimientos/email-notifications.ts";
 export { construirCorreoCobranza } from "./cobranza/email-templates.ts";

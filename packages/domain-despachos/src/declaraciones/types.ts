@@ -19,10 +19,30 @@ export interface IsrResultado {
   readonly pagosProvisionales: number;
 }
 
-/** Tipo de operación DIOT tal como lo emite `_map_iva_tipo` del Python original —
- * NO es la "naturaleza de la operación" que el catálogo real del SAT espera (ver
- * diseño §2.4.2): aquí codifica la TASA de IVA de la factura, reutilizando el mismo
- * código de catálogo. Fidelidad literal al comportamiento de `engine.py`. */
+/** Tipo de operación DIOT — catálogo REAL de la Regla 3.10.7 RMF vigente
+ * (ver `DIOT_TIPO_OPERACION`/`esDiotTipoOperacionValido` en
+ * cfdi/catalogs-avanzados.ts): "03" Prestación de servicios profesionales,
+ * "06" Arrendamiento de inmuebles, "85" Otros.
+ *
+ * CORRECCIÓN FISCAL (auditoría, hallazgo ALTO "DIOT con tasa mal
+ * codificada"): antes de esta corrección, `agregarDiot()` NO leía este
+ * campo — lo DERIVABA de la tasa de IVA de la factura (16%->"03", 0%->"06",
+ * cualquier otra->"85"), confundiendo la TASA de IVA con la NATURALEZA de
+ * la operación. Esa derivación era doblemente incorrecta: (a) la tasa de
+ * IVA no dice nada sobre si el gasto fue un servicio profesional o un
+ * arrendamiento — un servicio profesional facturado con IVA 0% (exportación
+ * de servicios) se clasificaba como "06" (arrendamiento), una categoría que
+ * ni siquiera aplicaba; (b) el catálogo real de DIOT ya vive correctamente
+ * documentado a un archivo de distancia (`catalogs-avanzados.ts`), y esta
+ * derivación lo ignoraba por completo.
+ *
+ * Un CFDI, por sí mismo, NO dice de forma confiable si el gasto fue
+ * servicios profesionales, arrendamiento u otro — es una clasificación de
+ * negocio que debe darla quien captura/revisa el proveedor. Por eso este
+ * campo es un OVERRIDE EXPLÍCITO opcional (`RegistroDiotCandidato.tipoOperacion`):
+ * si no se provee, `agregarDiot()` usa "85" (Otros) — el único código del
+ * catálogo que no afirma una naturaleza económica falsa — en vez de adivinar
+ * a partir de la tasa de IVA. */
 export type DiotTipoOperacion = "03" | "06" | "85";
 
 /** Entrada candidata a agregación DIOT — un CFDI ya persistido (o por persistir),
@@ -45,6 +65,11 @@ export interface RegistroDiotCandidato {
   /** Fecha del CFDI (cualquier formato serializable; se porta tal cual, "last-wins"
    * dentro de un mismo grupo — ver diseño §2.4.4). */
   readonly fecha: string;
+  /** Naturaleza real de la operación (ver `DiotTipoOperacion`), si quien captura el
+   * proveedor ya la conoce. Ausente/null -> `agregarDiot()` usa "85" (Otros); NUNCA
+   * se deriva de `tasaIva` (ver corrección del hallazgo "DIOT con tasa mal
+   * codificada" en la documentación de `DiotTipoOperacion`). */
+  readonly tipoOperacion?: DiotTipoOperacion | null;
 }
 
 export interface DiotRegistroAgregado {
