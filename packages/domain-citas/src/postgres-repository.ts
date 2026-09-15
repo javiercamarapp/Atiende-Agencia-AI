@@ -241,12 +241,30 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows[0] ? mapProvider(rows[0]) : null;
   }
 
+  async findProvidersByIds(organizationId: string, providerIds: readonly string[]): Promise<readonly ProviderRecord[]> {
+    if (providerIds.length === 0) return [];
+    const { rows } = await this.db.query<ProviderRow>(
+      `select id, organization_id, property_id, display_name, role_label, is_active from citas.providers where organization_id = $1 and id = ANY($2);`,
+      [organizationId, providerIds],
+    );
+    return rows.map(mapProvider);
+  }
+
   async findService(organizationId: string, serviceId: string): Promise<ServiceRecord | null> {
     const { rows } = await this.db.query<ServiceRow>(
       `select id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active from citas.services where id = $1 and organization_id = $2;`,
       [serviceId, organizationId],
     );
     return rows[0] ? mapService(rows[0]) : null;
+  }
+
+  async findServicesByIds(organizationId: string, serviceIds: readonly string[]): Promise<readonly ServiceRecord[]> {
+    if (serviceIds.length === 0) return [];
+    const { rows } = await this.db.query<ServiceRow>(
+      `select id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active from citas.services where organization_id = $1 and id = ANY($2);`,
+      [organizationId, serviceIds],
+    );
+    return rows.map(mapService);
   }
 
   async providerOffersService(providerId: string, serviceId: string): Promise<boolean> {
@@ -476,6 +494,15 @@ export class PostgresCitasRepository implements CitasRepository {
     );
     const row = rows[0];
     return row ? { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email } : null;
+  }
+
+  async findCustomersByIds(organizationId: string, customerIds: readonly string[]): Promise<readonly CustomerRecord[]> {
+    if (customerIds.length === 0) return [];
+    const { rows } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
+      `select id, organization_id, full_name, phone, email from citas.customers where organization_id = $1 and id = ANY($2);`,
+      [organizationId, customerIds],
+    );
+    return rows.map((row) => ({ id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email }));
   }
 
   async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {

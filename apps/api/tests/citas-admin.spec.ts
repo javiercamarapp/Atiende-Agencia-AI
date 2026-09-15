@@ -118,6 +118,54 @@ describe("GET /v1/citas/properties/:propertyId/appointments — agenda", () => {
     expect(body.appointments[0]!.customer_name).toBe("Ana Torres");
   });
 
+  // Hallazgo de auditoría (rubro 10, "performance y escalabilidad", severidad MEDIA):
+  // "Agenda de citas con 1+P+S+C queries por carga" -- con P proveedores distintos (S
+  // servicio compartido, C clientes distintos) referenciados por las citas del rango,
+  // el repositorio debe recibir exactamente UNA llamada a `findProvidersByIds`, UNA a
+  // `findServicesByIds` y UNA a `findCustomersByIds` -- nunca una por proveedor/
+  // servicio/cliente distinto (antes: hasta P+S+C llamadas).
+  it("con P proveedores y C clientes distintos en el rango, resuelve todo en llamadas FIJAS al repositorio, nunca P+S+C", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const providerIds = [ctx.providerId];
+    for (let i = 0; i < 3; i += 1) {
+      const providerId = randomUUID();
+      ctx.citasRepo.seedProvider({ id: providerId, organizationId: ctx.organizationId, propertyId: null, displayName: `Proveedor extra ${i}`, roleLabel: "Dentista", isActive: true });
+      ctx.citasRepo.seedProviderService(providerId, ctx.serviceId);
+      for (const dayOfWeek of [1, 2, 3, 4, 5]) {
+        ctx.citasRepo.seedAvailabilityRule({ id: randomUUID(), providerId, dayOfWeek, startTime: "09:00", endTime: "17:00", isActive: true });
+      }
+      providerIds.push(providerId);
+    }
+
+    for (let i = 0; i < providerIds.length; i += 1) {
+      await createAppointment(ctx.citasRepo, {
+        organizationId: ctx.organizationId,
+        providerId: providerIds[i]!,
+        serviceId: ctx.serviceId,
+        customerName: `Cliente ${i}`,
+        customerPhone: `99911120${i}0`,
+        startsAt: MONDAY_10AM_MERIDA,
+        source: "web",
+      });
+    }
+
+    ctx.citasRepo.llamadasFindProvidersByIds = 0;
+    ctx.citasRepo.llamadasFindServicesByIds = 0;
+    ctx.citasRepo.llamadasFindCustomersByIds = 0;
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments?from=${RANGE_FROM}&to=${RANGE_TO}`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { appointments: readonly { provider_name: string; customer_name: string }[] };
+    expect(body.appointments).toHaveLength(providerIds.length);
+    expect(body.appointments.every((a) => a.provider_name && a.customer_name)).toBe(true);
+
+    expect(ctx.citasRepo.llamadasFindProvidersByIds).toBe(1);
+    expect(ctx.citasRepo.llamadasFindServicesByIds).toBe(1);
+    expect(ctx.citasRepo.llamadasFindCustomersByIds).toBe(1);
+  });
+
   it("filtra por provider_id y respeta el rango de fechas (fuera de rango no aparece)", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);

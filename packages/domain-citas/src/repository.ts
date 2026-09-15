@@ -346,7 +346,16 @@ export interface CitasRepository {
    * para el CÁLCULO de negocio, no solo cosmético). */
   findPropertyTimezone(propertyId: string | null, organizationId: string): Promise<string>;
   findProvider(organizationId: string, providerId: string): Promise<ProviderRecord | null>;
+  /** Batch de `findProvider` -- hallazgo de auditoría (rubro 10, "performance y
+   * escalabilidad", severidad MEDIA: "Agenda de citas con 1+P+S+C queries por
+   * carga"). Una sola consulta agregada (`WHERE id = ANY($1)`) para TODOS los
+   * proveedores distintos referenciados por una página de citas, en vez de un
+   * `findProvider` por id -- ver apps/api/.../citas/admin.ts::enrichAppointments,
+   * que ya NO resuelve proveedor/servicio/cliente uno por uno. */
+  findProvidersByIds(organizationId: string, providerIds: readonly string[]): Promise<readonly ProviderRecord[]>;
   findService(organizationId: string, serviceId: string): Promise<ServiceRecord | null>;
+  /** Batch de `findService` -- mismo hallazgo que `findProvidersByIds` de arriba. */
+  findServicesByIds(organizationId: string, serviceIds: readonly string[]): Promise<readonly ServiceRecord[]>;
   providerOffersService(providerId: string, serviceId: string): Promise<boolean>;
   /** Fase 8 — panel admin: alta/edición real de proveedores/servicios (port de
    * ProveedoresSection.tsx/ServiciosSection.tsx/FichaProveedor.tsx del origen —
@@ -409,6 +418,9 @@ export interface CitasRepository {
   /** Fase 5 §1 — ficha de cliente del panel (busca por id en vez de por teléfono,
    * que es lo único que ya resolvía `findCustomerByPhone`). */
   findCustomerById(organizationId: string, customerId: string): Promise<CustomerRecord | null>;
+  /** Batch de `findCustomerById` -- mismo hallazgo de auditoría (rubro 10) que
+   * `findProvidersByIds`/`findServicesByIds` de arriba. */
+  findCustomersByIds(organizationId: string, customerIds: readonly string[]): Promise<readonly CustomerRecord[]>;
   /** Fase 5 §1 — listado paginado de clientes para el panel (lista + búsqueda por
    * nombre/teléfono). Solo lee filas que `upsertCustomer` ya escribió — ninguna
    * regla de negocio nueva, mismo criterio que `listActiveServices`/
