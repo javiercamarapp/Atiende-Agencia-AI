@@ -48,7 +48,7 @@ import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { PostgresRestaurantesRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import type { CitasRepository, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
+import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
   createDefaultConversationGuard,
@@ -127,6 +127,40 @@ function buildRealCitasTurnHandler(engine: TenancyEngine, gateway: NonNullable<A
   };
 }
 
+/**
+ * Hallazgo de auditoría (ALTO, "El puerto de Google Calendar sigue
+ * notProductionReady (muerto)"): ANTES de este cambio, `citasGoogleCalendarPortResolver`
+ * se construía con `createGoogleCalendarPortResolver(citasRepoForCalendarResolver,
+ * env.googleOAuth)` donde `citasRepoForCalendarResolver` era un
+ * `notProductionReady<CitasRepository>` FIJO -- así que, incluso el día en que
+ * alguien configure GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL reales, la
+ * PRIMERA llamada real a `repo.findProviderCalendarAccount(...)` dentro del
+ * resolver (google-calendar-factory.ts) habría lanzado "sin adaptador de
+ * producción todavía" -- el puerto quedaba estructuralmente MUERTO, sin ninguna
+ * combinación de variables de entorno capaz de activarlo. Mismo patrón EXACTO que
+ * `buildRealCitasTurnHandler` de arriba (el mismo gap de "sesión por-request", ya
+ * resuelto ahí): el resolver es un singleton de PROCESO (`ResolveCalendarPort`,
+ * sin parámetro de sesión), pero cada invocación abre su PROPIA sesión de sistema
+ * (`engine.withAppSession({userId: null}, ...)`, nunca `service_role` -- este
+ * monorepo no lo aprovisiona) y construye el repo real DENTRO de ese callback.
+ *
+ * Sin `GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL` configuradas en este
+ * entorno (`env.googleOAuth === null`, el estado real de desarrollo hoy) el
+ * resolver sigue devolviendo `null` de inmediato -- exactamente "sin conectar",
+ * NUNCA un error, NUNCA un 500 silencioso (`calendar-sync.ts::syncOneAppointmentRow`
+ * ya trata cualquier `null` como skip permanente) -- se evita abrir una sesión de
+ * Postgres cuando ni siquiera hay credenciales de plataforma que resolver. Con
+ * credenciales reales configuradas, la resolución (`findProviderCalendarAccount`/
+ * `resolveProviderCalendarRefreshToken`/`rotateProviderCalendarRefreshToken`) SÍ
+ * corre contra un `PostgresCitasRepository` real -- el puerto completo (contrato +
+ * dos adaptadores + `RealGoogleCalendarPort` sobre `fetch`, ver
+ * google-calendar-port.ts) queda de punta a punta funcional, no solo "menos roto".
+ */
+function buildRealGoogleCalendarPortResolver(engine: TenancyEngine, config: GoogleOAuthPlatformConfig | null): ResolveCalendarPort {
+  if (!config) return async () => null; // credenciales de plataforma pendientes -- ver env.ts::googleOAuth
+  return (providerId) => engine.withAppSession({ userId: null }, (db) => createGoogleCalendarPortResolver(new PostgresCitasRepository(db), config)(providerId));
+}
+
 let cached: AppDeps | undefined;
 
 /**
@@ -152,20 +186,6 @@ export function buildProductionDeps(): AppDeps {
   }
 
   const engine = openManagedPostgres({ connectionString: databaseUrl });
-
-  // Repo dedicado y SIN sesión real, solo para construir
-  // `citasGoogleCalendarPortResolver` (ver comentario más abajo) — la resolución del
-  // puerto de Google Calendar por-providerId es una función singleton
-  // (`ResolveCalendarPort = (providerId) => Promise<...>`, sin parámetro de sesión),
-  // así que no puede recibir un `TenantDbSession` por-request como el resto de
-  // `citasRepo`. Ligarla al mismo `citasRepo` de abajo no es posible (una fábrica no
-  // es un `CitasRepository`) y cambiar la forma de `ResolveCalendarPort` para que
-  // reciba sesión por-llamada es una decisión de arquitectura aparte (mismo tipo de
-  // gap que `turnHandler`/`citasTurnHandler`, fuera de alcance de este cambio) — así
-  // que, igual que antes de este cambio, cualquier intento real de resolver un
-  // calendario en producción sigue fallando explícito en vez de fingir que ya
-  // funciona.
-  const citasRepoForCalendarResolver = notProductionReady<CitasRepository>("citasRepo (usado por citasGoogleCalendarPortResolver)");
 
   // Gateway LLM real — `undefined` si NINGÚN proveedor (Anthropic/OpenAI/
   // OpenRouter) tiene API key configurada, ver ./llm-gateway.ts. Se construye UNA
@@ -236,15 +256,16 @@ export function buildProductionDeps(): AppDeps {
     // funcione correctamente.
     citasTurnHandler: llmGateway ? buildRealCitasTurnHandler(engine, llmGateway) : notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     citasConversationGuard: createDefaultConversationGuard(),
-    // Fase 3 §4/§9 — el resolver SÍ se construye real (misma lógica de
-    // resolución/rotación de token que el resto de producción), pero ligado al repo
-    // dedicado de arriba (ver ese comentario) en vez del `citasRepo` real de líneas
-    // arriba — cualquier intento real de resolverlo sigue fallando con un error
-    // explícito y accionable, nunca silenciosamente `null` fingiendo "sin conectar".
-    // El intercambio de código SÍ es real y no depende de citasRepo (solo llama a
-    // Google) — se activa en cuanto `GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL`
-    // estén configurados (ver env.ts).
-    citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepoForCalendarResolver, env.googleOAuth),
+    // Hallazgo de auditoría (ALTO, "El puerto de Google Calendar sigue
+    // notProductionReady (muerto)") -- ver buildRealGoogleCalendarPortResolver más
+    // arriba para el detalle completo: el resolver ya NO está ligado a un repo
+    // permanentemente `notProductionReady` -- cada invocación abre su propia
+    // sesión de sistema real (mismo patrón que `citasTurnHandler`). Sin
+    // `GOOGLE_CLIENT_ID/SECRET/OAUTH_REDIRECT_BASE_URL` configuradas (estado real
+    // de este entorno, ver env.ts) sigue devolviendo `null` de inmediato -- "sin
+    // conectar" honesto, nunca un error. El intercambio de código SÍ es real y no
+    // depende de citasRepo (solo llama a Google).
+    citasGoogleCalendarPortResolver: buildRealGoogleCalendarPortResolver(engine, env.googleOAuth),
     citasGoogleTokenExchange: exchangeGoogleAuthorizationCode,
     licitacionesRepo: (db) => new PostgresLicitacionesRepository(db, env.licitacionesStorageDir),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
