@@ -9,7 +9,7 @@
 // `RentasDomainError('onboarding_datos_invalidos', ...)`. Nunca devuelve un objeto a
 // medio validar -- o pasan TODAS las reglas, o ninguna escritura ocurre.
 import { RentasDomainError } from "../errors.ts";
-import type { CapturaOnboardingRentasInput, CapturaOnboardingRentasValidada, TipoOrganizacionRentas } from "./tipos.ts";
+import type { CapturaOnboardingRentasInput, CapturaOnboardingRentasValidada, CapturaOnboardingUnidadInput, TipoOrganizacionRentas } from "./tipos.ts";
 
 const TIPOS_ORGANIZACION: readonly TipoOrganizacionRentas[] = ["anfitrion", "empresa_gestora"];
 const CORREO_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -94,6 +94,50 @@ function validarPassword(valor: unknown): void {
   }
 }
 
+const MAX_UNIDADES_ONBOARDING = 50; // tope práctico -- alta masiva real queda para un panel dedicado, fuera de este hallazgo puntual (ver tipos.ts, comentario de CapturaOnboardingUnidadInput).
+const MIN_DURACION_MINIMA_NOCHES = 1;
+const MAX_DURACION_MINIMA_NOCHES = 365; // mismo tope de sentido común que ../pricing/validacion.ts para reglas de estadía mínima.
+
+/** Al menos 1 unidad (`rentas.unidad`), mismo criterio "nunca a medias" que el resto
+ * de esta función -- hallazgo de auditoría: antes de este cambio no existía forma de
+ * dar de alta una unidad self-serve, así que una property sin al menos una la deja
+ * inútil (calendario/pricing/mensajería cuelgan de `unidad_id`). */
+function validarPrimerasUnidades(valor: unknown): readonly CapturaOnboardingUnidadInput[] {
+  if (!Array.isArray(valor) || valor.length === 0) {
+    throw new RentasDomainError("onboarding_datos_invalidos", "primerasUnidades: se requiere un arreglo con al menos 1 unidad ({nombre, duracionMinimaNoches?}).");
+  }
+  if (valor.length > MAX_UNIDADES_ONBOARDING) {
+    throw new RentasDomainError("onboarding_datos_invalidos", `primerasUnidades: máximo ${MAX_UNIDADES_ONBOARDING} unidades en el registro inicial (recibido ${valor.length}).`);
+  }
+  const nombresVistos = new Set<string>();
+  return valor.map((entrada, indice) => {
+    if (typeof entrada !== "object" || entrada === null) {
+      throw new RentasDomainError("onboarding_datos_invalidos", `primerasUnidades[${indice}]: debe ser un objeto {nombre, duracionMinimaNoches?}.`);
+    }
+    const objeto = entrada as { nombre?: unknown; duracionMinimaNoches?: unknown };
+    const nombre = requiereTexto(objeto.nombre, `primerasUnidades[${indice}].nombre`);
+    const clave = nombre.toLowerCase();
+    if (nombresVistos.has(clave)) {
+      throw new RentasDomainError("onboarding_datos_invalidos", `primerasUnidades: el nombre "${nombre}" está repetido -- cada unidad de esta property necesita un nombre único.`);
+    }
+    nombresVistos.add(clave);
+
+    if (objeto.duracionMinimaNoches === undefined) return { nombre };
+    if (
+      typeof objeto.duracionMinimaNoches !== "number" ||
+      !Number.isInteger(objeto.duracionMinimaNoches) ||
+      objeto.duracionMinimaNoches < MIN_DURACION_MINIMA_NOCHES ||
+      objeto.duracionMinimaNoches > MAX_DURACION_MINIMA_NOCHES
+    ) {
+      throw new RentasDomainError(
+        "onboarding_datos_invalidos",
+        `primerasUnidades[${indice}].duracionMinimaNoches: entero entre ${MIN_DURACION_MINIMA_NOCHES} y ${MAX_DURACION_MINIMA_NOCHES} (recibido ${JSON.stringify(objeto.duracionMinimaNoches)}).`,
+      );
+    }
+    return { nombre, duracionMinimaNoches: objeto.duracionMinimaNoches };
+  });
+}
+
 function validarPrimerOwner(valor: unknown): CapturaOnboardingRentasValidada["primerOwner"] {
   if (valor === undefined || valor === null) return null;
   if (typeof valor !== "object") {
@@ -131,6 +175,7 @@ export function validarCapturaOnboardingRentas(body: unknown): CapturaOnboarding
     throw new RentasDomainError("onboarding_datos_invalidos", `primeraPropiedad.zonaHoraria: "${zonaHorariaTexto}" no es una zona horaria IANA reconocida (ej. "America/Mexico_City").`);
   }
   const moneda = validarMoneda(cuerpo.primeraPropiedad.moneda);
+  const primerasUnidades = validarPrimerasUnidades(cuerpo.primerasUnidades);
 
   const nombreCompletoAdmin = requiereTexto(cuerpo.admin.nombreCompleto, "admin.nombreCompleto");
   const correoAdmin = validarCorreo(cuerpo.admin.correo, "admin.correo");
@@ -141,6 +186,7 @@ export function validarCapturaOnboardingRentas(body: unknown): CapturaOnboarding
   return {
     organizacion: { nombre: nombreOrganizacion, tipoOrganizacion },
     primeraPropiedad: { nombre: nombrePropiedad, zonaHoraria: zonaHorariaTexto, moneda },
+    primerasUnidades,
     admin: { nombreCompleto: nombreCompletoAdmin, correo: correoAdmin },
     primerOwner,
     slugPropuesto: slugificarNombreOrganizacion(nombreOrganizacion),

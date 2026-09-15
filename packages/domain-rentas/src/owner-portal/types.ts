@@ -73,3 +73,12 @@ export interface ConsumePortalInviteInput {
    *  adaptador) -- para que la expiración se pueda probar de forma determinística. */
   readonly now: string; // ISO 8601
 }
+
+/** Hallazgo de auditoría (severidad ALTA, "el portal de propietario no tiene logout/
+ * revocación real de sesión") -- mismo shape que
+ * `@atiende/db::RevokeRefreshTokenInput` (staff), aplicado a `rentas.owner`. */
+export interface RevokeOwnerRefreshTokenInput {
+  readonly jti: string;
+  readonly ownerId: string;
+  readonly expiresAt: string; // ISO 8601
+}

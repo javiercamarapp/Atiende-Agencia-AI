@@ -14,6 +14,7 @@ function cuerpoValido(overrides: Record<string, unknown> = {}) {
   return {
     organizacion: { nombre: "Rentas Riviera Maya", tipoOrganizacion: "empresa_gestora" },
     primeraPropiedad: { nombre: "Depa Playa del Carmen 12B", zonaHoraria: "America/Cancun", moneda: "MXN" },
+    primerasUnidades: [{ nombre: "Depa 12B" }],
     admin: { nombreCompleto: "Ana Ramírez", correo: "ana@rentas-riviera.mx", password: "correcto-caballo-batería" },
     ...overrides,
   };
@@ -26,9 +27,10 @@ describe("POST /rentas/onboarding/registro", () => {
 
     const res = await app.request("/rentas/onboarding/registro", jsonRequestInit(cuerpoValido()));
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { organizationId: string; propertyId: string; staffId: string; slug: string; requiereVerificacionCorreo: true };
+    const body = (await res.json()) as { organizationId: string; propertyId: string; staffId: string; slug: string; unidadIds: string[]; requiereVerificacionCorreo: true };
     expect(body.slug).toBe("rentas-riviera-maya");
     expect(body.requiereVerificacionCorreo).toBe(true);
+    expect(body.unidadIds).toHaveLength(1);
 
     // Efecto real verificado contra el adaptador (no solo el JSON de respuesta) --
     // mismo criterio de "prueba real de la LÓGICA", ver comentario de cabecera de
@@ -40,6 +42,40 @@ describe("POST /rentas/onboarding/registro", () => {
     // La contraseña llegó HASHEADA al puerto de persistencia, nunca en texto plano.
     expect(staff?.passwordHash).not.toBe("correcto-caballo-batería");
     expect(staff?.passwordHash.length ?? 0).toBeGreaterThan(20);
+    const unidades = ctx.rentasOnboardingRepo.listUnidadesDePropiedad(body.propertyId);
+    expect(unidades).toHaveLength(1);
+    expect(unidades[0]!.name).toBe("Depa 12B");
+  });
+
+  it("400: primerasUnidades vacío -- una property sin ninguna unidad no se registra", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request("/rentas/onboarding/registro", jsonRequestInit(cuerpoValido({ primerasUnidades: [] })));
+    expect(res.status).toBe(400);
+  });
+
+  it("400: dos unidades con el mismo nombre en el mismo submit", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request("/rentas/onboarding/registro", jsonRequestInit(cuerpoValido({ primerasUnidades: [{ nombre: "Depa 1" }, { nombre: "Depa 1" }] })));
+    expect(res.status).toBe(400);
+  });
+
+  it("201: registra varias unidades reales, con duracionMinimaNoches explícita", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(
+      "/rentas/onboarding/registro",
+      jsonRequestInit(cuerpoValido({ primerasUnidades: [{ nombre: "Depa 1" }, { nombre: "Depa 2", duracionMinimaNoches: 3 }] })),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { propertyId: string; unidadIds: string[] };
+    expect(body.unidadIds).toHaveLength(2);
+    const unidades = ctx.rentasOnboardingRepo.listUnidadesDePropiedad(body.propertyId);
+    expect(unidades.map((u) => u.name).sort()).toEqual(["Depa 1", "Depa 2"]);
   });
 
   it("201: incluye primerOwner cuando configuracionInicial.primerOwner viene presente", async () => {

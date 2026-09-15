@@ -30,6 +30,7 @@ import type {
   OwnerPortalProfileBase,
   OwnerPortalStatementDetalle,
   OwnerPortalStatementSummary,
+  RevokeOwnerRefreshTokenInput,
   UnidadPropietarioRecord,
 } from "./types.ts";
 
@@ -49,4 +50,10 @@ export interface RentasOwnerPortalRepository {
    *  `password_hash` y limpia el token (nunca reutilizable) -- `null` si el token no
    *  existe, ya fue consumido, o expiró. */
   consumePortalInvite(input: ConsumePortalInviteInput): Promise<{ ownerId: string } | null>;
+  /** Hallazgo de auditoría (severidad ALTA, "el portal de propietario no tiene
+   *  logout/revocación real de sesión") -- mismo par de métodos que
+   *  `@atiende/db::CoreRepository.revokeRefreshToken`/`isRefreshTokenRevoked`,
+   *  aplicado a `rentas.owner` (ver ./jwt.ts, `RentasPropertyOwnerRefreshTokenClaims.jti`). */
+  revokeOwnerRefreshToken(input: RevokeOwnerRefreshTokenInput): Promise<void>;
+  isOwnerRefreshTokenRevoked(jti: string): Promise<boolean>;
 }

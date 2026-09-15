@@ -7,7 +7,7 @@ import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
-import type { CalendarSyncPort, RentasCalendarSyncRepository, RentasMensajeriaRepository, RentasOnboardingRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
+import type { CalendarSyncPort, CanalMensajeria, CanalMensajeriaCodigo, RentasCalendarSyncRepository, RentasMensajeriaRepository, RentasOnboardingRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { ApiEnv } from "./env.ts";
@@ -161,6 +161,23 @@ export interface AppDeps {
    * migrations/009_rentas_mensajeria_schema.sql), sin depender del repositorio
    * gigante de calendario/pricing/finanzas para leerse/probarse. */
   readonly rentasMensajeriaRepo: (db: TenantDbSession) => RentasMensajeriaRepository;
+  /** Hallazgo de auditoría (severidad CRÍTICA, "la mensajería de rentas es un
+   * simulador que nunca toca un canal real") -- resuelve el `CanalMensajeria` real
+   * para UN código de canal concreto (`airbnb`/`vrbo`/`booking`), inyectado igual que
+   * `citasGoogleCalendarPortResolver`/`hotelesCfdiPort`: NUNCA construido inline
+   * dentro de una ruta (antes de este cambio, `mensajeria-borradores.ts` hacía `new
+   * SimuladorCanalMensajeria(canal)` directo, así que producción "enviaba" con el
+   * mismo simulador que las pruebas). En producción resuelve a
+   * `CanalMensajeriaPartnerPendiente` -- esqueleto HONESTO (mismo criterio que
+   * `hotelesCfdiPort`/`FinkokAdapter`): sin credencial de partner de Airbnb/Vrbo/
+   * Booking.com (ninguna está configurada en este monorepo, a diferencia de
+   * WhatsApp Graph API), `enviarMensajeAprobado` SIEMPRE lanza
+   * `CanalMensajeriaNoConfiguradoError` -- la ruta lo traduce a 503, el borrador se
+   * queda en `aprobado`, NUNCA se marca `enviado` sin confirmación real. En tests es
+   * `SimuladorCanalMensajeria` (ver apps/api/tests/rentas-fixtures.ts), que sí
+   * completa la transición para poder probar el resto del flujo de aprobación sin
+   * depender de un canal real. */
+  readonly rentasCanalMensajeria: (canal: CanalMensajeriaCodigo) => CanalMensajeria;
   /** Fase 11 -- onboarding self-serve del tenant (alta de organización/primera
    * propiedad/admin desde el producto, ver @atiende/domain-rentas::onboarding/*).
    * Fábrica por-request, mismo criterio que `rentasOwnerPortalRepo`/

@@ -134,6 +134,42 @@ describe("Portal de propietario -- flujo real invitación -> activación -> logi
     expect(me.status).toBe(200);
   });
 
+  // Hallazgo de auditoría (severidad ALTA, "el portal de propietario no tiene
+  // logout/revocación real de sesión") -- ver comentario de cabecera de
+  // owner-portal.ts para el detalle del mecanismo (mismo criterio que POST
+  // /auth/logout de staff).
+  it("logout: revoca el refresh token real -- /auth/refresh deja de funcionar con ese mismo token después", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const owner = await crearYActivarOwnerA(app, ctx);
+
+    // Antes del logout, el refresh token SÍ funciona.
+    const antes = await app.request("/rentas/owner-portal/auth/refresh", jsonRequestInit({ refreshToken: owner.refreshToken }));
+    expect(antes.status).toBe(200);
+
+    const logout = await app.request("/rentas/owner-portal/auth/logout", jsonRequestInit({ refreshToken: owner.refreshToken }));
+    expect(logout.status).toBe(200);
+    expect(await logout.json()).toEqual({ ok: true });
+
+    const despues = await app.request("/rentas/owner-portal/auth/refresh", jsonRequestInit({ refreshToken: owner.refreshToken }));
+    expect(despues.status).toBe(401);
+  });
+
+  it("logout con un refreshToken ya inválido/inexistente -- 200 igual (idempotente, sin filtrar información)", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/rentas/owner-portal/auth/logout", jsonRequestInit({ refreshToken: "esto-nunca-fue-un-jwt-real" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("logout sin refreshToken en el body -> 400", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request("/rentas/owner-portal/auth/logout", jsonRequestInit({}));
+    expect(res.status).toBe(400);
+  });
+
   it("login con contraseña incorrecta -> 401", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);

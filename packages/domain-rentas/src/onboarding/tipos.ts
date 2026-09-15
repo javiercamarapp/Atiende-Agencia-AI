@@ -52,13 +52,27 @@ export interface CapturaOnboardingConfiguracionInicialInput {
   readonly primerOwner?: CapturaOnboardingPrimerOwnerInput;
 }
 
+/** Una unidad (listing individual rentable, `rentas.unidad`) a dar de alta EN EL
+ * MISMO submit que la property que la contiene -- hallazgo de auditoría ("ni siquiera
+ * tiene pantalla -- organización + property + unidades"): antes de este cambio,
+ * `packages/domain-rentas` no tenía NINGÚN método para crear una `rentas.unidad`
+ * (solo lectura, `findUnidad`) -- una property sin al menos una unidad es inútil
+ * (calendario/pricing/mensajería cuelgan de `unidad_id`). */
+export interface CapturaOnboardingUnidadInput {
+  readonly nombre: string;
+  /** `rentas.unidad.duracion_minima_noches` -- default 1 (mismo DEFAULT que la
+   * columna Postgres) si se omite. */
+  readonly duracionMinimaNoches?: number;
+}
+
 /** Cuerpo completo de `POST /rentas/onboarding/registro` -- organización + primera
- * propiedad + admin + configuración inicial de rentas EN UN SOLO SUBMIT (el gap real
- * identificado por auditoría: hoy la única forma de que un tenant de rentas exista es
- * que el equipo de Atiende lo dé de alta a mano). */
+ * propiedad + al menos una unidad + admin + configuración inicial de rentas EN UN
+ * SOLO SUBMIT (el gap real identificado por auditoría: hoy la única forma de que un
+ * tenant de rentas exista es que el equipo de Atiende lo dé de alta a mano). */
 export interface CapturaOnboardingRentasInput {
   readonly organizacion: CapturaOnboardingOrganizacionInput;
   readonly primeraPropiedad: CapturaOnboardingPropiedadInput;
+  readonly primerasUnidades: readonly CapturaOnboardingUnidadInput[];
   readonly admin: CapturaOnboardingAdminInput;
   readonly configuracionInicial?: CapturaOnboardingConfiguracionInicialInput;
 }
@@ -73,6 +87,7 @@ export interface CapturaOnboardingRentasInput {
 export interface CapturaOnboardingRentasValidada {
   readonly organizacion: { readonly nombre: string; readonly tipoOrganizacion: TipoOrganizacionRentas };
   readonly primeraPropiedad: { readonly nombre: string; readonly zonaHoraria: string; readonly moneda: string };
+  readonly primerasUnidades: readonly CapturaOnboardingUnidadInput[];
   readonly admin: { readonly nombreCompleto: string; readonly correo: string };
   readonly primerOwner: CapturaOnboardingPrimerOwnerInput | null;
   readonly slugPropuesto: string;
@@ -83,6 +98,7 @@ export interface CapturaOnboardingRentasValidada {
 export interface NuevoTenantRentasInput {
   readonly organizacion: { readonly nombre: string; readonly slugPropuesto: string; readonly tipoOrganizacion: TipoOrganizacionRentas };
   readonly primeraPropiedad: { readonly nombre: string; readonly zonaHoraria: string; readonly moneda: string };
+  readonly primerasUnidades: readonly CapturaOnboardingUnidadInput[];
   readonly admin: { readonly nombreCompleto: string; readonly correo: string; readonly passwordHash: string };
   readonly primerOwner: CapturaOnboardingPrimerOwnerInput | null;
 }
@@ -92,6 +108,8 @@ export interface ResultadoRegistroTenantRentas {
   readonly propertyId: string;
   readonly staffId: string;
   readonly slug: string;
+  /** Ids reales de `rentas.unidad` creadas, mismo orden que `primerasUnidades`. */
+  readonly unidadIds: readonly string[];
   /** Siempre `true` hoy -- `core.staff_user.created_via='registro_autoservicio'`
    * (ver 0001_core_schema.sql) exige correo verificado antes de poder loguearse
    * (`apps/api/src/routes/auth.ts`, chequeo de `emailVerifiedAt`). El envío/consumo

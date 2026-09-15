@@ -74,6 +74,13 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
   const [editError, setEditError] = useState<string | null>(null);
   const [guardandoEdit, setGuardandoEdit] = useState(false);
 
+  // Hallazgo de auditoría (severidad ALTA, "cancelar la reserva de un huésped ejecuta
+  // con un solo clic sin confirmación") -- el primer clic solo marca CUÁL ocupación
+  // está pidiendo confirmación (mismo patrón de 2 pasos que ya usa Aprobaciones.tsx
+  // para "Rechazar" -> "Confirmar rechazo"); la llamada real al servidor
+  // (`handleCancelar`) solo ocurre en el SEGUNDO clic, explícito ("Sí, cancelar").
+  const [confirmandoCancelarId, setConfirmandoCancelarId] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelado = false;
     (async () => {
@@ -184,6 +191,7 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
   }
 
   async function handleCancelar(o: OcupacionCalendario) {
+    setConfirmandoCancelarId(null);
     setBusyId(o.id);
     setError(null);
     try {
@@ -378,6 +386,19 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
                     </p>
                   )}
                 </div>
+              ) : confirmandoCancelarId === o.id ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  <p role="alert" style={{ margin: 0, fontSize: 13, color: "#b91c1c" }}>
+                    {o.capa === "reserva" ? "¿Seguro que quieres cancelar esta reserva?" : "¿Seguro que quieres liberar este bloqueo?"} Esta acción no se puede
+                    deshacer.
+                  </p>
+                  <button type="button" onClick={() => void handleCancelar(o)} disabled={busyId === o.id} style={dangerButtonStyle}>
+                    {busyId === o.id ? "…" : o.capa === "reserva" ? "Sí, cancelar reserva" : "Sí, liberar bloqueo"}
+                  </button>
+                  <button type="button" onClick={() => setConfirmandoCancelarId(null)} disabled={busyId === o.id} style={secondaryButtonStyle}>
+                    No, mantenerla
+                  </button>
+                </div>
               ) : (
                 <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                   {puedeEditar && (
@@ -386,8 +407,8 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
                     </button>
                   )}
                   {puedeCancelar && (
-                    <button type="button" onClick={() => void handleCancelar(o)} disabled={busyId === o.id} style={dangerButtonStyle}>
-                      {busyId === o.id ? "…" : o.capa === "reserva" ? "Cancelar reserva" : "Liberar bloqueo"}
+                    <button type="button" onClick={() => setConfirmandoCancelarId(o.id)} disabled={busyId === o.id} style={dangerButtonStyle}>
+                      {o.capa === "reserva" ? "Cancelar reserva" : "Liberar bloqueo"}
                     </button>
                   )}
                 </div>

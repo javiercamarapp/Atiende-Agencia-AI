@@ -29,6 +29,7 @@ import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
 import { CatalogoPage as HotelesCatalogoPage } from "./verticals/hoteles/pages/Catalogo.tsx";
 import { PedidosFnbPage } from "./verticals/hoteles/pages/PedidosFnb.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
+import { RentasRegistroPage } from "./verticals/rentas/pages/Registro.tsx";
 import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
 import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
 import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages/Calendario.tsx";
@@ -387,6 +388,13 @@ function RentasLoginRoute() {
       onLoggedIn={(session, landingPath) => navigate(landingPath, { state: { session, vertical: "rentas", email: session.email } })}
     />
   );
+}
+
+/** Hallazgo de auditoría (severidad CRÍTICA, "el onboarding self-serve de rentas
+ * está bloqueado en producción y ni siquiera tiene pantalla") — pantalla real de
+ * alta (organización + property + unidades), sin sesión previa. */
+function RentasRegistroRoute() {
+  return <RentasRegistroPage apiBaseUrl={API_BASE_URL} />;
 }
 
 /** Landing real del panel de rentas (Fase 12) — cierra el hallazgo "login de rentas
@@ -982,6 +990,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
         <Route path="/hoteles/:orgSlug/catalogo" element={<HotelesCatalogoRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
+        <Route path="/rentas/registro" element={<RentasRegistroRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
