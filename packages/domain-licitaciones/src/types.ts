@@ -369,3 +369,20 @@ export interface SubmissionRecord {
   readonly notes: string | null;
   readonly createdAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Fase 16 (post-adjudicación, pieza 0): registro INMUTABLE de una resolución
+// won/lost -- mismo rol que `ContractStatusHistoryRecord`, pero para
+// `licitaciones.tender.status` en vez de `contracts.status` (ver
+// tender-resolution.ts para la máquina de validación).
+// ---------------------------------------------------------------------------
+export interface TenderResolutionRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly tenderId: string;
+  readonly resolution: "won" | "lost";
+  readonly fromStatus: TenderStatus;
+  readonly reason: string;
+  readonly resolvedBy: string;
+  readonly resolvedAt: string;
+}

@@ -124,13 +124,36 @@ describe("GET /despachos/:propertyId/declaraciones/diot/:periodo -- agregación 
 
   it("un CFDI tipo Traslado (T, no reportable en DIOT) no aparece en la agregación", async () => {
     const app = buildApp(ctx.deps);
-    await app.request(
+    const ingesta = await app.request(
       `/despachos/${ctx.propertyId}/cfdi`,
       authedJson(ctx.staff.contador.token, cfdiIngresoConDiot({ folioFiscal: "aaaaaaaa-2222-3333-4444-555555555555", tipo: "T", iva: null })),
     );
+    expect(ingesta.status).toBe(201);
     const res = await app.request(`/despachos/${ctx.propertyId}/declaraciones/diot/2026-07`, authedJson(ctx.staff.contador.token));
     const body = (await res.json()) as { registros: unknown[] };
+    // La agregación DIOT en sí sigue excluyéndolo -- es una regla de negocio real
+    // (DIOT solo reporta proveedores tipo "I"), no un artefacto del filtro.
     expect(body.registros).toHaveLength(0);
+  });
+
+  // Migración 006 (hallazgo de auditoría): el filtro por período de `listInvoices`
+  // (que esta ruta usa antes de reducir a `reportables`) debe resolver contra
+  // `invoice.fecha`, no contra el jsonb de DIOT -- antes de la migración, un CFDI
+  // tipo "T" (nunca produce `diot.proveedoresReportables`) desaparecía del período
+  // en `listInvoices` mismo, no solo en la agregación final.
+  it("REQ: listInvoices({periodo}) incluye el CFDI tipo T de su período real (el filtro por período ya no depende del jsonb de DIOT)", async () => {
+    const app = buildApp(ctx.deps);
+    const ingesta = await app.request(
+      `/despachos/${ctx.propertyId}/cfdi`,
+      authedJson(ctx.staff.contador.token, cfdiIngresoConDiot({ folioFiscal: "aaaaaaaa-2222-3333-4444-555555555555", tipo: "T", iva: null })),
+    );
+    expect(ingesta.status).toBe(201);
+
+    const invoicesJulio = await ctx.despachosRepo.listInvoices(ctx.propertyId, { periodo: "2026-07" });
+    expect(invoicesJulio.map((i) => i.tipo)).toContain("T");
+
+    const invoicesAgosto = await ctx.despachosRepo.listInvoices(ctx.propertyId, { periodo: "2026-08" });
+    expect(invoicesAgosto).toHaveLength(0);
   });
 
   it("valida el formato de período -- 400 si no es YYYY-MM", async () => {

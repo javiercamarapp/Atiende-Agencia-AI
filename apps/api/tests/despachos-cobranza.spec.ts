@@ -38,6 +38,7 @@ async function ingestarCfdiIngreso(overrides: Record<string, unknown> = {}) {
     warnings: [],
     requiresHumanReview: false,
     diot: { proveedoresReportables: [], reportable: false },
+    fecha: "2026-01-01",
     ...overrides,
   });
 }

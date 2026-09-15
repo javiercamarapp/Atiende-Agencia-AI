@@ -80,39 +80,45 @@ export async function fetchMapeoMigracion(fetchImpl: typeof fetch, apiBaseUrl: s
 /** POST .../mapeos/:id/aprobar — solo mapeos "pendiente" (TransicionEstadoInvalidaError
  * -> 409 en cualquier otro caso). `estrategiaConciliacionSaldos` es obligatorio SOLO
  * cuando la guardia N:1 lo exige (EstrategiaConciliacionRequeridaError -> 409, ver
- * comentario de cabecera de la ruta); esta función lo manda solo si viene con valor. */
+ * comentario de cabecera de la ruta); esta función lo manda solo si viene con valor.
+ * Quién decide (`decididoPor`) lo determina el servidor a partir de la sesión
+ * autenticada -- ver apps/api/.../despachos/migracion-catalogo.ts. Esta función ya NO
+ * recibe ni manda ese campo: mandarlo desde el cliente permitía atribuir la decisión a
+ * cualquier usuario, o dejarla vacía. */
 export async function aprobarMapeoMigracion(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
   token: string,
   propertyId: string,
   mapeoId: string,
-  input: { readonly decididoPor: string; readonly nota?: string; readonly estrategiaConciliacionSaldos?: string },
+  input: { readonly nota?: string; readonly estrategiaConciliacionSaldos?: string },
 ): Promise<MapeoMigracionCuenta> {
   return postJson<MapeoMigracionCuenta>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/migracion-catalogo/mapeos/${mapeoId}/aprobar`, token, input);
 }
 
 /** POST .../mapeos/:id/rechazar — `nota` es obligatoria en el dominio (motivo del
  * rechazo, ver migrador.ts); esta función no lo valida dos veces, deja que el
- * servidor sea la única fuente de verdad y propaga su mensaje si falta. */
+ * servidor sea la única fuente de verdad y propaga su mensaje si falta.
+ * `decididoPor` -- ver comentario de `aprobarMapeoMigracion` arriba. */
 export async function rechazarMapeoMigracion(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
   token: string,
   propertyId: string,
   mapeoId: string,
-  input: { readonly decididoPor: string; readonly nota: string },
+  input: { readonly nota: string },
 ): Promise<MapeoMigracionCuenta> {
   return postJson<MapeoMigracionCuenta>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/migracion-catalogo/mapeos/${mapeoId}/rechazar`, token, input);
 }
 
+/** `decididoPor` -- ver comentario de `aprobarMapeoMigracion` arriba. */
 export async function editarMapeoMigracion(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
   token: string,
   propertyId: string,
   mapeoId: string,
-  input: { readonly decididoPor: string; readonly destinoCuentaId: string; readonly nota: string; readonly estrategiaConciliacionSaldos?: string },
+  input: { readonly destinoCuentaId: string; readonly nota: string; readonly estrategiaConciliacionSaldos?: string },
 ): Promise<MapeoMigracionCuenta> {
   return postJson<MapeoMigracionCuenta>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/migracion-catalogo/mapeos/${mapeoId}/editar`, token, input);
 }

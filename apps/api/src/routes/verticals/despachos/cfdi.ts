@@ -138,6 +138,7 @@ function serializeInvoice(invoice: InvoiceRecord) {
     warnings: invoice.warnings,
     requiereRevisionHumana: invoice.requiresHumanReview,
     diot: invoice.diot,
+    fecha: invoice.fecha,
     creadoEn: invoice.createdAt,
   };
 }
@@ -165,6 +166,15 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<IngestaCfdiBody>(c.req.raw, 64 * 1024);
     const { categoria, ...datos } = parseIngestaBody(raw);
 
+    // Migración 006 (hallazgo de auditoría): `fecha` (fecha REAL de emisión del
+    // CFDI) ahora se persiste en `despachos.invoice.fecha` (columna NOT NULL) —
+    // conciliación bancaria, DIOT, devolución de IVA y declaraciones dependen de
+    // ella para resolver "a qué período pertenece este CFDI" (nunca `createdAt`, la
+    // fecha de INGESTA). Un CFDI real siempre trae su fecha de emisión, así que se
+    // exige aquí en vez de inventar un fallback silencioso.
+    if (!datos.fecha) throw Errors.validation("fecha: se esperaba un texto (fecha de emisión del CFDI, ISO 8601).");
+    const fechaInvoice = datos.fecha.slice(0, 10);
+
     // Fase 6 (cierre mensual) — bloqueo de edición de movimientos ya cerrados:
     // funcionalidad NUEVA (ver domain-despachos/src/errors.ts,
     // `PeriodoCerradoError`, y el comentario de cabecera de
@@ -173,15 +183,14 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // escritura). Se engancha aquí, en la ingesta de CFDI, porque es el único
     // flujo de escritura de "movimientos" que ya existe en esta vertical; el
     // período se resuelve por (property, año, mes) de la FECHA del propio
-    // CFDI (`datos.fecha`, "YYYY-MM-DD") — sin fecha no hay período que
-    // resolver, así que el chequeo se omite (no se inventa una fecha).
-    if (datos.fecha) {
-      const [anioStr, mesStr] = datos.fecha.split("-");
+    // CFDI (`fechaInvoice`, "YYYY-MM-DD").
+    {
+      const [anioStr, mesStr] = fechaInvoice.split("-");
       const anio = Number(anioStr);
       const mes = Number(mesStr);
       if (Number.isInteger(anio) && Number.isInteger(mes)) {
         const periodo = await repo.findPeriodoCierrePorAnioMes(propertyId, anio, mes);
-        if (estaPeriodoCerrado(periodo)) throw Errors.despachosPeriodoCerrado(datos.fecha.slice(0, 7));
+        if (estaPeriodoCerrado(periodo)) throw Errors.despachosPeriodoCerrado(fechaInvoice.slice(0, 7));
       }
     }
 
@@ -201,6 +210,7 @@ export function despachosCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         iva: datos.iva ?? null,
         descuento: datos.descuento ?? 0,
         categoria,
+        fecha: fechaInvoice,
         valido: resultado.ok,
         issues: resultado.issues,
         warnings: resultado.warnings,

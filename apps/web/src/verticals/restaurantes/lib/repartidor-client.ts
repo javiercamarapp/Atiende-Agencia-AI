@@ -3,6 +3,25 @@
 // que el resto de apps/web: no depende de @atiende/domain-restaurantes, todo lo que
 // necesita del contrato de datos vive duplicado aquí (ver orders-client.ts, mismo
 // criterio documentado ahí).
+//
+// Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
+// "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
+// redirección"): a diferencia de admin-client.ts (que ya lo corrigió), este archivo
+// tenía su propio `fetchJson` privado que llamaba `fetchImpl` directo, sin pasar
+// nunca por `withAuthRefresh` (../../../lib/authed-fetch.ts) — un repartidor con
+// turno largo (>15 min, ACCESS_TOKEN_TTL_SECONDS=900s) se quedaba con un panel
+// muerto en 401 crudo en vez de refrescar en silencio. Mismo `withAuthRefresh` +
+// misma sesión ("atiende.restaurantes.session" vía ../../../lib/auth-client.ts) que
+// ya usa admin-client.ts — Repartidor.tsx lee esa MISMA sesión con
+// `readPersistedSession` (ver su comentario de cabecera), así que reusa exactamente
+// el store, no uno nuevo.
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
+import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
+import { clearSession, persistSession, readPersistedSession } from "../../../lib/auth-client.ts";
+import type { LoginSession } from "../../../lib/auth-client.ts";
+
+export { SessionExpiredError };
+
 export type RepartidorOrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema";
 
 /** Subconjunto de estados que ESTA ruta acepta como destino — puerto literal de
@@ -40,8 +59,32 @@ export interface RepartidorOrder {
 
 export class RepartidorClientError extends Error {}
 
-async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, init?: RequestInit): Promise<T> {
-  const res = await fetchImpl(url, { ...init, headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } });
+function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
+  const storage = defaultBrowserStorage();
+  return {
+    vertical: "restaurantes",
+    store: {
+      read: () => (storage ? readPersistedSession(storage) : null),
+      persist: (session) => {
+        if (storage) persistSession(storage, session);
+      },
+      clear: () => {
+        if (storage) clearSession(storage);
+      },
+    },
+  };
+}
+
+async function fetchJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  init?: RequestInit,
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, { ...init, headers: { authorization: `Bearer ${t}`, ...(init?.headers ?? {}) } }),
+  );
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new RepartidorClientError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`);

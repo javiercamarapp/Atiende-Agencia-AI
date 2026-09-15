@@ -81,12 +81,43 @@ export async function postJson<T>(
   return (await res.json()) as T;
 }
 
-export async function putJson<T>(fetchImpl: typeof fetch, url: string, token: string, payload: unknown = {}, extraHeaders: Record<string, string> = {}): Promise<T> {
-  const res = await fetchImpl(url, {
-    method: "PUT",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...extraHeaders },
-    body: JSON.stringify(payload),
-  });
+export async function putJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  payload: unknown = {},
+  extraHeaders: Record<string, string> = {},
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${t}`, "content-type": "application/json", ...extraHeaders },
+      body: JSON.stringify(payload),
+    }),
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new LicitacionesAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
+export async function patchJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  payload: unknown = {},
+  extraHeaders: Record<string, string> = {},
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${t}`, "content-type": "application/json", ...extraHeaders },
+      body: JSON.stringify(payload),
+    }),
+  );
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
     throw new LicitacionesAdminError(body?.message ?? body?.error ?? `No se pudo completar la operación (${res.status}).`);

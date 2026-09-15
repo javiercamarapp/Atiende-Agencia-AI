@@ -69,6 +69,45 @@ describe("POST /despachos/:propertyId/conciliacion/matching", () => {
     const res = await app.request(`/despachos/${ctx.propertyId}/conciliacion/matching`, authedJson(ctx.staff.admin.token, {}));
     expect(res.status).toBe(400);
   });
+
+  // Migración 006 (hallazgo de auditoría): antes de esta migración, un CFDI que
+  // nunca produce `diot.proveedoresReportables` (cualquier tipo distinto de "I" con
+  // subtotal>0 -- ver reglas-fiscales-avanzadas.ts) conciliaba usando `createdAt`
+  // (fecha de INGESTA, "ahora") en vez de la fecha real del CFDI. Este CFDI tipo "E"
+  // (nota de crédito) trae una fecha real muy anterior a "hoy" -- si el motor
+  // siguiera usando `createdAt`, el movimiento bancario con la fecha REAL del CFDI
+  // jamás haría match dentro de la tolerancia default (3 días).
+  it("REQ: concilia por la fecha REAL del CFDI, no por createdAt -- un CFDI tipo E (sin datos DIOT) hace match aunque su fecha real esté muy lejos de 'hoy'", async () => {
+    const app = buildApp(ctx.deps);
+    const notaCredito = cfdiIngreso({
+      folioFiscal: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+      tipo: "E",
+      iva: null,
+      cfdiRelacionados: ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+      tipoRelacion: "01",
+      // Muy anterior a "hoy" -- createdAt (fecha de ingesta real) sería la fecha de
+      // ejecución de este test, no esta.
+      fecha: "2020-01-15T10:00:00",
+      fechaTimbrado: "2020-01-15T10:05:00",
+    });
+    const cfdiRes = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, notaCredito));
+    expect(cfdiRes.status).toBe(201);
+    const cfdiBody = (await cfdiRes.json()) as { diot: { reportable: boolean; proveedoresReportables: unknown[] } };
+    // Confirma la premisa: un tipo "E" nunca es reportable en DIOT -- sin la
+    // columna `fecha`, este invoice no tendría ninguna fecha real recuperable.
+    expect(cfdiBody.diot.reportable).toBe(false);
+    expect(cfdiBody.diot.proveedoresReportables).toHaveLength(0);
+
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/conciliacion/matching`,
+      authedJson(ctx.staff.contador.token, {
+        movimientos: [{ fecha: "2020-01-15", descripcion: "Nota de crédito proveedor", referencia: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff", monto: 1160 }],
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { totalMatched: number };
+    expect(body.totalMatched).toBe(1);
+  });
 });
 
 describe("POST /despachos/:propertyId/conciliacion/alertas", () => {
@@ -103,7 +142,7 @@ describe("cruce contra el motor real", () => {
 
     const registros = (await ctx.despachosRepo.listInvoices(ctx.propertyId)).map((inv) => ({
       id: inv.id,
-      fecha: inv.diot.proveedoresReportables[0]?.fecha ?? inv.createdAt.slice(0, 10),
+      fecha: inv.fecha,
       total: inv.total,
       descripcion: inv.emisorNombre,
       referencia: inv.folioFiscal,

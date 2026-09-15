@@ -4,6 +4,7 @@
 // de punta a punta a través de HTTP -- no solo en el dominio (ya cubierto por
 // migracion-catalogo-migrador.spec.ts).
 import { beforeEach, describe, expect, it } from "vitest";
+import { InMemoryAuditSink } from "@atiende/core-authz";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
@@ -58,25 +59,64 @@ describe("flujo humano aprobar/rechazar/editar", () => {
     return body.mapeos[0]!;
   }
 
-  it("aprueba un mapeo pendiente", async () => {
+  it("aprueba un mapeo pendiente -- el actor persistido es el de la sesión, no un valor libre del body", async () => {
     const app = buildApp(ctx.deps);
     const mapeo = await clasificarUnMapeoPendiente(app);
     expect(mapeo.estado).toBe("pendiente");
 
-    const res = await app.request(`/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${mapeo.id}/aprobar`, authedJson(ctx.staff.contador.token, { decididoPor: "contador-1" }));
+    const res = await app.request(`/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${mapeo.id}/aprobar`, authedJson(ctx.staff.contador.token, {}));
     expect(res.status).toBe(200);
     const actualizado = (await res.json()) as { estado: string; aprobadoPor: string };
     expect(actualizado.estado).toBe("aprobado");
-    expect(actualizado.aprobadoPor).toBe("contador-1");
+    expect(actualizado.aprobadoPor).toBe(ctx.staff.contador.id);
   });
 
-  it("rechaza un mapeo pendiente con nota obligatoria", async () => {
+  it("hallazgo de seguridad -- un 'decididoPor' spoofeado en el body es IGNORADO; el actor persistido sigue siendo el de la sesión", async () => {
     const app = buildApp(ctx.deps);
     const mapeo = await clasificarUnMapeoPendiente(app);
-    const res = await app.request(`/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${mapeo.id}/rechazar`, authedJson(ctx.staff.contador.token, { decididoPor: "contador-1", nota: "no corresponde" }));
+
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${mapeo.id}/aprobar`,
+      // El cliente autenticado como "contador" intenta atribuir la decisión al admin
+      // (o a un usuario inexistente) mandando decididoPor en el body -- el servidor
+      // debe ignorarlo por completo.
+      authedJson(ctx.staff.contador.token, { decididoPor: ctx.staff.admin.id }),
+    );
     expect(res.status).toBe(200);
-    const actualizado = (await res.json()) as { estado: string };
+    const actualizado = (await res.json()) as { aprobadoPor: string };
+    expect(actualizado.aprobadoPor).toBe(ctx.staff.contador.id);
+    expect(actualizado.aprobadoPor).not.toBe(ctx.staff.admin.id);
+
+    const entradaAuditada = ctx.deps.despachosAuditSink as InstanceType<typeof InMemoryAuditSink>;
+    const entrada = entradaAuditada.entries.find((e) => e.action === "despachos.migracion-catalogo:aprobar" && e.metadata?.mapeoId === mapeo.id);
+    expect(entrada).toBeDefined();
+    expect(entrada?.actorUserId).toBe(ctx.staff.contador.id);
+  });
+
+  it("rechaza un mapeo pendiente con nota obligatoria -- actor de la sesión, decididoPor spoofeado ignorado", async () => {
+    const app = buildApp(ctx.deps);
+    const mapeo = await clasificarUnMapeoPendiente(app);
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${mapeo.id}/rechazar`,
+      authedJson(ctx.staff.contador.token, { decididoPor: ctx.staff.admin.id, nota: "no corresponde" }),
+    );
+    expect(res.status).toBe(200);
+    const actualizado = (await res.json()) as { estado: string; aprobadoPor: string };
     expect(actualizado.estado).toBe("rechazado");
+    expect(actualizado.aprobadoPor).toBe(ctx.staff.contador.id);
+  });
+
+  it("edita un mapeo pendiente -- actor de la sesión, decididoPor spoofeado ignorado", async () => {
+    const app = buildApp(ctx.deps);
+    const mapeo = await clasificarUnMapeoPendiente(app);
+    const res = await app.request(
+      `/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${mapeo.id}/editar`,
+      authedJson(ctx.staff.contador.token, { decididoPor: ctx.staff.admin.id, destinoCuentaId: "d999", nota: "corrección" }),
+    );
+    expect(res.status).toBe(200);
+    const actualizado = (await res.json()) as { estado: string; aprobadoPor: string };
+    expect(actualizado.estado).toBe("editado");
+    expect(actualizado.aprobadoPor).toBe(ctx.staff.contador.id);
   });
 
   it("editar sin nota -> 500/error de dominio propagado (nota obligatoria)", async () => {
@@ -84,7 +124,7 @@ describe("flujo humano aprobar/rechazar/editar", () => {
     const mapeo = await clasificarUnMapeoPendiente(app);
     const res = await app.request(
       `/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${mapeo.id}/editar`,
-      authedJson(ctx.staff.contador.token, { decididoPor: "contador-1", destinoCuentaId: "d999", nota: "" }),
+      authedJson(ctx.staff.contador.token, { destinoCuentaId: "d999", nota: "" }),
     );
     expect(res.status).not.toBe(200);
   });
@@ -116,7 +156,7 @@ describe("flujo humano aprobar/rechazar/editar", () => {
       nota: null,
     });
     void m1;
-    const res = await app.request(`/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${m2.id}/aprobar`, authedJson(ctx.staff.contador.token, { decididoPor: "contador-1" }));
+    const res = await app.request(`/despachos/${ctx.propertyId}/migracion-catalogo/mapeos/${m2.id}/aprobar`, authedJson(ctx.staff.contador.token, {}));
     expect(res.status).toBe(409);
   });
 });

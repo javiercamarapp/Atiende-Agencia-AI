@@ -147,16 +147,22 @@ export function despachosMigracionCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHo
 
   app.post("/despachos/:propertyId/migracion-catalogo/mapeos/:mapeoId/aprobar", async (c) => {
     assertVerticalRole(c, DECIDIR_MAPEO_MIGRACION_ROLES);
-    const raw = await readJsonCapped<{ readonly decididoPor?: unknown; readonly nota?: unknown; readonly estrategiaConciliacionSaldos?: unknown }>(c.req.raw, 8 * 1024);
+    // `decididoPor` SIEMPRE viene de la sesión autenticada (`c.get("userId")`),
+    // NUNCA de un campo que el cliente pueda mandar en el body -- mismo hallazgo y
+    // mismo patrón que cierre-mensual.ts/revisiones.ts/cfdi.ts. Antes de esta
+    // corrección cualquier cliente podía atribuir la decisión a otro usuario o
+    // dejarla vacía.
+    const raw = await readJsonCapped<{ readonly nota?: unknown; readonly estrategiaConciliacionSaldos?: unknown }>(c.req.raw, 8 * 1024);
     const propertyId = c.req.param("propertyId");
     const mapeoId = c.req.param("mapeoId");
+    const organizationId = c.get("organizationId");
+    const decididoPor = c.get("userId");
     const repo = deps.despachosRepo(c.get("db"));
     const mapeo = await repo.findMapeoMigracion(propertyId, mapeoId);
     if (!mapeo) throw Errors.notFound(`No existe el mapeo "${mapeoId}".`);
 
     try {
       const otros = await otrosMapeosDe(repo, propertyId, mapeoId);
-      const decididoPor = typeof raw.decididoPor === "string" ? raw.decididoPor : "";
       const actualizado = aprobarMapeo(
         mapeo,
         decididoPor,
@@ -164,6 +170,17 @@ export function despachosMigracionCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHo
         otros,
       );
       const guardado = await repo.updateMapeoMigracion(actualizado);
+      await deps.despachosAuditSink.record({
+        at: new Date().toISOString(),
+        actorUserId: decididoPor,
+        actorEmail: c.get("userEmail") ?? null,
+        organizationId,
+        action: "despachos.migracion-catalogo:aprobar",
+        route: c.req.path,
+        method: c.req.method,
+        decision: "allowed",
+        metadata: { mapeoId: guardado.id, origenCuentaId: guardado.origenCuentaId, destinoCuentaId: guardado.destinoCuentaId },
+      });
       return c.json(serializeMapeo(guardado));
     } catch (err) {
       mapDomainError(err);
@@ -172,18 +189,32 @@ export function despachosMigracionCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHo
 
   app.post("/despachos/:propertyId/migracion-catalogo/mapeos/:mapeoId/rechazar", async (c) => {
     assertVerticalRole(c, DECIDIR_MAPEO_MIGRACION_ROLES);
-    const raw = await readJsonCapped<{ readonly decididoPor?: unknown; readonly nota?: unknown }>(c.req.raw, 8 * 1024);
+    // `decididoPor` de la sesión autenticada -- ver comentario del handler de
+    // "aprobar" arriba, mismo hallazgo.
+    const raw = await readJsonCapped<{ readonly nota?: unknown }>(c.req.raw, 8 * 1024);
     const propertyId = c.req.param("propertyId");
     const mapeoId = c.req.param("mapeoId");
+    const organizationId = c.get("organizationId");
+    const decididoPor = c.get("userId");
     const repo = deps.despachosRepo(c.get("db"));
     const mapeo = await repo.findMapeoMigracion(propertyId, mapeoId);
     if (!mapeo) throw Errors.notFound(`No existe el mapeo "${mapeoId}".`);
 
     try {
-      const decididoPor = typeof raw.decididoPor === "string" ? raw.decididoPor : "";
       const nota = typeof raw.nota === "string" ? raw.nota : "";
       const actualizado = rechazarMapeo(mapeo, decididoPor, nota);
       const guardado = await repo.updateMapeoMigracion(actualizado);
+      await deps.despachosAuditSink.record({
+        at: new Date().toISOString(),
+        actorUserId: decididoPor,
+        actorEmail: c.get("userEmail") ?? null,
+        organizationId,
+        action: "despachos.migracion-catalogo:rechazar",
+        route: c.req.path,
+        method: c.req.method,
+        decision: "allowed",
+        metadata: { mapeoId: guardado.id, origenCuentaId: guardado.origenCuentaId, nota },
+      });
       return c.json(serializeMapeo(guardado));
     } catch (err) {
       mapDomainError(err);
@@ -192,20 +223,34 @@ export function despachosMigracionCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHo
 
   app.post("/despachos/:propertyId/migracion-catalogo/mapeos/:mapeoId/editar", async (c) => {
     assertVerticalRole(c, DECIDIR_MAPEO_MIGRACION_ROLES);
-    const raw = await readJsonCapped<{ readonly decididoPor?: unknown; readonly destinoCuentaId?: unknown; readonly nota?: unknown; readonly estrategiaConciliacionSaldos?: unknown }>(c.req.raw, 8 * 1024);
+    // `decididoPor` de la sesión autenticada -- ver comentario del handler de
+    // "aprobar" arriba, mismo hallazgo.
+    const raw = await readJsonCapped<{ readonly destinoCuentaId?: unknown; readonly nota?: unknown; readonly estrategiaConciliacionSaldos?: unknown }>(c.req.raw, 8 * 1024);
     const propertyId = c.req.param("propertyId");
     const mapeoId = c.req.param("mapeoId");
+    const organizationId = c.get("organizationId");
+    const decididoPor = c.get("userId");
     const repo = deps.despachosRepo(c.get("db"));
     const mapeo = await repo.findMapeoMigracion(propertyId, mapeoId);
     if (!mapeo) throw Errors.notFound(`No existe el mapeo "${mapeoId}".`);
 
     try {
       const otros = await otrosMapeosDe(repo, propertyId, mapeoId);
-      const decididoPor = typeof raw.decididoPor === "string" ? raw.decididoPor : "";
       const destinoCuentaId = typeof raw.destinoCuentaId === "string" ? raw.destinoCuentaId : "";
       const nota = typeof raw.nota === "string" ? raw.nota : "";
       const actualizado = editarMapeo(mapeo, decididoPor, destinoCuentaId, nota, otros, typeof raw.estrategiaConciliacionSaldos === "string" ? raw.estrategiaConciliacionSaldos : undefined);
       const guardado = await repo.updateMapeoMigracion(actualizado);
+      await deps.despachosAuditSink.record({
+        at: new Date().toISOString(),
+        actorUserId: decididoPor,
+        actorEmail: c.get("userEmail") ?? null,
+        organizationId,
+        action: "despachos.migracion-catalogo:editar",
+        route: c.req.path,
+        method: c.req.method,
+        decision: "allowed",
+        metadata: { mapeoId: guardado.id, origenCuentaId: guardado.origenCuentaId, destinoCuentaId: guardado.destinoCuentaId, nota },
+      });
       return c.json(serializeMapeo(guardado));
     } catch (err) {
       mapDomainError(err);

@@ -1,25 +1,27 @@
-// Fase 5 -- POST /internal/rentas/ical-sync: corrida periódica real del motor de
-// sincronización iCal -- mismo patrón/guard EXACTO que
-// apps/api/.../citas/google-calendar-sync.ts (header x-atiende-internal-secret,
-// pensada para un scheduler externo). Recorre TODOS los feeds activos de la
-// plataforma (`rentas.canal_feed_externo.activo`), no está acotada por organización
-// porque cada feed se procesa independientemente y un fallo de uno nunca debe
-// detener a los demás.
+// Fase 5 -- GET/POST /internal/rentas/ical-sync: corrida periódica real del motor
+// de sincronización iCal -- mismo patrón/guard EXACTO que
+// apps/api/.../hoteles/email-dispatch.ts y .../citas/google-calendar-sync.ts:
+// acepta GET (Vercel Cron, que solo dispara GET con
+// `Authorization: Bearer <CRON_SECRET>`) y POST (header manual
+// `x-atiende-internal-secret`/tests), gateada por `internalOrCronSecretMatches`
+// (ver comentario de cabecera de `http-security.ts::internalOrCronSecretMatches`).
+// Recorre TODOS los feeds activos de la plataforma
+// (`rentas.canal_feed_externo.activo`), no está acotada por organización porque
+// cada feed se procesa independientemente y un fallo de uno nunca debe detener a
+// los demás.
 //
-// Quién dispara este endpoint y cada cuánto es una decisión de infraestructura
-// pendiente (igual que el cron de citas) -- este archivo solo construye el endpoint
-// real, no el scheduler.
+// Wiring real del scheduler: `vercel.json::crons` invoca este mismo path por GET.
 import { Hono } from "hono";
 import { ejecutarCicloImportacion } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
-import { secretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function rentasIcalSyncCronRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
-  app.post("/internal/rentas/ical-sync", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
+  app.on(["GET", "POST"], "/internal/rentas/ical-sync", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const syncRepo = deps.rentasCalendarSyncRepo(db);

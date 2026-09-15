@@ -89,6 +89,11 @@ export async function crearPeriodo(
   return postJson(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos`, token, input);
 }
 
+// El actor (quién completó la tarea / quién cerró el período) lo determina el
+// servidor a partir de la sesión autenticada (`c.get("userId")`) -- ver
+// apps/api/.../despachos/cierre-mensual.ts. Estas funciones ya NO reciben ni
+// mandan un `userId` propio: mandarlo desde el cliente permitía atribuir la
+// acción a cualquier usuario, o dejarla vacía.
 export async function completarTareaCierre(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
@@ -96,14 +101,13 @@ export async function completarTareaCierre(
   propertyId: string,
   periodoId: string,
   tareaId: string,
-  userId: string,
 ): Promise<readonly CloseTask[]> {
-  const body = await postJson<{ tareas: readonly CloseTask[] }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos/${periodoId}/tareas/${tareaId}/completar`, token, { userId });
+  const body = await postJson<{ tareas: readonly CloseTask[] }>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos/${periodoId}/tareas/${tareaId}/completar`, token, {});
   return body.tareas;
 }
 
-export async function cerrarPeriodoCierre(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodoId: string, userId: string): Promise<ClosePeriod> {
-  return postJson<ClosePeriod>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos/${periodoId}/cerrar`, token, { userId });
+export async function cerrarPeriodoCierre(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodoId: string): Promise<ClosePeriod> {
+  return postJson<ClosePeriod>(fetchImpl, `${apiBaseUrl}/despachos/${propertyId}/cierre-mensual/periodos/${periodoId}/cerrar`, token, {});
 }
 
 export async function fetchReporteCierre(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, periodoId: string): Promise<ReporteCierre> {

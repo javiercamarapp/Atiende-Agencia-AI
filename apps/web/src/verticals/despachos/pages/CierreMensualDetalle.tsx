@@ -65,7 +65,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
     setActionError(null);
     setBusyTaskId(taskId);
     try {
-      await completarTareaCierre(fetch, apiBaseUrl, token, propertyId, periodoId, taskId, "");
+      await completarTareaCierre(fetch, apiBaseUrl, token, propertyId, periodoId, taskId);
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "No se pudo completar la tarea.");
@@ -79,7 +79,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
     setActionError(null);
     setCerrando(true);
     try {
-      await cerrarPeriodoCierre(fetch, apiBaseUrl, token, propertyId, periodoId, "");
+      await cerrarPeriodoCierre(fetch, apiBaseUrl, token, propertyId, periodoId);
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "No se pudo cerrar el período.");

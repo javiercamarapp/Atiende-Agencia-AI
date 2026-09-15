@@ -5,25 +5,26 @@
 // (`@atiende/worker::runCobranzaReminderSweep`) y el dispatcher de correo que
 // de verdad drena `despachos.messaging_outbox` vía Resend
 // (`@atiende/domain-despachos::dispatchPendingEmailJobs`) — MISMO patrón
-// EXACTO que `../licitaciones/alertNotifications.ts` (leído primero como
-// plantilla, que a su vez cita `../rentas/email-dispatch.ts`/
-// `../citas/email-dispatch.ts`): rutas INTERNAS, gateadas por secreto
-// compartido (`x-atiende-internal-secret`), pensadas para ser invocadas por un
-// scheduler externo (Vercel Cron/Supabase Cron) — sin `authMiddleware`/
+// EXACTO que `../hoteles/email-dispatch.ts`/`../citas/email-dispatch.ts`:
+// rutas INTERNAS que aceptan GET (scheduler) y POST (manual/tests), gateadas
+// por `internalOrCronSecretMatches` (acepta tanto el header manual
+// `x-atiende-internal-secret` como el `Authorization: Bearer <secreto>` que
+// manda Vercel Cron en sus invocaciones GET — ver comentario de cabecera de
+// `http-security.ts::internalOrCronSecretMatches`) — sin `authMiddleware`/
 // `dbSession`, abren su propia sesión de sistema (`userId: null`) para todo el
 // barrido.
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-despachos";
 import { runCobranzaReminderSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
-import { secretMatches } from "../../../http-security.ts";
+import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function despachosNotificationsRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
-  app.post("/internal/despachos/cobranza-reminders", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
+  app.on(["GET", "POST"], "/internal/despachos/cobranza-reminders", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.despachosRepo(db);
@@ -57,8 +58,8 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
     });
   });
 
-  app.post("/internal/despachos/email-dispatch", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
+  app.on(["GET", "POST"], "/internal/despachos/email-dispatch", async (c) => {
+    if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por

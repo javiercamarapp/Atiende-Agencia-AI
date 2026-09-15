@@ -2,10 +2,11 @@
 // "duplicado en TODAS las verticales": "Expiración del JWT (15 min) no se maneja:
 // el panel queda muerto sin refresh ni redirección") — ver el comentario de
 // cabecera de hoteles-admin-client-auth-refresh.spec.ts para el criterio completo.
-// Rentas solo expone `fetchJson` en su admin-client.ts (sin escritura todavía, ver
-// su comentario de cabecera).
+// `sendJson` (Fase 13, POST/PATCH del calendario) llamaba `fetchImpl` directo sin
+// pasar nunca por `withAuthRefresh`, a diferencia de `fetchJson` del mismo archivo
+// — mismo hallazgo, mismo archivo, corregido con el mismo patrón.
 import { describe, expect, it } from "vitest";
-import { fetchJson, RentasAdminError, SessionExpiredError } from "../src/verticals/rentas/lib/admin-client.ts";
+import { fetchJson, RentasAdminError, sendJson, SessionExpiredError } from "../src/verticals/rentas/lib/admin-client.ts";
 import type { LoginSession } from "../src/verticals/rentas/lib/auth-client.ts";
 import type { AuthedFetchContext } from "../src/lib/authed-fetch.ts";
 
@@ -75,5 +76,47 @@ describe("rentas/lib/admin-client.ts — refresh automático ante 401", () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ message: "Negocio no encontrado." }), { status: 404 })) as unknown as typeof fetch;
     const { ctx } = fakeCtx({ token: "tok", refreshToken: "r", email: "gestor@rentas.mx", organizations: [] });
     await expect(fetchJson(fetchImpl, "http://api.local/v1/rentas/gestora-1/admin/propiedades", "tok", ctx)).rejects.toThrow(RentasAdminError);
+  });
+
+  it("sendJson (POST): mismo refresh-y-reintento en una escritura", async () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push(url);
+      if (url === "http://api.local/auth/refresh") return new Response(JSON.stringify(REFRESHED), { status: 200 });
+      const auth = (init?.headers as Record<string, string>).authorization;
+      if (auth === "Bearer tok-viejo") return new Response(JSON.stringify({ message: "jwt expired" }), { status: 401 });
+      expect(auth).toBe("Bearer tok-nuevo");
+      return new Response(JSON.stringify({ reserva: { id: "r1" } }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const { ctx, persisted } = fakeCtx({ token: "tok-viejo", refreshToken: "refresh-viejo", email: "gestor@rentas.mx", organizations: [] });
+    const result = await sendJson<{ reserva: { id: string } }>(
+      fetchImpl,
+      "http://api.local/v1/rentas/gestora-1/admin/reservas",
+      "tok-viejo",
+      "POST",
+      { propiedadId: "p1" },
+      ctx,
+    );
+
+    expect(result.reserva.id).toBe("r1");
+    expect(calls).toEqual([
+      "http://api.local/v1/rentas/gestora-1/admin/reservas",
+      "http://api.local/auth/refresh",
+      "http://api.local/v1/rentas/gestora-1/admin/reservas",
+    ]);
+    expect(persisted).toEqual([REFRESHED]);
+  });
+
+  it("sendJson: refresh fallido -> limpia la sesión y lanza SessionExpiredError, nunca RentasAdminError genérico", async () => {
+    const fetchImpl = (async (url: string) => {
+      if (url === "http://api.local/auth/refresh") return new Response(JSON.stringify({ message: "no" }), { status: 401 });
+      return new Response(JSON.stringify({ message: "jwt expired" }), { status: 401 });
+    }) as unknown as typeof fetch;
+
+    const { ctx, clearedCount, currentSession } = fakeCtx({ token: "tok-viejo", refreshToken: "refresh-revocado", email: "gestor@rentas.mx", organizations: [] });
+    await expect(sendJson(fetchImpl, "http://api.local/v1/rentas/gestora-1/admin/reservas", "tok-viejo", "POST", {}, ctx)).rejects.toThrow(SessionExpiredError);
+    expect(clearedCount()).toBe(1);
+    expect(currentSession()).toBeNull();
   });
 });

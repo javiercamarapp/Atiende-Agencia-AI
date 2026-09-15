@@ -190,4 +190,60 @@ describe("POST /hoteles/:propertyId/cfdi/:cfdiId/cancelar", () => {
     const res = await app.request(`/hoteles/${ctx.propertyId}/cfdi/${id}/cancelar`, authedJson(ctx.staff.owner.token, { motivo: "99" }, { "idempotency-key": "cancel-bad" }));
     expect(res.status).toBe(400);
   });
+
+  // Fix hallazgo auditoría — un CFDI de hospedaje cancelado SÍ debe poder
+  // reemitirse con un folio fiscal (UUID) nuevo: antes de este fix, el
+  // corto-circuito de idempotencia de REQ-BO-002 no distinguía "existe" de
+  // "existe y está vigente", así que una vez cancelado quedaba bloqueado para
+  // siempre (ver 015_cfdi_hospedaje_reemision_tras_cancelacion.sql).
+  it("un CFDI de hospedaje cancelado SÍ puede reemitirse con un UUID fiscal nuevo", async () => {
+    await seedHospedajeCharges(ctx, 1);
+    const app = buildApp(ctx.deps);
+
+    const primero = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-reemision-1" }),
+    );
+    expect(primero.status).toBe(201);
+    const primeroBody = (await primero.json()) as CfdiResponse;
+
+    const cancelado = await app.request(
+      `/hoteles/${ctx.propertyId}/cfdi/${primeroBody.id}/cancelar`,
+      authedJson(ctx.staff.owner.token, { motivo: "02" }, { "idempotency-key": "cancel-reemision-1" }),
+    );
+    expect(cancelado.status).toBe(200);
+
+    // Reemisión sobre el MISMO folio, con una Idempotency-Key nueva (como haría
+    // el panel real al volver a enviar el formulario de "Timbrar CFDI") -- debe
+    // timbrar un CFDI NUEVO (201, UUID distinto), no devolver el cancelado.
+    const segundo = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-reemision-2" }),
+    );
+    expect(segundo.status).toBe(201);
+    const segundoBody = (await segundo.json()) as CfdiResponse;
+    expect(segundoBody.id).not.toBe(primeroBody.id);
+    expect(segundoBody.uuidFiscal).toBeTruthy();
+    expect(segundoBody.uuidFiscal).not.toBe(primeroBody.uuidFiscal);
+    expect(segundoBody.estado).toBe("timbrado");
+
+    // El folio ahora tiene 2 CFDI de hospedaje en su historial: el cancelado y
+    // el vigente -- REQ-BO-002 solo limita a UNO VIGENTE a la vez, nunca uno
+    // para siempre.
+    const historial = (await (await app.request(`/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`, authedJson(ctx.staff.owner.token))).json()) as CfdiResponse[];
+    expect(historial).toHaveLength(2);
+    expect(historial.filter((c) => c.estado === "cancelado")).toHaveLength(1);
+    expect(historial.filter((c) => c.estado === "timbrado")).toHaveLength(1);
+
+    // Reintentar la reemisión (misma Idempotency-Key de la reemisión) sigue
+    // siendo idempotente: devuelve el vigente recién timbrado, no re-timbra.
+    const reintento = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+      authedJson(ctx.staff.owner.token, { rfcReceptor: "XAXX010101000", usoCfdi: "G03" }, { "idempotency-key": "cfdi-reemision-3" }),
+    );
+    expect(reintento.status).toBe(200);
+    const reintentoBody = (await reintento.json()) as CfdiResponse;
+    expect(reintentoBody.id).toBe(segundoBody.id);
+    expect(await ctx.hotelesRepo.listCfdiEmisiones(ctx.propertyId)).toHaveLength(2);
+  });
 });

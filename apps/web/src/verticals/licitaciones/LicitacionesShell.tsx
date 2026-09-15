@@ -39,6 +39,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "convocatorias", label: "Convocatorias" },
   { to: "radar-renovaciones", label: "Radar de renovaciones" },
   { to: "perfil-matching", label: "Perfil de matching" },
+  { to: "datos-empresa", label: "Datos de la empresa" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({

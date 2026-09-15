@@ -38,6 +38,12 @@ export interface InvoiceRecord {
   readonly warnings: readonly string[];
   readonly requiresHumanReview: boolean;
   readonly diot: DiotResult;
+  /** Fecha REAL de emisión del CFDI ("YYYY-MM-DD", migración 006) — a diferencia de
+   * `createdAt` (fecha de INGESTA). Es la fecha que conciliación bancaria, DIOT,
+   * devolución de IVA y declaraciones deben usar para resolver "a qué período
+   * pertenece este CFDI"; nunca `createdAt`, y nunca solo el jsonb de DIOT (que
+   * únicamente existe para un CFDI tipo 'I' con subtotal>0). */
+  readonly fecha: string;
   readonly createdAt: string;
 }
 
@@ -59,6 +65,8 @@ export interface NewInvoiceInput {
   readonly warnings: readonly string[];
   readonly requiresHumanReview: boolean;
   readonly diot: DiotResult;
+  /** Ver `InvoiceRecord.fecha` — "YYYY-MM-DD", la fecha real de emisión del CFDI. */
+  readonly fecha: string;
 }
 
 export type InvoiceReviewStatus = "pendiente" | "aprobado" | "rechazado";

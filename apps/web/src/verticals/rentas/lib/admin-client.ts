@@ -7,10 +7,12 @@
 //
 // Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
 // "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
-// redirección"): `fetchJson` envuelve cada llamada con `withAuthRefresh`
+// redirección"): `fetchJson`/`sendJson` envuelven cada llamada con `withAuthRefresh`
 // (../../../lib/authed-fetch.ts) — un 401 dispara UN intento de POST /auth/refresh
 // con el refreshToken persistido bajo "atiende.rentas.session" y reintenta la
-// request original una sola vez con el token nuevo. Firma SIN CAMBIOS.
+// request original una sola vez con el token nuevo. Firma de `fetchJson`/`sendJson`
+// SIN CAMBIOS: cada caller de este repo sigue pasando exactamente los mismos
+// argumentos posicionales de siempre, `authCtx` es opcional al final.
 import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
 import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearRentasSession, persistRentasSession, readPersistedRentasSession } from "./auth-client.ts";
@@ -49,12 +51,21 @@ export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: 
  * crear/modificar/cancelar reservas, crear/cancelar bloqueos). Ninguna ruta de
  * escritura de rentas exige `Idempotency-Key` (a diferencia de hoteles) -- mismo
  * criterio simple que `verticals/restaurantes/lib/admin-client.ts::sendJson`. */
-export async function sendJson<T>(fetchImpl: typeof fetch, url: string, token: string, method: "POST" | "PATCH", payload: unknown = {}): Promise<T> {
-  const res = await fetchImpl(url, {
-    method,
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+export async function sendJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string,
+  method: "POST" | "PATCH",
+  payload: unknown = {},
+  authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
+): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
+    fetchImpl(url, {
+      method,
+      headers: { authorization: `Bearer ${t}`, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  );
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
     throw new RentasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);

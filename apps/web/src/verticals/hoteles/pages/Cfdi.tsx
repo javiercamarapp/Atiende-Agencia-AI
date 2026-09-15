@@ -133,7 +133,13 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
     return <p style={{ color: "#6b7280" }}>Cargando…</p>;
   }
 
-  const cfdiHospedaje = cfdis.find((c) => c.tipo === "hospedaje") ?? null;
+  // Fix hallazgo auditoría — un CFDI de hospedaje "cancelado" SÍ debe poder
+  // reemitirse con un folio fiscal nuevo (misma regla que ya aplica el backend,
+  // ver cfdi.ts): solo un hospedaje VIGENTE (no cancelado) cuenta como "ya
+  // emitido" para ocultar el formulario o habilitar el complemento de pago. Un
+  // folio puede acumular más de un CFDI 'hospedaje' en su historial (los
+  // cancelados), pero a lo más uno vigente a la vez (REQ-BO-002).
+  const cfdiHospedaje = cfdis.find((c) => c.tipo === "hospedaje" && c.estado !== "cancelado") ?? null;
   const cfdisPago = cfdis.filter((c) => c.tipo === "pago");
   const puedeTimbrarHospedaje = !cfdiHospedaje;
   // `serializeCfdi` (apps/api/.../cfdi.ts) no expone `paymentId` en la respuesta —

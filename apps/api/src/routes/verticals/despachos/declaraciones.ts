@@ -17,7 +17,13 @@
 // candidatos DIOT desde los invoices ya guardados (filtro `periodo` de
 // `listInvoices`, aditivo desde Fase 2 — ver domain-despachos/src/repository.ts,
 // comentario de `listInvoices`) y llama `agregarDiot()` — nunca vuelve a pedir datos
-// crudos del CFDI que el cliente ya envió una vez.
+// crudos del CFDI que el cliente ya envió una vez. El filtro `periodo` de
+// `listInvoices` resuelve contra la columna real `invoice.fecha` (migración 006,
+// corregida — antes resolvía contra el mismo jsonb de DIOT, así que un CFDI que no
+// fuera tipo "I" con subtotal>0 desaparecía del período por completo); esta ruta
+// sigue acotando la agregación DIOT en sí a `reportables` (abajo) porque esa
+// restricción SÍ es una regla de negocio real de la DIOT (solo reporta proveedores
+// tipo "I"), no un artefacto del filtro por período.
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -115,7 +121,11 @@ export function despachosDeclaracionesRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         tasaIva: p.tasaIva ?? (inv.iva != null && inv.subtotal > 0 ? inv.iva / inv.subtotal : 0),
         tipoCambio: p.tipoCambio ?? 1,
         moneda: p.moneda ?? "MXN",
-        fecha: p.fecha ?? inv.createdAt,
+        // `invoice.fecha` (migración 006) es la fecha REAL de emisión del CFDI, NOT
+        // NULL — ya no depende de `p.fecha` (el mismo dato, pero solo presente
+        // dentro del jsonb de DIOT) con fallback a `inv.createdAt` (fecha de
+        // INGESTA, nunca la fecha correcta para una declaración).
+        fecha: inv.fecha,
       };
     });
 

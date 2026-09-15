@@ -138,28 +138,26 @@ export function despachosDevolucionIvaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const periodo = c.req.param("periodo");
     if (!/^\d{4}-\d{2}$/.test(periodo)) throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");
     const repo = deps.despachosRepo(c.get("db"));
+    // `repo.listInvoices({ periodo })` (migración 006) ya filtra por la fecha REAL
+    // de emisión del CFDI (`invoice.fecha`), no por el jsonb de DIOT (que solo
+    // existe para un CFDI tipo 'I' con subtotal>0) ni por `createdAt` — así que un
+    // CFDI de cualquier tipo (E/T/P/N incluidos) que antes desaparecía del período
+    // ahora se recopila correctamente aquí.
     const invoices = await repo.listInvoices(c.req.param("propertyId"), { periodo });
-    const facturas: FacturaCfdiIva[] = invoices
-      .map((inv) => {
-        const fechaCfdi = inv.diot.proveedoresReportables[0]?.fecha ?? inv.createdAt.slice(0, 10);
-        if (fechaCfdi.slice(0, 7) !== periodo) return null;
-        const factura: FacturaCfdiIva = {
-          uuid: inv.folioFiscal,
-          rfcEmisor: inv.rfcEmisor,
-          nombreEmisor: inv.emisorNombre ?? "",
-          rfcReceptor: inv.rfcReceptor,
-          fecha: fechaCfdi,
-          subtotal: inv.subtotal,
-          iva: inv.iva ?? 0,
-          total: inv.total,
-          tipo: TIPO_COMPROBANTE_A_TIPO_FACTURA[inv.tipo] ?? "Ingreso",
-          categoria: "acreditable_100",
-          proporcionalidad: 1.0,
-          concepto: inv.emisorNombre,
-        };
-        return factura;
-      })
-      .filter((f): f is FacturaCfdiIva => f !== null);
+    const facturas: FacturaCfdiIva[] = invoices.map((inv) => ({
+      uuid: inv.folioFiscal,
+      rfcEmisor: inv.rfcEmisor,
+      nombreEmisor: inv.emisorNombre ?? "",
+      rfcReceptor: inv.rfcReceptor,
+      fecha: inv.fecha,
+      subtotal: inv.subtotal,
+      iva: inv.iva ?? 0,
+      total: inv.total,
+      tipo: TIPO_COMPROBANTE_A_TIPO_FACTURA[inv.tipo] ?? "Ingreso",
+      categoria: "acreditable_100",
+      proporcionalidad: 1.0,
+      concepto: inv.emisorNombre,
+    }));
     const clasificacion = clasificarIva(facturas);
     return c.json({ facturas, clasificacion });
   });

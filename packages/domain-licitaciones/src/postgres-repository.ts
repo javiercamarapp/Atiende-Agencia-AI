@@ -6,8 +6,30 @@
 // `licitaciones.can_access_org`/`can_write_org`/`can_decide_org`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { ContractTransitionRejectedError, IdempotencyConflictError } from "./errors.ts";
-import type { GoNoGoDecisionCreateInput, IdempotencyParams, IdempotentResult, LicitacionesRepository, MatchingProfileUpsertInput, RecordTenderVersionResult, TenderChangeNotificationRecord, TenderUpsertInput, TenderUpsertResult } from "./repository.ts";
+import { CompanyDataDuplicateKeyError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { checkTenderResolution } from "./tender-resolution.ts";
+import type {
+  ApprovedRateCreateInput,
+  ApprovedRateUpdateInput,
+  CompanyCapabilityCreateInput,
+  CompanyCapabilityUpdateInput,
+  CompanyDocumentCreateInput,
+  CompanyDocumentUpdateInput,
+  CompanyExperienceCreateInput,
+  CompanyExperienceUpdateInput,
+  CompanySignerCreateInput,
+  CompanySignerUpdateInput,
+  GoNoGoDecisionCreateInput,
+  IdempotencyParams,
+  IdempotentResult,
+  LicitacionesRepository,
+  MatchingProfileUpsertInput,
+  RecordTenderVersionResult,
+  TenderChangeNotificationRecord,
+  TenderResolutionCreateInput,
+  TenderUpsertInput,
+  TenderUpsertResult,
+} from "./repository.ts";
 import type {
   AddContractDocumentInput,
   CompanyLessonLearnedRecord,
@@ -77,6 +99,7 @@ import type {
   RequiredAnnexItem,
   SubmissionRecord,
   TenderRecord,
+  TenderResolutionRecord,
   TenderStatus,
 } from "./types.ts";
 
@@ -212,6 +235,21 @@ function mapGoNoGoDecision(row: GoNoGoDecisionRow): GoNoGoDecisionRecord {
     decidedBy: row.decided_by,
     decidedAt: row.decided_at,
   };
+}
+
+interface TenderResolutionRow {
+  id: string;
+  organization_id: string;
+  tender_id: string;
+  resolution: "won" | "lost";
+  from_status: TenderStatus;
+  reason: string;
+  resolved_by: string;
+  resolved_at: string;
+}
+
+function mapTenderResolution(row: TenderResolutionRow): TenderResolutionRecord {
+  return { id: row.id, organizationId: row.organization_id, tenderId: row.tender_id, resolution: row.resolution, fromStatus: row.from_status, reason: row.reason, resolvedBy: row.resolved_by, resolvedAt: row.resolved_at };
 }
 
 interface ProposalRow {
@@ -1172,6 +1210,184 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [organizationId, tenderId],
     );
     return rows.map(mapGoNoGoDecision);
+  }
+
+  // ---- Fase 16: resolución won/lost (ver tender-resolution.ts) ----
+
+  async resolveTender(organizationId: string, tenderId: string, input: TenderResolutionCreateInput): Promise<TenderRecord> {
+    const tender = await this.findTender(organizationId, tenderId);
+    if (!tender) throw new Error(`Tender "${tenderId}" no encontrado para la organización "${organizationId}".`);
+    const fromStatus: TenderStatus = tender.status ?? "discovered";
+
+    // Valida ANTES de tocar ninguna fila -- mismo criterio exacto que
+    // `transitionContract`/`checkTransition` (contract-lifecycle.ts).
+    const check = checkTenderResolution(fromStatus);
+    if (!check.valid) throw new TenderResolutionRejectedError(fromStatus, input.resolution, check.allowedFromStatuses);
+
+    await this.db.query(
+      `insert into licitaciones.tender_resolution (organization_id, tender_id, resolution, from_status, reason, resolved_by)
+       values ($1, $2, $3, $4, $5, $6);`,
+      [organizationId, tenderId, input.resolution, fromStatus, input.reason, input.actorId],
+    );
+    // Misma operación (mismo criterio que `createGoNoGoDecision`): la fila de
+    // historial y el `tender.status` nuevo se escriben juntos.
+    const { rows } = await this.db.query<TenderRow>(`update licitaciones.tender set status = $1, updated_at = now() where organization_id = $2 and id = $3 returning ${TENDER_COLUMNS};`, [
+      input.resolution,
+      organizationId,
+      tenderId,
+    ]);
+    return mapTender(rows[0]!);
+  }
+
+  async listTenderResolutions(organizationId: string, tenderId: string): Promise<readonly TenderResolutionRecord[]> {
+    const { rows } = await this.db.query<TenderResolutionRow>(
+      `select id, organization_id, tender_id, resolution, from_status, reason, resolved_by, resolved_at::text as resolved_at
+       from licitaciones.tender_resolution where organization_id = $1 and tender_id = $2 order by resolved_at asc;`,
+      [organizationId, tenderId],
+    );
+    return rows.map(mapTenderResolution);
+  }
+
+  // ---- Fase 16: escritura de "datos de empresa" ----
+
+  async createCompanyDocument(organizationId: string, input: CompanyDocumentCreateInput): Promise<CompanyDocumentRecord> {
+    const { rows } = await this.db.query<{ id: string; document_type: string; label: string; expires_at: string | null; approval_status: CompanyDocumentRecord["approvalStatus"] }>(
+      `insert into licitaciones.company_document (organization_id, document_type, label, expires_at, approval_status)
+       values ($1, $2, $3, $4, $5)
+       returning id, document_type, label, expires_at::text as expires_at, approval_status;`,
+      [organizationId, input.type, input.label, input.expiresAt, input.approvalStatus ?? "pendiente_aprobacion"],
+    );
+    const row = rows[0]!;
+    return { id: row.id, type: row.document_type, label: row.label, expiresAt: row.expires_at, approvalStatus: row.approval_status };
+  }
+
+  async updateCompanyDocument(organizationId: string, documentId: string, input: CompanyDocumentUpdateInput): Promise<CompanyDocumentRecord> {
+    const { rows } = await this.db.query<{ id: string; document_type: string; label: string; expires_at: string | null; approval_status: CompanyDocumentRecord["approvalStatus"] }>(
+      `update licitaciones.company_document set
+         label = coalesce($3, label),
+         expires_at = case when $4::boolean then $5::date else expires_at end,
+         approval_status = coalesce($6, approval_status)
+       where id = $1 and organization_id = $2
+       returning id, document_type, label, expires_at::text as expires_at, approval_status;`,
+      [documentId, organizationId, input.label ?? null, "expiresAt" in input, input.expiresAt ?? null, input.approvalStatus ?? null],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`Documento de empresa "${documentId}" no encontrado para la organización "${organizationId}".`);
+    return { id: row.id, type: row.document_type, label: row.label, expiresAt: row.expires_at, approvalStatus: row.approval_status };
+  }
+
+  async createApprovedRate(organizationId: string, input: ApprovedRateCreateInput): Promise<ApprovedRateRecord> {
+    const existing = await this.db.query<{ id: string }>(`select id from licitaciones.approved_rate where organization_id = $1 and concept = $2;`, [organizationId, input.concept]);
+    if (existing.rows.length > 0) throw new CompanyDataDuplicateKeyError("tarifa aprobada", input.concept);
+
+    const { rows } = await this.db.query<{ id: string; concept: string; unit_price: string; approval_status: ApprovedRateRecord["approvalStatus"]; valid_from: string; valid_until: string | null }>(
+      `insert into licitaciones.approved_rate (organization_id, concept, unit_price, approval_status, valid_from, valid_until)
+       values ($1, $2, $3, $4, coalesce($5::date, current_date), $6)
+       returning id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until;`,
+      [organizationId, input.concept, input.unitPrice, input.approvalStatus ?? "pendiente_aprobacion", input.validFrom ?? null, input.validUntil ?? null],
+    );
+    const row = rows[0]!;
+    return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: row.valid_from, validUntil: row.valid_until };
+  }
+
+  async updateApprovedRate(organizationId: string, rateId: string, input: ApprovedRateUpdateInput): Promise<ApprovedRateRecord> {
+    const { rows } = await this.db.query<{ id: string; concept: string; unit_price: string; approval_status: ApprovedRateRecord["approvalStatus"]; valid_from: string; valid_until: string | null }>(
+      `update licitaciones.approved_rate set
+         unit_price = coalesce($3, unit_price),
+         approval_status = coalesce($4, approval_status),
+         valid_from = coalesce($5::date, valid_from),
+         valid_until = case when $6::boolean then $7::date else valid_until end
+       where id = $1 and organization_id = $2
+       returning id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until;`,
+      [rateId, organizationId, input.unitPrice ?? null, input.approvalStatus ?? null, input.validFrom ?? null, "validUntil" in input, input.validUntil ?? null],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`Tarifa aprobada "${rateId}" no encontrada para la organización "${organizationId}".`);
+    return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: row.valid_from, validUntil: row.valid_until };
+  }
+
+  async listAllApprovedRates(organizationId: string): Promise<readonly ApprovedRateRecord[]> {
+    const { rows } = await this.db.query<{ id: string; concept: string; unit_price: string; approval_status: ApprovedRateRecord["approvalStatus"]; valid_from: string; valid_until: string | null }>(
+      `select id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until from licitaciones.approved_rate where organization_id = $1 order by concept asc;`,
+      [organizationId],
+    );
+    return rows.map((r) => ({ id: r.id, concept: r.concept, unitPrice: r.unit_price, currency: "MXN" as const, approvalStatus: r.approval_status, validFrom: r.valid_from, validUntil: r.valid_until }));
+  }
+
+  async createCompanyCapability(organizationId: string, input: CompanyCapabilityCreateInput): Promise<CompanyCapabilityRecord> {
+    const existing = await this.db.query<{ id: string }>(`select id from licitaciones.company_capability where organization_id = $1 and name = $2;`, [organizationId, input.name]);
+    if (existing.rows.length > 0) throw new CompanyDataDuplicateKeyError("capacidad", input.name);
+
+    const { rows } = await this.db.query<{ id: string; name: string; description: string; evidence_doc_id: string | null; approval_status: CompanyCapabilityRecord["approvalStatus"] }>(
+      `insert into licitaciones.company_capability (organization_id, name, description, evidence_doc_id, approval_status)
+       values ($1, $2, $3, $4, $5)
+       returning id, name, description, evidence_doc_id, approval_status;`,
+      [organizationId, input.name, input.description, input.evidenceDocId ?? null, input.approvalStatus ?? "pendiente_aprobacion"],
+    );
+    const row = rows[0]!;
+    return { id: row.id, name: row.name, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
+  }
+
+  async updateCompanyCapability(organizationId: string, capabilityId: string, input: CompanyCapabilityUpdateInput): Promise<CompanyCapabilityRecord> {
+    const { rows } = await this.db.query<{ id: string; name: string; description: string; evidence_doc_id: string | null; approval_status: CompanyCapabilityRecord["approvalStatus"] }>(
+      `update licitaciones.company_capability set
+         description = coalesce($3, description),
+         evidence_doc_id = case when $4::boolean then $5::uuid else evidence_doc_id end,
+         approval_status = coalesce($6, approval_status)
+       where id = $1 and organization_id = $2
+       returning id, name, description, evidence_doc_id, approval_status;`,
+      [capabilityId, organizationId, input.description ?? null, "evidenceDocId" in input, input.evidenceDocId ?? null, input.approvalStatus ?? null],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`Capacidad "${capabilityId}" no encontrada para la organización "${organizationId}".`);
+    return { id: row.id, name: row.name, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
+  }
+
+  async createCompanyExperience(organizationId: string, input: CompanyExperienceCreateInput): Promise<CompanyExperienceItemRecord> {
+    const { rows } = await this.db.query<{ id: string; description: string; evidence_doc_id: string; approval_status: CompanyExperienceItemRecord["approvalStatus"] }>(
+      `insert into licitaciones.company_experience (organization_id, description, evidence_doc_id, approval_status)
+       values ($1, $2, $3, $4)
+       returning id, description, evidence_doc_id, approval_status;`,
+      [organizationId, input.description, input.evidenceDocId, input.approvalStatus ?? "pendiente_aprobacion"],
+    );
+    const row = rows[0]!;
+    return { id: row.id, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
+  }
+
+  async updateCompanyExperience(organizationId: string, experienceId: string, input: CompanyExperienceUpdateInput): Promise<CompanyExperienceItemRecord> {
+    const { rows } = await this.db.query<{ id: string; description: string; evidence_doc_id: string; approval_status: CompanyExperienceItemRecord["approvalStatus"] }>(
+      `update licitaciones.company_experience set
+         description = coalesce($3, description),
+         evidence_doc_id = coalesce($4, evidence_doc_id),
+         approval_status = coalesce($5, approval_status)
+       where id = $1 and organization_id = $2
+       returning id, description, evidence_doc_id, approval_status;`,
+      [experienceId, organizationId, input.description ?? null, input.evidenceDocId ?? null, input.approvalStatus ?? null],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`Experiencia "${experienceId}" no encontrada para la organización "${organizationId}".`);
+    return { id: row.id, description: row.description, evidenceDocId: row.evidence_doc_id, approvalStatus: row.approval_status };
+  }
+
+  async createCompanySigner(organizationId: string, input: CompanySignerCreateInput): Promise<CompanySignerRecord> {
+    const existing = await this.db.query<{ id: string }>(`select id from licitaciones.company_signer where organization_id = $1 and role = $2;`, [organizationId, input.role]);
+    if (existing.rows.length > 0) throw new CompanyDataDuplicateKeyError("firmante", input.role);
+
+    const { rows } = await this.db.query<{ id: string; name: string; role: string; authorized: boolean }>(
+      `insert into licitaciones.company_signer (organization_id, name, role, authorized) values ($1, $2, $3, $4) returning id, name, role, authorized;`,
+      [organizationId, input.name, input.role, input.authorized ?? false],
+    );
+    return rows[0]!;
+  }
+
+  async updateCompanySigner(organizationId: string, signerId: string, input: CompanySignerUpdateInput): Promise<CompanySignerRecord> {
+    const { rows } = await this.db.query<{ id: string; name: string; role: string; authorized: boolean }>(
+      `update licitaciones.company_signer set name = coalesce($3, name), authorized = coalesce($4, authorized) where id = $1 and organization_id = $2 returning id, name, role, authorized;`,
+      [signerId, organizationId, input.name ?? null, input.authorized ?? null],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`Firmante "${signerId}" no encontrado para la organización "${organizationId}".`);
+    return row;
   }
 
   async listComplianceItems(organizationId: string, proposalId: string): Promise<readonly ComplianceItemRecord[]> {

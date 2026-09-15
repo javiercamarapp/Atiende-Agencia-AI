@@ -15,26 +15,12 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { acceptInvite, LoginError, persistSession } from "../lib/auth-client.ts";
+import { acceptInvite, decideLandingPathForInvite, LoginError, persistSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 
 export interface AceptarInvitacionPageProps {
   readonly apiBaseUrl: string;
   readonly onAccepted: (session: LoginSession, landingPath: string) => void;
-}
-
-/** Misma lógica que `decideLandingPath` (lib/auth-client.ts), pero sin asumir
- * "restaurantes" en el caso de 1 sola organización: aquí SÍ conocemos el `vertical`
- * real de la organización que trajo la sesión (la invitación lo fijó), así que se usa
- * ese en vez del hardcode que `decideLandingPath` todavía tiene para el flujo de
- * login (fuera de alcance de este hallazgo — ver el comentario de esa función). */
-function decideLandingPathForInvite(session: LoginSession): string {
-  if (session.organizations.length === 0) return "/sin-organizacion";
-  if (session.organizations.length === 1) {
-    const org = session.organizations[0]!;
-    return `/${org.vertical}/${org.slug}`;
-  }
-  return "/seleccionar-organizacion";
 }
 
 export function AceptarInvitacionPage({ apiBaseUrl, onAccepted }: AceptarInvitacionPageProps) {

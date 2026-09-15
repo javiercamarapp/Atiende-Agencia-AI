@@ -149,6 +149,7 @@ interface InvoiceRawRow {
   warnings: string[];
   requires_human_review: boolean;
   diot: DiotResult;
+  fecha: string;
   created_at: string;
 }
 
@@ -173,6 +174,7 @@ function mapInvoice(row: InvoiceRawRow): InvoiceRecord {
     warnings: row.warnings,
     requiresHumanReview: row.requires_human_review,
     diot: row.diot,
+    fecha: row.fecha,
     createdAt: row.created_at,
   };
 }
@@ -345,8 +347,8 @@ export class PostgresDespachosRepository implements DespachosRepository {
       const { rows } = await this.db.query<InvoiceRawRow>(
         `insert into despachos.invoice
            (organization_id, property_id, folio_fiscal, tipo, rfc_emisor, rfc_receptor, emisor_nombre,
-            subtotal, total, iva, descuento, categoria, valido, issues, warnings, requires_human_review, diot)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17::jsonb)
+            subtotal, total, iva, descuento, categoria, valido, issues, warnings, requires_human_review, diot, fecha)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17::jsonb, $18)
          returning *;`,
         [
           input.organizationId,
@@ -366,6 +368,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
           JSON.stringify(input.warnings),
           input.requiresHumanReview,
           JSON.stringify(input.diot),
+          input.fecha,
         ],
       );
       return mapInvoice(rows[0]!);
@@ -386,10 +389,12 @@ export class PostgresDespachosRepository implements DespachosRepository {
   }
 
   async listInvoices(propertyId: string, filter?: { readonly requiresHumanReview?: boolean; readonly periodo?: string }): Promise<readonly InvoiceRecord[]> {
-    // Filtro por período (Fase 2, aditivo — ver repository.ts): sin migración de
-    // esquema nueva, resuelto contra el jsonb `diot.proveedoresReportables` ya
-    // persistido (un invoice es del período si al menos un registro reportable
-    // coincide con "YYYY-MM").
+    // Filtro por período (migración 006, corregido — ver repository.ts): resuelto
+    // directo contra la columna real `fecha` (fecha de emisión del CFDI), nunca
+    // contra el jsonb `diot.proveedoresReportables` (que solo existe para un CFDI
+    // tipo 'I' con subtotal>0 — con el filtro viejo, cualquier otro tipo o un 'I' con
+    // subtotal=0 desaparecía del período sin importar su fecha real) ni contra
+    // `created_at` (fecha de INGESTA, no de emisión).
     const conditions = ["property_id = $1"];
     const params: unknown[] = [propertyId];
     if (filter?.requiresHumanReview !== undefined) {
@@ -398,7 +403,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
     }
     if (filter?.periodo !== undefined) {
       params.push(filter.periodo);
-      conditions.push(`exists (select 1 from jsonb_array_elements(diot->'proveedoresReportables') as p where p->>'periodo' = $${params.length})`);
+      conditions.push(`to_char(fecha, 'YYYY-MM') = $${params.length}`);
     }
     const { rows } = await this.db.query<InvoiceRawRow>(`select * from despachos.invoice where ${conditions.join(" and ")} order by created_at desc;`, params);
     return rows.map(mapInvoice);

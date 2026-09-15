@@ -15,6 +15,7 @@
 // de esta URL), se degrada a un mensaje real en vez de una pantalla en blanco o un
 // crash — nunca un stub silencioso.
 import { useLocation, useNavigate } from "react-router-dom";
+import { decideOrganizacionSeleccionadaPath } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 
 interface SeleccionarOrganizacionState {
@@ -58,7 +59,7 @@ export function SeleccionarOrganizacionPage() {
             <button
               key={org.id}
               type="button"
-              onClick={() => navigate(`/${vertical}/${org.slug}`)}
+              onClick={() => navigate(decideOrganizacionSeleccionadaPath(vertical, org))}
               style={{ textAlign: "left", padding: "12px 16px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 15 }}
             >
               <div style={{ fontWeight: 600 }}>{org.nombre}</div>

@@ -81,14 +81,17 @@ function parseMovimiento(raw: unknown, idx: number): MovimientoBancario {
   return { fecha, descripcion, referencia, cargo, abono, saldo, monto, banco, formato };
 }
 
-/** Aplana un `InvoiceRecord` ya ingerido a `RegistroConciliable` — usa la fecha
- * REAL del CFDI (`diot.proveedoresReportables[0].fecha`, mismo criterio de
- * declaraciones.ts para DIOT) con fallback a la fecha de ingesta si no está. */
+/** Aplana un `InvoiceRecord` ya ingerido a `RegistroConciliable` — usa la fecha REAL
+ * del CFDI (`invoice.fecha`, migración 006) directamente. Antes de esa migración
+ * solo sobrevivía `diot.proveedoresReportables[0].fecha` (únicamente para un CFDI
+ * tipo 'I' con subtotal>0) con fallback a `createdAt` (fecha de INGESTA, no de
+ * emisión) — con tolerancia de días, un CFDI cargado días después del movimiento
+ * bancario real nunca hacía match. `invoice.fecha` es NOT NULL desde la migración
+ * 006, así que ya no hace falta ningún fallback. */
 function invoiceARegistroConciliable(inv: InvoiceRecord): RegistroConciliable {
-  const fechaCfdi = inv.diot.proveedoresReportables[0]?.fecha ?? inv.createdAt.slice(0, 10);
   return {
     id: inv.id,
-    fecha: fechaCfdi,
+    fecha: inv.fecha,
     total: inv.total,
     descripcion: inv.emisorNombre,
     referencia: inv.folioFiscal,

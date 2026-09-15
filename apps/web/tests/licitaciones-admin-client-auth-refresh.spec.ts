@@ -3,7 +3,7 @@
 // el panel queda muerto sin refresh ni redirección") — ver el comentario de
 // cabecera de hoteles-admin-client-auth-refresh.spec.ts para el criterio completo.
 import { describe, expect, it } from "vitest";
-import { fetchJson, LicitacionesAdminError, postJson, SessionExpiredError } from "../src/verticals/licitaciones/lib/admin-client.ts";
+import { fetchJson, LicitacionesAdminError, postJson, putJson, SessionExpiredError } from "../src/verticals/licitaciones/lib/admin-client.ts";
 import type { LoginSession } from "../src/verticals/licitaciones/lib/auth-client.ts";
 import type { AuthedFetchContext } from "../src/lib/authed-fetch.ts";
 
@@ -93,5 +93,52 @@ describe("licitaciones/lib/admin-client.ts — refresh automático ante 401", ()
     const fetchImpl = (async () => new Response(JSON.stringify({ message: "no autorizado para esta acción" }), { status: 403 })) as unknown as typeof fetch;
     const { ctx } = fakeCtx({ token: "tok", refreshToken: "r", email: "analista@empresa.mx", organizations: [] });
     await expect(fetchJson(fetchImpl, "http://api.local/licitaciones/prop-1/tenders", "tok", ctx)).rejects.toThrow(LicitacionesAdminError);
+  });
+
+  // Hallazgo de auditoría, severidad ALTA: a diferencia de fetchJson/postJson de
+  // arriba, `putJson` (usado por matching-profile-client.ts/technical-proposal-
+  // client.ts) llamaba `fetchImpl` directo sin pasar nunca por `withAuthRefresh` —
+  // mismo hallazgo, mismo archivo, corregido con el mismo patrón.
+  it("putJson: mismo refresh-y-reintento, conservando extraHeaders en el reintento", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init: init! });
+      if (url === "http://api.local/auth/refresh") return new Response(JSON.stringify(REFRESHED), { status: 200 });
+      const auth = (init?.headers as Record<string, string>).authorization;
+      if (auth === "Bearer tok-viejo") return new Response(JSON.stringify({ message: "jwt expired" }), { status: 401 });
+      return new Response(JSON.stringify({ id: "mp1" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const { ctx, persisted } = fakeCtx({ token: "tok-viejo", refreshToken: "refresh-viejo", email: "analista@empresa.mx", organizations: [] });
+    const result = await putJson<{ id: string }>(
+      fetchImpl,
+      "http://api.local/licitaciones/prop-1/matching-profile",
+      "tok-viejo",
+      { keywords: ["obra pública"] },
+      { "x-custom": "1" },
+      ctx,
+    );
+
+    expect(result.id).toBe("mp1");
+    expect(calls.map((c) => c.url)).toEqual([
+      "http://api.local/licitaciones/prop-1/matching-profile",
+      "http://api.local/auth/refresh",
+      "http://api.local/licitaciones/prop-1/matching-profile",
+    ]);
+    const reintento = calls[2]!;
+    expect((reintento.init.headers as Record<string, string>)["x-custom"]).toBe("1");
+    expect(persisted).toEqual([REFRESHED]);
+  });
+
+  it("putJson: refresh fallido -> limpia la sesión y lanza SessionExpiredError", async () => {
+    const fetchImpl = (async (url: string) => {
+      if (url === "http://api.local/auth/refresh") return new Response(JSON.stringify({ message: "no" }), { status: 401 });
+      return new Response(JSON.stringify({ message: "jwt expired" }), { status: 401 });
+    }) as unknown as typeof fetch;
+
+    const { ctx, clearedCount, currentSession } = fakeCtx({ token: "tok-viejo", refreshToken: "refresh-revocado", email: "analista@empresa.mx", organizations: [] });
+    await expect(putJson(fetchImpl, "http://api.local/licitaciones/prop-1/matching-profile", "tok-viejo", {}, {}, ctx)).rejects.toThrow(SessionExpiredError);
+    expect(clearedCount()).toBe(1);
+    expect(currentSession()).toBeNull();
   });
 });

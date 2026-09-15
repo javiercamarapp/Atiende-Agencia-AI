@@ -94,6 +94,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
   const [aviso, setAviso] = useState<string | null>(null);
 
   const [unidades, setUnidades] = useState<readonly UnidadOption[]>([]);
+  const [unidadesError, setUnidadesError] = useState<string | null>(null);
   const [incUnidadId, setIncUnidadId] = useState("");
   const [incSeveridad, setIncSeveridad] = useState<SeveridadIncidencia>("leve");
   const [incTitulo, setIncTitulo] = useState("");
@@ -118,10 +119,18 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
   useEffect(() => {
     if (!puedeOperar) return;
     void cargarListas();
+    setUnidadesError(null);
     fetchUnidades(fetch, apiBaseUrl, token, propertyId)
-      .then(setUnidades)
-      .catch(() => {
-        /* el formulario de incidencias solo pierde el selector de unidad; el resto de la página sigue funcionando */
+      .then((list) => {
+        setUnidades(list);
+        setUnidadesError(null);
+      })
+      .catch((err) => {
+        // El formulario de incidencias solo pierde el selector de unidad -- el resto de
+        // la página sigue funcionando -- pero el error real (403 de rol, red caída,
+        // etc.) se muestra, nunca se traga en silencio.
+        setUnidades([]);
+        setUnidadesError(err instanceof Error ? err.message : "No se pudieron cargar las unidades para el selector.");
       });
   }, [puedeOperar, cargarListas, apiBaseUrl, token, propertyId]);
 
@@ -379,6 +388,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
 
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 15, margin: 0 }}>Reportar incidencia</h2>
+        {unidadesError && <p style={errorStyle} role="alert">{unidadesError}</p>}
         {incError && <p style={errorStyle} role="alert">{incError}</p>}
         {incAviso && <p style={noticeStyle}>{incAviso}</p>}
         <form onSubmit={handleReportarIncidencia} style={{ display: "flex", flexDirection: "column", gap: 10 }}>

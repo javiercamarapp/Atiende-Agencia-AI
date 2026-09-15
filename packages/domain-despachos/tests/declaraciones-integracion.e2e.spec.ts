@@ -83,6 +83,7 @@ describe("integración e2e: CFDI -> validarCfdiDespachos -> repositorio (filtro 
         warnings: resultado.warnings,
         requiresHumanReview: resultado.requiresHumanReview,
         diot: resultado.diot,
+        fecha: (datos.fecha ?? new Date().toISOString()).slice(0, 10),
       };
       return repo.insertInvoice(input);
     }
@@ -144,6 +145,7 @@ describe("integración e2e: CFDI -> validarCfdiDespachos -> repositorio (filtro 
       warnings: resultado.warnings,
       requiresHumanReview: resultado.requiresHumanReview,
       diot: resultado.diot,
+      fecha: (datos.fecha ?? new Date().toISOString()).slice(0, 10),
     });
 
     expect(invoice.diot.proveedoresReportables[0]!.tasaIva).toBeCloseTo(0.16, 4);
