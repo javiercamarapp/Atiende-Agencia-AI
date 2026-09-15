@@ -1,9 +1,13 @@
 // Capa de aplicación transaccional de limpieza/mantenimiento (Fase 8, BACKLOG E08,
 // H-049 a H-055 del origen) — port de
 // rentas/packages/domain/src/limpieza/aplicacion/tareas.ts. Mismo patrón exacto que
-// ../../aplicacion/reservas.ts: cada función abre/cierra su propia transacción sobre
-// un `EjecutorTransaccional` ya conectado, nunca importa nada de infraestructura
-// concreta (structural typing).
+// ../../aplicacion/reservas.ts: cada función abre/cierra su propia SUB-transacción
+// (`SAVEPOINT`/`RELEASE SAVEPOINT`/`ROLLBACK TO SAVEPOINT`, nunca `BEGIN`/`COMMIT`/
+// `ROLLBACK` — ver el comentario de cabecera de ../../aplicacion/reservas.ts para el
+// porqué: el único caller real, `dbSession`, ya corre dentro de una transacción
+// externa por request, y un `BEGIN`/`COMMIT` propio la confirmaría/revertiría de
+// verdad) sobre un `EjecutorTransaccional` ya conectado, nunca importa nada de
+// infraestructura concreta (structural typing).
 //
 // Diferencias deliberadas frente al port literal (mismo criterio documentado en la
 // cabecera de ../../aplicacion/reservas.ts):
@@ -109,7 +113,7 @@ export async function crearTareaLimpiezaPorCheckout(
 ): Promise<ResultadoCrearTareaCheckout> {
   const config = await obtenerConfiguracion(ejecutor, entrada.unidadId);
 
-  await ejecutor.exec("BEGIN");
+  await ejecutor.exec("SAVEPOINT sp_crear_tarea_limpieza_checkout");
   let tareaId: string;
   try {
     await bloquearUnidadEnTransaccion(ejecutor, entrada.unidadId);
@@ -128,16 +132,20 @@ export async function crearTareaLimpiezaPorCheckout(
     tareaId = insertado.rows[0]!.id;
     await insertarChecklistPlantilla(ejecutor, tareaId, "limpieza");
 
-    await ejecutor.exec("COMMIT");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_crear_tarea_limpieza_checkout");
   } catch (error) {
-    await ejecutor.exec("ROLLBACK");
+    await ejecutor.exec("ROLLBACK TO SAVEPOINT sp_crear_tarea_limpieza_checkout");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_crear_tarea_limpieza_checkout");
     throw error;
   }
 
-  // `crearBloqueo` gestiona su PROPIA transacción (BEGIN/COMMIT interno) — se
-  // invoca DESPUÉS del COMMIT de arriba, nunca anidada dentro de la transacción de
-  // la tarea (mismo criterio documentado en el origen: `EjecutorTransaccional` no
-  // soporta transacciones anidadas reales).
+  // `crearBloqueo` gestiona su PROPIA sub-transacción (SAVEPOINT/RELEASE SAVEPOINT
+  // interno, ver ../../aplicacion/reservas.ts) — se invoca DESPUÉS del RELEASE
+  // SAVEPOINT de arriba, nunca anidada dentro de la sub-transacción de la tarea.
+  // Ninguna de las dos toca la transacción EXTERNA de la request (la que abrió
+  // `dbSession`): un `BEGIN`/`COMMIT` propio aquí la confirmaría/revertiría de
+  // verdad y perdería `set local role`/`set_config` para el resto del handler (ver
+  // el comentario de cabecera de ../../aplicacion/reservas.ts).
   const rangoBuffer = calcularRangoBuffer(entrada.fechaCheckout, config.bufferLimpiezaNoches);
   let bufferOcupacionId: string | null = null;
   if (rangoBuffer) {
@@ -274,7 +282,7 @@ export async function crearTareaOperativaManual(ejecutor: EjecutorTransaccional,
   const creadaEn = new Date().toISOString();
   const slaVenceEn = calcularVencimientoSla(creadaEn, entrada.tipo, prioridad, config);
 
-  await ejecutor.exec("BEGIN");
+  await ejecutor.exec("SAVEPOINT sp_crear_tarea_operativa_manual");
   let tareaId: string;
   try {
     const insertado = await ejecutor.query<{ id: string }>(
@@ -287,9 +295,10 @@ export async function crearTareaOperativaManual(ejecutor: EjecutorTransaccional,
     tareaId = insertado.rows[0]!.id;
     await insertarChecklistPlantilla(ejecutor, tareaId, entrada.tipo);
 
-    await ejecutor.exec("COMMIT");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_crear_tarea_operativa_manual");
   } catch (error) {
-    await ejecutor.exec("ROLLBACK");
+    await ejecutor.exec("ROLLBACK TO SAVEPOINT sp_crear_tarea_operativa_manual");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_crear_tarea_operativa_manual");
     throw error;
   }
 

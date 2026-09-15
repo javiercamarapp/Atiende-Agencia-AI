@@ -59,13 +59,26 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
   }
 
   async withAppSession<T>(claims: { userId: string | null }, fn: (session: TenantDbSession) => Promise<T>): Promise<T> {
-    // Locks adquiridos durante ESTA sesión (un ciclo BEGIN..COMMIT/ROLLBACK) — el
-    // advisory lock real es xact-scoped (se libera automáticamente al terminar la
-    // transacción), aquí se libera explícitamente cuando se ve el exec() de cierre.
+    // Locks adquiridos durante ESTA sesión (la transacción EXTERNA de la request,
+    // ver managed-postgres-engine.ts::withAppSession) — el advisory lock real es
+    // xact-scoped (se libera automáticamente al terminar la transacción EXTERNA,
+    // nunca antes), así que aquí solo se libera en el `finally` de abajo, una vez por
+    // clave (ver `heldKeys`), nunca desde `exec()`.
     const heldLocks: Array<() => void> = [];
+    // `pg_advisory_xact_lock` es reentrante DENTRO de la misma sesión/transacción
+    // real: Postgres documenta que una sesión que ya sostiene un advisory lock puede
+    // volver a pedirlo sin bloquearse contra sí misma (a diferencia de dos sesiones
+    // distintas). Varias funciones de aplicación (crearReservaConfirmada,
+    // modificarFechasReserva, crearBloqueo, crearTareaLimpiezaPorCheckout, …) piden el
+    // MISMO advisory lock de `unidad_id` en SUB-transacciones (SAVEPOINT) distintas
+    // pero dentro de la MISMA sesión real — sin esta reentrancia, la segunda petición
+    // se pondría en la cola de `KeyedMutex` detrás de sí misma y nunca se
+    // resolvería (deadlock del propio test/request).
+    const heldKeys = new Set<string>();
 
     const releaseAllLocks = () => {
       while (heldLocks.length > 0) heldLocks.pop()!();
+      heldKeys.clear();
     };
 
     const store = this.calendarStore;
@@ -86,11 +99,19 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
           return { rows: rows as unknown as R[] };
         }
 
-        // ---- pg_advisory_xact_lock ----
+        // ---- pg_advisory_xact_lock (bloquearUnidadEnTransaccion Y
+        // bloquearOwnerStatementEnTransaccion emiten el mismo texto SQL, distintas
+        // claves de negocio -- ambas pasan por aquí indistintamente) ----
         if (n.startsWith("select pg_advisory_xact_lock")) {
-          const unidadId = params[0] as string;
-          const release = await store.acquireUnidadLock(unidadId);
-          heldLocks.push(release);
+          const key = params[0] as string;
+          // Reentrante por sesión (ver comentario de `heldKeys` arriba): si ESTA
+          // sesión ya sostiene el lock de `key`, Postgres real lo concede de
+          // inmediato sin volver a encolarse.
+          if (!heldKeys.has(key)) {
+            const release = await store.acquireUnidadLock(key);
+            heldLocks.push(release);
+            heldKeys.add(key);
+          }
           return { rows: [] as R[] };
         }
 
@@ -407,15 +428,33 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
       },
       exec: async (sql: string) => {
         const n = normalize(sql);
-        if (n === "begin") return;
-        if (n === "commit" || n === "rollback") {
-          releaseAllLocks();
-          return;
+        // BEGIN/COMMIT/ROLLBACK "crudos" NUNCA son válidos aquí -- ver el hallazgo
+        // de auditoría documentado en la cabecera de
+        // ../aplicacion/reservas.ts: esta sesión SIEMPRE corre DENTRO de la
+        // transacción EXTERNA que ya abrió `withAppSession` (mismo patrón que
+        // `managed-postgres-engine.ts` en producción: BEGIN + "set local role
+        // authenticated" + set_config por transacción de REQUEST, antes de invocar
+        // `fn`). Antes de este fix, un `BEGIN`/`COMMIT` propio de la capa de
+        // aplicación se toleraba en silencio aquí (no-op / libera locks) -- pero en
+        // Postgres REAL ese `COMMIT` interno confirma de verdad la transacción
+        // EXTERNA (Postgres no anida transacciones reales) y pierde el contexto de
+        // sesión (`set local role`/`set_config`, ambos con alcance de transacción)
+        // para todo lo que corra después en el mismo handler. Lanzar aquí es lo que
+        // permite que un test que reintroduzca ese bug (un `BEGIN`/`COMMIT` propio
+        // en vez de `SAVEPOINT`/`RELEASE SAVEPOINT`) falle en CI en vez de pasar en
+        // silencio contra este motor.
+        if (n === "begin" || n === "commit" || n === "rollback") {
+          throw new Error(
+            `InMemoryRentasTenancyEngine: exec("${sql.trim()}") no soportado -- esta sesión ya corre dentro de la transacción externa de la request (ver withAppSession/managed-postgres-engine.ts). Un BEGIN/COMMIT/ROLLBACK propio de la capa de aplicación confirmaría o revertiría ESA transacción externa y perdería "set local role"/"set_config" para el resto del handler. Usa SAVEPOINT/RELEASE SAVEPOINT/ROLLBACK TO SAVEPOINT.`,
+          );
         }
-        if (n.startsWith("savepoint") || n.startsWith("rollback to savepoint")) {
+        if (n.startsWith("savepoint") || n.startsWith("release savepoint") || n.startsWith("rollback to savepoint")) {
           // Ver comentario de cabecera de calendar-store.ts: las restricciones se
           // verifican ANTES de mutar, así que un intento que viola el EXCLUDE nunca
-          // llega a persistir nada — no hay estado que deshacer aquí.
+          // llega a persistir nada — no hay estado que deshacer aquí. El advisory
+          // lock tampoco se libera en ningún SAVEPOINT/RELEASE/ROLLBACK TO
+          // SAVEPOINT -- es xact-scoped a la transacción EXTERNA, nunca a una
+          // sub-transacción (ver `heldKeys`/`releaseAllLocks` arriba).
           return;
         }
         if (n.startsWith("update rentas.ocupacion")) {
@@ -426,15 +465,13 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
     };
 
     // Espejo de `managed-postgres-engine.ts::withAppSession` (Postgres real): el
-    // advisory lock es xact-scoped y SIEMPRE se libera cuando la transacción de la
-    // request termina (commit o rollback), sin que el caller tenga que liberarlo a
-    // mano (ver diseño Fase 2 rentas §4.2, "se libera solo al COMMIT/ROLLBACK de la
-    // transacción de la request"). `aplicacion/reservas.ts` ya libera explícito antes
-    // de esto vía `exec("COMMIT"/"ROLLBACK")` para su propia sub-transacción anidada
-    // -- `releaseAllLocks()` es idempotente (vacía el array), así que liberar aquí de
-    // nuevo al final es inofensivo para ese caso y es la única liberación real para
-    // cualquier otro caller (p. ej. `bloquearOwnerStatementEnTransaccion`) que nunca
-    // emite su propio exec de cierre, exactamente como en producción.
+    // advisory lock es xact-scoped y SIEMPRE se libera cuando la transacción
+    // EXTERNA de la request termina (commit o rollback) -- nunca antes, ni por un
+    // SAVEPOINT/RELEASE SAVEPOINT interno de `aplicacion/reservas.ts` /
+    // `limpieza/aplicacion/tareas.ts` (ver `heldKeys` arriba: esas funciones
+    // reutilizan el MISMO lock ya sostenido por esta sesión en vez de volver a
+    // pedirlo). La única liberación real ocurre aquí, en el `finally` que envuelve
+    // toda la sesión.
     try {
       return await fn(session);
     } finally {

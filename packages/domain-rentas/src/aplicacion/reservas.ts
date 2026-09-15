@@ -1,18 +1,38 @@
 // Capa de aplicación transaccional sobre `rentas.ocupacion` — port ~literal de
 // rentas/packages/domain/src/aplicacion/reservas.ts (ver diseño Fase 1 §3, tabla
-// src/aplicacion/reservas.ts). Cada función gestiona su propia transacción de
+// src/aplicacion/reservas.ts). Cada función gestiona su propia SUB-transacción de
 // principio a fin: recibe un `EjecutorTransaccional` ya conectado (una conexión SQL
 // abierta, no un pool — en producción, el `TenantDbSession` que abre
 // `@atiende/core-auth::dbSession` para el request, que satisface esta interfaz por
-// structural typing) y deja la conexión en estado `IDLE` (fuera de transacción) al
-// terminar, tanto en éxito como en error.
+// structural typing).
+//
+// IMPORTANTE (fix D-0xx, hallazgo de auditoría): esa conexión YA está dentro de la
+// transacción EXTERNA que `dbSession`/`TenancyEngine.withAppSession` abrió para todo
+// el request (`BEGIN` + `set local role authenticated` + `set_config('request.jwt.
+// claim.sub', ...)`, ver packages/db/src/managed-postgres-engine.ts) — el único
+// caller real en producción. Antes de este fix, cada función de aquí abajo emitía su
+// propio `BEGIN`/`COMMIT`/`ROLLBACK` literal; Postgres NO tiene transacciones
+// anidadas reales: un segundo `BEGIN` dentro de una ya abierta es un no-op con
+// WARNING, pero el `COMMIT` interno sí confirmaba de verdad la transacción EXTERNA de
+// la request -- terminándola por completo y perdiendo `set local role`/`set_config`
+// (ambos con alcance de transacción) para cualquier lectura/escritura posterior en el
+// MISMO handler (permission denied, o peor: RLS aplicado con el rol de conexión del
+// pool en vez del rol de usuario real). Por eso cada función usa ahora
+// `SAVEPOINT <nombre>` / `RELEASE SAVEPOINT <nombre>` / `ROLLBACK TO SAVEPOINT
+// <nombre>` en vez de `BEGIN`/`COMMIT`/`ROLLBACK` — un savepoint sí anida de verdad
+// dentro de la transacción externa y nunca la confirma ni la revierte, así que la
+// sesión del request sigue viva (con su rol y sus claims) para todo lo que corra
+// después. Nunca se asume una conexión fuera de transacción: `EjecutorTransaccional`
+// no expone forma de detectarlo, y el único caller real (`dbSession`) siempre corre
+// dentro de una transacción abierta.
 //
 // Mecanismo de conflicto (corrección BC1 del origen): el `INSERT`/`UPDATE` que sí
 // participa del EXCLUDE (capa='reserva', bloqueante=true, estado<>'cancelado') se
-// intenta dentro de un `SAVEPOINT`; si Postgres lo rechaza con `23P01`
-// (`exclusion_violation`), se hace `ROLLBACK TO SAVEPOINT` (recupera la transacción,
-// que de otro modo quedaría abortada) y se registra el conflicto de forma explícita —
-// nunca se cancela ninguna reserva automáticamente (REQ-000).
+// intenta dentro de un `SAVEPOINT` anidado (uno más adentro que el de la función); si
+// Postgres lo rechaza con `23P01` (`exclusion_violation`), se hace `ROLLBACK TO
+// SAVEPOINT` (recupera la transacción, que de otro modo quedaría abortada) y se
+// registra el conflicto de forma explícita — nunca se cancela ninguna reserva
+// automáticamente (REQ-000).
 //
 // Diferencias deliberadas frente al port literal (ver README.md de este paquete):
 //  1. Las tablas están calificadas por schema (`rentas.*`) e incluyen
@@ -126,7 +146,7 @@ export async function crearReservaConfirmada(ejecutor: EjecutorTransaccional, en
     );
   }
 
-  await ejecutor.exec("BEGIN");
+  await ejecutor.exec("SAVEPOINT sp_crear_reserva");
   try {
     await bloquearUnidadEnTransaccion(ejecutor, entrada.unidadId);
 
@@ -227,7 +247,7 @@ export async function crearReservaConfirmada(ejecutor: EjecutorTransaccional, en
         entrada.rango,
       );
 
-      await ejecutor.exec("COMMIT");
+      await ejecutor.exec("RELEASE SAVEPOINT sp_crear_reserva");
       return { ocupacionId, conflicto, conflictosCapaCruzada };
     }
 
@@ -244,10 +264,11 @@ export async function crearReservaConfirmada(ejecutor: EjecutorTransaccional, en
       entrada.rango,
     );
 
-    await ejecutor.exec("COMMIT");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_crear_reserva");
     return { ocupacionId, conflicto: null, conflictosCapaCruzada };
   } catch (error) {
-    await ejecutor.exec("ROLLBACK");
+    await ejecutor.exec("ROLLBACK TO SAVEPOINT sp_crear_reserva");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_crear_reserva");
     throw error;
   }
 }
@@ -276,7 +297,7 @@ export interface ResultadoCrearBloqueo {
 export async function crearBloqueo(ejecutor: EjecutorTransaccional, entrada: EntradaCrearBloqueo): Promise<ResultadoCrearBloqueo> {
   requireRangoValido(entrada.rango);
 
-  await ejecutor.exec("BEGIN");
+  await ejecutor.exec("SAVEPOINT sp_crear_bloqueo");
   try {
     await bloquearUnidadEnTransaccion(ejecutor, entrada.unidadId);
     const insertado = await ejecutor.query<{ id: string }>(
@@ -309,10 +330,11 @@ export async function crearBloqueo(ejecutor: EjecutorTransaccional, entrada: Ent
       });
     }
 
-    await ejecutor.exec("COMMIT");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_crear_bloqueo");
     return { ocupacionId, conflictosCapaCruzada };
   } catch (error) {
-    await ejecutor.exec("ROLLBACK");
+    await ejecutor.exec("ROLLBACK TO SAVEPOINT sp_crear_bloqueo");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_crear_bloqueo");
     throw error;
   }
 }
@@ -326,7 +348,7 @@ export interface ResultadoCancelarOcupacion {
 }
 
 export async function cancelarOcupacion(ejecutor: EjecutorTransaccional, ocupacionId: string): Promise<ResultadoCancelarOcupacion> {
-  await ejecutor.exec("BEGIN");
+  await ejecutor.exec("SAVEPOINT sp_cancelar_ocupacion");
   try {
     const actual = await ejecutor.query<{ estado: EstadoOcupacion }>(`SELECT estado FROM rentas.ocupacion WHERE id = $1 FOR UPDATE`, [ocupacionId]);
     if (actual.rows.length === 0) {
@@ -342,10 +364,11 @@ export async function cancelarOcupacion(ejecutor: EjecutorTransaccional, ocupaci
     // siempre por OR sobre filas activas. Si otra fila con estado<>'cancelado' cubre
     // la misma noche, seguirá contando como ocupada sin ningún cambio adicional aquí.
 
-    await ejecutor.exec("COMMIT");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_cancelar_ocupacion");
     return { estadoAnterior };
   } catch (error) {
-    await ejecutor.exec("ROLLBACK");
+    await ejecutor.exec("ROLLBACK TO SAVEPOINT sp_cancelar_ocupacion");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_cancelar_ocupacion");
     throw error;
   }
 }
@@ -367,7 +390,7 @@ export interface ResultadoModificarFechas {
 export async function modificarFechasReserva(ejecutor: EjecutorTransaccional, ocupacionId: string, nuevoRango: RangoFechas): Promise<ResultadoModificarFechas> {
   requireRangoValido(nuevoRango);
 
-  await ejecutor.exec("BEGIN");
+  await ejecutor.exec("SAVEPOINT sp_modificar_fechas_reserva");
   try {
     const filaInicial = await ejecutor.query<{ unidad_id: string; organization_id: string; property_id: string }>(
       `SELECT unidad_id, organization_id, property_id FROM rentas.ocupacion WHERE id = $1`,
@@ -441,7 +464,7 @@ export async function modificarFechasReserva(ejecutor: EjecutorTransaccional, oc
       // realmente sigue vigente), no contra el rango rechazado.
       const conflictosCapaCruzada = await detectarYRegistrarConflictosCapaCruzada(ejecutor, organizationId, propertyId, unidadId, ocupacionId, rangoAnterior);
 
-      await ejecutor.exec("COMMIT");
+      await ejecutor.exec("RELEASE SAVEPOINT sp_modificar_fechas_reserva");
       return { ocupacionId, rangoAnterior, rangoEfectivo: rangoAnterior, conflicto, conflictosCapaCruzada };
     }
 
@@ -450,10 +473,11 @@ export async function modificarFechasReserva(ejecutor: EjecutorTransaccional, oc
     // crearReservaConfirmada) y se registra como conflicto de capa cruzada.
     const conflictosCapaCruzada = await detectarYRegistrarConflictosCapaCruzada(ejecutor, organizationId, propertyId, unidadId, ocupacionId, nuevoRango);
 
-    await ejecutor.exec("COMMIT");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_modificar_fechas_reserva");
     return { ocupacionId, rangoAnterior, rangoEfectivo: nuevoRango, conflicto: null, conflictosCapaCruzada };
   } catch (error) {
-    await ejecutor.exec("ROLLBACK");
+    await ejecutor.exec("ROLLBACK TO SAVEPOINT sp_modificar_fechas_reserva");
+    await ejecutor.exec("RELEASE SAVEPOINT sp_modificar_fechas_reserva");
     throw error;
   }
 }
