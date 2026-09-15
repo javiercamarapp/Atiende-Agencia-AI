@@ -9,6 +9,7 @@ import { Link } from "react-router-dom";
 import { addCharge, addDiscount, addPayment, closeFolio, fetchFolio, reverseCharge, CHARGE_CONCEPT_LABELS } from "../lib/folios-client.ts";
 import type { AddChargeInput, FolioSummary } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
+import { ConfirmModal } from "../components/ConfirmModal.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 export interface FolioPageProps extends HotelesShellContext {
@@ -35,6 +36,13 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
 
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "transferencia">("efectivo");
+
+  // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
+  // confirmación: ... cerrar folio ejecuta de inmediato con un clic"): cerrar un
+  // folio es IRREVERSIBLE desde este panel (no hay ningún botón de "reabrir") --
+  // `null` = modal cerrado; en otro caso guarda el motivo de cierre pendiente de
+  // confirmar. Ver components/ConfirmModal.tsx.
+  const [pendingClose, setPendingClose] = useState<"saldo_cero" | "cuenta_por_cobrar" | null>(null);
 
   async function load() {
     setError(null);
@@ -100,8 +108,26 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
     await withBusy(() => reverseCharge(fetch, apiBaseUrl, token, propertyId, folioId, chargeId, motivo, newIdempotencyKey()).then(() => undefined));
   }
 
-  async function handleClose(motivo: "saldo_cero" | "cuenta_por_cobrar") {
-    await withBusy(() => closeFolio(fetch, apiBaseUrl, token, propertyId, folioId, motivo).then(() => undefined));
+  // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
+  // confirmación"): dar clic en "Cerrar folio"/"Cerrar como cuenta por cobrar" ya
+  // NO cierra nada por sí solo -- solo abre el modal real (ver
+  // components/ConfirmModal.tsx, "modal, no window.confirm"); `handleConfirmClose`
+  // es la única función que de verdad llama a `closeFolio`.
+  function handleClose(motivo: "saldo_cero" | "cuenta_por_cobrar") {
+    setPendingClose(motivo);
+  }
+
+  async function handleConfirmClose() {
+    const motivo = pendingClose;
+    if (!motivo) return;
+    try {
+      await withBusy(() => closeFolio(fetch, apiBaseUrl, token, propertyId, folioId, motivo).then(() => undefined));
+    } finally {
+      // Cierra el modal SIEMPRE (éxito o error) -- un fallo del servidor debe ser
+      // visible en el banner de error de la página, nunca quedar oculto detrás del
+      // overlay del modal.
+      setPendingClose(null);
+    }
   }
 
   if (!folio && !error) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
@@ -230,14 +256,29 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
 
       {isOpen && (
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => void handleClose("saldo_cero")} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 13, cursor: "pointer" }}>
+          <button onClick={() => handleClose("saldo_cero")} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 13, cursor: "pointer" }}>
             Cerrar folio (saldo en cero)
           </button>
-          <button onClick={() => void handleClose("cuenta_por_cobrar")} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #b45309", background: "#fff", color: "#b45309", fontSize: 13, cursor: "pointer" }}>
+          <button onClick={() => handleClose("cuenta_por_cobrar")} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #b45309", background: "#fff", color: "#b45309", fontSize: 13, cursor: "pointer" }}>
             Cerrar como cuenta por cobrar
           </button>
         </div>
       )}
+
+      <ConfirmModal
+        open={pendingClose !== null}
+        title={pendingClose === "cuenta_por_cobrar" ? "Cerrar como cuenta por cobrar" : "Cerrar folio"}
+        message={
+          pendingClose === "cuenta_por_cobrar"
+            ? `¿Cerrar este folio (saldo ${formatMoney(folio.saldo)}) como cuenta por cobrar? Esta acción es irreversible desde este panel: el folio queda cerrado y el saldo pendiente pasa a cobranza.`
+            : `¿Cerrar este folio con saldo en cero? Esta acción es irreversible desde este panel: el folio queda cerrado y ya no admite cargos ni pagos nuevos.`
+        }
+        confirmLabel={pendingClose === "cuenta_por_cobrar" ? "Sí, cerrar como cuenta por cobrar" : "Sí, cerrar folio"}
+        cancelLabel="Volver"
+        busy={busy}
+        onConfirm={() => void handleConfirmClose()}
+        onCancel={() => setPendingClose(null)}
+      />
     </div>
   );
 }

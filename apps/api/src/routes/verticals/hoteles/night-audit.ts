@@ -49,8 +49,16 @@ export function hotelesNightAuditRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   // ---- 1) Ruta interna de barrido — sin authMiddleware/dbSession, abre su propia
   //         sesión de sistema para todo el barrido (mismo patrón EXACTO que
-  //         citasRemindersRoutes: `engine.withAppSession({ userId: null }, ...)`). ----
-  app.post("/internal/hoteles/night-audit", async (c) => {
+  //         citasRemindersRoutes: `engine.withAppSession({ userId: null }, ...)`).
+  //         `app.on(["GET","POST"], ...)`, NUNCA solo `app.post` — hallazgo de
+  //         auditoría (ALTA, "night-audit nunca corre automáticamente"): Vercel Cron
+  //         invoca el `path` configurado en vercel.json con GET (ver
+  //         `citasRemindersRoutes`/`licitacionesDiscoverRoutes`/
+  //         `hotelesEmailDispatchRoutes`, MISMO patrón exacto ya usado para las otras
+  //         rutas internas de barrido de este monorepo) — con solo `app.post` aquí,
+  //         agregar la entrada a `vercel.json` no habría bastado: el cron real
+  //         seguiría recibiendo 404 en cada disparo. ----
+  app.on(["GET", "POST"], "/internal/hoteles/night-audit", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {

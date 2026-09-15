@@ -34,10 +34,14 @@ import type {
   NewExpenseEntryInput,
   NewFnbOrderInput,
   NewFraudAlertInput,
+  NewGuestInput,
   NewHousekeepingShiftInput,
   NewMaintenanceTicketInput,
   NewPaymentInput,
+  NewRatePlanRangeInput,
   NewReservationInput,
+  NewRoomInput,
+  NewRoomTypeInput,
   NewStaffScheduleInput,
   NightAuditRunRecord,
   NightlyRateRecord,
@@ -49,6 +53,7 @@ import type {
   PropertySummary,
   ReopenedFolioChargeForFraudScan,
   ReservationRecord,
+  RoomSummary,
   RoomTypeSummary,
   GuestSummary,
   StaffScheduleRecord,
@@ -237,12 +242,13 @@ interface ReservationRawRow {
   cancellation_penalty_amount: string | null;
   canceled_at: string | null;
   created_at: string;
+  room_id: string | null;
 }
 
 const RESERVATION_COLUMNS = `id, organization_id, property_id, room_type_id, guest_id,
        check_in_date::text as check_in_date, check_out_date::text as check_out_date, status,
        total_amount, cancellation_penalty_amount, canceled_at::text as canceled_at,
-       created_at::text as created_at`;
+       created_at::text as created_at, room_id`;
 
 function mapReservation(row: ReservationRawRow): ReservationRecord {
   return {
@@ -258,6 +264,7 @@ function mapReservation(row: ReservationRawRow): ReservationRecord {
     cancellationPenaltyAmount: row.cancellation_penalty_amount == null ? null : Number(row.cancellation_penalty_amount),
     canceledAt: row.canceled_at,
     createdAt: row.created_at,
+    roomId: row.room_id,
   };
 }
 
@@ -845,6 +852,122 @@ export class PostgresHotelesRepository implements HotelesRepository {
       [propertyId, `%${needle}%`, limit],
     );
     return rows.map((r) => ({ id: r.id, fullName: r.full_name, email: r.email, phone: r.phone }));
+  }
+
+  // ---- Fix hallazgo CRÍTICO — alta REAL de catálogo (ver migrations/018_admin_catalogo_alta.sql
+  // para el GRANT/policy que habilita estos 6 métodos, antes solo SELECT). `23505`
+  // (unique_violation de Postgres) se traduce SIEMPRE a un `Error` con un prefijo
+  // reconocible en vez de dejar propagar el error crudo del driver — MISMO patrón
+  // exacto que `insertReservation`/`bookAvailability` ya usan para que la ruta HTTP
+  // (reservas.ts) traduzca `err.message.startsWith(...)` a un status HTTP real. ----
+
+  async insertRoomType(input: NewRoomTypeInput): Promise<RoomTypeSummary> {
+    try {
+      const { rows } = await this.db.query<{ id: string; name: string; max_occupancy: number }>(
+        `insert into hoteles.room_type (organization_id, property_id, name, max_occupancy)
+         values ($1, $2, $3, $4)
+         returning id, name, max_occupancy;`,
+        [input.organizationId, input.propertyId, input.name, input.maxOccupancy],
+      );
+      const row = rows[0]!;
+      return { id: row.id, name: row.name, maxOccupancy: row.max_occupancy };
+    } catch (err) {
+      if ((err as { code?: string }).code === "23505") throw new Error(`nombre_duplicado: ya existe un tipo de habitación llamado "${input.name}" en esta property.`);
+      throw err;
+    }
+  }
+
+  async listRooms(propertyId: string, roomTypeId?: string | null): Promise<readonly RoomSummary[]> {
+    const { rows } = await this.db.query<{ id: string; code: string; status: RoomSummary["status"]; room_type_id: string }>(
+      roomTypeId
+        ? `select id, code, status, room_type_id from hoteles.room where property_id = $1 and room_type_id = $2 order by code asc;`
+        : `select id, code, status, room_type_id from hoteles.room where property_id = $1 order by code asc;`,
+      roomTypeId ? [propertyId, roomTypeId] : [propertyId],
+    );
+    return rows.map((r) => ({ id: r.id, code: r.code, status: r.status, roomTypeId: r.room_type_id }));
+  }
+
+  async findRoom(propertyId: string, roomId: string): Promise<RoomSummary | null> {
+    const { rows } = await this.db.query<{ id: string; code: string; status: RoomSummary["status"]; room_type_id: string }>(
+      `select id, code, status, room_type_id from hoteles.room where id = $1 and property_id = $2;`,
+      [roomId, propertyId],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, code: row.code, status: row.status, roomTypeId: row.room_type_id } : null;
+  }
+
+  async insertRoom(input: NewRoomInput): Promise<RoomSummary> {
+    try {
+      const { rows } = await this.db.query<{ id: string; code: string; status: RoomSummary["status"]; room_type_id: string }>(
+        `insert into hoteles.room (organization_id, property_id, room_type_id, code)
+         values ($1, $2, $3, $4)
+         returning id, code, status, room_type_id;`,
+        [input.organizationId, input.propertyId, input.roomTypeId, input.code],
+      );
+      const row = rows[0]!;
+      return { id: row.id, code: row.code, status: row.status, roomTypeId: row.room_type_id };
+    } catch (err) {
+      if ((err as { code?: string }).code === "23505") throw new Error(`codigo_duplicado: ya existe una habitación con el código "${input.code}" en esta property.`);
+      throw err;
+    }
+  }
+
+  async upsertRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }> {
+    // Una fila por fecha del rango [startDate, endDate] (inclusive en ambos
+    // extremos) -- `generate_series` sobre `date` en vez de un loop en TS, para que
+    // el INSERT completo sea una sola ida y vuelta a Postgres, atómica. El
+    // `ON CONFLICT (room_type_id, date)` reutiliza el índice único YA existente
+    // desde migrations/001 (`unique (room_type_id, date)`): un rango que traslapa
+    // fechas ya sembradas las SOBREESCRIBE, nunca lanza por duplicado.
+    const { rows } = await this.db.query<{ n: string }>(
+      `insert into hoteles.rate_plan (organization_id, property_id, room_type_id, date, price, currency, min_stay, closed_to_arrival, closed_to_departure)
+       select $1, $2, $3, d::date, $4, $5, $6, $7, $8
+       from generate_series($9::date, $10::date, interval '1 day') as d
+       on conflict (room_type_id, date) do update
+         set price = excluded.price,
+             currency = excluded.currency,
+             min_stay = excluded.min_stay,
+             closed_to_arrival = excluded.closed_to_arrival,
+             closed_to_departure = excluded.closed_to_departure,
+             updated_at = now()
+       returning 1 as n;`,
+      [
+        input.organizationId,
+        input.propertyId,
+        input.roomTypeId,
+        input.price,
+        input.currency,
+        input.minStay,
+        input.closedToArrival,
+        input.closedToDeparture,
+        input.startDate,
+        input.endDate,
+      ],
+    );
+    return { datesWritten: rows.length };
+  }
+
+  async insertGuest(input: NewGuestInput): Promise<GuestSummary> {
+    const { rows } = await this.db.query<{ id: string; full_name: string; email: string | null; phone: string | null }>(
+      `insert into hoteles.guest (organization_id, property_id, full_name, email, phone)
+       values ($1, $2, $3, $4, $5)
+       returning id, full_name, email, phone;`,
+      [input.organizationId, input.propertyId, input.fullName, input.email, input.phone],
+    );
+    const row = rows[0]!;
+    return { id: row.id, fullName: row.full_name, email: row.email, phone: row.phone };
+  }
+
+  async assignRoomToReservation(propertyId: string, reservationId: string, roomId: string): Promise<ReservationRecord | null> {
+    const { rows } = await this.db.query<ReservationRawRow>(
+      `update hoteles.reservation
+       set room_id = $1
+       where id = $2 and property_id = $3
+       returning ${RESERVATION_COLUMNS};`,
+      [roomId, reservationId, propertyId],
+    );
+    const row = rows[0];
+    return row ? mapReservation(row) : null;
   }
 
   /** Fase 12 — insumo de guest-email-notifications.ts (huésped YA ligado a una

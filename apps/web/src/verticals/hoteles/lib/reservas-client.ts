@@ -66,6 +66,9 @@ export interface ReservationSummary {
   readonly penalizacionCancelacion: number | null;
   readonly canceladaEn: string | null;
   readonly creadaEn: string;
+  /** Fix hallazgo CRÍTICO ("asignación de habitación al reservar") — `null` hasta
+   *  que el staff asigna una habitación física concreta, ver `assignRoom` abajo. */
+  readonly roomId: string | null;
 }
 
 // Fix hallazgo ALTA — catálogos de solo lectura que consume el formulario de "crear
@@ -147,4 +150,38 @@ export async function cancelReservation(
   motivo?: string,
 ): Promise<ReservationSummary> {
   return sendJson<ReservationSummary>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/reservas/${reservationId}/cancelar`, token, "POST", { motivo });
+}
+
+// Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
+// tarifas/huéspedes imposible sin SQL directo") — antes de esto, `guestId` en
+// `POST .../reservas` SOLO podía apuntar a un huésped YA sembrado por SQL directo
+// (GET .../huespedes era puramente de lectura). Ver
+// apps/api/src/routes/verticals/hoteles/reservas.ts, comentario de cabecera de
+// POST .../huespedes.
+export interface CreateGuestInput {
+  readonly nombreCompleto: string;
+  readonly email?: string;
+  readonly telefono?: string;
+}
+
+export async function createGuest(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: CreateGuestInput): Promise<GuestOption> {
+  return sendJson<GuestOption>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/huespedes`, token, "POST", input);
+}
+
+// Fix hallazgo CRÍTICO ("asignación de habitación al reservar") — habitaciones
+// físicas (hoteles.room) de un tipo de habitación concreto, insumo del selector de
+// "asignar habitación" de Reservas.tsx. Ver admin-catalogo.ts.
+export interface RoomOption {
+  readonly id: string;
+  readonly codigo: string;
+  readonly estado: "disponible" | "ocupada" | "sucia" | "fuera_de_servicio" | "mantenimiento";
+  readonly roomTypeId: string;
+}
+
+export async function fetchRooms(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, roomTypeId: string): Promise<readonly RoomOption[]> {
+  return fetchJson<readonly RoomOption[]>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/habitaciones?roomTypeId=${encodeURIComponent(roomTypeId)}`, token);
+}
+
+export async function assignRoom(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, reservationId: string, roomId: string): Promise<ReservationSummary> {
+  return sendJson<ReservationSummary>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/reservas/${reservationId}/asignar-habitacion`, token, "PATCH", { roomId });
 }

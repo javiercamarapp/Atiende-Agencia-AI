@@ -34,10 +34,9 @@
 //     de pasar por aquí: se construyen reales (turn-handler factory de cada
 //     dominio + el `LlmGateway` compartido), cada llamada con su propia sesión de
 //     Postgres (ver comentario de `production/deps.ts`).
-//   - `hotelesPaymentsPort`/`hotelesFraudeAuditSink`: integración de cobro
-//     (Stripe/Conekta) y auditoría de fraude interno de hoteles, ambas sin
-//     adaptador/tabla dedicada todavía — no son repositorios de datos por-tenant, no
-//     dependen de RLS, no aplican el patrón de fábrica.
+//   - `hotelesPaymentsPort`: integración de cobro (Stripe/Conekta), sin
+//     adaptador/credenciales dedicadas todavía — no es un repositorio de datos
+//     por-tenant, no depende de RLS, no aplica el patrón de fábrica.
 //
 // `despachosAuditSink` YA NO está cubierto por este archivo: dejó de ser
 // `notProductionReady` al agregarse `packages/domain-despachos/migrations/
@@ -47,6 +46,12 @@
 // este puerto sin que production/deps.ts tuviera todavía un adaptador real, así que
 // esos 5 endpoints de escritura tumbaban con 500 DESPUÉS de que su cambio de negocio
 // ya había hecho commit).
+//
+// `hotelesFraudeAuditSink` TAMPOCO está cubierto ya por este archivo: mismo gap,
+// mismo remedio, cerrado por `packages/domain-hoteles/migrations/
+// 017_fraude_audit_log.sql` + `production/hoteles-fraude-audit-sink.ts`
+// (`ProductionHotelesFraudeAuditSink`) — el gap propio de hoteles que la migración
+// 008 de despachos dejaba explícitamente pendiente.
 //
 // Mientras esas decisiones sigan pendientes (o mientras falte configurar alguna API
 // key de proveedor LLM): cualquier intento real de usarlas en producción falla con

@@ -1,8 +1,8 @@
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué:
-// `hotelesPaymentsPort`/`hotelesFraudeAuditSink` (integraciones sin adaptador/
-// credenciales, no relacionadas con RLS). `coreRepo`/`engine` y ahora también
+// `hotelesPaymentsPort` (integración de cobro sin adaptador/credenciales, no
+// relacionada con RLS). `coreRepo`/`engine` y ahora también
 // `restaurantesRepo`/`hotelesRepo`/`citasRepo`/`licitacionesRepo`/`despachosRepo`/
 // `rentasRepo`/`rentasOwnerPortalRepo` SÍ son reales de punta a punta contra
 // Supabase en cuanto `DATABASE_URL` apunte al proyecto consolidado — estos 7
@@ -10,7 +10,9 @@
 // construido (ver `../deps.ts` para por qué). `despachosAuditSink` TAMPOCO es ya
 // `notProductionReady` — corrige una regresión real de la Ronda 12, ver
 // `./despachos-audit-sink.ts` y `packages/domain-despachos/migrations/
-// 008_despachos_audit_log.sql`.
+// 008_despachos_audit_log.sql`. `hotelesFraudeAuditSink` TAMPOCO — ver
+// `./hoteles-fraude-audit-sink.ts` y `packages/domain-hoteles/migrations/
+// 017_fraude_audit_log.sql` (mismo patrón, gap propio de hoteles cerrado aparte).
 //
 // `turnHandler`/`hotelesTurnHandler`/`citasTurnHandler`/`llmGateway`: el
 // bloqueante que quedaba (ningún proveedor LLM real registrado, ver
@@ -60,7 +62,6 @@ import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import { PostgresLicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
-import type { AuditSink } from "@atiende/core-authz";
 import type { RentasRepository } from "@atiende/domain-rentas";
 import { PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
 import { openManagedPostgres, PostgresCoreRepository } from "@atiende/db";
@@ -72,6 +73,7 @@ import { ProductionCoreRepository } from "./core-repository.ts";
 import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-repository.ts";
 import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
+import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -215,12 +217,17 @@ export function buildProductionDeps(): AppDeps {
     // `PortUnavailableError`/`AggregateError` a un 503 `service_unavailable`
     // explícito en vez de dejar que `app.onError` lo aplane a un 500 genérico.
     hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()),
-    // Falta un adaptador de auditoría real (tabla/servicio dedicado) -- mismo tipo
-    // de gap que tenía `despachosAuditSink` antes de la migración 007 de
-    // domain-despachos (ver `./despachos-audit-sink.ts`); `hotelesFraudeAuditSink`
-    // queda deliberadamente FUERA de ese cambio (gap propio de hoteles, no pedido
-    // en esa fase) — sigue `notProductionReady` hasta que tenga su propia tabla.
-    hotelesFraudeAuditSink: notProductionReady<AuditSink>("hotelesFraudeAuditSink"),
+    // Adaptador real (ya NO `notProductionReady`) — cierra el gap propio de hoteles
+    // que la migración 008 de domain-despachos dejaba explícitamente pendiente (ver
+    // `packages/domain-hoteles/migrations/017_fraude_audit_log.sql`): mientras este
+    // puerto siguiera lanzando siempre, `POST .../fraude/escaneos` (hallazgo nuevo) y
+    // `POST .../fraude/alertas/:id/{confirmar,descartar}` tumbaban el request con un
+    // 500 DESPUÉS de que `recordFraudAlert`/`resolveFraudAlert` ya habían hecho
+    // commit. `ProductionHotelesFraudeAuditSink` (`./hoteles-fraude-audit-sink.ts`)
+    // escribe a `hoteles.fraude_audit_log` desde la sesión de SISTEMA (mismo patrón
+    // que `despachosAuditSink` de abajo) y nunca lanza — ese 500-después-del-commit
+    // ya no puede ocurrir por este puerto.
+    hotelesFraudeAuditSink: new ProductionHotelesFraudeAuditSink(engine),
     citasRepo: (db) => new PostgresCitasRepository(db),
     // El turn handler real (LLM real vía @atiende/agent-core::LlmGateway con
     // roles/proveedores registrados, ver ./llm-gateway.ts) ya se construye aquí en

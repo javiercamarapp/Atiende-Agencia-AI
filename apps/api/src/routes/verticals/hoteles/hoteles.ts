@@ -16,6 +16,7 @@ import { hotelesAdminDiscoveryRoutes } from "./admin-discovery.ts";
 import { hotelesAsistenciaRoutes } from "./asistencia.ts";
 import { hotelesPlRoutes } from "./pl.ts";
 import { hotelesEmailDispatchRoutes } from "./email-dispatch.ts";
+import { hotelesAdminCatalogoRoutes } from "./admin-catalogo.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -38,5 +39,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fase 12 — hallazgo ALTA: correo transaccional real al huésped (dispatcher de
   // `channel='email'` de `hoteles.messaging_outbox`, ver email-dispatch.ts).
   app.route("/", hotelesEmailDispatchRoutes(deps));
+  // Fix hallazgo CRÍTICO — alta REAL de catálogo (tipos de habitación/habitaciones
+  // físicas/tarifas), ver admin-catalogo.ts.
+  app.route("/", hotelesAdminCatalogoRoutes(deps));
   return app;
 }
