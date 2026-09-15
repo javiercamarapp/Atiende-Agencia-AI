@@ -44,6 +44,19 @@ export interface ApiEnv {
    * `googleOAuth` de arriba.
    */
   readonly resend: { readonly apiKey: string | null; readonly from: string };
+  /** Hallazgo de auditoría (rubro 1/20, "puertos stub devuelven 500 tras
+   * confirmar en base de datos"): `hotelesPaymentsPort` (cobro con tarjeta al
+   * huésped de un folio) nunca tuvo un adaptador real -- solo
+   * `InMemoryPaymentsPort` (doble de prueba). Distinto del riel de Stripe de
+   * `packages/billing` (esa es la SUSCRIPCIÓN de Atiende a sus clientes, ver
+   * el comentario de cabecera de `domain-hoteles/src/payments-port.ts`): este
+   * es el cobro directo al huésped final vía PaymentIntents con un
+   * `paymentMethodToken` opaco ya tokenizado del lado del cliente (nunca un
+   * PAN crudo llega a este servidor). `secretKey: null` cuando no está
+   * configurada todavía -- fail-closed explícito, mismo criterio que
+   * `resend`/`googleOAuth` de arriba: sin ella, `hotelesPaymentsPort` sigue
+   * siendo `notProductionReady` (503 honesto), nunca finge un cobro exitoso. */
+  readonly stripe: { readonly secretKey: string | null };
   /** Hallazgo de auditoría (invitación de staff sin canal de envío real) —
    * origen público real de la app (`apps/web`) para armar el enlace de
    * activación que va DENTRO del correo de invitación (`/aceptar-invitacion?
@@ -109,6 +122,7 @@ export function loadApiEnv(): ApiEnv {
         ? { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET, redirectBaseUrl: process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL }
         : null,
     resend: { apiKey: process.env.RESEND_API_KEY ?? null, from: process.env.RESEND_FROM_EMAIL ?? "atiende <notificaciones@atiende.ai>" },
+    stripe: { secretKey: process.env.STRIPE_SECRET_KEY ?? null },
     appBaseUrl: (process.env.APP_BASE_URL ?? "https://app.atiende.ai").replace(/\/+$/, ""),
     rentasOwnerJwtSecret: requireEnv("RENTAS_OWNER_JWT_SECRET"),
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),
