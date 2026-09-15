@@ -30,6 +30,7 @@ import { RentasDashboardPage } from "./verticals/rentas/pages/Dashboard.tsx";
 import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages/Calendario.tsx";
 import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Precios.tsx";
 import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
+import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -358,6 +359,21 @@ function RentasAprobacionesRoute() {
   return (
     <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
       {(ctx) => <RentasAprobacionesPage {...ctx} />}
+    </RentasShell>
+  );
+}
+
+/** Finanzas (Fase 16) — movimiento por reserva, owner statements, payouts/
+ * conciliación. Cierra el hallazgo de auditoría ALTA "Finanzas sin UI para
+ * admin_gestora ni contador". Mismo patrón de ruta hija que
+ * RentasCalendarioRoute/RentasPreciosRoute/RentasAprobacionesRoute. */
+function RentasFinanzasRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasFinanzasPage {...ctx} />}
     </RentasShell>
   );
 }
@@ -691,6 +707,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
+        <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />

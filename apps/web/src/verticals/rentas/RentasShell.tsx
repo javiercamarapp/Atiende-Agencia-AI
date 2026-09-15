@@ -23,6 +23,13 @@
 // mensajería, ver pages/Aprobaciones.tsx): cierra el hallazgo de auditoría ALTA
 // "la cola de aprobación no tiene botón de aprobar" -- mismo patrón, un renglón más
 // en NAV_ITEMS.
+//
+// Fase 16 -- agrega el link de nav a Finanzas (movimiento por reserva, owner
+// statements, payouts/conciliación -- ver pages/Finanzas.tsx): cierra el hallazgo de
+// auditoría ALTA "Finanzas sin UI para admin_gestora ni contador" -- mismo patrón,
+// un renglón más en NAV_ITEMS. Visible para cualquier rol (mismo criterio que
+// Precios/Aprobaciones); FinanzasPage gatea su propio contenido por
+// FINANZAS_LECTURA_ROLES/FINANZAS_ESCRITURA_ROLES.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -38,6 +45,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "calendario", label: "Calendario" },
   { to: "precios", label: "Precios" },
   { to: "aprobaciones", label: "Aprobaciones" },
+  { to: "finanzas", label: "Finanzas" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({
