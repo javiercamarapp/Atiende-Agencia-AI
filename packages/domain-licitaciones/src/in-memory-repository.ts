@@ -1269,12 +1269,31 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       const existing = this.idempotency.get(key);
       if (existing) {
         if (existing.requestHash !== requestHash) throw new IdempotencyConflictError();
+        // Fix hallazgo auditoría — antes devolvía `existing.response` sin
+        // comprobar `== null`: si una llamada anterior con la MISMA key quedó a
+        // medias (ver catch de abajo, caso ya cerrado hoy porque el catch limpia
+        // la reclamación, pero deja esta rama honesta ante cualquier estado futuro
+        // que la deje en null), esto habría devuelto `null` como si fuera una
+        // respuesta completa válida en vez de señalar el conflicto real.
+        if (existing.response == null) {
+          throw new Error("La solicitud original con este Idempotency-Key aún no terminó de procesarse.");
+        }
         return existing.response as IdempotentResult<T>;
       }
       this.idempotency.set(key, { requestHash, response: null });
-      const result = await run();
-      this.idempotency.set(key, { requestHash, response: result });
-      return result;
+      try {
+        const result = await run();
+        this.idempotency.set(key, { requestHash, response: result });
+        return result;
+      } catch (err) {
+        // Fix hallazgo auditoría (rubro 2, "Idempotency-Key queda envenenada ante
+        // error no-Postgres") — mismo fix que domain-hoteles/src/in-memory-repository.ts:
+        // un error de `run()` nunca debe dejar la key envenenada para siempre; se
+        // retira la reclamación para que un reintento legítimo proceda (mismo
+        // efecto que el ROLLBACK real de PostgresLicitacionesRepository.withIdempotency).
+        this.idempotency.delete(key);
+        throw err;
+      }
     });
   }
 

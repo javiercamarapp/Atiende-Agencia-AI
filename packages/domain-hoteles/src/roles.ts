@@ -157,3 +157,14 @@ export const PL_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
 export const REPUTACION_SUBMIT_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations"];
 export const REPUTACION_VIEW_ROLES: readonly HotelRole[] = ["owner", "gm", "frontdesk", "reservations", "accountant"];
 export const REPUTACION_ACTION_RESOLVE_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+
+// Fix hallazgo auditoría (rubro 1, "completitud funcional" — "alta de cliente
+// pagando de principio a fin: organización + property + staff + primera venta"):
+// hoteles era la única de las 6 verticales sin ningún camino de producto para
+// dar de alta staff ADICIONAL una vez creado el primer owner/gm — ver
+// apps/api/src/routes/verticals/hoteles/admin-staff.ts. Mismo criterio EXACTO
+// que `STAFF_INVITE_ROLES` de domain-restaurantes/domain-citas/
+// domain-licitaciones/domain-despachos: solo quien ya tiene la jerarquía más
+// alta invita staff nuevo — mismo conjunto que `ADMIN_ROLES` (owner/gm), nunca
+// un rol operativo (frontdesk/housekeeping/etc.) por más que gestione dinero.
+export const STAFF_INVITE_ROLES: readonly HotelRole[] = ADMIN_ROLES;

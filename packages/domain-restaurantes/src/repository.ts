@@ -308,9 +308,20 @@ export interface RestaurantesRepository {
    * solo duplicaría la misma query. */
   listOrders(organizationId: string, filter: OrderListFilter): Promise<OrderListPage>;
   /** Persiste el nuevo estado (y `delivered_at` cuando aplica) — la validación de
-   * qué transición es válida vive en el dominio (order-lifecycle.ts), nunca aquí:
-   * este método NUNCA valida, solo persiste lo que ya se decidió válido. */
-  updateOrderStatus(organizationId: string, orderId: string, status: OrderStatus): Promise<Order | null>;
+   * QUÉ transición es válida vive en el dominio (order-lifecycle.ts), nunca aquí:
+   * este método nunca decide reglas de negocio, solo persiste lo que ya se decidió
+   * válido. Fix hallazgo auditoría (rubro 3, "máquina de estados de pedidos sin
+   * guarda TOCTOU") — el UPDATE SÍ debe reconfirmar `fromStatus` en su propio WHERE,
+   * nunca solo id/organización: sin esa guarda, dos requests concurrentes que
+   * leyeron el MISMO estado viejo (p.ej. las dos vieron "pending") pueden aplicar
+   * dos transiciones incompatibles una tras otra sin que la segunda se entere de
+   * que el estado ya cambió (time-of-check-to-time-of-use) — para cuando ese UPDATE
+   * corre, la validación de `order-lifecycle.ts` ya evaluó una lectura obsoleta.
+   * `null` cuando el pedido no existe/no es de esta organización O cuando su estado
+   * real ya NO es `fromStatus` (alguien más lo cambió primero) — el dominio
+   * distingue ambos casos con un `findOrderById` de más SOLO en ese camino de
+   * error, nunca en el camino feliz. */
+  updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus): Promise<Order | null>;
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;
@@ -340,9 +351,11 @@ export interface RestaurantesRepository {
   /** Persiste la transición + `incident_note` (la validación de cuál es válida vive en
    * `order-lifecycle.ts::changeAssignedOrderStatus`, nunca aquí). El UPDATE real SIEMPRE
    * acota por `assigned_repartidor_id = repartidorId` (defensa en profundidad, igual que
-   * `update_assigned_order_status()` del origen) — null si el pedido no existe, no es de
-   * esta organización, o ya no está asignado a este repartidor. */
-  updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, status: OrderStatus, incidentNote: string | null): Promise<Order | null>;
+   * `update_assigned_order_status()` del origen) Y por `status = fromStatus` (mismo fix
+   * TOCTOU que `updateOrderStatus`, ver ese comentario) — null si el pedido no existe, no
+   * es de esta organización, ya no está asignado a este repartidor, O su estado real ya
+   * no es `fromStatus`. */
+  updateAssignedOrderStatus(organizationId: string, repartidorId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote: string | null): Promise<Order | null>;
 
   // ---- Fase 11 — promociones/marketing (ver promotions.ts, migrations/010). CRUD
   // real de admin + resolución por código para la aplicación real al total de un

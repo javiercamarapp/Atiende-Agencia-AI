@@ -437,11 +437,20 @@ export class PostgresCitasRepository implements CitasRepository {
       const row = updated[0] ?? existing;
       return { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email };
     }
+    // Fix hallazgo auditoría (rubro 3, "recuperación de 23505 sin SAVEPOINT deriva en
+    // 25P02") — sin este SAVEPOINT, el unique_violation de abajo deja TODA la
+    // transacción de la request en curso abortada a nivel Postgres (25P02:
+    // "current transaction is aborted, commands ignored until end of transaction
+    // block") y el SELECT de recuperación fallaría también, en vez de devolver la
+    // fila ganadora — mismo patrón ya establecido en
+    // domain-rentas/src/aplicacion/reservas.ts (`crearReservaConfirmada`).
+    await this.db.exec("SAVEPOINT sp_upsert_customer_race");
     try {
       const { rows: created } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
         `insert into citas.customers (organization_id, phone, full_name, email) values ($1, $2, $3, $4) returning id, organization_id, full_name, phone, email;`,
         [organizationId, phone, name, email ?? null],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_upsert_customer_race");
       const row = created[0]!;
       return { id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email };
     } catch (err) {
@@ -450,6 +459,8 @@ export class PostgresCitasRepository implements CitasRepository {
       // vez de propagar un error genérico (mismo patrón que domain-restaurantes).
       const message = err instanceof Error ? err.message : String(err);
       if (!/unique|duplicate/i.test(message)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_upsert_customer_race");
+      await this.db.exec("RELEASE SAVEPOINT sp_upsert_customer_race");
       const { rows: race } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
         `select id, organization_id, full_name, phone, email from citas.customers where organization_id = $1 and phone = $2;`,
         [organizationId, phone],

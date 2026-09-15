@@ -122,7 +122,7 @@ describe("Pedidos — listado/filtro/paginación + cambio de estado real", () =>
       items: [{ productId: fixture.products.cocaCola, requestedQuantity: 1 }],
       source: "web",
     });
-    await fixture.repo.updateOrderStatus(fixture.organizationId, orderA.id, "preparando");
+    await fixture.repo.updateOrderStatus(fixture.organizationId, orderA.id, "pending", "preparando");
 
     const pendingPage = await fixture.repo.listOrders(fixture.organizationId, { propertyIds: null, status: "pending", limit: 10 });
     expect(pendingPage.orders.some((o) => o.id === orderA.id)).toBe(false);
@@ -204,7 +204,7 @@ describe("Pedidos — listado/filtro/paginación + cambio de estado real", () =>
       source: "web",
     });
     const otherOrgId = randomUUID();
-    const result = await fixture.repo.updateOrderStatus(otherOrgId, order.id, "preparando");
+    const result = await fixture.repo.updateOrderStatus(otherOrgId, order.id, "pending", "preparando");
     expect(result).toBeNull();
     const reread = await fixture.repo.findOrderById(fixture.organizationId, order.id);
     expect(reread?.status).toBe("pending");
