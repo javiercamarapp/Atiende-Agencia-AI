@@ -240,6 +240,13 @@ export class InMemoryRentasCalendarStore {
   readonly movimientosInventario = new Map<string, StoredMovimientoInventario>();
   readonly incidencias = new Map<string, StoredIncidenciaMantenimiento>();
   readonly notificacionesTarea = new Map<string, StoredNotificacionTarea>();
+  /** Ronda que expuso `crearTareaLimpiezaPorCheckout`/`procesarCheckoutsPendientes`/
+   *  `crearTareaOperativaManual` por HTTP (ver in-memory-tenancy-engine.ts) --
+   *  `rentas.property_config.buffer_limpieza_noches`/`sla_*_horas` (migración 010).
+   *  Sin fila sembrada para una property, `obtenerConfiguracion` usa
+   *  `CONFIGURACION_OPERATIVA_DEFECTO`, igual que un `SELECT` sin filas en Postgres
+   *  real. */
+  readonly configuracionesOperativas = new Map<string, { bufferLimpiezaNoches: number; slaLimpiezaHoras: number; slaMantenimientoHoras: number }>();
 
   constructor() {
     // Mismo catálogo semilla que migrations/001_rentas_schema.sql.
@@ -617,6 +624,95 @@ export class InMemoryRentasCalendarStore {
    *  `obtenerConfiguracion`/`registrarIncidencia` de aplicacion/tareas.ts). */
   getUnidadById(unidadId: string): UnidadRecord | null {
     return this.unidades.get(unidadId) ?? null;
+  }
+
+  /** Siembra `rentas.property_config.buffer_limpieza_noches`/`sla_*_horas` para
+   *  tests -- ver comentario de `configuracionesOperativas` arriba. */
+  seedConfiguracionOperativa(propertyId: string, config: { bufferLimpiezaNoches: number; slaLimpiezaHoras: number; slaMantenimientoHoras: number }): void {
+    this.configuracionesOperativas.set(propertyId, config);
+  }
+
+  /** `SELECT buffer_limpieza_noches, sla_limpieza_horas, sla_mantenimiento_horas
+   *  FROM rentas.property_config WHERE property_id = $1` (obtenerConfiguracion). */
+  getConfiguracionOperativa(propertyId: string): { bufferLimpiezaNoches: number; slaLimpiezaHoras: number; slaMantenimientoHoras: number } | null {
+    return this.configuracionesOperativas.get(propertyId) ?? null;
+  }
+
+  /** `INSERT INTO rentas.tarea_operativa (...)` real -- a diferencia de
+   *  `seedTareaOperativa` (atajo de test que salta toda la orquestación), esta es la
+   *  primitiva que `crearTareaLimpiezaPorCheckout`/`crearTareaOperativaManual`
+   *  disparan de verdad. `ocupacionUnidadId: null` para una tarea manual (H-049
+   *  desviación, ver migración 010: "NULL para tareas creadas manualmente
+   *  (mantenimiento/inspección ad-hoc)"). Siempre nace `estado: 'pendiente'` y
+   *  `bufferOcupacionId: null` -- el caller vincula el buffer aparte, ver
+   *  `actualizarBufferOcupacionTarea`. */
+  insertTareaOperativa(input: {
+    organizationId: string;
+    propertyId: string;
+    unidadId: string;
+    ocupacionUnidadId: string | null;
+    tipo: TipoTareaOperativa;
+    prioridad: PrioridadTareaOperativa;
+    programadaPara: string;
+    slaVenceEn: string | null;
+  }): { id: string } {
+    const id = randomUUID();
+    const ahora = new Date().toISOString();
+    this.tareas.set(id, {
+      id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      unidadId: input.unidadId,
+      ocupacionUnidadId: input.ocupacionUnidadId,
+      tipo: input.tipo,
+      estado: "pendiente",
+      prioridad: input.prioridad,
+      asignadoA: null,
+      esProveedorExterno: false,
+      programadaPara: input.programadaPara,
+      slaVenceEn: input.slaVenceEn,
+      bufferOcupacionId: null,
+      completadaEn: null,
+      creadoEn: ahora,
+      actualizadoEn: ahora,
+    });
+    return { id };
+  }
+
+  /** `INSERT INTO rentas.checklist_item_tarea (tarea_id, descripcion, orden)` real --
+   *  disparada una vez por ítem de plantilla por `insertarChecklistPlantilla` de
+   *  aplicacion/tareas.ts (a diferencia de `seedTareaOperativa`, que siembra su
+   *  propio checklist de una vez para tests). */
+  insertChecklistItemTarea(tareaId: string, descripcion: string, orden: number): void {
+    const id = randomUUID();
+    this.checklistItems.set(id, { id, tareaId, descripcion, orden, completado: false, completadoEn: null, completadoPor: null });
+  }
+
+  /** `UPDATE rentas.tarea_operativa SET buffer_ocupacion_id = $1 WHERE id = $2` --
+   *  vincula (o desvincula, `null`) el bloqueo `BUFFER_LIMPIEZA` de calendario que
+   *  `crearTareaLimpiezaPorCheckout`/`reprogramarTareaPorCambioReserva` crean aparte
+   *  (después del COMMIT de la tarea, ver comentario de cabecera de
+   *  aplicacion/tareas.ts). */
+  actualizarBufferOcupacionTarea(tareaId: string, bufferOcupacionId: string | null): void {
+    const fila = this.tareas.get(tareaId);
+    if (fila) {
+      fila.bufferOcupacionId = bufferOcupacionId;
+      fila.actualizadoEn = new Date().toISOString();
+    }
+  }
+
+  /** `procesarCheckoutsPendientes` (H-049 desviación, ver comentario de cabecera de
+   *  aplicacion/tareas.ts, punto 5): reservas confirmadas y bloqueantes cuyo checkout
+   *  (`upper(rango)`) ya llegó y que todavía no tienen ninguna tarea `tipo='limpieza'`
+   *  vinculada por `ocupacion_unidad_id` -- idempotente por construcción (una
+   *  reserva con tarea ya creada nunca vuelve a aparecer aquí). */
+  findOcupacionesCheckoutPendientes(limite: number, hoyIso: string = new Date().toISOString().slice(0, 10)): { ocupacionId: string; unidadId: string; fin: string }[] {
+    return [...this.ocupaciones.values()]
+      .filter((o) => o.capa === "reserva" && o.estado === "confirmado" && o.bloqueante && o.fin <= hoyIso)
+      .filter((o) => ![...this.tareas.values()].some((t) => t.tipo === "limpieza" && t.ocupacionUnidadId === o.id))
+      .sort((a, b) => (a.fin < b.fin ? -1 : a.fin > b.fin ? 1 : 0))
+      .slice(0, limite)
+      .map((o) => ({ ocupacionId: o.id, unidadId: o.unidadId, fin: o.fin }));
   }
 
   getTareaOperativa(tareaId: string): StoredTareaOperativa | null {

@@ -19,7 +19,7 @@
 // como en Postgres real ambos caminos leen/escriben la misma tabla.
 import type { PlatformRole, TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { InMemoryRentasCalendarStore } from "./calendar-store.ts";
-import type { EstadoIncidencia, SeveridadIncidencia } from "./limpieza/tipos.ts";
+import type { EstadoIncidencia, PrioridadTareaOperativa, SeveridadIncidencia, TipoTareaOperativa } from "./limpieza/tipos.ts";
 
 export interface SeedTenancyProperty {
   readonly id: string;
@@ -220,22 +220,79 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
         // completarChecklistItem/completarTarea/registrarIncidencia -- las 4
         // funciones que apps/api/.../rentas/limpieza.ts invoca con el
         // `TenantDbSession` del request DIRECTO, mismo patrón que
-        // crearBloqueo/cancelarOcupacion arriba). `crearTareaLimpiezaPorCheckout`/
-        // `procesarCheckoutsPendientes`/`reprogramarTareaPorCambioReserva`/
-        // `cancelarTareaPorCancelacionReserva`/`confirmarBloqueoMantenimiento` NO se
-        // soportan aquí a propósito -- ningún HTTP route de este lote las invoca
-        // todavía (ver README de este paquete, sección "Fuera de fase"); los tests
-        // de este módulo siembran la tarea/inventario directo con
-        // `store.seedTareaOperativa`/`store.seedItemInventario`.
+        // crearBloqueo/cancelarOcupacion arriba), MÁS `crearTareaLimpiezaPorCheckout`/
+        // `procesarCheckoutsPendientes`/`crearTareaOperativaManual` (ronda que agregó
+        // apps/api/.../rentas/checkout-sweep-cron.ts y el POST manual de
+        // limpieza.ts). `reprogramarTareaPorCambioReserva`/
+        // `cancelarTareaPorCancelacionReserva`/`confirmarBloqueoMantenimiento` siguen
+        // SIN soportarse aquí a propósito -- ningún HTTP route las invoca todavía
+        // (ver README de este paquete, sección "Fuera de fase"); los tests que solo
+        // necesitan una tarea/inventario ya existente pueden seguir sembrándola
+        // directo con `store.seedTareaOperativa`/`store.seedItemInventario`.
         // -------------------------------------------------------------------
 
         // ---- SELECT organization_id, property_id FROM rentas.unidad WHERE id = $1
-        // (registrarIncidencia) ----
+        // (registrarIncidencia / obtenerConfiguracion) ----
         if (n.startsWith("select organization_id, property_id from rentas.unidad")) {
           const [unidadId] = params as [string];
           const unidad = store.getUnidadById(unidadId);
           if (!unidad) return { rows: [] as R[] };
           return { rows: [{ organization_id: unidad.organizationId, property_id: unidad.propertyId }] as unknown as R[] };
+        }
+
+        // ---- SELECT buffer_limpieza_noches, sla_limpieza_horas,
+        // sla_mantenimiento_horas FROM rentas.property_config WHERE property_id = $1
+        // (obtenerConfiguracion) ----
+        if (n.startsWith("select buffer_limpieza_noches")) {
+          const [propertyId] = params as [string];
+          const config = store.getConfiguracionOperativa(propertyId);
+          if (!config) return { rows: [] as R[] };
+          return { rows: [{ buffer_limpieza_noches: config.bufferLimpiezaNoches, sla_limpieza_horas: config.slaLimpiezaHoras, sla_mantenimiento_horas: config.slaMantenimientoHoras }] as unknown as R[] };
+        }
+
+        // ---- INSERT INTO rentas.tarea_operativa (...) RETURNING id -- creación real,
+        // DOS variantes distinguidas por texto literal: `crearTareaLimpiezaPorCheckout`
+        // fija `tipo='limpieza'`/`estado='pendiente'` como literales SQL (params:
+        // organizationId, propertyId, unidadId, ocupacionUnidadId, prioridad,
+        // programadaPara, slaVenceEn); `crearTareaOperativaManual` fija
+        // `ocupacion_unidad_id=NULL`/`estado='pendiente'` como literales y parametriza
+        // `tipo` (params: organizationId, propertyId, unidadId, tipo, prioridad,
+        // programadaPara, slaVenceEn). ----
+        if (n.startsWith("insert into rentas.tarea_operativa") && n.includes("returning id")) {
+          if (n.includes("'limpieza', 'pendiente'")) {
+            const [organizationId, propertyId, unidadId, ocupacionUnidadId, prioridad, programadaPara, slaVenceEn] = params as [string, string, string, string, PrioridadTareaOperativa, string, string | null];
+            const { id } = store.insertTareaOperativa({ organizationId, propertyId, unidadId, ocupacionUnidadId, tipo: "limpieza", prioridad, programadaPara, slaVenceEn });
+            return { rows: [{ id }] as unknown as R[] };
+          }
+          const [organizationId, propertyId, unidadId, tipo, prioridad, programadaPara, slaVenceEn] = params as [string, string, string, TipoTareaOperativa, PrioridadTareaOperativa, string, string | null];
+          const { id } = store.insertTareaOperativa({ organizationId, propertyId, unidadId, ocupacionUnidadId: null, tipo, prioridad, programadaPara, slaVenceEn });
+          return { rows: [{ id }] as unknown as R[] };
+        }
+
+        // ---- INSERT INTO rentas.checklist_item_tarea (tarea_id, descripcion, orden)
+        // -- plantilla real, `insertarChecklistPlantilla` (una fila por ítem, sin
+        // RETURNING) -- distinta de la fila UPDATE .../completarChecklistItem de
+        // abajo. ----
+        if (n.startsWith("insert into rentas.checklist_item_tarea")) {
+          const [tareaId, descripcion, orden] = params as [string, string, number];
+          store.insertChecklistItemTarea(tareaId, descripcion, orden);
+          return { rows: [] as R[] };
+        }
+
+        // ---- UPDATE rentas.tarea_operativa SET buffer_ocupacion_id = $1 WHERE
+        // id = $2 (crearTareaLimpiezaPorCheckout, tras crear el buffer aparte) ----
+        if (n.startsWith("update rentas.tarea_operativa set buffer_ocupacion_id")) {
+          const [bufferOcupacionId, tareaId] = params as [string | null, string];
+          store.actualizarBufferOcupacionTarea(tareaId, bufferOcupacionId);
+          return { rows: [] as R[] };
+        }
+
+        // ---- procesarCheckoutsPendientes: poll de checkouts confirmados sin tarea de
+        // limpieza aún vinculada (ver findOcupacionesCheckoutPendientes) ----
+        if (n.startsWith("select o.id as ocupacion_id")) {
+          const [limite] = params as [number];
+          const rows = store.findOcupacionesCheckoutPendientes(limite);
+          return { rows: rows.map((r) => ({ ocupacion_id: r.ocupacionId, unidad_id: r.unidadId, fin: r.fin })) as unknown as R[] };
         }
 
         // ---- UPDATE rentas.tarea_operativa SET asignado_a = ... WHERE id = $1

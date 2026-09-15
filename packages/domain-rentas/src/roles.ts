@@ -126,6 +126,18 @@ export const LIMPIEZA_OPERACION_ROLES: readonly RentasVerticalRole[] = ["admin_g
 // funciones deliberada, ver ../limpieza/incidencias.ts).
 export const LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
 
+// Crear una tarea MANUALMENTE (fuera del sweep automático de checkout, ver
+// ../limpieza/aplicacion/tareas.ts::crearTareaOperativaManual) es, igual que
+// confirmar un bloqueo de mantenimiento arriba, una decisión de gestión -- no una
+// acción de piso: el rol `limpieza` sigue pudiendo OPERAR la tarea una vez creada
+// (LIMPIEZA_OPERACION_ROLES: asignarse/completar checklist/completar/reportar
+// incidencia) pero nunca decide por su cuenta darla de alta ad-hoc. El conjunto de
+// roles coincide hoy con LIMPIEZA_CONFIRMAR_BLOQUEO_ROLES pero se declara aparte, a
+// propósito -- mismo criterio que MENSAJERIA_ESCRITURA_ROLES/
+// ESCRITURA_CALENDARIO_ROLES arriba: son decisiones de negocio DISTINTAS que solo
+// comparten alcance por ahora.
+export const LIMPIEZA_CREACION_MANUAL_ROLES: readonly RentasVerticalRole[] = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"];
+
 export const PLATFORM_ROLE_BY_VERTICAL_ROLE: Record<RentasVerticalRole, "owner" | "admin" | "member" | "viewer"> = {
   admin_gestora: "owner",
   "operador:acceso_total": "member",

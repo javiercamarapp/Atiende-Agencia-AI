@@ -242,6 +242,61 @@ export async function procesarCheckoutsPendientes(ejecutor: EjecutorTransacciona
 }
 
 // ---------------------------------------------------------------------------
+// Creación MANUAL de una tarea (fuera del sweep automático de checkout de arriba) --
+// cierra el segundo hallazgo de la ronda que expuso `procesarCheckoutsPendientes`
+// por HTTP: admin_gestora/operador necesitan poder dar de alta una tarea de
+// limpieza/mantenimiento/inspección ad-hoc (una reparación reportada por el
+// propietario, una inspección programada) sin esperar a que un checkout real la
+// dispare. `ocupacion_unidad_id` es NULL a propósito -- la propia migración 010 ya
+// documenta esa columna como "NULL para tareas creadas manualmente
+// (mantenimiento/inspección ad-hoc)", así que el esquema ya estaba listo para este
+// caso sin ningún cambio de columna. A diferencia de `crearTareaLimpiezaPorCheckout`,
+// esta función NUNCA crea ni toca ningún bloqueo de calendario (`buffer_ocupacion_id`
+// se queda NULL): una tarea manual no reserva disponibilidad por sí sola, eso sigue
+// siendo una decisión de calendario aparte (ESCRITURA_CALENDARIO_ROLES).
+// ---------------------------------------------------------------------------
+
+export interface EntradaCrearTareaManual {
+  readonly unidadId: string;
+  readonly tipo: TipoTareaOperativa;
+  /** Default `"media"`, mismo default que la columna `prioridad` de la migración. */
+  readonly prioridad?: PrioridadTareaOperativa;
+  readonly programadaPara: string;
+}
+
+export interface ResultadoCrearTareaManual {
+  readonly tareaId: string;
+}
+
+export async function crearTareaOperativaManual(ejecutor: EjecutorTransaccional, entrada: EntradaCrearTareaManual): Promise<ResultadoCrearTareaManual> {
+  const config = await obtenerConfiguracion(ejecutor, entrada.unidadId);
+  const prioridad: PrioridadTareaOperativa = entrada.prioridad ?? "media";
+  const creadaEn = new Date().toISOString();
+  const slaVenceEn = calcularVencimientoSla(creadaEn, entrada.tipo, prioridad, config);
+
+  await ejecutor.exec("BEGIN");
+  let tareaId: string;
+  try {
+    const insertado = await ejecutor.query<{ id: string }>(
+      `INSERT INTO rentas.tarea_operativa
+         (organization_id, property_id, unidad_id, ocupacion_unidad_id, tipo, estado, prioridad, programada_para, sla_vence_en)
+       VALUES ($1, $2, $3, NULL, $4, 'pendiente', $5, $6, $7)
+       RETURNING id`,
+      [config.organizationId, config.propertyId, entrada.unidadId, entrada.tipo, prioridad, entrada.programadaPara, slaVenceEn],
+    );
+    tareaId = insertado.rows[0]!.id;
+    await insertarChecklistPlantilla(ejecutor, tareaId, entrada.tipo);
+
+    await ejecutor.exec("COMMIT");
+  } catch (error) {
+    await ejecutor.exec("ROLLBACK");
+    throw error;
+  }
+
+  return { tareaId };
+}
+
+// ---------------------------------------------------------------------------
 // H-053: asignación (personal interno o proveedor externo)
 // ---------------------------------------------------------------------------
 

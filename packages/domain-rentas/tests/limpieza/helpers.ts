@@ -192,17 +192,45 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
         return { rows: [{ buffer_limpieza_noches: config.bufferLimpiezaNoches, sla_limpieza_horas: config.slaLimpiezaHoras, sla_mantenimiento_horas: config.slaMantenimientoHoras }] as unknown as T[] };
       }
 
-      // ---- INSERT rentas.tarea_operativa ----
+      // ---- INSERT rentas.tarea_operativa -- DOS variantes distinguidas por texto
+      // literal, mismo criterio que ../../src/in-memory-tenancy-engine.ts:
+      // `crearTareaLimpiezaPorCheckout` fija `tipo='limpieza'` como literal SQL
+      // (params: organization_id, property_id, unidad_id, ocupacion_unidad_id,
+      // prioridad, programada_para, sla_vence_en); `crearTareaOperativaManual` fija
+      // `ocupacion_unidad_id=NULL` como literal y parametriza `tipo` (params:
+      // organization_id, property_id, unidad_id, tipo, prioridad, programada_para,
+      // sla_vence_en). ----
       if (n.startsWith("insert into rentas.tarea_operativa")) {
-        const [organization_id, property_id, unidad_id, ocupacion_unidad_id, prioridad, programada_para, sla_vence_en] = params as [string, string, string, string, string, string, string | null];
         const id = randomUUID();
+        if (n.includes("'limpieza', 'pendiente'")) {
+          const [organization_id, property_id, unidad_id, ocupacion_unidad_id, prioridad, programada_para, sla_vence_en] = params as [string, string, string, string, string, string, string | null];
+          tareas.set(id, {
+            id,
+            organizationId: organization_id,
+            propertyId: property_id,
+            unidadId: unidad_id,
+            ocupacionUnidadId: ocupacion_unidad_id,
+            tipo: "limpieza",
+            estado: "pendiente",
+            prioridad,
+            asignadoA: null,
+            esProveedorExterno: false,
+            programadaPara: programada_para,
+            slaVenceEn: sla_vence_en,
+            bufferOcupacionId: null,
+            completadaEn: null,
+            creadoEn: new Date().toISOString(),
+          });
+          return { rows: [{ id }] as unknown as T[] };
+        }
+        const [organization_id, property_id, unidad_id, tipo, prioridad, programada_para, sla_vence_en] = params as [string, string, string, string, string, string, string | null];
         tareas.set(id, {
           id,
           organizationId: organization_id,
           propertyId: property_id,
           unidadId: unidad_id,
-          ocupacionUnidadId: ocupacion_unidad_id,
-          tipo: "limpieza",
+          ocupacionUnidadId: null,
+          tipo,
           estado: "pendiente",
           prioridad,
           asignadoA: null,
