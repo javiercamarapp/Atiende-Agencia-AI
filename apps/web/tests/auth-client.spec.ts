@@ -110,6 +110,16 @@ describe("decideLandingPath", () => {
     const session = { ...base, organizations: [{ id: "1", slug: "los-taquitos-de-pm", nombre: "Los Taquitos de PM", vertical: "restaurantes", rol: "repartidor" }] };
     expect(decideLandingPath(session)).toBe("/restaurantes/los-taquitos-de-pm/repartidor");
   });
+  // Hallazgo de auditoría (rubro 11/UX, MEDIO, "login cross-vertical manda al slug
+  // equivocado"): POST /auth/login es genérico a las 6 verticales (mismo JWT), así
+  // que alguien cuya única organización es de OTRA vertical puede autenticarse
+  // igual en /restaurantes/login — esta función debe usar el `vertical` real de la
+  // organización devuelta por el servidor, no asumir "restaurantes" por ser la
+  // única que hoy la llama.
+  it("usa el `vertical` real de la organización, no un hardcode de restaurantes", () => {
+    const session = { ...base, organizations: [{ id: "1", slug: "hotel-del-mar", nombre: "Hotel del Mar", vertical: "hoteles", rol: "owner" }] };
+    expect(decideLandingPath(session)).toBe("/hoteles/hotel-del-mar");
+  });
 });
 
 // Fase 14 — hallazgo de auditoría (severidad ALTA, "Invitaciones de staff sin

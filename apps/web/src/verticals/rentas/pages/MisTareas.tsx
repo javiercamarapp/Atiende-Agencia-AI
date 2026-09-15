@@ -64,10 +64,34 @@ function formatFecha(iso: string | null): string {
   return iso.length <= 10 ? iso : new Date(iso).toLocaleString("es-MX");
 }
 
+// Hallazgo de auditoría (rubro 11/UX, MEDIO, "navegación por teclado incompleta en
+// componentes de acción crítica"): esta tarjeta selecciona la tarea activa de la cola
+// de un rol operativo (`limpieza`) con un simple `<div onClick>` — sin `tabIndex`, sin
+// `role`, sin manejador de teclado, era invisible para Tab y no se podía activar con
+// Enter/Espacio. No se cambia a `<button>` real porque en la cola "Sin asignar" la
+// tarjeta envuelve OTRO botón real (`accion`, "Asignarme") y anidar `<button>` dentro
+// de `<button>` es HTML inválido — se usa el patrón estándar `role="button"` +
+// `tabIndex={0}` + `onKeyDown` (Enter/Espacio), con `e.target !== e.currentTarget`
+// para no disparar la selección dos veces cuando el foco real está en el botón
+// anidado (que ya maneja su propio Enter/Espacio de forma nativa).
 function TareaCard({ tarea, activo, onClick, accion }: { tarea: TareaOperativa; activo: boolean; onClick: () => void; accion?: React.ReactNode }) {
   const vencida = tarea.slaVenceEn !== null && new Date(tarea.slaVenceEn).getTime() < Date.now() && tarea.estado !== "completada" && tarea.estado !== "cancelada";
   return (
-    <div style={cardStyle(activo)} onClick={onClick}>
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={activo}
+      aria-label={`${TIPO_TAREA_LABELS[tarea.tipo]} — ${tarea.unidadNombre}`}
+      style={cardStyle(activo)}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
         <strong style={{ fontSize: 13 }}>
           {TIPO_TAREA_LABELS[tarea.tipo]} — {tarea.unidadNombre}
