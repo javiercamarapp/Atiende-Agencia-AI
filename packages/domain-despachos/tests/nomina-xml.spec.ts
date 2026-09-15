@@ -55,9 +55,21 @@ function periodo(overrides: Partial<DatosPeriodoNominaXml> = {}): DatosPeriodoNo
   };
 }
 
+function datosLaborales(overrides: Partial<import("../src/nomina/xml-nomina.ts").DatosLaboralesNominaXml> = {}) {
+  return {
+    curp: "PEAA850101HDFRRN08",
+    numEmpleado: "EMP001",
+    tipoContrato: "01",
+    tipoRegimen: "02",
+    periodicidadPago: "05",
+    claveEntFed: "CMX",
+    ...overrides,
+  };
+}
+
 describe("generarXmlCfdiNomina — estructura del XML", () => {
   it("genera un comprobante bien formado con los namespaces cfdi/xsi/nomina12", () => {
-    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo());
+    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales());
 
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
     expect(xml).toContain('xmlns:cfdi="http://www.sat.gob.mx/cfd/4"');
@@ -106,7 +118,7 @@ describe("generarXmlCfdiNomina — estructura del XML", () => {
     // Well-formedness básica: cada elemento con hijos abre y cierra exactamente
     // una vez, en el orden correcto (sin depender de un parser XML externo --
     // mismo criterio "sin dependencias nuevas" de mcp-servers/cfdi/src/port.ts).
-    for (const tag of ["cfdi:Comprobante", "cfdi:Complemento", "nomina12:Nomina", "nomina12:Percepciones", "nomina12:Deducciones"]) {
+    for (const tag of ["cfdi:Comprobante", "cfdi:Conceptos", "cfdi:Complemento", "nomina12:Nomina", "nomina12:Percepciones", "nomina12:Deducciones"]) {
       expect(xml.split(`<${tag}`).length - 1).toBe(1);
       expect(xml.split(`</${tag}>`).length - 1).toBe(1);
     }
@@ -114,16 +126,49 @@ describe("generarXmlCfdiNomina — estructura del XML", () => {
     expect(xml.lastIndexOf("</cfdi:Comprobante>")).toBe(xml.length - "</cfdi:Comprobante>".length);
   });
 
+  // CORRECCIÓN FISCAL (auditoría, hallazgo ALTO "XML de nómina 1.2 no valida contra
+  // el XSD real del SAT"): estas 4 piezas eran obligatorias en el XSD real y no se
+  // emitían antes de esta corrección — ver NOTA en la cabecera de xml-nomina.ts.
+  it("Exportacion='01' (atributo obligatorio de cfdi:Comprobante desde CFDI 4.0)", () => {
+    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales());
+    expect(xml).toContain('Exportacion="01"');
+  });
+
+  it("cfdi:Conceptos con un Concepto de servicios de nómina, ObjetoImp='01' (nodo obligatorio, antes ausente)", () => {
+    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales());
+    expect(xml).toContain("<cfdi:Conceptos>");
+    expect(xml).toContain('ClaveProdServ="84111505"');
+    expect(xml).toContain('ClaveUnidad="ACT"');
+    expect(xml).toContain('ObjetoImp="01"');
+    expect(xml).toContain('Importe="15500.00"');
+    // cfdi:Conceptos debe ir ANTES de cfdi:Complemento en el XML (orden del XSD).
+    expect(xml.indexOf("<cfdi:Conceptos>")).toBeLessThan(xml.indexOf("<cfdi:Complemento>"));
+  });
+
+  it("nomina12:Receptor con los datos laborales del trabajador (nodo obligatorio, antes ausente)", () => {
+    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ curp: "peaa850101hdfrrn08", claveEntFed: "cmx" }));
+    // CURP y ClaveEntFed se normalizan a mayúsculas.
+    expect(xml).toContain('<nomina12:Receptor Curp="PEAA850101HDFRRN08" NumEmpleado="EMP001" TipoContrato="01" TipoRegimen="02" PeriodicidadPago="05" ClaveEntFed="CMX"/>');
+    // nomina12:Receptor debe ir dentro de nomina12:Nomina, antes de Percepciones.
+    expect(xml.indexOf("<nomina12:Receptor")).toBeGreaterThan(xml.indexOf("<nomina12:Nomina"));
+    expect(xml.indexOf("<nomina12:Receptor")).toBeLessThan(xml.indexOf("<nomina12:Percepciones"));
+  });
+
+  it("nomina12:Percepciones incluye TotalGravado/TotalExento (atributos obligatorios, antes ausentes)", () => {
+    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales());
+    expect(xml).toContain('<nomina12:Percepciones TotalSueldos="15500.00" TotalGravado="15500.00" TotalExento="0.00">');
+  });
+
   it("FechaFinalPago usa el último día real del mes, incluyendo febrero bisiesto", () => {
-    const xmlFeb2026 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2026 })); // no bisiesto
+    const xmlFeb2026 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2026 }), datosLaborales()); // no bisiesto
     expect(xmlFeb2026).toContain('FechaFinalPago="2026-02-28"');
 
-    const xmlFeb2028 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2028 })); // bisiesto
+    const xmlFeb2028 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2028 }), datosLaborales()); // bisiesto
     expect(xmlFeb2028).toContain('FechaFinalPago="2028-02-29"');
   });
 
   it("FechaPago y FechaInicialPago son el primer día del mes (fidelidad literal del original)", () => {
-    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 7, year: 2026 }));
+    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 7, year: 2026 }), datosLaborales());
     expect(xml).toContain('FechaPago="2026-07-01"');
     expect(xml).toContain('FechaInicialPago="2026-07-01"');
     expect(xml).toContain('Fecha="2026-07-01T00:00:00"');
@@ -131,29 +176,35 @@ describe("generarXmlCfdiNomina — estructura del XML", () => {
 
   it("sin ISR ni IMSS obrero -> no emite <nomina12:Deducciones> (igual que el original)", () => {
     const emp = empleado({ taxes: { isr: 0, imssPatronal: 0, imssObrero: 0, infonavit: 0, total: 0 } });
-    const xml = generarXmlCfdiNomina(emp, emisor(), receptor(), periodo());
+    const xml = generarXmlCfdiNomina(emp, emisor(), receptor(), periodo(), datosLaborales());
     expect(xml).not.toContain("nomina12:Deducciones");
     expect(xml).toContain('TotalDeducciones="0.00"');
   });
 
   it("escapa caracteres especiales XML en Nombre (& < > \" ')", () => {
-    const xml = generarXmlCfdiNomina(empleado(), emisor({ nombre: 'Despacho "Fiscal" & Asociados <SA>' }), receptor(), periodo());
+    const xml = generarXmlCfdiNomina(empleado(), emisor({ nombre: 'Despacho "Fiscal" & Asociados <SA>' }), receptor(), periodo(), datosLaborales());
     expect(xml).toContain("Despacho &quot;Fiscal&quot; &amp; Asociados &lt;SA&gt;");
     expect(xml).not.toContain('Nombre="Despacho "Fiscal"'); // no debe romper el atributo
   });
 
-  it("permite fijar noCertificado/certificado explícitos (CSD real ya disponible), vacíos por defecto", () => {
-    const sinSellar = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo());
-    expect(sinSellar).toContain('NoCertificado=""');
-    expect(sinSellar).toContain('Certificado=""');
+  // CORRECCIÓN FISCAL (auditoría, hallazgo ALTO "XML de nómina 1.2 no valida contra
+  // el XSD real del SAT"): NoCertificado/Certificado son OPCIONALES en el XSD real,
+  // pero con facets (length=20 dígitos / base64 no vacío) que un valor de cadena
+  // VACÍA viola -- verificado validando contra el XSD real (xmllint), que rechaza
+  // `NoCertificado=""` con "this differs from the allowed length of '20'". Sin CSD
+  // real, el atributo se OMITE por completo (nunca se emite vacío).
+  it("sin CSD real, NoCertificado/Certificado se OMITEN (nunca se emiten vacíos -- un valor vacío viola el XSD real)", () => {
+    const sinSellar = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales());
+    expect(sinSellar).not.toContain("NoCertificado");
+    expect(sinSellar).not.toContain("Certificado=");
 
-    const sellado = generarXmlCfdiNomina(empleado(), emisor({ noCertificado: "00001000000504465028", certificado: "MIIF...base64..." }), receptor(), periodo());
+    const sellado = generarXmlCfdiNomina(empleado(), emisor({ noCertificado: "00001000000504465028", certificado: "MIIF...base64..." }), receptor(), periodo(), datosLaborales());
     expect(sellado).toContain('NoCertificado="00001000000504465028"');
     expect(sellado).toContain('Certificado="MIIF...base64..."');
   });
 
   it("permite tipoNomina=E (extraordinaria) y serie explícita", () => {
-    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ tipoNomina: "E", serie: "EXT" }));
+    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ tipoNomina: "E", serie: "EXT" }), datosLaborales());
     expect(xml).toContain('TipoNomina="E"');
     expect(xml).toContain('Serie="EXT"');
   });
@@ -161,44 +212,79 @@ describe("generarXmlCfdiNomina — estructura del XML", () => {
 
 describe("generarXmlCfdiNomina — validaciones (nunca fabrica datos fiscales)", () => {
   it("RFC de emisor ausente -> Error explícito, no XML con RFC vacío", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor({ rfc: "" }), receptor(), periodo())).toThrow("RFC del emisor es obligatorio");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor({ rfc: "" }), receptor(), periodo(), datosLaborales())).toThrow("RFC del emisor es obligatorio");
   });
 
   it("RFC de receptor ausente -> Error explícito", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor({ rfc: "" }), periodo())).toThrow("RFC del receptor es obligatorio");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor({ rfc: "" }), periodo(), datosLaborales())).toThrow("RFC del receptor es obligatorio");
   });
 
   it("RFC con formato inválido -> Error (no genera un XML con un RFC malformado)", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor({ rfc: "NO-ES-UN-RFC" }), receptor(), periodo())).toThrow(/formato válido/);
+    expect(() => generarXmlCfdiNomina(empleado(), emisor({ rfc: "NO-ES-UN-RFC" }), receptor(), periodo(), datosLaborales())).toThrow(/formato válido/);
   });
 
   it("nombre de emisor/receptor ausente -> Error", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor({ nombre: "  " }), receptor(), periodo())).toThrow("nombre del emisor");
-    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor({ nombre: "" }), periodo())).toThrow("nombre del receptor");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor({ nombre: "  " }), receptor(), periodo(), datosLaborales())).toThrow("nombre del emisor");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor({ nombre: "" }), periodo(), datosLaborales())).toThrow("nombre del receptor");
   });
 
   it("régimen fiscal del emisor ausente -> Error (a diferencia del original, NO defaultea a '601' fabricado)", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor({ regimenFiscal: "" }), receptor(), periodo())).toThrow("régimen fiscal del emisor");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor({ regimenFiscal: "" }), receptor(), periodo(), datosLaborales())).toThrow("régimen fiscal del emisor");
   });
 
   it("lugarExpedicion ausente -> Error (a diferencia del original, NO defaultea a un CP fabricado)", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor({ lugarExpedicion: "" }), receptor(), periodo())).toThrow("lugar de expedición");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor({ lugarExpedicion: "" }), receptor(), periodo(), datosLaborales())).toThrow("lugar de expedición");
   });
 
   it("domicilioFiscalReceptor ausente -> Error", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor({ domicilioFiscalReceptor: "" }), periodo())).toThrow("domicilio fiscal");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor({ domicilioFiscalReceptor: "" }), periodo(), datosLaborales())).toThrow("domicilio fiscal");
   });
 
   it("folio ausente -> Error (este puerto no genera un folio aleatorio por sí mismo -- ver NOTA DE FIDELIDAD)", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ folio: "" }))).toThrow("folio es obligatorio");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ folio: "" }), datosLaborales())).toThrow("folio es obligatorio");
   });
 
   it("month fuera de 1-12 -> Error", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 13 }))).toThrow("period.month");
-    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 0 }))).toThrow("period.month");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 13 }), datosLaborales())).toThrow("period.month");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 0 }), datosLaborales())).toThrow("period.month");
   });
 
   it("diasPagados <= 0 -> Error", () => {
-    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ diasPagados: 0 }))).toThrow("diasPagados");
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ diasPagados: 0 }), datosLaborales())).toThrow("diasPagados");
+  });
+
+  // CORRECCIÓN FISCAL (auditoría, hallazgo ALTO "XML de nómina 1.2 no valida contra
+  // el XSD real del SAT"): nomina12:Receptor es obligatorio en el XSD real — estos
+  // datos NUNCA se fabrican (ver NOTA de cabecera de xml-nomina.ts).
+  it("CURP ausente -> Error", () => {
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ curp: "" }))).toThrow("CURP del trabajador es obligatorio");
+  });
+
+  it("CURP con formato inválido -> Error (no genera un XML con un CURP malformado)", () => {
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ curp: "NO-ES-UN-CURP" }))).toThrow(/formato válido/);
+  });
+
+  it("numEmpleado ausente -> Error", () => {
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ numEmpleado: "" }))).toThrow("número de empleado es obligatorio");
+  });
+
+  it("tipoContrato ausente -> Error", () => {
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ tipoContrato: "" }))).toThrow("TipoContrato");
+  });
+
+  it("tipoRegimen ausente -> Error", () => {
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ tipoRegimen: "" }))).toThrow("TipoRegimen");
+  });
+
+  it("periodicidadPago ausente -> Error", () => {
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ periodicidadPago: "" }))).toThrow("PeriodicidadPago");
+  });
+
+  it("claveEntFed ausente -> Error", () => {
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ claveEntFed: "" }))).toThrow("ClaveEntFed");
+  });
+
+  it("claveEntFed fuera del catálogo c_Estado -> Error (no inventa una entidad federativa)", () => {
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ claveEntFed: "XXX" }))).toThrow(/no es una clave de entidad federativa válida/);
   });
 });

@@ -44,9 +44,102 @@
 // XML, atributos, catálogos de percepción/deducción, la fórmula de
 // TotalDeducciones, el defecto de FechaPago = FechaInicialPago = primer día
 // del mes) se porta 1:1.
+//
+// CORRECCIÓN FISCAL (auditoría, hallazgo ALTO "XML de nómina 1.2 no valida
+// contra el XSD real del SAT"): el XML que este módulo generaba ANTES de
+// esta corrección omitía CUATRO piezas que el XSD real (cfdv40.xsd +
+// nomina12.xsd) exige — un validador de esquema real lo rechaza, aunque el
+// XML esté bien formado como XML genérico:
+//   1. `Exportacion` — atributo OBLIGATORIO de `cfdi:Comprobante` desde
+//      CFDI 4.0 (no existía en 3.3). Se agrega fijo en "01" (No aplica): es
+//      el único valor correcto para un CFDI de nómina, nunca una operación
+//      de exportación — no es un dato fabricado por instancia, es la
+//      clasificación fiscal correcta de TODO CFDI de nómina.
+//   2. `cfdi:Conceptos` — nodo OBLIGATORIO (mínimo 1 `cfdi:Concepto`) que
+//      faltaba por completo. Se agrega un concepto único con
+//      ClaveProdServ="84111505" (Servicios de nómina, c_ClaveProdServ) y
+//      ObjetoImp="01" (No objeto de impuesto — las retenciones de nómina
+//      viven en el complemento, no en `cfdi:Impuestos`) — catálogo fijo
+//      correcto para TODO CFDI de nómina, no un dato fabricado.
+//   3. `nomina12:Receptor` — nodo OBLIGATORIO dentro de `nomina12:Nomina`
+//      con los datos laborales del trabajador (Curp, TipoContrato,
+//      TipoRegimen, NumEmpleado, PeriodicidadPago, ClaveEntFed — atributos
+//      `use="required"` del XSD real). Faltaba por completo. A diferencia
+//      de `Exportacion`/`Conceptos`, estos SÍ son datos reales del
+//      trabajador — nunca se fabrican: `DatosLaboralesNominaXml` es
+//      OBLIGATORIO como quinto parámetro, sin defaults inventados (mismo
+//      criterio que `lugarExpedicion`/`domicilioFiscalReceptor` arriba).
+//   4. `nomina12:Percepciones` — `TotalGravado`/`TotalExento` son atributos
+//      `use="required"` del XSD real; el XML anterior solo emitía
+//      `TotalSueldos` (opcional). Se agregan ambos (con la información que
+//      este módulo YA tiene: el CFDI de nómina no distingue percepciones
+//      exentas de gravadas por separado, así que `TotalGravado` = subtotal
+//      y `TotalExento` = 0 — el mismo criterio que ya usa el único
+//      `nomina12:Percepcion` emitido, `ImporteGravado`/`ImporteExento`).
 import { esRfcValido } from "@atiende/billing";
 import { r2 } from "./redondeo.ts";
 import type { EmployeePayroll } from "./types.ts";
+
+/** c_Estado (Anexo 20) — entidades federativas de México usadas en
+ * `nomina12:Receptor/@ClaveEntFed`. Catálogo verificado contra el Anexo 20
+ * del SAT (no incluye el resto de países del catálogo c_Estado completo,
+ * que también cubre direcciones extranjeras — fuera de alcance de nómina
+ * doméstica). */
+export const CLAVES_ENT_FED = [
+  "AGU",
+  "BCN",
+  "BCS",
+  "CAM",
+  "CHH",
+  "CHP",
+  "CMX",
+  "COA",
+  "COL",
+  "DUR",
+  "GRO",
+  "GUA",
+  "HID",
+  "JAL",
+  "MEX",
+  "MIC",
+  "MOR",
+  "NAY",
+  "NLE",
+  "OAX",
+  "PUE",
+  "QUE",
+  "ROO",
+  "SLP",
+  "SIN",
+  "SON",
+  "TAB",
+  "TAM",
+  "TLA",
+  "VER",
+  "YUC",
+  "ZAC",
+  "NE",
+] as const;
+const CLAVES_ENT_FED_SET: ReadonlySet<string> = new Set(CLAVES_ENT_FED);
+
+/** Patrón CURP (18 caracteres) — RENAPO/SAT. */
+const CURP_REGEX = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/;
+
+/** Datos laborales del trabajador exigidos por `nomina12:Receptor` (XSD real,
+ * atributos `use="required"`). Sin defaults fabricados — son datos reales
+ * del trabajador, ver NOTA DE FIDELIDAD de cabecera. */
+export interface DatosLaboralesNominaXml {
+  readonly curp: string;
+  readonly numEmpleado: string;
+  /** c_TipoContrato (Anexo 20) — p. ej. "01" (tiempo indeterminado). */
+  readonly tipoContrato: string;
+  /** c_TipoRegimen (Anexo 20) — p. ej. "02" (Sueldos). */
+  readonly tipoRegimen: string;
+  /** c_PeriodicidadPago (Anexo 20) — p. ej. "04" (Quincenal), "05" (Mensual). */
+  readonly periodicidadPago: string;
+  /** c_Estado (Anexo 20) — ver `CLAVES_ENT_FED`. */
+  readonly claveEntFed: string;
+}
 
 const CFDI_NS = "http://www.sat.gob.mx/cfd/4";
 const XSI_NS = "http://www.w3.org/2001/XMLSchema-instance";
@@ -158,7 +251,13 @@ function requireNoVacio(value: string | undefined, mensaje: string): string {
  * genera un XML fiscal con datos fabricados/adivinados (ver NOTA DE
  * FIDELIDAD de cabecera del archivo).
  */
-export function generarXmlCfdiNomina(empleado: EmployeePayroll, emisor: DatosEmisorNominaXml, receptor: DatosReceptorNominaXml, periodo: DatosPeriodoNominaXml): string {
+export function generarXmlCfdiNomina(
+  empleado: EmployeePayroll,
+  emisor: DatosEmisorNominaXml,
+  receptor: DatosReceptorNominaXml,
+  periodo: DatosPeriodoNominaXml,
+  datosLaborales: DatosLaboralesNominaXml,
+): string {
   const emisorRfc = requireNoVacio(emisor.rfc, "CFDI Nómina: el RFC del emisor es obligatorio.");
   const receptorRfc = requireNoVacio(receptor.rfc, "CFDI Nómina: el RFC del receptor es obligatorio.");
   const emisorNombre = requireNoVacio(emisor.nombre, "CFDI Nómina: el nombre del emisor es obligatorio.");
@@ -167,6 +266,21 @@ export function generarXmlCfdiNomina(empleado: EmployeePayroll, emisor: DatosEmi
   const lugarExpedicion = requireNoVacio(emisor.lugarExpedicion, "CFDI Nómina: el lugar de expedición (código postal) del emisor es obligatorio.");
   const domicilioFiscalReceptor = requireNoVacio(receptor.domicilioFiscalReceptor, "CFDI Nómina: el domicilio fiscal (código postal) del receptor es obligatorio.");
   const folio = requireNoVacio(periodo.folio, "CFDI Nómina: el folio es obligatorio.");
+
+  // nomina12:Receptor — atributos `use="required"` del XSD real (ver corrección de
+  // cabecera). Sin defaults fabricados: si el llamador no los tiene, debe fallar
+  // aquí, no generar un XML que un validador de esquema real rechazaría de todos
+  // modos, o peor, que "pase" con un CURP/entidad inventados.
+  const curp = requireNoVacio(datosLaborales.curp, "CFDI Nómina: el CURP del trabajador es obligatorio.").toUpperCase();
+  if (!CURP_REGEX.test(curp)) throw new Error(`CFDI Nómina: el CURP "${curp}" no tiene un formato válido.`);
+  const numEmpleado = requireNoVacio(datosLaborales.numEmpleado, "CFDI Nómina: el número de empleado es obligatorio.");
+  const tipoContrato = requireNoVacio(datosLaborales.tipoContrato, "CFDI Nómina: TipoContrato (c_TipoContrato) es obligatorio.");
+  const tipoRegimen = requireNoVacio(datosLaborales.tipoRegimen, "CFDI Nómina: TipoRegimen (c_TipoRegimen) es obligatorio.");
+  const periodicidadPago = requireNoVacio(datosLaborales.periodicidadPago, "CFDI Nómina: PeriodicidadPago (c_PeriodicidadPago) es obligatorio.");
+  const claveEntFed = requireNoVacio(datosLaborales.claveEntFed, "CFDI Nómina: ClaveEntFed (c_Estado) es obligatorio.").toUpperCase();
+  if (!CLAVES_ENT_FED_SET.has(claveEntFed)) {
+    throw new Error(`CFDI Nómina: ClaveEntFed "${claveEntFed}" no es una clave de entidad federativa válida (catálogo c_Estado).`);
+  }
 
   if (!esRfcValido(emisorRfc)) throw new Error(`CFDI Nómina: el RFC del emisor "${emisorRfc}" no tiene un formato válido.`);
   if (!esRfcValido(receptorRfc)) throw new Error(`CFDI Nómina: el RFC del receptor "${receptorRfc}" no tiene un formato válido.`);
@@ -190,7 +304,15 @@ export function generarXmlCfdiNomina(empleado: EmployeePayroll, emisor: DatosEmi
   const imssObrero = empleado.taxes.imssObrero;
   const totalDeducciones = r2(isr + imssObrero);
 
-  const comprobanteAttrs = attrs([
+  // NoCertificado/Certificado: atributos OPCIONALES del XSD real, pero con
+  // facets `pattern`/`length` (20 dígitos / base64 no vacío) que un valor de
+  // cadena VACÍA viola — un validador de esquema real rechaza `NoCertificado=""`
+  // igual que rechazaría un valor inventado (ver corrección de cabecera:
+  // verificado contra el XSD real). Cuando el llamador no trae un CSD real
+  // todavía, el atributo se OMITE por completo (nunca se emite vacío) — sigue
+  // sin fabricar un número de certificado falso, pero ahora de una forma que un
+  // validador de esquema real acepta.
+  const comprobanteAttrsBase: Array<readonly [string, string]> = [
     ["Version", "4.0"],
     ["Serie", serie],
     ["Folio", folio],
@@ -200,12 +322,19 @@ export function generarXmlCfdiNomina(empleado: EmployeePayroll, emisor: DatosEmi
     // original, no un ajuste de este puerto.
     ["Fecha", `${year}-${mm}-01T00:00:00`],
     ["FormaPago", "03"],
-    ["NoCertificado", emisor.noCertificado ?? ""],
-    ["Certificado", emisor.certificado ?? ""],
+  ];
+  if (emisor.noCertificado) comprobanteAttrsBase.push(["NoCertificado", emisor.noCertificado]);
+  if (emisor.certificado) comprobanteAttrsBase.push(["Certificado", emisor.certificado]);
+  const comprobanteAttrs = attrs([
+    ...comprobanteAttrsBase,
     ["SubTotal", fmt2(subtotal)],
     ["Moneda", "MXN"],
     ["Total", fmt2(subtotal)],
     ["TipoDeComprobante", "N"],
+    // Exportacion: atributo OBLIGATORIO desde CFDI 4.0 (c_Exportacion) — "01" (No
+    // aplica) es el único valor correcto para un CFDI de nómina (nunca es una
+    // operación de exportación). Ver corrección de cabecera.
+    ["Exportacion", "01"],
     ["MetodoPago", "PUE"],
     ["LugarExpedicion", lugarExpedicion],
     ["xsi:schemaLocation", XSI_SCHEMA_LOCATION],
@@ -225,6 +354,21 @@ export function generarXmlCfdiNomina(empleado: EmployeePayroll, emisor: DatosEmi
     ["UsoCFDI", "CN01"],
   ]);
 
+  // cfdi:Conceptos — nodo OBLIGATORIO (mínimo 1) que el XML anterior omitía por
+  // completo (ver corrección de cabecera). ClaveProdServ="84111505" (Servicios de
+  // nómina) y ObjetoImp="01" (No objeto de impuesto: las retenciones viven en el
+  // complemento nomina12, no aquí) son catálogo fijo correcto para todo CFDI de
+  // nómina — no datos fabricados por instancia.
+  const conceptoAttrs = attrs([
+    ["ClaveProdServ", "84111505"],
+    ["Cantidad", "1"],
+    ["ClaveUnidad", "ACT"],
+    ["Descripcion", "Pago de nómina"],
+    ["ValorUnitario", fmt2(subtotal)],
+    ["Importe", fmt2(subtotal)],
+    ["ObjetoImp", "01"],
+  ]);
+
   const nominaAttrs = attrs([
     ["Version", "1.2"],
     ["TipoNomina", tipoNomina],
@@ -236,7 +380,28 @@ export function generarXmlCfdiNomina(empleado: EmployeePayroll, emisor: DatosEmi
     ["TotalDeducciones", fmt2(totalDeducciones)],
   ]);
 
-  const percepcionesAttrs = attrs([["TotalSueldos", fmt2(subtotal)]]);
+  // nomina12:Receptor — nodo OBLIGATORIO dentro de nomina12:Nomina que el XML
+  // anterior omitía por completo (ver corrección de cabecera). Datos reales del
+  // trabajador, nunca fabricados.
+  const nominaReceptorAttrs = attrs([
+    ["Curp", curp],
+    ["NumEmpleado", numEmpleado],
+    ["TipoContrato", tipoContrato],
+    ["TipoRegimen", tipoRegimen],
+    ["PeriodicidadPago", periodicidadPago],
+    ["ClaveEntFed", claveEntFed],
+  ]);
+
+  // TotalGravado/TotalExento son atributos `use="required"` del XSD real — el XML
+  // anterior solo emitía TotalSueldos (opcional). Este motor no distingue
+  // percepciones exentas de gravadas por separado (mismo criterio que el único
+  // ImporteGravado/ImporteExento de nomina12:Percepcion abajo): TotalGravado =
+  // subtotal, TotalExento = 0.
+  const percepcionesAttrs = attrs([
+    ["TotalSueldos", fmt2(subtotal)],
+    ["TotalGravado", fmt2(subtotal)],
+    ["TotalExento", "0.00"],
+  ]);
   const percepcionAttrs = attrs([
     ["TipoPercepcion", "001"],
     ["Clave", "001"],
@@ -280,8 +445,12 @@ export function generarXmlCfdiNomina(empleado: EmployeePayroll, emisor: DatosEmi
     `<cfdi:Comprobante xmlns:cfdi="${CFDI_NS}" xmlns:xsi="${XSI_NS}" xmlns:nomina12="${NOMINA_NS}" ${comprobanteAttrs}>`,
     `  <cfdi:Emisor ${emisorAttrs}/>`,
     `  <cfdi:Receptor ${receptorAttrs}/>`,
+    `  <cfdi:Conceptos>`,
+    `    <cfdi:Concepto ${conceptoAttrs}/>`,
+    `  </cfdi:Conceptos>`,
     `  <cfdi:Complemento>`,
     `    <nomina12:Nomina ${nominaAttrs}>`,
+    `      <nomina12:Receptor ${nominaReceptorAttrs}/>`,
     `      <nomina12:Percepciones ${percepcionesAttrs}>`,
     `        <nomina12:Percepcion ${percepcionAttrs}/>`,
     `      </nomina12:Percepciones>${deduccionesBloque}`,
