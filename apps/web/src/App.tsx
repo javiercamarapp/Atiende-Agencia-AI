@@ -17,6 +17,7 @@ import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx"
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
+import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
 import { ReservasPage } from "./verticals/hoteles/pages/Reservas.tsx";
 import { FolioPage } from "./verticals/hoteles/pages/Folio.tsx";
 import { MantenimientoPage } from "./verticals/hoteles/pages/Mantenimiento.tsx";
@@ -203,12 +204,25 @@ function HotelesLoginRoute() {
   );
 }
 
-/** Redirección al abrir `/hoteles/:orgSlug` a secas — Reservas es la landing real
- * del panel (mismo criterio que CitasRootRedirect: la agenda/reservas es lo primero
- * que necesita ver recepción al entrar). */
-function HotelesRootRedirect() {
+/** Landing real de `/hoteles/:orgSlug` a secas (Fase 16) — hallazgo de auditoría
+ * (severidad ALTA, "No hay dashboard por tipo de usuario: todos aterrizan en
+ * Reservas"): antes de esta fase esta ruta era una redirección forzosa a
+ * `/hoteles/:orgSlug/reservas` para CUALQUIER rol (`HotelesRootRedirect`, ver
+ * historial de git) — owner/gm/accountant no tenían ninguna vista financiera y
+ * housekeeping/maintenance/fnb no tenían ninguna vista propia. Mismo patrón EXACTO
+ * que `RestaurantesDashboardRoute`: el Dashboard se monta DIRECTO en la raíz del
+ * orgSlug, sin redirección aparte — ver comentario de cabecera de
+ * verticals/hoteles/pages/Dashboard.tsx para el detalle de las dos variantes por
+ * rol. */
+function HotelesDashboardRoute() {
+  const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  return <Navigate to={`/hoteles/${orgSlug}/reservas`} replace />;
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesDashboardPage {...ctx} />}
+    </HotelesShell>
+  );
 }
 
 function HotelesReservasRoute() {
@@ -694,7 +708,7 @@ export function App() {
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
-        <Route path="/hoteles/:orgSlug" element={<HotelesRootRedirect />} />
+        <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
         <Route path="/hoteles/:orgSlug/folios/:folioId" element={<HotelesFolioRoute />} />
         <Route path="/hoteles/:orgSlug/folios/:folioId/cfdi" element={<HotelesFolioCfdiRoute />} />

@@ -53,6 +53,27 @@ servidor, pero el rol `fnb` no tenía ninguna superficie en el panel:
   `fnbAllergyGuard.ts`) es `false`, para que el staff vea la regla de negocio en
   vez de descubrirla con un 409.
 
+Fase 16 — hallazgo de auditoría (severidad ALTA, "No hay dashboard por tipo de
+usuario: todos aterrizan en Reservas"): antes de esta fase `HotelesRootRedirect`
+(apps/web/src/App.tsx) mandaba a `/hoteles/:orgSlug` a secas SIEMPRE a
+`/hoteles/:orgSlug/reservas`, sin importar el rol — owner/gm/accountant no tenían
+ninguna vista financiera (aunque `GET .../pl` ya existe desde Fase 10) y
+housekeeping/maintenance/fnb no tenían ninguna vista propia.
+
+- `pages/Dashboard.tsx` (`lib/pl-client.ts`) — landing real del panel, montada
+  DIRECTO en `/hoteles/:orgSlug` (mismo patrón que
+  `verticals/restaurantes/pages/Dashboard.tsx`: sin redirección aparte). Dos
+  variantes según rol (cosmético, el gate real sigue siendo el servidor):
+  owner/gm/accountant ven un resumen ejecutivo (ocupación/ADR/RevPAR +
+  ingresos/GOP/EBITDA/utilidad neta del periodo, ambos de `GET .../pl`); el resto
+  de roles ve reservas de hoy (llegadas/salidas/en estancia) más un acceso directo a
+  su área (Mantenimiento para housekeeping/maintenance/frontdesk, Pedidos F&B para
+  fnb). El link "Dashboard" del nav de `HotelesShell.tsx` apunta a la raíz del
+  orgSlug (`end`, mismo criterio que "Panel (KPIs)" en `RestaurantesShell.tsx`).
+  DELIBERADAMENTE fuera de esta fase: el desglose completo del P&L (por
+  departamento, historial de gastos, owner's report) — es un resumen, no el
+  /back-office de P&L completo (hallazgo separado).
+
 ## Explícitamente pendiente después de esta fase
 
 Portado real, no fingido — lo que sigue sin UI, para que quede honesto en vez de
@@ -69,3 +90,8 @@ asumido:
 - **Selector visual de property** — igual que restaurantes/citas, el shell usa la
   primera property de la organización; un selector para organizaciones multi-hotel
   reales queda para una fase futura.
+- **P&L completo (/back-office)** — `pages/Dashboard.tsx` (Fase 16) solo muestra un
+  RESUMEN ejecutivo de `GET .../pl` (KPIs + total del periodo). El desglose diario/
+  mensual por departamento, el historial de gastos (`POST/GET .../pl/gastos`) y el
+  owner's report completo que el mismo endpoint ya expone no tienen página propia
+  todavía — hallazgo separado.
