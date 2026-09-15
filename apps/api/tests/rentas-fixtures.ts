@@ -60,6 +60,10 @@ export interface RentasTestContext {
     readonly operadorAccesoTotal: { id: string; email: string; password: string; token: string };
     readonly operadorSoloCalendario: { id: string; email: string; password: string; token: string };
     readonly contador: { id: string; email: string; password: string; token: string };
+    /** Fase 17 -- panel operativo del rol `limpieza` (ver
+     *  apps/api/tests/rentas-limpieza.spec.ts). Mismo criterio de seed que el resto
+     *  del staff de este fixture. */
+    readonly limpieza: { id: string; email: string; password: string; token: string };
   };
 }
 
@@ -114,6 +118,8 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
   const operadorAccesoTotalSeed = await seedStaff("operador:acceso_total", "operador-acceso-total", "member");
   const operadorSoloCalendarioSeed = await seedStaff("operador:solo_calendario", "operador-solo-calendario", "member");
   const contadorSeed = await seedStaff("contador", "contador", "viewer");
+  // Fase 17 -- panel operativo de limpieza/mantenimiento (LIMPIEZA_OPERACION_ROLES).
+  const limpiezaSeed = await seedStaff("limpieza", "limpieza", "member");
 
   const unidadId = randomUUID();
   rentasRepo.seedUnidad({ id: unidadId, organizationId, propertyId, duracionMinimaNoches: 1, name: "Depa de Prueba" });
@@ -162,11 +168,12 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
   };
 
   const app = buildApp(deps);
-  const [adminGestoraToken, operadorAccesoTotalToken, operadorSoloCalendarioToken, contadorToken] = await Promise.all([
+  const [adminGestoraToken, operadorAccesoTotalToken, operadorSoloCalendarioToken, contadorToken, limpiezaToken] = await Promise.all([
     signInAndGetToken(app, adminGestoraSeed.email, adminGestoraSeed.password),
     signInAndGetToken(app, operadorAccesoTotalSeed.email, operadorAccesoTotalSeed.password),
     signInAndGetToken(app, operadorSoloCalendarioSeed.email, operadorSoloCalendarioSeed.password),
     signInAndGetToken(app, contadorSeed.email, contadorSeed.password),
+    signInAndGetToken(app, limpiezaSeed.email, limpiezaSeed.password),
   ]);
 
   return {
@@ -186,6 +193,7 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
       operadorAccesoTotal: { ...operadorAccesoTotalSeed, token: operadorAccesoTotalToken },
       operadorSoloCalendario: { ...operadorSoloCalendarioSeed, token: operadorSoloCalendarioToken },
       contador: { ...contadorSeed, token: contadorToken },
+      limpieza: { ...limpiezaSeed, token: limpiezaToken },
     },
   };
 }

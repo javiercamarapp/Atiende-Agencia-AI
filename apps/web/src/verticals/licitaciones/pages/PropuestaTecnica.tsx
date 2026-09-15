@@ -23,9 +23,11 @@
 // propuesta técnica generada para aceptar la económica (dominios
 // independientes: requisitos técnicos vs. tarifas aprobadas), esta pantalla
 // simplemente las presenta en el orden natural del flujo. El checklist de
-// integridad ejecutable, las aprobaciones, el ZIP de cierre y todo lo
-// post-adjudicación quedan FUERA de esta pieza -- son alcance de rondas
-// futuras (ver README de este vertical).
+// integridad ejecutable, las aprobaciones y el ZIP de cierre YA tienen
+// pantalla propia (Fase 14, `pages/Cierre.tsx` + `lib/cierre-client.ts`,
+// enlazada abajo) -- solo lo post-adjudicación (contratos, cobranza,
+// inconformidades) queda FUERA de esta pieza, alcance de rondas futuras (ver
+// README de este vertical).
 //
 // El backend NO expone todavía un `GET .../requirement-mappings` -- solo el
 // PUT (upsert). Esta pantalla no puede, entonces, precargar el mapeo
@@ -282,8 +284,11 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
         </Link>
         <h1 style={{ fontSize: 20, margin: "4px 0 0" }}>Propuesta técnica</h1>
         <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
-          Genera la propuesta técnica a partir de los requisitos ya extraídos y configura a qué dato de empresa se redacta cada tema (topicKey). La propuesta económica, aprobaciones y el cierre del expediente no viven en esta pantalla todavía.
+          Genera la propuesta técnica a partir de los requisitos ya extraídos y configura a qué dato de empresa se redacta cada tema (topicKey). La propuesta económica vive abajo en esta misma pantalla.
         </p>
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} style={{ display: "inline-block", marginTop: 8, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+          Correr checklist, aprobar y ensamblar el paquete de cierre →
+        </Link>
       </div>
 
       {technicalItems.length === 0 && (

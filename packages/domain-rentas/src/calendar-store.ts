@@ -26,7 +26,21 @@
 // segunda adquisición espera a que la primera libere).
 import { randomUUID } from "node:crypto";
 import type { EstadoOcupacion, Razon } from "./tipos.ts";
-import type { BloqueoRecord, CanalRecord, NewGuestMinimoInput, OcupacionCalendarioItem, OcupacionParaMovimiento, OcupacionResumen, UnidadRecord } from "./types.ts";
+import type {
+  BloqueoRecord,
+  CanalRecord,
+  IncidenciaMantenimientoRecord,
+  ItemInventarioRecord,
+  NewGuestMinimoInput,
+  OcupacionCalendarioItem,
+  OcupacionParaMovimiento,
+  OcupacionResumen,
+  TareaListFiltro,
+  TareaOperativaDetalle,
+  TareaOperativaRecord,
+  UnidadRecord,
+} from "./types.ts";
+import type { ChecklistItemTarea, EstadoIncidencia, EstadoTareaOperativa, PrioridadTareaOperativa, SeveridadIncidencia, TipoTareaOperativa } from "./limpieza/tipos.ts";
 
 export interface StoredOcupacion {
   id: string;
@@ -85,6 +99,97 @@ interface StoredGuestMinimo {
   contacto: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Fase 17 -- módulo operativo de limpieza/mantenimiento (rentas.tarea_operativa/
+// checklist_item_tarea/item_inventario/movimiento_inventario/
+// incidencia_mantenimiento/notificacion_tarea, ver migrations/010). Comparte
+// instancia con `InMemoryRentasTenancyEngine` por la MISMA razón que
+// unidades/ocupaciones arriba: ../limpieza/aplicacion/tareas.ts recibe el
+// `EjecutorTransaccional` del request DIRECTO (nunca pasa por este repository), así
+// que las filas que crea/actualiza deben ser visibles para
+// `InMemoryRentasRepository.listTareas`/`findTareaDetalle`/etc. exactamente como en
+// Postgres real ambos caminos leen/escriben la misma tabla.
+export interface StoredTareaOperativa {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  unidadId: string;
+  ocupacionUnidadId: string | null;
+  tipo: TipoTareaOperativa;
+  estado: EstadoTareaOperativa;
+  prioridad: PrioridadTareaOperativa;
+  asignadoA: string | null;
+  esProveedorExterno: boolean;
+  programadaPara: string;
+  slaVenceEn: string | null;
+  bufferOcupacionId: string | null;
+  completadaEn: string | null;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+export interface StoredChecklistItemTarea {
+  id: string;
+  tareaId: string;
+  descripcion: string;
+  orden: number;
+  completado: boolean;
+  completadoEn: string | null;
+  completadoPor: string | null;
+}
+
+export interface StoredFotoChecklistItem {
+  id: string;
+  checklistItemId: string;
+  rutaAlmacenamiento: string;
+  subidaPor: string | null;
+}
+
+export interface StoredItemInventario {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  unidadId: string;
+  nombre: string;
+  categoria: ItemInventarioRecord["categoria"];
+  cantidadActual: number;
+  umbralMinimo: number;
+  unidadMedida: string;
+}
+
+export interface StoredMovimientoInventario {
+  id: string;
+  itemInventarioId: string;
+  tareaId: string | null;
+  cantidad: number;
+  motivo: string;
+  creadoEn: string;
+}
+
+export interface StoredIncidenciaMantenimiento {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  unidadId: string;
+  tareaOrigenId: string | null;
+  severidad: SeveridadIncidencia;
+  titulo: string;
+  descripcion: string | null;
+  estado: EstadoIncidencia;
+  propuestaBloqueoInicio: string | null;
+  propuestaBloqueoFin: string | null;
+  bloqueoOcupacionId: string | null;
+  reportadoPor: string | null;
+  confirmadoPor: string | null;
+  creadoEn: string;
+}
+
+export interface StoredNotificacionTarea {
+  id: string;
+  tareaId: string;
+  evento: "asignada" | "completada";
+}
+
 /** Serializa operaciones por clave — equivalente en memoria de
  * `pg_advisory_xact_lock`. Mismo patrón que `KeyedMutex` de
  * `domain-hoteles::in-memory-repository.ts`. */
@@ -126,6 +231,15 @@ export class InMemoryRentasCalendarStore {
   readonly conflictos = new Map<string, StoredConflicto>();
   readonly huespedes = new Map<string, StoredGuestMinimo>();
   readonly locks = new KeyedMutex();
+
+  // ---- Fase 17 -- módulo operativo de limpieza/mantenimiento ----
+  readonly tareas = new Map<string, StoredTareaOperativa>();
+  readonly checklistItems = new Map<string, StoredChecklistItemTarea>();
+  readonly fotosChecklist = new Map<string, StoredFotoChecklistItem>();
+  readonly itemsInventario = new Map<string, StoredItemInventario>();
+  readonly movimientosInventario = new Map<string, StoredMovimientoInventario>();
+  readonly incidencias = new Map<string, StoredIncidenciaMantenimiento>();
+  readonly notificacionesTarea = new Map<string, StoredNotificacionTarea>();
 
   constructor() {
     // Mismo catálogo semilla que migrations/001_rentas_schema.sql.
@@ -408,5 +522,284 @@ export class InMemoryRentasCalendarStore {
     const fila = this.ocupaciones.get(ocupacionId);
     if (!fila) throw new Error(`rentas.ocupacion ${ocupacionId} no existe`);
     fila.recordatorioCheckinEnviadoEn = enviadoEnIso;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fase 17 -- módulo operativo de limpieza/mantenimiento. `seedTareaOperativa`/
+  // `seedItemInventario` son las únicas escrituras de este bloque pensadas para
+  // TESTS (mismo rol que `seedUnidad` arriba) -- en producción una tarea real nace
+  // de `crearTareaLimpiezaPorCheckout` (Fase 8, fuera de alcance de esta fase, ver
+  // README de este paquete) y un item de inventario, de un endpoint de catálogo que
+  // tampoco existe todavía (mismo "Fuera de fase" documentado). Todo lo demás de
+  // este bloque son las primitivas que `InMemoryRentasTenancyEngine` despacha desde
+  // el texto SQL literal de ../limpieza/aplicacion/tareas.ts (asignarTarea/
+  // completarChecklistItem/completarTarea/registrarIncidencia) y las lecturas que
+  // usa `InMemoryRentasRepository` (listTareas/findTareaDetalle/etc).
+  // ---------------------------------------------------------------------------
+
+  /** Siembra una tarea operativa + su checklist para tests -- salta a propósito toda
+   *  la orquestación de `crearTareaLimpiezaPorCheckout` (buffer de calendario,
+   *  property_config, plantilla de checklist por tipo) porque los tests de este
+   *  módulo solo necesitan una fila `tarea_operativa` ya existente sobre la que
+   *  ejercitar asignar/completar checklist/completar/reportar incidencia. */
+  seedTareaOperativa(input: {
+    organizationId: string;
+    propertyId: string;
+    unidadId: string;
+    tipo?: TipoTareaOperativa;
+    estado?: EstadoTareaOperativa;
+    prioridad?: PrioridadTareaOperativa;
+    asignadoA?: string | null;
+    esProveedorExterno?: boolean;
+    programadaPara: string;
+    slaVenceEn?: string | null;
+    checklist?: readonly string[];
+  }): StoredTareaOperativa {
+    const id = randomUUID();
+    const ahora = new Date().toISOString();
+    const fila: StoredTareaOperativa = {
+      id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      unidadId: input.unidadId,
+      ocupacionUnidadId: null,
+      tipo: input.tipo ?? "limpieza",
+      estado: input.estado ?? "pendiente",
+      prioridad: input.prioridad ?? "media",
+      asignadoA: input.asignadoA ?? null,
+      esProveedorExterno: input.esProveedorExterno ?? false,
+      programadaPara: input.programadaPara,
+      slaVenceEn: input.slaVenceEn ?? null,
+      bufferOcupacionId: null,
+      completadaEn: null,
+      creadoEn: ahora,
+      actualizadoEn: ahora,
+    };
+    this.tareas.set(id, fila);
+    (input.checklist ?? []).forEach((descripcion, orden) => {
+      const itemId = randomUUID();
+      this.checklistItems.set(itemId, { id: itemId, tareaId: id, descripcion, orden, completado: false, completadoEn: null, completadoPor: null });
+    });
+    return fila;
+  }
+
+  /** Siembra un ítem de inventario de una unidad para tests -- ver comentario de
+   *  `seedTareaOperativa` arriba. */
+  seedItemInventario(input: {
+    organizationId: string;
+    propertyId: string;
+    unidadId: string;
+    nombre: string;
+    categoria: ItemInventarioRecord["categoria"];
+    cantidadActual: number;
+    umbralMinimo: number;
+    unidadMedida?: string;
+  }): StoredItemInventario {
+    const id = randomUUID();
+    const fila: StoredItemInventario = {
+      id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      unidadId: input.unidadId,
+      nombre: input.nombre,
+      categoria: input.categoria,
+      cantidadActual: input.cantidadActual,
+      umbralMinimo: input.umbralMinimo,
+      unidadMedida: input.unidadMedida ?? "unidad",
+    };
+    this.itemsInventario.set(id, fila);
+    return fila;
+  }
+
+  /** `SELECT organization_id, property_id FROM rentas.unidad WHERE id = $1` --
+   *  a diferencia de `findUnidad` (que exige conocer ya el `propertyId`), esta
+   *  primitiva resuelve la unidad a partir SOLO de su id (usada por
+   *  `obtenerConfiguracion`/`registrarIncidencia` de aplicacion/tareas.ts). */
+  getUnidadById(unidadId: string): UnidadRecord | null {
+    return this.unidades.get(unidadId) ?? null;
+  }
+
+  getTareaOperativa(tareaId: string): StoredTareaOperativa | null {
+    return this.tareas.get(tareaId) ?? null;
+  }
+
+  /** `GET .../tareas`: tareas de una property, opcionalmente filtradas por
+   *  asignación (`asignadoA: null` = solo sin asignar, ausente = sin filtro) y/o
+   *  estado -- ver types.ts::TareaListFiltro. */
+  listTareas(propertyId: string, filtro: TareaListFiltro = {}): TareaOperativaRecord[] {
+    const filtraAsignacion = Object.prototype.hasOwnProperty.call(filtro, "asignadoA");
+    return [...this.tareas.values()]
+      .filter((t) => t.propertyId === propertyId)
+      .filter((t) => !filtraAsignacion || t.asignadoA === (filtro.asignadoA ?? null))
+      .filter((t) => !filtro.estados || filtro.estados.includes(t.estado))
+      .sort((a, b) => (a.programadaPara < b.programadaPara ? -1 : a.programadaPara > b.programadaPara ? 1 : a.creadoEn < b.creadoEn ? -1 : 1))
+      .map((t) => this.tareaToRecord(t));
+  }
+
+  findTareaDetalle(propertyId: string, tareaId: string): TareaOperativaDetalle | null {
+    const fila = this.tareas.get(tareaId);
+    if (!fila || fila.propertyId !== propertyId) return null;
+    return { ...this.tareaToRecord(fila), checklist: this.listChecklistPorTarea(tareaId) };
+  }
+
+  private tareaToRecord(t: StoredTareaOperativa): TareaOperativaRecord {
+    const unidad = this.unidades.get(t.unidadId);
+    return {
+      id: t.id,
+      propertyId: t.propertyId,
+      unidadId: t.unidadId,
+      unidadNombre: unidad?.name ?? t.unidadId,
+      tipo: t.tipo,
+      estado: t.estado,
+      prioridad: t.prioridad,
+      asignadoA: t.asignadoA,
+      esProveedorExterno: t.esProveedorExterno,
+      programadaPara: t.programadaPara,
+      slaVenceEn: t.slaVenceEn,
+      completadaEn: t.completadaEn,
+      creadoEn: t.creadoEn,
+    };
+  }
+
+  listChecklistPorTarea(tareaId: string): ChecklistItemTarea[] {
+    return [...this.checklistItems.values()]
+      .filter((c) => c.tareaId === tareaId)
+      .sort((a, b) => a.orden - b.orden)
+      .map((c) => ({ id: c.id, tareaId: c.tareaId, descripcion: c.descripcion, orden: c.orden, completado: c.completado, completadoEn: c.completadoEn, completadoPor: c.completadoPor }));
+  }
+
+  findChecklistItem(propertyId: string, tareaId: string, itemId: string): { id: string } | null {
+    const item = this.checklistItems.get(itemId);
+    if (!item || item.tareaId !== tareaId) return null;
+    const tarea = this.tareas.get(tareaId);
+    if (!tarea || tarea.propertyId !== propertyId) return null;
+    return { id: item.id };
+  }
+
+  // ---- primitivas despachadas por InMemoryRentasTenancyEngine (texto SQL literal
+  // de ../limpieza/aplicacion/tareas.ts) ----
+
+  asignarTareaOperativa(tareaId: string, asignadoA: string, esProveedorExterno: boolean): { id: string } | null {
+    const fila = this.tareas.get(tareaId);
+    if (!fila) return null;
+    fila.asignadoA = asignadoA;
+    fila.esProveedorExterno = esProveedorExterno;
+    if (fila.estado === "pendiente") fila.estado = "asignada";
+    fila.actualizadoEn = new Date().toISOString();
+    return { id: tareaId };
+  }
+
+  insertNotificacionTarea(tareaId: string, evento: "asignada" | "completada"): void {
+    const id = randomUUID();
+    this.notificacionesTarea.set(id, { id, tareaId, evento });
+  }
+
+  completarChecklistItemTarea(checklistItemId: string, completadoPor: string): { id: string } | null {
+    const item = this.checklistItems.get(checklistItemId);
+    if (!item) return null;
+    item.completado = true;
+    item.completadoEn = new Date().toISOString();
+    item.completadoPor = completadoPor;
+    return { id: checklistItemId };
+  }
+
+  insertFotoChecklistItem(checklistItemId: string, rutaAlmacenamiento: string, subidaPor: string | null): void {
+    const id = randomUUID();
+    this.fotosChecklist.set(id, { id, checklistItemId, rutaAlmacenamiento, subidaPor });
+  }
+
+  listChecklistCompletadoPorTarea(tareaId: string): { completado: boolean }[] {
+    return [...this.checklistItems.values()].filter((c) => c.tareaId === tareaId).map((c) => ({ completado: c.completado }));
+  }
+
+  marcarTareaBloqueada(tareaId: string): void {
+    const fila = this.tareas.get(tareaId);
+    if (fila) {
+      fila.estado = "bloqueada";
+      fila.actualizadoEn = new Date().toISOString();
+    }
+  }
+
+  marcarTareaCompletada(tareaId: string): void {
+    const fila = this.tareas.get(tareaId);
+    if (fila) {
+      fila.estado = "completada";
+      fila.completadaEn = new Date().toISOString();
+      fila.actualizadoEn = new Date().toISOString();
+    }
+  }
+
+  getItemInventario(id: string): StoredItemInventario | null {
+    return this.itemsInventario.get(id) ?? null;
+  }
+
+  actualizarCantidadInventario(id: string, cantidadNueva: number): void {
+    const fila = this.itemsInventario.get(id);
+    if (fila) fila.cantidadActual = cantidadNueva;
+  }
+
+  insertMovimientoInventario(itemInventarioId: string, tareaId: string | null, cantidad: number, motivo: string): void {
+    const id = randomUUID();
+    this.movimientosInventario.set(id, { id, itemInventarioId, tareaId, cantidad, motivo, creadoEn: new Date().toISOString() });
+  }
+
+  listItemsInventario(propertyId: string, unidadId: string): ItemInventarioRecord[] {
+    return [...this.itemsInventario.values()]
+      .filter((i) => i.propertyId === propertyId && i.unidadId === unidadId)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre))
+      .map((i) => ({ id: i.id, unidadId: i.unidadId, nombre: i.nombre, categoria: i.categoria, cantidadActual: i.cantidadActual, umbralMinimo: i.umbralMinimo, unidadMedida: i.unidadMedida }));
+  }
+
+  insertIncidenciaMantenimiento(input: {
+    organizationId: string;
+    propertyId: string;
+    unidadId: string;
+    tareaOrigenId: string | null;
+    severidad: SeveridadIncidencia;
+    titulo: string;
+    descripcion: string | null;
+    reportadoPor: string;
+    estado: EstadoIncidencia;
+    propuestaBloqueoInicio: string | null;
+    propuestaBloqueoFin: string | null;
+  }): { id: string } {
+    const id = randomUUID();
+    this.incidencias.set(id, {
+      id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      unidadId: input.unidadId,
+      tareaOrigenId: input.tareaOrigenId,
+      severidad: input.severidad,
+      titulo: input.titulo,
+      descripcion: input.descripcion,
+      estado: input.estado,
+      propuestaBloqueoInicio: input.propuestaBloqueoInicio,
+      propuestaBloqueoFin: input.propuestaBloqueoFin,
+      bloqueoOcupacionId: null,
+      reportadoPor: input.reportadoPor,
+      confirmadoPor: null,
+      creadoEn: new Date().toISOString(),
+    });
+    return { id };
+  }
+
+  listIncidencias(propertyId: string, unidadId: string): IncidenciaMantenimientoRecord[] {
+    return [...this.incidencias.values()]
+      .filter((i) => i.propertyId === propertyId && i.unidadId === unidadId)
+      .sort((a, b) => (a.creadoEn < b.creadoEn ? 1 : -1))
+      .map((i) => ({
+        id: i.id,
+        propertyId: i.propertyId,
+        unidadId: i.unidadId,
+        tareaOrigenId: i.tareaOrigenId,
+        severidad: i.severidad,
+        titulo: i.titulo,
+        descripcion: i.descripcion,
+        estado: i.estado,
+        propuestaBloqueoRango: i.propuestaBloqueoInicio && i.propuestaBloqueoFin ? { inicio: i.propuestaBloqueoInicio, fin: i.propuestaBloqueoFin } : null,
+        reportadoPor: i.reportadoPor,
+        creadoEn: i.creadoEn,
+      }));
   }
 }

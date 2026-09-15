@@ -25,6 +25,7 @@ import { AsistenciaPage } from "./verticals/hoteles/pages/Asistencia.tsx";
 import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
+import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
 import { PedidosFnbPage } from "./verticals/hoteles/pages/PedidosFnb.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
 import { RentasShell } from "./verticals/rentas/RentasShell.tsx";
@@ -33,6 +34,7 @@ import { CalendarioPage as RentasCalendarioPage } from "./verticals/rentas/pages
 import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Precios.tsx";
 import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
 import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
+import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -49,6 +51,7 @@ import { ConvocatoriasPage } from "./verticals/licitaciones/pages/Convocatorias.
 import { ConvocatoriaDetallePage } from "./verticals/licitaciones/pages/ConvocatoriaDetalle.tsx";
 import { RequisitosConvocatoriaPage } from "./verticals/licitaciones/pages/RequisitosConvocatoria.tsx";
 import { PropuestaTecnicaPage } from "./verticals/licitaciones/pages/PropuestaTecnica.tsx";
+import { CierrePage } from "./verticals/licitaciones/pages/Cierre.tsx";
 import { PerfilMatchingPage } from "./verticals/licitaciones/pages/PerfilMatching.tsx";
 import { DespachosLoginPage } from "./verticals/despachos/pages/Login.tsx";
 import { DespachosShell } from "./verticals/despachos/DespachosShell.tsx";
@@ -59,6 +62,7 @@ import { CfdiDetallePage } from "./verticals/despachos/pages/CfdiDetalle.tsx";
 import { CobranzaPage } from "./verticals/despachos/pages/Cobranza.tsx";
 import { VencimientosPage } from "./verticals/despachos/pages/Vencimientos.tsx";
 import { DeclaracionesPage } from "./verticals/despachos/pages/Declaraciones.tsx";
+import { NominaPage } from "./verticals/despachos/pages/Nomina.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -296,6 +300,22 @@ function HotelesCfdiListadoRoute() {
   );
 }
 
+/** Hallazgo de auditoría (severidad ALTA, "P&L USALI (P0)... sin UI", porción
+ * restante): back-office de P&L completo (pages/Pl.tsx) — mismo patrón que
+ * HotelesMantenimientoRoute/HotelesFraudeRoute (nav gateada cosméticamente por rol
+ * en HotelesShell.tsx, no aquí; un rol sin acceso que navegue directo a esta URL ve
+ * el 403 real del servidor como mensaje de error dentro de Pl.tsx). */
+function HotelesPlRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/hoteles/login" replace />;
+  return (
+    <HotelesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/hoteles/login", { replace: true })}>
+      {(ctx) => <HotelesPlPage {...ctx} />}
+    </HotelesShell>
+  );
+}
+
 /** Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con guardia de
  * alergias: backend real sin pantalla"): mismo patrón que
  * HotelesMantenimientoRoute/HotelesFraudeRoute (nav gateada cosméticamente por rol
@@ -404,6 +424,21 @@ function RentasFinanzasRoute() {
   return (
     <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
       {(ctx) => <RentasFinanzasPage {...ctx} />}
+    </RentasShell>
+  );
+}
+
+/** Mis tareas (Fase 17) — panel operativo del rol `limpieza` (tareas/checklist/
+ * inventario/incidencias). Cierra el hallazgo de auditoría ALTA "el rol `limpieza`
+ * sigue sin ninguna vista funcional". Mismo patrón de ruta hija que
+ * RentasCalendarioRoute/RentasPreciosRoute/RentasAprobacionesRoute/RentasFinanzasRoute. */
+function RentasMisTareasRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasMisTareasPage {...ctx} />}
     </RentasShell>
   );
 }
@@ -593,6 +628,17 @@ function LicitacionesPropuestaTecnicaRoute() {
   );
 }
 
+function LicitacionesCierreRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/licitaciones/login" replace />;
+  return (
+    <LicitacionesShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/licitaciones/login", { replace: true })}>
+      {(ctx) => <CierrePage {...ctx} />}
+    </LicitacionesShell>
+  );
+}
+
 function LicitacionesPerfilMatchingRoute() {
   const navigate = useNavigate();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -702,6 +748,17 @@ function DespachosDeclaracionesRoute() {
   );
 }
 
+function DespachosNominaRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/despachos/login" replace />;
+  return (
+    <DespachosShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/despachos/login", { replace: true })}>
+      {(ctx) => <NominaPage {...ctx} />}
+    </DespachosShell>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -733,12 +790,14 @@ export function App() {
         <Route path="/hoteles/:orgSlug/fraude" element={<HotelesFraudeRoute />} />
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
+        <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/rentas/:orgSlug" element={<RentasDashboardRoute />} />
         <Route path="/rentas/:orgSlug/calendario" element={<RentasCalendarioRoute />} />
         <Route path="/rentas/:orgSlug/precios" element={<RentasPreciosRoute />} />
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
+        <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
@@ -758,6 +817,7 @@ export function App() {
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId" element={<LicitacionesConvocatoriaDetalleRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/requisitos" element={<LicitacionesRequisitosRoute />} />
         <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/propuesta-tecnica" element={<LicitacionesPropuestaTecnicaRoute />} />
+        <Route path="/licitaciones/:orgSlug/convocatorias/:tenderId/cierre" element={<LicitacionesCierreRoute />} />
         <Route path="/licitaciones/:orgSlug/perfil-matching" element={<LicitacionesPerfilMatchingRoute />} />
         <Route path="/despachos/login" element={<DespachosLoginRoute />} />
         <Route path="/despachos/:orgSlug" element={<DespachosRootRedirect />} />
@@ -768,6 +828,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/cobranza" element={<DespachosCobranzaRoute />} />
         <Route path="/despachos/:orgSlug/vencimientos" element={<DespachosVencimientosRoute />} />
         <Route path="/despachos/:orgSlug/declaraciones" element={<DespachosDeclaracionesRoute />} />
+        <Route path="/despachos/:orgSlug/nomina" element={<DespachosNominaRoute />} />
         <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
       </Routes>
     </BrowserRouter>

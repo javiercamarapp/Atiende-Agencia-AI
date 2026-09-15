@@ -44,6 +44,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "cobranza", label: "Cobranza" },
   { to: "vencimientos", label: "Vencimientos" },
   { to: "declaraciones", label: "Declaraciones" },
+  { to: "nomina", label: "Nómina" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({

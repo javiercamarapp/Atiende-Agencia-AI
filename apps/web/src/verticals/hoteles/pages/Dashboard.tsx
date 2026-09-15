@@ -17,12 +17,14 @@
 //
 //   1. owner/gm/accountant (mismo conjunto exacto que `PL_ROLES`): resumen ejecutivo
 //      con los KPIs reales de ocupación/ADR/RevPAR y el TOTAL del P&L USALI del
-//      periodo, ambos de `GET .../pl` (pl-client.ts). DELIBERADAMENTE fuera de esta
-//      fase (documentado, no fingido): el desglose completo por departamento/gasto,
-//      el historial de gastos y el owner's report completo — eso es la superficie de
-//      un /back-office de P&L propio, un hallazgo separado (esta pantalla es un
-//      RESUMEN ejecutivo, no una reconstrucción a nivel Cfdi.tsx/Folio.tsx del P&L
-//      completo). Night audit (`GET .../night-audit`) tampoco se agrega aquí: sus
+//      periodo, ambos de `GET .../pl` (pl-client.ts), con un link a `pages/Pl.tsx`
+//      (back-office de P&L completo: desglose por departamento, gastos no
+//      distribuidos, punto de equilibrio dinámico, owner's report y registro/
+//      historial de gastos — hallazgo de auditoría severidad ALTA, "P&L USALI (P0)...
+//      sin UI", porción restante). Este resumen ejecutivo SIGUE siendo solo el TOTAL
+//      del periodo (esta pantalla es un RESUMEN, no una reconstrucción a nivel
+//      Cfdi.tsx/Folio.tsx del P&L completo) — el desglose vive en `pages/Pl.tsx`.
+//      Night audit (`GET .../night-audit`) tampoco se agrega aquí: sus
 //      KPIs de ocupación reales ya llegan por el mismo `GET .../pl` (`kpis.
 //      occupancyPct`), y el resto de night-audit (conciliación A/B, cargos posteados)
 //      es una acción operativa de cierre de día, no un KPI de resumen — corresponde a
@@ -106,7 +108,7 @@ function linkButtonStyle(): CSSProperties {
 }
 
 /** owner/gm/accountant — ver comentario de cabecera del archivo, punto 1. */
-function ExecutiveSummary({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
+function ExecutiveSummary({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShellContext) {
   const [days, setDays] = useState<PeriodDays>(30);
   const [data, setData] = useState<PlSummaryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -172,9 +174,10 @@ function ExecutiveSummary({ apiBaseUrl, token, propertyId }: HotelesShellContext
             <StatTile label="EBITDA" value={formatMoney(data.total.ebitda)} />
             <StatTile label="Utilidad neta" value={formatMoney(data.total.utilidadNeta)} />
           </div>
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-            Periodo {data.periodo.desde} — {data.periodo.hasta}. El P&L completo por departamento, historial de gastos y owner&apos;s report vive en el back-office de P&amp;L (fuera de este resumen).
-          </p>
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Periodo {data.periodo.desde} — {data.periodo.hasta}.</p>
+          <Link to={`/hoteles/${orgSlug}/pl`} style={linkButtonStyle()}>
+            Ver P&amp;L completo (por departamento + gastos) →
+          </Link>
         </>
       )}
     </section>

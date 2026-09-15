@@ -60,9 +60,8 @@ export function mapRentasDomainError(err: RentasDomainError): ApiError {
     case "reserva_no_directa":
       return Errors.rentasReservaNoDirecta();
     // ---- limpieza/mantenimiento (Fase 8, ver ../../../../packages/domain-rentas/src/limpieza/aplicacion/tareas.ts)
-    // -- ningún HTTP route de este lote está montado todavía (ver README de
-    // domain-rentas, sección "Fuera de fase"); estos casos existen únicamente para
-    // que este switch exhaustivo siga compilando contra RentasErrorCode. ----
+    // -- montado por HTTP en Fase 17 (ver ./limpieza.ts: asignarTarea/
+    // completarChecklistItem/completarTarea/registrarIncidencia). ----
     case "tarea_no_encontrada":
     case "checklist_item_no_encontrado":
     case "item_inventario_no_encontrado":

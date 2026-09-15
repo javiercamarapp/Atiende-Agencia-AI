@@ -53,6 +53,12 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
 // barrera. housekeeping/maintenance/reservations/accountant nunca lo ven.
 const PEDIDOS_FNB_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "fnb"]);
 
+// Hallazgo de auditoría (severidad ALTA, "P&L USALI (P0)... sin UI", porción
+// restante): mismo `PL_ROLES` exacto que domain-hoteles/src/roles.ts (duplicado aquí
+// a propósito, ver el comentario de `role` arriba) — solo oculta el link "P&L" del
+// nav para quien el servidor rechazaría de todas formas (403 en pl.ts).
+const PL_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "accountant"]);
+
 const linkStyle = (isActive: boolean): CSSProperties => ({
   display: "block",
   padding: "8px 12px",
@@ -210,6 +216,13 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
             {item.label}
           </NavLink>
         ))}
+        {/* Hallazgo de auditoría (severidad ALTA, "P&L USALI (P0)... sin UI",
+            porción restante): ver PL_NAV_ROLES arriba. */}
+        {PL_NAV_ROLES.has(role) && (
+          <NavLink to={`/hoteles/${orgSlug}/pl`} style={({ isActive }) => linkStyle(isActive)}>
+            P&amp;L
+          </NavLink>
+        )}
         {/* Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con
             guardia de alergias: backend real sin pantalla"): ver
             PEDIDOS_FNB_NAV_ROLES arriba. */}

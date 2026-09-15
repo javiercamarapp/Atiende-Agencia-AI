@@ -6,6 +6,7 @@ import type { ConfiguracionComisionCanal, LineaGastoEntrada, LineaImpuestoEntrad
 import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
 import type { LineaConciliada, ResumenConciliacion } from "./finanzas/conciliacion.ts";
 import type { DescuentoDuracion, ReglaMinStay, TemporadaTarifa } from "./pricing/tipos.ts";
+import type { ChecklistItemTarea, EstadoIncidencia, EstadoTareaOperativa, ItemInventarioUnidad, PrioridadTareaOperativa, SeveridadIncidencia, TipoTareaOperativa } from "./limpieza/tipos.ts";
 
 export interface UnidadRecord {
   readonly id: string;
@@ -339,4 +340,65 @@ export interface EmailOutboxJobRow {
 export interface ReservaProximaCheckIn {
   readonly ocupacionId: string;
   readonly organizationId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Fase 17 -- panel operativo del rol `limpieza` (tareas/checklist/inventario/
+// incidencias, ver apps/api/.../rentas/limpieza.ts): cierra el hallazgo de auditoría
+// ALTA "el rol limpieza sigue sin ninguna vista funcional" -- el motor transaccional
+// completo (asignarTarea/completarChecklistItem/completarTarea/registrarIncidencia,
+// ver ../limpieza/aplicacion/tareas.ts) ya existía desde Fase 8 sin que ningún HTTP
+// route lo expusiera (ver el comentario "Fuera de fase" que tenía README.md hasta
+// esta fase). Estos son los tipos de LECTURA que necesita ese panel -- las
+// escrituras siguen pasando por las funciones de aplicación directo (mismo patrón
+// que bloqueos.ts/reservas.ts: la ruta le pasa el `TenantDbSession` DIRECTO, nunca
+// envuelto en este repository).
+// ---------------------------------------------------------------------------
+
+/** Fila de listado/detalle de `rentas.tarea_operativa`, con el nombre de la unidad ya
+ *  resuelto (evita una segunda ronda de queries en la UI -- mismo criterio que
+ *  `OcupacionCalendarioItem`). */
+export interface TareaOperativaRecord {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly unidadNombre: string;
+  readonly tipo: TipoTareaOperativa;
+  readonly estado: EstadoTareaOperativa;
+  readonly prioridad: PrioridadTareaOperativa;
+  readonly asignadoA: string | null;
+  readonly esProveedorExterno: boolean;
+  readonly programadaPara: string;
+  readonly slaVenceEn: string | null;
+  readonly completadaEn: string | null;
+  readonly creadoEn: string;
+}
+
+/** Filtro de `listTareas` -- `asignadoA: null` (literal) pide SOLO tareas sin
+ *  asignar, `asignadoA` ausente no filtra por asignación (para un futuro panel de
+ *  admin_gestora que vea todo). La vista "mis tareas de hoy" del rol `limpieza`
+ *  siempre pasa `asignadoA: <su propio userId>`. */
+export interface TareaListFiltro {
+  readonly asignadoA?: string | null;
+  readonly estados?: readonly EstadoTareaOperativa[];
+}
+
+export interface TareaOperativaDetalle extends TareaOperativaRecord {
+  readonly checklist: readonly ChecklistItemTarea[];
+}
+
+export type ItemInventarioRecord = ItemInventarioUnidad;
+
+export interface IncidenciaMantenimientoRecord {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly tareaOrigenId: string | null;
+  readonly severidad: SeveridadIncidencia;
+  readonly titulo: string;
+  readonly descripcion: string | null;
+  readonly estado: EstadoIncidencia;
+  readonly propuestaBloqueoRango: RangoFechas | null;
+  readonly reportadoPor: string | null;
+  readonly creadoEn: string;
 }

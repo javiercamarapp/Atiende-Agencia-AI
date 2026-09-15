@@ -4,9 +4,10 @@
 // historial COMPLETO de decisiones go/no-go + el formulario para tomar una nueva
 // (goNoGo.ts, Fase 3 §7) -- más un resumen de solo lectura del checklist de
 // integridad (checklist.ts, L1 · Flujo 1). El checklist NUNCA se ejecuta desde
-// aquí (ver checklist-client.ts): `POST .../checklist/run` exige metadatos reales
-// de archivos/firmas/anexos que este panel todavía no captura -- documentado como
-// pendiente honesto en el README de este vertical, no fingido.
+// aquí (ver checklist-client.ts::fetchChecklist, solo GET): `POST
+// .../checklist/run` exige metadatos reales de archivos/firmas/anexos que se
+// capturan en `pages/Cierre.tsx` (Fase 14, enlazada abajo) -- esta ficha solo
+// muestra el último resultado ya corrido, sin duplicar ese formulario aquí.
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchTender } from "../lib/tenders-client.ts";
@@ -111,6 +112,10 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
         </p>
         <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} style={{ display: "inline-block", marginTop: 8, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
           Subir bases y ver requisitos extraídos →
+        </Link>
+        <br />
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+          Correr checklist, aprobar y ensamblar el paquete de cierre →
         </Link>
       </div>
 
@@ -228,7 +233,11 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
             </div>
           )}
           <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
-            Este panel todavía no ejecuta el checklist (requiere metadatos reales de documentos/firmas que aún no se capturan aquí) -- solo muestra el último resultado ya corrido.
+            Esta ficha solo muestra el último resultado ya corrido --{" "}
+            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} style={{ color: "#111827", fontWeight: 600 }}>
+              corre el checklist de nuevo o continúa el cierre aquí
+            </Link>
+            .
           </p>
         </section>
       )}
