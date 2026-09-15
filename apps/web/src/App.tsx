@@ -35,6 +35,7 @@ import { PreciosPage as RentasPreciosPage } from "./verticals/rentas/pages/Preci
 import { AprobacionesPage as RentasAprobacionesPage } from "./verticals/rentas/pages/Aprobaciones.tsx";
 import { FinanzasPage as RentasFinanzasPage } from "./verticals/rentas/pages/Finanzas.tsx";
 import { MisTareasPage as RentasMisTareasPage } from "./verticals/rentas/pages/MisTareas.tsx";
+import { IcalSyncPage as RentasIcalSyncPage } from "./verticals/rentas/pages/IcalSync.tsx";
 import { SinOrganizacionPage } from "./shell/SinOrganizacion.tsx";
 import { SeleccionarOrganizacionPage } from "./shell/SeleccionarOrganizacion.tsx";
 import { CitasLoginPage } from "./verticals/citas/pages/Login.tsx";
@@ -449,6 +450,22 @@ function RentasMisTareasRoute() {
   return (
     <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
       {(ctx) => <RentasMisTareasPage {...ctx} />}
+    </RentasShell>
+  );
+}
+
+/** Sincronización de calendario por iCal (Fase 18) — conectar el feed externo de
+ * Airbnb/Booking/Vrbo por unidad + copiar la URL del feed de exportación propio.
+ * Cierra el hallazgo de auditoría "el backend de iCal-sync está completo pero
+ * apps/web no tiene ningún cliente ni pantalla que lo consuma". Mismo patrón de
+ * ruta hija que RentasCalendarioRoute/RentasPreciosRoute/.../RentasMisTareasRoute. */
+function RentasIcalSyncRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  if (!orgSlug) return <Navigate to="/rentas/login" replace />;
+  return (
+    <RentasShell apiBaseUrl={API_BASE_URL} orgSlug={orgSlug} onRequireLogin={() => navigate("/rentas/login", { replace: true })}>
+      {(ctx) => <RentasIcalSyncPage {...ctx} />}
     </RentasShell>
   );
 }
@@ -918,6 +935,7 @@ export function App() {
         <Route path="/rentas/:orgSlug/aprobaciones" element={<RentasAprobacionesRoute />} />
         <Route path="/rentas/:orgSlug/finanzas" element={<RentasFinanzasRoute />} />
         <Route path="/rentas/:orgSlug/mis-tareas" element={<RentasMisTareasRoute />} />
+        <Route path="/rentas/:orgSlug/ical-sync" element={<RentasIcalSyncRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />

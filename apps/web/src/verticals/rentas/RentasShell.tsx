@@ -59,6 +59,15 @@
 // en el arreglo de dependencias de sus `useEffect` de carga, así que vuelven a
 // pedir datos automáticamente en cuanto este Shell les pasa un `propertyId`
 // distinto.
+//
+// Fase 18 (misma fase, hallazgo distinto) -- agrega el link de nav a Sincronización
+// iCal (conectar el feed externo de Airbnb/Booking/Vrbo por unidad + copiar la URL
+// del feed de exportación propio, ver pages/IcalSync.tsx): cierra el hallazgo de
+// auditoría "el backend de iCal-sync (ical-sync.ts + ical-feed-publico.ts) está
+// completo pero apps/web no tiene ningún cliente ni pantalla que lo consuma". Mismo
+// patrón, un renglón más en NAV_ITEMS; IcalSyncPage gatea su propio contenido por
+// SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES, igual que
+// FinanzasPage/PreciosPage.
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { NavLink } from "react-router-dom";
@@ -77,6 +86,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "aprobaciones", label: "Aprobaciones" },
   { to: "finanzas", label: "Finanzas" },
   { to: "mis-tareas", label: "Mis tareas" },
+  { to: "ical-sync", label: "Sincronización iCal" },
 ];
 
 const linkStyle = (isActive: boolean): CSSProperties => ({

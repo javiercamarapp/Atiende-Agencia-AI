@@ -6,7 +6,7 @@
 // pasar nunca por `withAuthRefresh`, a diferencia de `fetchJson` del mismo archivo
 // — mismo hallazgo, mismo archivo, corregido con el mismo patrón.
 import { describe, expect, it } from "vitest";
-import { fetchJson, RentasAdminError, sendJson, SessionExpiredError } from "../src/verticals/rentas/lib/admin-client.ts";
+import { deleteJson, fetchJson, RentasAdminError, sendJson, SessionExpiredError } from "../src/verticals/rentas/lib/admin-client.ts";
 import type { LoginSession } from "../src/verticals/rentas/lib/auth-client.ts";
 import type { AuthedFetchContext } from "../src/lib/authed-fetch.ts";
 
@@ -116,6 +116,57 @@ describe("rentas/lib/admin-client.ts — refresh automático ante 401", () => {
 
     const { ctx, clearedCount, currentSession } = fakeCtx({ token: "tok-viejo", refreshToken: "refresh-revocado", email: "gestor@rentas.mx", organizations: [] });
     await expect(sendJson(fetchImpl, "http://api.local/v1/rentas/gestora-1/admin/reservas", "tok-viejo", "POST", {}, ctx)).rejects.toThrow(SessionExpiredError);
+    expect(clearedCount()).toBe(1);
+    expect(currentSession()).toBeNull();
+  });
+
+  // `deleteJson` (Fase 18, primer DELETE real del panel de rentas -- desconectar un
+  // feed iCal externo, ver ical-sync-client.ts::desconectarFeed) tiene que envolver
+  // `fetchImpl` con `withAuthRefresh` exactamente igual que fetchJson/sendJson de
+  // arriba -- mismo hallazgo de auditoría que ya se corrigió una vez en otra
+  // vertical por agregarse un helper nuevo sin el wrapper (ver citas/restaurantes
+  // admin-client-auth-refresh.spec.ts::deleteJson, mismo patrón calcado aquí).
+  it("deleteJson: un 401 dispara POST /auth/refresh con el refreshToken persistido y reintenta con el token nuevo", async () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push(url);
+      if (url === "http://api.local/auth/refresh") {
+        expect(JSON.parse(init!.body as string)).toEqual({ refreshToken: "refresh-viejo" });
+        return new Response(JSON.stringify(REFRESHED), { status: 200 });
+      }
+      const auth = (init?.headers as Record<string, string>).authorization;
+      if (auth === "Bearer tok-viejo") return new Response(JSON.stringify({ message: "jwt expired" }), { status: 401 });
+      expect(auth).toBe("Bearer tok-nuevo");
+      return new Response(JSON.stringify({ canal: "airbnb", conectado: false }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const { ctx, persisted } = fakeCtx({ token: "tok-viejo", refreshToken: "refresh-viejo", email: "gestor@rentas.mx", organizations: [] });
+    const result = await deleteJson<{ canal: string; conectado: boolean }>(
+      fetchImpl,
+      "http://api.local/rentas/prop-1/unidades/unidad-1/canales/airbnb/ical-sync",
+      "tok-viejo",
+      ctx,
+    );
+
+    expect(result).toEqual({ canal: "airbnb", conectado: false });
+    expect(calls).toEqual([
+      "http://api.local/rentas/prop-1/unidades/unidad-1/canales/airbnb/ical-sync",
+      "http://api.local/auth/refresh",
+      "http://api.local/rentas/prop-1/unidades/unidad-1/canales/airbnb/ical-sync",
+    ]);
+    expect(persisted).toEqual([REFRESHED]);
+  });
+
+  it("deleteJson: refresh fallido -> limpia la sesión y lanza SessionExpiredError, nunca RentasAdminError genérico", async () => {
+    const fetchImpl = (async (url: string) => {
+      if (url === "http://api.local/auth/refresh") return new Response(JSON.stringify({ message: "no" }), { status: 401 });
+      return new Response(JSON.stringify({ message: "jwt expired" }), { status: 401 });
+    }) as unknown as typeof fetch;
+
+    const { ctx, clearedCount, currentSession } = fakeCtx({ token: "tok-viejo", refreshToken: "refresh-revocado", email: "gestor@rentas.mx", organizations: [] });
+    await expect(
+      deleteJson(fetchImpl, "http://api.local/rentas/prop-1/unidades/unidad-1/canales/airbnb/ical-sync", "tok-viejo", ctx),
+    ).rejects.toThrow(SessionExpiredError);
     expect(clearedCount()).toBe(1);
     expect(currentSession()).toBeNull();
   });

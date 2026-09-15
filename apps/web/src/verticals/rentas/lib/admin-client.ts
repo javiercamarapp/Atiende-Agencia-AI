@@ -72,3 +72,19 @@ export async function sendJson<T>(
   }
   return (await res.json()) as T;
 }
+
+/** Fase 18 -- primer DELETE real del panel de rentas (desconectar un feed iCal
+ * externo de un canal, ver ical-sync-client.ts::desconectarFeed). Sin cuerpo --
+ * la ruta DELETE de ical-sync.ts no lo lee. Mismo criterio exacto que
+ * citas/lib/admin-client.ts::deleteJson / restaurantes/lib/admin-client.ts::deleteJson:
+ * envuelto con `withAuthRefresh` por el mismo hallazgo de auditoría de la cabecera
+ * de este archivo (un DELETE agregado sin el wrapper fue justo el hallazgo que una
+ * ronda reciente tuvo que corregir en otra vertical). */
+export async function deleteJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }));
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new RentasAdminError(body?.message ?? body?.error ?? `No se pudo completar la solicitud a ${url} (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
