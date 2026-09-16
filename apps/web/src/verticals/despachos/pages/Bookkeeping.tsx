@@ -17,8 +17,33 @@
 // clasificaciones; 4) registra ajustes manuales (diario) fuera del flujo de CFDI;
 // 5) ve las sugerencias de override agregadas por RFC. El catálogo de cuentas SAT
 // se carga aparte, de solo lectura, como referencia.
+//
+// Presentación (ronda de design system): los objetos de estilo inline
+// (inputStyle/labelStyle/sectionStyle/buttonPrimary/buttonSecondary) se
+// sustituyeron por Card/Input/Label/Button/Badge/Table de @atiende/ui. Las
+// secciones siguen apiladas en el mismo orden (NO son pestañas): 2 consume la
+// clasificación de 1 y 4 consume la tabla de overrides de arriba.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Calculator, ChevronDown, ChevronUp, FileStack, Lightbulb, ListChecks, Plus, Trash2 } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   clasificarCfdisBookkeeping,
   fetchCatalogoBookkeeping,
@@ -50,11 +75,14 @@ const BOOKKEEPING_ROLES = new Set(["admin", "contador"]);
 const TIPOS_CFDI: readonly TipoCfdiBookkeeping[] = ["I", "E", "T", "P", "N"];
 const TIPO_CFDI_LABELS: Record<TipoCfdiBookkeeping, string> = { I: "Ingreso", E: "Egreso", T: "Traslado", P: "Pago", N: "Nómina" };
 
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: "100%" } as const;
-const labelStyle = { display: "flex", flexDirection: "column" as const, gap: 4, fontSize: 12, color: "#374151" };
-const sectionStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const buttonPrimary = { padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 } as const;
-const buttonSecondary = { padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#374151", cursor: "pointer", fontSize: 12 } as const;
+// Clases compartidas por los `<select>` nativos que se quedan nativos (el
+// design system no exporta un Select propio): misma anatomía que `Input`.
+const SELECT_CELL_CLASS =
+  "h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
+// Verde de éxito: misma escala neutra de Tailwind que ya usa StatCard para sus
+// notas positivas (el preset no trae token semántico de éxito).
+const VERDE_BADGE = "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400";
 
 // -- Fila: CFDI a clasificar -----------------------------------------------
 
@@ -143,68 +171,78 @@ function ajusteFilaAInput(f: AjusteEntryFila): EntradaAjusteInput | null {
 }
 
 function ConfidenceBadge({ confidence, needsHumanReview }: { confidence: number; needsHumanReview: boolean }) {
-  const bg = needsHumanReview ? "#fef9c3" : confidence >= 0.85 ? "#dcfce7" : "#dbeafe";
-  const fg = needsHumanReview ? "#854d0e" : confidence >= 0.85 ? "#166534" : "#1e40af";
+  // Mismo semáforo que la píldora inline original: ámbar si requiere revisión,
+  // verde si la confianza es alta, azul (secondary) en el resto.
+  const className = needsHumanReview
+    ? "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
+    : confidence >= 0.85
+      ? VERDE_BADGE
+      : undefined;
   return (
-    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: bg, color: fg, fontWeight: 600 }}>
+    <Badge variant={className ? "outline" : "secondary"} className={className}>
       {(confidence * 100).toFixed(0)}% {needsHumanReview ? "· revisar" : ""}
-    </span>
+    </Badge>
   );
 }
 
 function PolizaCard({ resultado }: { resultado: PolizaResultado }) {
   const { poliza, errores } = resultado;
   return (
-    <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>CFDI {resultado.cfdiUuid}</strong>
-        {poliza && (
-          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: poliza.cuadrada ? "#dcfce7" : "#fee2e2", color: poliza.cuadrada ? "#166534" : "#991b1b", fontWeight: 600 }}>
-            {poliza.cuadrada ? "Cuadrada" : "Desbalanceada"}
-          </span>
-        )}
-      </div>
-      {errores.length > 0 && (
-        <ul style={{ margin: 0, paddingLeft: 18, color: "#b91c1c", fontSize: 12 }}>
-          {errores.map((e, i) => (
-            <li key={i}>{e}</li>
-          ))}
-        </ul>
-      )}
-      {poliza && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 480 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={{ padding: "4px 6px" }}>Cuenta</th>
-                <th style={{ padding: "4px 6px" }}>Concepto</th>
-                <th style={{ padding: "4px 6px" }}>Debe</th>
-                <th style={{ padding: "4px 6px" }}>Haber</th>
-              </tr>
-            </thead>
-            <tbody>
-              {poliza.lineas.map((l, i) => (
-                <tr key={i} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "4px 6px", fontFamily: "monospace" }}>{l.cuenta}</td>
-                  <td style={{ padding: "4px 6px", color: "#6b7280" }}>{l.concepto}</td>
-                  <td style={{ padding: "4px 6px" }}>{l.debe > 0 ? formatMoney(l.debe) : "—"}</td>
-                  <td style={{ padding: "4px 6px" }}>{l.haber > 0 ? formatMoney(l.haber) : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: "1px solid #e5e7eb", fontWeight: 600 }}>
-                <td style={{ padding: "4px 6px" }} colSpan={2}>
-                  Totales · {poliza.tipo} · {poliza.fecha || "(sin fecha)"}
-                </td>
-                <td style={{ padding: "4px 6px" }}>{formatMoney(poliza.totalDebe)}</td>
-                <td style={{ padding: "4px 6px" }}>{formatMoney(poliza.totalHaber)}</td>
-              </tr>
-            </tfoot>
-          </table>
+    <Card>
+      <CardContent className="flex flex-col gap-2 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <strong className="text-[13px] text-foreground">CFDI {resultado.cfdiUuid}</strong>
+          {poliza &&
+            (poliza.cuadrada ? (
+              <Badge variant="outline" className={VERDE_BADGE}>
+                Cuadrada
+              </Badge>
+            ) : (
+              <Badge variant="destructive">Desbalanceada</Badge>
+            ))}
         </div>
-      )}
-    </div>
+        {errores.length > 0 && (
+          <ul className="m-0 list-disc pl-5 text-xs text-destructive">
+            {errores.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+        )}
+        {poliza && (
+          <div className="overflow-x-auto">
+            <Table className="min-w-[480px] text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">Cuenta</TableHead>
+                  <TableHead className="h-9">Concepto</TableHead>
+                  <TableHead className="h-9">Debe</TableHead>
+                  <TableHead className="h-9">Haber</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {poliza.lineas.map((l, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="p-1.5 font-mono">{l.cuenta}</TableCell>
+                    <TableCell className="p-1.5 text-muted-foreground">{l.concepto}</TableCell>
+                    <TableCell className="p-1.5 tabular-nums">{l.debe > 0 ? formatMoney(l.debe) : "—"}</TableCell>
+                    <TableCell className="p-1.5 tabular-nums">{l.haber > 0 ? formatMoney(l.haber) : "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="p-1.5 font-semibold" colSpan={2}>
+                    Totales · {poliza.tipo} · {poliza.fecha || "(sin fecha)"}
+                  </TableCell>
+                  <TableCell className="p-1.5 font-semibold tabular-nums">{formatMoney(poliza.totalDebe)}</TableCell>
+                  <TableCell className="p-1.5 font-semibold tabular-nums">{formatMoney(poliza.totalHaber)}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -360,9 +398,9 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
   if (!puedeGestionar) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Bookkeeping</h1>
-        <p role="alert" style={{ color: "#b91c1c" }}>
+      <div className="flex flex-col gap-2 px-1">
+        <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
+        <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede clasificar CFDI, generar pólizas ni registrar ajustes -- el servidor las rechazaría igual.
         </p>
       </div>
@@ -370,367 +408,534 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5 px-1">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Bookkeeping</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="font-display text-xl font-semibold text-foreground">Bookkeeping</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Auto-clasificador de pólizas: clasifica CFDI por reglas determinísticas (override humano por RFC tiene prioridad máxima), genera + valida pólizas contables, registra ajustes manuales y revisa qué correcciones humanas conviene convertir en override permanente.
         </p>
       </header>
 
-      <section style={sectionStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Catálogo de cuentas (SAT)</h2>
-          <button type="button" onClick={() => setCatalogoAbierto(!catalogoAbierto)} style={buttonSecondary}>
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle className="text-[15px]">Catálogo de cuentas (SAT)</CardTitle>
+          <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setCatalogoAbierto(!catalogoAbierto)} aria-expanded={catalogoAbierto}>
+            {catalogoAbierto ? <ChevronUp /> : <ChevronDown />}
             {catalogoAbierto ? "Ocultar" : "Mostrar"}
-          </button>
-        </div>
-        {catalogoError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {catalogoError}
-          </p>
-        )}
-        {catalogoAbierto && (
-          <>
-            {!catalogo ? (
-              <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <input type="text" placeholder="Filtrar por código o nombre…" value={catalogoFiltro} onChange={(e) => setCatalogoFiltro(e.target.value)} style={{ ...inputStyle, maxWidth: 320 }} />
-                <div style={{ overflowX: "auto", maxHeight: 260, overflowY: "auto", border: "1px solid #f3f4f6", borderRadius: 8 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ textAlign: "left", color: "#6b7280", position: "sticky", top: 0, background: "#fff" }}>
-                        <th style={{ padding: "4px 8px" }}>Código</th>
-                        <th style={{ padding: "4px 8px" }}>Nombre</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cuentasFiltradas.map(([codigo, nombre]) => (
-                        <tr key={codigo} style={{ borderTop: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{codigo}</td>
-                          <td style={{ padding: "4px 8px" }}>{nombre}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          </Button>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {catalogoError && (
+            <p role="alert" className="text-destructive text-sm">
+              {catalogoError}
+            </p>
+          )}
+          {catalogoAbierto && (
+            <>
+              {!catalogo ? (
+                // Sub-widget anidado dentro del panel plegable: skeletons
+                // compactos en vez del bloque acolchado de EstadoCargando.
+                <div role="status" aria-busy="true" aria-label="Cargando catálogo de cuentas…" className="space-y-2">
+                  <span className="sr-only">Cargando catálogo de cuentas…</span>
+                  <Skeleton className="h-9 w-80 rounded-md" />
+                  <Skeleton className="h-4 w-full rounded" />
+                  <Skeleton className="h-4 w-4/5 rounded" />
                 </div>
-                <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>{Object.keys(catalogo.mapeosDefault).length} mapeos default (tipoCfdi|categoría → cuentas) precargados en el motor.</p>
-              </div>
-            )}
-          </>
-        )}
-      </section>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="catalogo-filtro" className="sr-only">
+                    Filtrar catálogo de cuentas
+                  </Label>
+                  <Input
+                    id="catalogo-filtro"
+                    type="text"
+                    placeholder="Filtrar por código o nombre…"
+                    value={catalogoFiltro}
+                    onChange={(e) => setCatalogoFiltro(e.target.value)}
+                    className="max-w-80"
+                  />
+                  <div className="max-h-64 overflow-auto rounded-lg border border-border">
+                    <Table className="text-xs">
+                      <TableHeader className="sticky top-0 bg-card">
+                        <TableRow>
+                          <TableHead className="h-9">Código</TableHead>
+                          <TableHead className="h-9">Nombre</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {cuentasFiltradas.map(([codigo, nombre]) => (
+                          <TableRow key={codigo}>
+                            <TableCell className="p-1.5 font-mono">{codigo}</TableCell>
+                            <TableCell className="p-1.5">{nombre}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{Object.keys(catalogo.mapeosDefault).length} mapeos default (tipoCfdi|categoría → cuentas) precargados en el motor.</p>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Overrides humanos conocidos</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-          Historial de correcciones ya persistidas (este motor no guarda estado propio -- mándalas aquí en cada sesión). Se usan como prioridad máxima al clasificar y para calcular sugerencias de override permanente por RFC.
-        </p>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={{ padding: "4px 6px" }}>CFDI UUID</th>
-                <th style={{ padding: "4px 6px" }}>RFC emisor</th>
-                <th style={{ padding: "4px 6px" }}>Categoría corregida</th>
-                <th style={{ padding: "4px 6px" }}>Tenant (opcional)</th>
-                <th style={{ padding: "4px 6px" }} />
-              </tr>
-            </thead>
-            <tbody>
-              {overrideFilas.map((f) => (
-                <tr key={f.key}>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="text" value={f.cfdiUuid} onChange={(e) => actualizarOverrideFila(f.key, "cfdiUuid", e.target.value)} style={{ ...inputStyle, width: 160 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="text" value={f.rfcEmisor} onChange={(e) => actualizarOverrideFila(f.key, "rfcEmisor", e.target.value.toUpperCase())} style={{ ...inputStyle, width: 140 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="text" value={f.newCategoria} onChange={(e) => actualizarOverrideFila(f.key, "newCategoria", e.target.value)} style={{ ...inputStyle, width: 180 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="text" value={f.tenantId} onChange={(e) => actualizarOverrideFila(f.key, "tenantId", e.target.value)} style={{ ...inputStyle, width: 100 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <button type="button" onClick={() => setOverrideFilas(overrideFilas.filter((r) => r.key !== f.key))} style={{ ...buttonSecondary, color: "#b91c1c", borderColor: "#fecaca" }}>
-                      Quitar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <button type="button" onClick={() => setOverrideFilas([...overrideFilas, nuevaOverrideFila()])} style={buttonSecondary}>
-            + Agregar override
-          </button>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>1. Clasificar CFDI</h2>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={{ padding: "4px 6px" }}>UUID *</th>
-                <th style={{ padding: "4px 6px" }}>RFC emisor *</th>
-                <th style={{ padding: "4px 6px" }}>RFC receptor</th>
-                <th style={{ padding: "4px 6px" }}>Descripción</th>
-                <th style={{ padding: "4px 6px" }}>Subtotal</th>
-                <th style={{ padding: "4px 6px" }}>IVA</th>
-                <th style={{ padding: "4px 6px" }}>Total</th>
-                <th style={{ padding: "4px 6px" }}>Tasa IVA</th>
-                <th style={{ padding: "4px 6px" }}>Tipo</th>
-                <th style={{ padding: "4px 6px" }} />
-              </tr>
-            </thead>
-            <tbody>
-              {cfdiFilas.map((f) => (
-                <tr key={f.key}>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="text" value={f.cfdiUuid} onChange={(e) => actualizarCfdiFila(f.key, "cfdiUuid", e.target.value)} style={{ ...inputStyle, width: 150 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="text" value={f.rfcEmisor} onChange={(e) => actualizarCfdiFila(f.key, "rfcEmisor", e.target.value.toUpperCase())} style={{ ...inputStyle, width: 130 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="text" value={f.rfcReceptor} onChange={(e) => actualizarCfdiFila(f.key, "rfcReceptor", e.target.value.toUpperCase())} style={{ ...inputStyle, width: 130 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="text" value={f.descripcion} onChange={(e) => actualizarCfdiFila(f.key, "descripcion", e.target.value)} placeholder="p.ej. Honorarios enero" style={{ ...inputStyle, width: 200 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="number" step="0.01" value={f.subtotal} onChange={(e) => actualizarCfdiFila(f.key, "subtotal", e.target.value)} style={{ ...inputStyle, width: 100 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="number" step="0.01" value={f.iva} onChange={(e) => actualizarCfdiFila(f.key, "iva", e.target.value)} style={{ ...inputStyle, width: 90 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="number" step="0.01" value={f.total} onChange={(e) => actualizarCfdiFila(f.key, "total", e.target.value)} style={{ ...inputStyle, width: 100 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <input type="number" step="0.01" value={f.tasaIva} onChange={(e) => actualizarCfdiFila(f.key, "tasaIva", e.target.value)} style={{ ...inputStyle, width: 80 }} />
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <select value={f.tipoCfdi} onChange={(e) => actualizarCfdiFila(f.key, "tipoCfdi", e.target.value)} style={{ ...inputStyle, width: 90 }}>
-                      {TIPOS_CFDI.map((t) => (
-                        <option key={t} value={t}>
-                          {t} · {TIPO_CFDI_LABELS[t]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td style={{ padding: "3px 6px" }}>
-                    <button type="button" onClick={() => setCfdiFilas(cfdiFilas.filter((r) => r.key !== f.key))} style={{ ...buttonSecondary, color: "#b91c1c", borderColor: "#fecaca" }}>
-                      Quitar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <button type="button" onClick={() => setCfdiFilas([...cfdiFilas, nuevaCfdiFila()])} style={buttonSecondary}>
-            + Agregar CFDI
-          </button>
-        </div>
-        {clasifError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {clasifError}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">Overrides humanos conocidos</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Historial de correcciones ya persistidas (este motor no guarda estado propio -- mándalas aquí en cada sesión). Se usan como prioridad máxima al clasificar y para calcular sugerencias de override permanente por RFC.
           </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleClasificar()} disabled={clasifLoading} style={buttonPrimary}>
-            {clasifLoading ? "Clasificando…" : "Clasificar lote"}
-          </button>
-        </div>
-
-        {clasificaciones.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: "#374151", margin: "8px 0 4px" }}>Resultado ({clasificaciones.length}) -- la categoría es editable antes de generar pólizas</p>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 720 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                  <th style={{ padding: "4px 6px" }}>UUID</th>
-                  <th style={{ padding: "4px 6px" }}>RFC emisor</th>
-                  <th style={{ padding: "4px 6px" }}>Categoría</th>
-                  <th style={{ padding: "4px 6px" }}>Confianza</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clasificaciones.map((c, i) => (
-                  <tr key={c.cfdiUuid} style={{ borderTop: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "4px 6px", fontFamily: "monospace" }}>{c.cfdiUuid}</td>
-                    <td style={{ padding: "4px 6px" }}>{c.rfcEmisor}</td>
-                    <td style={{ padding: "4px 6px" }}>
-                      <input type="text" value={c.categoria} onChange={(e) => corregirCategoria(i, e.target.value)} style={{ ...inputStyle, width: 200 }} />
-                    </td>
-                    <td style={{ padding: "4px 6px" }}>
-                      <ConfidenceBadge confidence={c.confidence} needsHumanReview={c.needsHumanReview} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>2. Generar pólizas</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Genera + valida una póliza por cada CFDI clasificado arriba (sección 1). Si no hay mapeo contable para (tipo, categoría) el resultado trae el error explícito en vez de una póliza a medias.</p>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <label style={{ ...labelStyle, width: 200 }}>
-            Tenant (opcional, mapeos custom)
-            <input type="text" value={polizaTenantId} onChange={(e) => setPolizaTenantId(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, width: 160 }}>
-            Fecha de la póliza
-            <input type="date" value={polizaFecha} onChange={(e) => setPolizaFecha(e.target.value)} style={inputStyle} />
-          </label>
-        </div>
-        {polizaError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {polizaError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleGenerarPolizas()} disabled={polizaLoading} style={buttonPrimary}>
-            {polizaLoading ? "Generando…" : "Generar pólizas"}
-          </button>
-        </div>
-        {polizas && polizas.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {polizas.map((r) => (
-              <PolizaCard key={r.cfdiUuid} resultado={r} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>3. Registrar ajuste manual (diario)</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-          Póliza de diario fuera del flujo de CFDI (depreciación, provisiones, correcciones). El motor NO garantiza el balance automáticamente aquí -- captura cargos y abonos que ya cuadren; los errores de validación se muestran abajo si no cuadra.
-        </p>
-        <form onSubmit={handleAjuste} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <label style={{ ...labelStyle, width: 160 }}>
-              Fecha *
-              <input type="date" value={ajusteFecha} onChange={(e) => setAjusteFecha(e.target.value)} required style={inputStyle} />
-            </label>
-            <label style={{ ...labelStyle, width: 260 }}>
-              Concepto *
-              <input type="text" value={ajusteConcepto} onChange={(e) => setAjusteConcepto(e.target.value)} required placeholder="p.ej. Depreciación mensual equipo de cómputo" style={inputStyle} />
-            </label>
-            <label style={{ ...labelStyle, width: 160 }}>
-              Tenant (opcional)
-              <input type="text" value={ajusteTenantId} onChange={(e) => setAjusteTenantId(e.target.value)} style={inputStyle} />
-            </label>
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 560 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                  <th style={{ padding: "4px 6px" }}>Cuenta *</th>
-                  <th style={{ padding: "4px 6px" }}>Debe</th>
-                  <th style={{ padding: "4px 6px" }}>Haber</th>
-                  <th style={{ padding: "4px 6px" }}>Concepto</th>
-                  <th style={{ padding: "4px 6px" }} />
-                </tr>
-              </thead>
-              <tbody>
-                {ajusteEntries.map((f) => (
-                  <tr key={f.key}>
-                    <td style={{ padding: "3px 6px" }}>
-                      <input type="text" value={f.cuenta} onChange={(e) => actualizarAjusteFila(f.key, "cuenta", e.target.value)} placeholder="p.ej. 6020300" style={{ ...inputStyle, width: 120 }} />
-                    </td>
-                    <td style={{ padding: "3px 6px" }}>
-                      <input type="number" step="0.01" value={f.debe} onChange={(e) => actualizarAjusteFila(f.key, "debe", e.target.value)} style={{ ...inputStyle, width: 100 }} />
-                    </td>
-                    <td style={{ padding: "3px 6px" }}>
-                      <input type="number" step="0.01" value={f.haber} onChange={(e) => actualizarAjusteFila(f.key, "haber", e.target.value)} style={{ ...inputStyle, width: 100 }} />
-                    </td>
-                    <td style={{ padding: "3px 6px" }}>
-                      <input type="text" value={f.concepto} onChange={(e) => actualizarAjusteFila(f.key, "concepto", e.target.value)} style={{ ...inputStyle, width: 200 }} />
-                    </td>
-                    <td style={{ padding: "3px 6px" }}>
-                      <button type="button" onClick={() => eliminarAjusteFila(f.key)} style={{ ...buttonSecondary, color: "#b91c1c", borderColor: "#fecaca" }}>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[640px] text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">CFDI UUID</TableHead>
+                  <TableHead className="h-9">RFC emisor</TableHead>
+                  <TableHead className="h-9">Categoría corregida</TableHead>
+                  <TableHead className="h-9">Tenant (opcional)</TableHead>
+                  <TableHead className="h-9" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {overrideFilas.map((f) => (
+                  <TableRow key={f.key}>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`ov-uuid-${f.key}`} className="sr-only">
+                        CFDI UUID
+                      </Label>
+                      <Input id={`ov-uuid-${f.key}`} type="text" value={f.cfdiUuid} onChange={(e) => actualizarOverrideFila(f.key, "cfdiUuid", e.target.value)} className="h-9 w-40 text-xs" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`ov-rfc-${f.key}`} className="sr-only">
+                        RFC emisor
+                      </Label>
+                      <Input
+                        id={`ov-rfc-${f.key}`}
+                        type="text"
+                        value={f.rfcEmisor}
+                        onChange={(e) => actualizarOverrideFila(f.key, "rfcEmisor", e.target.value.toUpperCase())}
+                        className="h-9 w-36 text-xs"
+                      />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`ov-categoria-${f.key}`} className="sr-only">
+                        Categoría corregida
+                      </Label>
+                      <Input id={`ov-categoria-${f.key}`} type="text" value={f.newCategoria} onChange={(e) => actualizarOverrideFila(f.key, "newCategoria", e.target.value)} className="h-9 w-44 text-xs" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`ov-tenant-${f.key}`} className="sr-only">
+                        Tenant
+                      </Label>
+                      <Input id={`ov-tenant-${f.key}`} type="text" value={f.tenantId} onChange={(e) => actualizarOverrideFila(f.key, "tenantId", e.target.value)} className="h-9 w-24 text-xs" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
+                        onClick={() => setOverrideFilas(overrideFilas.filter((r) => r.key !== f.key))}
+                      >
+                        <Trash2 />
                         Quitar
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           <div>
-            <button type="button" onClick={() => setAjusteEntries([...ajusteEntries, nuevaAjusteFila()])} style={buttonSecondary}>
-              + Agregar movimiento
-            </button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setOverrideFilas([...overrideFilas, nuevaOverrideFila()])}>
+              <Plus />
+              Agregar override
+            </Button>
           </div>
-          {ajusteError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {ajusteError}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">1. Clasificar CFDI</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="overflow-x-auto">
+            <Table className="min-w-[900px] text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">UUID *</TableHead>
+                  <TableHead className="h-9">RFC emisor *</TableHead>
+                  <TableHead className="h-9">RFC receptor</TableHead>
+                  <TableHead className="h-9">Descripción</TableHead>
+                  <TableHead className="h-9">Subtotal</TableHead>
+                  <TableHead className="h-9">IVA</TableHead>
+                  <TableHead className="h-9">Total</TableHead>
+                  <TableHead className="h-9">Tasa IVA</TableHead>
+                  <TableHead className="h-9">Tipo</TableHead>
+                  <TableHead className="h-9" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cfdiFilas.map((f) => (
+                  <TableRow key={f.key}>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-uuid-${f.key}`} className="sr-only">
+                        UUID
+                      </Label>
+                      <Input id={`bk-uuid-${f.key}`} type="text" value={f.cfdiUuid} onChange={(e) => actualizarCfdiFila(f.key, "cfdiUuid", e.target.value)} className="h-9 w-40 text-xs" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-rfc-em-${f.key}`} className="sr-only">
+                        RFC emisor
+                      </Label>
+                      <Input
+                        id={`bk-rfc-em-${f.key}`}
+                        type="text"
+                        value={f.rfcEmisor}
+                        onChange={(e) => actualizarCfdiFila(f.key, "rfcEmisor", e.target.value.toUpperCase())}
+                        className="h-9 w-32 text-xs"
+                      />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-rfc-rec-${f.key}`} className="sr-only">
+                        RFC receptor
+                      </Label>
+                      <Input
+                        id={`bk-rfc-rec-${f.key}`}
+                        type="text"
+                        value={f.rfcReceptor}
+                        onChange={(e) => actualizarCfdiFila(f.key, "rfcReceptor", e.target.value.toUpperCase())}
+                        className="h-9 w-32 text-xs"
+                      />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-desc-${f.key}`} className="sr-only">
+                        Descripción
+                      </Label>
+                      <Input
+                        id={`bk-desc-${f.key}`}
+                        type="text"
+                        value={f.descripcion}
+                        onChange={(e) => actualizarCfdiFila(f.key, "descripcion", e.target.value)}
+                        placeholder="p.ej. Honorarios enero"
+                        className="h-9 w-52 text-xs"
+                      />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-subtotal-${f.key}`} className="sr-only">
+                        Subtotal
+                      </Label>
+                      <Input id={`bk-subtotal-${f.key}`} type="number" step="0.01" value={f.subtotal} onChange={(e) => actualizarCfdiFila(f.key, "subtotal", e.target.value)} className="h-9 w-24 text-xs" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-iva-${f.key}`} className="sr-only">
+                        IVA
+                      </Label>
+                      <Input id={`bk-iva-${f.key}`} type="number" step="0.01" value={f.iva} onChange={(e) => actualizarCfdiFila(f.key, "iva", e.target.value)} className="h-9 w-24 text-xs" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-total-${f.key}`} className="sr-only">
+                        Total
+                      </Label>
+                      <Input id={`bk-total-${f.key}`} type="number" step="0.01" value={f.total} onChange={(e) => actualizarCfdiFila(f.key, "total", e.target.value)} className="h-9 w-24 text-xs" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-tasa-${f.key}`} className="sr-only">
+                        Tasa de IVA
+                      </Label>
+                      <Input id={`bk-tasa-${f.key}`} type="number" step="0.01" value={f.tasaIva} onChange={(e) => actualizarCfdiFila(f.key, "tasaIva", e.target.value)} className="h-9 w-20 text-xs" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`bk-tipo-${f.key}`} className="sr-only">
+                        Tipo de CFDI
+                      </Label>
+                      <select id={`bk-tipo-${f.key}`} value={f.tipoCfdi} onChange={(e) => actualizarCfdiFila(f.key, "tipoCfdi", e.target.value)} className={`${SELECT_CELL_CLASS} w-28`}>
+                        {TIPOS_CFDI.map((t) => (
+                          <option key={t} value={t}>
+                            {t} · {TIPO_CFDI_LABELS[t]}
+                          </option>
+                        ))}
+                      </select>
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
+                        onClick={() => setCfdiFilas(cfdiFilas.filter((r) => r.key !== f.key))}
+                      >
+                        <Trash2 />
+                        Quitar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div>
+            <Button type="button" variant="outline" size="sm" onClick={() => setCfdiFilas([...cfdiFilas, nuevaCfdiFila()])}>
+              <Plus />
+              Agregar CFDI
+            </Button>
+          </div>
+          {clasifError && (
+            <p role="alert" className="text-destructive text-sm">
+              {clasifError}
             </p>
           )}
           <div>
-            <button type="submit" disabled={ajusteLoading} style={buttonPrimary}>
-              {ajusteLoading ? "Registrando…" : "Registrar ajuste"}
-            </button>
+            <Button type="button" onClick={() => void handleClasificar()} disabled={clasifLoading}>
+              <ListChecks />
+              {clasifLoading ? "Clasificando…" : "Clasificar lote"}
+            </Button>
           </div>
-        </form>
-        {ajusteResultado && <PolizaCard resultado={{ cfdiUuid: "ajuste manual", poliza: ajusteResultado.poliza, errores: ajusteResultado.errores }} />}
-      </section>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>4. Sugerencias de override</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-          Agrega el historial de overrides humanos capturado arriba por RFC -- sugiere convertir en override permanente solo cuando hay señal fuerte (2+ correcciones y más de la mitad coinciden en la misma categoría).
-        </p>
-        {sugerenciasError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {sugerenciasError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleSugerencias()} disabled={sugerenciasLoading} style={buttonPrimary}>
-            {sugerenciasLoading ? "Calculando…" : "Ver sugerencias"}
-          </button>
-        </div>
-        {sugerencias && sugerencias.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Sin señal suficiente todavía para sugerir ningún override permanente.</p>}
-        {sugerencias && sugerencias.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                  <th style={{ padding: "6px 8px" }}>RFC</th>
-                  <th style={{ padding: "6px 8px" }}>Categoría sugerida</th>
-                  <th style={{ padding: "6px 8px" }}>Coincidencias</th>
-                  <th style={{ padding: "6px 8px" }}>Total correcciones</th>
-                  <th style={{ padding: "6px 8px" }}>Confianza</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sugerencias.map((s) => (
-                  <tr key={s.rfc} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{s.rfc}</td>
-                    <td style={{ padding: "6px 8px" }}>{s.suggestedCategoria}</td>
-                    <td style={{ padding: "6px 8px" }}>{s.overrideCount}</td>
-                    <td style={{ padding: "6px 8px" }}>{s.totalCorrections}</td>
-                    <td style={{ padding: "6px 8px" }}>{(s.confidence * 100).toFixed(0)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {clasificaciones.length > 0 && (
+            <div>
+              <p className="mb-1 mt-2 text-xs font-semibold text-foreground">Resultado ({clasificaciones.length}) -- la categoría es editable antes de generar pólizas</p>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[720px] text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-9">UUID</TableHead>
+                      <TableHead className="h-9">RFC emisor</TableHead>
+                      <TableHead className="h-9">Categoría</TableHead>
+                      <TableHead className="h-9">Confianza</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clasificaciones.map((c, i) => (
+                      <TableRow key={c.cfdiUuid}>
+                        <TableCell className="p-1.5 font-mono">{c.cfdiUuid}</TableCell>
+                        <TableCell className="p-1.5">{c.rfcEmisor}</TableCell>
+                        <TableCell className="p-1.5">
+                          <Label htmlFor={`bk-cat-${c.cfdiUuid}`} className="sr-only">
+                            Categoría clasificada
+                          </Label>
+                          <Input id={`bk-cat-${c.cfdiUuid}`} type="text" value={c.categoria} onChange={(e) => corregirCategoria(i, e.target.value)} className="h-9 w-52 text-xs" />
+                        </TableCell>
+                        <TableCell className="p-1.5">
+                          <ConfidenceBadge confidence={c.confidence} needsHumanReview={c.needsHumanReview} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">2. Generar pólizas</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">Genera + valida una póliza por cada CFDI clasificado arriba (sección 1). Si no hay mapeo contable para (tipo, categoría) el resultado trae el error explícito en vez de una póliza a medias.</p>
+          <div className="flex flex-wrap gap-3">
+            <div className="flex w-52 flex-col gap-1.5">
+              <Label htmlFor="poliza-tenant">Tenant (opcional, mapeos custom)</Label>
+              <Input id="poliza-tenant" type="text" value={polizaTenantId} onChange={(e) => setPolizaTenantId(e.target.value)} />
+            </div>
+            <div className="flex w-44 flex-col gap-1.5">
+              <Label htmlFor="poliza-fecha">Fecha de la póliza</Label>
+              <Input id="poliza-fecha" type="date" value={polizaFecha} onChange={(e) => setPolizaFecha(e.target.value)} />
+            </div>
           </div>
-        )}
-      </section>
+          {polizaError && (
+            <p role="alert" className="text-destructive text-sm">
+              {polizaError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleGenerarPolizas()} disabled={polizaLoading}>
+              <FileStack />
+              {polizaLoading ? "Generando…" : "Generar pólizas"}
+            </Button>
+          </div>
+          {polizas && polizas.length > 0 && (
+            <div className="flex flex-col gap-2.5">
+              {polizas.map((r) => (
+                <PolizaCard key={r.cfdiUuid} resultado={r} />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">3. Registrar ajuste manual (diario)</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Póliza de diario fuera del flujo de CFDI (depreciación, provisiones, correcciones). El motor NO garantiza el balance automáticamente aquí -- captura cargos y abonos que ya cuadren; los errores de validación se muestran abajo si no cuadra.
+          </p>
+          <form onSubmit={handleAjuste} className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-3">
+              <div className="flex w-44 flex-col gap-1.5">
+                <Label htmlFor="ajuste-fecha">Fecha *</Label>
+                <Input id="ajuste-fecha" type="date" value={ajusteFecha} onChange={(e) => setAjusteFecha(e.target.value)} required />
+              </div>
+              <div className="flex w-64 flex-col gap-1.5">
+                <Label htmlFor="ajuste-concepto">Concepto *</Label>
+                <Input
+                  id="ajuste-concepto"
+                  type="text"
+                  value={ajusteConcepto}
+                  onChange={(e) => setAjusteConcepto(e.target.value)}
+                  required
+                  placeholder="p.ej. Depreciación mensual equipo de cómputo"
+                />
+              </div>
+              <div className="flex w-44 flex-col gap-1.5">
+                <Label htmlFor="ajuste-tenant">Tenant (opcional)</Label>
+                <Input id="ajuste-tenant" type="text" value={ajusteTenantId} onChange={(e) => setAjusteTenantId(e.target.value)} />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[560px] text-xs">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-9">Cuenta *</TableHead>
+                    <TableHead className="h-9">Debe</TableHead>
+                    <TableHead className="h-9">Haber</TableHead>
+                    <TableHead className="h-9">Concepto</TableHead>
+                    <TableHead className="h-9" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ajusteEntries.map((f) => (
+                    <TableRow key={f.key}>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`adj-cuenta-${f.key}`} className="sr-only">
+                          Cuenta
+                        </Label>
+                        <Input
+                          id={`adj-cuenta-${f.key}`}
+                          type="text"
+                          value={f.cuenta}
+                          onChange={(e) => actualizarAjusteFila(f.key, "cuenta", e.target.value)}
+                          placeholder="p.ej. 6020300"
+                          className="h-9 w-32 text-xs"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`adj-debe-${f.key}`} className="sr-only">
+                          Debe
+                        </Label>
+                        <Input id={`adj-debe-${f.key}`} type="number" step="0.01" value={f.debe} onChange={(e) => actualizarAjusteFila(f.key, "debe", e.target.value)} className="h-9 w-24 text-xs" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`adj-haber-${f.key}`} className="sr-only">
+                          Haber
+                        </Label>
+                        <Input id={`adj-haber-${f.key}`} type="number" step="0.01" value={f.haber} onChange={(e) => actualizarAjusteFila(f.key, "haber", e.target.value)} className="h-9 w-24 text-xs" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`adj-concepto-${f.key}`} className="sr-only">
+                          Concepto
+                        </Label>
+                        <Input id={`adj-concepto-${f.key}`} type="text" value={f.concepto} onChange={(e) => actualizarAjusteFila(f.key, "concepto", e.target.value)} className="h-9 w-52 text-xs" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
+                          onClick={() => eliminarAjusteFila(f.key)}
+                        >
+                          <Trash2 />
+                          Quitar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setAjusteEntries([...ajusteEntries, nuevaAjusteFila()])}>
+                <Plus />
+                Agregar movimiento
+              </Button>
+            </div>
+            {ajusteError && (
+              <p role="alert" className="text-destructive text-sm">
+                {ajusteError}
+              </p>
+            )}
+            <div>
+              <Button type="submit" disabled={ajusteLoading}>
+                <Calculator />
+                {ajusteLoading ? "Registrando…" : "Registrar ajuste"}
+              </Button>
+            </div>
+          </form>
+          {ajusteResultado && <PolizaCard resultado={{ cfdiUuid: "ajuste manual", poliza: ajusteResultado.poliza, errores: ajusteResultado.errores }} />}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">4. Sugerencias de override</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Agrega el historial de overrides humanos capturado arriba por RFC -- sugiere convertir en override permanente solo cuando hay señal fuerte (2+ correcciones y más de la mitad coinciden en la misma categoría).
+          </p>
+          {sugerenciasError && (
+            <p role="alert" className="text-destructive text-sm">
+              {sugerenciasError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleSugerencias()} disabled={sugerenciasLoading}>
+              <Lightbulb />
+              {sugerenciasLoading ? "Calculando…" : "Ver sugerencias"}
+            </Button>
+          </div>
+          {sugerencias && sugerencias.length === 0 && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Sin señal suficiente todavía para sugerir ningún override permanente.
+            </p>
+          )}
+          {sugerencias && sugerencias.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-9">RFC</TableHead>
+                    <TableHead className="h-9">Categoría sugerida</TableHead>
+                    <TableHead className="h-9">Coincidencias</TableHead>
+                    <TableHead className="h-9">Total correcciones</TableHead>
+                    <TableHead className="h-9">Confianza</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sugerencias.map((s) => (
+                    <TableRow key={s.rfc}>
+                      <TableCell className="p-2 font-mono">{s.rfc}</TableCell>
+                      <TableCell className="p-2">{s.suggestedCategoria}</TableCell>
+                      <TableCell className="p-2 tabular-nums">{s.overrideCount}</TableCell>
+                      <TableCell className="p-2 tabular-nums">{s.totalCorrections}</TableCell>
+                      <TableCell className="p-2 tabular-nums">{(s.confidence * 100).toFixed(0)}%</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

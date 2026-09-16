@@ -15,7 +15,31 @@
 // estado "listo para timbrar" (idempotente). Ningún paquete se persiste
 // server-side en esta fase (ver cabecera de contabilidad-electronica.ts en
 // apps/api): el estado que se muestra es el que devolvió la última llamada.
+//
+// Presentación (ronda de design system): los objetos de estilo inline
+// (inputStyle/labelStyle/sectionStyle/buttonPrimary/buttonSecondary) se
+// sustituyeron por Card/Input/Label/Button/Table de @atiende/ui. Ni el flujo,
+// ni el estado, ni las llamadas cambian.
 import { useEffect, useState } from "react";
+import { Download, FileCog, Plus, Trash2 } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   fetchCatalogoBaseContabilidadElectronica,
   postPaqueteContabilidadElectronica,
@@ -37,13 +61,6 @@ const ESTADO_LABELS: Record<EstadoPaqueteContabilidad, string> = {
   timbrado: "Timbrado",
   enviado: "Enviado",
 };
-
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: "100%" } as const;
-const labelStyle = { display: "flex", flexDirection: "column" as const, gap: 4, fontSize: 12, color: "#374151" };
-const sectionStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const buttonPrimary = { padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 } as const;
-const buttonSecondary = { padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#374151", cursor: "pointer", fontSize: 12 } as const;
-const cellInput = { ...inputStyle, width: 110 } as const;
 
 interface AsientoFila {
   readonly key: string;
@@ -87,47 +104,67 @@ function AsientosEditor({ filas, setFilas }: { filas: readonly AsientoFila[]; se
     setFilas(filas.map((a) => (a.key === key ? { ...a, [campo]: valor } : a)));
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 560 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={{ padding: "4px 6px" }}>Cuenta *</th>
-              <th style={{ padding: "4px 6px" }}>Debe</th>
-              <th style={{ padding: "4px 6px" }}>Haber</th>
-              <th style={{ padding: "4px 6px" }}>Fecha</th>
-              <th style={{ padding: "4px 6px" }} />
-            </tr>
-          </thead>
-          <tbody>
+    <div className="flex flex-col gap-2">
+      <div className="overflow-x-auto">
+        <Table className="min-w-[560px] text-xs">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="h-9">Cuenta *</TableHead>
+              <TableHead className="h-9">Debe</TableHead>
+              <TableHead className="h-9">Haber</TableHead>
+              <TableHead className="h-9">Fecha</TableHead>
+              <TableHead className="h-9" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {filas.map((a) => (
-              <tr key={a.key}>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={a.cuenta} onChange={(e) => actualizar(a.key, "cuenta", e.target.value)} placeholder="1101" style={cellInput} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={a.debe} onChange={(e) => actualizar(a.key, "debe", e.target.value)} style={cellInput} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={a.haber} onChange={(e) => actualizar(a.key, "haber", e.target.value)} style={cellInput} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="date" value={a.fecha} onChange={(e) => actualizar(a.key, "fecha", e.target.value)} style={{ ...cellInput, width: 140 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <button type="button" onClick={() => setFilas(filas.filter((r) => r.key !== a.key))} style={{ ...buttonSecondary, color: "#b91c1c", borderColor: "#fecaca" }}>
+              <TableRow key={a.key}>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`asiento-cuenta-${a.key}`} className="sr-only">
+                    Cuenta
+                  </Label>
+                  <Input id={`asiento-cuenta-${a.key}`} type="text" value={a.cuenta} onChange={(e) => actualizar(a.key, "cuenta", e.target.value)} placeholder="1101" className="h-9 w-28 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`asiento-debe-${a.key}`} className="sr-only">
+                    Debe
+                  </Label>
+                  <Input id={`asiento-debe-${a.key}`} type="number" step="0.01" value={a.debe} onChange={(e) => actualizar(a.key, "debe", e.target.value)} className="h-9 w-28 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`asiento-haber-${a.key}`} className="sr-only">
+                    Haber
+                  </Label>
+                  <Input id={`asiento-haber-${a.key}`} type="number" step="0.01" value={a.haber} onChange={(e) => actualizar(a.key, "haber", e.target.value)} className="h-9 w-28 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`asiento-fecha-${a.key}`} className="sr-only">
+                    Fecha
+                  </Label>
+                  <Input id={`asiento-fecha-${a.key}`} type="date" value={a.fecha} onChange={(e) => actualizar(a.key, "fecha", e.target.value)} className="h-9 w-36 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
+                    onClick={() => setFilas(filas.filter((r) => r.key !== a.key))}
+                  >
+                    <Trash2 />
                     Quitar
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
       <div>
-        <button type="button" onClick={() => setFilas([...filas, nuevaAsientoFila()])} style={buttonSecondary}>
-          + Agregar asiento
-        </button>
+        <Button type="button" variant="outline" size="sm" onClick={() => setFilas([...filas, nuevaAsientoFila()])}>
+          <Plus />
+          Agregar asiento
+        </Button>
       </div>
     </div>
   );
@@ -209,9 +246,9 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
 
   if (!puedeGestionar) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Contabilidad electrónica</h1>
-        <p role="alert" style={{ color: "#b91c1c" }}>
+      <div className="flex flex-col gap-2 px-1">
+        <h1 className="font-display text-xl font-semibold text-foreground">Contabilidad electrónica</h1>
+        <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede generar la contabilidad electrónica -- el servidor lo rechazaría igual.
         </p>
       </div>
@@ -219,162 +256,184 @@ export function ContabilidadElectronicaPage({ apiBaseUrl, token, propertyId, rol
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5 px-1">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Contabilidad electrónica (Anexo 24)</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="font-display text-xl font-semibold text-foreground">Contabilidad electrónica (Anexo 24)</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Genera el catálogo de cuentas XML, la balanza de comprobación XML y el paquete completo (con hash SHA-1) exigidos por el SAT cada mes. El catálogo usa el default Anexo 24 del SAT
           {catalogoBase ? ` (${catalogoBase.length} cuentas)` : ""}.
         </p>
+        {/* Carga del catálogo base: sub-widget de una línea dentro del encabezado
+            -- un skeleton angosto, no el bloque acolchado de EstadoCargando. */}
+        {!catalogoBase && !catalogoError && (
+          <div role="status" aria-busy="true" aria-label="Cargando catálogo base del SAT…" className="mt-1.5">
+            <span className="sr-only">Cargando catálogo base del SAT…</span>
+            <Skeleton className="h-3.5 w-48 rounded" />
+          </div>
+        )}
         {catalogoError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: "4px 0 0", fontSize: 13 }}>
+          <p role="alert" className="mt-1 text-destructive text-sm">
             {catalogoError}
           </p>
         )}
       </header>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Periodo</h2>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <label style={{ ...labelStyle, width: 120 }}>
-            Ejercicio *
-            <input type="number" value={ejercicio} onChange={(e) => setEjercicio(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, width: 100 }}>
-            Mes *
-            <input type="number" min={1} max={12} value={mes} onChange={(e) => setMes(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, width: 200 }}>
-            RFC (opcional)
-            <input type="text" value={rfc} onChange={(e) => setRfc(e.target.value.toUpperCase())} style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, width: 260 }}>
-            Razón social (opcional)
-            <input type="text" value={razonSocial} onChange={(e) => setRazonSocial(e.target.value)} style={inputStyle} />
-          </label>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Asientos contables del mes</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-          Captura los movimientos (cuenta + debe/haber) que alimentan la balanza de comprobación del periodo. Un asiento sin fecha nunca se excluye por periodo.
-        </p>
-        <AsientosEditor filas={asientoFilas} setFilas={setAsientoFilas} />
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Generar paquete completo</h2>
-        {generarError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {generarError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleGenerarPaquete()} disabled={generando} style={buttonPrimary}>
-            {generando ? "Generando…" : "Generar catálogo + balanza + paquete"}
-          </button>
-        </div>
-
-        {paquete && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13 }}>
-              <span>
-                <strong>Periodo:</strong> {paquete.periodo}
-              </span>
-              <span>
-                <strong>Estado:</strong> {ESTADO_LABELS[paquete.estado] ?? paquete.estado}
-              </span>
-              <span>
-                <strong>Balanza cuadrada:</strong> {paquete.balanza.cuadrada ? "Sí" : "No"}
-              </span>
-              <span>
-                <strong>Generado:</strong> {paquete.generadoEn}
-              </span>
-            </div>
-
-            {!paquete.balanza.cuadrada && (
-              <p role="alert" style={{ color: "#b91c1c", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: 8, padding: 8, margin: 0, fontSize: 13 }}>
-                La balanza no cuadra (total debe ≠ total haber). Revisa los asientos antes de timbrar.
-              </p>
-            )}
-            {paquete.resumenBalanza.saldosAnomalos.length > 0 && (
-              <p role="alert" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 8, margin: 0, fontSize: 13 }}>
-                Cuentas con saldo anómalo: {paquete.resumenBalanza.saldosAnomalos.join(", ")}.
-              </p>
-            )}
-
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>Catálogo de cuentas</p>
-                <span style={{ fontSize: 12, color: "#6b7280" }}>
-                  {paquete.catalogo.cuentas} cuentas · SHA-1 <span style={{ fontFamily: "monospace" }}>{paquete.catalogo.sha1}</span>
-                </span>
-                <button type="button" onClick={() => descargarXml(`catalogo-cuentas-${paquete.periodo}.xml`, paquete.catalogo.xml)} style={buttonSecondary}>
-                  Descargar catálogo XML
-                </button>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>Balanza de comprobación</p>
-                <span style={{ fontSize: 12, color: "#6b7280" }}>
-                  {paquete.balanza.cuentas} cuentas · SHA-1 <span style={{ fontFamily: "monospace" }}>{paquete.balanza.sha1}</span>
-                </span>
-                <button type="button" onClick={() => descargarXml(`balanza-comprobacion-${paquete.periodo}.xml`, paquete.balanza.xml)} style={buttonSecondary}>
-                  Descargar balanza XML
-                </button>
-              </div>
-            </div>
-
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                    <th style={{ padding: "6px 8px" }}>Cuenta</th>
-                    <th style={{ padding: "6px 8px" }}>Descripción</th>
-                    <th style={{ padding: "6px 8px" }}>Saldo inicial</th>
-                    <th style={{ padding: "6px 8px" }}>Debe</th>
-                    <th style={{ padding: "6px 8px" }}>Haber</th>
-                    <th style={{ padding: "6px 8px" }}>Saldo final</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paquete.resumenBalanza.lineas.map((l) => (
-                    <tr key={l.cuenta} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{l.cuenta}</td>
-                      <td style={{ padding: "6px 8px" }}>{l.descripcion}</td>
-                      <td style={{ padding: "6px 8px" }}>{formatMoney(Number(l.saldoInicial))}</td>
-                      <td style={{ padding: "6px 8px" }}>{formatMoney(Number(l.debe))}</td>
-                      <td style={{ padding: "6px 8px" }}>{formatMoney(Number(l.haber))}</td>
-                      <td style={{ padding: "6px 8px" }}>{formatMoney(Number(l.saldoFinal))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td style={{ padding: "6px 8px", fontWeight: 600 }} colSpan={3}>
-                      Totales
-                    </td>
-                    <td style={{ padding: "6px 8px", fontWeight: 600 }}>{formatMoney(Number(paquete.resumenBalanza.totalDebe))}</td>
-                    <td style={{ padding: "6px 8px", fontWeight: 600 }}>{formatMoney(Number(paquete.resumenBalanza.totalHaber))}</td>
-                    <td style={{ padding: "6px 8px" }} />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
-            {confirmarError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {confirmarError}
-              </p>
-            )}
-            <div>
-              <button type="button" onClick={() => void handleMarcarListoParaTimbrar()} disabled={confirmando || paquete.estado !== "listo_para_timbrar"} style={buttonPrimary}>
-                {confirmando ? "Confirmando…" : paquete.estado === "listo_para_timbrar" ? "Confirmar listo para timbrar" : `Estado actual: ${ESTADO_LABELS[paquete.estado] ?? paquete.estado}`}
-              </button>
-            </div>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">Periodo</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <div className="flex w-32 flex-col gap-1.5">
+            <Label htmlFor="ce-ejercicio">Ejercicio *</Label>
+            <Input id="ce-ejercicio" type="number" value={ejercicio} onChange={(e) => setEjercicio(e.target.value)} />
           </div>
-        )}
-      </section>
+          <div className="flex w-28 flex-col gap-1.5">
+            <Label htmlFor="ce-mes">Mes *</Label>
+            <Input id="ce-mes" type="number" min={1} max={12} value={mes} onChange={(e) => setMes(e.target.value)} />
+          </div>
+          <div className="flex w-52 flex-col gap-1.5">
+            <Label htmlFor="ce-rfc">RFC (opcional)</Label>
+            <Input id="ce-rfc" type="text" value={rfc} onChange={(e) => setRfc(e.target.value.toUpperCase())} />
+          </div>
+          <div className="flex w-64 flex-col gap-1.5">
+            <Label htmlFor="ce-razon">Razón social (opcional)</Label>
+            <Input id="ce-razon" type="text" value={razonSocial} onChange={(e) => setRazonSocial(e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">Asientos contables del mes</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Captura los movimientos (cuenta + debe/haber) que alimentan la balanza de comprobación del periodo. Un asiento sin fecha nunca se excluye por periodo.
+          </p>
+          <AsientosEditor filas={asientoFilas} setFilas={setAsientoFilas} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">Generar paquete completo</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {generarError && (
+            <p role="alert" className="text-destructive text-sm">
+              {generarError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleGenerarPaquete()} disabled={generando}>
+              <FileCog />
+              {generando ? "Generando…" : "Generar catálogo + balanza + paquete"}
+            </Button>
+          </div>
+
+          {paquete && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-5 text-[13px] text-foreground">
+                <span>
+                  <strong>Periodo:</strong> {paquete.periodo}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <strong>Estado:</strong>
+                  <Badge variant="secondary">{ESTADO_LABELS[paquete.estado] ?? paquete.estado}</Badge>
+                </span>
+                <span>
+                  <strong>Balanza cuadrada:</strong> {paquete.balanza.cuadrada ? "Sí" : "No"}
+                </span>
+                <span>
+                  <strong>Generado:</strong> {paquete.generadoEn}
+                </span>
+              </div>
+
+              {!paquete.balanza.cuadrada && (
+                <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[13px] text-destructive">
+                  La balanza no cuadra (total debe ≠ total haber). Revisa los asientos antes de timbrar.
+                </p>
+              )}
+              {paquete.resumenBalanza.saldosAnomalos.length > 0 && (
+                <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                  Cuentas con saldo anómalo: {paquete.resumenBalanza.saldosAnomalos.join(", ")}.
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-5">
+                <div className="flex flex-col items-start gap-1.5">
+                  <p className="text-[13px] font-semibold text-foreground">Catálogo de cuentas</p>
+                  <span className="text-xs text-muted-foreground">
+                    {paquete.catalogo.cuentas} cuentas · SHA-1 <span className="font-mono">{paquete.catalogo.sha1}</span>
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => descargarXml(`catalogo-cuentas-${paquete.periodo}.xml`, paquete.catalogo.xml)}>
+                    <Download />
+                    Descargar catálogo XML
+                  </Button>
+                </div>
+                <div className="flex flex-col items-start gap-1.5">
+                  <p className="text-[13px] font-semibold text-foreground">Balanza de comprobación</p>
+                  <span className="text-xs text-muted-foreground">
+                    {paquete.balanza.cuentas} cuentas · SHA-1 <span className="font-mono">{paquete.balanza.sha1}</span>
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => descargarXml(`balanza-comprobacion-${paquete.periodo}.xml`, paquete.balanza.xml)}>
+                    <Download />
+                    Descargar balanza XML
+                  </Button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-9">Cuenta</TableHead>
+                      <TableHead className="h-9">Descripción</TableHead>
+                      <TableHead className="h-9">Saldo inicial</TableHead>
+                      <TableHead className="h-9">Debe</TableHead>
+                      <TableHead className="h-9">Haber</TableHead>
+                      <TableHead className="h-9">Saldo final</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paquete.resumenBalanza.lineas.map((l) => (
+                      <TableRow key={l.cuenta}>
+                        <TableCell className="p-2 font-mono">{l.cuenta}</TableCell>
+                        <TableCell className="p-2">{l.descripcion}</TableCell>
+                        <TableCell className="p-2 tabular-nums">{formatMoney(Number(l.saldoInicial))}</TableCell>
+                        <TableCell className="p-2 tabular-nums">{formatMoney(Number(l.debe))}</TableCell>
+                        <TableCell className="p-2 tabular-nums">{formatMoney(Number(l.haber))}</TableCell>
+                        <TableCell className="p-2 tabular-nums">{formatMoney(Number(l.saldoFinal))}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell className="p-2 font-semibold" colSpan={3}>
+                        Totales
+                      </TableCell>
+                      <TableCell className="p-2 font-semibold tabular-nums">{formatMoney(Number(paquete.resumenBalanza.totalDebe))}</TableCell>
+                      <TableCell className="p-2 font-semibold tabular-nums">{formatMoney(Number(paquete.resumenBalanza.totalHaber))}</TableCell>
+                      <TableCell className="p-2" />
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+
+              {confirmarError && (
+                <p role="alert" className="text-destructive text-sm">
+                  {confirmarError}
+                </p>
+              )}
+              <div>
+                <Button type="button" onClick={() => void handleMarcarListoParaTimbrar()} disabled={confirmando || paquete.estado !== "listo_para_timbrar"}>
+                  {confirmando ? "Confirmando…" : paquete.estado === "listo_para_timbrar" ? "Confirmar listo para timbrar" : `Estado actual: ${ESTADO_LABELS[paquete.estado] ?? paquete.estado}`}
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

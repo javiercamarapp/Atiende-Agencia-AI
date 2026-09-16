@@ -15,8 +15,33 @@
 // en Vencimientos.tsx). DIOT sí reconstruye datos reales ya persistidos
 // (invoices con diot.proveedoresReportables), por eso es una consulta, no un
 // formulario de captura.
+//
+// Presentación (ronda de design system): el selector de tipo de declaración
+// -- que siempre fue un switcher de secciones, tres píldoras con estado
+// mutuamente excluyente -- pasó a `Tabs`/`TabsList`/`TabsTrigger`/`TabsContent`
+// de @atiende/ui, y el resto del markup inline a Card/Input/Label/Button/Table.
+// El estado `tipo` y los tres formularios siguen siendo exactamente los mismos.
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Calculator, Search } from "lucide-react";
+import {
+  Button,
+  Card,
+  CardContent,
+  Input,
+  Label,
+  Separator,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
 import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, fetchDiot } from "../lib/declaraciones-client.ts";
 import type { DiotAgregado, IsrResultado } from "../lib/declaraciones-client.ts";
 import { formatDiotTipoOperacion, formatMoney, formatTablaAplicadaIsr } from "../lib/format.ts";
@@ -37,24 +62,26 @@ const TIPOS: ReadonlyArray<{ value: TipoDeclaracion; label: string }> = [
 
 function ResultadoIsr({ resultado }: { resultado: IsrResultado }) {
   return (
-    <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8, maxWidth: 420 }}>
-      <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6b7280", margin: 0 }}>
-        {formatTablaAplicadaIsr(resultado.tablaAplicada)} · {resultado.tipoContribuyente === "PF" ? "Persona física" : "Persona moral"}
-      </p>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "6px 16px", fontSize: 14 }}>
-        <span style={{ color: "#6b7280" }}>Base gravable</span>
-        <span style={{ textAlign: "right" }}>{formatMoney(resultado.baseGravable)}</span>
-        <span style={{ color: "#6b7280" }}>ISR bruto</span>
-        <span style={{ textAlign: "right" }}>{formatMoney(resultado.isrBruto)}</span>
-        <span style={{ color: "#6b7280" }}>Tasa efectiva</span>
-        <span style={{ textAlign: "right" }}>{(resultado.tasaEfectiva * 100).toFixed(2)}%</span>
-        <span style={{ color: "#6b7280" }}>Pagos provisionales</span>
-        <span style={{ textAlign: "right" }}>{formatMoney(resultado.pagosProvisionales)}</span>
-        <span style={{ fontWeight: 700, color: "#111827" }}>ISR neto a pagar</span>
-        <span style={{ textAlign: "right", fontWeight: 700, color: "#111827" }}>{formatMoney(resultado.isrNeto)}</span>
-      </div>
-      <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>Cálculo sin persistencia -- copia el ISR neto donde corresponda (ej. comprobante de un vencimiento fiscal ya registrado).</p>
-    </div>
+    <Card className="max-w-md">
+      <CardContent className="flex flex-col gap-2 p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+          {formatTablaAplicadaIsr(resultado.tablaAplicada)} · {resultado.tipoContribuyente === "PF" ? "Persona física" : "Persona moral"}
+        </p>
+        <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
+          <span className="text-muted-foreground">Base gravable</span>
+          <span className="text-right tabular-nums text-foreground">{formatMoney(resultado.baseGravable)}</span>
+          <span className="text-muted-foreground">ISR bruto</span>
+          <span className="text-right tabular-nums text-foreground">{formatMoney(resultado.isrBruto)}</span>
+          <span className="text-muted-foreground">Tasa efectiva</span>
+          <span className="text-right tabular-nums text-foreground">{(resultado.tasaEfectiva * 100).toFixed(2)}%</span>
+          <span className="text-muted-foreground">Pagos provisionales</span>
+          <span className="text-right tabular-nums text-foreground">{formatMoney(resultado.pagosProvisionales)}</span>
+          <span className="font-bold text-foreground">ISR neto a pagar</span>
+          <span className="text-right font-bold tabular-nums text-foreground">{formatMoney(resultado.isrNeto)}</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground">Cálculo sin persistencia -- copia el ISR neto donde corresponda (ej. comprobante de un vencimiento fiscal ya registrado).</p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -90,29 +117,34 @@ function IsrPfForm({ ctx }: { ctx: DespachosShellContext }) {
   }
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 340 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Base gravable *
-          <input type="number" step="0.01" value={baseGravable} onChange={(e) => setBaseGravable(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-          <input type="checkbox" checked={annual} onChange={(e) => setAnnual(e.target.checked)} />
-          Declaración anual (si no, mensual)
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Pagos provisionales ya realizados
-          <input type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-        </label>
-        {error && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {error}
-          </p>
-        )}
-        <button type="submit" disabled={loading} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-          {loading ? "Calculando…" : "Calcular ISR PF"}
-        </button>
-      </form>
+    <div className="flex flex-wrap gap-6">
+      <Card className="max-w-sm flex-1">
+        <CardContent className="p-4">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="isr-pf-base">Base gravable *</Label>
+              <Input id="isr-pf-base" type="number" step="0.01" value={baseGravable} onChange={(e) => setBaseGravable(e.target.value)} required />
+            </div>
+            <label className="flex items-center gap-2 text-[13px] text-foreground">
+              <input type="checkbox" checked={annual} onChange={(e) => setAnnual(e.target.checked)} className="h-4 w-4 rounded border-border accent-primary" />
+              Declaración anual (si no, mensual)
+            </label>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="isr-pf-pagos">Pagos provisionales ya realizados</Label>
+              <Input id="isr-pf-pagos" type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" />
+            </div>
+            {error && (
+              <p role="alert" className="text-destructive text-sm">
+                {error}
+              </p>
+            )}
+            <Button type="submit" disabled={loading} className="w-full">
+              <Calculator />
+              {loading ? "Calculando…" : "Calcular ISR PF"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
       {resultado && <ResultadoIsr resultado={resultado} />}
     </div>
   );
@@ -148,25 +180,30 @@ function IsrPmForm({ ctx }: { ctx: DespachosShellContext }) {
   }
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 340 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Utilidad fiscal *
-          <input type="number" step="0.01" value={utilidadFiscal} onChange={(e) => setUtilidadFiscal(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Pagos provisionales ya realizados
-          <input type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-        </label>
-        {error && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {error}
-          </p>
-        )}
-        <button type="submit" disabled={loading} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-          {loading ? "Calculando…" : "Calcular ISR PM"}
-        </button>
-      </form>
+    <div className="flex flex-wrap gap-6">
+      <Card className="max-w-sm flex-1">
+        <CardContent className="p-4">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="isr-pm-utilidad">Utilidad fiscal *</Label>
+              <Input id="isr-pm-utilidad" type="number" step="0.01" value={utilidadFiscal} onChange={(e) => setUtilidadFiscal(e.target.value)} required />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="isr-pm-pagos">Pagos provisionales ya realizados</Label>
+              <Input id="isr-pm-pagos" type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" />
+            </div>
+            {error && (
+              <p role="alert" className="text-destructive text-sm">
+                {error}
+              </p>
+            )}
+            <Button type="submit" disabled={loading} className="w-full">
+              <Calculator />
+              {loading ? "Calculando…" : "Calcular ISR PM"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
       {resultado && <ResultadoIsr resultado={resultado} />}
     </div>
   );
@@ -204,30 +241,35 @@ function IsrPmResicoForm({ ctx }: { ctx: DespachosShellContext }) {
   }
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 340 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Ingresos efectivamente cobrados en el mes *
-          <input type="number" step="0.01" value={ingresosCobrados} onChange={(e) => setIngresosCobrados(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Deducciones autorizadas efectivamente pagadas
-          <input type="number" step="0.01" value={deduccionesAutorizadas} onChange={(e) => setDeduccionesAutorizadas(e.target.value)} placeholder="0" style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Pagos provisionales ya realizados
-          <input type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-        </label>
-        <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>RESICO PM: tasa fija de 30% sobre flujo de efectivo (ingresos cobrados − deducciones pagadas), Art. 206/209 LISR.</p>
-        {error && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {error}
-          </p>
-        )}
-        <button type="submit" disabled={loading} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-          {loading ? "Calculando…" : "Calcular ISR PM RESICO"}
-        </button>
-      </form>
+    <div className="flex flex-wrap gap-6">
+      <Card className="max-w-sm flex-1">
+        <CardContent className="p-4">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="resico-ingresos">Ingresos efectivamente cobrados en el mes *</Label>
+              <Input id="resico-ingresos" type="number" step="0.01" value={ingresosCobrados} onChange={(e) => setIngresosCobrados(e.target.value)} required />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="resico-deducciones">Deducciones autorizadas efectivamente pagadas</Label>
+              <Input id="resico-deducciones" type="number" step="0.01" value={deduccionesAutorizadas} onChange={(e) => setDeduccionesAutorizadas(e.target.value)} placeholder="0" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="resico-pagos">Pagos provisionales ya realizados</Label>
+              <Input id="resico-pagos" type="number" step="0.01" value={pagosProvisionales} onChange={(e) => setPagosProvisionales(e.target.value)} placeholder="0" />
+            </div>
+            <p className="text-[11px] text-muted-foreground">RESICO PM: tasa fija de 30% sobre flujo de efectivo (ingresos cobrados − deducciones pagadas), Art. 206/209 LISR.</p>
+            {error && (
+              <p role="alert" className="text-destructive text-sm">
+                {error}
+              </p>
+            )}
+            <Button type="submit" disabled={loading} className="w-full">
+              <Calculator />
+              {loading ? "Calculando…" : "Calcular ISR PM RESICO"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
       {resultado && <ResultadoIsr resultado={resultado} />}
     </div>
   );
@@ -260,24 +302,25 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          Periodo (AAAA-MM) *
-          <input type="text" value={periodo} onChange={(e) => setPeriodo(e.target.value)} placeholder="2026-03" required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db", width: 140 }} />
-        </label>
-        <button type="submit" disabled={loading} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+    <div className="flex flex-col gap-3">
+      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2.5">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="diot-periodo">Periodo (AAAA-MM) *</Label>
+          <Input id="diot-periodo" type="text" value={periodo} onChange={(e) => setPeriodo(e.target.value)} placeholder="2026-03" required className="w-36" />
+        </div>
+        <Button type="submit" disabled={loading}>
+          <Search />
           {loading ? "Consultando…" : "Consultar DIOT"}
-        </button>
+        </Button>
       </form>
       {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+        <p role="alert" className="text-destructive text-sm">
           {error}
         </p>
       )}
       {agregado && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 13 }}>
+        <div className="flex flex-col gap-2.5">
+          <div className="flex flex-wrap gap-6 text-[13px] text-foreground">
             <span>
               <strong>Periodo:</strong> {agregado.periodo}
             </span>
@@ -295,38 +338,42 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
             </span>
           </div>
           {agregado.registros.length === 0 ? (
-            <p style={{ color: "#6b7280", fontSize: 13 }}>Sin proveedores reportables en este periodo.</p>
+            <p role="status" className="text-sm text-muted-foreground">
+              Sin proveedores reportables en este periodo.
+            </p>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                    <th style={{ padding: "6px 8px" }}>RFC</th>
-                    <th style={{ padding: "6px 8px" }}>Proveedor</th>
-                    <th style={{ padding: "6px 8px" }}>Tipo</th>
-                    <th style={{ padding: "6px 8px" }}>Monto neto</th>
-                    <th style={{ padding: "6px 8px" }}>IVA 16%</th>
-                    <th style={{ padding: "6px 8px" }}>IVA 0%</th>
-                    <th style={{ padding: "6px 8px" }}>IVA exento</th>
-                    <th style={{ padding: "6px 8px" }}>CFDIs</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {agregado.registros.map((r) => (
-                    <tr key={`${r.rfcTercero}-${r.tipoOperacion}`} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "8px" }}>{r.rfcTercero}</td>
-                      <td style={{ padding: "8px" }}>{r.nombre}</td>
-                      <td style={{ padding: "8px" }}>{formatDiotTipoOperacion(r.tipoOperacion)}</td>
-                      <td style={{ padding: "8px" }}>{formatMoney(r.montoNeto)}</td>
-                      <td style={{ padding: "8px" }}>{formatMoney(r.ivaTrasladado16)}</td>
-                      <td style={{ padding: "8px" }}>{formatMoney(r.ivaTrasladado0)}</td>
-                      <td style={{ padding: "8px" }}>{formatMoney(r.ivaExento)}</td>
-                      <td style={{ padding: "8px" }}>{r.count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Card>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>RFC</TableHead>
+                      <TableHead>Proveedor</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Monto neto</TableHead>
+                      <TableHead>IVA 16%</TableHead>
+                      <TableHead>IVA 0%</TableHead>
+                      <TableHead>IVA exento</TableHead>
+                      <TableHead>CFDIs</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agregado.registros.map((r) => (
+                      <TableRow key={`${r.rfcTercero}-${r.tipoOperacion}`}>
+                        <TableCell className="font-mono text-xs">{r.rfcTercero}</TableCell>
+                        <TableCell>{r.nombre}</TableCell>
+                        <TableCell>{formatDiotTipoOperacion(r.tipoOperacion)}</TableCell>
+                        <TableCell className="tabular-nums">{formatMoney(r.montoNeto)}</TableCell>
+                        <TableCell className="tabular-nums">{formatMoney(r.ivaTrasladado16)}</TableCell>
+                        <TableCell className="tabular-nums">{formatMoney(r.ivaTrasladado0)}</TableCell>
+                        <TableCell className="tabular-nums">{formatMoney(r.ivaExento)}</TableCell>
+                        <TableCell className="tabular-nums">{r.count}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
@@ -340,9 +387,9 @@ export function DeclaracionesPage(ctx: DespachosShellContext) {
 
   if (!puedeUsar) {
     return (
-      <div>
-        <h1 style={{ fontSize: 20, margin: "0 0 8px" }}>Declaraciones fiscales</h1>
-        <p role="alert" style={{ color: "#b91c1c" }}>
+      <div className="px-1">
+        <h1 className="mb-2 font-display text-xl font-semibold text-foreground">Declaraciones fiscales</h1>
+        <p role="alert" className="text-destructive text-sm">
           Tu rol ({ctx.role}) no tiene acceso a declaraciones fiscales. Solo admin/contador.
         </p>
       </div>
@@ -350,41 +397,37 @@ export function DeclaracionesPage(ctx: DespachosShellContext) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+    <div className="flex flex-col gap-7 px-1">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Declaraciones fiscales</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>ISR (PF / PM / PM RESICO) y consulta de DIOT ya agregada desde los CFDI ya capturados.</p>
+        <h1 className="font-display text-xl font-semibold text-foreground">Declaraciones fiscales</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">ISR (PF / PM / PM RESICO) y consulta de DIOT ya agregada desde los CFDI ya capturados.</p>
       </header>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <h2 style={{ fontSize: 16, margin: 0 }}>Cálculo de ISR</h2>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {TIPOS.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              onClick={() => setTipo(t.value)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: "1px solid #111827",
-                background: tipo === t.value ? "#111827" : "#fff",
-                color: tipo === t.value ? "#fff" : "#111827",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {tipo === "pf" && <IsrPfForm ctx={ctx} />}
-        {tipo === "pm" && <IsrPmForm ctx={ctx} />}
-        {tipo === "pm-resico" && <IsrPmResicoForm ctx={ctx} />}
+      <section className="flex flex-col gap-3.5">
+        <h2 className="font-display text-base font-semibold text-foreground">Cálculo de ISR</h2>
+        <Tabs value={tipo} onValueChange={(v) => setTipo(v as TipoDeclaracion)} className="flex flex-col gap-3.5">
+          <TabsList className="h-auto flex-wrap justify-start">
+            {TIPOS.map((t) => (
+              <TabsTrigger key={t.value} value={t.value} className="text-xs">
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent value="pf" className="mt-0">
+            <IsrPfForm ctx={ctx} />
+          </TabsContent>
+          <TabsContent value="pm" className="mt-0">
+            <IsrPmForm ctx={ctx} />
+          </TabsContent>
+          <TabsContent value="pm-resico" className="mt-0">
+            <IsrPmResicoForm ctx={ctx} />
+          </TabsContent>
+        </Tabs>
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: "1px solid #e5e7eb", paddingTop: 20 }}>
-        <h2 style={{ fontSize: 16, margin: 0 }}>DIOT por periodo</h2>
+      <section className="flex flex-col gap-3.5">
+        <Separator />
+        <h2 className="font-display text-base font-semibold text-foreground">DIOT por periodo</h2>
         <DiotConsulta ctx={ctx} />
       </section>
     </div>

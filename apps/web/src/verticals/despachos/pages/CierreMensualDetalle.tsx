@@ -9,7 +9,24 @@
 // página.
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { EstadoCargando, EstadoError } from "@atiende/ui";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, FileBarChart, Lock } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EstadoCargando,
+  EstadoError,
+  Input,
+  Label,
+  Separator,
+} from "@atiende/ui";
 import { cerrarPeriodoCierre, completarTareaCierre, fetchPeriodoDetalle, fetchReporteCierre } from "../lib/cierre-mensual-client.ts";
 import type { CloseTask, PeriodoDetalle, ReporteCierre } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo, formatTaskCategory, formatTaskStatus } from "../lib/format.ts";
@@ -18,17 +35,24 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
 const CERRAR_ROLES = new Set(["admin"]);
 
-const TASK_STATUS_COLORS: Record<CloseTask["status"], { bg: string; fg: string }> = {
-  pending: { bg: "#f3f4f6", fg: "#4b5563" },
-  in_progress: { bg: "#dbeafe", fg: "#1e40af" },
-  blocked: { bg: "#fee2e2", fg: "#991b1b" },
-  done: { bg: "#dcfce7", fg: "#166534" },
-  skipped: { bg: "#f3f4f6", fg: "#9ca3af" },
+// Misma carga semántica que las píldoras inline originales (gris = pendiente,
+// azul = en curso, rojo = bloqueada, verde = hecha, gris tenue = omitida), ahora
+// sobre el `Badge` real de @atiende/ui.
+const TASK_STATUS_BADGE: Record<CloseTask["status"], { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
+  pending: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground" },
+  in_progress: { variant: "secondary" },
+  blocked: { variant: "destructive" },
+  done: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
+  skipped: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground/70" },
 };
 
 function TaskStatusBadge({ status }: { status: CloseTask["status"] }) {
-  const colors = TASK_STATUS_COLORS[status];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, fontWeight: 600 }}>{formatTaskStatus(status)}</span>;
+  const { variant, className } = TASK_STATUS_BADGE[status];
+  return (
+    <Badge variant={variant} className={className}>
+      {formatTaskStatus(status)}
+    </Badge>
+  );
 }
 
 export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
@@ -112,7 +136,7 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
     }
   }
 
-  if (!periodoId) return <p role="alert">Período no especificado.</p>;
+  if (!periodoId) return <p role="alert" className="text-destructive text-sm">Período no especificado.</p>;
   if (loading && !detalle) return <EstadoCargando etiqueta="Cargando período de cierre…" />;
   if (error) return <EstadoError mensaje={error} />;
   if (!detalle) return null;
@@ -121,32 +145,36 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   const periodoTexto = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900 }}>
+    <div className="flex max-w-4xl flex-col gap-4 px-1">
       <div>
-        <Link to={`/despachos/${orgSlug}/cierre-mensual`} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
-          ← Cierre mensual
+        <Link to={`/despachos/${orgSlug}/cierre-mensual`} className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
+          Cierre mensual
         </Link>
       </div>
 
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>{formatPeriodo(periodo.year, periodo.month)}</h1>
-          <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+          <h1 className="font-display text-xl font-semibold text-foreground">{formatPeriodo(periodo.year, periodo.month)}</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
             {formatPeriodStatus(periodo.status)} · Abierto {formatDate(periodo.openedAt)}
             {periodo.closedAt && ` · Cerrado ${formatDate(periodo.closedAt)}`}
           </p>
         </div>
         {periodo.status !== "closed" && CERRAR_ROLES.has(role) && !confirmando && (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-destructive/40 text-destructive hover:border-destructive"
             onClick={() => {
               setActionError(null);
               setTextoConfirmacion("");
               setConfirmando(true);
             }}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
           >
+            <Lock />
             Cerrar período
-          </button>
+          </Button>
         )}
       </header>
 
@@ -154,115 +182,132 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
           ejecuta con un clic sin confirmación ni reapertura"): un solo clic ya NO
           cierra nada -- hay que teclear el período exacto que se ve en pantalla y
           dar un segundo clic. El servidor exige el mismo texto de todas formas
-          (cierre-mensual.ts), así que esto no es solo un candado cosmético. */}
+          (cierre-mensual.ts), así que esto no es solo un candado cosmético.
+          Presentación: el panel inline pasó al `Dialog` real (la forma de este
+          bloque siempre fue la de un confirm modal); el estado `confirmando` y
+          las mismas condiciones de render no cambian. */}
       {periodo.status !== "closed" && CERRAR_ROLES.has(role) && confirmando && (
-        <div style={{ border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#991b1b" }}>Confirmar cierre de {formatPeriodo(periodo.year, periodo.month)}</p>
-          <p style={{ margin: 0, fontSize: 13, color: "#7f1d1d" }}>
-            Esta acción es <strong>irreversible</strong> — no hay forma de reabrir el período desde el producto. Bloquea la edición de todos los movimientos de{" "}
-            {formatPeriodo(periodo.year, periodo.month)}.
-          </p>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#7f1d1d" }}>
-            Escribe exactamente <code>{periodoTexto}</code> para confirmar
-            <input
-              autoFocus
-              value={textoConfirmacion}
-              onChange={(e) => setTextoConfirmacion(e.target.value)}
-              placeholder={periodoTexto}
-              style={{ padding: 8, borderRadius: 6, border: "1px solid #fca5a5", fontSize: 13, maxWidth: 200 }}
-            />
-          </label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={handleCerrar}
-              disabled={cerrando || textoConfirmacion.trim() !== periodoTexto}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid #b91c1c",
-                background: textoConfirmacion.trim() === periodoTexto ? "#b91c1c" : "#fca5a5",
-                color: "#fff",
-                cursor: textoConfirmacion.trim() === periodoTexto ? "pointer" : "not-allowed",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              {cerrando ? "Cerrando…" : "Confirmar cierre irreversible"}
-            </button>
-            <button
-              onClick={() => {
-                setConfirmando(false);
-                setTextoConfirmacion("");
-              }}
-              disabled={cerrando}
-              style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 13 }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
+        <Dialog
+          open
+          onOpenChange={(abierto) => {
+            if (abierto || cerrando) return;
+            setConfirmando(false);
+            setTextoConfirmacion("");
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                Confirmar cierre de {formatPeriodo(periodo.year, periodo.month)}
+              </DialogTitle>
+              <DialogDescription>
+                Esta acción es <strong className="text-destructive">irreversible</strong> — no hay forma de reabrir el período desde el producto. Bloquea la edición de todos los movimientos de{" "}
+                {formatPeriodo(periodo.year, periodo.month)}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="confirmar-cierre">
+                Escribe exactamente <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">{periodoTexto}</code> para confirmar
+              </Label>
+              <Input
+                id="confirmar-cierre"
+                autoFocus
+                value={textoConfirmacion}
+                onChange={(e) => setTextoConfirmacion(e.target.value)}
+                placeholder={periodoTexto}
+                className="max-w-56"
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmando(false);
+                  setTextoConfirmacion("");
+                }}
+                disabled={cerrando}
+              >
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={handleCerrar} disabled={cerrando || textoConfirmacion.trim() !== periodoTexto}>
+                {cerrando ? "Cerrando…" : "Confirmar cierre irreversible"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
-      <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
-          <span>
-            Avance: {estado.done + estado.skipped} de {estado.totalTasks} tareas
-          </span>
-          <strong>{estado.progressPercent}%</strong>
-        </div>
-        <div style={{ height: 8, borderRadius: 999, background: "#f3f4f6", overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${estado.progressPercent}%`, background: periodo.status === "overdue" ? "#dc2626" : "#111827" }} />
-        </div>
-        {estado.overdue.length > 0 && <p style={{ fontSize: 12, color: "#b91c1c", margin: "8px 0 0" }}>{estado.overdue.length} tarea(s) vencida(s).</p>}
-        {estado.blocked.length > 0 && <p style={{ fontSize: 12, color: "#9ca3af", margin: "4px 0 0" }}>{estado.blocked.length} tarea(s) bloqueada(s) por dependencias.</p>}
-      </div>
+      <Card>
+        <CardContent className="p-4">
+          <div className="mb-1.5 flex justify-between text-[13px] text-foreground">
+            <span>
+              Avance: {estado.done + estado.skipped} de {estado.totalTasks} tareas
+            </span>
+            <strong className="tabular-nums">{estado.progressPercent}%</strong>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={estado.progressPercent} aria-valuemin={0} aria-valuemax={100}>
+            <div className={`h-full ${periodo.status === "overdue" ? "bg-destructive" : "bg-primary"}`} style={{ width: `${estado.progressPercent}%` }} />
+          </div>
+          {estado.overdue.length > 0 && <p className="mt-2 text-xs text-destructive">{estado.overdue.length} tarea(s) vencida(s).</p>}
+          {estado.blocked.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{estado.blocked.length} tarea(s) bloqueada(s) por dependencias.</p>}
+        </CardContent>
+      </Card>
 
       {actionError && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
+        <p role="alert" className="text-destructive text-sm">
           {actionError}
         </p>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="flex flex-col gap-2">
         {tareas.map((t) => {
           const puedeCompletar = GESTIONAR_ROLES.has(role) && t.status !== "done" && t.status !== "skipped" && t.status !== "blocked";
           return (
-            <div key={t.id} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <strong style={{ fontSize: 13 }}>{t.title}</strong>
-                  <TaskStatusBadge status={t.status} />
-                  <span style={{ fontSize: 11, color: "#9ca3af" }}>{formatTaskCategory(t.category)}</span>
+            <Card key={t.id}>
+              <CardContent className="flex items-start justify-between gap-3 p-3">
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong className="text-[13px] text-foreground">{t.title}</strong>
+                    <TaskStatusBadge status={t.status} />
+                    <span className="text-[11px] text-muted-foreground">{formatTaskCategory(t.category)}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
+                  {t.category === "electronica" && (
+                    <Link to={`/despachos/${orgSlug}/contabilidad-electronica`} className="inline-flex items-center gap-1 text-xs text-foreground underline underline-offset-2">
+                      Ir a Contabilidad electrónica
+                      <ArrowRight className="h-3 w-3" strokeWidth={1.75} />
+                    </Link>
+                  )}
+                  {t.completedAt && <p className="mt-1 text-[11px] text-muted-foreground">Completada {formatDate(t.completedAt)}</p>}
                 </div>
-                <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>{t.description}</p>
-                {t.category === "electronica" && (
-                  <Link to={`/despachos/${orgSlug}/contabilidad-electronica`} style={{ fontSize: 12, color: "#111827", textDecoration: "underline" }}>
-                    Ir a Contabilidad electrónica →
-                  </Link>
+                {puedeCompletar && (
+                  <Button size="sm" className="h-9 shrink-0" onClick={() => handleCompletar(t.id)} disabled={busyTaskId === t.id}>
+                    <Check />
+                    {busyTaskId === t.id ? "…" : "Completar"}
+                  </Button>
                 )}
-                {t.completedAt && <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 0" }}>Completada {formatDate(t.completedAt)}</p>}
-              </div>
-              {puedeCompletar && (
-                <button onClick={() => handleCompletar(t.id)} disabled={busyTaskId === t.id} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>
-                  {busyTaskId === t.id ? "…" : "Completar"}
-                </button>
-              )}
-            </div>
+              </CardContent>
+            </Card>
           );
         })}
       </div>
 
-      <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
-        <button onClick={handleVerReporte} disabled={cargandoReporte} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 13 }}>
+      <div>
+        <Separator className="mb-4" />
+        <Button variant="outline" size="sm" onClick={handleVerReporte} disabled={cargandoReporte}>
+          <FileBarChart />
           {cargandoReporte ? "Generando…" : reporte ? "Actualizar reporte" : "Ver reporte de cierre"}
-        </button>
+        </Button>
         {reporte && (
-          <div style={{ marginTop: 12, fontSize: 13, display: "flex", flexDirection: "column", gap: 6 }}>
-            <p style={{ margin: 0 }}>
+          <div className="mt-3 flex flex-col gap-1.5 text-[13px] text-foreground">
+            <p>
               {reporte.done} completadas, {reporte.skipped} omitidas, {reporte.pending} pendientes ({reporte.progressPercent}%) · {reporte.estimatedHours.toFixed(1)}h estimadas
             </p>
             {reporte.issues.length > 0 && (
-              <ul style={{ margin: 0, paddingLeft: 18, color: "#b91c1c" }}>
+              <ul className="m-0 list-disc pl-5 text-destructive">
                 {reporte.issues.map((i) => (
                   <li key={i.taskId}>
                     {i.title} — {i.reason}
