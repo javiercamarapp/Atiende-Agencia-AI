@@ -14,8 +14,16 @@
 // Gateada por `STAFF_INVITE_ROLES` (owner/admin) del lado del CLIENTE (cosmético,
 // ver `LicitacionesShellContext.role`) — el servidor (admin-staff.ts) es SIEMPRE
 // el enforcement real, con la jerarquía fina de `canInviteStaff` encima.
+//
+// Fase "sistema de diseño real" (contenido) — secciones a `Card`, botones a
+// `Button`, el input de correo a `Input`, los `<select>` de rol siguen nativos
+// (restilados con tokens), el estatus de cada invitación a `Badge` y los
+// estados vacío/cargando a `EstadoVacio`/`EstadoCargando`. Cero cambios de
+// lógica ni de red.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Mail, UserPlus } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
@@ -40,6 +48,17 @@ function statusLabel(status: string): string {
   if (status === "expired") return "Expirada";
   return status;
 }
+
+function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "accepted") return "default";
+  if (status === "revoked" || status === "expired") return "destructive";
+  return "secondary";
+}
+
+/** `<select>` sigue siendo nativo (el sistema no exporta un primitivo propio):
+ * solo se restila con los tokens reales. */
+const SELECT_NATIVO =
+  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function StaffPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
@@ -118,132 +137,131 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: LicitacionesS
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 720 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Staff</h1>
+    <div className="flex max-w-[760px] flex-col gap-5">
+      <h1 className="text-xl font-semibold text-foreground">Staff</h1>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
-        <p style={{ margin: 0, fontSize: 13, color: "#6b7280", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
+        <p className="rounded-xl border border-border bg-muted p-3 text-[13px] text-muted-foreground">
           Invitar, revocar, o cambiar el rol de staff está reservado a dueños y administradores. Con tu rol actual ({role}) no puedes gestionar el staff de esta empresa.
         </p>
       )}
 
       {canManage && (
-        <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-          <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Invitar a alguien nuevo</p>
-          <form onSubmit={handleCreate} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <input
-              type="email"
-              placeholder="correo@ejemplo.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, minWidth: 220 }}
-            />
-            <select value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
-              {ROLE_OPTIONS.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
-            </select>
-            <button type="submit" disabled={creating} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}>
-              {creating ? "Invitando…" : "Invitar"}
-            </button>
-          </form>
-          <p style={{ margin: "8px 0 0", fontSize: 12, color: "#9ca3af" }}>
-            No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.
-          </p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Invitar a alguien nuevo</CardTitle>
+            <CardDescription>No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2">
+              <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                <Label htmlFor="staff-email">Correo</Label>
+                <Input id="staff-email" type="email" placeholder="correo@ejemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="staff-rol">Rol</Label>
+                <select id="staff-rol" value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)} className={SELECT_NATIVO}>
+                  {ROLE_OPTIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button type="submit" size="sm" disabled={creating}>
+                <UserPlus />
+                {creating ? "Invitando…" : "Invitar"}
+              </Button>
+            </form>
 
-          {lastCreated && (
-            <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe" }}>
-              <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600 }}>
-                Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
-              </p>
-              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#374151" }}>
-                Se le mandó un correo real con el enlace de activación. Si prefieres compartirlo tú mismo, aquí está el token — solo se muestra una vez.
-              </p>
-              <code style={{ display: "block", padding: "8px 10px", borderRadius: 6, background: "#fff", border: "1px solid #dbeafe", fontSize: 12, wordBreak: "break-all" }}>{lastCreated.inviteToken}</code>
-            </div>
-          )}
-        </section>
+            {lastCreated && (
+              <div className="rounded-xl border border-border bg-muted p-3">
+                <p className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
+                </p>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Se le mandó un correo real con el enlace de activación. Si prefieres compartirlo tú mismo, aquí está el token — solo se muestra una vez.
+                </p>
+                <code className="mt-1.5 block break-all rounded-md border border-border bg-card px-2.5 py-2 font-mono text-xs text-foreground">{lastCreated.inviteToken}</code>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {canManage && (
-        <section>
-          <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Invitaciones pendientes</p>
-          {!invites && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-          {invites && invites.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>No hay ninguna invitación pendiente.</p>}
-          {invites && invites.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {invites.map((inv) => (
-                <div
-                  key={inv.id}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}
-                >
-                  <div>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>{inv.email}</p>
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                      {ROLE_LABELS[inv.verticalRole]} · {statusLabel(inv.status)} · expira {new Date(inv.expiresAt).toLocaleString("es-MX")}
-                    </p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Invitaciones pendientes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!invites && !error && <EstadoCargando lineas={2} etiqueta="Cargando invitaciones…" />}
+            {invites && invites.length === 0 && <EstadoVacio mensaje="No hay ninguna invitación pendiente." />}
+            {invites && invites.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {invites.map((inv) => (
+                  <div key={inv.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-foreground">{inv.email}</p>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <span>{ROLE_LABELS[inv.verticalRole]}</span>
+                        <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
+                        <span>· expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
+                      </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => void handleRevoke(inv.id)} disabled={revokingId === inv.id}>
+                      {revokingId === inv.id ? "Revocando…" : "Revocar"}
+                    </Button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleRevoke(inv.id)}
-                    disabled={revokingId === inv.id}
-                    style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}
-                  >
-                    {revokingId === inv.id ? "Revocando…" : "Revocar"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {canManage && (
-        <section>
-          <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Staff activo</p>
-          <p style={{ margin: "0 0 8px", fontSize: 12, color: "#9ca3af" }}>
-            Cambia el rol de un staff ya aceptado. No puedes tocar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo, ni cambiar tu propio rol
-            — el servidor lo rechaza aunque el rol aparezca en esta lista.
-          </p>
-          {!members && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-          {members && members.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Todavía no hay ningún staff aceptado en esta empresa.</p>}
-          {members && members.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {members.map((m) => (
-                <div
-                  key={m.id}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, flexWrap: "wrap" }}
-                >
-                  <div>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>{m.fullName}</p>
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{m.email}</p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Staff activo</CardTitle>
+            <CardDescription>
+              Cambia el rol de un staff ya aceptado. No puedes tocar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo, ni cambiar tu propio rol
+              — el servidor lo rechaza aunque el rol aparezca en esta lista.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!members && !error && <EstadoCargando lineas={2} etiqueta="Cargando staff activo…" />}
+            {members && members.length === 0 && <EstadoVacio mensaje="Todavía no hay ningún staff aceptado en esta empresa." />}
+            {members && members.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {members.map((m) => (
+                  <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-foreground">{m.fullName}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
+                    </div>
+                    <select
+                      value={m.verticalRole}
+                      disabled={savingRoleId === m.id}
+                      onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
+                      aria-label={`Rol de ${m.fullName}`}
+                      className={SELECT_NATIVO}
+                    >
+                      {ROLE_OPTIONS.map((r) => (
+                        <option key={r} value={r}>
+                          {ROLE_LABELS[r]}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <select
-                    value={m.verticalRole}
-                    disabled={savingRoleId === m.id}
-                    onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
-                    style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-                  >
-                    {ROLE_OPTIONS.map((r) => (
-                      <option key={r} value={r}>
-                        {ROLE_LABELS[r]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );

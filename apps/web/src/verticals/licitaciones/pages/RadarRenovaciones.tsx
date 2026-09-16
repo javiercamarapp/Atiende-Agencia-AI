@@ -24,8 +24,34 @@
 // CONTRATO PROPIO -- cruzar convocatorias históricas de la misma entidad para
 // predecir una licitación futura SIN que exista todavía un contrato propio
 // con fecha de fin no se construyó en esta fase.
+//
+// Fase "sistema de diseño real" (contenido) — la tabla inline-styled pasa a
+// `Table`, los pills de urgencia/estatus a `Badge`, el panel de escaneo a
+// `Card` y los botones/inputs a `Button`/`Input`/`Label` de @atiende/ui. Mismo
+// parseo de umbrales, mismos fetch, mismas ramas.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { RadarIcon } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import { acknowledgeRenewalAlert, fetchRenewalAlerts, scanRenewalAlerts } from "../lib/renewal-radar-client.ts";
 import type { RenewalAlertRecord, ScanRenewalAlertsResult } from "../lib/renewal-radar-client.ts";
 import { fetchTenders } from "../lib/tenders-client.ts";
@@ -70,17 +96,19 @@ function daysUntil(isoDate: string): number {
  * "seguimiento", cualquier intermedio es "próxima". Duplicado aquí a
  * propósito (mismo criterio de aislamiento que el resto de lib/*-client.ts:
  * este panel no depende de @atiende/domain-licitaciones). */
-function urgencyFor(leadDays: number, sortedDistinctLeadDays: readonly number[]): { label: string; bg: string; fg: string } {
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+
+function urgencyFor(leadDays: number, sortedDistinctLeadDays: readonly number[]): { label: string; variant: BadgeVariant; className?: string } {
   const idx = sortedDistinctLeadDays.indexOf(leadDays);
-  if (idx <= 0) return { label: "Urgente", bg: "#fee2e2", fg: "#991b1b" };
-  if (idx === sortedDistinctLeadDays.length - 1) return { label: "Seguimiento", bg: "#dbeafe", fg: "#1e40af" };
-  return { label: "Próxima", bg: "#fef9c3", fg: "#854d0e" };
+  if (idx <= 0) return { label: "Urgente", variant: "destructive" };
+  if (idx === sortedDistinctLeadDays.length - 1) return { label: "Seguimiento", variant: "secondary" };
+  return { label: "Próxima", variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400" };
 }
 
 const STATUS_LABELS: Record<RenewalAlertRecord["status"], string> = { pendiente: "Pendiente", reconocida: "Reconocida" };
-const STATUS_COLORS: Record<RenewalAlertRecord["status"], { bg: string; fg: string }> = {
-  pendiente: { bg: "#fef9c3", fg: "#854d0e" },
-  reconocida: { bg: "#dcfce7", fg: "#166534" },
+const STATUS_BADGE: Record<RenewalAlertRecord["status"], { variant: BadgeVariant; className?: string }> = {
+  pendiente: { variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400" },
+  reconocida: { variant: "default" },
 };
 
 export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
@@ -172,145 +200,140 @@ export function RadarRenovacionesPage({ apiBaseUrl, token, propertyId, orgSlug, 
   const pendingCount = (alerts ?? []).filter((a) => a.status === "pendiente").length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="flex flex-col gap-4">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Radar de renovaciones</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0", maxWidth: 720 }}>
+        <h1 className="text-xl font-semibold text-foreground">Radar de renovaciones</h1>
+        <p className="mt-1 max-w-[720px] text-[13px] text-muted-foreground">
           Detecta contratos propios cerca de su fecha de fin para anticipar una renovación o una nueva licitación por la misma necesidad. Vista transversal de la organización, no de una sola
           convocatoria. Límite documentado: NO cruza convocatorias históricas de la misma entidad -- solo evalúa contratos que ya tienen fecha de fin registrada (ver Contrato.tsx).
         </p>
       </header>
 
-      <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10, maxWidth: 560 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>Escanear ahora</p>
-            <p style={{ fontSize: 12, color: "#9ca3af", margin: "2px 0 0" }}>Reescanear no duplica alertas ya emitidas para el mismo umbral.</p>
+      <Card className="max-w-[600px]">
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+          <div className="min-w-0">
+            <CardTitle className="text-base">Escanear ahora</CardTitle>
+            <CardDescription>Reescanear no duplica alertas ya emitidas para el mismo umbral.</CardDescription>
           </div>
           {canWrite && (
-            <button
-              type="button"
-              onClick={() => void handleScan()}
-              disabled={scanning}
-              style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: scanning ? "default" : "pointer", fontSize: 13, whiteSpace: "nowrap" }}
-            >
+            <Button type="button" size="sm" onClick={() => void handleScan()} disabled={scanning}>
+              <RadarIcon />
               {scanning ? "Escaneando…" : "Escanear renovaciones"}
-            </button>
+            </Button>
           )}
-        </div>
-        {canWrite && (
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Umbrales de antelación en días (opcional)
-            <input value={thresholdsInput} onChange={(e) => setThresholdsInput(e.target.value)} placeholder={DEFAULT_LEAD_DAYS_LABEL} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-        )}
-        {!canWrite && <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede correr el escaneo ni reconocer alertas -- solo consultarlas.</p>}
-        {scanError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {scanError}
-          </p>
-        )}
-        {lastScan && !scanError && (
-          <p style={{ fontSize: 13, color: "#166534", margin: 0 }}>
-            Último escaneo: {lastScan.evaluatedContracts} contrato(s) evaluado(s), {lastScan.alertsCreated} alerta(s) nueva(s).
-          </p>
-        )}
-      </section>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2.5">
+          {canWrite && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="radar-umbrales">Umbrales de antelación en días (opcional)</Label>
+              <Input id="radar-umbrales" value={thresholdsInput} onChange={(e) => setThresholdsInput(e.target.value)} placeholder={DEFAULT_LEAD_DAYS_LABEL} />
+            </div>
+          )}
+          {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede correr el escaneo ni reconocer alertas -- solo consultarlas.</p>}
+          {scanError && (
+            <p role="alert" className="text-[13px] text-destructive">
+              {scanError}
+            </p>
+          )}
+          {lastScan && !scanError && (
+            <p className="text-[13px] font-medium text-green-600 dark:text-green-500">
+              Último escaneo: {lastScan.evaluatedContracts} contrato(s) evaluado(s), {lastScan.alertsCreated} alerta(s) nueva(s).
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {ackError && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
+        <p role="alert" className="text-[13px] text-destructive">
           {ackError}
         </p>
       )}
 
-      {loading && !alerts && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {loading && !alerts && <EstadoCargando etiqueta="Cargando alertas de renovación…" />}
 
       {alerts && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
-              <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-[13px] text-foreground">
+              <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--primary))]" />
               Mostrar solo pendientes ({pendingCount})
             </label>
-            <span style={{ fontSize: 12, color: "#9ca3af" }}>{alerts.length} alerta(s) en total.</span>
+            <span className="text-xs text-muted-foreground">{alerts.length} alerta(s) en total.</span>
           </div>
 
-          {alerts.length === 0 && <p style={{ color: "#6b7280" }}>Todavía no hay ninguna alerta emitida -- corre un escaneo para generarlas.</p>}
+          {alerts.length === 0 && <EstadoVacio mensaje="Todavía no hay ninguna alerta emitida -- corre un escaneo para generarlas." />}
 
-          {alerts.length > 0 && sorted.length === 0 && <p style={{ color: "#6b7280" }}>No hay alertas pendientes.</p>}
+          {alerts.length > 0 && sorted.length === 0 && <EstadoVacio mensaje="No hay alertas pendientes." />}
 
           {sorted.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                    <th style={{ padding: "6px 8px" }}>Convocatoria</th>
-                    <th style={{ padding: "6px 8px" }}>Entidad</th>
-                    <th style={{ padding: "6px 8px" }}>Fin de contrato previsto</th>
-                    <th style={{ padding: "6px 8px" }}>Antelación</th>
-                    <th style={{ padding: "6px 8px" }}>Confianza</th>
-                    <th style={{ padding: "6px 8px" }}>Estatus</th>
-                    <th style={{ padding: "6px 8px" }}></th>
-                  </tr>
-                </thead>
-                <tbody>
+            <div className="rounded-xl border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Convocatoria</TableHead>
+                    <TableHead>Entidad</TableHead>
+                    <TableHead>Fin de contrato previsto</TableHead>
+                    <TableHead>Antelación</TableHead>
+                    <TableHead>Confianza</TableHead>
+                    <TableHead>Estatus</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {sorted.map((alert) => {
                     const tender = tenderById.get(alert.tenderId);
                     const urgency = urgencyFor(alert.leadDays, sortedDistinctLeadDays);
                     const remaining = daysUntil(alert.predictedDate);
-                    const statusColors = STATUS_COLORS[alert.status];
+                    const statusBadge = STATUS_BADGE[alert.status];
                     return (
-                      <tr key={alert.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "8px" }}>
+                      <TableRow key={alert.id}>
+                        <TableCell className="p-3">
                           {tender ? (
-                            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tender.id}`} style={{ color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+                            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tender.id}`} className="font-semibold text-foreground no-underline hover:underline">
                               {tender.title}
                             </Link>
                           ) : (
-                            <span style={{ color: "#9ca3af" }}>Convocatoria {alert.tenderId} (no encontrada)</span>
+                            <span className="text-muted-foreground">Convocatoria {alert.tenderId} (no encontrada)</span>
                           )}
-                          <div style={{ fontSize: 11, color: "#9ca3af" }}>Contrato {alert.contractId}</div>
-                        </td>
-                        <td style={{ padding: "8px", color: "#374151" }}>{tender?.contractingBody ?? "—"}</td>
-                        <td style={{ padding: "8px", color: "#374151" }}>
+                          <div className="text-[11px] text-muted-foreground">Contrato {alert.contractId}</div>
+                        </TableCell>
+                        <TableCell className="p-3 text-muted-foreground">{tender?.contractingBody ?? "—"}</TableCell>
+                        <TableCell className="p-3 text-muted-foreground">
                           {formatDateOnly(alert.predictedDate)}
-                          <div style={{ fontSize: 11, color: remaining < 0 ? "#b91c1c" : "#9ca3af" }}>{remaining < 0 ? `Venció hace ${Math.abs(remaining)} día(s)` : `Faltan ${remaining} día(s)`}</div>
-                        </td>
-                        <td style={{ padding: "8px" }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: urgency.bg, color: urgency.fg, whiteSpace: "nowrap" }}>{urgency.label}</span>
-                            <span style={{ fontSize: 12, color: "#6b7280" }}>{alert.leadDays}d</span>
+                          <div className={remaining < 0 ? "text-[11px] text-destructive" : "text-[11px] text-muted-foreground"}>
+                            {remaining < 0 ? `Venció hace ${Math.abs(remaining)} día(s)` : `Faltan ${remaining} día(s)`}
+                          </div>
+                        </TableCell>
+                        <TableCell className="p-3">
+                          <span className="inline-flex items-center gap-2">
+                            <Badge variant={urgency.variant} className={urgency.className}>
+                              {urgency.label}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">{alert.leadDays}d</span>
                           </span>
-                        </td>
-                        <td style={{ padding: "8px", color: "#374151" }}>{Math.round(alert.confidence * 100)}%</td>
-                        <td style={{ padding: "8px" }}>
-                          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: statusColors.bg, color: statusColors.fg, whiteSpace: "nowrap" }}>{STATUS_LABELS[alert.status]}</span>
+                        </TableCell>
+                        <TableCell className="p-3 tabular-nums text-muted-foreground">{Math.round(alert.confidence * 100)}%</TableCell>
+                        <TableCell className="p-3">
+                          <Badge variant={statusBadge.variant} className={statusBadge.className}>
+                            {STATUS_LABELS[alert.status]}
+                          </Badge>
                           {alert.status === "reconocida" && alert.acknowledgedAt && (
-                            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{formatTimestamp(alert.acknowledgedAt)}</div>
+                            <div className="mt-1 text-[11px] text-muted-foreground">{formatTimestamp(alert.acknowledgedAt)}</div>
                           )}
-                        </td>
-                        <td style={{ padding: "8px" }}>
+                        </TableCell>
+                        <TableCell className="p-3">
                           {alert.status === "pendiente" && canWrite && (
-                            <button
-                              type="button"
-                              onClick={() => void handleAcknowledge(alert.id)}
-                              disabled={acknowledgingId === alert.id}
-                              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#111827", cursor: acknowledgingId === alert.id ? "default" : "pointer", fontSize: 12, whiteSpace: "nowrap" }}
-                            >
+                            <Button type="button" variant="outline" size="sm" className="whitespace-nowrap" onClick={() => void handleAcknowledge(alert.id)} disabled={acknowledgingId === alert.id}>
                               {acknowledgingId === alert.id ? "Reconociendo…" : "Reconocer"}
-                            </button>
+                            </Button>
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </div>

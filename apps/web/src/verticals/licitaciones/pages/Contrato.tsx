@@ -27,9 +27,16 @@
 //     que el extractor determinista encontró (TODOS entran como
 //     "sugerido") y confírmalos o corrígelos uno por uno -- ninguno se da
 //     por válido sin esa confirmación explícita.
+//
+// Fase "sistema de diseño real" (contenido) — las tres secciones pasan a
+// `Card`, los pills de estatus/campo a `Badge`, inputs y botones a
+// `Input`/`Label`/`Button` de @atiende/ui, y la lista de documentos subidos a
+// botones reales con estado seleccionado por tokens. Cero cambios de lógica.
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, Check, FileUp, Pencil } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, cn } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import {
@@ -63,28 +70,16 @@ const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"])
 // (`assertVerticalRole(c, DECISION_ROLES)` en `contract/transition`).
 const DECISION_ROLES = new Set(["owner", "admin", "analyst"]);
 
-const sectionCardStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, fontFamily: "inherit" };
-const primaryButtonStyle = { padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 };
+/** `<select>`/`<textarea>` siguen siendo nativos (el sistema no exporta un
+ * primitivo propio): solo se restilan con los tokens reales. */
+const CAMPO_NATIVO =
+  "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 const CONTRACT_ALERT_STATES = new Set(["penalizado", "rescindido", "en_inconformidad", "cerrado"]);
 
 function StatusBadge({ status }: { status: ContractStatus }) {
   const alert = CONTRACT_ALERT_STATES.has(status);
-  return (
-    <span
-      style={{
-        fontSize: 12,
-        padding: "3px 10px",
-        borderRadius: 999,
-        background: alert ? "#fee2e2" : "#dbeafe",
-        color: alert ? "#991b1b" : "#1e40af",
-        fontWeight: 600,
-      }}
-    >
-      {formatContractStatus(status)}
-    </span>
-  );
+  return <Badge variant={alert ? "destructive" : "secondary"}>{formatContractStatus(status)}</Badge>;
 }
 
 export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
@@ -321,9 +316,9 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
     }
   }
 
-  if (!tenderId) return <p role="alert" style={{ color: "#b91c1c" }}>Falta el id de la convocatoria en la URL.</p>;
-  if (loading && !tender) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (loadError) return <p role="alert" style={{ color: "#b91c1c" }}>{loadError}</p>;
+  if (!tenderId) return <EstadoError mensaje="Falta el id de la convocatoria en la URL." />;
+  if (loading && !tender) return <EstadoCargando etiqueta="Cargando contrato…" />;
+  if (loadError) return <EstadoError mensaje={loadError} onReintentar={() => void load(tenderId)} />;
   if (!tender) return null;
 
   const canWrite = WRITE_ROLES.has(role);
@@ -331,281 +326,294 @@ export function ContratoPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
   const allowedNextStates = contract ? (CONTRACT_TRANSITIONS[contract.status] ?? []) : [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 900 }}>
-      <div>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
-          ← {tender.title}
+    <div className="flex max-w-[900px] flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {tender.title}
         </Link>
-        <h1 style={{ fontSize: 20, margin: "4px 0 0" }}>Contrato</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">Contrato</h1>
+        <p className="text-[13px] text-muted-foreground">
           Contratos + documentos del contrato firmado -- post-adjudicación. Cobranza, inconformidades, autopsia y renovaciones no viven en esta pantalla todavía.
         </p>
       </div>
 
       {!contract ? (
-        <div style={sectionCardStyle}>
-          <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>Todavía no se ha registrado ningún contrato para esta convocatoria.</p>
-          {canWrite ? (
-            <div>
-              <button type="button" onClick={() => void handleCreateContract()} disabled={creating} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
-                {creating ? "Registrando…" : "Registrar contrato"}
-              </button>
-              {createError && (
-                <p role="alert" style={{ color: "#b91c1c", margin: "8px 0 0", fontSize: 13 }}>
-                  {createError}
-                </p>
-              )}
-            </div>
-          ) : (
-            <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede registrar el contrato.</p>
-          )}
-        </div>
+        <Card>
+          <CardContent className="flex flex-col gap-3 pt-6">
+            <p className="text-[13px] text-foreground">Todavía no se ha registrado ningún contrato para esta convocatoria.</p>
+            {canWrite ? (
+              <div>
+                <Button type="button" size="sm" onClick={() => void handleCreateContract()} disabled={creating}>
+                  {creating ? "Registrando…" : "Registrar contrato"}
+                </Button>
+                {createError && (
+                  <p role="alert" className="mt-2 text-[13px] text-destructive">
+                    {createError}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede registrar el contrato.</p>
+            )}
+          </CardContent>
+        </Card>
       ) : (
         <>
-          <section style={sectionCardStyle}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <h2 style={{ fontSize: 15, margin: 0 }}>Estatus</h2>
+          <Card>
+            <CardHeader className="flex-row flex-wrap items-center gap-3 space-y-0">
+              <CardTitle className="text-base">Estatus</CardTitle>
               <StatusBadge status={contract.status} />
-              <span style={{ fontSize: 11, color: "#9ca3af" }}>Actualizado {formatDate(contract.updatedAt)}</span>
-            </div>
-
-            <form onSubmit={(e) => void handleSaveMetadata(e)} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                Fecha de fin
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} disabled={!canWrite} style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                Número de contrato
-                <input value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} disabled={!canWrite} placeholder="Sin declarar" style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, alignSelf: "end" }}>
-                <input type="checkbox" checked={hasRenewalOption} onChange={(e) => setHasRenewalOption(e.target.checked)} disabled={!canWrite} />
-                Tiene opción de renovación
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, gridColumn: "1 / -1" }}>
-                Notas de renovación
-                <textarea value={renewalOptionNotes} onChange={(e) => setRenewalOptionNotes(e.target.value)} disabled={!canWrite} rows={2} style={inputStyle} />
-              </label>
-              {canWrite && (
-                <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10 }}>
-                  <button type="submit" disabled={savingMetadata} style={primaryButtonStyle}>
-                    {savingMetadata ? "Guardando…" : "Guardar metadatos"}
-                  </button>
-                  {metadataSaved && <span style={{ fontSize: 12, color: "#166534" }}>Guardado.</span>}
+              <span className="text-[11px] text-muted-foreground">Actualizado {formatDate(contract.updatedAt)}</span>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={(e) => void handleSaveMetadata(e)} className="grid gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="contrato-fin">Fecha de fin</Label>
+                  <Input id="contrato-fin" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} disabled={!canWrite} />
                 </div>
-              )}
-              {metadataError && (
-                <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13, gridColumn: "1 / -1" }}>
-                  {metadataError}
-                </p>
-              )}
-              {!canWrite && <p style={{ fontSize: 12, color: "#9ca3af", margin: 0, gridColumn: "1 / -1" }}>Tu rol ({role}) no puede editar los metadatos del contrato.</p>}
-            </form>
-          </section>
-
-          <section style={sectionCardStyle}>
-            <h2 style={{ fontSize: 15, margin: 0 }}>Transición de estado</h2>
-            {allowedNextStates.length === 0 ? (
-              <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>"{formatContractStatus(contract.status)}" es un estado terminal -- no hay transiciones disponibles.</p>
-            ) : (
-              <form onSubmit={(e) => void handleTransition(e)} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 520 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                  Nuevo estado
-                  <select value={toStatus} onChange={(e) => setToStatus(e.target.value as ContractStatus)} style={inputStyle}>
-                    <option value="">Selecciona…</option>
-                    {allowedNextStates.map((s) => {
-                      const requiresDecision = CONTRACT_DECISION_TRANSITIONS.includes(s);
-                      const disabled = requiresDecision && !canDecide;
-                      return (
-                        <option key={s} value={s} disabled={disabled}>
-                          {formatContractStatus(s)}
-                          {requiresDecision ? " (requiere rol de decisión)" : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="contrato-numero">Número de contrato</Label>
+                  <Input id="contrato-numero" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} disabled={!canWrite} placeholder="Sin declarar" />
+                </div>
+                <label className="flex items-center gap-2 self-end text-[13px] text-foreground sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={hasRenewalOption}
+                    onChange={(e) => setHasRenewalOption(e.target.checked)}
+                    disabled={!canWrite}
+                    className="h-4 w-4 accent-[hsl(var(--primary))]"
+                  />
+                  Tiene opción de renovación
                 </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                  Motivo (obligatorio)
-                  <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} style={inputStyle} />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                  Referencia de evidencia (opcional)
-                  <input value={evidenceRef} onChange={(e) => setEvidenceRef(e.target.value)} placeholder="Folio, acta, oficio…" style={inputStyle} />
-                </label>
-                {transitionError && (
-                  <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                    {transitionError}
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label htmlFor="contrato-notas">Notas de renovación</Label>
+                  <textarea id="contrato-notas" value={renewalOptionNotes} onChange={(e) => setRenewalOptionNotes(e.target.value)} disabled={!canWrite} rows={2} className={CAMPO_NATIVO} />
+                </div>
+                {canWrite && (
+                  <div className="flex items-center gap-3 sm:col-span-2">
+                    <Button type="submit" size="sm" disabled={savingMetadata}>
+                      {savingMetadata ? "Guardando…" : "Guardar metadatos"}
+                    </Button>
+                    {metadataSaved && <span className="text-xs font-medium text-green-600 dark:text-green-500">Guardado.</span>}
+                  </div>
+                )}
+                {metadataError && (
+                  <p role="alert" className="text-[13px] text-destructive sm:col-span-2">
+                    {metadataError}
                   </p>
                 )}
-                <button
-                  type="submit"
-                  disabled={transitioning || !toStatus || !canWrite || (toStatus.length > 0 && CONTRACT_DECISION_TRANSITIONS.includes(toStatus as ContractStatus) && !canDecide)}
-                  style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}
-                >
-                  {transitioning ? "Aplicando…" : "Aplicar transición"}
-                </button>
-                {!canWrite && <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede transicionar el contrato.</p>}
+                {!canWrite && <p className="text-xs text-muted-foreground sm:col-span-2">Tu rol ({role}) no puede editar los metadatos del contrato.</p>}
               </form>
-            )}
+            </CardContent>
+          </Card>
 
-            <div>
-              <h3 style={{ fontSize: 13, margin: "4px 0 8px", color: "#374151" }}>Historial ({history.length})</h3>
-              {history.length === 0 ? (
-                <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Sin historial todavía.</p>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Transición de estado</CardTitle>
+              <CardDescription>Motivo obligatorio e historial append-only — el servidor revalida cada transición.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {allowedNextStates.length === 0 ? (
+                <p className="text-[13px] text-muted-foreground">"{formatContractStatus(contract.status)}" es un estado terminal -- no hay transiciones disponibles.</p>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {history
-                    .slice()
-                    .reverse()
-                    .map((h) => (
-                      <div key={h.id} style={{ border: "1px solid #f3f4f6", borderRadius: 8, padding: 8, fontSize: 12 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                          <strong>
-                            {h.fromStatus ? `${formatContractStatus(h.fromStatus)} → ` : ""}
-                            {formatContractStatus(h.toStatus)}
-                          </strong>
-                          <span style={{ color: "#9ca3af" }}>{formatDate(h.createdAt)}</span>
-                        </div>
-                        <p style={{ margin: "4px 0 0", color: "#374151" }}>{h.reason}</p>
-                        {h.evidenceRef && <p style={{ margin: "2px 0 0", color: "#9ca3af" }}>Evidencia: {h.evidenceRef}</p>}
-                      </div>
-                    ))}
-                </div>
+                <form onSubmit={(e) => void handleTransition(e)} className="flex max-w-[520px] flex-col gap-2.5">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="contrato-nuevo-estado">Nuevo estado</Label>
+                    <select id="contrato-nuevo-estado" value={toStatus} onChange={(e) => setToStatus(e.target.value as ContractStatus)} className={`${CAMPO_NATIVO} h-11`}>
+                      <option value="">Selecciona…</option>
+                      {allowedNextStates.map((s) => {
+                        const requiresDecision = CONTRACT_DECISION_TRANSITIONS.includes(s);
+                        const disabled = requiresDecision && !canDecide;
+                        return (
+                          <option key={s} value={s} disabled={disabled}>
+                            {formatContractStatus(s)}
+                            {requiresDecision ? " (requiere rol de decisión)" : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="contrato-motivo">Motivo (obligatorio)</Label>
+                    <textarea id="contrato-motivo" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className={CAMPO_NATIVO} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="contrato-evidencia">Referencia de evidencia (opcional)</Label>
+                    <Input id="contrato-evidencia" value={evidenceRef} onChange={(e) => setEvidenceRef(e.target.value)} placeholder="Folio, acta, oficio…" />
+                  </div>
+                  {transitionError && (
+                    <p role="alert" className="text-[13px] text-destructive">
+                      {transitionError}
+                    </p>
+                  )}
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="self-start"
+                    disabled={transitioning || !toStatus || !canWrite || (toStatus.length > 0 && CONTRACT_DECISION_TRANSITIONS.includes(toStatus as ContractStatus) && !canDecide)}
+                  >
+                    {transitioning ? "Aplicando…" : "Aplicar transición"}
+                  </Button>
+                  {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede transicionar el contrato.</p>}
+                </form>
               )}
-            </div>
-          </section>
 
-          <section style={sectionCardStyle}>
-            <h2 style={{ fontSize: 15, margin: 0 }}>Documentos del contrato</h2>
-
-            {canWrite ? (
-              <form onSubmit={(e) => void handleUploadDocument(e)} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
-                  Contrato firmado (PDF o .txt)
-                  <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain" onChange={handleFileSelected} style={{ fontSize: 13 }} />
-                </label>
-                {pendingFile && (
-                  <input value={documentLabel} onChange={(e) => setDocumentLabel(e.target.value)} placeholder="Etiqueta del documento" style={inputStyle} />
-                )}
-                {uploadError && (
-                  <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                    {uploadError}
-                  </p>
-                )}
-                <button type="submit" disabled={uploading || !pendingFile} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
-                  {uploading ? "Subiendo…" : "Subir y extraer campos"}
-                </button>
-              </form>
-            ) : (
-              <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede subir documentos del contrato.</p>
-            )}
-
-            <div>
-              <h3 style={{ fontSize: 13, margin: "4px 0 8px", color: "#374151" }}>Documentos subidos ({documents.length})</h3>
-              {documents.length === 0 ? (
-                <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Todavía no se ha subido ningún documento del contrato.</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {documents.map((doc) => (
-                    <button
-                      key={doc.id}
-                      type="button"
-                      onClick={() => setSelectedDocumentId(doc.id)}
-                      style={{
-                        textAlign: "left",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        border: doc.id === selectedDocumentId ? "1px solid #111827" : "1px solid #e5e7eb",
-                        background: doc.id === selectedDocumentId ? "#f9fafb" : "#fff",
-                        borderRadius: 8,
-                        padding: 10,
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span>
-                        {doc.documentLabel} <span style={{ color: "#9ca3af" }}>· {doc.pageCount} pág.</span>
-                      </span>
-                      <span style={{ color: "#9ca3af", fontSize: 11 }}>{formatDate(doc.createdAt)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {selectedDocumentId && (
               <div>
-                <h3 style={{ fontSize: 13, margin: "4px 0 8px", color: "#374151" }}>Campos extraídos</h3>
-                {fieldsLoading && <p style={{ fontSize: 13, color: "#6b7280" }}>Cargando…</p>}
-                {fieldsError && (
-                  <p role="alert" style={{ color: "#b91c1c", fontSize: 13 }}>
-                    {fieldsError}
-                  </p>
-                )}
-                {fields && fields.length === 0 && <p style={{ fontSize: 13, color: "#6b7280" }}>El extractor no encontró ningún campo reconocible en este documento.</p>}
-                {fields && fields.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {fields.map((field) => (
-                      <div key={field.id} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, fontSize: 13 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                          <strong>{formatContractFieldKey(field.fieldKey)}</strong>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              padding: "2px 8px",
-                              borderRadius: 999,
-                              background: field.status === "sugerido" ? "#fef9c3" : "#dcfce7",
-                              color: field.status === "sugerido" ? "#854d0e" : "#166534",
-                            }}
-                          >
-                            {formatContractFieldStatus(field.status)}
-                          </span>
-                        </div>
-                        <p style={{ margin: "6px 0 0", color: "#374151" }}>{field.extractedValue}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                          {field.sourcePage ? `pág. ${field.sourcePage}` : "página no determinada"}
-                          {field.sourceClause ? ` · ${field.sourceClause}` : ""} · confianza {Math.round(field.confidence * 100)}%
-                        </p>
-
-                        {field.status === "sugerido" && canWrite ? (
-                          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              onClick={() => void handleConfirmField(field, "confirm")}
-                              disabled={confirmingFieldId === field.id}
-                              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #166534", background: "#fff", color: "#166534", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
-                            >
-                              Confirmar valor
-                            </button>
-                            <input
-                              value={correctionDrafts[field.id] ?? ""}
-                              onChange={(e) => setCorrectionDrafts((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                              placeholder="Valor corregido"
-                              style={{ ...inputStyle, flex: 1, minWidth: 140 }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => void handleConfirmField(field, "correct")}
-                              disabled={confirmingFieldId === field.id || (correctionDrafts[field.id] ?? "").trim().length === 0}
-                              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
-                            >
-                              {confirmingFieldId === field.id ? "Guardando…" : "Corregir"}
-                            </button>
+                <h3 className="mb-2 text-[13px] font-semibold text-foreground">Historial ({history.length})</h3>
+                {history.length === 0 ? (
+                  <p className="text-[13px] text-muted-foreground">Sin historial todavía.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {history
+                      .slice()
+                      .reverse()
+                      .map((h) => (
+                        <div key={h.id} className="rounded-xl border border-border p-2 text-xs">
+                          <div className="flex justify-between gap-2">
+                            <strong className="text-foreground">
+                              {h.fromStatus ? `${formatContractStatus(h.fromStatus)} → ` : ""}
+                              {formatContractStatus(h.toStatus)}
+                            </strong>
+                            <span className="text-muted-foreground">{formatDate(h.createdAt)}</span>
                           </div>
-                        ) : field.status !== "sugerido" ? (
-                          <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                            {field.status === "corregido" ? `Corregido a "${field.confirmedValue}"` : "Confirmado tal cual"} por {field.confirmedBy} el {field.confirmedAt ? formatDate(field.confirmedAt) : "—"}
-                          </p>
-                        ) : null}
-                      </div>
+                          <p className="mt-1 text-foreground">{h.reason}</p>
+                          {h.evidenceRef && <p className="mt-0.5 text-muted-foreground">Evidencia: {h.evidenceRef}</p>}
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Documentos del contrato</CardTitle>
+              <CardDescription>Todo campo extraído entra como "sugerido": nada se da por válido sin una confirmación explícita.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {canWrite ? (
+                <form onSubmit={(e) => void handleUploadDocument(e)} className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="contrato-archivo">Contrato firmado (PDF o .txt)</Label>
+                    <Input
+                      id="contrato-archivo"
+                      type="file"
+                      accept=".pdf,.txt,.md,application/pdf,text/plain"
+                      onChange={handleFileSelected}
+                      className="h-auto cursor-pointer py-2 file:mr-3 file:cursor-pointer file:rounded-full file:bg-muted file:px-3 file:py-1 file:text-xs file:font-semibold"
+                    />
+                  </div>
+                  {pendingFile && (
+                    <Input value={documentLabel} onChange={(e) => setDocumentLabel(e.target.value)} placeholder="Etiqueta del documento" aria-label="Etiqueta del documento" />
+                  )}
+                  {uploadError && (
+                    <p role="alert" className="text-[13px] text-destructive">
+                      {uploadError}
+                    </p>
+                  )}
+                  <Button type="submit" size="sm" className="self-start" disabled={uploading || !pendingFile}>
+                    <FileUp />
+                    {uploading ? "Subiendo…" : "Subir y extraer campos"}
+                  </Button>
+                </form>
+              ) : (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede subir documentos del contrato.</p>
+              )}
+
+              <div>
+                <h3 className="mb-2 text-[13px] font-semibold text-foreground">Documentos subidos ({documents.length})</h3>
+                {documents.length === 0 ? (
+                  <EstadoVacio mensaje="Todavía no se ha subido ningún documento del contrato." />
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {documents.map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => setSelectedDocumentId(doc.id)}
+                        aria-pressed={doc.id === selectedDocumentId}
+                        className={cn(
+                          "flex justify-between gap-2 rounded-xl border p-2.5 text-left text-[13px] transition-colors",
+                          doc.id === selectedDocumentId ? "border-primary bg-muted" : "border-border bg-card hover:bg-muted/50",
+                        )}
+                      >
+                        <span className="text-foreground">
+                          {doc.documentLabel} <span className="text-muted-foreground">· {doc.pageCount} pág.</span>
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">{formatDate(doc.createdAt)}</span>
+                      </button>
                     ))}
                   </div>
                 )}
               </div>
-            )}
-          </section>
+
+              {selectedDocumentId && (
+                <div>
+                  <h3 className="mb-2 text-[13px] font-semibold text-foreground">Campos extraídos</h3>
+                  {fieldsLoading && <EstadoCargando lineas={2} etiqueta="Cargando campos extraídos…" />}
+                  {fieldsError && (
+                    <p role="alert" className="text-[13px] text-destructive">
+                      {fieldsError}
+                    </p>
+                  )}
+                  {fields && fields.length === 0 && <EstadoVacio mensaje="El extractor no encontró ningún campo reconocible en este documento." />}
+                  {fields && fields.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      {fields.map((field) => (
+                        <div key={field.id} className="rounded-xl border border-border p-2.5 text-[13px]">
+                          <div className="flex flex-wrap justify-between gap-2">
+                            <strong className="text-foreground">{formatContractFieldKey(field.fieldKey)}</strong>
+                            <Badge
+                              variant={field.status === "sugerido" ? "outline" : "default"}
+                              className={field.status === "sugerido" ? "border-amber-500/60 text-amber-600 dark:text-amber-400" : undefined}
+                            >
+                              {formatContractFieldStatus(field.status)}
+                            </Badge>
+                          </div>
+                          <p className="mt-1.5 text-foreground">{field.extractedValue}</p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {field.sourcePage ? `pág. ${field.sourcePage}` : "página no determinada"}
+                            {field.sourceClause ? ` · ${field.sourceClause}` : ""} · confianza {Math.round(field.confidence * 100)}%
+                          </p>
+
+                          {field.status === "sugerido" && canWrite ? (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <Button type="button" variant="outline" size="sm" onClick={() => void handleConfirmField(field, "confirm")} disabled={confirmingFieldId === field.id}>
+                                <Check />
+                                Confirmar valor
+                              </Button>
+                              <Input
+                                value={correctionDrafts[field.id] ?? ""}
+                                onChange={(e) => setCorrectionDrafts((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                placeholder="Valor corregido"
+                                aria-label={`Valor corregido de ${formatContractFieldKey(field.fieldKey)}`}
+                                className="h-9 min-w-[140px] flex-1"
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => void handleConfirmField(field, "correct")}
+                                disabled={confirmingFieldId === field.id || (correctionDrafts[field.id] ?? "").trim().length === 0}
+                              >
+                                <Pencil />
+                                {confirmingFieldId === field.id ? "Guardando…" : "Corregir"}
+                              </Button>
+                            </div>
+                          ) : field.status !== "sugerido" ? (
+                            <p className="mt-1.5 text-[11px] text-muted-foreground">
+                              {field.status === "corregido" ? `Corregido a "${field.confirmedValue}"` : "Confirmado tal cual"} por {field.confirmedBy} el {field.confirmedAt ? formatDate(field.confirmedAt) : "—"}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

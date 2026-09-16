@@ -34,9 +34,17 @@
 // guardado en una sesión ANTERIOR: solo confirma el que el usuario acaba de
 // enviar en ESTA sesión (ver `technical-proposal-client.ts`). Añadir ese GET
 // es trabajo de otra pieza -- no se inventa aquí.
+//
+// Fase "sistema de diseño real" (contenido) — las secciones pasan a `Card`,
+// los inputs/selects a `Input`/`Label` (los `<select>` siguen nativos,
+// restilados con tokens), todos los botones a `Button`, y los bloques de
+// resultado azul/ámbar hardcodeados a superficies de token. Cero cambios de
+// lógica ni de red.
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchRequirementItems } from "../lib/requirements-client.ts";
@@ -87,8 +95,17 @@ interface MappingFormState {
 
 const EMPTY_MAPPING_FORM: MappingFormState = { kind: "document", refKey: "", statementTemplate: "" };
 
-const sectionCardStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 };
+/** `<select>` sigue siendo nativo (el sistema no exporta un primitivo propio):
+ * solo se restila con los tokens reales, mismo anillo de foco que `Input`. */
+const SELECT_NATIVO =
+  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+
+/** Panel de resultado informativo (antes azul #eff6ff hardcodeado). */
+const PANEL_INFO = "flex flex-col gap-2 rounded-xl border border-border bg-muted p-3";
+/** Panel de resultado bloqueado/advertencia (antes ámbar #fffbeb hardcodeado). */
+const PANEL_ALERTA = "flex flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3";
+const TEXTO_ALERTA = "text-amber-700 dark:text-amber-400";
+const ENLACE_SECUNDARIO = "inline-flex w-fit items-center gap-1 text-[13px] font-semibold text-foreground no-underline hover:underline";
 
 export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const { tenderId } = useParams<{ tenderId: string }>();
@@ -268,37 +285,39 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
     }
   }
 
-  if (!tenderId) return <p role="alert" style={{ color: "#b91c1c" }}>Falta el id de la convocatoria en la URL.</p>;
-  if (loading && !tender) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (loadError) return <p role="alert" style={{ color: "#b91c1c" }}>{loadError}</p>;
+  if (!tenderId) return <EstadoError mensaje="Falta el id de la convocatoria en la URL." />;
+  if (loading && !tender) return <EstadoCargando etiqueta="Cargando propuesta…" />;
+  if (loadError) return <EstadoError mensaje={loadError} onReintentar={() => void load(tenderId)} />;
   if (!tender) return null;
 
   const priorTechnical = proposal?.generationReport?.technical;
   const priorEconomic = proposal?.generationReport?.economic;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 900 }}>
-      <div>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
-          ← {tender.title} · requisitos
+    <div className="flex max-w-[900px] flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {tender.title} · requisitos
         </Link>
-        <h1 style={{ fontSize: 20, margin: "4px 0 0" }}>Propuesta técnica</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">Propuesta técnica</h1>
+        <p className="text-[13px] text-muted-foreground">
           Genera la propuesta técnica a partir de los requisitos ya extraídos y configura a qué dato de empresa se redacta cada tema (topicKey). La propuesta económica vive abajo en esta misma pantalla.
         </p>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} style={{ display: "inline-block", marginTop: 8, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
-          Correr checklist, aprobar y ensamblar el paquete de cierre →
-        </Link>
-        <br />
-        <Link to={`/licitaciones/${orgSlug}/datos-empresa`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
-          Capturar/aprobar documentos, tarifas, capacidades, experiencia y firmantes de la empresa →
-        </Link>
+        <div className="mt-2 flex flex-col gap-1">
+          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} className={ENLACE_SECUNDARIO}>
+            Correr checklist, aprobar y ensamblar el paquete de cierre →
+          </Link>
+          <Link to={`/licitaciones/${orgSlug}/datos-empresa`} className={ENLACE_SECUNDARIO}>
+            Capturar/aprobar documentos, tarifas, capacidades, experiencia y firmantes de la empresa →
+          </Link>
+        </div>
       </div>
 
       {technicalItems.length === 0 && (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>
+        <p className="text-[13px] text-muted-foreground">
           Todavía no hay requisitos técnicos/legales/administrativos/de anexo extraídos para esta convocatoria.{" "}
-          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} style={{ color: "#111827", fontWeight: 600 }}>
+          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} className="font-semibold text-foreground hover:underline">
             Sube las bases primero
           </Link>
           .
@@ -308,309 +327,301 @@ export function PropuestaTecnicaPage({ apiBaseUrl, token, propertyId, orgSlug, r
       {technicalItems.length > 0 && (
         <>
           {conditionalItems.length > 0 && (
-            <section style={sectionCardStyle}>
-              <div>
-                <h2 style={{ fontSize: 15, margin: 0 }}>Requisitos condicionales ({conditionalItems.length})</h2>
-                <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Requisitos condicionales ({conditionalItems.length})</CardTitle>
+                <CardDescription>
                   Declara si cada condición aplica a este caso concreto. Sin evaluar, el requisito se trata como obligatorio por precaución (fail-closed) y queda bloqueado hasta que lo confirmes.
-                </p>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {conditionalItems.map((item) => {
-                  const choice = conditionChoices[item.id] ?? "sin_evaluar";
-                  return (
-                    <div key={item.id} style={{ border: "1px solid #f3f4f6", borderRadius: 8, padding: 10 }}>
-                      <p style={{ margin: "0 0 8px", fontSize: 13 }}>{item.text}</p>
-                      <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
-                        {(["sin_evaluar", "aplica", "no_aplica"] as const).map((option) => (
-                          <label key={option} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-                            <input
-                              type="radio"
-                              name={`condicion-${item.id}`}
-                              checked={choice === option}
-                              onChange={() => setConditionChoices((prev) => ({ ...prev, [item.id]: option }))}
-                            />
-                            {option === "sin_evaluar" ? "Sin evaluar" : option === "aplica" ? "Sí aplica" : "No aplica"}
-                          </label>
-                        ))}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-2">
+                  {conditionalItems.map((item) => {
+                    const choice = conditionChoices[item.id] ?? "sin_evaluar";
+                    return (
+                      <div key={item.id} className="rounded-xl border border-border p-2.5">
+                        <p className="mb-2 text-[13px] text-foreground">{item.text}</p>
+                        <div className="flex flex-wrap gap-4 text-xs">
+                          {(["sin_evaluar", "aplica", "no_aplica"] as const).map((option) => (
+                            <label key={option} className="flex cursor-pointer items-center gap-1.5 text-foreground">
+                              <input
+                                type="radio"
+                                name={`condicion-${item.id}`}
+                                checked={choice === option}
+                                onChange={() => setConditionChoices((prev) => ({ ...prev, [item.id]: option }))}
+                                className="h-4 w-4 accent-[hsl(var(--primary))]"
+                              />
+                              {option === "sin_evaluar" ? "Sin evaluar" : option === "aplica" ? "Sí aplica" : "No aplica"}
+                            </label>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           )}
 
-          <section style={sectionCardStyle}>
-            <div>
-              <h2 style={{ fontSize: 15, margin: 0 }}>Generar propuesta técnica</h2>
-              <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Generar propuesta técnica</CardTitle>
+              <CardDescription>
                 Redacta una sección por categoría (técnica, legal, administrativa, anexos) usando datos de empresa APROBADOS y el mapeo configurado abajo. Un requisito sin dato mapeado/aprobado queda "PENDIENTE:" en su sección -- nunca se inventa contenido.
-              </p>
-            </div>
-
-            {priorTechnical && (
-              <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-                Última generación registrada: {priorTechnical.usedCompanyDocumentIds?.length ?? 0} dato(s) de empresa usado(s)
-                {priorTechnical.notApplicableRequirements && priorTechnical.notApplicableRequirements.length > 0 ? `, ${priorTechnical.notApplicableRequirements.length} requisito(s) marcado(s) "no aplica"` : ""}.
-              </p>
-            )}
-
-            {canGenerate ? (
-              <button
-                type="button"
-                onClick={() => void handleGenerate()}
-                disabled={generating}
-                style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-              >
-                {generating ? "Generando…" : "Generar propuesta técnica"}
-              </button>
-            ) : (
-              <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede generar la propuesta técnica -- solo lectura.</p>
-            )}
-
-            {generateError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {generateError}
-              </p>
-            )}
-
-            {generateResult && (
-              <div style={{ border: "1px solid #dbeafe", background: "#eff6ff", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1e40af" }}>
-                  {generateResult.sections.length} sección(es) generada(s) · {generateResult.blockers} bloqueo(s) pendiente(s)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {priorTechnical && (
+                <p className="text-xs text-muted-foreground">
+                  Última generación registrada: {priorTechnical.usedCompanyDocumentIds?.length ?? 0} dato(s) de empresa usado(s)
+                  {priorTechnical.notApplicableRequirements && priorTechnical.notApplicableRequirements.length > 0 ? `, ${priorTechnical.notApplicableRequirements.length} requisito(s) marcado(s) "no aplica"` : ""}.
                 </p>
-                {generateResult.sections.length > 0 && (
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#1e3a8a" }}>
-                    {generateResult.sections.map((s) => (
-                      <li key={s.sectionKey}>{s.label}</li>
-                    ))}
-                  </ul>
-                )}
-                {generateResult.blockers > 0 && (
-                  <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>
-                    Hay requisitos sin dato mapeado/aprobado o condiciones sin evaluar -- revisa el mapeo abajo o las condiciones arriba y vuelve a generar.
+              )}
+
+              {canGenerate ? (
+                <Button type="button" size="sm" className="self-start" onClick={() => void handleGenerate()} disabled={generating}>
+                  <Sparkles />
+                  {generating ? "Generando…" : "Generar propuesta técnica"}
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede generar la propuesta técnica -- solo lectura.</p>
+              )}
+
+              {generateError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {generateError}
+                </p>
+              )}
+
+              {generateResult && (
+                <div className={PANEL_INFO}>
+                  <p className="text-[13px] font-semibold text-foreground">
+                    {generateResult.sections.length} sección(es) generada(s) · {generateResult.blockers} bloqueo(s) pendiente(s)
                   </p>
-                )}
-                {generateResult.notApplicableRequirements.length > 0 && (
-                  <div>
-                    <p style={{ margin: "4px 0 2px", fontSize: 12, fontWeight: 600, color: "#1e3a8a" }}>Marcados "no aplica":</p>
-                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#1e3a8a" }}>
-                      {generateResult.notApplicableRequirements.map((n) => (
-                        <li key={n.requirementId}>{n.reason}</li>
+                  {generateResult.sections.length > 0 && (
+                    <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                      {generateResult.sections.map((s) => (
+                        <li key={s.sectionKey}>{s.label}</li>
                       ))}
                     </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-
-          <section style={sectionCardStyle}>
-            <div>
-              <h2 style={{ fontSize: 15, margin: 0 }}>Mapeo de requisitos a decisión ({itemsByTopicKey.size})</h2>
-              <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
-                Para cada tema (topicKey) detectado en los requisitos, decide de qué dato de empresa se redacta y con qué texto. Es una decisión editorial/de riesgo (afecta qué se afirma ante el ente público) -- guardar reemplaza cualquier mapeo previo de ese tema.
-              </p>
-            </div>
-
-            {itemsByTopicKey.size === 0 && (
-              <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Ningún requisito extraído trae un topicKey identificado todavía -- no hay nada que mapear.</p>
-            )}
-
-            {!canMap && itemsByTopicKey.size > 0 && (
-              <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede configurar el mapeo de cumplimiento -- solo DECISION_ROLES (owner/admin/analyst).</p>
-            )}
-
-            {[...itemsByTopicKey.entries()].map(([topicKey, relatedItems]) => {
-              const form = mappingFormFor(topicKey);
-              const saved = savedMappings[topicKey];
-              const error = mappingErrors[topicKey];
-              const saving = savingTopicKey === topicKey;
-              return (
-                <div key={topicKey} style={{ border: "1px solid #f3f4f6", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{topicKey}</p>
-                    <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 12, color: "#6b7280" }}>
-                      {relatedItems.slice(0, 3).map((i) => (
-                        <li key={i.id}>
-                          {i.text} <span style={{ color: "#9ca3af" }}>({formatRequirementKind(i.requirementKind)} · {formatObligatoriedad(i.obligatoriedad)})</span>
-                        </li>
-                      ))}
-                      {relatedItems.length > 3 && <li>+{relatedItems.length - 3} más con este mismo tema…</li>}
-                    </ul>
-                  </div>
-
-                  {saved && (
-                    <p role="status" style={{ margin: 0, fontSize: 12, color: "#166534" }}>
-                      Guardado: {MAPPING_KIND_OPTIONS.find((o) => o.value === saved.kind)?.label ?? saved.kind} · refKey "{saved.refKey}".
+                  )}
+                  {generateResult.blockers > 0 && (
+                    <p className={`text-xs ${TEXTO_ALERTA}`}>
+                      Hay requisitos sin dato mapeado/aprobado o condiciones sin evaluar -- revisa el mapeo abajo o las condiciones arriba y vuelve a generar.
                     </p>
                   )}
-
-                  {canMap && (
-                    <form onSubmit={(e) => void handleSaveMapping(e, topicKey)} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 160px" }}>
-                          Fuente del dato
-                          <select value={form.kind} onChange={(e) => updateMappingForm(topicKey, { kind: e.target.value as RequirementFulfillmentMappingKind })} style={inputStyle}>
-                            {MAPPING_KIND_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 200px" }}>
-                          Identificador (refKey)
-                          <input
-                            value={form.refKey}
-                            onChange={(e) => updateMappingForm(topicKey, { refKey: e.target.value })}
-                            placeholder={form.kind === "document" ? "acta_constitutiva" : form.kind === "signer" ? "representante_legal" : "nombre o id"}
-                            style={inputStyle}
-                          />
-                        </label>
-                      </div>
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                        Plantilla de redacción (usa "{"{value}"}" para el dato real)
-                        <input
-                          value={form.statementTemplate}
-                          onChange={(e) => updateMappingForm(topicKey, { statementTemplate: e.target.value })}
-                          placeholder="Se acompaña acta constitutiva vigente: {value}."
-                          style={inputStyle}
-                        />
-                      </label>
-                      {error && (
-                        <p role="alert" style={{ margin: 0, fontSize: 12, color: "#b91c1c" }}>
-                          {error}
-                        </p>
-                      )}
-                      <button
-                        type="submit"
-                        disabled={saving}
-                        style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 6, border: "1px solid #111827", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
-                      >
-                        {saving ? "Guardando…" : saved ? "Actualizar mapeo" : "Guardar mapeo"}
-                      </button>
-                    </form>
+                  {generateResult.notApplicableRequirements.length > 0 && (
+                    <div>
+                      <p className="mb-0.5 text-xs font-semibold text-foreground">Marcados "no aplica":</p>
+                      <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                        {generateResult.notApplicableRequirements.map((n) => (
+                          <li key={n.requirementId}>{n.reason}</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
-              );
-            })}
-          </section>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Mapeo de requisitos a decisión ({itemsByTopicKey.size})</CardTitle>
+              <CardDescription>
+                Para cada tema (topicKey) detectado en los requisitos, decide de qué dato de empresa se redacta y con qué texto. Es una decisión editorial/de riesgo (afecta qué se afirma ante el ente público) -- guardar reemplaza cualquier mapeo previo de ese tema.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {itemsByTopicKey.size === 0 && (
+                <p className="text-[13px] text-muted-foreground">Ningún requisito extraído trae un topicKey identificado todavía -- no hay nada que mapear.</p>
+              )}
+
+              {!canMap && itemsByTopicKey.size > 0 && (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede configurar el mapeo de cumplimiento -- solo DECISION_ROLES (owner/admin/analyst).</p>
+              )}
+
+              {[...itemsByTopicKey.entries()].map(([topicKey, relatedItems]) => {
+                const form = mappingFormFor(topicKey);
+                const saved = savedMappings[topicKey];
+                const error = mappingErrors[topicKey];
+                const saving = savingTopicKey === topicKey;
+                return (
+                  <div key={topicKey} className="flex flex-col gap-2 rounded-xl border border-border p-3">
+                    <div>
+                      <p className="text-[13px] font-semibold text-foreground">{topicKey}</p>
+                      <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
+                        {relatedItems.slice(0, 3).map((i) => (
+                          <li key={i.id}>
+                            {i.text} <span className="text-muted-foreground/70">({formatRequirementKind(i.requirementKind)} · {formatObligatoriedad(i.obligatoriedad)})</span>
+                          </li>
+                        ))}
+                        {relatedItems.length > 3 && <li>+{relatedItems.length - 3} más con este mismo tema…</li>}
+                      </ul>
+                    </div>
+
+                    {saved && (
+                      <p role="status" className="text-xs font-medium text-green-600 dark:text-green-500">
+                        Guardado: {MAPPING_KIND_OPTIONS.find((o) => o.value === saved.kind)?.label ?? saved.kind} · refKey "{saved.refKey}".
+                      </p>
+                    )}
+
+                    {canMap && (
+                      <form onSubmit={(e) => void handleSaveMapping(e, topicKey)} className="flex flex-col gap-2">
+                        <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-[1_1_160px] flex-col gap-1.5">
+                            <Label htmlFor={`mapeo-kind-${topicKey}`}>Fuente del dato</Label>
+                            <select
+                              id={`mapeo-kind-${topicKey}`}
+                              value={form.kind}
+                              onChange={(e) => updateMappingForm(topicKey, { kind: e.target.value as RequirementFulfillmentMappingKind })}
+                              className={SELECT_NATIVO}
+                            >
+                              {MAPPING_KIND_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-[1_1_200px] flex-col gap-1.5">
+                            <Label htmlFor={`mapeo-refkey-${topicKey}`}>Identificador (refKey)</Label>
+                            <Input
+                              id={`mapeo-refkey-${topicKey}`}
+                              value={form.refKey}
+                              onChange={(e) => updateMappingForm(topicKey, { refKey: e.target.value })}
+                              placeholder={form.kind === "document" ? "acta_constitutiva" : form.kind === "signer" ? "representante_legal" : "nombre o id"}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor={`mapeo-plantilla-${topicKey}`}>Plantilla de redacción (usa "{"{value}"}" para el dato real)</Label>
+                          <Input
+                            id={`mapeo-plantilla-${topicKey}`}
+                            value={form.statementTemplate}
+                            onChange={(e) => updateMappingForm(topicKey, { statementTemplate: e.target.value })}
+                            placeholder="Se acompaña acta constitutiva vigente: {value}."
+                          />
+                        </div>
+                        {error && (
+                          <p role="alert" className="text-xs text-destructive">
+                            {error}
+                          </p>
+                        )}
+                        <Button type="submit" variant="outline" size="sm" className="self-start" disabled={saving}>
+                          {saving ? "Guardando…" : saved ? "Actualizar mapeo" : "Guardar mapeo"}
+                        </Button>
+                      </form>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
         </>
       )}
 
-      <section style={sectionCardStyle}>
-        <div>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Propuesta económica</h2>
-          <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Propuesta económica</CardTitle>
+          <CardDescription>
             Captura los conceptos y cantidades de esta propuesta. Cada concepto se resuelve contra las tarifas APROBADAS y vigentes a la fecha del acto -- un solo concepto sin tarifa resoluble bloquea el total completo, nunca se muestra un total parcial.
-          </p>
-        </div>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {priorEconomic && priorEconomic.totals && (
+            <p className="text-xs text-muted-foreground">
+              Última generación registrada: total ${priorEconomic.totals.total} {priorEconomic.totals.currency} ({priorEconomic.usedRateConcepts?.length ?? 0} concepto(s)).
+            </p>
+          )}
+          {priorEconomic && !priorEconomic.totals && (priorEconomic.blockedLineItems?.length ?? 0) > 0 && (
+            <p className="text-xs text-muted-foreground">Última generación registrada: quedó bloqueada por conceptos sin tarifa resoluble.</p>
+          )}
 
-        {priorEconomic && priorEconomic.totals && (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-            Última generación registrada: total ${priorEconomic.totals.total} {priorEconomic.totals.currency} ({priorEconomic.usedRateConcepts?.length ?? 0} concepto(s)).
-          </p>
-        )}
-        {priorEconomic && !priorEconomic.totals && (priorEconomic.blockedLineItems?.length ?? 0) > 0 && (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Última generación registrada: quedó bloqueada por conceptos sin tarifa resoluble.</p>
-        )}
+          {canGenerate ? (
+            <>
+              <div className="flex flex-col gap-2">
+                {economicRows.map((row, index) => (
+                  <div key={index} className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-[3_1_220px] flex-col gap-1.5">
+                      <Label htmlFor={`economico-concepto-${index}`}>Concepto</Label>
+                      <Input
+                        id={`economico-concepto-${index}`}
+                        value={row.concept}
+                        onChange={(e) => updateEconomicRow(index, { concept: e.target.value })}
+                        placeholder="Servicio de limpieza"
+                      />
+                    </div>
+                    <div className="flex flex-[1_1_100px] flex-col gap-1.5">
+                      <Label htmlFor={`economico-cantidad-${index}`}>Cantidad</Label>
+                      <Input
+                        id={`economico-cantidad-${index}`}
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={row.quantity}
+                        onChange={(e) => updateEconomicRow(index, { quantity: e.target.value })}
+                      />
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => removeEconomicRow(index)} disabled={economicRows.length <= 1}>
+                      <Trash2 />
+                      Quitar
+                    </Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" className="self-start" onClick={addEconomicRow}>
+                  <Plus />
+                  Agregar concepto
+                </Button>
+              </div>
 
-        {canGenerate ? (
-          <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {economicRows.map((row, index) => (
-                <div key={index} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "3 1 220px" }}>
-                    Concepto
-                    <input
-                      value={row.concept}
-                      onChange={(e) => updateEconomicRow(index, { concept: e.target.value })}
-                      placeholder="Servicio de limpieza"
-                      style={inputStyle}
-                    />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 100px" }}>
-                    Cantidad
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={row.quantity}
-                      onChange={(e) => updateEconomicRow(index, { quantity: e.target.value })}
-                      style={inputStyle}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => removeEconomicRow(index)}
-                    disabled={economicRows.length <= 1}
-                    style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", cursor: economicRows.length <= 1 ? "not-allowed" : "pointer", fontSize: 12 }}
-                  >
-                    Quitar
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addEconomicRow}
-                style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
-              >
-                + Agregar concepto
-              </button>
+              <Button type="button" size="sm" className="self-start" onClick={() => void handleGenerateEconomic()} disabled={economicGenerating}>
+                <Sparkles />
+                {economicGenerating ? "Generando…" : "Generar propuesta económica"}
+              </Button>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede generar la propuesta económica -- solo lectura.</p>
+          )}
+
+          {economicError && (
+            <p role="alert" className="text-[13px] text-destructive">
+              {economicError}
+            </p>
+          )}
+
+          {economicResult && economicResult.totals && (
+            <div className={PANEL_INFO}>
+              <p className="text-[13px] font-semibold text-foreground">
+                Subtotal: ${economicResult.totals.subtotal} · IVA ({(economicResult.totals.ivaRate * 100).toFixed(0)}%): ${economicResult.totals.iva} · Total: ${economicResult.totals.total} {economicResult.totals.currency}
+              </p>
+              <p className="text-xs text-muted-foreground">{economicResult.totals.totalInWords}</p>
+              <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                {economicResult.lineItems.map((li, i) => (
+                  <li key={`${li.concept}-${i}`}>
+                    {li.concept} · cantidad {li.quantity} · precio unitario ${li.unitPrice} · subtotal ${li.subtotal}
+                  </li>
+                ))}
+              </ul>
             </div>
+          )}
 
-            <button
-              type="button"
-              onClick={() => void handleGenerateEconomic()}
-              disabled={economicGenerating}
-              style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-            >
-              {economicGenerating ? "Generando…" : "Generar propuesta económica"}
-            </button>
-          </>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede generar la propuesta económica -- solo lectura.</p>
-        )}
-
-        {economicError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {economicError}
-          </p>
-        )}
-
-        {economicResult && economicResult.totals && (
-          <div style={{ border: "1px solid #dbeafe", background: "#eff6ff", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1e40af" }}>
-              Subtotal: ${economicResult.totals.subtotal} · IVA ({(economicResult.totals.ivaRate * 100).toFixed(0)}%): ${economicResult.totals.iva} · Total: ${economicResult.totals.total} {economicResult.totals.currency}
-            </p>
-            <p style={{ margin: 0, fontSize: 12, color: "#1e3a8a" }}>{economicResult.totals.totalInWords}</p>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#1e3a8a" }}>
-              {economicResult.lineItems.map((li, i) => (
-                <li key={`${li.concept}-${i}`}>
-                  {li.concept} · cantidad {li.quantity} · precio unitario ${li.unitPrice} · subtotal ${li.subtotal}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {economicResult && !economicResult.totals && (
-          <div style={{ border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#92400e" }}>
-              Sin total: {economicResult.blockedLineItems.length} concepto(s) sin tarifa aprobada/vigente. Corrige el concepto o registra la tarifa y vuelve a generar.
-            </p>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#92400e" }}>
-              {economicResult.blockedLineItems.map((b, i) => (
-                <li key={`${b.concept}-${i}`}>
-                  {b.concept}: {b.detail}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
+          {economicResult && !economicResult.totals && (
+            <div className={PANEL_ALERTA}>
+              <p className={`text-[13px] font-semibold ${TEXTO_ALERTA}`}>
+                Sin total: {economicResult.blockedLineItems.length} concepto(s) sin tarifa aprobada/vigente. Corrige el concepto o registra la tarifa y vuelve a generar.
+              </p>
+              <ul className={`list-disc pl-5 text-xs ${TEXTO_ALERTA}`}>
+                {economicResult.blockedLineItems.map((b, i) => (
+                  <li key={`${b.concept}-${i}`}>
+                    {b.concept}: {b.detail}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

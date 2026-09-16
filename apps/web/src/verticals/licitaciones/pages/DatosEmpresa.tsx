@@ -12,7 +12,32 @@
 // servidor, `companyData.ts`: WRITE_ROLES, nunca DECISION_ROLES) -- la
 // decisión de riesgo real es a qué requisito se mapea ese dato
 // (`PropuestaTecnica.tsx::requirement-mappings`, DECISION_ROLES).
+//
+// Fase "sistema de diseño real" (contenido) — las 5 secciones apiladas pasan a
+// `Tabs` reales (una pestaña por tabla: documentos/tarifas/capacidades/
+// experiencia/firmantes), sus tarjetas a `Card`, los pills de aprobación a
+// `Badge` y los inputs/botones a `Input`/`Label`/`Button` de @atiende/ui. Mismo
+// estado, mismos fetch, mismas ramas de rol.
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
 import {
   createApprovedRate,
   createCompanyCapability,
@@ -35,15 +60,19 @@ import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
 
-const APPROVAL_COLORS: Record<CompanyDataApprovalStatus, { bg: string; fg: string; label: string }> = {
-  aprobado: { bg: "#dcfce7", fg: "#166534", label: "Aprobado" },
-  pendiente_aprobacion: { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente de aprobación" },
-  rechazado: { bg: "#fee2e2", fg: "#991b1b", label: "Rechazado" },
+const APPROVAL_BADGE: Record<CompanyDataApprovalStatus, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string; label: string }> = {
+  aprobado: { variant: "default", label: "Aprobado" },
+  pendiente_aprobacion: { variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400", label: "Pendiente de aprobación" },
+  rechazado: { variant: "destructive", label: "Rechazado" },
 };
 
 function ApprovalBadge({ status }: { status: CompanyDataApprovalStatus }) {
-  const c = APPROVAL_COLORS[status];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: c.bg, color: c.fg, whiteSpace: "nowrap" }}>{c.label}</span>;
+  const c = APPROVAL_BADGE[status];
+  return (
+    <Badge variant={c.variant} className={c.className ? `${c.className} whitespace-nowrap` : "whitespace-nowrap"}>
+      {c.label}
+    </Badge>
+  );
 }
 
 /** `<input type="date">` no trae hora ni offset -- se completa con medianoche
@@ -64,20 +93,11 @@ function isoToDateOnly(iso: string | null): string {
   return iso.slice(0, 10);
 }
 
-const sectionStyle = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column" as const, gap: 10 };
-const rowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: "1px solid #f3f4f6", paddingBottom: 8, fontSize: 13 };
-const inputStyle = { padding: 7, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 };
-const smallButton = (variant: "aprobar" | "rechazar") => ({
-  padding: "4px 10px",
-  borderRadius: 6,
-  border: variant === "aprobar" ? "1px solid #166534" : "1px solid #991b1b",
-  background: "#fff",
-  color: variant === "aprobar" ? "#166534" : "#991b1b",
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 600,
-});
-const addButtonStyle = { padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, alignSelf: "flex-start" };
+/** Fila de una tabla de datos de empresa: contenido a la izquierda, estado +
+ * acciones a la derecha. Antes era `rowStyle` inline. */
+const FILA = "flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2 text-[13px]";
+/** Formulario de alta al pie de cada sección. Antes era un `style` inline. */
+const FORM_ALTA = "flex flex-wrap items-end gap-2 pt-1";
 
 export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const canWrite = WRITE_ROLES.has(role);
@@ -140,259 +160,334 @@ export function DatosEmpresaPage({ apiBaseUrl, token, propertyId, role }: Licita
     }
   }
 
-  if (loading && documents.length === 0 && rates.length === 0) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
+  if (loading && documents.length === 0 && rates.length === 0) return <EstadoCargando etiqueta="Cargando datos de la empresa…" />;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 760 }}>
+    <div className="flex max-w-[860px] flex-col gap-4">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Datos de la empresa</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">Datos de la empresa</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Documentos, tarifas aprobadas, capacidades, experiencia y firmantes autorizados. Las propuestas técnica y económica solo usan lo que aquí está en estado "Aprobado" y vigente -- un dato ausente o sin aprobar queda "PENDIENTE" en la propuesta, nunca inventado.
         </p>
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {actionError && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
+        <p role="alert" className="text-[13px] text-destructive">
           {actionError}
         </p>
       )}
-      {!canWrite && <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede capturar ni aprobar datos de empresa. Se muestran de solo lectura.</p>}
+      {!canWrite && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede capturar ni aprobar datos de empresa. Se muestran de solo lectura.</p>}
 
-      {/* ---- Documentos ---- */}
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Documentos</h2>
-        {documents.length === 0 && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Sin documentos capturados todavía.</p>}
-        {documents.map((d) => (
-          <div key={d.id} style={rowStyle}>
-            <div>
-              <strong>{d.type}</strong> — {d.label}
-              {d.expiresAt && <span style={{ color: "#6b7280" }}> · vence {isoToDateOnly(d.expiresAt)}</span>}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <ApprovalBadge status={d.approvalStatus} />
-              {canWrite && d.approvalStatus !== "aprobado" && (
-                <button type="button" disabled={submittingSection !== null} style={smallButton("aprobar")} onClick={() => void withAction(`doc-${d.id}`, () => updateCompanyDocument(fetch, apiBaseUrl, token, propertyId, d.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
-                  Aprobar
-                </button>
-              )}
-              {canWrite && d.approvalStatus !== "rechazado" && (
-                <button type="button" disabled={submittingSection !== null} style={smallButton("rechazar")} onClick={() => void withAction(`doc-${d.id}`, () => updateCompanyDocument(fetch, apiBaseUrl, token, propertyId, d.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
-                  Rechazar
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-        {canWrite && (
-          <form
-            style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, alignItems: "flex-end" }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void withAction("doc-new", async () => {
-                await createCompanyDocument(fetch, apiBaseUrl, token, propertyId, { type: docForm.type, label: docForm.label, expiresAt: docForm.expiresAt ? dateOnlyToIsoWithOffset(docForm.expiresAt) : null });
-                setDocForm({ type: "", label: "", expiresAt: "" });
-              });
-            }}
-          >
-            <input required placeholder="Tipo (p. ej. opinion_cumplimiento)" value={docForm.type} onChange={(e) => setDocForm({ ...docForm, type: e.target.value })} style={{ ...inputStyle, minWidth: 200 }} />
-            <input required placeholder="Etiqueta" value={docForm.label} onChange={(e) => setDocForm({ ...docForm, label: e.target.value })} style={{ ...inputStyle, minWidth: 200 }} />
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6b7280" }}>
-              Vigencia (opcional)
-              <input type="date" value={docForm.expiresAt} onChange={(e) => setDocForm({ ...docForm, expiresAt: e.target.value })} style={inputStyle} />
-            </label>
-            <button type="submit" disabled={submittingSection !== null} style={addButtonStyle}>
-              {submittingSection === "doc-new" ? "Guardando…" : "Agregar documento"}
-            </button>
-          </form>
-        )}
-      </section>
+      <Tabs defaultValue="documentos" className="w-full">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="documentos">Documentos</TabsTrigger>
+          <TabsTrigger value="tarifas">Tarifas</TabsTrigger>
+          <TabsTrigger value="capacidades">Capacidades</TabsTrigger>
+          <TabsTrigger value="experiencia">Experiencia</TabsTrigger>
+          <TabsTrigger value="firmantes">Firmantes</TabsTrigger>
+        </TabsList>
 
-      {/* ---- Tarifas aprobadas ---- */}
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Tarifas aprobadas</h2>
-        {rates.length === 0 && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Sin tarifas capturadas todavía -- la propuesta económica no puede generar ningún total sin al menos una.</p>}
-        {rates.map((r) => (
-          <div key={r.id} style={rowStyle}>
-            <div>
-              <strong>{r.concept}</strong> — ${r.unitPrice} {r.currency}
-              <span style={{ color: "#6b7280" }}>
-                {" "}
-                · vigente desde {isoToDateOnly(r.validFrom)}
-                {r.validUntil ? ` hasta ${isoToDateOnly(r.validUntil)}` : ""}
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <ApprovalBadge status={r.approvalStatus} />
-              {canWrite && r.approvalStatus !== "aprobado" && (
-                <button type="button" disabled={submittingSection !== null} style={smallButton("aprobar")} onClick={() => void withAction(`rate-${r.id}`, () => updateApprovedRate(fetch, apiBaseUrl, token, propertyId, r.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
-                  Aprobar
-                </button>
-              )}
-              {canWrite && r.approvalStatus !== "rechazado" && (
-                <button type="button" disabled={submittingSection !== null} style={smallButton("rechazar")} onClick={() => void withAction(`rate-${r.id}`, () => updateApprovedRate(fetch, apiBaseUrl, token, propertyId, r.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
-                  Rechazar
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-        {canWrite && (
-          <form
-            style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, alignItems: "flex-end" }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void withAction("rate-new", async () => {
-                await createApprovedRate(fetch, apiBaseUrl, token, propertyId, { concept: rateForm.concept, unitPrice: rateForm.unitPrice });
-                setRateForm({ concept: "", unitPrice: "" });
-              });
-            }}
-          >
-            <input required placeholder="Concepto (p. ej. consultoria_hora)" value={rateForm.concept} onChange={(e) => setRateForm({ ...rateForm, concept: e.target.value })} style={{ ...inputStyle, minWidth: 220 }} />
-            <input required placeholder="Precio unitario (p. ej. 500.00)" value={rateForm.unitPrice} onChange={(e) => setRateForm({ ...rateForm, unitPrice: e.target.value })} style={{ ...inputStyle, minWidth: 160 }} />
-            <button type="submit" disabled={submittingSection !== null} style={addButtonStyle}>
-              {submittingSection === "rate-new" ? "Guardando…" : "Agregar tarifa"}
-            </button>
-          </form>
-        )}
-      </section>
-
-      {/* ---- Capacidades ---- */}
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Capacidades</h2>
-        {capabilities.length === 0 && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Sin capacidades capturadas todavía.</p>}
-        {capabilities.map((cap) => (
-          <div key={cap.id} style={rowStyle}>
-            <div>
-              <strong>{cap.name}</strong> — {cap.description}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <ApprovalBadge status={cap.approvalStatus} />
-              {canWrite && cap.approvalStatus !== "aprobado" && (
-                <button type="button" disabled={submittingSection !== null} style={smallButton("aprobar")} onClick={() => void withAction(`cap-${cap.id}`, () => updateCompanyCapability(fetch, apiBaseUrl, token, propertyId, cap.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
-                  Aprobar
-                </button>
-              )}
-              {canWrite && cap.approvalStatus !== "rechazado" && (
-                <button type="button" disabled={submittingSection !== null} style={smallButton("rechazar")} onClick={() => void withAction(`cap-${cap.id}`, () => updateCompanyCapability(fetch, apiBaseUrl, token, propertyId, cap.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
-                  Rechazar
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-        {canWrite && (
-          <form
-            style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, alignItems: "flex-end" }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void withAction("cap-new", async () => {
-                await createCompanyCapability(fetch, apiBaseUrl, token, propertyId, { name: capabilityForm.name, description: capabilityForm.description });
-                setCapabilityForm({ name: "", description: "" });
-              });
-            }}
-          >
-            <input required placeholder="Nombre" value={capabilityForm.name} onChange={(e) => setCapabilityForm({ ...capabilityForm, name: e.target.value })} style={{ ...inputStyle, minWidth: 180 }} />
-            <input required placeholder="Descripción" value={capabilityForm.description} onChange={(e) => setCapabilityForm({ ...capabilityForm, description: e.target.value })} style={{ ...inputStyle, minWidth: 260 }} />
-            <button type="submit" disabled={submittingSection !== null} style={addButtonStyle}>
-              {submittingSection === "cap-new" ? "Guardando…" : "Agregar capacidad"}
-            </button>
-          </form>
-        )}
-      </section>
-
-      {/* ---- Experiencia ---- */}
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Experiencia</h2>
-        {experience.length === 0 && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Sin experiencia capturada todavía.</p>}
-        {experience.map((exp) => (
-          <div key={exp.id} style={rowStyle}>
-            <div>
-              {exp.description} <span style={{ color: "#9ca3af" }}>· evidencia: {exp.evidenceDocId}</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <ApprovalBadge status={exp.approvalStatus} />
-              {canWrite && exp.approvalStatus !== "aprobado" && (
-                <button type="button" disabled={submittingSection !== null} style={smallButton("aprobar")} onClick={() => void withAction(`exp-${exp.id}`, () => updateCompanyExperience(fetch, apiBaseUrl, token, propertyId, exp.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
-                  Aprobar
-                </button>
-              )}
-              {canWrite && exp.approvalStatus !== "rechazado" && (
-                <button type="button" disabled={submittingSection !== null} style={smallButton("rechazar")} onClick={() => void withAction(`exp-${exp.id}`, () => updateCompanyExperience(fetch, apiBaseUrl, token, propertyId, exp.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
-                  Rechazar
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-        {canWrite && (
-          <form
-            style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, alignItems: "flex-end" }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void withAction("exp-new", async () => {
-                await createCompanyExperience(fetch, apiBaseUrl, token, propertyId, { description: experienceForm.description, evidenceDocId: experienceForm.evidenceDocId });
-                setExperienceForm({ description: "", evidenceDocId: "" });
-              });
-            }}
-          >
-            <input required placeholder="Descripción del proyecto/experiencia" value={experienceForm.description} onChange={(e) => setExperienceForm({ ...experienceForm, description: e.target.value })} style={{ ...inputStyle, minWidth: 260 }} />
-            <input required placeholder="ID del documento de evidencia" value={experienceForm.evidenceDocId} onChange={(e) => setExperienceForm({ ...experienceForm, evidenceDocId: e.target.value })} style={{ ...inputStyle, minWidth: 220 }} />
-            <button type="submit" disabled={submittingSection !== null} style={addButtonStyle}>
-              {submittingSection === "exp-new" ? "Guardando…" : "Agregar experiencia"}
-            </button>
-          </form>
-        )}
-        <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>El ID de evidencia debe corresponder a un documento ya capturado arriba -- sin uno real, la experiencia queda bloqueada como "evidencia_no_verificable" al generar la propuesta.</p>
-      </section>
-
-      {/* ---- Firmantes autorizados ---- */}
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Firmantes autorizados</h2>
-        {signers.length === 0 && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Sin firmantes capturados todavía.</p>}
-        {signers.map((s) => (
-          <div key={s.id} style={rowStyle}>
-            <div>
-              <strong>{s.name}</strong> — {s.role}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: s.authorized ? "#dcfce7" : "#fee2e2", color: s.authorized ? "#166534" : "#991b1b" }}>{s.authorized ? "Autorizado" : "No autorizado"}</span>
+        {/* ---- Documentos ---- */}
+        <TabsContent value="documentos">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Documentos</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2.5">
+              {documents.length === 0 && <EstadoVacio mensaje="Sin documentos capturados todavía." />}
+              {documents.map((d) => (
+                <div key={d.id} className={FILA}>
+                  <div className="min-w-0 text-foreground">
+                    <strong>{d.type}</strong> — {d.label}
+                    {d.expiresAt && <span className="text-muted-foreground"> · vence {isoToDateOnly(d.expiresAt)}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ApprovalBadge status={d.approvalStatus} />
+                    {canWrite && d.approvalStatus !== "aprobado" && (
+                      <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void withAction(`doc-${d.id}`, () => updateCompanyDocument(fetch, apiBaseUrl, token, propertyId, d.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
+                        Aprobar
+                      </Button>
+                    )}
+                    {canWrite && d.approvalStatus !== "rechazado" && (
+                      <Button type="button" variant="outline" size="sm" className="text-destructive" disabled={submittingSection !== null} onClick={() => void withAction(`doc-${d.id}`, () => updateCompanyDocument(fetch, apiBaseUrl, token, propertyId, d.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
+                        Rechazar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
               {canWrite && (
-                <button
-                  type="button"
-                  disabled={submittingSection !== null}
-                  style={smallButton(s.authorized ? "rechazar" : "aprobar")}
-                  onClick={() => void withAction(`signer-${s.id}`, () => updateCompanySigner(fetch, apiBaseUrl, token, propertyId, s.id, { authorized: !s.authorized }).then(() => undefined))}
+                <form
+                  className={FORM_ALTA}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void withAction("doc-new", async () => {
+                      await createCompanyDocument(fetch, apiBaseUrl, token, propertyId, { type: docForm.type, label: docForm.label, expiresAt: docForm.expiresAt ? dateOnlyToIsoWithOffset(docForm.expiresAt) : null });
+                      setDocForm({ type: "", label: "", expiresAt: "" });
+                    });
+                  }}
                 >
-                  {s.authorized ? "Revocar" : "Autorizar"}
-                </button>
+                  <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="doc-tipo">Tipo</Label>
+                    <Input id="doc-tipo" required placeholder="p. ej. opinion_cumplimiento" value={docForm.type} onChange={(e) => setDocForm({ ...docForm, type: e.target.value })} />
+                  </div>
+                  <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="doc-etiqueta">Etiqueta</Label>
+                    <Input id="doc-etiqueta" required placeholder="Etiqueta" value={docForm.label} onChange={(e) => setDocForm({ ...docForm, label: e.target.value })} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="doc-vigencia">Vigencia (opcional)</Label>
+                    <Input id="doc-vigencia" type="date" value={docForm.expiresAt} onChange={(e) => setDocForm({ ...docForm, expiresAt: e.target.value })} />
+                  </div>
+                  <Button type="submit" size="sm" disabled={submittingSection !== null}>
+                    <Plus />
+                    {submittingSection === "doc-new" ? "Guardando…" : "Agregar documento"}
+                  </Button>
+                </form>
               )}
-            </div>
-          </div>
-        ))}
-        {canWrite && (
-          <form
-            style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, alignItems: "flex-end" }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void withAction("signer-new", async () => {
-                await createCompanySigner(fetch, apiBaseUrl, token, propertyId, { name: signerForm.name, role: signerForm.role, authorized: true });
-                setSignerForm({ name: "", role: "" });
-              });
-            }}
-          >
-            <input required placeholder="Nombre" value={signerForm.name} onChange={(e) => setSignerForm({ ...signerForm, name: e.target.value })} style={{ ...inputStyle, minWidth: 200 }} />
-            <input required placeholder="Rol (p. ej. representante_legal)" value={signerForm.role} onChange={(e) => setSignerForm({ ...signerForm, role: e.target.value })} style={{ ...inputStyle, minWidth: 220 }} />
-            <button type="submit" disabled={submittingSection !== null} style={addButtonStyle}>
-              {submittingSection === "signer-new" ? "Guardando…" : "Agregar firmante (autorizado)"}
-            </button>
-          </form>
-        )}
-      </section>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ---- Tarifas aprobadas ---- */}
+        <TabsContent value="tarifas">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Tarifas aprobadas</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2.5">
+              {rates.length === 0 && <EstadoVacio mensaje="Sin tarifas capturadas todavía -- la propuesta económica no puede generar ningún total sin al menos una." />}
+              {rates.map((r) => (
+                <div key={r.id} className={FILA}>
+                  <div className="min-w-0 text-foreground">
+                    <strong>{r.concept}</strong> — ${r.unitPrice} {r.currency}
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · vigente desde {isoToDateOnly(r.validFrom)}
+                      {r.validUntil ? ` hasta ${isoToDateOnly(r.validUntil)}` : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ApprovalBadge status={r.approvalStatus} />
+                    {canWrite && r.approvalStatus !== "aprobado" && (
+                      <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void withAction(`rate-${r.id}`, () => updateApprovedRate(fetch, apiBaseUrl, token, propertyId, r.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
+                        Aprobar
+                      </Button>
+                    )}
+                    {canWrite && r.approvalStatus !== "rechazado" && (
+                      <Button type="button" variant="outline" size="sm" className="text-destructive" disabled={submittingSection !== null} onClick={() => void withAction(`rate-${r.id}`, () => updateApprovedRate(fetch, apiBaseUrl, token, propertyId, r.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
+                        Rechazar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {canWrite && (
+                <form
+                  className={FORM_ALTA}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void withAction("rate-new", async () => {
+                      await createApprovedRate(fetch, apiBaseUrl, token, propertyId, { concept: rateForm.concept, unitPrice: rateForm.unitPrice });
+                      setRateForm({ concept: "", unitPrice: "" });
+                    });
+                  }}
+                >
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="tarifa-concepto">Concepto</Label>
+                    <Input id="tarifa-concepto" required placeholder="p. ej. consultoria_hora" value={rateForm.concept} onChange={(e) => setRateForm({ ...rateForm, concept: e.target.value })} />
+                  </div>
+                  <div className="flex min-w-[160px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="tarifa-precio">Precio unitario</Label>
+                    <Input id="tarifa-precio" required placeholder="p. ej. 500.00" value={rateForm.unitPrice} onChange={(e) => setRateForm({ ...rateForm, unitPrice: e.target.value })} />
+                  </div>
+                  <Button type="submit" size="sm" disabled={submittingSection !== null}>
+                    <Plus />
+                    {submittingSection === "rate-new" ? "Guardando…" : "Agregar tarifa"}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ---- Capacidades ---- */}
+        <TabsContent value="capacidades">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Capacidades</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2.5">
+              {capabilities.length === 0 && <EstadoVacio mensaje="Sin capacidades capturadas todavía." />}
+              {capabilities.map((cap) => (
+                <div key={cap.id} className={FILA}>
+                  <div className="min-w-0 text-foreground">
+                    <strong>{cap.name}</strong> — {cap.description}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ApprovalBadge status={cap.approvalStatus} />
+                    {canWrite && cap.approvalStatus !== "aprobado" && (
+                      <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void withAction(`cap-${cap.id}`, () => updateCompanyCapability(fetch, apiBaseUrl, token, propertyId, cap.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
+                        Aprobar
+                      </Button>
+                    )}
+                    {canWrite && cap.approvalStatus !== "rechazado" && (
+                      <Button type="button" variant="outline" size="sm" className="text-destructive" disabled={submittingSection !== null} onClick={() => void withAction(`cap-${cap.id}`, () => updateCompanyCapability(fetch, apiBaseUrl, token, propertyId, cap.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
+                        Rechazar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {canWrite && (
+                <form
+                  className={FORM_ALTA}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void withAction("cap-new", async () => {
+                      await createCompanyCapability(fetch, apiBaseUrl, token, propertyId, { name: capabilityForm.name, description: capabilityForm.description });
+                      setCapabilityForm({ name: "", description: "" });
+                    });
+                  }}
+                >
+                  <div className="flex min-w-[180px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="cap-nombre">Nombre</Label>
+                    <Input id="cap-nombre" required placeholder="Nombre" value={capabilityForm.name} onChange={(e) => setCapabilityForm({ ...capabilityForm, name: e.target.value })} />
+                  </div>
+                  <div className="flex min-w-[260px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="cap-descripcion">Descripción</Label>
+                    <Input id="cap-descripcion" required placeholder="Descripción" value={capabilityForm.description} onChange={(e) => setCapabilityForm({ ...capabilityForm, description: e.target.value })} />
+                  </div>
+                  <Button type="submit" size="sm" disabled={submittingSection !== null}>
+                    <Plus />
+                    {submittingSection === "cap-new" ? "Guardando…" : "Agregar capacidad"}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ---- Experiencia ---- */}
+        <TabsContent value="experiencia">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Experiencia</CardTitle>
+              <CardDescription>
+                El ID de evidencia debe corresponder a un documento ya capturado en la pestaña "Documentos" -- sin uno real, la experiencia queda bloqueada como "evidencia_no_verificable" al generar la propuesta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2.5">
+              {experience.length === 0 && <EstadoVacio mensaje="Sin experiencia capturada todavía." />}
+              {experience.map((exp) => (
+                <div key={exp.id} className={FILA}>
+                  <div className="min-w-0 text-foreground">
+                    {exp.description} <span className="text-muted-foreground">· evidencia: {exp.evidenceDocId}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ApprovalBadge status={exp.approvalStatus} />
+                    {canWrite && exp.approvalStatus !== "aprobado" && (
+                      <Button type="button" variant="outline" size="sm" disabled={submittingSection !== null} onClick={() => void withAction(`exp-${exp.id}`, () => updateCompanyExperience(fetch, apiBaseUrl, token, propertyId, exp.id, { approvalStatus: "aprobado" }).then(() => undefined))}>
+                        Aprobar
+                      </Button>
+                    )}
+                    {canWrite && exp.approvalStatus !== "rechazado" && (
+                      <Button type="button" variant="outline" size="sm" className="text-destructive" disabled={submittingSection !== null} onClick={() => void withAction(`exp-${exp.id}`, () => updateCompanyExperience(fetch, apiBaseUrl, token, propertyId, exp.id, { approvalStatus: "rechazado" }).then(() => undefined))}>
+                        Rechazar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {canWrite && (
+                <form
+                  className={FORM_ALTA}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void withAction("exp-new", async () => {
+                      await createCompanyExperience(fetch, apiBaseUrl, token, propertyId, { description: experienceForm.description, evidenceDocId: experienceForm.evidenceDocId });
+                      setExperienceForm({ description: "", evidenceDocId: "" });
+                    });
+                  }}
+                >
+                  <div className="flex min-w-[260px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="exp-descripcion">Descripción del proyecto/experiencia</Label>
+                    <Input id="exp-descripcion" required placeholder="Descripción del proyecto/experiencia" value={experienceForm.description} onChange={(e) => setExperienceForm({ ...experienceForm, description: e.target.value })} />
+                  </div>
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="exp-evidencia">ID del documento de evidencia</Label>
+                    <Input id="exp-evidencia" required placeholder="ID del documento de evidencia" value={experienceForm.evidenceDocId} onChange={(e) => setExperienceForm({ ...experienceForm, evidenceDocId: e.target.value })} />
+                  </div>
+                  <Button type="submit" size="sm" disabled={submittingSection !== null}>
+                    <Plus />
+                    {submittingSection === "exp-new" ? "Guardando…" : "Agregar experiencia"}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ---- Firmantes autorizados ---- */}
+        <TabsContent value="firmantes">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Firmantes autorizados</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2.5">
+              {signers.length === 0 && <EstadoVacio mensaje="Sin firmantes capturados todavía." />}
+              {signers.map((s) => (
+                <div key={s.id} className={FILA}>
+                  <div className="min-w-0 text-foreground">
+                    <strong>{s.name}</strong> — {s.role}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={s.authorized ? "default" : "destructive"}>{s.authorized ? "Autorizado" : "No autorizado"}</Badge>
+                    {canWrite && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={s.authorized ? "text-destructive" : undefined}
+                        disabled={submittingSection !== null}
+                        onClick={() => void withAction(`signer-${s.id}`, () => updateCompanySigner(fetch, apiBaseUrl, token, propertyId, s.id, { authorized: !s.authorized }).then(() => undefined))}
+                      >
+                        {s.authorized ? "Revocar" : "Autorizar"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {canWrite && (
+                <form
+                  className={FORM_ALTA}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void withAction("signer-new", async () => {
+                      await createCompanySigner(fetch, apiBaseUrl, token, propertyId, { name: signerForm.name, role: signerForm.role, authorized: true });
+                      setSignerForm({ name: "", role: "" });
+                    });
+                  }}
+                >
+                  <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="firmante-nombre">Nombre</Label>
+                    <Input id="firmante-nombre" required placeholder="Nombre" value={signerForm.name} onChange={(e) => setSignerForm({ ...signerForm, name: e.target.value })} />
+                  </div>
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                    <Label htmlFor="firmante-rol">Rol</Label>
+                    <Input id="firmante-rol" required placeholder="p. ej. representante_legal" value={signerForm.role} onChange={(e) => setSignerForm({ ...signerForm, role: e.target.value })} />
+                  </div>
+                  <Button type="submit" size="sm" disabled={submittingSection !== null}>
+                    <Plus />
+                    {submittingSection === "signer-new" ? "Guardando…" : "Agregar firmante (autorizado)"}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

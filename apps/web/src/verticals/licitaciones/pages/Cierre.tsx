@@ -25,9 +25,33 @@
 // del contrato mismo con sus documentos/autopsia del fallo/radar de
 // renovaciones. Cobranza del contrato e inconformidades ya tienen pantalla
 // propia (Fase 15, `pages/PostAdjudicacion.tsx`, enlazada arriba).
+//
+// Fase "sistema de diseño real" (contenido) — los tres bloques (checklist /
+// aprobación / paquete) pasan a `Tabs` sobre `Card`, los pills de resultado y
+// de estatus del paquete a `Badge`, y todos los inputs/botones a
+// `Input`/`Label`/`Button` de @atiende/ui. Cero cambios de lógica ni de red.
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, CheckCircle2, Download, ListChecks, Package, Plus, X } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchRequirementItems } from "../lib/requirements-client.ts";
@@ -79,24 +103,41 @@ const KNOWN_SECTION_KEYS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "economic:anexo", label: "Económica — Anexo económico" },
 ];
 
-const RESULT_COLORS: Record<string, { bg: string; fg: string }> = {
-  verde: { bg: "#dcfce7", fg: "#166534" },
-  ambar: { bg: "#fef9c3", fg: "#854d0e" },
-  rojo: { bg: "#fee2e2", fg: "#991b1b" },
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+
+/** Mismo ámbar de antes, sin hex sueltos: `outline` + tokens de Tailwind. */
+const AMBAR = "border-amber-500/60 text-amber-600 dark:text-amber-400";
+
+const RESULT_BADGE: Record<string, { variant: BadgeVariant; className?: string }> = {
+  verde: { variant: "default" },
+  ambar: { variant: "outline", className: AMBAR },
+  rojo: { variant: "destructive" },
 };
 
 function ResultDot({ result }: { result: string }) {
-  const colors = RESULT_COLORS[result] ?? { bg: "#f3f4f6", fg: "#4b5563" };
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, whiteSpace: "nowrap" }}>{formatComplianceResult(result)}</span>;
+  const cfg = RESULT_BADGE[result] ?? { variant: "secondary" as const };
+  return (
+    <Badge variant={cfg.variant} className={cfg.className ? `${cfg.className} whitespace-nowrap` : "whitespace-nowrap"}>
+      {formatComplianceResult(result)}
+    </Badge>
+  );
 }
 
 function StatusPill({ status }: { status: "draft" | "ready" }) {
-  const colors = status === "ready" ? { bg: "#dcfce7", fg: "#166534" } : { bg: "#fef9c3", fg: "#854d0e" };
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, whiteSpace: "nowrap" }}>{status === "ready" ? "Listo" : "Borrador"}</span>;
+  return (
+    <Badge variant={status === "ready" ? "default" : "outline"} className={status === "ready" ? "whitespace-nowrap" : `${AMBAR} whitespace-nowrap`}>
+      {status === "ready" ? "Listo" : "Borrador"}
+    </Badge>
+  );
 }
 
-const sectionCardStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 };
+/** `<select>` sigue siendo nativo (el sistema no exporta un primitivo propio):
+ * solo se restila con los tokens reales. */
+const SELECT_NATIVO =
+  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+/** Panel de advertencia (antes ámbar #fffbeb hardcodeado). */
+const PANEL_ALERTA = "rounded-xl border border-amber-500/40 bg-amber-500/10 p-3";
+const TEXTO_ALERTA = "text-amber-700 dark:text-amber-400";
 
 interface PendingFileRow {
   readonly key: string;
@@ -361,289 +402,322 @@ export function CierrePage({ apiBaseUrl, token, propertyId, orgSlug, role }: Lic
     }
   }
 
-  if (!tenderId) return <p role="alert" style={{ color: "#b91c1c" }}>Falta el id de la convocatoria en la URL.</p>;
-  if (loading && !tender) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (loadError) return <p role="alert" style={{ color: "#b91c1c" }}>{loadError}</p>;
+  if (!tenderId) return <EstadoError mensaje="Falta el id de la convocatoria en la URL." />;
+  if (loading && !tender) return <EstadoCargando etiqueta="Cargando expediente…" />;
+  if (loadError) return <EstadoError mensaje={loadError} onReintentar={() => void load(tenderId)} />;
   if (!tender) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 900 }}>
-      <div>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
-          ← {tender.title} · propuesta técnica/económica
+    <div className="flex max-w-[900px] flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <Link
+          to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`}
+          className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {tender.title} · propuesta técnica/económica
         </Link>
-        <h1 style={{ fontSize: 20, margin: "4px 0 0" }}>Cierre del expediente</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">Cierre del expediente</h1>
+        <p className="text-[13px] text-muted-foreground">
           Corre el checklist de integridad, aprueba el expediente y ensambla/descarga el paquete final antes de presentarlo ante el portal oficial. La declaración de que YA se presentó no vive en esta pantalla todavía.
         </p>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/post-adjudicacion`} style={{ display: "inline-block", marginTop: 8, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+        <Link
+          to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/post-adjudicacion`}
+          className="mt-2 inline-flex w-fit items-center gap-1 text-[13px] font-semibold text-foreground no-underline hover:underline"
+        >
           Cobranza del contrato e inconformidades (post-adjudicación) →
         </Link>
       </div>
 
-      <section style={sectionCardStyle}>
-        <div>
-          <h2 style={{ fontSize: 15, margin: 0 }}>
-            Checklist de integridad {checklist && <ResultDot result={checklist.overallStatus} />}
-          </h2>
-          <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
-            Valida formatos, límites del portal, firmas, anexos obligatorios, vigencias de documentos, cálculos económicos y consistencia entre documentos. El sistema nunca firma ni simula firma -- solo registra tu confirmación de que la firma ya se hizo.
-          </p>
-        </div>
+      <Tabs defaultValue="checklist" className="w-full">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="checklist">Checklist</TabsTrigger>
+          <TabsTrigger value="aprobacion">Aprobación</TabsTrigger>
+          <TabsTrigger value="paquete">Paquete final</TabsTrigger>
+        </TabsList>
 
-        {checklist && checklist.items.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {checklist.items.map((item) => (
-              <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: "1px solid #f3f4f6", paddingBottom: 6, fontSize: 13 }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600 }}>{item.dimension}</p>
-                  <p style={{ margin: "2px 0 0", color: "#6b7280" }}>{item.notes}</p>
-                </div>
-                <ResultDot result={item.result} />
-              </div>
-            ))}
-          </div>
-        )}
-        {checklist && checklist.items.length === 0 && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Todavía no se ha corrido el checklist de esta convocatoria.</p>}
-
-        {canRunChecklist ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
-              Archivos del paquete a subir al portal
-              <input type="file" multiple onChange={handleFilesSelected} style={{ fontSize: 13 }} />
-            </label>
-            {pendingFiles.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {pendingFiles.map((f) => (
-                  <div key={f.key} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, border: "1px solid #e5e7eb", borderRadius: 8, padding: 8 }}>
-                    <span style={{ fontSize: 12, color: "#374151", flex: "2 1 200px" }}>
-                      {f.file.name} · .{extensionOf(f.file.name) || "?"} · {(f.file.size / 1024 / 1024).toFixed(2)}MB
-                    </span>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="Páginas (opcional)"
-                      value={f.pages}
-                      onChange={(e) => updatePendingFilePages(f.key, e.target.value)}
-                      style={{ ...inputStyle, width: 140 }}
-                    />
-                    <button type="button" onClick={() => removePendingFile(f.key)} style={{ border: "none", background: "transparent", color: "#b91c1c", cursor: "pointer", fontSize: 12 }}>
-                      Quitar
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 180px" }}>
-                Extensiones permitidas (coma)
-                <input value={allowedExtensionsText} onChange={(e) => setAllowedExtensionsText(e.target.value)} placeholder="pdf" style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 140px" }}>
-                Tamaño máximo por archivo (MB)
-                <input type="number" min="0.1" step="any" value={maxFileSizeMbText} onChange={(e) => setMaxFileSizeMbText(e.target.value)} style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 140px" }}>
-                Espacios de carga del portal
-                <input type="number" min="1" step="1" value={maxUploadSlotsText} onChange={(e) => setMaxUploadSlotsText(e.target.value)} style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 140px" }}>
-                Páginas máx. por archivo (opcional)
-                <input type="number" min="1" step="1" value={maxPagesPerFileText} onChange={(e) => setMaxPagesPerFileText(e.target.value)} style={inputStyle} />
-              </label>
-            </div>
-
-            <div>
-              <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#374151" }}>Firmas requeridas</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {signatures.map((s, index) => (
-                  <div key={index} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-                    <input value={s.role} onChange={(e) => updateSignatureRow(index, { role: e.target.value })} placeholder="representante_legal" style={{ ...inputStyle, flex: "1 1 200px" }} />
-                    <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-                      <input type="checkbox" checked={s.userConfirmedSigned} onChange={(e) => updateSignatureRow(index, { userConfirmedSigned: e.target.checked })} />
-                      Ya se firmó (fuera del sistema)
-                    </label>
-                    <button type="button" onClick={() => removeSignatureRow(index)} disabled={signatures.length <= 1} style={{ border: "none", background: "transparent", color: "#b91c1c", cursor: signatures.length <= 1 ? "not-allowed" : "pointer", fontSize: 12 }}>
-                      Quitar
-                    </button>
-                  </div>
-                ))}
-                <button type="button" onClick={addSignatureRow} style={{ alignSelf: "flex-start", padding: "4px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-                  + Agregar firma requerida
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#374151" }}>
-                Anexos obligatorios presentes ({presentAnnexRefs.size}/{requiredAnnexes.length})
-              </p>
-              {requiredAnnexes.length === 0 ? (
-                <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Ningún requisito extraído está marcado como anexo obligatorio -- no hay nada que confirmar aquí.</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {requiredAnnexes.map((item) => {
-                    const ref = item.topicKey ?? item.id;
-                    return (
-                      <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12 }}>
-                        <input type="checkbox" checked={presentAnnexRefs.has(ref)} onChange={() => toggleAnnexPresent(ref)} style={{ marginTop: 2 }} />
-                        <span>{item.text}</span>
-                      </label>
-                    );
-                  })}
+        <TabsContent value="checklist">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ListChecks className="h-4 w-4 text-muted-foreground" />
+                Checklist de integridad {checklist && <ResultDot result={checklist.overallStatus} />}
+              </CardTitle>
+              <CardDescription>
+                Valida formatos, límites del portal, firmas, anexos obligatorios, vigencias de documentos, cálculos económicos y consistencia entre documentos. El sistema nunca firma ni simula firma -- solo registra tu confirmación de que la firma ya se hizo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {checklist && checklist.items.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {checklist.items.map((item) => (
+                    <div key={item.id} className="flex justify-between gap-3 border-b border-border pb-1.5 text-[13px]">
+                      <div>
+                        <p className="font-semibold text-foreground">{item.dimension}</p>
+                        <p className="mt-0.5 text-muted-foreground">{item.notes}</p>
+                      </div>
+                      <ResultDot result={item.result} />
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
+              {checklist && checklist.items.length === 0 && <EstadoVacio mensaje="Todavía no se ha corrido el checklist de esta convocatoria." />}
 
-            {checklistError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {checklistError}
-              </p>
-            )}
+              {canRunChecklist ? (
+                <div className="flex flex-col gap-3 border-t border-border pt-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="cierre-archivos">Archivos del paquete a subir al portal</Label>
+                    <Input
+                      id="cierre-archivos"
+                      type="file"
+                      multiple
+                      onChange={handleFilesSelected}
+                      className="h-auto cursor-pointer py-2 file:mr-3 file:cursor-pointer file:rounded-full file:bg-muted file:px-3 file:py-1 file:text-xs file:font-semibold"
+                    />
+                  </div>
+                  {pendingFiles.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      {pendingFiles.map((f) => (
+                        <div key={f.key} className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-2">
+                          <span className="flex-[2_1_200px] text-xs text-foreground">
+                            {f.file.name} · .{extensionOf(f.file.name) || "?"} · {(f.file.size / 1024 / 1024).toFixed(2)}MB
+                          </span>
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="Páginas (opcional)"
+                            value={f.pages}
+                            onChange={(e) => updatePendingFilePages(f.key, e.target.value)}
+                            aria-label={`Páginas de ${f.file.name}`}
+                            className="h-9 w-[160px]"
+                          />
+                          <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => removePendingFile(f.key)}>
+                            <X />
+                            Quitar
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-            <button
-              type="button"
-              onClick={() => void handleRunChecklist()}
-              disabled={checklistRunning}
-              style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-            >
-              {checklistRunning ? "Corriendo checklist…" : "Correr checklist"}
-            </button>
-          </div>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede correr el checklist -- solo lectura del último resultado.</p>
-        )}
-      </section>
+                  <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-[1_1_180px] flex-col gap-1.5">
+                      <Label htmlFor="cierre-extensiones">Extensiones permitidas (coma)</Label>
+                      <Input id="cierre-extensiones" value={allowedExtensionsText} onChange={(e) => setAllowedExtensionsText(e.target.value)} placeholder="pdf" />
+                    </div>
+                    <div className="flex flex-[1_1_140px] flex-col gap-1.5">
+                      <Label htmlFor="cierre-max-mb">Tamaño máximo por archivo (MB)</Label>
+                      <Input id="cierre-max-mb" type="number" min="0.1" step="any" value={maxFileSizeMbText} onChange={(e) => setMaxFileSizeMbText(e.target.value)} />
+                    </div>
+                    <div className="flex flex-[1_1_140px] flex-col gap-1.5">
+                      <Label htmlFor="cierre-slots">Espacios de carga del portal</Label>
+                      <Input id="cierre-slots" type="number" min="1" step="1" value={maxUploadSlotsText} onChange={(e) => setMaxUploadSlotsText(e.target.value)} />
+                    </div>
+                    <div className="flex flex-[1_1_140px] flex-col gap-1.5">
+                      <Label htmlFor="cierre-max-paginas">Páginas máx. por archivo (opcional)</Label>
+                      <Input id="cierre-max-paginas" type="number" min="1" step="1" value={maxPagesPerFileText} onChange={(e) => setMaxPagesPerFileText(e.target.value)} />
+                    </div>
+                  </div>
 
-      <section style={sectionCardStyle}>
-        <div>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Aprobación del expediente</h2>
-          <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
-            Único gate real hacia "listo" (DECISION_ROLES: owner/admin/analyst). El hash de insumos aprobado siempre se recalcula en vivo -- nunca se acepta uno propuesto desde aquí. Quien haya redactado contenido de cualquier sección no puede autoaprobarse.
-          </p>
-        </div>
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold text-foreground">Firmas requeridas</p>
+                    <div className="flex flex-col gap-1.5">
+                      {signatures.map((s, index) => (
+                        <div key={index} className="flex flex-wrap items-center gap-2">
+                          <Input
+                            value={s.role}
+                            onChange={(e) => updateSignatureRow(index, { role: e.target.value })}
+                            placeholder="representante_legal"
+                            aria-label={`Rol de la firma ${index + 1}`}
+                            className="h-9 flex-[1_1_200px]"
+                          />
+                          <label className="flex items-center gap-2 text-xs text-foreground">
+                            <input
+                              type="checkbox"
+                              checked={s.userConfirmedSigned}
+                              onChange={(e) => updateSignatureRow(index, { userConfirmedSigned: e.target.checked })}
+                              className="h-4 w-4 accent-[hsl(var(--primary))]"
+                            />
+                            Ya se firmó (fuera del sistema)
+                          </label>
+                          <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => removeSignatureRow(index)} disabled={signatures.length <= 1}>
+                            <X />
+                            Quitar
+                          </Button>
+                        </div>
+                      ))}
+                      <Button type="button" variant="outline" size="sm" className="self-start" onClick={addSignatureRow}>
+                        <Plus />
+                        Agregar firma requerida
+                      </Button>
+                    </div>
+                  </div>
 
-        {canApprove ? (
-          <button
-            type="button"
-            onClick={() => void handleApproveExpediente()}
-            disabled={approvingExpediente}
-            style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-          >
-            {approvingExpediente ? "Aprobando…" : "Aprobar expediente completo"}
-          </button>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede aprobar el expediente -- solo DECISION_ROLES (owner/admin/analyst).</p>
-        )}
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold text-foreground">
+                      Anexos obligatorios presentes ({presentAnnexRefs.size}/{requiredAnnexes.length})
+                    </p>
+                    {requiredAnnexes.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Ningún requisito extraído está marcado como anexo obligatorio -- no hay nada que confirmar aquí.</p>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {requiredAnnexes.map((item) => {
+                          const ref = item.topicKey ?? item.id;
+                          return (
+                            <label key={item.id} className="flex items-start gap-2 text-xs text-foreground">
+                              <input
+                                type="checkbox"
+                                checked={presentAnnexRefs.has(ref)}
+                                onChange={() => toggleAnnexPresent(ref)}
+                                className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
+                              />
+                              <span>{item.text}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
-        {expedienteApprovalError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {expedienteApprovalError}
-          </p>
-        )}
-        {expedienteApprovalResult && (
-          <p role="status" style={{ margin: 0, fontSize: 12, color: "#166534" }}>
-            Aprobado {formatDate(expedienteApprovalResult.decidedAt)} · estatus {expedienteApprovalResult.status}.
-          </p>
-        )}
+                  {checklistError && (
+                    <p role="alert" className="text-[13px] text-destructive">
+                      {checklistError}
+                    </p>
+                  )}
 
-        {canApprove && (
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 8, borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 260px" }}>
-              Aprobación granular por sección (revisión incremental, no gatea "listo")
-              <select value={sectionKeyToApprove} onChange={(e) => setSectionKeyToApprove(e.target.value)} style={inputStyle}>
-                {KNOWN_SECTION_KEYS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => void handleApproveSection()}
-              disabled={approvingSection}
-              style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-            >
-              {approvingSection ? "Aprobando…" : "Aprobar sección"}
-            </button>
-          </div>
-        )}
-        {sectionApprovalError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {sectionApprovalError}
-          </p>
-        )}
-        {sectionApprovalResult && (
-          <p role="status" style={{ margin: 0, fontSize: 12, color: "#166534" }}>
-            Sección "{sectionApprovalResult.scopeRef}" aprobada {formatDate(sectionApprovalResult.decidedAt)}.
-          </p>
-        )}
-      </section>
+                  <Button type="button" size="sm" className="self-start" onClick={() => void handleRunChecklist()} disabled={checklistRunning}>
+                    <ListChecks />
+                    {checklistRunning ? "Corriendo checklist…" : "Correr checklist"}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede correr el checklist -- solo lectura del último resultado.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <section style={sectionCardStyle}>
-        <div>
-          <h2 style={{ fontSize: 15, margin: 0 }}>
-            Paquete final {latestPackage && <StatusPill status={latestPackage.status} />}
-          </h2>
-          <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
-            El ensamblado recalcula el estado contra el expediente vivo cada vez -- "listo" solo si el checklist está en verde, hay una aprobación de expediente vigente y ningún documento requerido falta. La presentación y firma las realiza el usuario; el sistema no envía ofertas.
-          </p>
-        </div>
+        <TabsContent value="aprobacion">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Aprobación del expediente</CardTitle>
+              <CardDescription>
+                Único gate real hacia "listo" (DECISION_ROLES: owner/admin/analyst). El hash de insumos aprobado siempre se recalcula en vivo -- nunca se acepta uno propuesto desde aquí. Quien haya redactado contenido de cualquier sección no puede autoaprobarse.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {canApprove ? (
+                <Button type="button" size="sm" className="self-start" onClick={() => void handleApproveExpediente()} disabled={approvingExpediente}>
+                  <CheckCircle2 />
+                  {approvingExpediente ? "Aprobando…" : "Aprobar expediente completo"}
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede aprobar el expediente -- solo DECISION_ROLES (owner/admin/analyst).</p>
+              )}
 
-        {latestPackage === null && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Todavía no se ha ensamblado ningún paquete para este expediente.</p>}
+              {expedienteApprovalError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {expedienteApprovalError}
+                </p>
+              )}
+              {expedienteApprovalResult && (
+                <p role="status" className="text-xs font-medium text-green-600 dark:text-green-500">
+                  Aprobado {formatDate(expedienteApprovalResult.decidedAt)} · estatus {expedienteApprovalResult.status}.
+                </p>
+              )}
 
-        {latestPackage && latestPackage.status === "draft" && latestPackage.draftReasons.length > 0 && (
-          <div style={{ border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 10, padding: 12 }}>
-            <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "#92400e" }}>Motivos por los que sigue en borrador:</p>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#92400e" }}>
-              {latestPackage.draftReasons.map((r, i) => (
-                <li key={i}>{r}</li>
-              ))}
-            </ul>
-            {latestPackage.missing.length > 0 && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#92400e" }}>Faltan: {latestPackage.missing.join(", ")}.</p>}
-          </div>
-        )}
+              {canApprove && (
+                <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
+                  <div className="flex flex-[1_1_260px] flex-col gap-1.5">
+                    <Label htmlFor="cierre-seccion">Aprobación granular por sección (revisión incremental, no gatea "listo")</Label>
+                    <select id="cierre-seccion" value={sectionKeyToApprove} onChange={(e) => setSectionKeyToApprove(e.target.value)} className={SELECT_NATIVO}>
+                      {KNOWN_SECTION_KEYS.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleApproveSection()} disabled={approvingSection}>
+                    {approvingSection ? "Aprobando…" : "Aprobar sección"}
+                  </Button>
+                </div>
+              )}
+              {sectionApprovalError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {sectionApprovalError}
+                </p>
+              )}
+              {sectionApprovalResult && (
+                <p role="status" className="text-xs font-medium text-green-600 dark:text-green-500">
+                  Sección "{sectionApprovalResult.scopeRef}" aprobada {formatDate(sectionApprovalResult.decidedAt)}.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {latestPackage && latestPackage.status === "ready" && (
-          <p style={{ margin: 0, fontSize: 12, color: "#166534" }}>Generado {formatDate(latestPackage.generatedAt)}. {latestPackage.notice}</p>
-        )}
+        <TabsContent value="paquete">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Package className="h-4 w-4 text-muted-foreground" />
+                Paquete final {latestPackage && <StatusPill status={latestPackage.status} />}
+              </CardTitle>
+              <CardDescription>
+                El ensamblado recalcula el estado contra el expediente vivo cada vez -- "listo" solo si el checklist está en verde, hay una aprobación de expediente vigente y ningún documento requerido falta. La presentación y firma las realiza el usuario; el sistema no envía ofertas.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {latestPackage === null && <EstadoVacio mensaje="Todavía no se ha ensamblado ningún paquete para este expediente." />}
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {canAssemble ? (
-            <button
-              type="button"
-              onClick={() => void handleAssemble()}
-              disabled={assembling}
-              style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-            >
-              {assembling ? "Ensamblando…" : "Ensamblar paquete"}
-            </button>
-          ) : (
-            <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede ensamblar el paquete.</p>
-          )}
-          <button
-            type="button"
-            onClick={() => void handleDownload()}
-            disabled={downloading || latestPackage === null}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", cursor: latestPackage === null ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600 }}
-          >
-            {downloading ? "Descargando…" : "Descargar ZIP"}
-          </button>
-        </div>
+              {latestPackage && latestPackage.status === "draft" && latestPackage.draftReasons.length > 0 && (
+                <div className={PANEL_ALERTA}>
+                  <p className={`mb-1.5 text-[13px] font-semibold ${TEXTO_ALERTA}`}>Motivos por los que sigue en borrador:</p>
+                  <ul className={`list-disc pl-5 text-xs ${TEXTO_ALERTA}`}>
+                    {latestPackage.draftReasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                  {latestPackage.missing.length > 0 && <p className={`mt-1.5 text-xs ${TEXTO_ALERTA}`}>Faltan: {latestPackage.missing.join(", ")}.</p>}
+                </div>
+              )}
 
-        {assembleError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {assembleError}
-          </p>
-        )}
-        {downloadError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {downloadError}
-          </p>
-        )}
-      </section>
+              {latestPackage && latestPackage.status === "ready" && (
+                <p className="text-xs font-medium text-green-600 dark:text-green-500">
+                  Generado {formatDate(latestPackage.generatedAt)}. {latestPackage.notice}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                {canAssemble ? (
+                  <Button type="button" size="sm" onClick={() => void handleAssemble()} disabled={assembling}>
+                    <Package />
+                    {assembling ? "Ensamblando…" : "Ensamblar paquete"}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede ensamblar el paquete.</p>
+                )}
+                <Button type="button" variant="outline" size="sm" onClick={() => void handleDownload()} disabled={downloading || latestPackage === null}>
+                  <Download />
+                  {downloading ? "Descargando…" : "Descargar ZIP"}
+                </Button>
+              </div>
+
+              {assembleError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {assembleError}
+                </p>
+              )}
+              {downloadError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {downloadError}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
