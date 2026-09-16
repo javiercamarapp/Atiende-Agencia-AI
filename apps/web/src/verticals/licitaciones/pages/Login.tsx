@@ -15,11 +15,13 @@
 // login()/persistLicitacionesSession()/decideLicitacionesLandingPath(), mismo
 // manejo de error/loading.
 import { useEffect, useState } from "react";
-import type { FormEvent, MouseEvent } from "react";
-import { AtiendeMark, AtiendeWordmark, toast } from "@atiende/ui";
+import type { FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
+import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
 import { decideLicitacionesLandingPath, login, LoginError, persistLicitacionesSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 import { LICITACIONES_TAB_TITLE } from "../lib/brand.ts";
+import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
 
 export interface LicitacionesLoginPageProps {
@@ -32,12 +34,31 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [googleConfigurado, setGoogleConfigurado] = useState(false);
+  const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
 
   // Hallazgo de auditoría ("título de pestaña fijo en 'Restaurantes'") — ver
   // el comentario de `LICITACIONES_TAB_TITLE` en lib/brand.ts.
   useEffect(() => {
     document.title = LICITACIONES_TAB_TITLE;
   }, []);
+
+  useEffect(() => {
+    let vivo = true;
+    verificarGoogleConfigurado(apiBaseUrl).then((ok) => {
+      if (vivo) {
+        setGoogleConfigurado(ok);
+        setComprobandoGoogle(false);
+      }
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl]);
+
+  const googleError = searchParams.get("google_error");
+  const googleHabilitado = googleConfigurado && !comprobandoGoogle;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,15 +75,9 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
     }
   }
 
-  // "Continuar con Google" real de OAuth no existe todavía en fusion (se está
-  // construyendo aparte) — se deja visible y honestamente deshabilitado, con
-  // un toast en vez de simular un fetch a un endpoint que no existe. Mismo
-  // criterio que BotonChatDatos.tsx.
-  function handleGoogleClick(event: MouseEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    toast("Continuar con Google todavía no está disponible", {
-      description: "El inicio de sesión con Google para licitaciones está pendiente de configurar en este entorno; usa tu correo y contraseña.",
-    });
+  function irAGoogle() {
+    if (!googleHabilitado) return;
+    window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "licitaciones");
   }
 
   return (
@@ -109,6 +124,12 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
               />
             </label>
 
+            {googleError && !error && (
+              <p role="alert" className="text-[13px] text-destructive">
+                {mensajeGoogleError(googleError)}
+              </p>
+            )}
+
             {error && (
               <p role="alert" className="text-[13px] text-destructive">
                 {error}
@@ -129,16 +150,21 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
             </div>
             <button
               type="button"
-              aria-disabled="true"
-              title="Google: pendiente de configurar en este entorno."
-              onClick={handleGoogleClick}
-              className="login-btn login-btn-borde opacity-60 hover:opacity-60"
+              onClick={irAGoogle}
+              disabled={!googleHabilitado}
+              title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
+              className="login-btn login-btn-borde"
             >
               Continuar con Google
               <span className="login-glifo" aria-hidden="true">
                 G
               </span>
             </button>
+            {!googleHabilitado && (
+              <p className="text-[12px] leading-relaxed text-muted-foreground">
+                {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
+              </p>
+            )}
           </div>
         </form>
       </main>

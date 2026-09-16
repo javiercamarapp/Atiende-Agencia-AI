@@ -5,5 +5,14 @@
     "baseUrl": "."
   },
   "include": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts", "apps/*/src/**/*.ts", "apps/*/tests/**/*.ts", "scripts/**/*.ts", "api/**/*.ts", "test-setup/**/*.ts"],
-  "exclude": ["**/node_modules/**", "**/dist/**"]
+  // `packages/ui` es el único paquete de `packages/*` con componentes React (.tsx) —
+  // este tsconfig raíz es para el resto del monorepo (backend puro, sin `jsx`
+  // configurado a propósito). Sin esta exclusión, `packages/ui/src/index.ts` (un
+  // .ts real, sí incluido arriba) arrastra sus imports .tsx al cierre de esta
+  // compilación y el propio tsc falla con TS6142 ("--jsx no está configurado") —
+  // `packages/ui` ya tiene su PROPIO tsconfig.json (jsx: "react-jsx",
+  // moduleResolution: "Bundler") y `npm run typecheck --workspaces --if-present`
+  // (el segundo paso de `npm run typecheck` raíz) ya lo verifica por separado con
+  // esa configuración correcta — nada queda sin revisar.
+  "exclude": ["**/node_modules/**", "**/dist/**", "packages/ui/src/**"]
 }

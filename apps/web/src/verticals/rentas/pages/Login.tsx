@@ -14,12 +14,13 @@
 // apps/api para este vertical (se revisó antes de escribir este archivo), así que el
 // botón queda visible pero inerte (aria-disabled + toast) en vez de simular un login
 // que no funciona -- mismo criterio que BotonChatDatos.tsx.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "react-router-dom";
-import { AtiendeWordmark, toast } from "@atiende/ui";
+import { Link, useSearchParams } from "react-router-dom";
+import { AtiendeWordmark } from "@atiende/ui";
 import { decideRentasLandingPath, login, LoginError, persistRentasSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
+import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
 
 export interface RentasLoginPageProps {
@@ -27,17 +28,30 @@ export interface RentasLoginPageProps {
   readonly onLoggedIn: (session: LoginSession, landingPath: string) => void;
 }
 
-function avisoGoogleNoConfigurado() {
-  toast("Google: pendiente de configurar en este entorno", {
-    description: "El inicio de sesión con Google todavía no tiene un backend de OAuth real en atiende rentas.",
-  });
-}
-
 export function RentasLoginPage({ apiBaseUrl, onLoggedIn }: RentasLoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [googleConfigurado, setGoogleConfigurado] = useState(false);
+  const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    verificarGoogleConfigurado(apiBaseUrl).then((ok) => {
+      if (vivo) {
+        setGoogleConfigurado(ok);
+        setComprobandoGoogle(false);
+      }
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl]);
+
+  const googleError = searchParams.get("google_error");
+  const googleHabilitado = googleConfigurado && !comprobandoGoogle;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,6 +66,11 @@ export function RentasLoginPage({ apiBaseUrl, onLoggedIn }: RentasLoginPageProps
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function irAGoogle() {
+    if (!googleHabilitado) return;
+    window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "rentas");
   }
 
   return (
@@ -97,6 +116,12 @@ export function RentasLoginPage({ apiBaseUrl, onLoggedIn }: RentasLoginPageProps
               />
             </label>
 
+            {googleError && !error && (
+              <p role="alert" className="text-[13px] text-destructive m-0">
+                {mensajeGoogleError(googleError)}
+              </p>
+            )}
+
             {error && (
               <p role="alert" className="text-[13px] text-destructive m-0">
                 {error}
@@ -119,10 +144,10 @@ export function RentasLoginPage({ apiBaseUrl, onLoggedIn }: RentasLoginPageProps
             </div>
             <button
               type="button"
-              aria-disabled="true"
-              title="Google: pendiente de configurar en este entorno."
-              onClick={avisoGoogleNoConfigurado}
-              className="login-btn login-btn-borde opacity-70"
+              onClick={irAGoogle}
+              disabled={!googleHabilitado}
+              title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
+              className="login-btn login-btn-borde"
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" aria-hidden="true">
                 <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.54-5.17 3.54-8.87z" />
@@ -133,6 +158,11 @@ export function RentasLoginPage({ apiBaseUrl, onLoggedIn }: RentasLoginPageProps
               Continuar con Google
               <span className="login-glifo" />
             </button>
+            {!googleHabilitado && (
+              <p className="text-[12px] leading-relaxed text-muted-foreground">
+                {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
+              </p>
+            )}
           </div>
 
           <p className="login-entra text-center text-[13px] text-muted-foreground m-0" style={{ animationDelay: "0.2s" }}>

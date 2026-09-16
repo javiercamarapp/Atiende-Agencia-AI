@@ -1,18 +1,18 @@
-export { cn } from "./lib/utils";
-export { formatMoney } from "./lib/formatMoney";
+export { cn } from "./lib/utils.js";
+export { formatMoney } from "./lib/formatMoney.js";
 
-export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo";
-export { ThemeSelector } from "./components/ThemeSelector";
-export { StatCard, TrendStatCard } from "./components/StatCard";
-export { EstadoVacio } from "./components/EstadoVacio";
-export { EstadoError } from "./components/EstadoError";
-export { EstadoCargando } from "./components/EstadoCargando";
-export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar";
-export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav";
+export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
+export { ThemeSelector } from "./components/ThemeSelector.js";
+export { StatCard, TrendStatCard } from "./components/StatCard.js";
+export { EstadoVacio } from "./components/EstadoVacio.js";
+export { EstadoError } from "./components/EstadoError.js";
+export { EstadoCargando } from "./components/EstadoCargando.js";
+export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar.js";
+export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.js";
 
-export { Button, buttonVariants, type ButtonProps } from "./components/ui/button";
-export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card";
-export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge";
+export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
+export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge.js";
 export {
   Table,
   TableHeader,
@@ -22,13 +22,13 @@ export {
   TableRow,
   TableCell,
   TableCaption,
-} from "./components/ui/table";
-export { Input } from "./components/ui/input";
-export { Label } from "./components/ui/label";
-export { Separator } from "./components/ui/separator";
-export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./components/ui/tooltip";
-export { Skeleton } from "./components/ui/skeleton";
+} from "./components/ui/table.js";
+export { Input } from "./components/ui/input.js";
+export { Label } from "./components/ui/label.js";
+export { Separator } from "./components/ui/separator.js";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs.js";
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./components/ui/tooltip.js";
+export { Skeleton } from "./components/ui/skeleton.js";
 export {
   Dialog,
   DialogPortal,
@@ -40,7 +40,7 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-} from "./components/ui/dialog";
+} from "./components/ui/dialog.js";
 export {
   Sheet,
   SheetClose,
@@ -52,8 +52,8 @@ export {
   SheetPortal,
   SheetTitle,
   SheetTrigger,
-} from "./components/ui/sheet";
-export { Avatar, AvatarImage, AvatarFallback } from "./components/ui/avatar";
+} from "./components/ui/sheet.js";
+export { Avatar, AvatarImage, AvatarFallback } from "./components/ui/avatar.js";
 export {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -70,5 +70,5 @@ export {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuRadioGroup,
-} from "./components/ui/dropdown-menu";
-export { Toaster, toast } from "./components/ui/sonner";
+} from "./components/ui/dropdown-menu.js";
+export { Toaster, toast } from "./components/ui/sonner.js";

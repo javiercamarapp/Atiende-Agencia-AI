@@ -12,12 +12,14 @@
 // principal. Solo se reemplaza el JSX/CSS de presentación: la lógica de arriba
 // (handleSubmit/login/persistDespachosSession/decideDespachosLandingPath) no
 // cambia una sola línea.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
-import { AtiendeWordmark, toast } from "@atiende/ui";
+import { AtiendeWordmark } from "@atiende/ui";
 import { decideDespachosLandingPath, login, LoginError, persistDespachosSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
+import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
 
 export interface DespachosLoginPageProps {
@@ -44,6 +46,25 @@ export function DespachosLoginPage({ apiBaseUrl, onLoggedIn }: DespachosLoginPag
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [googleConfigurado, setGoogleConfigurado] = useState(false);
+  const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    verificarGoogleConfigurado(apiBaseUrl).then((ok) => {
+      if (vivo) {
+        setGoogleConfigurado(ok);
+        setComprobandoGoogle(false);
+      }
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl]);
+
+  const googleError = searchParams.get("google_error");
+  const googleHabilitado = googleConfigurado && !comprobandoGoogle;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,15 +81,9 @@ export function DespachosLoginPage({ apiBaseUrl, onLoggedIn }: DespachosLoginPag
     }
   }
 
-  // Google OAuth: el backend de fusion todavía no expone el endpoint real
-  // (se está construyendo por separado) — se deja el botón visible, en el
-  // mismo estilo `login-btn-borde` que el resto del panel, pero honestamente
-  // deshabilitado (aria-disabled + title explicando por qué, mismo criterio
-  // que BotonChatDatos.tsx). Nunca simula un login que no existe.
-  function handleGoogleClick() {
-    toast("Continuar con Google todavía no está disponible", {
-      description: "El proveedor OAuth de Google está en configuración; por ahora entra con tu correo y contraseña.",
-    });
+  function irAGoogle() {
+    if (!googleHabilitado) return;
+    window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "despachos");
   }
 
   return (
@@ -112,6 +127,12 @@ export function DespachosLoginPage({ apiBaseUrl, onLoggedIn }: DespachosLoginPag
               className="login-campo"
             />
 
+            {googleError && !error && (
+              <p role="alert" className="text-sm text-destructive m-0">
+                {mensajeGoogleError(googleError)}
+              </p>
+            )}
+
             {error && (
               <p role="alert" className="text-sm text-destructive m-0">
                 {error}
@@ -129,10 +150,10 @@ export function DespachosLoginPage({ apiBaseUrl, onLoggedIn }: DespachosLoginPag
           <div className="login-entra mt-3" style={{ animationDelay: "210ms" }}>
             <button
               type="button"
-              aria-disabled="true"
-              title="Google: pendiente de configurar en este entorno."
-              onClick={handleGoogleClick}
-              className="login-btn login-btn-borde opacity-60 hover:opacity-60"
+              onClick={irAGoogle}
+              disabled={!googleHabilitado}
+              title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
+              className="login-btn login-btn-borde"
             >
               <GoogleGlifo />
               Continuar con Google
@@ -140,6 +161,11 @@ export function DespachosLoginPage({ apiBaseUrl, onLoggedIn }: DespachosLoginPag
                 <ArrowRight className="w-4 h-4" />
               </span>
             </button>
+            {!googleHabilitado && (
+              <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+                {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
+              </p>
+            )}
           </div>
         </div>
       </div>

@@ -58,6 +58,14 @@ function loginUrl(appBaseUrl: string, vertical: string): URL {
 export function authGoogleRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
+  // Lectura pública (sin sesión, GET simple) para que cada Login.tsx decida si
+  // dibujar el botón "Continuar con Google" habilitado o honestamente
+  // deshabilitado -- mismo patrón que `verificarGoogleConfigurado()` de
+  // atiende-hoteles. Sin esto, un Login.tsx tendría que ADIVINAR si las
+  // credenciales están configuradas, o mostrar el botón siempre habilitado y
+  // dejar que el usuario descubra el 503 hasta después de hacer clic.
+  app.get("/auth/google/status", (c) => c.json({ configured: deps.env.googleOAuth !== null }));
+
   app.get("/auth/google/iniciar", async (c) => {
     const google = deps.env.googleOAuth;
     if (!google) throw noConfigurado();

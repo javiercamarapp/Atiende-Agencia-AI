@@ -15,11 +15,13 @@
 // OAuth para login de staff todavía no existe en fusion, así que el botón se dejar
 // honestamente deshabilitado (aria-disabled + title) en vez de fingir un login que
 // no puede completarse.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { AtiendeMark, AtiendeWordmark, toast } from "@atiende/ui";
+import { useSearchParams } from "react-router-dom";
+import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
 import { decideCitasLandingPath, login, LoginError, persistCitasSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
+import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
 
 export interface CitasLoginPageProps {
@@ -27,13 +29,30 @@ export interface CitasLoginPageProps {
   readonly onLoggedIn: (session: LoginSession, landingPath: string) => void;
 }
 
-const GOOGLE_DESHABILITADO_TITULO = "Google: pendiente de configurar en este entorno.";
-
 export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [googleConfigurado, setGoogleConfigurado] = useState(false);
+  const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    verificarGoogleConfigurado(apiBaseUrl).then((ok) => {
+      if (vivo) {
+        setGoogleConfigurado(ok);
+        setComprobandoGoogle(false);
+      }
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl]);
+
+  const googleError = searchParams.get("google_error");
+  const googleHabilitado = googleConfigurado && !comprobandoGoogle;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -50,10 +69,9 @@ export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) 
     }
   }
 
-  function handleGoogleClick() {
-    toast("Continuar con Google todavía no está disponible", {
-      description: GOOGLE_DESHABILITADO_TITULO,
-    });
+  function irAGoogle() {
+    if (!googleHabilitado) return;
+    window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "citas");
   }
 
   return (
@@ -75,6 +93,12 @@ export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) 
               <p className="login-entra mt-4 text-[15px] leading-[1.6] text-muted-foreground" style={{ animationDelay: "140ms" }}>
                 El panel de operación de tu negocio de citas.
               </p>
+
+              {googleError && !error && (
+                <div role="alert" className="login-entra mt-9 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
+                  <p className="text-[14px] leading-relaxed text-foreground">{mensajeGoogleError(googleError)}</p>
+                </div>
+              )}
 
               {error && (
                 <div role="alert" className="login-entra mt-9 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
@@ -125,10 +149,10 @@ export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) 
 
               <button
                 type="button"
-                onClick={handleGoogleClick}
-                aria-disabled="true"
-                title={GOOGLE_DESHABILITADO_TITULO}
-                className="login-entra login-btn login-btn-borde opacity-60"
+                onClick={irAGoogle}
+                disabled={!googleHabilitado}
+                title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
+                className="login-entra login-btn login-btn-borde"
                 style={{ animationDelay: "280ms" }}
               >
                 <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true">
@@ -139,9 +163,11 @@ export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) 
                 </svg>
                 Continuar con Google
               </button>
-              <p className="login-entra mt-2 text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "300ms" }}>
-                {GOOGLE_DESHABILITADO_TITULO}
-              </p>
+              {!googleHabilitado && (
+                <p className="login-entra mt-2 text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "300ms" }}>
+                  {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
+                </p>
+              )}
 
               <p className="login-entra mt-7 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
                 ¿No tienes acceso?{" "}

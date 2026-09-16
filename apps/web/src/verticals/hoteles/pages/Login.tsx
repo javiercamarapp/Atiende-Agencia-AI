@@ -12,11 +12,13 @@
 // serif, píldoras de 999px, lámina con foto real + Ken Burns. Antes este archivo
 // tenía estilos inline ad-hoc (formulario centrado sin marca) porque el design
 // system (@atiende/ui) todavía no existía en este vertical; ahora sí.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { AtiendeMark, AtiendeWordmark, toast } from "@atiende/ui";
+import { useSearchParams } from "react-router-dom";
+import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
 import { decideHotelesLandingPath, login, LoginError, persistHotelesSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
+import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
 
 export interface HotelesLoginPageProps {
@@ -24,18 +26,30 @@ export interface HotelesLoginPageProps {
   readonly onLoggedIn: (session: LoginSession, landingPath: string) => void;
 }
 
-// Google OAuth para hoteles todavía no existe en este monorepo (fusion): no hay
-// `/auth/google/iniciar` real detrás de `apiBaseUrl` para este vertical — se
-// construye por separado. El botón se deja honestamente deshabilitado (mismo
-// criterio que BotonChatDatos.tsx: visible, pero sin fingir una función que no
-// existe) en vez de inventar un fetch a un endpoint inexistente.
-const GOOGLE_PENDIENTE_MSG = "Google: pendiente de configurar en este entorno.";
-
 export function HotelesLoginPage({ apiBaseUrl, onLoggedIn }: HotelesLoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [googleConfigurado, setGoogleConfigurado] = useState(false);
+  const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    verificarGoogleConfigurado(apiBaseUrl).then((ok) => {
+      if (vivo) {
+        setGoogleConfigurado(ok);
+        setComprobandoGoogle(false);
+      }
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl]);
+
+  const googleError = searchParams.get("google_error");
+  const googleHabilitado = googleConfigurado && !comprobandoGoogle;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,10 +66,9 @@ export function HotelesLoginPage({ apiBaseUrl, onLoggedIn }: HotelesLoginPagePro
     }
   }
 
-  function handleGoogleClick() {
-    toast(GOOGLE_PENDIENTE_MSG, {
-      description: "El inicio de sesión con Google para hoteles se está construyendo por separado en este entorno.",
-    });
+  function irAGoogle() {
+    if (!googleHabilitado) return;
+    window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "hoteles");
   }
 
   return (
@@ -77,6 +90,12 @@ export function HotelesLoginPage({ apiBaseUrl, onLoggedIn }: HotelesLoginPagePro
               <p className="login-entra mt-4 text-[15px] leading-[1.6] text-muted-foreground" style={{ animationDelay: "140ms" }}>
                 El panel de operación de tu hotel.
               </p>
+
+              {googleError && !error && (
+                <div role="alert" className="login-entra mt-9 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
+                  <p className="text-[14px] leading-relaxed text-foreground">{mensajeGoogleError(googleError)}</p>
+                </div>
+              )}
 
               {error && (
                 <div role="alert" className="login-entra mt-9 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
@@ -127,10 +146,10 @@ export function HotelesLoginPage({ apiBaseUrl, onLoggedIn }: HotelesLoginPagePro
 
               <button
                 type="button"
-                aria-disabled="true"
-                title={GOOGLE_PENDIENTE_MSG}
-                onClick={handleGoogleClick}
-                className="login-entra login-btn login-btn-borde opacity-60"
+                onClick={irAGoogle}
+                disabled={!googleHabilitado}
+                title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
+                className="login-entra login-btn login-btn-borde"
                 style={{ animationDelay: "280ms" }}
               >
                 <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true">
@@ -141,9 +160,11 @@ export function HotelesLoginPage({ apiBaseUrl, onLoggedIn }: HotelesLoginPagePro
                 </svg>
                 Continuar con Google
               </button>
-              <p className="login-entra mt-2 text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "300ms" }}>
-                {GOOGLE_PENDIENTE_MSG}
-              </p>
+              {!googleHabilitado && (
+                <p className="login-entra mt-2 text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "300ms" }}>
+                  {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
+                </p>
+              )}
 
               <p className="login-entra mt-7 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
                 ¿No tienes acceso?{" "}
