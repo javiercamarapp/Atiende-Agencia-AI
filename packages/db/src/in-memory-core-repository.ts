@@ -26,6 +26,7 @@ import type {
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
+  SuperadminOrganizationRow,
 } from "./core-repository.ts";
 import { MembershipRoleUpdateError, StaffInviteInvalidError } from "./core-repository.ts";
 
@@ -34,6 +35,11 @@ export interface SeedOrganization {
   readonly slug: string;
   readonly name: string;
   readonly vertical: string;
+  /** Opcional (default 'active'/ahora) — decenas de fixtures existentes
+   *  construyen `SeedOrganization` sin estos dos campos; solo
+   *  `listAllOrganizationsForSuperadmin` los necesita de verdad. */
+  readonly status?: "trial" | "active" | "suspended";
+  readonly createdAt?: string;
 }
 
 export interface SeedMembership {
@@ -72,6 +78,15 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   // "Continuar con correo" sin contraseña — tokenHash -> {staffId, expiresAt,
   // used}, mismo dato que `core.magic_link_token` en Postgres.
   private readonly magicLinkTokens = new Map<string, { staffId: string; expiresAt: string; used: boolean }>();
+  // Back office de plataforma — mismo dato que `core.platform_superadmin`.
+  private readonly platformSuperadmins = new Set<string>();
+
+  /** Solo para fixtures de prueba (`apps/api/tests/fixtures.ts`) — mismo
+   *  criterio que `addStaff`/`addMembership`, nunca invocado desde código de
+   *  producción (ahí el alta real vive en la migración SQL). */
+  addPlatformSuperadmin(staffId: string): void {
+    this.platformSuperadmins.add(staffId);
+  }
 
   addStaff(staff: StaffUserRow): void {
     if (this.staffIdByEmail.has(staff.email)) {
@@ -332,5 +347,34 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     entry.used = true;
     const staff = this.staffById.get(entry.staffId);
     return staff ? this.withSessionsRevokedAt(staff) : null;
+  }
+
+  // ---- Back office de plataforma — ver el contrato completo en
+  // `core-repository.ts::isPlatformSuperadmin`/`listAllOrganizationsForSuperadmin`/
+  // `countStaffByOrganizationForSuperadmin`. ----
+
+  async isPlatformSuperadmin(staffId: string): Promise<boolean> {
+    return this.platformSuperadmins.has(staffId);
+  }
+
+  async listAllOrganizationsForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationRow[]> {
+    if (!this.platformSuperadmins.has(callerId)) return [];
+    return [...this.organizations.values()].map((org) => ({
+      id: org.id,
+      vertical: org.vertical,
+      name: org.name,
+      slug: org.slug,
+      status: org.status ?? "active",
+      createdAt: org.createdAt ?? new Date(0).toISOString(),
+    }));
+  }
+
+  async countStaffByOrganizationForSuperadmin(callerId: string): Promise<ReadonlyMap<string, number>> {
+    if (!this.platformSuperadmins.has(callerId)) return new Map();
+    const counts = new Map<string, number>();
+    for (const m of this.memberships) {
+      counts.set(m.organizationId, (counts.get(m.organizationId) ?? 0) + 1);
+    }
+    return counts;
   }
 }

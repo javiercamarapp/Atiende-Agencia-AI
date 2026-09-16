@@ -244,11 +244,21 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.use("/auth/me", authMiddleware(deps.env));
   app.get("/auth/me", async (c) => {
-    const memberships = await deps.coreRepo.findMembershipsByUserId(c.get("userId"));
+    const userId = c.get("userId");
+    // Ejecutados en paralelo -- son dos lecturas independientes de la misma
+    // sesión de staff, ninguna depende del resultado de la otra.
+    const [memberships, isPlatformSuperadmin] = await Promise.all([
+      deps.coreRepo.findMembershipsByUserId(userId),
+      deps.coreRepo.isPlatformSuperadmin(userId),
+    ]);
     return c.json({
-      id: c.get("userId"),
+      id: userId,
       email: c.get("userEmail"),
       organizations: memberships.map((m) => ({ id: m.organizationId, slug: m.organizationSlug, nombre: m.organizationName, vertical: m.vertical, rol: m.verticalRole })),
+      // Back office de plataforma (`apps/web/src/superadmin/**`) -- el puente
+      // de login compartido (`shell/GoogleCallback.tsx`) redirige aquí en vez
+      // del landing normal de una vertical cuando esto es `true`.
+      isPlatformSuperadmin,
     });
   });
 

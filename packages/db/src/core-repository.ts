@@ -245,6 +245,36 @@ export interface CoreRepository {
    *  se usó, o venció -- el caller decide qué mensaje mostrar (nunca distingue
    *  cuál de los tres casos fue, para no dar pistas a un atacante). */
   consumeMagicLinkToken(tokenHash: string): Promise<StaffUserRow | null>;
+  /** Back office de plataforma (`apps/web/src/superadmin/**`) — `true` si este
+   *  staff está en `core.platform_superadmin` (rol cruzado a las 6
+   *  verticales, distinto de `core.membership.platform_role` que es DENTRO de
+   *  una sola organización). Usado por `GET /auth/me` (para que el frontend
+   *  decida si redirigir a `/superadmin`) y por cada ruta de
+   *  `apps/api/src/routes/superadmin.ts` como defensa real, no solo un chequeo
+   *  en TS. */
+  isPlatformSuperadmin(staffId: string): Promise<boolean>;
+  /** Todas las organizaciones de las 6 verticales — SOLO resuelve datos reales
+   *  si `callerId` es superadmin (el chequeo vive DENTRO de la función SQL
+   *  `security definer`, ver la migración); un caller que no lo es obtiene un
+   *  arreglo vacío, nunca un error que confirme/niegue si hay datos. */
+  listAllOrganizationsForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationRow[]>;
+  /** Conteo de staff (`core.membership`) por organización, mismo criterio de
+   *  autorización interna que `listAllOrganizationsForSuperadmin` — un `Map`
+   *  vacío para un caller que no es superadmin. */
+  countStaffByOrganizationForSuperadmin(callerId: string): Promise<ReadonlyMap<string, number>>;
+}
+
+/** Fila de `core.organization`, tal cual la ve el back office de plataforma —
+ *  deliberadamente sin nada de otra vertical/tabla (el dashboard cruza el
+ *  conteo de staff por separado, ver `countStaffByOrganizationForSuperadmin`),
+ *  mismo criterio de "solo lo que este caller necesita" que `OrganizationMemberRow`. */
+export interface SuperadminOrganizationRow {
+  readonly id: string;
+  readonly vertical: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly status: "trial" | "active" | "suspended";
+  readonly createdAt: string;
 }
 
 /** Ver el comentario de cabecera del archivo para por qué esta interfaz vive

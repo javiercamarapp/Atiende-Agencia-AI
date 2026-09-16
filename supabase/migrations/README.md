@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (111 migraciones, timestamps 20240101000001 .. 20240101000111)
+## Orden actual (112 migraciones, timestamps 20240101000001 .. 20240101000112)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -127,12 +127,14 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 111. `supabase/migrations/20240101000111_0009_magic_link_login.sql` — "Continuar con correo" sin contraseña, las 6 verticales (`apps/api/src/routes/auth-magic-link.ts`). Reutiliza el mecanismo de token de un solo uso ya existente (`@atiende/core-auth::generateInviteToken`/`hashInviteToken`, mismo que `core.staff_invite`) en vez de inventar uno nuevo — `core.magic_link_token` + dos funciones `security definer` (`core.create_magic_link_token`/`core.consume_magic_link_token`, mismo patrón sin `service_role` que la migración 110). Vida corta (15 min) + consumo atómico de un solo uso. Mismo criterio anti-enumeración que `POST /auth/login`: `POST /auth/magic-link/iniciar` responde el mismo 200 exista o no ese correo. Envío real por Resend (fetch directo, sin SDK). Probado de punta a punta contra los repos en memoria — `apps/api/tests/auth-magic-link.spec.ts`, 7/7 verde (correo existente vincula, anti-enumeración confirmada, flujo completo emite sesión real vía /auth/me, un token no puede usarse dos veces, token vencido/inexistente se rechaza honestamente, vertical inválida 400).
 
+112. `supabase/migrations/20240101000112_0010_platform_superadmin.sql` — back office de plataforma, cruzado a las 6 verticales (`apps/api/src/routes/superadmin.ts`, `apps/web/src/superadmin/**`). Rol nuevo (`core.platform_superadmin`, tabla aparte de `core.membership.platform_role` — ese es DENTRO de una organización, esto es "ve TODAS de TODAS las verticales"). Alta inicial: `core.staff_user` real para `javiercamaraportepetit@gmail.com` (entra por Google/magic link, sin password) vinculado a la tabla de superadmins. Tres funciones `security definer` (`core.is_platform_superadmin`, `core.list_all_organizations_for_superadmin`, `core.count_staff_by_organization_for_superadmin`) — el chequeo de autorización vive DENTRO de cada función (un caller que no es superadmin obtiene 0 filas/`false`, nunca un error que confirme/niegue datos), mismo patrón sin `service_role` que las migraciones 110/111. `GET /auth/me` ahora incluye `isPlatformSuperadmin`; el puente compartido de login (`shell/GoogleCallback.tsx`) redirige a `/superadmin` en vez del landing normal de una vertical cuando es `true`. Alcance de este pase: solo lectura (listar organizaciones + conteo de staff) — ninguna acción de escritura todavía. Probado 3/3 en memoria (superadmin real ve todo, staff normal 403, sin token 401) **y verificado contra Postgres de producción real** (superadmin ve una organización de prueba insertada en vivo, un caller aleatorio ve 0 — limpiado después).
+
 ## Si agregas una migración nueva a un paquete
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000111`; usa
-   `20240101000112`, luego `...113`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000112`; usa
+   `20240101000113`, luego `...114`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
