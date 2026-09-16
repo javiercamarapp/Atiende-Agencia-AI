@@ -72,7 +72,12 @@ function validateLoginBody(body: LoginBody): { email: string; password: string }
   return { email: body.email.trim().toLowerCase(), password: body.password };
 }
 
-async function issueSession(deps: AppDeps, staffId: string, email: string) {
+/** Exportada para que `routes/auth-google.ts` emita EXACTAMENTE la misma forma de
+ *  sesión tras un login con Google — nunca un mecanismo paralelo/duplicado (a
+ *  diferencia de hoteles, que sí duplica esta función en su propio `auth-google.ts`
+ *  por evitar un choque de merge entre correctores en paralelo de esa fase; aquí no
+ *  aplica el mismo riesgo, así que se prefiere una sola fuente de verdad). */
+export async function issueSession(deps: AppDeps, staffId: string, email: string) {
   const memberships = await deps.coreRepo.findMembershipsByUserId(staffId);
   const first = memberships[0];
   // Fase 1: un token corresponde a UNA organización activa (mismo patrón que

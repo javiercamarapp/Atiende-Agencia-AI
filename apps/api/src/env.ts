@@ -36,6 +36,21 @@ export interface ApiEnv {
    */
   readonly googleOAuth: { readonly clientId: string; readonly clientSecret: string; readonly redirectBaseUrl: string } | null;
   /**
+   * "Sign in with Google" para staff (`routes/auth-google.ts`) -- REUTILIZA las
+   * mismas credenciales de `googleOAuth` de arriba (un solo proyecto OAuth de
+   * Google para toda la plataforma, mismo criterio ya documentado ahí), pero con
+   * su PROPIA `redirectUri` (`/auth/google/callback`, distinta del callback de
+   * Calendar en `/v1/citas/google-calendar/oauth-callback` -- ambas se registran
+   * como URIs de redirección válidas del MISMO cliente OAuth en Google Cloud
+   * Console, Google permite varias por cliente). Las 4 URLs de Google
+   * (`authBaseUrl`/`tokenUrl`/`jwksUrl`/`issuer`) son configurables (no
+   * constantes hardcodeadas en la ruta) por el mismo motivo que ya documenta
+   * hoteles (`apps/api/src/lib/googleOAuth.ts` de ese repo): las pruebas de
+   * integración las apuntan a un servidor OAuth FALSO local (ver
+   * `tests/support/fakeGoogleOAuth.ts`), nunca a la red real.
+   */
+  readonly googleStaffAuth: { readonly authBaseUrl: string; readonly tokenUrl: string; readonly jwksUrl: string; readonly issuer: string };
+  /**
    * Fase 6 §3 citas — credenciales de plataforma para el dispatcher real de
    * correo (Resend, ver domain-citas/src/email-dispatch.ts::sendEmailOutboxJob).
    * `apiKey: null` cuando no está configurada todavía (estado real de este
@@ -121,6 +136,12 @@ export function loadApiEnv(): ApiEnv {
       process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL
         ? { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET, redirectBaseUrl: process.env.GOOGLE_OAUTH_REDIRECT_BASE_URL }
         : null,
+    googleStaffAuth: {
+      authBaseUrl: process.env.GOOGLE_STAFF_AUTH_BASE_URL ?? "https://accounts.google.com",
+      tokenUrl: process.env.GOOGLE_STAFF_TOKEN_URL ?? "https://oauth2.googleapis.com/token",
+      jwksUrl: process.env.GOOGLE_STAFF_JWKS_URL ?? "https://www.googleapis.com/oauth2/v3/certs",
+      issuer: process.env.GOOGLE_STAFF_ISSUER ?? "https://accounts.google.com",
+    },
     resend: { apiKey: process.env.RESEND_API_KEY ?? null, from: process.env.RESEND_FROM_EMAIL ?? "atiende <notificaciones@atiende.ai>" },
     stripe: { secretKey: process.env.STRIPE_SECRET_KEY ?? null },
     appBaseUrl: (process.env.APP_BASE_URL ?? "https://app.atiende.ai").replace(/\/+$/, ""),

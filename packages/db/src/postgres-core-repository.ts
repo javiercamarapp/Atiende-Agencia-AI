@@ -344,4 +344,17 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   async revokeAllRefreshTokens(userId: string): Promise<void> {
     await this.db.query(`select core.revoke_all_refresh_tokens($1);`, [userId]);
   }
+
+  async findStaffByGoogleSub(sub: string): Promise<StaffUserRow | null> {
+    const { rows } = await this.db.query<StaffUserRawRow>(
+      `select id, email, full_name, password_hash, created_via, email_verified_at, sessions_revoked_at
+       from core.find_staff_by_google_sub($1);`,
+      [sub],
+    );
+    return rows[0] ? mapStaff(rows[0]) : null;
+  }
+
+  async linkGoogleIdentity(input: { readonly staffId: string; readonly sub: string; readonly email: string }): Promise<void> {
+    await this.db.query(`select core.link_google_identity($1, $2, $3);`, [input.staffId, input.sub, input.email]);
+  }
 }

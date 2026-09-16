@@ -22,7 +22,7 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (109 migraciones, timestamps 20240101000001 .. 20240101000109)
+## Orden actual (110 migraciones, timestamps 20240101000001 .. 20240101000110)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -123,12 +123,14 @@ Las 6 migraciones 103-108 (2 por vertical: citas/hoteles/restaurantes; renumerad
 Las verticales de dominio no tienen dependencias cruzadas entre sí; se mantuvo el
 orden interno de cada una tal como está numerado en su propia carpeta.
 
+110. `supabase/migrations/20240101000110_0008_staff_google_identity.sql` — "Sign in with Google" real para staff (las 6 verticales, ver `apps/api/src/routes/auth-google.ts`): agrega `core.staff_google_identity` (vincula el `sub` estable de una cuenta de Google a un `core.staff_user` ya existente) + dos funciones `security definer` (`core.find_staff_by_google_sub`/`core.link_google_identity`, mismo patrón que `core.accept_staff_invite`/`core.revoke_all_refresh_tokens` — este monorepo no aprovisiona `service_role`, la sesión de sistema corre bajo `authenticated` sin `auth.uid()`). Alcance de este pase: solo `purpose=login` (staff YA invitado/registrado) — iniciar sesión con Google nunca da de alta una organización nueva por sí solo; el auto-registro vía Google que hoteles sí implementa en su repo standalone queda fuera. Sin tabla `oauth_state`: el `state`/`nonce`/`code_verifier` viajan en un JWT firmado de 10 minutos (`@atiende/core-auth::signOAuthState`/`verifyOAuthState`), ver el comentario de cabecera de la migración para el trade-off completo. Probado de punta a punta contra un servidor OAuth de Google falso local (`apps/api/tests/support/fakeGoogleOAuth.ts`, mismo mecanismo que atiende-hoteles) — `apps/api/tests/auth-google.spec.ts`, 5/5 verde: primer login vincula, segundo login con el mismo `sub` reconoce, correo no invitado se rechaza honestamente, Google sin configurar responde 503 explícito.
+
 ## Si agregas una migración nueva a un paquete
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000109`; usa
-   `20240101000110`, luego `...111`, etc., o cambia a timestamps reales
+   secuencia** (el último usado hasta ahora es `20240101000110`; usa
+   `20240101000111`, luego `...112`, etc., o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el

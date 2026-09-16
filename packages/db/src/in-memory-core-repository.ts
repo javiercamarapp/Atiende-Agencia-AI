@@ -63,6 +63,12 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   // mezclan al leer, mismo criterio que Postgres lo trae como columna de la misma
   // fila real (ver `postgres-core-repository.ts`).
   private readonly sessionsRevokedAtByUserId = new Map<string, string>();
+  // "Sign in with Google" (ver `apps/api/src/routes/auth-google.ts`) — `sub` (subject
+  // id del id_token de Google) -> staffId vinculado, mismo dato que
+  // `core.staff_google_identity` en Postgres. Mapa aparte por el mismo motivo que
+  // `sessionsRevokedAtByUserId` arriba: no forzar a cada fixture existente que
+  // construye un `StaffUserRow` a conocer un campo que no le corresponde.
+  private readonly staffIdByGoogleSub = new Map<string, string>();
 
   addStaff(staff: StaffUserRow): void {
     if (this.staffIdByEmail.has(staff.email)) {
@@ -292,5 +298,21 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
 
   async revokeAllRefreshTokens(userId: string): Promise<void> {
     this.sessionsRevokedAtByUserId.set(userId, new Date().toISOString());
+  }
+
+  // ---- "Sign in with Google" — ver el contrato completo en
+  // `core-repository.ts::findStaffByGoogleSub`/`linkGoogleIdentity`. ----
+
+  async findStaffByGoogleSub(sub: string): Promise<StaffUserRow | null> {
+    const staffId = this.staffIdByGoogleSub.get(sub);
+    if (!staffId) return null;
+    const staff = this.staffById.get(staffId);
+    return staff ? this.withSessionsRevokedAt(staff) : null;
+  }
+
+  async linkGoogleIdentity(input: { readonly staffId: string; readonly sub: string; readonly email: string }): Promise<void> {
+    const existingStaffId = this.staffIdByGoogleSub.get(input.sub);
+    if (existingStaffId && existingStaffId !== input.staffId) return; // mismo criterio no-op que el `on conflict ... where` de Postgres.
+    this.staffIdByGoogleSub.set(input.sub, input.staffId);
   }
 }
