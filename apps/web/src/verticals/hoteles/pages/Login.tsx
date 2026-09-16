@@ -199,9 +199,9 @@ export function HotelesLoginPage({ apiBaseUrl }: HotelesLoginPageProps) {
               Reservas y operación por WhatsApp
             </p>
             <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
-              Hoteles en las mejores playas de México.
+              El agente toma la reserva, hace el check-in,
               <br />
-              El cierre del turno, solo.
+              factura y cierra el turno — todo por WhatsApp.
             </p>
           </figcaption>
         </figure>

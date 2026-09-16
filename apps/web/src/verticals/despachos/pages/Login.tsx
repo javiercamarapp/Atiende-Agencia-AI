@@ -199,7 +199,9 @@ export function DespachosLoginPage({ apiBaseUrl }: DespachosLoginPageProps) {
               CFDI · Contabilidad electrónica · Cierres mensuales
             </p>
             <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
-              Cada CFDI conciliado y cada cierre mensual a tiempo, en un solo panel.
+              El agente concilia cada CFDI, timbra la nómina
+              <br />
+              y cierra el mes — sin captura manual.
             </p>
           </figcaption>
         </figure>

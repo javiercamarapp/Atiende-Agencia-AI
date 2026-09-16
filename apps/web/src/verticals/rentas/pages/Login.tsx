@@ -203,7 +203,9 @@ export function RentasLoginPage({ apiBaseUrl }: RentasLoginPageProps) {
               Operación multi-propiedad
             </p>
             <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
-              Sincronía con Booking, Airbnb y Vrbo, en un solo panel.
+              El agente responde al huésped, sincroniza
+              <br />
+              Booking, Airbnb y Vrbo, y coordina el check-in.
             </p>
           </figcaption>
         </figure>
