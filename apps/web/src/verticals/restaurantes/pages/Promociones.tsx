@@ -9,9 +9,18 @@
 // staff) es el mismo trío amplio que ya puede entrar a este panel por
 // RestaurantesShell, así que no hay un "reservado a" real que mostrar (el
 // servidor sigue siendo el enforcement — 403 si algún día cambia).
+//
+// Presentación real desde esta ronda: los dos formularios (crear un código nuevo y
+// editar la vigencia de uno existente) pasan a <ModalFormularioLateral> — el shell de
+// modal ya existente en apps/web/src/components — y la lista a `Card`/`Badge`/
+// `Button` de `@atiende/ui`. Los campos, la validación de cliente, los payloads
+// enviados y las llamadas al backend son EXACTAMENTE los mismos que antes: lo único
+// que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
+import { CalendarRange, Plus } from "lucide-react";
+import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import {
   createPromotion,
   fetchPromotions,
@@ -22,6 +31,9 @@ import type { Promotion, PromotionType } from "../lib/promotions-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const DAY_LABELS: readonly string[] = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+const SELECT_CLASES =
+  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 function formatValue(type: PromotionType, value: number): string {
   return type === "percentage" ? `${value}%` : `$${value.toFixed(2)}`;
@@ -57,6 +69,9 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
+  // Solo controla si el <ModalFormularioLateral> de alta está abierto — el formulario
+  // y su validación son los mismos de siempre.
+  const [modalCrearAbierto, setModalCrearAbierto] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStartsAt, setEditStartsAt] = useState("");
@@ -98,6 +113,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
         endsAt: dateInputToIso(form.endsAt, true),
       });
       setForm(EMPTY_FORM);
+      setModalCrearAbierto(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la promoción.");
@@ -142,188 +158,211 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
     }
   }
 
+  const promocionEnEdicion = promotions?.find((p) => p.id === editingId) ?? null;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 860 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Promociones</h1>
+    <div className="flex max-w-4xl flex-col gap-5 p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="m-0 font-display text-xl font-semibold text-foreground">Promociones</h1>
+        <Button type="button" onClick={() => setModalCrearAbierto(true)}>
+          <Plus />
+          Crear un código nuevo
+        </Button>
+      </header>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-        <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Crear un código nuevo</p>
-        <form onSubmit={handleCreate} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            type="text"
-            placeholder="CÓDIGO (ej. BIENVENIDA10)"
-            value={form.code}
-            onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
-            required
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, minWidth: 200 }}
-          />
-          <input
-            type="text"
-            placeholder="Nombre para el staff"
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            required
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, minWidth: 200 }}
-          />
-          <select
-            value={form.type}
-            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as PromotionType }))}
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-          >
-            <option value="percentage">% descuento</option>
-            <option value="fixed">$ fijo</option>
-          </select>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder={form.type === "percentage" ? "Valor (0-100)" : "Valor ($)"}
-            value={form.value}
-            onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
-            required
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 130 }}
-          />
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="Pedido mínimo ($, opc.)"
-            value={form.minOrderTotal}
-            onChange={(e) => setForm((f) => ({ ...f, minOrderTotal: e.target.value }))}
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 160 }}
-          />
-          <input
-            type="number"
-            min="1"
-            step="1"
-            placeholder="Tope de usos (opc.)"
-            value={form.maxUses}
-            onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))}
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: 150 }}
-          />
-          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11, color: "#6b7280" }}>
-            Vigente desde
-            <input
-              type="date"
-              value={form.startsAt}
-              onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))}
-              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-            />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11, color: "#6b7280" }}>
-            Vigente hasta
-            <input
-              type="date"
-              value={form.endsAt}
-              onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))}
-              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-            />
-          </label>
-          <button type="submit" disabled={creating} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}>
-            {creating ? "Creando…" : "Crear código"}
-          </button>
-        </form>
-        <p style={{ margin: "8px 0 0", fontSize: 12, color: "#9ca3af" }}>
-          El código nace activo. Días y horario de vigencia solo se pueden ajustar por API por ahora — la fecha de inicio/fin y la vigencia sí se editan aquí.
-        </p>
-      </section>
-
-      <section>
-        <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Códigos existentes</p>
+      <section className="flex flex-col gap-2">
+        <p className="m-0 text-sm font-semibold text-foreground">Códigos existentes</p>
         {!promotions && !error && <EstadoCargando etiqueta="Cargando promociones…" />}
         {promotions && promotions.length === 0 && <EstadoVacio mensaje="Todavía no hay ninguna promoción creada." />}
         {promotions && promotions.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="flex flex-col gap-2">
             {promotions.map((p) => (
-              <div key={p.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, opacity: p.isActive ? 1 : 0.6 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <Card key={p.id} className={p.isActive ? undefined : "opacity-60"}>
+                <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
                   <div>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>
-                      <code style={{ background: "#f3f4f6", padding: "1px 6px", borderRadius: 4 }}>{p.code}</code> · {p.name}
-                    </p>
-                    <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+                    <div className="m-0 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-foreground">
+                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{p.code}</code>
+                      <span>· {p.name}</span>
+                      {!p.isActive && (
+                        <Badge variant="outline" className="text-muted-foreground">
+                          Inactiva
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {formatValue(p.type, p.value)} de descuento
                       {p.minOrderTotal !== null ? ` · pedido mín. $${p.minOrderTotal.toFixed(2)}` : ""}
                       {p.maxUses !== null ? ` · usado ${p.timesUsed}/${p.maxUses}` : ` · usado ${p.timesUsed} veces`}
                       {p.daysOfWeek && p.daysOfWeek.length > 0 ? ` · ${p.daysOfWeek.map((d) => DAY_LABELS[d]).join("/")}` : ""}
                       {p.startTime && p.endTime ? ` · ${p.startTime}-${p.endTime}` : ""}
                     </p>
-                    <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Vigencia: {p.startsAt ? new Date(p.startsAt).toLocaleDateString("es-MX") : "sin inicio"} → {p.endsAt ? new Date(p.endsAt).toLocaleDateString("es-MX") : "sin fin"}
                     </p>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => startEdit(p)}
-                      style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}
-                    >
+                  <div className="flex shrink-0 gap-2">
+                    <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => startEdit(p)}>
+                      <CalendarRange />
                       Editar vigencia
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant={p.isActive ? "destructive" : "outline"}
+                      size="sm"
+                      className="h-9 text-xs"
                       onClick={() => void handleToggleActive(p)}
                       disabled={togglingId === p.id}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 8,
-                        border: p.isActive ? "1px solid #fecaca" : "1px solid #bbf7d0",
-                        background: "#fff",
-                        color: p.isActive ? "#b91c1c" : "#15803d",
-                        fontSize: 12,
-                        cursor: "pointer",
-                      }}
                     >
                       {togglingId === p.id ? "Guardando…" : p.isActive ? "Desactivar" : "Activar"}
-                    </button>
+                    </Button>
                   </div>
-                </div>
-
-                {editingId === p.id && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6", display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11, color: "#6b7280" }}>
-                      Vigente desde
-                      <input
-                        type="date"
-                        value={editStartsAt}
-                        onChange={(e) => setEditStartsAt(e.target.value)}
-                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-                      />
-                    </label>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11, color: "#6b7280" }}>
-                      Vigente hasta
-                      <input
-                        type="date"
-                        value={editEndsAt}
-                        onChange={(e) => setEditEndsAt(e.target.value)}
-                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveEdit(p.id)}
-                      disabled={savingEdit}
-                      style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 12, cursor: "pointer" }}
-                    >
-                      {savingEdit ? "Guardando…" : "Guardar"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      disabled={savingEdit}
-                      style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                )}
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}
       </section>
+
+      <ModalFormularioLateral
+        open={modalCrearAbierto}
+        onOpenChange={setModalCrearAbierto}
+        titulo="Crear un código nuevo"
+        subtitulo="El código nace activo. Días y horario de vigencia solo se pueden ajustar por API por ahora — la fecha de inicio/fin y la vigencia sí se editan desde el panel."
+        anchoClase="max-w-3xl"
+        footer={
+          <Button type="submit" form="restaurantes-promocion-nueva" className="rounded-full px-6" disabled={creating}>
+            {creating ? "Creando…" : "Crear código"}
+          </Button>
+        }
+      >
+        <form id="restaurantes-promocion-nueva" onSubmit={handleCreate} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-codigo" className="text-xs text-muted-foreground">
+              Código
+            </Label>
+            <Input
+              id="promocion-codigo"
+              type="text"
+              placeholder="CÓDIGO (ej. BIENVENIDA10)"
+              value={form.code}
+              onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-nombre" className="text-xs text-muted-foreground">
+              Nombre para el staff
+            </Label>
+            <Input
+              id="promocion-nombre"
+              type="text"
+              placeholder="Nombre para el staff"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-tipo" className="text-xs text-muted-foreground">
+              Tipo de descuento
+            </Label>
+            <select
+              id="promocion-tipo"
+              value={form.type}
+              onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as PromotionType }))}
+              className={SELECT_CLASES}
+            >
+              <option value="percentage">% descuento</option>
+              <option value="fixed">$ fijo</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-valor" className="text-xs text-muted-foreground">
+              Valor
+            </Label>
+            <Input
+              id="promocion-valor"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder={form.type === "percentage" ? "Valor (0-100)" : "Valor ($)"}
+              value={form.value}
+              onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-minimo" className="text-xs text-muted-foreground">
+              Pedido mínimo ($, opc.)
+            </Label>
+            <Input
+              id="promocion-minimo"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Pedido mínimo ($, opc.)"
+              value={form.minOrderTotal}
+              onChange={(e) => setForm((f) => ({ ...f, minOrderTotal: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-tope" className="text-xs text-muted-foreground">
+              Tope de usos (opc.)
+            </Label>
+            <Input
+              id="promocion-tope"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Tope de usos (opc.)"
+              value={form.maxUses}
+              onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-desde" className="text-xs text-muted-foreground">
+              Vigente desde
+            </Label>
+            <Input id="promocion-desde" type="date" value={form.startsAt} onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-hasta" className="text-xs text-muted-foreground">
+              Vigente hasta
+            </Label>
+            <Input id="promocion-hasta" type="date" value={form.endsAt} onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))} />
+          </div>
+        </form>
+      </ModalFormularioLateral>
+
+      <ModalFormularioLateral
+        open={editingId !== null}
+        onOpenChange={(abierto) => !abierto && setEditingId(null)}
+        titulo="Editar vigencia"
+        subtitulo={promocionEnEdicion ? `${promocionEnEdicion.code} · ${promocionEnEdicion.name}` : undefined}
+        anchoClase="max-w-2xl"
+        guardando={savingEdit}
+        textoBotonGuardar="Guardar"
+        onGuardar={() => {
+          if (editingId) void handleSaveEdit(editingId);
+        }}
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-edit-desde" className="text-xs text-muted-foreground">
+              Vigente desde
+            </Label>
+            <Input id="promocion-edit-desde" type="date" value={editStartsAt} onChange={(e) => setEditStartsAt(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="promocion-edit-hasta" className="text-xs text-muted-foreground">
+              Vigente hasta
+            </Label>
+            <Input id="promocion-edit-hasta" type="date" value={editEndsAt} onChange={(e) => setEditEndsAt(e.target.value)} />
+          </div>
+        </div>
+      </ModalFormularioLateral>
     </div>
   );
 }

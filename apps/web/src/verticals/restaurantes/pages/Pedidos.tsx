@@ -2,8 +2,34 @@
 // máquina de estados de order-lifecycle.ts (el servidor SIEMPRE re-valida la
 // transición; los botones ofrecidos aquí son solo un espejo de NEXT_STATUSES para
 // no mostrar una acción que el servidor rechazaría).
+//
+// Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
+// primitivos de `@atiende/ui` — `Tabs` para el filtro por estado, `Card` por pedido,
+// `Badge` para el estado, `Button` para cada transición y `Dialog` para la
+// confirmación de "cancelado" (antes un `window.confirm` del navegador, ver el
+// comentario de `handleChangeStatus`). El gate de confirmación, las transiciones
+// ofrecidas y todas las llamadas al backend son EXACTAMENTE las mismas.
 import { useEffect, useState } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Label,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
+import { AlertTriangle, Clock } from "lucide-react";
 import { assignRepartidor, fetchOrders, NEXT_STATUSES, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
@@ -11,6 +37,9 @@ import type { RepartidorMember } from "../lib/staff-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const OPERATIVE_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "problema"];
+
+const SELECT_CLASES =
+  "h-9 rounded-md border border-input bg-background px-2.5 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 function formatMoney(n: number): string {
   return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -30,6 +59,10 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
   const [repartidores, setRepartidores] = useState<readonly RepartidorMember[] | null>(null);
   const [repartidoresError, setRepartidoresError] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  // Pedido esperando la confirmación de cancelación (ver `handleChangeStatus`) —
+  // `null` mientras no haya ninguna en curso, que es lo que mantiene cerrado el
+  // <Dialog> del final del archivo.
+  const [pedidoACancelar, setPedidoACancelar] = useState<OrderSummary | null>(null);
 
   async function load() {
     setError(null);
@@ -65,15 +98,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
     void loadRepartidores();
   }, [apiBaseUrl, token, propertyId]);
 
-  // Fase 12 — hallazgo de auditoría (severidad ALTA, "'Marcar cancelado' ejecuta con un
-  // clic sin confirmación"): "cancelado" es el único estado terminal (NEXT_STATUSES lo
-  // deja sin salidas, junto con "completado") que además es un desenlace NEGATIVO — se
-  // pierde el pedido, nunca se puede reabrir desde aquí — mismo patrón de confirmación
-  // real que citas/Agenda.tsx::runLifecycleAction usa para su acción "cancel". Las demás
-  // transiciones (preparando/en_camino/entregado/problema, y "completado" mismo — el
-  // desenlace ESPERADO del flujo feliz) no ganan nada con un confirm de más.
-  async function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
-    if (nextStatus === "cancelado" && !window.confirm(`¿Cancelar el pedido de ${order.customerName}? Esta acción no se puede deshacer.`)) return;
+  async function aplicarCambioEstado(order: OrderSummary, nextStatus: OrderStatus) {
     setChangingId(order.id);
     setError(null);
     try {
@@ -84,6 +109,30 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
     } finally {
       setChangingId(null);
     }
+  }
+
+  // Fase 12 — hallazgo de auditoría (severidad ALTA, "'Marcar cancelado' ejecuta con un
+  // clic sin confirmación"): "cancelado" es el único estado terminal (NEXT_STATUSES lo
+  // deja sin salidas, junto con "completado") que además es un desenlace NEGATIVO — se
+  // pierde el pedido, nunca se puede reabrir desde aquí — mismo patrón de confirmación
+  // real que citas/Agenda.tsx::runLifecycleAction usa para su acción "cancel". Las demás
+  // transiciones (preparando/en_camino/entregado/problema, y "completado" mismo — el
+  // desenlace ESPERADO del flujo feliz) no ganan nada con un confirm de más. El gate es
+  // el MISMO de siempre; desde esta ronda lo pinta el <Dialog> del sistema de diseño en
+  // vez del `window.confirm` del navegador.
+  function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
+    if (nextStatus === "cancelado") {
+      setPedidoACancelar(order);
+      return;
+    }
+    void aplicarCambioEstado(order, nextStatus);
+  }
+
+  async function confirmarCancelacion() {
+    const order = pedidoACancelar;
+    if (!order) return;
+    setPedidoACancelar(null);
+    await aplicarCambioEstado(order, "cancelado");
   }
 
   // Fase 12 — dispara el dispatch real (PATCH .../assign-repartidor) en cuanto se
@@ -106,74 +155,58 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Pedidos en operación</h1>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(["todos", ...OPERATIVE_STATUSES] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatus(s)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                background: status === s ? "#111827" : "#fff",
-                color: status === s ? "#fff" : "#111827",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              {s === "todos" ? "Todos" : ORDER_STATUS_LABELS[s]}
-            </button>
-          ))}
-        </div>
+    <div className="flex flex-col gap-4 p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="m-0 font-display text-xl font-semibold text-foreground">Pedidos en operación</h1>
+        <Tabs value={status} onValueChange={(v) => setStatus(v as OrderStatus | "todos")}>
+          <TabsList className="flex-wrap">
+            {(["todos", ...OPERATIVE_STATUSES] as const).map((s) => (
+              <TabsTrigger key={s} value={s}>
+                {s === "todos" ? "Todos" : ORDER_STATUS_LABELS[s]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </header>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {repartidoresError && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 12 }}>
+        <p role="alert" className="m-0 text-xs text-destructive">
           No se pudo cargar la lista de repartidores: {repartidoresError}
         </p>
       )}
       {!orders && !error && <EstadoCargando etiqueta="Cargando pedidos…" />}
       {orders && orders.length === 0 && <EstadoVacio mensaje="No hay pedidos en este filtro." />}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="flex flex-col gap-2.5">
         {orders?.map((o) => (
-          <div key={o.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600 }}>
-                  {o.customerName} · {formatMoney(o.total)}
-                </p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                  {o.customerPhone} · {o.branch ?? "sin sucursal"} · {new Date(o.createdAt).toLocaleString("es-MX")}
-                </p>
+          <Card key={o.id}>
+            <CardContent className="p-4">
+              <div className="flex flex-wrap justify-between gap-2">
+                <div>
+                  <p className="m-0 font-semibold text-foreground">
+                    {o.customerName} · {formatMoney(o.total)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {o.customerPhone} · {o.branch ?? "sin sucursal"} · {new Date(o.createdAt).toLocaleString("es-MX")}
+                  </p>
+                </div>
+                <Badge variant={o.status === "problema" ? "destructive" : "secondary"} className="self-start">
+                  {ORDER_STATUS_LABELS[o.status]}
+                </Badge>
               </div>
-              <span
-                style={{
-                  alignSelf: "flex-start",
-                  fontSize: 12,
-                  padding: "3px 10px",
-                  borderRadius: 999,
-                  background: o.status === "problema" ? "#fee2e2" : "#f3f4f6",
-                  color: o.status === "problema" ? "#991b1b" : "#374151",
-                }}
-              >
-                {ORDER_STATUS_LABELS[o.status]}
-              </span>
-            </div>
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: "#374151" }}>{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
+              <p className="mt-2 text-[13px] text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              <label style={{ fontSize: 12, color: "#374151" }}>
-                Repartidor:{" "}
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <Label htmlFor={`repartidor-${o.id}`} className="text-xs font-normal text-foreground">
+                  Repartidor:
+                </Label>
                 <select
+                  id={`repartidor-${o.id}`}
                   value={o.assignedRepartidorId ?? ""}
                   disabled={assigningId === o.id || !repartidores || repartidores.length === 0}
                   onChange={(e) => void handleAssignRepartidor(o, e.target.value)}
-                  style={{ padding: "5px 8px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 12 }}
+                  className={SELECT_CLASES}
                 >
                   <option value="">Sin asignar</option>
                   {repartidores?.map((r) => (
@@ -182,32 +215,62 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
                     </option>
                   ))}
                 </select>
-              </label>
-              {assigningId === o.id && <span style={{ fontSize: 12, color: "#6b7280" }}>Asignando…</span>}
-              {o.estimatedDeliveryAt && (
-                <span style={{ fontSize: 12, color: "#6b7280" }}>ETA {new Date(o.estimatedDeliveryAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</span>
-              )}
-              {repartidores && repartidores.length === 0 && <span style={{ fontSize: 12, color: "#6b7280" }}>Sin repartidores dados de alta en esta organización.</span>}
-            </div>
-            {o.incidentNote && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#991b1b" }}>⚠ {o.incidentNote}</p>}
-
-            {NEXT_STATUSES[o.status].length > 0 && (
-              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                {NEXT_STATUSES[o.status].map((next) => (
-                  <button
-                    key={next}
-                    onClick={() => void handleChangeStatus(o, next)}
-                    disabled={changingId === o.id}
-                    style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}
-                  >
-                    {changingId === o.id ? "…" : `Marcar ${ORDER_STATUS_LABELS[next]}`}
-                  </button>
-                ))}
+                {assigningId === o.id && <span className="text-xs text-muted-foreground">Asignando…</span>}
+                {o.estimatedDeliveryAt && (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" strokeWidth={1.75} />
+                    ETA {new Date(o.estimatedDeliveryAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+                {repartidores && repartidores.length === 0 && <span className="text-xs text-muted-foreground">Sin repartidores dados de alta en esta organización.</span>}
               </div>
-            )}
-          </div>
+              {o.incidentNote && (
+                <p className="mt-1.5 inline-flex items-center gap-1 text-xs text-destructive">
+                  <AlertTriangle className="h-3 w-3" strokeWidth={1.75} />
+                  {o.incidentNote}
+                </p>
+              )}
+
+              {NEXT_STATUSES[o.status].length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {NEXT_STATUSES[o.status].map((next) => (
+                    <Button
+                      key={next}
+                      type="button"
+                      size="sm"
+                      variant={next === "cancelado" ? "destructive" : "outline"}
+                      className="h-9 text-xs"
+                      onClick={() => handleChangeStatus(o, next)}
+                      disabled={changingId === o.id}
+                    >
+                      {changingId === o.id ? "…" : `Marcar ${ORDER_STATUS_LABELS[next]}`}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         ))}
       </div>
+
+      <Dialog open={pedidoACancelar !== null} onOpenChange={(abierto) => !abierto && setPedidoACancelar(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar pedido</DialogTitle>
+            <DialogDescription>
+              {pedidoACancelar ? `¿Cancelar el pedido de ${pedidoACancelar.customerName}? Esta acción no se puede deshacer.` : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPedidoACancelar(null)}>
+              Volver
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void confirmarCancelacion()}>
+              Cancelar el pedido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
