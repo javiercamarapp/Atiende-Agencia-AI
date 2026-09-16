@@ -2,6 +2,7 @@
 // comentario de cabecera de admin-orders.ts), con filtro de fecha y paginación por
 // cursor en vez de por-estado-operativo.
 import { useEffect, useState } from "react";
+import { EstadoError, EstadoVacio } from "@atiende/ui";
 import { fetchOrders, ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -70,13 +71,9 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
         </label>
       </div>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load(true)} />}
 
-      {orders.length === 0 && !loading && !error && <p style={{ color: "#6b7280" }}>No hay pedidos en este filtro.</p>}
+      {orders.length === 0 && !loading && !error && <EstadoVacio mensaje="No hay pedidos en este filtro." />}
 
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>

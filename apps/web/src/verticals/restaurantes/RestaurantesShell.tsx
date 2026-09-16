@@ -3,11 +3,31 @@
 // sesión + propertyId UNA vez y le da a todas las páginas (Panel de KPIs incluido,
 // ver Dashboard.tsx, más Productos/Sucursales/Pedidos/Historial/Clientes) la misma
 // nav lateral, así el manager que entra al producto siempre tiene camino de vuelta
-// al back-office y viceversa. Estilos inline, sin design system nuevo — mismo
-// criterio que el resto de este vertical.
+// al back-office y viceversa.
+//
+// Presentación real desde esta ronda: <Sidebar> de @atiende/ui (mismo patrón "sidebar
+// bottom hundido gris" ya documentado en su propio archivo) en vez del <nav> inline
+// de antes — restaurantes es la vertical ORIGEN de ese sistema de diseño (docs/
+// referencia/05-frontend-restaurantes.md), así que esta ronda solo la pone a la
+// altura de lo que ella misma inspiró. TODA la lógica de sesión/sucursal/logout/
+// SESSION_EXPIRED_EVENT/redirección de repartidor de abajo es la MISMA — únicamente
+// cambia el JSX de presentación.
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { Navigate, NavLink } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Navigate } from "react-router-dom";
+import {
+  ClipboardList,
+  History,
+  LayoutDashboard,
+  Store,
+  Tag,
+  UserCog,
+  Users,
+  UtensilsCrossed,
+} from "lucide-react";
+import { EstadoError, Sidebar } from "@atiende/ui";
+import type { SidebarSection } from "@atiende/ui";
+import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import type { LoginSession } from "../../lib/auth-client.ts";
 import { fetchBranches, resolveActivePropertyId } from "./dashboard-client.ts";
@@ -37,65 +57,45 @@ export interface RestaurantesShellProps {
   readonly children: (ctx: RestaurantesShellContext) => ReactNode;
 }
 
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "productos", label: "Productos" },
-  { to: "sucursales", label: "Sucursales" },
-  { to: "pedidos", label: "Pedidos" },
-  { to: "historial", label: "Historial" },
-  { to: "clientes", label: "Clientes" },
-  // Fase 11 — hallazgo de auditoría (severidad ALTA, "Promociones/códigos de
-  // descuento (Fase 11) sin UI"): ver Promociones.tsx/promotions-client.ts.
-  { to: "promociones", label: "Promociones" },
-];
-
 /** Fase 14 — mismo `STAFF_INVITE_ROLES` que `domain-restaurantes/src/roles.ts`
  * (duplicado aquí a propósito, ver el comentario de `StaffVerticalRole` en
  * lib/staff-client.ts): solo oculta el link "Staff" del nav para quien el servidor
  * rechazaría de todas formas (403 en admin-staff.ts) — nunca la única barrera. */
 const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
-const linkStyle = (isActive: boolean): CSSProperties => ({
-  display: "block",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textDecoration: "none",
-  color: isActive ? "#fff" : "#111827",
-  background: isActive ? "#111827" : "transparent",
-});
-
-const logoutButtonStyle: CSSProperties = {
-  marginTop: "auto",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textAlign: "left",
-  color: "#b91c1c",
-  background: "transparent",
-  border: "1px solid #fecaca",
-  cursor: "pointer",
-};
-
-const selectLabelStyle: CSSProperties = {
-  display: "block",
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  color: "#6b7280",
-  margin: "0 0 4px",
-};
-
-const selectStyle: CSSProperties = {
-  display: "block",
-  width: "100%",
-  padding: "6px 8px",
-  borderRadius: 8,
-  border: "1px solid #d1d5db",
-  fontSize: 13,
-  color: "#111827",
-  background: "#fff",
-  boxSizing: "border-box",
-};
+function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] {
+  const base = `/restaurantes/${orgSlug}`;
+  const sections: SidebarSection[] = [
+    {
+      title: "Panel",
+      siempreAbierto: true,
+      items: [{ to: base, label: "Panel (KPIs)", icon: LayoutDashboard }],
+    },
+    {
+      title: "Operación",
+      items: [
+        { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
+        { to: `${base}/historial`, label: "Historial", icon: History },
+        { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
+        { to: `${base}/promociones`, label: "Promociones", icon: Tag },
+      ],
+    },
+    {
+      title: "Negocio",
+      items: [
+        { to: `${base}/sucursales`, label: "Sucursales", icon: Store },
+        { to: `${base}/clientes`, label: "Clientes", icon: Users },
+      ],
+    },
+  ];
+  if (canSeeStaff) {
+    sections.push({
+      title: "Equipo",
+      items: [{ to: `${base}/staff`, label: "Staff", icon: UserCog }],
+    });
+  }
+  return sections;
+}
 
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   // Hallazgo de auditoría (severidad MEDIA/BRANDING, "Título de pestaña fijo en
@@ -125,14 +125,15 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     if (!s) onRequireLogin();
   }, [onRequireLogin]);
 
-  // Hallazgo de auditoría (severidad ALTA, "duplicado en TODAS las verticales":
-  // "Expiración del JWT (15 min) no se maneja: el panel queda muerto sin refresh ni
-  // redirección"): fetchJson/sendJson de dashboard-client.ts/lib/admin-client.ts ya
-  // intentan un refresh automático ante un 401 (ver ../../lib/authed-fetch.ts), pero
-  // si ESE refresh también falla no tienen forma de navegar (no son componentes
-  // React). Disparan SESSION_EXPIRED_EVENT en `window`; este Shell escucha y reusa
-  // el `onRequireLogin` que ya tenía. Filtra por `detail.vertical` para no
-  // reaccionar al session-expired de otra vertical abierta en otra pestaña.
+  // Hallazgo de auditoría (rubro 19, multi-organización, severidad ALTA, "duplicado en
+  // TODAS las verticales": "Expiración del JWT (15 min) no se maneja: el panel queda
+  // muerto sin refresh ni redirección"): fetchJson/sendJson de dashboard-client.ts/
+  // lib/admin-client.ts ya intentan un refresh automático ante un 401 (ver
+  // ../../lib/authed-fetch.ts), pero si ESE refresh también falla no tienen forma de
+  // navegar (no son componentes React). Disparan SESSION_EXPIRED_EVENT en `window`;
+  // este Shell escucha y reusa el `onRequireLogin` que ya tenía. Filtra por
+  // `detail.vertical` para no reaccionar al session-expired de otra vertical abierta
+  // en otra pestaña.
   useEffect(() => {
     function handleSessionExpired(event: Event) {
       const detail = (event as CustomEvent<SessionExpiredEventDetail>).detail;
@@ -146,7 +147,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   }, [onRequireLogin]);
 
   async function handleLogout() {
-    if (!session) return;
+    if (!session || loggingOut) return;
     setLoggingOut(true);
     try {
       await logout(fetch, apiBaseUrl, session.refreshToken);
@@ -178,28 +179,28 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
   if (error) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          {error}
-        </p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-md">
+          <EstadoError mensaje={error} />
+        </div>
       </main>
     );
   }
 
   if (!branches) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <p className="text-sm text-muted-foreground">Cargando…</p>
       </main>
     );
   }
 
   if (branches.length === 0) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          Este negocio todavía no tiene ninguna sucursal configurada.
-        </p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-md">
+          <EstadoError mensaje="Este negocio todavía no tiene ninguna sucursal configurada." />
+        </div>
       </main>
     );
   }
@@ -225,8 +226,8 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
   // Ronda 13 — hallazgo de auditoría (severidad ALTA, mismo archivo de causa que el
   // listener de SESSION_EXPIRED_EVENT de arriba): un repartidor que entra por URL
-  // directa a `/restaurantes/:slug` (no por el link de su invitación, que ya lo manda
-  // a `/restaurantes/:slug/repartidor` vía `decideLandingPathForInvite`, ver
+  // directa a `/restaurantes/:orgSlug` (no por el link de su invitación, que ya lo
+  // manda a `/restaurantes/:orgSlug/repartidor` vía `decideLandingPathForInvite`, ver
   // shell-landing-path.spec.ts) llegaba HASTA AQUÍ, con este Shell pintando el nav de
   // gestión completo (Productos/Sucursales/Pedidos/Historial/Clientes) para un rol
   // que `MANAGER_ROLES` (domain-restaurantes/src/roles.ts) excluye a propósito — y el
@@ -235,63 +236,59 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // backend de verdad le permite (mismo REPARTIDOR_ROLES) — nunca al revés: un
   // MANAGER_ROLE nunca pasa por aquí (siempre es "staff" para cualquier rol vertical
   // que no reconozca, ver el `?? "staff"` de arriba, así que solo "repartidor" exacto
-  // dispara esto).
+  // dispara esto). Por esto mismo "Repartidor" nunca aparece como ítem de este
+  // <Sidebar>: quien tiene ese rol jamás ve este nav, y quien SÍ lo ve (management)
+  // nunca navega a esa ruta desde aquí.
   if (role === "repartidor") {
     return <Navigate to={`/restaurantes/${orgSlug}/repartidor`} replace />;
   }
 
+  const sections = buildSections(orgSlug, STAFF_NAV_ROLES.has(role));
+
+  const sucursalSelector =
+    branches.length > 1 ? (
+      <div>
+        <label htmlFor="restaurantes-sucursal-activa" className="block mb-1 font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+          Sucursal activa
+        </label>
+        <select
+          id="restaurantes-sucursal-activa"
+          value={propertyId}
+          onChange={(e) => handleSelectBranch(e.target.value)}
+          className="w-full rounded-lg border border-border bg-card px-2 py-1.5 text-[13px] text-foreground"
+        >
+          {branches.map((b) => (
+            <option key={b.propertyId} value={b.propertyId}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    ) : (
+      <p className="text-xs text-muted-foreground">{activeBranch.name}</p>
+    );
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
-        <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Restaurantes · {orgSlug}</p>
-        {/* Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA,
-            "cadena de restaurantes con 2+ sucursales solo opera la primera"): selector
-            real, visible solo cuando hay más de una sucursal — mismo criterio que
-            "Hotel activo" en HotelesShell.tsx. */}
-        {branches.length > 1 ? (
-          <div style={{ margin: "0 0 8px" }}>
-            <label htmlFor="restaurantes-sucursal-activa" style={selectLabelStyle}>
-              Sucursal activa
-            </label>
-            <select id="restaurantes-sucursal-activa" value={propertyId} onChange={(e) => handleSelectBranch(e.target.value)} style={selectStyle}>
-              {branches.map((b) => (
-                <option key={b.propertyId} value={b.propertyId}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
+    <div className="min-h-screen bg-background flex gap-3 p-3">
+      <Sidebar sections={sections} user={{ email: session.email, rol: role }} onLogout={() => void handleLogout()} hotelSelector={sucursalSelector} />
+
+      <div className="flex-1 min-w-0 flex flex-col gap-3">
+        <header className="h-14 shrink-0 flex items-center justify-between gap-3 px-1">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Restaurantes · {orgSlug}</p>
+            <p className="text-sm font-medium text-foreground truncate">{activeBranch.name}</p>
           </div>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 8px" }}>{activeBranch.name}</p>
-        )}
-        <NavLink to={`/restaurantes/${orgSlug}`} end style={({ isActive }) => linkStyle(isActive)}>
-          Panel (KPIs)
-        </NavLink>
-        <div style={{ height: 1, background: "#f3f4f6", margin: "6px 0" }} />
-        {NAV_ITEMS.map((item) => (
-          <NavLink key={item.to} to={`/restaurantes/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
-            {item.label}
-          </NavLink>
-        ))}
-        {/* Fase 14 — hallazgo de auditoría (severidad ALTA, "Invitaciones de staff sin
-            ninguna UI"): ver STAFF_NAV_ROLES arriba. */}
-        {STAFF_NAV_ROLES.has(role) && (
-          <NavLink to={`/restaurantes/${orgSlug}/staff`} style={({ isActive }) => linkStyle(isActive)}>
-            Staff
-          </NavLink>
-        )}
-        <p style={{ fontSize: 11, color: "#9ca3af", margin: "16px 0 0" }}>Rol: {role}</p>
-        <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
-          {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
-        </button>
-      </nav>
-      {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
-          cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
-          (selector, sin navegar) — mismo criterio que HotelesShell.tsx: cualquier
-          página que cachee en su propio useState un resultado calculado para la
-          sucursal anterior queda cubierta sin tener que auditarlas una por una. */}
-      <div key={propertyId} style={{ flex: 1, padding: 24, overflow: "auto" }}>
-        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+          <BotonChatDatos />
+        </header>
+
+        {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
+            cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
+            (selector, sin navegar) — mismo criterio que HotelesShell.tsx: cualquier
+            página que cachee en su propio useState un resultado calculado para la
+            sucursal anterior queda cubierta sin tener que auditarlas una por una. */}
+        <main key={propertyId} className="flex-1 min-w-0 overflow-auto rounded-2xl border border-border bg-card">
+          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+        </main>
       </div>
     </div>
   );

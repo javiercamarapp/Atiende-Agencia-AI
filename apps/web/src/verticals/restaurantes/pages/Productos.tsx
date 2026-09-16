@@ -4,6 +4,7 @@
 // ver admin-catalog.ts). Estilos inline, sin design system nuevo.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import {
   createCategory,
   createProduct,
@@ -132,11 +133,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <h1 style={{ fontSize: 20, margin: 0 }}>Productos y categorías</h1>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
         <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Nueva categoría</p>
@@ -176,8 +173,8 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
         <p style={{ margin: "8px 0 0", fontSize: 12, color: "#9ca3af" }}>Un producto recién creado NO aparece en el pedido/agente hasta activarlo abajo en esta sucursal.</p>
       </section>
 
-      {!products && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {products && products.length === 0 && <p style={{ color: "#6b7280" }}>Este negocio todavía no tiene productos en su catálogo.</p>}
+      {!products && !error && <EstadoCargando etiqueta="Cargando catálogo…" />}
+      {products && products.length === 0 && <EstadoVacio mensaje="Este negocio todavía no tiene productos en su catálogo." />}
 
       {products && products.length > 0 && (
         <div style={{ overflowX: "auto" }}>
