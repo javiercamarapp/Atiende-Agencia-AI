@@ -1,40 +1,29 @@
-// Pantalla real de login del panel de restaurantes — reemplaza el formulario de
-// magic-link + "Continuar con Google" de restaurantes/src/pages/AdminLogin.tsx por un
-// formulario simple email+password contra el JWT propio de @atiende/core-auth (ver
-// diseño Fase 1 §5). El Supabase de producción de restaurantes ya fue borrado, así
-// que no hay usuarios reales de OAuth/magic-link que preservar.
-//
-// Fase 1 era sobre todo backend/dominio — este componente ya era real, no un stub
-// (maneja error real, loading real, redirección real según cuántas organizaciones
-// tiene el staff). Esta ronda solo reemplaza la presentación: login.css/AtiendeMark/
-// lámina con foto ya existen en apps/web (ver el README de esa fase), y restaurantes
-// es justo la vertical ORIGEN de ese sistema de diseño (docs/referencia/
-// 05-frontend-restaurantes.md) — 100% del mismo props/lógica de negocio de abajo,
-// nada más cambia el JSX/CSS.
+// Pantalla real de login del panel de restaurantes — SOLO Google o "Continuar
+// con correo" (magic link, sin contraseña), mismo criterio de UX que Likida:
+// Google arriba, un solo campo de correo abajo. `POST /auth/login` (email+
+// password) sigue existiendo en el backend, pero esta pantalla nunca lo expone
+// — instrucción explícita: el login es exclusivamente passwordless.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AtiendeWordmark } from "@atiende/ui";
-import { decideLandingPath, login, LoginError, persistSession } from "../../../lib/auth-client.ts";
+import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { useDocumentTitle } from "../../../shell/use-document-title.ts";
-import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
+import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
 
 export interface LoginPageProps {
   readonly apiBaseUrl: string;
+  /** Nunca se llama desde aquí (login 100% passwordless) — se conserva porque
+   *  `App.tsx` sigue pasándolo. */
   readonly onLoggedIn: (session: LoginSession, landingPath: string) => void;
 }
 
-export function RestaurantesLoginPage({ apiBaseUrl, onLoggedIn }: LoginPageProps) {
-  // Hallazgo de auditoría (severidad MEDIA/BRANDING, "Título de pestaña fijo en
-  // 'Restaurantes' para las 6 verticales") — ver use-document-title.ts. Sin sesión
-  // todavía, así que sin orgSlug.
+export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
   useDocumentTitle("Restaurantes");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [correoMagicLink, setCorreoMagicLink] = useState("");
+  const [enviandoMagicLink, setEnviandoMagicLink] = useState(false);
+  const [magicLinkEnviado, setMagicLinkEnviado] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const [googleConfigurado, setGoogleConfigurado] = useState(false);
   const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
@@ -53,6 +42,7 @@ export function RestaurantesLoginPage({ apiBaseUrl, onLoggedIn }: LoginPageProps
   }, [apiBaseUrl]);
 
   const googleError = searchParams.get("google_error");
+  const magicLinkError = searchParams.get("magic_link_error");
   const googleHabilitado = googleConfigurado && !comprobandoGoogle;
 
   function irAGoogle() {
@@ -60,39 +50,83 @@ export function RestaurantesLoginPage({ apiBaseUrl, onLoggedIn }: LoginPageProps
     window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "restaurantes");
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleMagicLinkSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
-    setSubmitting(true);
+    setEnviandoMagicLink(true);
     try {
-      const session = await login(fetch, apiBaseUrl, email, password);
-      persistSession(window.localStorage, session);
-      onLoggedIn(session, decideLandingPath(session));
-    } catch (err) {
-      setError(err instanceof LoginError ? err.message : "Ocurrió un error inesperado. Intenta de nuevo.");
+      await iniciarMagicLink(apiBaseUrl, correoMagicLink, "restaurantes");
+      setMagicLinkEnviado(correoMagicLink);
     } finally {
-      setSubmitting(false);
+      setEnviandoMagicLink(false);
     }
   }
 
   return (
     <div className="login min-h-screen grid grid-cols-1 md:grid-cols-2">
       <main className="flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-[380px] flex flex-col gap-6">
+        <div className="w-full max-w-[400px] flex flex-col gap-6">
           <div className="login-entra" style={{ animationDelay: "0ms" }}>
             <AtiendeWordmark className="h-7 w-auto" />
           </div>
 
           <div className="login-entra flex flex-col gap-2" style={{ animationDelay: "60ms" }}>
             <p className="login-kicker">Acceso al panel</p>
-            <h1 className="login-serif text-[32px] m-0">Bienvenido a atiende restaurantes</h1>
-            <p className="m-0 text-sm text-muted-foreground">
-              Entra con tu correo y contraseña para ver pedidos, catálogo y sucursales.
-            </p>
+            <h1 className="login-serif text-[44px] sm:text-[54px] leading-[1.02] m-0">
+              Bienvenido
+              <br />a atiende restaurantes
+            </h1>
+            <p className="m-0 text-sm text-muted-foreground">Entra con Google o con un enlace a tu correo — sin contraseña.</p>
           </div>
 
-          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3">
-            <div className="login-entra" style={{ animationDelay: "120ms" }}>
+          <div className="login-entra h-px bg-border" style={{ animationDelay: "100ms" }} />
+
+          {googleError && (
+            <p role="alert" className="login-entra m-0 text-[13px] text-destructive" style={{ animationDelay: "120ms" }}>
+              {mensajeGoogleError(googleError)}
+            </p>
+          )}
+          {magicLinkError && !googleError && (
+            <p role="alert" className="login-entra m-0 text-[13px] text-destructive" style={{ animationDelay: "120ms" }}>
+              {mensajeMagicLinkError(magicLinkError)}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={irAGoogle}
+            disabled={!googleHabilitado}
+            title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
+            className="login-entra login-btn login-btn-borde"
+            style={{ animationDelay: "140ms" }}
+          >
+            <span className="login-glifo" aria-hidden>
+              G
+            </span>
+            Continuar con Google
+          </button>
+          {!googleHabilitado && (
+            <p className="login-entra m-0 text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "150ms" }}>
+              {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
+            </p>
+          )}
+
+          <div className="login-entra flex items-center gap-4" style={{ animationDelay: "160ms" }}>
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[13px] lowercase text-muted-foreground">o</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          {magicLinkEnviado ? (
+            <div className="login-entra rounded-[18px] p-5 bg-primary/5 border border-primary/20" style={{ animationDelay: "180ms" }}>
+              <p className="text-[14px] leading-relaxed text-foreground">
+                Te enviamos un enlace a <span className="font-semibold">{magicLinkEnviado}</span>. Ábrelo desde este mismo dispositivo — expira en 15 minutos.
+              </p>
+              <button type="button" onClick={() => setMagicLinkEnviado(null)} className="mt-3 text-[13px] font-semibold text-foreground underline underline-offset-2">
+                Usar otro correo
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleMagicLinkSubmit} noValidate className="login-entra flex flex-col gap-3" style={{ animationDelay: "180ms" }}>
               <label htmlFor="email" className="block text-xs text-muted-foreground mb-1.5">
                 Correo
               </label>
@@ -100,73 +134,39 @@ export function RestaurantesLoginPage({ apiBaseUrl, onLoggedIn }: LoginPageProps
                 id="email"
                 type="email"
                 autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={correoMagicLink}
+                onChange={(e) => setCorreoMagicLink(e.target.value)}
                 required
                 placeholder="tu@restaurante.com"
                 className="login-campo"
               />
-            </div>
-
-            <div className="login-entra" style={{ animationDelay: "160ms" }}>
-              <label htmlFor="password" className="block text-xs text-muted-foreground mb-1.5">
-                Contraseña
-              </label>
-              <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                className="login-campo"
-              />
-            </div>
-
-            {googleError && !error && (
-              <p role="alert" className="m-0 text-[13px]" style={{ color: "#b91c1c" }}>
-                {mensajeGoogleError(googleError)}
-              </p>
-            )}
-
-            {error && (
-              <p role="alert" className="m-0 text-[13px]" style={{ color: "#b91c1c" }}>
-                {error}
-              </p>
-            )}
-
-            <div className="login-entra flex flex-col gap-2.5" style={{ animationDelay: "200ms" }}>
-              <button type="submit" disabled={submitting} className="login-btn login-btn-tinta">
-                {submitting ? "Entrando…" : "Entrar"}
-              </button>
-
-              <button
-                type="button"
-                onClick={irAGoogle}
-                disabled={!googleHabilitado}
-                title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
-                className="login-btn login-btn-borde"
-              >
-                <span className="login-glifo" aria-hidden>
-                  G
+              <button type="submit" disabled={enviandoMagicLink} className="login-btn login-btn-tinta">
+                <span aria-hidden className="login-glifo">
+                  <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
                 </span>
-                Continuar con Google
+                <span>{enviandoMagicLink ? "Enviando…" : "Continuar con correo"}</span>
               </button>
-              {!googleHabilitado && (
-                <p className="m-0 text-[12px] leading-relaxed text-muted-foreground">
-                  {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
-                </p>
-              )}
-            </div>
-          </form>
+            </form>
+          )}
+
+          <p className="login-entra mt-2 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "220ms" }}>
+            Al continuar, aceptas los{" "}
+            <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+              Términos de Servicio
+            </a>{" "}
+            y el{" "}
+            <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+              Aviso de Privacidad
+            </a>{" "}
+            de atiende.ai.
+          </p>
         </div>
       </main>
 
       <aside className="login-lamina hidden md:block relative m-3">
         <img
-          src="/images/login-hero.png"
-          alt=""
+          src={`${import.meta.env.BASE_URL}images/login-hero-restaurantes.png`}
+          alt="Comedor de un restaurante vacío en la hora azul."
           className="login-foto-marca absolute inset-0 w-full h-full object-cover"
         />
         <div className="login-velo" />

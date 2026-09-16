@@ -81,4 +81,12 @@ export class ProductionCoreRepository implements CoreRepository {
   linkGoogleIdentity(input: { readonly staffId: string; readonly sub: string; readonly email: string }): Promise<void> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).linkGoogleIdentity(input));
   }
+
+  createMagicLinkToken(input: { readonly staffId: string; readonly tokenHash: string; readonly expiresAt: string }): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).createMagicLinkToken(input));
+  }
+
+  consumeMagicLinkToken(tokenHash: string): Promise<StaffUserRow | null> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).consumeMagicLinkToken(tokenHash));
+  }
 }

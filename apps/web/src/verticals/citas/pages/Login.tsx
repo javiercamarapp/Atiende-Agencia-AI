@@ -1,39 +1,30 @@
-// Pantalla real de login del panel de citas — mismo mecanismo que
-// verticals/hoteles/pages/Login.tsx (email+password contra el JWT propio de
-// @atiende/core-auth), con su propia sesión de storage y su propio landing path
-// (citas/lib/auth-client.ts) para no chocar con una sesión de restaurantes/hoteles
-// abierta en el mismo navegador. Real, no un stub: maneja error real, loading real,
-// y redirección real según cuántas organizaciones (negocios de citas) tiene el
-// staff.
-//
-// Presentación real (Fase de diseño): mismo layout de dos columnas que
-// apps/web/src/pages/Login.tsx (atiende-hoteles) — login.css compartido
-// (kicker mono, titular serif, píldoras, lámina con foto + Ken Burns). El botón
+// Pantalla real de login del panel de citas — SOLO Google o "Continuar con
+// correo" (magic link, sin contraseña), mismo criterio de UX que Likida:
+// Google arriba, un solo campo de correo abajo. `POST /auth/login` (email+
+// password) sigue existiendo en el backend, pero esta pantalla nunca lo expone
+// — instrucción explícita: el login es exclusivamente passwordless. El botón
 // "Continuar con Google" de abajo es el de INICIO DE SESIÓN de staff (distinto
 // de la sincronización con Google Calendar de citas, que ya es real en
-// apps/api/src/routes/verticals/citas/google-calendar-*.ts): ese endpoint de
-// OAuth para login de staff todavía no existe en fusion, así que el botón se dejar
-// honestamente deshabilitado (aria-disabled + title) en vez de fingir un login que
-// no puede completarse.
+// apps/api/src/routes/verticals/citas/google-calendar-*.ts).
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
-import { decideCitasLandingPath, login, LoginError, persistCitasSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
-import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
+import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
 
 export interface CitasLoginPageProps {
   readonly apiBaseUrl: string;
+  /** Nunca se llama desde aquí (login 100% passwordless) — se conserva porque
+   *  `App.tsx` sigue pasándolo. */
   readonly onLoggedIn: (session: LoginSession, landingPath: string) => void;
 }
 
-export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function CitasLoginPage({ apiBaseUrl }: CitasLoginPageProps) {
+  const [correoMagicLink, setCorreoMagicLink] = useState("");
+  const [enviandoMagicLink, setEnviandoMagicLink] = useState(false);
+  const [magicLinkEnviado, setMagicLinkEnviado] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const [googleConfigurado, setGoogleConfigurado] = useState(false);
   const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
@@ -52,32 +43,29 @@ export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) 
   }, [apiBaseUrl]);
 
   const googleError = searchParams.get("google_error");
+  const magicLinkError = searchParams.get("magic_link_error");
   const googleHabilitado = googleConfigurado && !comprobandoGoogle;
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const session = await login(fetch, apiBaseUrl, email, password);
-      persistCitasSession(window.localStorage, session);
-      onLoggedIn(session, decideCitasLandingPath(session));
-    } catch (err) {
-      setError(err instanceof LoginError ? err.message : "Ocurrió un error inesperado. Intenta de nuevo.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   function irAGoogle() {
     if (!googleHabilitado) return;
     window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "citas");
   }
 
+  async function handleMagicLinkSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setEnviandoMagicLink(true);
+    try {
+      await iniciarMagicLink(apiBaseUrl, correoMagicLink, "citas");
+      setMagicLinkEnviado(correoMagicLink);
+    } finally {
+      setEnviandoMagicLink(false);
+    }
+  }
+
   return (
     <main className="login min-h-screen lg:grid lg:grid-cols-2">
       <section className="flex min-h-screen flex-col px-6 py-7 sm:px-10 lg:px-14 lg:py-10">
-        <div className="mx-auto flex w-full max-w-[392px] flex-1 flex-col">
+        <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col">
           <header className="login-entra flex items-center">
             <AtiendeWordmark />
           </header>
@@ -87,73 +75,34 @@ export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) 
               <p className="login-entra login-kicker" style={{ animationDelay: "40ms" }}>
                 Acceso al panel
               </p>
-              <h1 className="login-entra login-serif mt-5 text-[38px] sm:text-[44px] text-foreground" style={{ animationDelay: "90ms" }}>
-                Bienvenido a atiende citas
+              <h1 className="login-entra login-serif mt-5 text-[46px] sm:text-[58px] leading-[1.02] text-foreground" style={{ animationDelay: "90ms" }}>
+                Bienvenido
+                <br />a atiende citas
               </h1>
               <p className="login-entra mt-4 text-[15px] leading-[1.6] text-muted-foreground" style={{ animationDelay: "140ms" }}>
                 El panel de operación de tu negocio de citas.
               </p>
 
-              {googleError && !error && (
-                <div role="alert" className="login-entra mt-9 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
+              <div className="login-entra mt-7 h-px bg-border" style={{ animationDelay: "160ms" }} />
+
+              {googleError && (
+                <div role="alert" className="login-entra mt-7 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
                   <p className="text-[14px] leading-relaxed text-foreground">{mensajeGoogleError(googleError)}</p>
                 </div>
               )}
-
-              {error && (
-                <div role="alert" className="login-entra mt-9 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
-                  <p className="text-[14px] leading-relaxed text-foreground">{error}</p>
+              {magicLinkError && !googleError && (
+                <div role="alert" className="login-entra mt-7 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
+                  <p className="text-[14px] leading-relaxed text-foreground">{mensajeMagicLinkError(magicLinkError)}</p>
                 </div>
               )}
-
-              <form onSubmit={handleSubmit} className="login-entra mt-9 flex flex-col gap-3" style={{ animationDelay: "220ms" }} noValidate>
-                <label htmlFor="citas-login-email" className="sr-only">
-                  Tu correo
-                </label>
-                <input
-                  id="citas-login-email"
-                  type="email"
-                  required
-                  placeholder="tu@negocio.com"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="login-campo"
-                />
-                <label htmlFor="citas-login-password" className="sr-only">
-                  Contraseña
-                </label>
-                <input
-                  id="citas-login-password"
-                  type="password"
-                  required
-                  placeholder="Contraseña"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="login-campo"
-                />
-                <button type="submit" disabled={submitting} className="login-btn login-btn-tinta mt-1">
-                  <span aria-hidden className="login-glifo">
-                    <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
-                  </span>
-                  <span>{submitting ? "Entrando…" : "Entrar"}</span>
-                </button>
-              </form>
-
-              <div className="login-entra my-6 flex items-center gap-4" style={{ animationDelay: "250ms" }}>
-                <span className="h-px flex-1 bg-border" />
-                <span className="text-[13px] lowercase text-muted-foreground">o</span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
 
               <button
                 type="button"
                 onClick={irAGoogle}
                 disabled={!googleHabilitado}
                 title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
-                className="login-entra login-btn login-btn-borde"
-                style={{ animationDelay: "280ms" }}
+                className="login-entra mt-7 login-btn login-btn-borde"
+                style={{ animationDelay: "200ms" }}
               >
                 <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true">
                   <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z" />
@@ -164,14 +113,66 @@ export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) 
                 Continuar con Google
               </button>
               {!googleHabilitado && (
-                <p className="login-entra mt-2 text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "300ms" }}>
+                <p className="login-entra mt-2 text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "210ms" }}>
                   {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
                 </p>
+              )}
+
+              <div className="login-entra my-6 flex items-center gap-4" style={{ animationDelay: "230ms" }}>
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[13px] lowercase text-muted-foreground">o</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              {magicLinkEnviado ? (
+                <div className="login-entra rounded-[18px] p-5 bg-primary/5 border border-primary/20" style={{ animationDelay: "250ms" }}>
+                  <p className="text-[14px] leading-relaxed text-foreground">
+                    Te enviamos un enlace a <span className="font-semibold">{magicLinkEnviado}</span>. Ábrelo desde este mismo dispositivo para entrar — expira
+                    en 15 minutos.
+                  </p>
+                  <button type="button" onClick={() => setMagicLinkEnviado(null)} className="mt-3 text-[13px] font-semibold text-foreground underline underline-offset-2">
+                    Usar otro correo
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleMagicLinkSubmit} className="login-entra flex flex-col gap-3" style={{ animationDelay: "250ms" }} noValidate>
+                  <label htmlFor="citas-login-email" className="sr-only">
+                    Tu correo
+                  </label>
+                  <input
+                    id="citas-login-email"
+                    type="email"
+                    required
+                    placeholder="tu@negocio.com"
+                    autoComplete="email"
+                    value={correoMagicLink}
+                    onChange={(e) => setCorreoMagicLink(e.target.value)}
+                    className="login-campo"
+                  />
+                  <button type="submit" disabled={enviandoMagicLink} className="login-btn login-btn-tinta">
+                    <span aria-hidden className="login-glifo">
+                      <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
+                    </span>
+                    <span>{enviandoMagicLink ? "Enviando…" : "Continuar con correo"}</span>
+                  </button>
+                </form>
               )}
 
               <p className="login-entra mt-7 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
                 ¿No tienes acceso?{" "}
                 <span className="font-semibold text-foreground">Pídele a quien administra tu negocio que te dé de alta.</span>
+              </p>
+
+              <p className="login-entra mt-10 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "340ms" }}>
+                Al continuar, aceptas los{" "}
+                <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                  Términos de Servicio
+                </a>{" "}
+                y el{" "}
+                <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                  Aviso de Privacidad
+                </a>{" "}
+                de atiende.ai.
               </p>
             </div>
           </div>
@@ -181,8 +182,8 @@ export function CitasLoginPage({ apiBaseUrl, onLoggedIn }: CitasLoginPageProps) 
       <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
         <figure className="login-lamina min-h-0 flex-1 flex items-end">
           <img
-            src={`${import.meta.env.BASE_URL}images/login-hero.png`}
-            alt="Espacio de recepción iluminado en la hora azul."
+            src={`${import.meta.env.BASE_URL}images/login-hero-citas.png`}
+            alt="Sala de espera de un salón vacía en la hora azul."
             className="login-foto-marca absolute inset-0 w-full h-full object-cover"
           />
           <div className="login-velo" />

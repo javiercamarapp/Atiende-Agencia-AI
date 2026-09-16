@@ -1,39 +1,28 @@
-// Pantalla real de login del panel de licitaciones — mismo mecanismo que
-// verticals/hoteles/pages/Login.tsx y verticals/restaurantes/pages/Login.tsx
-// (email+password contra el JWT propio de @atiende/core-auth, ver diseño
-// Fase 1 licitaciones §5), con su propia sesión de storage y su propio
-// landing path (licitaciones/lib/auth-client.ts) para no chocar con una
-// sesión de otra vertical abierta en el mismo navegador. Real, no un stub:
-// maneja error real, loading real, y redirección real según cuántas
-// organizaciones tiene el staff.
-//
-// Fase "sistema de diseño real" — reemplaza el formulario inline mínimo por
-// la lámina split-screen real (apps/web/src/pages/login.css, ya portada
-// byte-a-byte de atiende-restaurantes) y el logo real (AtiendeMark/
-// AtiendeWordmark de @atiende/ui) en vez del data-URI duplicado de
-// lib/brand.ts. Cero cambios de lógica: mismo estado, misma llamada a
-// login()/persistLicitacionesSession()/decideLicitacionesLandingPath(), mismo
-// manejo de error/loading.
+// Pantalla real de login del panel de licitaciones — SOLO Google o "Continuar
+// con correo" (magic link, sin contraseña), mismo criterio de UX que Likida:
+// Google arriba, un solo campo de correo abajo. `POST /auth/login` (email+
+// password) sigue existiendo en el backend, pero esta pantalla nunca lo expone
+// — instrucción explícita: el login es exclusivamente passwordless.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
-import { decideLicitacionesLandingPath, login, LoginError, persistLicitacionesSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
 import { LICITACIONES_TAB_TITLE } from "../lib/brand.ts";
-import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
+import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
 
 export interface LicitacionesLoginPageProps {
   readonly apiBaseUrl: string;
+  /** Nunca se llama desde aquí (login 100% passwordless) — se conserva porque
+   *  `App.tsx` sigue pasándolo. */
   readonly onLoggedIn: (session: LoginSession, landingPath: string) => void;
 }
 
-export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLoginPageProps) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function LicitacionesLoginPage({ apiBaseUrl }: LicitacionesLoginPageProps) {
+  const [correoMagicLink, setCorreoMagicLink] = useState("");
+  const [enviandoMagicLink, setEnviandoMagicLink] = useState(false);
+  const [magicLinkEnviado, setMagicLinkEnviado] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const [googleConfigurado, setGoogleConfigurado] = useState(false);
   const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
@@ -58,96 +47,58 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
   }, [apiBaseUrl]);
 
   const googleError = searchParams.get("google_error");
+  const magicLinkError = searchParams.get("magic_link_error");
   const googleHabilitado = googleConfigurado && !comprobandoGoogle;
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const session = await login(fetch, apiBaseUrl, email, password);
-      persistLicitacionesSession(window.localStorage, session);
-      onLoggedIn(session, decideLicitacionesLandingPath(session));
-    } catch (err) {
-      setError(err instanceof LoginError ? err.message : "Ocurrió un error inesperado. Intenta de nuevo.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   function irAGoogle() {
     if (!googleHabilitado) return;
     window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "licitaciones");
   }
 
+  async function handleMagicLinkSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setEnviandoMagicLink(true);
+    try {
+      await iniciarMagicLink(apiBaseUrl, correoMagicLink, "licitaciones");
+      setMagicLinkEnviado(correoMagicLink);
+    } finally {
+      setEnviandoMagicLink(false);
+    }
+  }
+
   return (
     <div className="login grid min-h-screen lg:grid-cols-2">
       <main className="flex items-center justify-center px-6 py-16 sm:px-10 lg:px-16 bg-background">
-        <form onSubmit={handleSubmit} noValidate className="w-full max-w-[380px] flex flex-col gap-7">
+        <div className="w-full max-w-[400px] flex flex-col gap-7">
           <div className="login-entra" style={{ animationDelay: "0ms" }}>
             <AtiendeWordmark className="h-7 w-auto" />
           </div>
 
           <div className="login-entra flex flex-col gap-2" style={{ animationDelay: "70ms" }}>
             <p className="login-kicker">Acceso al panel</p>
-            <h1 className="login-serif text-[32px] sm:text-[36px] text-foreground">Bienvenido a atiende licitaciones</h1>
+            <h1 className="login-serif text-[44px] sm:text-[54px] leading-[1.02] text-foreground">
+              Bienvenido
+              <br />a atiende licitaciones
+            </h1>
             <p className="text-[14px] text-muted-foreground leading-relaxed">
               Da seguimiento a cada convocatoria pública, evalúa tu matching y no pierdas ninguna fecha límite de presentación.
             </p>
           </div>
 
+          <div className="login-entra h-px bg-border" style={{ animationDelay: "100ms" }} />
+
+          {googleError && (
+            <p role="alert" className="login-entra text-[13px] text-destructive" style={{ animationDelay: "120ms" }}>
+              {mensajeGoogleError(googleError)}
+            </p>
+          )}
+          {magicLinkError && !googleError && (
+            <p role="alert" className="login-entra text-[13px] text-destructive" style={{ animationDelay: "120ms" }}>
+              {mensajeMagicLinkError(magicLinkError)}
+            </p>
+          )}
+
           <div className="login-entra flex flex-col gap-3" style={{ animationDelay: "140ms" }}>
-            <label htmlFor="email" className="flex flex-col gap-1.5 text-[13px] font-medium text-foreground">
-              Correo
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="tu@empresa.com"
-                className="login-campo"
-              />
-            </label>
-            <label htmlFor="password" className="flex flex-col gap-1.5 text-[13px] font-medium text-foreground">
-              Contraseña
-              <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                className="login-campo"
-              />
-            </label>
-
-            {googleError && !error && (
-              <p role="alert" className="text-[13px] text-destructive">
-                {mensajeGoogleError(googleError)}
-              </p>
-            )}
-
-            {error && (
-              <p role="alert" className="text-[13px] text-destructive">
-                {error}
-              </p>
-            )}
-
-            <button type="submit" disabled={submitting} className="login-btn login-btn-tinta">
-              {submitting ? "Entrando…" : "Entrar"}
-              <span className="login-glifo" aria-hidden="true">
-                →
-              </span>
-            </button>
-          </div>
-
-          <div className="login-entra flex flex-col gap-3" style={{ animationDelay: "210ms" }}>
-            <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
-              <span className="h-px flex-1 bg-border" />o<span className="h-px flex-1 bg-border" />
-            </div>
             <button
               type="button"
               onClick={irAGoogle}
@@ -166,11 +117,64 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
               </p>
             )}
           </div>
-        </form>
+
+          <div className="login-entra flex items-center gap-3 text-[11px] uppercase tracking-[0.1em] text-muted-foreground" style={{ animationDelay: "160ms" }}>
+            <span className="h-px flex-1 bg-border" />o<span className="h-px flex-1 bg-border" />
+          </div>
+
+          {magicLinkEnviado ? (
+            <div className="login-entra rounded-[18px] p-5 bg-primary/5 border border-primary/20" style={{ animationDelay: "180ms" }}>
+              <p className="text-[14px] leading-relaxed text-foreground">
+                Te enviamos un enlace a <span className="font-semibold">{magicLinkEnviado}</span>. Ábrelo desde este mismo dispositivo — expira en 15 minutos.
+              </p>
+              <button type="button" onClick={() => setMagicLinkEnviado(null)} className="mt-3 text-[13px] font-semibold text-foreground underline underline-offset-2">
+                Usar otro correo
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleMagicLinkSubmit} noValidate className="login-entra flex flex-col gap-3" style={{ animationDelay: "180ms" }}>
+              <label htmlFor="email" className="flex flex-col gap-1.5 text-[13px] font-medium text-foreground">
+                Correo
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={correoMagicLink}
+                  onChange={(e) => setCorreoMagicLink(e.target.value)}
+                  required
+                  placeholder="tu@empresa.com"
+                  className="login-campo"
+                />
+              </label>
+              <button type="submit" disabled={enviandoMagicLink} className="login-btn login-btn-tinta">
+                <span aria-hidden className="login-glifo">
+                  <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
+                </span>
+                <span>{enviandoMagicLink ? "Enviando…" : "Continuar con correo"}</span>
+              </button>
+            </form>
+          )}
+
+          <p className="login-entra mt-2 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "220ms" }}>
+            Al continuar, aceptas los{" "}
+            <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+              Términos de Servicio
+            </a>{" "}
+            y el{" "}
+            <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+              Aviso de Privacidad
+            </a>{" "}
+            de atiende.ai.
+          </p>
+        </div>
       </main>
 
       <aside className="login-lamina hidden lg:block relative m-3">
-        <img src="/images/login-hero.png" alt="" className="login-foto-marca absolute inset-0 h-full w-full object-cover" />
+        <img
+          src={`${import.meta.env.BASE_URL}images/login-hero-licitaciones.png`}
+          alt="Archivo de expedientes gubernamentales vacío en la hora azul."
+          className="login-foto-marca absolute inset-0 h-full w-full object-cover"
+        />
         <div className="login-velo" />
         <div className="relative z-10 flex h-full flex-col justify-end p-10">
           <AtiendeMark className="h-8 w-auto mb-6" />

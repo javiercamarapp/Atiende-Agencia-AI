@@ -357,4 +357,17 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   async linkGoogleIdentity(input: { readonly staffId: string; readonly sub: string; readonly email: string }): Promise<void> {
     await this.db.query(`select core.link_google_identity($1, $2, $3);`, [input.staffId, input.sub, input.email]);
   }
+
+  async createMagicLinkToken(input: { readonly staffId: string; readonly tokenHash: string; readonly expiresAt: string }): Promise<void> {
+    await this.db.query(`select core.create_magic_link_token($1, $2, $3);`, [input.staffId, input.tokenHash, input.expiresAt]);
+  }
+
+  async consumeMagicLinkToken(tokenHash: string): Promise<StaffUserRow | null> {
+    const { rows } = await this.db.query<StaffUserRawRow>(
+      `select id, email, full_name, password_hash, created_via, email_verified_at, sessions_revoked_at
+       from core.consume_magic_link_token($1);`,
+      [tokenHash],
+    );
+    return rows[0] ? mapStaff(rows[0]) : null;
+  }
 }
