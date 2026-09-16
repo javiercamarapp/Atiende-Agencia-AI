@@ -8,6 +8,7 @@
 // que Convocatorias.tsx/licitaciones: cerrar el gap de LECTURA real primero.
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { fetchInvoices, importarCfdiXml } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
@@ -252,15 +253,13 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
         )}
       </section>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
+
+      {loading && !invoices && <EstadoCargando etiqueta="Cargando CFDI…" />}
+
+      {invoices && invoices.length === 0 && !loading && (
+        <EstadoVacio mensaje={soloRevision ? "No hay CFDI pendientes de revisión humana." : "Todavía no hay ningún CFDI ingestado."} />
       )}
-
-      {loading && !invoices && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-
-      {invoices && invoices.length === 0 && !loading && <p style={{ color: "#6b7280" }}>{soloRevision ? "No hay CFDI pendientes de revisión humana." : "Todavía no hay ningún CFDI ingestado."}</p>}
 
       {invoices && invoices.length > 0 && (
         <div style={{ overflowX: "auto" }}>

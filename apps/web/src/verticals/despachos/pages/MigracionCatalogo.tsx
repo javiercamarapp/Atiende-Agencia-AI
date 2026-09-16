@@ -17,6 +17,7 @@
 // y la página solo llama al clasificador ya construido con lo que recibe.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import {
   aprobarMapeoMigracion,
   clasificarCatalogo,
@@ -301,11 +302,7 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
         <p style={{ fontSize: 13, color: "#166534", margin: 0, background: "#dcfce7", padding: "8px 12px", borderRadius: 8 }}>{clasificarResultado}</p>
       )}
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
@@ -320,9 +317,11 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
         </label>
       </div>
 
-      {loading && !mapeos && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {loading && !mapeos && <EstadoCargando etiqueta="Cargando mapeos de migración…" />}
 
-      {mapeos && mapeos.length === 0 && !loading && <p style={{ color: "#6b7280" }}>No hay mapeos de migración{filtroEstado ? " con ese estado" : ""} todavía.</p>}
+      {mapeos && mapeos.length === 0 && !loading && (
+        <EstadoVacio mensaje={`No hay mapeos de migración${filtroEstado ? " con ese estado" : ""} todavía.`} />
+      )}
 
       {mapeos && mapeos.length > 0 && (
         <div style={{ overflowX: "auto" }}>

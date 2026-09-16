@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { crearPeriodo, fetchPeriodos } from "../lib/cierre-mensual-client.ts";
 import type { ClosePeriod } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo } from "../lib/format.ts";
@@ -121,15 +122,13 @@ export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role
         </form>
       )}
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
+
+      {loading && !periodos && <EstadoCargando etiqueta="Cargando períodos de cierre…" />}
+
+      {periodos && periodos.length === 0 && !loading && (
+        <EstadoVacio mensaje="Todavía no hay ningún período de cierre abierto." />
       )}
-
-      {loading && !periodos && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-
-      {periodos && periodos.length === 0 && !loading && <p style={{ color: "#6b7280" }}>Todavía no hay ningún período de cierre abierto.</p>}
 
       {ordenados.length > 0 && (
         <div style={{ overflowX: "auto" }}>

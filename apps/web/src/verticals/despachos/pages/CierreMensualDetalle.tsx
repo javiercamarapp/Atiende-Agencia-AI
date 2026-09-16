@@ -9,6 +9,7 @@
 // página.
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { EstadoCargando, EstadoError } from "@atiende/ui";
 import { cerrarPeriodoCierre, completarTareaCierre, fetchPeriodoDetalle, fetchReporteCierre } from "../lib/cierre-mensual-client.ts";
 import type { CloseTask, PeriodoDetalle, ReporteCierre } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo, formatTaskCategory, formatTaskStatus } from "../lib/format.ts";
@@ -112,8 +113,8 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
   }
 
   if (!periodoId) return <p role="alert">Período no especificado.</p>;
-  if (loading && !detalle) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (error) return <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>;
+  if (loading && !detalle) return <EstadoCargando etiqueta="Cargando período de cierre…" />;
+  if (error) return <EstadoError mensaje={error} />;
   if (!detalle) return null;
 
   const { periodo, tareas, estado } = detalle;
