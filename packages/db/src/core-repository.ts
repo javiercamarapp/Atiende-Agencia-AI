@@ -232,6 +232,19 @@ export interface CoreRepository {
    *  confirmar que `staffId` corresponde a un correo verificado que YA hizo match
    *  contra un staff existente antes de llamar esto. */
   linkGoogleIdentity(input: { readonly staffId: string; readonly sub: string; readonly email: string }): Promise<void>;
+  /** "Continuar con correo" sin contraseña (ver `apps/api/src/routes/
+   *  auth-magic-link.ts`) — persiste el HASH de un token de un solo uso
+   *  (`@atiende/core-auth::generateInviteToken`, nunca el token plano) para un
+   *  staff YA existente. `expiresAt` es ISO 8601, típicamente 15 minutos desde
+   *  la emisión. */
+  createMagicLinkToken(input: { readonly staffId: string; readonly tokenHash: string; readonly expiresAt: string }): Promise<void>;
+  /** Consume atómicamente un token de enlace mágico: si estaba `pending` y no
+   *  había vencido, lo marca `used` y devuelve el staff al que pertenece — en
+   *  la MISMA operación, sin ventana de carrera entre leer y marcar usado
+   *  (mismo patrón que `acceptStaffInvite`). `null` si el token no existe, ya
+   *  se usó, o venció -- el caller decide qué mensaje mostrar (nunca distingue
+   *  cuál de los tres casos fue, para no dar pistas a un atacante). */
+  consumeMagicLinkToken(tokenHash: string): Promise<StaffUserRow | null>;
 }
 
 /** Ver el comentario de cabecera del archivo para por qué esta interfaz vive

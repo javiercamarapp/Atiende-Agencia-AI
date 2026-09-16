@@ -5,10 +5,16 @@
 // cargos/pagos de ESE folio) — este listado solo lee y cancela; el botón "Ir al
 // folio" navega a pages/Cfdi.tsx (CfdiPage), que sí cubre timbrar/pagar, igual que ya
 // se llega ahí desde el enlace nuevo de Folio.tsx.
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
+// tarjetas/pills/inputs de estilos inline por Card/Badge/Input/Button reales —
+// mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. Ningún cambio de
+// lógica: mismos props, mismo estado, mismas llamadas de red.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { ArrowRight } from "lucide-react";
+import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input } from "@atiende/ui";
 import { cancelarCfdi, fetchCfdisByProperty, MOTIVO_CANCELACION_LABELS } from "../lib/cfdi-client.ts";
 import type { CfdiEmisionSummary, MotivoCancelacionSat } from "../lib/cfdi-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
@@ -26,7 +32,17 @@ const ESTADO_LABELS: Record<CfdiEmisionSummary["estado"], string> = {
   rechazado: "Rechazado",
 };
 
+const ESTADO_VARIANT: Record<CfdiEmisionSummary["estado"], "default" | "secondary" | "destructive"> = {
+  pendiente: "secondary",
+  timbrado: "default",
+  en_proceso_cancelacion: "secondary",
+  cancelado: "destructive",
+  rechazado: "destructive",
+};
+
 const MOTIVOS: readonly MotivoCancelacionSat[] = ["01", "02", "03", "04"];
+const selectClass =
+  "flex h-11 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export function CfdiListadoPage({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShellContext) {
   const navigate = useNavigate();
@@ -77,86 +93,84 @@ export function CfdiListadoPage({ apiBaseUrl, token, propertyId, orgSlug }: Hote
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 760 }}>
+    <div className="flex flex-col gap-4 max-w-3xl">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>CFDI de hospedaje</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Todos los comprobantes fiscales timbrados en este hotel, de cualquier folio.</p>
+        <h1 className="text-xl font-display font-semibold text-foreground">CFDI de hospedaje</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Todos los comprobantes fiscales timbrados en este hotel, de cualquier folio.</p>
       </header>
 
-      <form onSubmit={handleFolioJump} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-        <span style={{ fontSize: 13 }}>Timbrar/gestionar el CFDI de un folio:</span>
-        <input placeholder="ID del folio" value={folioJump} onChange={(e) => setFolioJump(e.target.value)} style={{ flex: 1, padding: 8, minWidth: 200 }} />
-        <button type="submit" style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}>
-          Ir al folio
-        </button>
-      </form>
+      <Card>
+        <CardContent className="p-4">
+          <form onSubmit={handleFolioJump} className="flex gap-2 flex-wrap items-center">
+            <span className="text-sm text-foreground">Timbrar/gestionar el CFDI de un folio:</span>
+            <Input placeholder="ID del folio" value={folioJump} onChange={(e) => setFolioJump(e.target.value)} className="flex-1 min-w-[200px]" />
+            <Button type="submit">
+              Ir al folio
+              <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
       {!cfdis && !error && <EstadoCargando etiqueta="Cargando CFDI…" />}
       {cfdis && cfdis.length === 0 && <EstadoVacio mensaje="Este hotel todavía no tiene ningún CFDI timbrado." />}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="flex flex-col gap-3">
         {cfdis?.map((c) => (
-          <div key={c.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>
-                  {c.tipo === "hospedaje" ? "Hospedaje" : "Complemento de pago"} · {c.uuidFiscal ?? "sin UUID"}
-                </p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                  RFC {c.rfcReceptor} · Uso {c.usoCfdi} · {c.metodoPago} {c.pac ? `· PAC: ${c.pac}` : ""}
-                </p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                  Folio: <Link to={`/hoteles/${orgSlug}/folios/${c.folioId}/cfdi`}>{c.folioId}</Link>
-                </p>
-              </div>
-              <span
-                style={{
-                  alignSelf: "flex-start",
-                  fontSize: 12,
-                  padding: "3px 10px",
-                  borderRadius: 999,
-                  background: c.estado === "cancelado" ? "#fee2e2" : c.estado === "timbrado" ? "#dcfce7" : "#f3f4f6",
-                  color: c.estado === "cancelado" ? "#991b1b" : c.estado === "timbrado" ? "#166534" : "#374151",
-                }}
-              >
-                {ESTADO_LABELS[c.estado]}
-              </span>
-            </div>
-            <p style={{ margin: "8px 0 0", fontSize: 13 }}>
-              Subtotal {formatMoney(c.subtotal)} · IVA {formatMoney(c.iva)}
-              {c.impuestosLocales.ishMonto > 0 ? ` · ISH ${formatMoney(c.impuestosLocales.ishMonto)}` : ""}
-              {c.impuestosLocales.dsaMonto > 0 ? ` · DSA ${formatMoney(c.impuestosLocales.dsaMonto)}` : ""} · Total <strong>{formatMoney(c.total)}</strong>
-            </p>
-            <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Emitido: {new Date(c.creadoEn).toLocaleString("es-MX")}</p>
-            {c.estado === "timbrado" && cancelTargetId !== c.id && (
-              <button onClick={() => setCancelTargetId(c.id)} disabled={busy} style={{ marginTop: 10, padding: "5px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}>
-                Cancelar CFDI
-              </button>
-            )}
-            {cancelTargetId === c.id && (
-              <form onSubmit={handleCancelar} style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8, border: "1px solid #fecaca", borderRadius: 8, padding: 10 }}>
-                <select value={cancelMotivo} onChange={(e) => setCancelMotivo(e.target.value as MotivoCancelacionSat)} style={{ padding: 6 }}>
-                  {MOTIVOS.map((m) => (
-                    <option key={m} value={m}>
-                      {MOTIVO_CANCELACION_LABELS[m]}
-                    </option>
-                  ))}
-                </select>
-                {cancelMotivo === "01" && (
-                  <input placeholder="Folio fiscal del CFDI que lo sustituye (UUID)" value={cancelFolioSustitucion} onChange={(e) => setCancelFolioSustitucion(e.target.value)} style={{ padding: 6 }} />
-                )}
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button type="submit" disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#b91c1c", color: "#fff", fontSize: 12, cursor: "pointer" }}>
-                    Confirmar cancelación
-                  </button>
-                  <button type="button" onClick={() => setCancelTargetId(null)} disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}>
-                    Cerrar
-                  </button>
+          <Card key={c.id}>
+            <CardContent className="p-4">
+              <div className="flex justify-between gap-2 flex-wrap">
+                <div>
+                  <p className="font-medium text-sm text-foreground">
+                    {c.tipo === "hospedaje" ? "Hospedaje" : "Complemento de pago"} · {c.uuidFiscal ?? "sin UUID"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    RFC {c.rfcReceptor} · Uso {c.usoCfdi} · {c.metodoPago} {c.pac ? `· PAC: ${c.pac}` : ""}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Folio: <Link to={`/hoteles/${orgSlug}/folios/${c.folioId}/cfdi`} className="text-primary hover:underline underline-offset-2">{c.folioId}</Link>
+                  </p>
                 </div>
-              </form>
-            )}
-          </div>
+                <Badge variant={ESTADO_VARIANT[c.estado]} className="self-start">
+                  {ESTADO_LABELS[c.estado]}
+                </Badge>
+              </div>
+              <p className="mt-2 text-sm text-foreground">
+                Subtotal {formatMoney(c.subtotal)} · IVA {formatMoney(c.iva)}
+                {c.impuestosLocales.ishMonto > 0 ? ` · ISH ${formatMoney(c.impuestosLocales.ishMonto)}` : ""}
+                {c.impuestosLocales.dsaMonto > 0 ? ` · DSA ${formatMoney(c.impuestosLocales.dsaMonto)}` : ""} · Total <strong>{formatMoney(c.total)}</strong>
+              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">Emitido: {new Date(c.creadoEn).toLocaleString("es-MX")}</p>
+              {c.estado === "timbrado" && cancelTargetId !== c.id && (
+                <Button type="button" variant="outline" size="sm" className="mt-2.5 text-destructive border-destructive/40 hover:border-destructive" onClick={() => setCancelTargetId(c.id)} disabled={busy}>
+                  Cancelar CFDI
+                </Button>
+              )}
+              {cancelTargetId === c.id && (
+                <form onSubmit={handleCancelar} className="mt-2.5 flex flex-col gap-2 border border-destructive/30 rounded-lg p-3">
+                  <select value={cancelMotivo} onChange={(e) => setCancelMotivo(e.target.value as MotivoCancelacionSat)} className={selectClass}>
+                    {MOTIVOS.map((m) => (
+                      <option key={m} value={m}>
+                        {MOTIVO_CANCELACION_LABELS[m]}
+                      </option>
+                    ))}
+                  </select>
+                  {cancelMotivo === "01" && (
+                    <Input placeholder="Folio fiscal del CFDI que lo sustituye (UUID)" value={cancelFolioSustitucion} onChange={(e) => setCancelFolioSustitucion(e.target.value)} />
+                  )}
+                  <div className="flex gap-2">
+                    <Button type="submit" variant="destructive" size="sm" disabled={busy}>
+                      Confirmar cancelación
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setCancelTargetId(null)} disabled={busy}>
+                      Cerrar
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>

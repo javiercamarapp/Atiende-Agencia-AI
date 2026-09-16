@@ -20,9 +20,16 @@
 //  2. Lecciones aprendidas ORG-WIDE (todas las convocatorias, no solo esta)
 //     -- de solo lectura, el servidor las deriva de las autopsias creadas,
 //     nunca se editan aquí directamente.
+//
+// Fase "sistema de diseño real" (contenido) — los `sectionCardStyle`/
+// `inputStyle`/`primaryButtonStyle` inline pasan a `Card`/`Input`/`Button` de
+// @atiende/ui, el pill de estatus a `Badge` y los estados de carga/error a
+// `EstadoCargando`/`EstadoError`. Cero cambios de lógica ni de red.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { createFalloAutopsy, fetchFalloAutopsies, fetchLessonsLearned, OWN_PROPOSAL_STATUSES } from "../lib/autopsia-client.ts";
@@ -36,21 +43,25 @@ import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 // `falloAutopsy.ts`).
 const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
 
-const sectionCardStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, fontFamily: "inherit" };
-const primaryButtonStyle = { padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 };
-const secondaryButtonStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#374151", cursor: "pointer", fontSize: 12 };
+/** `<select>`/`<textarea>` siguen siendo nativos (el sistema no exporta un
+ * primitivo propio para ellos): solo se restilan con los tokens reales. */
+const CAMPO_NATIVO =
+  "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
-const OWN_PROPOSAL_STATUS_COLORS: Record<OwnProposalStatus, { bg: string; fg: string }> = {
-  ganadora: { bg: "#dcfce7", fg: "#166534" },
-  desechada: { bg: "#fee2e2", fg: "#991b1b" },
-  no_presentada: { bg: "#fef9c3", fg: "#854d0e" },
-  desconocido: { bg: "#f3f4f6", fg: "#4b5563" },
+const OWN_PROPOSAL_STATUS_VARIANTS: Record<OwnProposalStatus, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
+  ganadora: { variant: "default" },
+  desechada: { variant: "destructive" },
+  no_presentada: { variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400" },
+  desconocido: { variant: "secondary" },
 };
 
 function StatusBadge({ status }: { status: OwnProposalStatus }) {
-  const colors = OWN_PROPOSAL_STATUS_COLORS[status];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, fontWeight: 600 }}>{formatOwnProposalStatus(status)}</span>;
+  const cfg = OWN_PROPOSAL_STATUS_VARIANTS[status];
+  return (
+    <Badge variant={cfg.variant} className={cfg.className}>
+      {formatOwnProposalStatus(status)}
+    </Badge>
+  );
 }
 
 function emptyCriteriaRow(): CriteriaComparisonItem {
@@ -155,170 +166,200 @@ export function AutopsiaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: L
     }
   }
 
-  if (!tenderId) return <p role="alert" style={{ color: "#b91c1c" }}>Falta el id de la convocatoria en la URL.</p>;
-  if (loading && !tender) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (loadError) return <p role="alert" style={{ color: "#b91c1c" }}>{loadError}</p>;
+  if (!tenderId) return <EstadoError mensaje="Falta el id de la convocatoria en la URL." />;
+  if (loading && !tender) return <EstadoCargando etiqueta="Cargando autopsia del fallo…" />;
+  if (loadError) return <EstadoError mensaje={loadError} onReintentar={() => void load(tenderId)} />;
   if (!tender) return null;
 
   const canWrite = WRITE_ROLES.has(role);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 900 }}>
-      <div>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
-          ← {tender.title}
+    <div className="flex max-w-[900px] flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {tender.title}
         </Link>
-        <h1 style={{ fontSize: 20, margin: "4px 0 0" }}>Autopsia del fallo</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">Autopsia del fallo</h1>
+        <p className="text-[13px] text-muted-foreground">
           Por qué se perdió esta convocatoria y qué lección deja -- las lecciones quedan vinculadas al perfil de la empresa, consultables en cualquier convocatoria futura.
         </p>
       </div>
 
       {canWrite ? (
-        <section style={sectionCardStyle}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Registrar autopsia</h2>
-          <form onSubmit={(e) => void handleSubmit(e)} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              Estatus de nuestra propuesta
-              <select value={ownProposalStatus} onChange={(e) => setOwnProposalStatus(e.target.value as OwnProposalStatus)} style={inputStyle}>
-                {OWN_PROPOSAL_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {formatOwnProposalStatus(s)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              Motivo de desechamiento (si aplica)
-              <textarea value={disqualificationReason} onChange={(e) => setDisqualificationReason(e.target.value)} rows={2} placeholder="Se deja «no disponible» si no se capturó nada" style={inputStyle} />
-            </label>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                Nuestro puntaje
-                <input type="number" min={0} value={ownScore} onChange={(e) => setOwnScore(e.target.value)} placeholder="Sin declarar" style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                Puntaje del ganador
-                <input type="number" min={0} value={winnerScore} onChange={(e) => setWinnerScore(e.target.value)} placeholder="Sin declarar" style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                Nuestro precio
-                <input type="number" min={0} value={ownPrice} onChange={(e) => setOwnPrice(e.target.value)} placeholder="Sin declarar" style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-                Precio del ganador
-                <input type="number" min={0} value={winnerPrice} onChange={(e) => setWinnerPrice(e.target.value)} placeholder="Sin declarar" style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, gridColumn: "1 / -1" }}>
-                Nombre del ganador (si el fallo es público)
-                <input value={winnerName} onChange={(e) => setWinnerName(e.target.value)} placeholder="Sin declarar" style={inputStyle} />
-              </label>
-            </div>
-
-            <div>
-              <p style={{ fontSize: 13, fontWeight: 600, margin: "0 0 6px" }}>Comparación por criterio (opcional)</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {criteria.map((row, index) => (
-                  <div key={index} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8 }}>
-                    <input value={row.criterio} onChange={(e) => updateCriteriaRow(index, { criterio: e.target.value })} placeholder="Criterio" style={inputStyle} />
-                    <input value={row.propio} onChange={(e) => updateCriteriaRow(index, { propio: e.target.value })} placeholder="Nuestro resultado" style={inputStyle} />
-                    <input value={row.ganador} onChange={(e) => updateCriteriaRow(index, { ganador: e.target.value })} placeholder="Resultado del ganador" style={inputStyle} />
-                    <button type="button" onClick={() => removeCriteriaRow(index)} disabled={criteria.length <= 1} style={secondaryButtonStyle}>
-                      Quitar
-                    </button>
-                  </div>
-                ))}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Registrar autopsia</CardTitle>
+            <CardDescription>El servidor no limita a una sola por convocatoria: pueden registrarse varias revisiones.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="autopsia-estatus">Estatus de nuestra propuesta</Label>
+                <select id="autopsia-estatus" value={ownProposalStatus} onChange={(e) => setOwnProposalStatus(e.target.value as OwnProposalStatus)} className={`${CAMPO_NATIVO} h-11`}>
+                  {OWN_PROPOSAL_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {formatOwnProposalStatus(s)}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <button type="button" onClick={() => setCriteria((prev) => [...prev, emptyCriteriaRow()])} style={{ ...secondaryButtonStyle, marginTop: 8 }}>
-                + Agregar criterio
-              </button>
-            </div>
 
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              Lecciones aprendidas (una por línea)
-              <textarea value={lessonsText} onChange={(e) => setLessonsText(e.target.value)} rows={3} placeholder={"Ej.: pedir la constancia de cumplimiento con 2 semanas de anticipación"} style={inputStyle} />
-            </label>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="autopsia-motivo">Motivo de desechamiento (si aplica)</Label>
+                <textarea
+                  id="autopsia-motivo"
+                  value={disqualificationReason}
+                  onChange={(e) => setDisqualificationReason(e.target.value)}
+                  rows={2}
+                  placeholder="Se deja «no disponible» si no se capturó nada"
+                  className={CAMPO_NATIVO}
+                />
+              </div>
 
-            {submitError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {submitError}
-              </p>
-            )}
-            <button type="submit" disabled={submitting} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
-              {submitting ? "Guardando…" : "Guardar autopsia"}
-            </button>
-          </form>
-        </section>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="autopsia-own-score">Nuestro puntaje</Label>
+                  <Input id="autopsia-own-score" type="number" min={0} value={ownScore} onChange={(e) => setOwnScore(e.target.value)} placeholder="Sin declarar" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="autopsia-winner-score">Puntaje del ganador</Label>
+                  <Input id="autopsia-winner-score" type="number" min={0} value={winnerScore} onChange={(e) => setWinnerScore(e.target.value)} placeholder="Sin declarar" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="autopsia-own-price">Nuestro precio</Label>
+                  <Input id="autopsia-own-price" type="number" min={0} value={ownPrice} onChange={(e) => setOwnPrice(e.target.value)} placeholder="Sin declarar" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="autopsia-winner-price">Precio del ganador</Label>
+                  <Input id="autopsia-winner-price" type="number" min={0} value={winnerPrice} onChange={(e) => setWinnerPrice(e.target.value)} placeholder="Sin declarar" />
+                </div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label htmlFor="autopsia-winner-name">Nombre del ganador (si el fallo es público)</Label>
+                  <Input id="autopsia-winner-name" value={winnerName} onChange={(e) => setWinnerName(e.target.value)} placeholder="Sin declarar" />
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-[13px] font-semibold text-foreground">Comparación por criterio (opcional)</p>
+                <div className="flex flex-col gap-2">
+                  {criteria.map((row, index) => (
+                    <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                      <Input value={row.criterio} onChange={(e) => updateCriteriaRow(index, { criterio: e.target.value })} placeholder="Criterio" aria-label={`Criterio ${index + 1}`} />
+                      <Input value={row.propio} onChange={(e) => updateCriteriaRow(index, { propio: e.target.value })} placeholder="Nuestro resultado" aria-label={`Nuestro resultado ${index + 1}`} />
+                      <Input value={row.ganador} onChange={(e) => updateCriteriaRow(index, { ganador: e.target.value })} placeholder="Resultado del ganador" aria-label={`Resultado del ganador ${index + 1}`} />
+                      <Button type="button" variant="outline" size="sm" onClick={() => removeCriteriaRow(index)} disabled={criteria.length <= 1}>
+                        <Trash2 />
+                        Quitar
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setCriteria((prev) => [...prev, emptyCriteriaRow()])}>
+                  <Plus />
+                  Agregar criterio
+                </Button>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="autopsia-lecciones">Lecciones aprendidas (una por línea)</Label>
+                <textarea
+                  id="autopsia-lecciones"
+                  value={lessonsText}
+                  onChange={(e) => setLessonsText(e.target.value)}
+                  rows={3}
+                  placeholder={"Ej.: pedir la constancia de cumplimiento con 2 semanas de anticipación"}
+                  className={CAMPO_NATIVO}
+                />
+              </div>
+
+              {submitError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {submitError}
+                </p>
+              )}
+              <Button type="submit" size="sm" className="self-start" disabled={submitting}>
+                {submitting ? "Guardando…" : "Guardar autopsia"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       ) : (
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede registrar una autopsia del fallo.</p>
+        <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede registrar una autopsia del fallo.</p>
       )}
 
-      <section style={sectionCardStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Autopsias registradas ({autopsies.length})</h2>
-        {autopsies.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Todavía no se ha registrado ninguna autopsia para esta convocatoria.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {autopsies
-              .slice()
-              .reverse()
-              .map((a) => (
-                <div key={a.id} style={{ border: "1px solid #f3f4f6", borderRadius: 8, padding: 10, fontSize: 13 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <StatusBadge status={a.ownProposalStatus} />
-                    <span style={{ color: "#9ca3af", fontSize: 11 }}>{formatDate(a.createdAt)}</span>
-                  </div>
-                  <p style={{ margin: "6px 0 0", color: "#374151" }}>
-                    <strong>Motivo:</strong> {a.disqualificationReason}
-                  </p>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 6, margin: "6px 0 0" }}>
-                    <p style={{ margin: 0, color: "#6b7280" }}>
-                      Puntaje: {a.ownScore ?? "s/d"} vs {a.winnerScore ?? "s/d"}
-                    </p>
-                    <p style={{ margin: 0, color: "#6b7280" }}>
-                      Precio: {a.ownPrice !== null ? formatMoney(a.ownPrice, null) : "s/d"} vs {a.winnerPrice !== null ? formatMoney(a.winnerPrice, null) : "s/d"}
-                    </p>
-                    <p style={{ margin: 0, color: "#6b7280" }}>Ganador: {a.winnerName}</p>
-                  </div>
-                  {a.criteriaComparison.length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600, color: "#374151" }}>Comparación por criterio</p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        {a.criteriaComparison.map((c, i) => (
-                          <div key={i} style={{ fontSize: 12, color: "#4b5563" }}>
-                            <strong>{c.criterio}:</strong> nosotros «{c.propio}» · ganador «{c.ganador}»
-                          </div>
-                        ))}
-                      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Autopsias registradas ({autopsies.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {autopsies.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">Todavía no se ha registrado ninguna autopsia para esta convocatoria.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {autopsies
+                .slice()
+                .reverse()
+                .map((a) => (
+                  <div key={a.id} className="rounded-xl border border-border p-3 text-[13px]">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <StatusBadge status={a.ownProposalStatus} />
+                      <span className="text-[11px] text-muted-foreground">{formatDate(a.createdAt)}</span>
                     </div>
-                  )}
-                </div>
-              ))}
-          </div>
-        )}
-      </section>
+                    <p className="mt-1.5 text-foreground">
+                      <strong>Motivo:</strong> {a.disqualificationReason}
+                    </p>
+                    <div className="mt-1.5 grid gap-1.5 sm:grid-cols-3">
+                      <p className="text-muted-foreground">
+                        Puntaje: {a.ownScore ?? "s/d"} vs {a.winnerScore ?? "s/d"}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Precio: {a.ownPrice !== null ? formatMoney(a.ownPrice, null) : "s/d"} vs {a.winnerPrice !== null ? formatMoney(a.winnerPrice, null) : "s/d"}
+                      </p>
+                      <p className="text-muted-foreground">Ganador: {a.winnerName}</p>
+                    </div>
+                    {a.criteriaComparison.length > 0 && (
+                      <div className="mt-2">
+                        <p className="mb-1 text-xs font-semibold text-foreground">Comparación por criterio</p>
+                        <div className="flex flex-col gap-1">
+                          {a.criteriaComparison.map((c, i) => (
+                            <div key={i} className="text-xs text-muted-foreground">
+                              <strong className="text-foreground">{c.criterio}:</strong> nosotros «{c.propio}» · ganador «{c.ganador}»
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <section style={sectionCardStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Lecciones aprendidas de la empresa ({lessons.length})</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Agregadas de TODAS las convocatorias de esta organización, no solo esta -- de solo lectura.</p>
-        {lessons.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Todavía no hay lecciones registradas.</p>
-        ) : (
-          <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-            {lessons
-              .slice()
-              .reverse()
-              .map((l) => (
-                <li key={l.id} style={{ fontSize: 13, color: "#374151" }}>
-                  {l.lessonText}
-                  <span style={{ color: "#9ca3af", fontSize: 11 }}> — {formatDate(l.createdAt)}</span>
-                </li>
-              ))}
-          </ul>
-        )}
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Lecciones aprendidas de la empresa ({lessons.length})</CardTitle>
+          <CardDescription>Agregadas de TODAS las convocatorias de esta organización, no solo esta -- de solo lectura.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {lessons.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">Todavía no hay lecciones registradas.</p>
+          ) : (
+            <ul className="flex list-disc flex-col gap-1.5 pl-5">
+              {lessons
+                .slice()
+                .reverse()
+                .map((l) => (
+                  <li key={l.id} className="text-[13px] text-foreground">
+                    {l.lessonText}
+                    <span className="text-[11px] text-muted-foreground"> — {formatDate(l.createdAt)}</span>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

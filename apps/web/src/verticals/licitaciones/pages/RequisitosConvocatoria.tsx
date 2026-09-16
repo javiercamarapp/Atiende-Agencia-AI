@@ -13,9 +13,35 @@
 // (`PUT .../requirement-mappings/:topicKey`), aprobaciones y el ZIP de cierre
 // quedan FUERA de esta pieza -- son alcance de rondas futuras (ver README de
 // este vertical).
+//
+// Fase "sistema de diseño real" (contenido) — el formulario de carga pasa a
+// `Card` + `Input`/`Label`/`Button`, la tabla de requisitos a `Table`, los
+// pills de estatus a `Badge` y los estados de carga/error/vacío a
+// `EstadoCargando`/`EstadoError`/`EstadoVacio`. Cero cambios de lógica.
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AlertTriangle, ArrowLeft, FileUp, X } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { extractRequirements, fetchRequirementItems, fileToBase64, MAX_UPLOAD_FILE_BYTES } from "../lib/requirements-client.ts";
@@ -43,17 +69,20 @@ interface PendingFile {
   readonly tooLarge: boolean;
 }
 
-const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  pendiente: { bg: "#f3f4f6", fg: "#4b5563" },
-  en_progreso: { bg: "#dbeafe", fg: "#1e40af" },
-  cumplido: { bg: "#dcfce7", fg: "#166534" },
-  bloqueado: { bg: "#fee2e2", fg: "#991b1b" },
-  no_evaluable: { bg: "#f3f4f6", fg: "#4b5563" },
+const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  pendiente: "secondary",
+  en_progreso: "outline",
+  cumplido: "default",
+  bloqueado: "destructive",
+  no_evaluable: "secondary",
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const colors = STATUS_COLORS[status] ?? { bg: "#f3f4f6", fg: "#4b5563" };
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, whiteSpace: "nowrap" }}>{formatRequirementStatus(status)}</span>;
+  return (
+    <Badge variant={STATUS_VARIANTS[status] ?? "secondary"} className="whitespace-nowrap">
+      {formatRequirementStatus(status)}
+    </Badge>
+  );
 }
 
 export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
@@ -152,88 +181,105 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
     }
   }
 
-  if (!tenderId) return <p role="alert" style={{ color: "#b91c1c" }}>Falta el id de la convocatoria en la URL.</p>;
-  if (loading && !tender) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (loadError) return <p role="alert" style={{ color: "#b91c1c" }}>{loadError}</p>;
+  if (!tenderId) return <EstadoError mensaje="Falta el id de la convocatoria en la URL." />;
+  if (loading && !tender) return <EstadoCargando etiqueta="Cargando requisitos…" />;
+  if (loadError) return <EstadoError mensaje={loadError} onReintentar={() => void load(tenderId)} />;
   if (!tender) return null;
 
   const canUpload = WRITE_ROLES.has(role);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 900 }}>
-      <div>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
-          ← {tender.title}
+    <div className="flex max-w-[900px] flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {tender.title}
         </Link>
-        <h1 style={{ fontSize: 20, margin: "4px 0 0" }}>Requisitos de las bases</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">Requisitos de las bases</h1>
+        <p className="text-[13px] text-muted-foreground">
           Sube el PDF (o texto plano) de las bases de esta convocatoria para extraer sus requisitos automáticamente. Solo lectura del resto del expediente: la propuesta técnica/económica y el cierre no viven en esta pantalla todavía.
         </p>
       </div>
 
       {canUpload ? (
-        <form onSubmit={handleExtract} style={{ display: "flex", flexDirection: "column", gap: 12, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
-            Documentos de bases (PDF o .txt)
-            <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain" multiple onChange={handleFilesSelected} style={{ fontSize: 13 }} />
-          </label>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Cargar bases</CardTitle>
+            <CardDescription>PDF nativo o texto plano — un PDF escaneado sin capa de texto se excluye y se reporta, nunca se inventa contenido.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleExtract} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="requisitos-archivos">Documentos de bases (PDF o .txt)</Label>
+                <Input
+                  id="requisitos-archivos"
+                  type="file"
+                  accept=".pdf,.txt,.md,application/pdf,text/plain"
+                  multiple
+                  onChange={handleFilesSelected}
+                  className="h-auto cursor-pointer py-2 file:mr-3 file:cursor-pointer file:rounded-full file:bg-muted file:px-3 file:py-1 file:text-xs file:font-semibold"
+                />
+              </div>
 
-          {pendingFiles.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {pendingFiles.map((f) => (
-                <div key={f.key} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, border: "1px solid #e5e7eb", borderRadius: 8, padding: 8 }}>
-                  <span style={{ fontSize: 12, color: "#6b7280", minWidth: 140 }}>
-                    {f.file.name} · {(f.file.size / 1024 / 1024).toFixed(1)}MB
-                  </span>
-                  <input
-                    value={f.documentLabel}
-                    onChange={(e) => updatePendingFile(f.key, { documentLabel: e.target.value })}
-                    placeholder="Etiqueta del documento"
-                    style={{ flex: 1, minWidth: 160, padding: 6, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-                  />
-                  <input
-                    type="date"
-                    value={f.publishedAt}
-                    onChange={(e) => updatePendingFile(f.key, { publishedAt: e.target.value })}
-                    style={{ padding: 6, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-                  />
-                  <button type="button" onClick={() => removePendingFile(f.key)} style={{ border: "none", background: "transparent", color: "#b91c1c", cursor: "pointer", fontSize: 12 }}>
-                    Quitar
-                  </button>
-                  {f.tooLarge && (
-                    <p role="alert" style={{ width: "100%", margin: 0, fontSize: 12, color: "#b91c1c" }}>
-                      Este archivo pesa más de 22MB -- no se enviará (límite del backend).
-                    </p>
-                  )}
+              {pendingFiles.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {pendingFiles.map((f) => (
+                    <div key={f.key} className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-2">
+                      <span className="min-w-[140px] text-xs text-muted-foreground">
+                        {f.file.name} · {(f.file.size / 1024 / 1024).toFixed(1)}MB
+                      </span>
+                      <Input
+                        value={f.documentLabel}
+                        onChange={(e) => updatePendingFile(f.key, { documentLabel: e.target.value })}
+                        placeholder="Etiqueta del documento"
+                        aria-label={`Etiqueta de ${f.file.name}`}
+                        className="h-9 min-w-[160px] flex-1"
+                      />
+                      <Input
+                        type="date"
+                        value={f.publishedAt}
+                        onChange={(e) => updatePendingFile(f.key, { publishedAt: e.target.value })}
+                        aria-label={`Fecha de publicación de ${f.file.name}`}
+                        className="h-9 w-auto"
+                      />
+                      <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => removePendingFile(f.key)}>
+                        <X />
+                        Quitar
+                      </Button>
+                      {f.tooLarge && (
+                        <p role="alert" className="w-full text-xs text-destructive">
+                          Este archivo pesa más de 22MB -- no se enviará (límite del backend).
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              )}
 
-          {extractError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {extractError}
-            </p>
-          )}
+              {extractError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {extractError}
+                </p>
+              )}
 
-          <button
-            type="submit"
-            disabled={extracting || pendingFiles.length === 0}
-            style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-          >
-            {extracting ? "Extrayendo…" : "Extraer requisitos"}
-          </button>
-        </form>
+              <Button type="submit" size="sm" className="self-start" disabled={extracting || pendingFiles.length === 0}>
+                <FileUp />
+                {extracting ? "Extrayendo…" : "Extraer requisitos"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       ) : (
-        <p style={{ fontSize: 12, color: "#9ca3af" }}>Tu rol ({role}) no puede subir documentos de bases -- solo lectura de los requisitos ya extraídos.</p>
+        <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede subir documentos de bases -- solo lectura de los requisitos ya extraídos.</p>
       )}
 
       {lastSkipped.length > 0 && (
-        <div style={{ border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 10, padding: 12 }}>
-          <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "#92400e" }}>
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
             {lastSkipped.length} documento(s) no produjeron texto extraíble y se excluyeron de esta extracción:
           </p>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#92400e" }}>
+          <ul className="mt-1.5 list-disc pl-5 text-xs text-amber-700 dark:text-amber-400">
             {lastSkipped.map((s) => (
               <li key={s.documentId}>
                 "{s.documentLabel}" -- {s.status === "requires_ocr" ? "PDF escaneado sin capa de texto (no hay OCR de imagen disponible)" : "formato no soportado o archivo corrupto"}
@@ -244,56 +290,60 @@ export function RequisitosConvocatoriaPage({ apiBaseUrl, token, propertyId, orgS
         </div>
       )}
 
-      <section>
-        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Requisitos extraídos ({items?.length ?? 0})</h2>
-        {items && items.length === 0 && <p style={{ fontSize: 13, color: "#6b7280" }}>Todavía no hay requisitos extraídos para esta convocatoria -- sube un documento de bases arriba.</p>}
-        {items && items.length > 0 && (
-          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`} style={{ display: "inline-block", marginBottom: 12, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
-            Generar propuesta técnica y mapear requisitos →
-          </Link>
-        )}
-        {items && items.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                  <th style={{ padding: "6px 8px" }}>Requisito</th>
-                  <th style={{ padding: "6px 8px" }}>Tipo</th>
-                  <th style={{ padding: "6px 8px" }}>Obligatoriedad</th>
-                  <th style={{ padding: "6px 8px" }}>Estatus</th>
-                  <th style={{ padding: "6px 8px" }}>Fecha límite</th>
-                  <th style={{ padding: "6px 8px" }}>Origen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} style={{ borderBottom: "1px solid #f3f4f6", verticalAlign: "top" }}>
-                    <td style={{ padding: "8px", maxWidth: 320 }}>
-                      <p style={{ margin: 0 }}>{item.text}</p>
-                      {item.requiredEvidence.length > 0 && (
-                        <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Evidencia requerida: {item.requiredEvidence.join(", ")}</p>
-                      )}
-                    </td>
-                    <td style={{ padding: "8px", color: "#374151" }}>{formatRequirementKind(item.requirementKind)}</td>
-                    <td style={{ padding: "8px", color: "#374151" }}>{formatObligatoriedad(item.obligatoriedad)}</td>
-                    <td style={{ padding: "8px" }}>
-                      <StatusBadge status={item.status} />
-                    </td>
-                    <td style={{ padding: "8px", color: "#374151" }}>{item.deadline ? formatDate(item.deadline) : "—"}</td>
-                    <td style={{ padding: "8px", fontSize: 11, color: "#9ca3af" }}>
-                      {item.page ? `pág. ${item.page}` : "—"}
-                      {item.clause ? ` · ${item.clause}` : ""}
-                      <br />
-                      {item.extractedBy === "llm" ? "LLM" : "reglas"}
-                      {typeof item.confidence === "number" ? ` (${Math.round(item.confidence * 100)}%)` : ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Requisitos extraídos ({items?.length ?? 0})</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {items && items.length === 0 && <EstadoVacio mensaje="Todavía no hay requisitos extraídos para esta convocatoria -- sube un documento de bases arriba." />}
+          {items && items.length > 0 && (
+            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/propuesta-tecnica`} className="inline-flex w-fit items-center gap-1 text-[13px] font-semibold text-foreground no-underline hover:underline">
+              Generar propuesta técnica y mapear requisitos →
+            </Link>
+          )}
+          {items && items.length > 0 && (
+            <div className="rounded-xl border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Requisito</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Obligatoriedad</TableHead>
+                    <TableHead>Estatus</TableHead>
+                    <TableHead>Fecha límite</TableHead>
+                    <TableHead>Origen</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.id} className="align-top">
+                      <TableCell className="max-w-[320px] p-3">
+                        <p className="text-foreground">{item.text}</p>
+                        {item.requiredEvidence.length > 0 && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">Evidencia requerida: {item.requiredEvidence.join(", ")}</p>
+                        )}
+                      </TableCell>
+                      <TableCell className="p-3 text-muted-foreground">{formatRequirementKind(item.requirementKind)}</TableCell>
+                      <TableCell className="p-3 text-muted-foreground">{formatObligatoriedad(item.obligatoriedad)}</TableCell>
+                      <TableCell className="p-3">
+                        <StatusBadge status={item.status} />
+                      </TableCell>
+                      <TableCell className="p-3 text-muted-foreground">{item.deadline ? formatDate(item.deadline) : "—"}</TableCell>
+                      <TableCell className="p-3 text-[11px] text-muted-foreground">
+                        {item.page ? `pág. ${item.page}` : "—"}
+                        {item.clause ? ` · ${item.clause}` : ""}
+                        <br />
+                        {item.extractedBy === "llm" ? "LLM" : "reglas"}
+                        {typeof item.confidence === "number" ? ` (${Math.round(item.confidence * 100)}%)` : ""}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

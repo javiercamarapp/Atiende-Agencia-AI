@@ -4,10 +4,40 @@
 // botones ofrecidos aquí son solo un espejo de NEXT_GENERIC_STATUS para no mostrar
 // una acción que el servidor rechazaría (mismo criterio que PedidosPage de
 // restaurantes).
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
+// botones/pills/tarjetas/inputs de estilos inline por Button/Tabs/Card/Badge/Input/
+// Label reales — mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. El modal
+// de confirmación de cancelación (antes `<ConfirmModal>` de estilos inline, ver
+// components/ConfirmModal.tsx) ahora usa `Dialog`/`DialogContent` reales del design
+// system — mismo contrato (open/onConfirm/onCancel/busy), sin cambiar cuándo se abre
+// ni qué confirma. Ningún cambio de lógica: mismos props, mismo estado, mismas
+// llamadas de red, misma condición de cada rama.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Plus } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
 import {
   assignRoom,
   cancelReservation,
@@ -26,7 +56,6 @@ import {
 import type { GuestOption, ReservationStatus, ReservationSummary, RoomOption, RoomTypeOption } from "../lib/reservas-client.ts";
 import { fetchFoliosByReservation } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
-import { ConfirmModal } from "../components/ConfirmModal.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 function formatMoney(n: number): string {
@@ -34,6 +63,8 @@ function formatMoney(n: number): string {
 }
 
 const FILTERS: ReadonlyArray<ReservationStatus | "todas"> = ["todas", "confirmada", "check_in", "en_estancia", "check_out", "cerrada", "cancelada"];
+const selectClass =
+  "mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShellContext) {
   const navigate = useNavigate();
@@ -44,8 +75,8 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
   const [showForm, setShowForm] = useState(false);
   // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
   // confirmación: cancelar reserva... ejecuta de inmediato con un clic"): la
-  // reserva pendiente de confirmar cancelación en el modal de abajo -- `null`
-  // significa que el modal está cerrado. Ver components/ConfirmModal.tsx.
+  // reserva pendiente de confirmar cancelación en el <Dialog> de abajo -- `null`
+  // significa que el modal está cerrado.
   const [pendingCancel, setPendingCancel] = useState<ReservationSummary | null>(null);
 
   // Fix hallazgo ALTA — catálogos reales en vez de UUIDs a mano (ver reservas-client.ts
@@ -245,8 +276,8 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
 
   // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
   // confirmación"): abrir el modal ya NO cancela nada por sí solo -- solo la
-  // ejecuta `handleConfirmCancel`, disparada por el botón de confirmar del modal
-  // real (ver components/ConfirmModal.tsx, "modal, no window.confirm").
+  // ejecuta `handleConfirmCancel`, disparada por el botón de confirmar del <Dialog>
+  // real de abajo ("modal, no window.confirm").
   function handleCancel(reservation: ReservationSummary) {
     setPendingCancel(reservation);
   }
@@ -264,7 +295,7 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
     } finally {
       // Cierra el modal SIEMPRE (éxito o error) -- un fallo del servidor debe ser
       // visible en el banner de error de la página, nunca quedar oculto detrás del
-      // overlay del modal (z-index 1000, por encima de ese banner).
+      // overlay del modal.
       setPendingCancel(null);
       setBusyId(null);
     }
@@ -296,213 +327,225 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
   const visible = reservations?.filter((r) => filter === "todas" || r.estado === filter) ?? null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Reservas</h1>
-        <button onClick={() => setShowForm((v) => !v)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: showForm ? "#fff" : "#111827", color: showForm ? "#111827" : "#fff", fontSize: 13, cursor: "pointer" }}>
-          {showForm ? "Cancelar" : "+ Nueva reserva"}
-        </button>
+    <div className="flex flex-col gap-4">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="text-xl font-display font-semibold text-foreground">Reservas</h1>
+        <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
+          {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
+          {showForm ? "Cancelar" : "Nueva reserva"}
+        </Button>
       </header>
 
       {showForm && (
-        <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 420 }}>
-          <label style={{ fontSize: 13 }}>
-            Tipo de habitación
-            <select value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}>
-              <option value="" disabled>
-                {roomTypes === null ? "Cargando…" : "Selecciona un tipo de habitación"}
-              </option>
-              {roomTypes?.map((rt) => (
-                <option key={rt.id} value={rt.id}>
-                  {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
-                </option>
-              ))}
-            </select>
-            {roomTypes !== null && roomTypes.length === 0 && (
-              <span style={{ display: "block", marginTop: 4, fontSize: 12, color: "#b91c1c" }}>
-                Esta property todavía no tiene tipos de habitación configurados.
-              </span>
-            )}
-          </label>
-          <div style={{ display: "flex", gap: 10 }}>
-            <label style={{ fontSize: 13, flex: 1 }}>
-              Check-in
-              <input type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-            </label>
-            <label style={{ fontSize: 13, flex: 1 }}>
-              Check-out
-              <input type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-            </label>
-          </div>
-          <label style={{ fontSize: 13 }}>
-            Huésped (opcional — busca por nombre, correo o teléfono)
-            <input
-              type="text"
-              value={guestQuery}
-              onChange={(e) => {
-                setGuestQuery(e.target.value);
-                setGuestId("");
-              }}
-              placeholder="Buscar huésped…"
-              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-            />
-            <select
-              value={guestId}
-              onChange={(e) => setGuestId(e.target.value)}
-              size={Math.min(5, guestOptions.length + 1)}
-              style={{ display: "block", width: "100%", marginTop: 6 }}
-            >
-              <option value="">Sin huésped asignado</option>
-              {guestOptions.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.nombreCompleto}
-                  {g.telefono ? ` · ${g.telefono}` : ""}
-                  {g.email ? ` · ${g.email}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          {/* Fix hallazgo CRÍTICO ("...huéspedes imposible sin SQL directo") --
-              alta real de huésped sin salir de este formulario. */}
-          <button
-            type="button"
-            onClick={() => setShowNewGuestForm((v) => !v)}
-            style={{ alignSelf: "flex-start", fontSize: 12, padding: "4px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#374151", cursor: "pointer" }}
-          >
-            {showNewGuestForm ? "Cancelar alta de huésped" : "+ Huésped nuevo"}
-          </button>
-          {showNewGuestForm && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, border: "1px dashed #d1d5db", borderRadius: 8, padding: 10 }}>
-              <label style={{ fontSize: 12 }}>
-                Nombre completo
-                <input value={newGuestName} onChange={(e) => setNewGuestName(e.target.value)} style={{ display: "block", width: "100%", padding: 6, marginTop: 2 }} />
-              </label>
-              <label style={{ fontSize: 12 }}>
-                Email (opcional)
-                <input value={newGuestEmail} onChange={(e) => setNewGuestEmail(e.target.value)} style={{ display: "block", width: "100%", padding: 6, marginTop: 2 }} />
-              </label>
-              <label style={{ fontSize: 12 }}>
-                Teléfono (opcional)
-                <input value={newGuestPhone} onChange={(e) => setNewGuestPhone(e.target.value)} style={{ display: "block", width: "100%", padding: 6, marginTop: 2 }} />
-              </label>
-              <button
-                type="button"
-                onClick={() => void handleCreateGuest()}
-                disabled={creatingGuest}
-                style={{ padding: 8, fontSize: 12, fontWeight: 600, borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer" }}
-              >
-                {creatingGuest ? "Creando…" : "Crear y seleccionar huésped"}
-              </button>
-            </div>
-          )}
-          {formError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {formError}
-            </p>
-          )}
-          <button type="submit" disabled={creating} style={{ padding: 10, fontWeight: 600, borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer" }}>
-            {creating ? "Creando…" : "Crear reserva"}
-          </button>
-        </form>
-      )}
-
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {FILTERS.map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid #d1d5db", background: filter === f ? "#111827" : "#fff", color: filter === f ? "#fff" : "#111827", fontSize: 12, cursor: "pointer" }}
-          >
-            {f === "todas" ? "Todas" : RESERVATION_STATUS_LABELS[f]}
-          </button>
-        ))}
-      </div>
-
-      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
-      {!visible && !error && <EstadoCargando etiqueta="Cargando reservas…" />}
-      {visible && visible.length === 0 && <EstadoVacio mensaje="No hay reservas en este filtro." />}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {visible?.map((r) => {
-          const next = NEXT_GENERIC_STATUS[r.estado];
-          const cancelable = isCancellable(r.estado);
-          return (
-            <div key={r.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600 }}>
-                    {r.checkInDate} → {r.checkOutDate} · {formatMoney(r.montoTotal)}
-                  </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                    Tipo de habitación: {r.roomTypeId} · {r.guestId ? `Huésped: ${r.guestId}` : "Sin huésped asignado"}
-                  </p>
-                  {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") */}
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{r.roomId ? `Habitación asignada: ${r.roomId}` : "Sin habitación asignada"}</p>
-                </div>
-                <span style={{ alignSelf: "flex-start", fontSize: 12, padding: "3px 10px", borderRadius: 999, background: r.estado === "cancelada" ? "#fee2e2" : "#f3f4f6", color: r.estado === "cancelada" ? "#991b1b" : "#374151" }}>
-                  {RESERVATION_STATUS_LABELS[r.estado]}
-                </span>
-              </div>
-              {r.penalizacionCancelacion != null && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#b91c1c" }}>Penalización de cancelación: {formatMoney(r.penalizacionCancelacion)}</p>}
-              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                <button onClick={() => void handleVerFolio(r)} disabled={busyId === r.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #6b7280", background: "#fff", color: "#374151", fontSize: 12, cursor: "pointer" }}>
-                  Ver folio
-                </button>
-                {next && (
-                  <button onClick={() => void handleTransition(r, next)} disabled={busyId === r.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}>
-                    {busyId === r.id ? "…" : `Marcar ${RESERVATION_STATUS_LABELS[next]}`}
-                  </button>
-                )}
-                {r.estado !== "cancelada" && (
-                  <button onClick={() => void handleToggleAssign(r)} disabled={busyId === r.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #6b7280", background: "#fff", color: "#374151", fontSize: 12, cursor: "pointer" }}>
-                    {assigningId === r.id ? "Cerrar" : r.roomId ? "Cambiar habitación" : "Asignar habitación"}
-                  </button>
-                )}
-                {cancelable && (
-                  <button onClick={() => handleCancel(r)} disabled={busyId === r.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}>
-                    Cancelar
-                  </button>
-                )}
-              </div>
-              {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") --
-                  selector inline, sin salir de la lista de reservas. */}
-              {assigningId === r.id && (
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-                  <select value={assigningRoomId ?? ""} onChange={(e) => setAssigningRoomId(e.target.value || null)} style={{ padding: 6, fontSize: 12 }}>
-                    <option value="" disabled>
-                      {roomsByReservation[r.id] === undefined ? "Cargando…" : "Selecciona una habitación"}
+        <Card className="max-w-md">
+          <CardContent className="p-4">
+            <form onSubmit={handleCreate} className="flex flex-col gap-3">
+              <div>
+                <Label htmlFor="res-tipo-habitacion">Tipo de habitación</Label>
+                <select id="res-tipo-habitacion" value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} required className={selectClass}>
+                  <option value="" disabled>
+                    {roomTypes === null ? "Cargando…" : "Selecciona un tipo de habitación"}
+                  </option>
+                  {roomTypes?.map((rt) => (
+                    <option key={rt.id} value={rt.id}>
+                      {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
                     </option>
-                    {roomsByReservation[r.id]?.map((room) => (
-                      <option key={room.id} value={room.id}>
-                        {room.codigo} ({room.estado})
-                      </option>
-                    ))}
-                  </select>
-                  {roomsByReservation[r.id]?.length === 0 && <span style={{ fontSize: 12, color: "#b91c1c" }}>Este tipo de habitación no tiene habitaciones físicas creadas todavía (ver Catálogo).</span>}
-                  <button
-                    onClick={() => void handleConfirmAssign(r)}
-                    disabled={busyId === r.id || !assigningRoomId}
-                    style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 12, cursor: "pointer" }}
-                  >
-                    {busyId === r.id ? "…" : "Confirmar asignación"}
-                  </button>
+                  ))}
+                </select>
+                {roomTypes !== null && roomTypes.length === 0 && (
+                  <span className="block mt-1 text-xs text-destructive">Esta property todavía no tiene tipos de habitación configurados.</span>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <Label htmlFor="res-checkin">Check-in</Label>
+                  <Input id="res-checkin" type="date" value={checkInDate} onChange={(e) => setCheckInDate(e.target.value)} required className="mt-1" />
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="res-checkout">Check-out</Label>
+                  <Input id="res-checkout" type="date" value={checkOutDate} onChange={(e) => setCheckOutDate(e.target.value)} required className="mt-1" />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="res-guest-query">Huésped (opcional — busca por nombre, correo o teléfono)</Label>
+                <Input
+                  id="res-guest-query"
+                  type="text"
+                  value={guestQuery}
+                  onChange={(e) => {
+                    setGuestQuery(e.target.value);
+                    setGuestId("");
+                  }}
+                  placeholder="Buscar huésped…"
+                  className="mt-1"
+                />
+                <select
+                  value={guestId}
+                  onChange={(e) => setGuestId(e.target.value)}
+                  size={Math.min(5, guestOptions.length + 1)}
+                  className="mt-1.5 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="">Sin huésped asignado</option>
+                  {guestOptions.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.nombreCompleto}
+                      {g.telefono ? ` · ${g.telefono}` : ""}
+                      {g.email ? ` · ${g.email}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* Fix hallazgo CRÍTICO ("...huéspedes imposible sin SQL directo") --
+                  alta real de huésped sin salir de este formulario. */}
+              <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => setShowNewGuestForm((v) => !v)}>
+                {showNewGuestForm ? "Cancelar alta de huésped" : "+ Huésped nuevo"}
+              </Button>
+              {showNewGuestForm && (
+                <div className="flex flex-col gap-2 border border-dashed border-border rounded-lg p-3">
+                  <div>
+                    <Label htmlFor="res-guest-nombre" className="text-xs font-normal">Nombre completo</Label>
+                    <Input id="res-guest-nombre" value={newGuestName} onChange={(e) => setNewGuestName(e.target.value)} className="mt-1 h-9" />
+                  </div>
+                  <div>
+                    <Label htmlFor="res-guest-email" className="text-xs font-normal">Email (opcional)</Label>
+                    <Input id="res-guest-email" value={newGuestEmail} onChange={(e) => setNewGuestEmail(e.target.value)} className="mt-1 h-9" />
+                  </div>
+                  <div>
+                    <Label htmlFor="res-guest-telefono" className="text-xs font-normal">Teléfono (opcional)</Label>
+                    <Input id="res-guest-telefono" value={newGuestPhone} onChange={(e) => setNewGuestPhone(e.target.value)} className="mt-1 h-9" />
+                  </div>
+                  <Button type="button" size="sm" onClick={() => void handleCreateGuest()} disabled={creatingGuest}>
+                    {creatingGuest ? "Creando…" : "Crear y seleccionar huésped"}
+                  </Button>
                 </div>
               )}
-            </div>
-          );
-        })}
-      </div>
+              {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
+              <Button type="submit" disabled={creating}>
+                {creating ? "Creando…" : "Crear reserva"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
-      <ConfirmModal
-        open={pendingCancel !== null}
-        title="Cancelar reserva"
-        message={pendingCancel ? `¿Cancelar la reserva ${pendingCancel.checkInDate} → ${pendingCancel.checkOutDate}? Esta acción libera la disponibilidad reservada y puede aplicar una penalización de cancelación.` : ""}
-        confirmLabel="Sí, cancelar reserva"
-        cancelLabel="Volver"
-        busy={pendingCancel !== null && busyId === pendingCancel.id}
-        onConfirm={() => void handleConfirmCancel()}
-        onCancel={() => setPendingCancel(null)}
-      />
+      <Tabs value={filter} onValueChange={(v) => setFilter(v as ReservationStatus | "todas")}>
+        <TabsList className="flex-wrap h-auto">
+          {FILTERS.map((f) => (
+            <TabsTrigger key={f} value={f}>
+              {f === "todas" ? "Todas" : RESERVATION_STATUS_LABELS[f]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value={filter} className="flex flex-col gap-4 mt-4">
+          {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+          {!visible && !error && <EstadoCargando etiqueta="Cargando reservas…" />}
+          {visible && visible.length === 0 && <EstadoVacio mensaje="No hay reservas en este filtro." />}
+
+          <div className="flex flex-col gap-3">
+            {visible?.map((r) => {
+              const next = NEXT_GENERIC_STATUS[r.estado];
+              const cancelable = isCancellable(r.estado);
+              return (
+                <Card key={r.id}>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between flex-wrap gap-2">
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          {r.checkInDate} → {r.checkOutDate} · {formatMoney(r.montoTotal)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Tipo de habitación: {r.roomTypeId} · {r.guestId ? `Huésped: ${r.guestId}` : "Sin huésped asignado"}
+                        </p>
+                        {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") */}
+                        <p className="mt-0.5 text-xs text-muted-foreground">{r.roomId ? `Habitación asignada: ${r.roomId}` : "Sin habitación asignada"}</p>
+                      </div>
+                      <Badge variant={r.estado === "cancelada" ? "destructive" : "secondary"} className="self-start">
+                        {RESERVATION_STATUS_LABELS[r.estado]}
+                      </Badge>
+                    </div>
+                    {r.penalizacionCancelacion != null && (
+                      <p className="mt-1.5 text-xs text-destructive">Penalización de cancelación: {formatMoney(r.penalizacionCancelacion)}</p>
+                    )}
+                    <div className="flex gap-2 mt-2.5 flex-wrap">
+                      <Button type="button" variant="outline" size="sm" onClick={() => void handleVerFolio(r)} disabled={busyId === r.id}>
+                        Ver folio
+                      </Button>
+                      {next && (
+                        <Button type="button" size="sm" onClick={() => void handleTransition(r, next)} disabled={busyId === r.id}>
+                          {busyId === r.id ? "…" : `Marcar ${RESERVATION_STATUS_LABELS[next]}`}
+                        </Button>
+                      )}
+                      {r.estado !== "cancelada" && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => void handleToggleAssign(r)} disabled={busyId === r.id}>
+                          {assigningId === r.id ? "Cerrar" : r.roomId ? "Cambiar habitación" : "Asignar habitación"}
+                        </Button>
+                      )}
+                      {cancelable && (
+                        <Button type="button" variant="outline" size="sm" className="text-destructive border-destructive/40 hover:border-destructive" onClick={() => handleCancel(r)} disabled={busyId === r.id}>
+                          Cancelar
+                        </Button>
+                      )}
+                    </div>
+                    {/* Fix hallazgo CRÍTICO ("asignación de habitación al reservar") --
+                        selector inline, sin salir de la lista de reservas. */}
+                    {assigningId === r.id && (
+                      <div className="flex gap-2 items-center mt-2.5 flex-wrap">
+                        <select
+                          value={assigningRoomId ?? ""}
+                          onChange={(e) => setAssigningRoomId(e.target.value || null)}
+                          className="flex h-9 rounded-md border border-input bg-background px-2.5 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        >
+                          <option value="" disabled>
+                            {roomsByReservation[r.id] === undefined ? "Cargando…" : "Selecciona una habitación"}
+                          </option>
+                          {roomsByReservation[r.id]?.map((room) => (
+                            <option key={room.id} value={room.id}>
+                              {room.codigo} ({room.estado})
+                            </option>
+                          ))}
+                        </select>
+                        {roomsByReservation[r.id]?.length === 0 && (
+                          <span className="text-xs text-destructive">Este tipo de habitación no tiene habitaciones físicas creadas todavía (ver Catálogo).</span>
+                        )}
+                        <Button type="button" size="sm" onClick={() => void handleConfirmAssign(r)} disabled={busyId === r.id || !assigningRoomId}>
+                          {busyId === r.id ? "…" : "Confirmar asignación"}
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={pendingCancel !== null} onOpenChange={(open) => { if (!open) setPendingCancel(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar reserva</DialogTitle>
+            <DialogDescription>
+              {pendingCancel
+                ? `¿Cancelar la reserva ${pendingCancel.checkInDate} → ${pendingCancel.checkOutDate}? Esta acción libera la disponibilidad reservada y puede aplicar una penalización de cancelación.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPendingCancel(null)} disabled={pendingCancel !== null && busyId === pendingCancel.id}>
+              Volver
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleConfirmCancel()}
+              disabled={pendingCancel !== null && busyId === pendingCancel.id}
+            >
+              Sí, cancelar reserva
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

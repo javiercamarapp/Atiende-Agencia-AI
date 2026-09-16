@@ -9,6 +9,7 @@ import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { authGoogleRoutes } from "./routes/auth-google.ts";
+import { authMagicLinkRoutes } from "./routes/auth-magic-link.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
 import { restaurantesVoiceToolsRoutes } from "./routes/verticals/restaurantes/voice-tools.ts";
 import { restaurantesWhatsAppRoutes } from "./routes/verticals/restaurantes/whatsapp.ts";
@@ -49,6 +50,7 @@ export function buildApp(deps: AppDeps): Hono {
 
   app.route("/", authRoutes(deps));
   app.route("/", authGoogleRoutes(deps));
+  app.route("/", authMagicLinkRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
   app.route("/", restaurantesVoiceToolsRoutes(deps));
   app.route("/", restaurantesWhatsAppRoutes(deps));

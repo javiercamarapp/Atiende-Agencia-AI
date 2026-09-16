@@ -11,7 +11,27 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { CalendarPlus, X } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import { crearPeriodo, fetchPeriodos } from "../lib/cierre-mensual-client.ts";
 import type { ClosePeriod } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo } from "../lib/format.ts";
@@ -19,15 +39,24 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
 
-const STATUS_COLORS: Record<ClosePeriod["status"], { bg: string; fg: string }> = {
-  open: { bg: "#dbeafe", fg: "#1e40af" },
-  closed: { bg: "#dcfce7", fg: "#166534" },
-  overdue: { bg: "#fee2e2", fg: "#991b1b" },
+// Mismos tres estatus con la misma carga semántica que las píldoras inline
+// originales (azul = abierto, verde = cerrado, rojo = vencido), ahora sobre el
+// `Badge` real de @atiende/ui. El verde usa la misma escala neutra de Tailwind
+// que ya emplea StatCard para sus notas positivas (no hay token semántico de
+// éxito en el preset).
+const STATUS_BADGE: Record<ClosePeriod["status"], { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
+  open: { variant: "secondary" },
+  closed: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
+  overdue: { variant: "destructive" },
 };
 
 function StatusBadge({ status }: { status: ClosePeriod["status"] }) {
-  const colors = STATUS_COLORS[status];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, fontWeight: 600 }}>{formatPeriodStatus(status)}</span>;
+  const { variant, className } = STATUS_BADGE[status];
+  return (
+    <Badge variant={variant} className={className}>
+      {formatPeriodStatus(status)}
+    </Badge>
+  );
 }
 
 const NOW = new Date();
@@ -88,38 +117,50 @@ export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role
   const ordenados = periodos ? [...periodos].sort((a, b) => (a.year !== b.year ? b.year - a.year : b.month - a.month)) : [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="flex flex-col gap-4 px-1">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Cierre mensual</h1>
-          <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Checklist de 15 tareas por período: CFDI, bancos, nómina, declaraciones, contabilidad electrónica y reportes.</p>
+          <h1 className="font-display text-xl font-semibold text-foreground">Cierre mensual</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">Checklist de 15 tareas por período: CFDI, bancos, nómina, declaraciones, contabilidad electrónica y reportes.</p>
         </div>
         {GESTIONAR_ROLES.has(role) && (
-          <button onClick={() => setShowForm((v) => !v)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: showForm ? "#fff" : "#111827", color: showForm ? "#111827" : "#fff", cursor: "pointer", fontSize: 13 }}>
-            {showForm ? "Cancelar" : "+ Abrir período"}
-          </button>
+          <Button variant={showForm ? "outline" : "default"} size="sm" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? <X /> : <CalendarPlus />}
+            {showForm ? "Cancelar" : "Abrir período"}
+          </Button>
         )}
       </header>
 
+      {/* El formulario sigue siendo un panel inline plegable (no un overlay):
+          son dos campos y el staff los llena mirando la tabla de períodos que
+          tiene debajo. Solo cambia la piel (Card + Input/Label + Button). */}
       {showForm && (
-        <form onSubmit={handleAbrir} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, maxWidth: 320 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Año *
-            <input type="number" min="2000" max="2100" value={anio} onChange={(e) => setAnio(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Mes (1-12) *
-            <input type="number" min="1" max="12" value={mes} onChange={(e) => setMes(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          {formError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {formError}
-            </p>
-          )}
-          <button type="submit" disabled={submitting} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-            {submitting ? "Abriendo…" : "Abrir período"}
-          </button>
-        </form>
+        <Card className="max-w-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Abrir período</CardTitle>
+            <CardDescription>Se crea el checklist completo del mes elegido.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAbrir} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cierre-anio">Año *</Label>
+                <Input id="cierre-anio" type="number" min="2000" max="2100" value={anio} onChange={(e) => setAnio(e.target.value)} required />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cierre-mes">Mes (1-12) *</Label>
+                <Input id="cierre-mes" type="number" min="1" max="12" value={mes} onChange={(e) => setMes(e.target.value)} required />
+              </div>
+              {formError && (
+                <p role="alert" className="text-destructive text-sm">
+                  {formError}
+                </p>
+              )}
+              <Button type="submit" disabled={submitting} className="w-full">
+                {submitting ? "Abriendo…" : "Abrir período"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -131,34 +172,36 @@ export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role
       )}
 
       {ordenados.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                <th style={{ padding: "6px 8px" }}>Período</th>
-                <th style={{ padding: "6px 8px" }}>Estatus</th>
-                <th style={{ padding: "6px 8px" }}>Abierto</th>
-                <th style={{ padding: "6px 8px" }}>Cerrado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ordenados.map((p) => (
-                <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "8px" }}>
-                    <Link to={`/despachos/${orgSlug}/cierre-mensual/${p.id}`} style={{ color: "#111827", fontWeight: 600, textDecoration: "none" }}>
-                      {formatPeriodo(p.year, p.month)}
-                    </Link>
-                  </td>
-                  <td style={{ padding: "8px" }}>
-                    <StatusBadge status={p.status} />
-                  </td>
-                  <td style={{ padding: "8px", color: "#374151" }}>{formatDate(p.openedAt)}</td>
-                  <td style={{ padding: "8px", color: "#374151" }}>{formatDate(p.closedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Período</TableHead>
+                  <TableHead>Estatus</TableHead>
+                  <TableHead>Abierto</TableHead>
+                  <TableHead>Cerrado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ordenados.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      <Link to={`/despachos/${orgSlug}/cierre-mensual/${p.id}`} className="font-semibold text-foreground hover:underline underline-offset-2">
+                        {formatPeriodo(p.year, p.month)}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={p.status} />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(p.openedAt)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(p.closedAt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

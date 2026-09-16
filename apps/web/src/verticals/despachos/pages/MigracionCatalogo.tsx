@@ -17,7 +17,25 @@
 // y la página solo llama al clasificador ya construido con lo que recibe.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Check, CheckCircle2, FolderInput, Pencil, X } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
+import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import {
   aprobarMapeoMigracion,
   clasificarCatalogo,
@@ -31,18 +49,25 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
 
-const ESTADO_COLORS: Record<EstadoMapeoMigracion, { bg: string; fg: string }> = {
-  pendiente: { bg: "#fef9c3", fg: "#854d0e" },
-  aprobado: { bg: "#dcfce7", fg: "#166534" },
-  rechazado: { bg: "#fee2e2", fg: "#991b1b" },
-  editado: { bg: "#dbeafe", fg: "#1e40af" },
+// Misma carga semántica exacta que las píldoras inline originales, ahora sobre
+// el `Badge` real de @atiende/ui.
+type BadgeSpec = { variant: "default" | "secondary" | "destructive" | "outline"; className?: string };
+
+const VERDE = "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400";
+const AMBAR = "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400";
+
+const ESTADO_BADGE: Record<EstadoMapeoMigracion, BadgeSpec> = {
+  pendiente: { variant: "outline", className: AMBAR },
+  aprobado: { variant: "outline", className: VERDE },
+  rechazado: { variant: "destructive" },
+  editado: { variant: "secondary" },
 };
 
-const TIPO_MATCH_COLORS: Record<MapeoMigracionCuenta["tipoMatch"], { bg: string; fg: string }> = {
-  exacto: { bg: "#dcfce7", fg: "#166534" },
-  alerta_riesgo: { bg: "#fee2e2", fg: "#991b1b" },
-  fuzzy: { bg: "#fef9c3", fg: "#854d0e" },
-  sin_match: { bg: "#e5e7eb", fg: "#374151" },
+const TIPO_MATCH_BADGE: Record<MapeoMigracionCuenta["tipoMatch"], BadgeSpec> = {
+  exacto: { variant: "outline", className: VERDE },
+  alerta_riesgo: { variant: "destructive" },
+  fuzzy: { variant: "outline", className: AMBAR },
+  sin_match: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground" },
 };
 
 const ESTADO_FILTROS: ReadonlyArray<{ value: EstadoMapeoMigracion | ""; label: string }> = [
@@ -58,13 +83,21 @@ const EJEMPLO_CATALOGO = `[
 ]`;
 
 function EstadoBadge({ estado }: { estado: EstadoMapeoMigracion }) {
-  const colors = ESTADO_COLORS[estado];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, fontWeight: 600 }}>{formatEstadoMapeoMigracion(estado)}</span>;
+  const { variant, className } = ESTADO_BADGE[estado];
+  return (
+    <Badge variant={variant} className={className}>
+      {formatEstadoMapeoMigracion(estado)}
+    </Badge>
+  );
 }
 
 function TipoMatchBadge({ tipoMatch }: { tipoMatch: MapeoMigracionCuenta["tipoMatch"] }) {
-  const colors = TIPO_MATCH_COLORS[tipoMatch];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, fontWeight: 600 }}>{formatTipoMatchMigracion(tipoMatch)}</span>;
+  const { variant, className } = TIPO_MATCH_BADGE[tipoMatch];
+  return (
+    <Badge variant={variant} className={className}>
+      {formatTipoMatchMigracion(tipoMatch)}
+    </Badge>
+  );
 }
 
 interface RowActionState {
@@ -242,79 +275,102 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="flex flex-col gap-4 px-1">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Migración de catálogo contable</h1>
-          <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+          <h1 className="font-display text-xl font-semibold text-foreground">Migración de catálogo contable</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
             Clasifica el catálogo origen contra el destino (match exacto/alerta de riesgo/aproximado) y decide cada mapeo propuesto -- el match exacto queda auto-aprobado, el resto espera revisión humana.
           </p>
         </div>
         {puedeGestionar && (
-          <button
-            onClick={() => setShowClasificarForm((v) => !v)}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: showClasificarForm ? "#fff" : "#111827", color: showClasificarForm ? "#111827" : "#fff", cursor: "pointer", fontSize: 13 }}
-          >
-            {showClasificarForm ? "Cancelar" : "+ Clasificar catálogo"}
-          </button>
+          <Button variant={showClasificarForm ? "outline" : "default"} size="sm" onClick={() => setShowClasificarForm((v) => !v)}>
+            <FolderInput />
+            {showClasificarForm ? "Cancelar" : "Clasificar catálogo"}
+          </Button>
         )}
       </header>
 
+      {/* El formulario de clasificación (dos JSON grandes pegados a mano) pasó al
+          `ModalFormularioLateral` compartido: es exactamente la forma
+          "formulario ancho en riel lateral" para la que existe ese shell, y
+          además deja de empujar la tabla de mapeos hacia abajo. El estado
+          `showClasificarForm` y `handleClasificar` son los mismos de antes. */}
       {showClasificarForm && (
-        <form onSubmit={handleClasificar} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-            El catálogo del cliente vive en su propia base, fuera de este panel -- pega aquí el JSON ya exportado (arreglo de cuentas: id, codigo, nombre y opcionalmente nivel/naturaleza/tipoAgregado/cuentaPadreCodigo).
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, minWidth: 0 }}>
-              Catálogo origen (JSON) *
-              <textarea
-                value={catalogoOrigenText}
-                onChange={(e) => setCatalogoOrigenText(e.target.value)}
-                rows={8}
-                required
-                style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontFamily: "monospace", fontSize: 12 }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, minWidth: 0 }}>
-              Catálogo destino (JSON) *
-              <textarea
-                value={catalogoDestinoText}
-                onChange={(e) => setCatalogoDestinoText(e.target.value)}
-                rows={8}
-                required
-                style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontFamily: "monospace", fontSize: 12 }}
-              />
-            </label>
-          </div>
-          {clasificarError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {clasificarError}
-            </p>
-          )}
-          <button type="submit" disabled={clasificando} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, maxWidth: 220 }}>
-            {clasificando ? "Clasificando…" : "Clasificar"}
-          </button>
-        </form>
+        <ModalFormularioLateral
+          open
+          onOpenChange={(abierto) => {
+            if (!abierto) setShowClasificarForm(false);
+          }}
+          titulo="Clasificar catálogo"
+          subtitulo="El catálogo del cliente vive en su propia base, fuera de este panel -- pega aquí el JSON ya exportado (arreglo de cuentas: id, codigo, nombre y opcionalmente nivel/naturaleza/tipoAgregado/cuentaPadreCodigo)."
+          footer={
+            <Button type="submit" form="migracion-clasificar" disabled={clasificando} className="rounded-full px-6">
+              {clasificando ? "Clasificando…" : "Clasificar"}
+            </Button>
+          }
+        >
+          <form id="migracion-clasificar" onSubmit={handleClasificar} className="flex flex-col gap-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="catalogo-origen">Catálogo origen (JSON) *</Label>
+                <textarea
+                  id="catalogo-origen"
+                  value={catalogoOrigenText}
+                  onChange={(e) => setCatalogoOrigenText(e.target.value)}
+                  rows={8}
+                  required
+                  className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="catalogo-destino">Catálogo destino (JSON) *</Label>
+                <textarea
+                  id="catalogo-destino"
+                  value={catalogoDestinoText}
+                  onChange={(e) => setCatalogoDestinoText(e.target.value)}
+                  rows={8}
+                  required
+                  className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+            </div>
+            {clasificarError && (
+              <p role="alert" className="text-destructive text-sm">
+                {clasificarError}
+              </p>
+            )}
+          </form>
+        </ModalFormularioLateral>
       )}
 
       {clasificarResultado && (
-        <p style={{ fontSize: 13, color: "#166534", margin: 0, background: "#dcfce7", padding: "8px 12px", borderRadius: 8 }}>{clasificarResultado}</p>
+        <p className="flex items-start gap-2 rounded-lg bg-green-100 px-3 py-2 text-[13px] text-green-800 dark:bg-green-500/15 dark:text-green-400">
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          {clasificarResultado}
+        </p>
       )}
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
-          Filtrar por estado
-          <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as EstadoMapeoMigracion | "")} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="migracion-filtro-estado" className="text-[13px] text-foreground">
+            Filtrar por estado
+          </Label>
+          <select
+            id="migracion-filtro-estado"
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value as EstadoMapeoMigracion | "")}
+            className="h-9 rounded-md border border-input bg-background px-2 text-[13px] text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
             {ESTADO_FILTROS.map((f) => (
               <option key={f.value} value={f.value}>
                 {f.label}
               </option>
             ))}
           </select>
-        </label>
+        </div>
       </div>
 
       {loading && !mapeos && <EstadoCargando etiqueta="Cargando mapeos de migración…" />}
@@ -324,110 +380,112 @@ export function MigracionCatalogoPage({ apiBaseUrl, token, propertyId, role }: D
       )}
 
       {mapeos && mapeos.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                <th style={{ padding: "6px 8px" }}>Cuenta origen</th>
-                <th style={{ padding: "6px 8px" }}>Cuenta destino</th>
-                <th style={{ padding: "6px 8px" }}>Match</th>
-                <th style={{ padding: "6px 8px" }}>Score</th>
-                <th style={{ padding: "6px 8px" }}>Estado</th>
-                {puedeGestionar && <th style={{ padding: "6px 8px" }}>Decisión</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {mapeos.map((m) => {
-                const rowState = rowActions[m.id];
-                const draft = draftDe(m.id);
-                const esPendiente = m.estado === "pendiente";
-                return (
-                  <tr key={m.id} style={{ borderBottom: "1px solid #f3f4f6", verticalAlign: "top" }}>
-                    <td style={{ padding: "8px", fontWeight: 600, color: "#111827" }}>{m.origenCuentaId}</td>
-                    <td style={{ padding: "8px", color: "#374151" }}>{m.destinoCuentaId ?? "—"}</td>
-                    <td style={{ padding: "8px" }}>
-                      <TipoMatchBadge tipoMatch={m.tipoMatch} />
-                    </td>
-                    <td style={{ padding: "8px", color: "#374151" }}>{m.score}</td>
-                    <td style={{ padding: "8px" }}>
-                      <EstadoBadge estado={m.estado} />
-                      {m.aprobadoPor && (
-                        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                          {m.estado === "rechazado" ? "Rechazado" : m.estado === "editado" ? "Editado" : "Aprobado"} por {m.aprobadoPor}
-                          {m.aprobadoEn ? ` · ${formatDateTime(m.aprobadoEn)}` : ""}
-                        </div>
-                      )}
-                      {m.nota && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{m.nota}</div>}
-                      {m.estrategiaConciliacionSaldos && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Conciliación: {m.estrategiaConciliacionSaldos}</div>}
-                    </td>
-                    {puedeGestionar && (
-                      <td style={{ padding: "8px" }}>
-                        {esPendiente ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 260 }}>
-                            <input
-                              type="text"
-                              placeholder="Cuenta destino corregida (solo para editar)"
-                              value={draft.destinoCuentaId}
-                              onChange={(e) => setDraft(m.id, { destinoCuentaId: e.target.value })}
-                              style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}
-                            />
-                            <input
-                              type="text"
-                              placeholder="Nota (motivo, obligatoria para rechazar/editar)"
-                              value={draft.nota}
-                              onChange={(e) => setDraft(m.id, { nota: e.target.value })}
-                              style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}
-                            />
-                            <input
-                              type="text"
-                              placeholder="Estrategia de conciliación (solo si hay N:1)"
-                              value={draft.estrategiaConciliacionSaldos}
-                              onChange={(e) => setDraft(m.id, { estrategiaConciliacionSaldos: e.target.value })}
-                              style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}
-                            />
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button
-                                type="button"
-                                onClick={() => void handleAprobar(m)}
-                                disabled={rowState?.loading}
-                                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #166534", background: "#fff", color: "#166534", cursor: "pointer", fontSize: 12 }}
-                              >
-                                {rowState?.loading ? "…" : "Aprobar"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleRechazar(m)}
-                                disabled={rowState?.loading}
-                                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", cursor: "pointer", fontSize: 12 }}
-                              >
-                                Rechazar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleEditar(m)}
-                                disabled={rowState?.loading}
-                                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #1e40af", background: "#fff", color: "#1e40af", cursor: "pointer", fontSize: 12 }}
-                              >
-                                Editar
-                              </button>
-                            </div>
-                            {rowState?.message && (
-                              <span style={{ fontSize: 11, color: rowState.isError ? "#b91c1c" : "#166534" }} role={rowState.isError ? "alert" : undefined}>
-                                {rowState.message}
-                              </span>
-                            )}
+        <Card>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cuenta origen</TableHead>
+                  <TableHead>Cuenta destino</TableHead>
+                  <TableHead>Match</TableHead>
+                  <TableHead>Score</TableHead>
+                  <TableHead>Estado</TableHead>
+                  {puedeGestionar && <TableHead>Decisión</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mapeos.map((m) => {
+                  const rowState = rowActions[m.id];
+                  const draft = draftDe(m.id);
+                  const esPendiente = m.estado === "pendiente";
+                  return (
+                    <TableRow key={m.id} className="align-top">
+                      <TableCell className="font-semibold text-foreground">{m.origenCuentaId}</TableCell>
+                      <TableCell className="text-muted-foreground">{m.destinoCuentaId ?? "—"}</TableCell>
+                      <TableCell>
+                        <TipoMatchBadge tipoMatch={m.tipoMatch} />
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">{m.score}</TableCell>
+                      <TableCell>
+                        <EstadoBadge estado={m.estado} />
+                        {m.aprobadoPor && (
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            {m.estado === "rechazado" ? "Rechazado" : m.estado === "editado" ? "Editado" : "Aprobado"} por {m.aprobadoPor}
+                            {m.aprobadoEn ? ` · ${formatDateTime(m.aprobadoEn)}` : ""}
                           </div>
-                        ) : (
-                          <span style={{ fontSize: 12, color: "#9ca3af" }}>Ya decidido.</span>
                         )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                        {m.nota && <div className="mt-0.5 text-[11px] text-muted-foreground">{m.nota}</div>}
+                        {m.estrategiaConciliacionSaldos && <div className="mt-0.5 text-[11px] text-muted-foreground">Conciliación: {m.estrategiaConciliacionSaldos}</div>}
+                      </TableCell>
+                      {puedeGestionar && (
+                        <TableCell>
+                          {esPendiente ? (
+                            <div className="flex min-w-64 flex-col gap-1.5">
+                              <Label htmlFor={`migracion-destino-${m.id}`} className="sr-only">
+                                Cuenta destino corregida
+                              </Label>
+                              <Input
+                                id={`migracion-destino-${m.id}`}
+                                type="text"
+                                placeholder="Cuenta destino corregida (solo para editar)"
+                                value={draft.destinoCuentaId}
+                                onChange={(e) => setDraft(m.id, { destinoCuentaId: e.target.value })}
+                                className="h-9 text-xs"
+                              />
+                              <Label htmlFor={`migracion-nota-${m.id}`} className="sr-only">
+                                Nota del motivo
+                              </Label>
+                              <Input
+                                id={`migracion-nota-${m.id}`}
+                                type="text"
+                                placeholder="Nota (motivo, obligatoria para rechazar/editar)"
+                                value={draft.nota}
+                                onChange={(e) => setDraft(m.id, { nota: e.target.value })}
+                                className="h-9 text-xs"
+                              />
+                              <Label htmlFor={`migracion-estrategia-${m.id}`} className="sr-only">
+                                Estrategia de conciliación
+                              </Label>
+                              <Input
+                                id={`migracion-estrategia-${m.id}`}
+                                type="text"
+                                placeholder="Estrategia de conciliación (solo si hay N:1)"
+                                value={draft.estrategiaConciliacionSaldos}
+                                onChange={(e) => setDraft(m.id, { estrategiaConciliacionSaldos: e.target.value })}
+                                className="h-9 text-xs"
+                              />
+                              <div className="flex flex-wrap gap-1.5">
+                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleAprobar(m)} disabled={rowState?.loading}>
+                                  <Check />
+                                  {rowState?.loading ? "…" : "Aprobar"}
+                                </Button>
+                                <Button type="button" variant="outline" size="sm" className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive" onClick={() => void handleRechazar(m)} disabled={rowState?.loading}>
+                                  <X />
+                                  Rechazar
+                                </Button>
+                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEditar(m)} disabled={rowState?.loading}>
+                                  <Pencil />
+                                  Editar
+                                </Button>
+                              </div>
+                              {rowState?.message && (
+                                <span className={`text-[11px] ${rowState.isError ? "text-destructive" : "text-green-700 dark:text-green-400"}`} role={rowState.isError ? "alert" : undefined}>
+                                  {rowState.message}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Ya decidido.</span>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

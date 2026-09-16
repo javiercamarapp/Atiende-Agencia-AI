@@ -1,8 +1,14 @@
 // Sucursales (Fase 5) — lista + ficha de edición real (teléfono/dirección/
 // coordenadas/slug). Deliberadamente sin "crear sucursal" ni "activar/desactivar":
 // ver comentario de cabecera de admin-branches.ts.
+//
+// Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
+// primitivos de `@atiende/ui` — `Card` por sucursal, `Badge` para "Activa/Inactiva",
+// `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
+// Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { EstadoCargando, EstadoError } from "@atiende/ui";
+import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
+import { Pencil } from "lucide-react";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -47,61 +53,76 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId }: RestaurantesSh
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Sucursales</h1>
-      <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>
+    <div className="flex max-w-2xl flex-col gap-4 p-6">
+      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Sucursales</h1>
+      <p className="m-0 text-xs text-muted-foreground">
         Crear una sucursal nueva o activar/desactivarla todavía no está disponible desde el panel — requiere un cambio de plataforma compartido por todas las verticales (ver README de este vertical).
       </p>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {!branches && !error && <EstadoCargando etiqueta="Cargando sucursales…" />}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="flex flex-col gap-3">
         {branches?.map((b) => (
-          <div key={b.propertyId} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600 }}>{b.name}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                  /{b.slug} ·{" "}
-                  <span style={{ color: b.status === "active" ? "#166534" : "#991b1b" }}>{b.status === "active" ? "Activa" : "Inactiva"}</span>
-                </p>
-              </div>
-              {editing !== b.propertyId && (
-                <button onClick={() => startEditing(b)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 12, cursor: "pointer" }}>
-                  Editar
-                </button>
-              )}
-            </div>
-
-            {editing === b.propertyId ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                <label style={{ fontSize: 12, color: "#6b7280" }}>
-                  Teléfono
-                  <input value={draft.phone} onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))} style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
-                </label>
-                <label style={{ fontSize: 12, color: "#6b7280" }}>
-                  Dirección
-                  <input value={draft.address} onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))} style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => void handleSave(b.propertyId)} disabled={saving} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 12, cursor: "pointer" }}>
-                    {saving ? "Guardando…" : "Guardar"}
-                  </button>
-                  <button onClick={() => setEditing(null)} disabled={saving} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 12, cursor: "pointer" }}>
-                    Cancelar
-                  </button>
+          <Card key={b.propertyId}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="m-0 font-semibold text-foreground">{b.name}</p>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>/{b.slug} ·</span>
+                    <Badge variant={b.status === "active" ? "secondary" : "destructive"}>{b.status === "active" ? "Activa" : "Inactiva"}</Badge>
+                  </div>
                 </div>
+                {editing !== b.propertyId && (
+                  <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => startEditing(b)}>
+                    <Pencil />
+                    Editar
+                  </Button>
+                )}
               </div>
-            ) : (
-              <dl style={{ margin: "8px 0 0", display: "grid", gridTemplateColumns: "auto 1fr", rowGap: 4, columnGap: 12, fontSize: 13 }}>
-                <dt style={{ color: "#6b7280" }}>Teléfono</dt>
-                <dd style={{ margin: 0 }}>{b.phone ?? "—"}</dd>
-                <dt style={{ color: "#6b7280" }}>Dirección</dt>
-                <dd style={{ margin: 0 }}>{b.address ?? "—"}</dd>
-              </dl>
-            )}
-          </div>
+
+              {editing === b.propertyId ? (
+                <div className="mt-3 flex flex-col gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`sucursal-telefono-${b.propertyId}`} className="text-xs text-muted-foreground">
+                      Teléfono
+                    </Label>
+                    <Input
+                      id={`sucursal-telefono-${b.propertyId}`}
+                      value={draft.phone}
+                      onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={`sucursal-direccion-${b.propertyId}`} className="text-xs text-muted-foreground">
+                      Dirección
+                    </Label>
+                    <Input
+                      id={`sucursal-direccion-${b.propertyId}`}
+                      value={draft.address}
+                      onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" className="h-9 text-xs" onClick={() => void handleSave(b.propertyId)} disabled={saving}>
+                      {saving ? "Guardando…" : "Guardar"}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={() => setEditing(null)} disabled={saving}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
+                  <dt className="text-muted-foreground">Teléfono</dt>
+                  <dd className="m-0 text-foreground">{b.phone ?? "—"}</dd>
+                  <dt className="text-muted-foreground">Dirección</dt>
+                  <dd className="m-0 text-foreground">{b.address ?? "—"}</dd>
+                </dl>
+              )}
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>

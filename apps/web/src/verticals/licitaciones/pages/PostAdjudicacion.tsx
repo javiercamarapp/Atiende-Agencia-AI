@@ -14,9 +14,34 @@
 // pantalla asume que el contrato YA existe (dado de alta por otra pieza) y
 // muestra la explicación server-side, sin ofrecer crear el contrato, cuando
 // todavía no existe.
+//
+// Fase "sistema de diseño real" (contenido) — los dos bloques pasan a `Tabs`
+// (cobranza / inconformidades) sobre `Card`, el resumen de cuentas por cobrar a
+// `StatCard`, los pills de estatus/viabilidad a `Badge`, y todos los inputs y
+// botones a `Input`/`Label`/`Button` de @atiende/ui. Cero cambios de lógica.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AlertTriangle, ArrowLeft, CalendarDays, CircleDollarSign, Clock } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  StatCard,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { ContractNotFoundError, createContractInvoice, fetchContractInvoices, fetchReceivablesSummary, markContractInvoicePaid } from "../lib/contract-billing-client.ts";
@@ -38,37 +63,55 @@ const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"])
 // distinto de redactarlo o de decidir ir/no ir a una licitación).
 const INCONFORMIDAD_REVIEW_ROLES = new Set(["owner", "admin", "reviewer"]);
 
-const sectionCardStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 };
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 
-const INVOICE_STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  pendiente: { bg: "#fef9c3", fg: "#854d0e" },
-  pagada: { bg: "#dcfce7", fg: "#166534" },
-  vencida: { bg: "#fee2e2", fg: "#991b1b" },
+/** Mismo ámbar de antes, sin hex sueltos: `outline` + tokens de Tailwind. */
+const AMBAR = "border-amber-500/60 text-amber-600 dark:text-amber-400";
+
+/** `<textarea>` sigue siendo nativo (el sistema no exporta un primitivo
+ * propio): solo se restila con los tokens reales. */
+const CAMPO_NATIVO =
+  "flex w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+
+const INVOICE_STATUS_BADGE: Record<string, { variant: BadgeVariant; className?: string }> = {
+  pendiente: { variant: "outline", className: AMBAR },
+  pagada: { variant: "default" },
+  vencida: { variant: "destructive" },
 };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pendiente: "Pendiente", pagada: "Pagada", vencida: "Vencida" };
 
 function InvoiceStatusPill({ status }: { status: string }) {
-  const colors = INVOICE_STATUS_COLORS[status] ?? { bg: "#f3f4f6", fg: "#4b5563" };
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, whiteSpace: "nowrap" }}>{INVOICE_STATUS_LABELS[status] ?? status}</span>;
+  const cfg = INVOICE_STATUS_BADGE[status] ?? { variant: "secondary" as const };
+  return (
+    <Badge variant={cfg.variant} className={cfg.className ? `${cfg.className} whitespace-nowrap` : "whitespace-nowrap"}>
+      {INVOICE_STATUS_LABELS[status] ?? status}
+    </Badge>
+  );
 }
 
-const VIABILITY_COLORS: Record<string, { bg: string; fg: string }> = {
-  alta: { bg: "#dcfce7", fg: "#166534" },
-  media: { bg: "#fef9c3", fg: "#854d0e" },
-  baja: { bg: "#fee2e2", fg: "#991b1b" },
+const VIABILITY_BADGE: Record<string, { variant: BadgeVariant; className?: string }> = {
+  alta: { variant: "default" },
+  media: { variant: "outline", className: AMBAR },
+  baja: { variant: "destructive" },
 };
 const VIABILITY_LABELS: Record<string, string> = { alta: "Alta", media: "Media", baja: "Baja" };
 
 function ViabilityPill({ viability }: { viability: string }) {
-  const colors = VIABILITY_COLORS[viability] ?? { bg: "#f3f4f6", fg: "#4b5563" };
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, whiteSpace: "nowrap" }}>Viabilidad: {VIABILITY_LABELS[viability] ?? viability}</span>;
+  const cfg = VIABILITY_BADGE[viability] ?? { variant: "secondary" as const };
+  return (
+    <Badge variant={cfg.variant} className={cfg.className ? `${cfg.className} whitespace-nowrap` : "whitespace-nowrap"}>
+      Viabilidad: {VIABILITY_LABELS[viability] ?? viability}
+    </Badge>
+  );
 }
 
 function DraftStatusPill({ status }: { status: string }) {
   const isRevisado = status === "revisado";
-  const colors = isRevisado ? { bg: "#dcfce7", fg: "#166534" } : { bg: "#f3f4f6", fg: "#4b5563" };
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, whiteSpace: "nowrap" }}>{isRevisado ? "Revisado" : "Borrador"}</span>;
+  return (
+    <Badge variant={isRevisado ? "default" : "secondary"} className="whitespace-nowrap">
+      {isRevisado ? "Revisado" : "Borrador"}
+    </Badge>
+  );
 }
 
 /** Convierte un textarea de líneas libres en un arreglo de cadenas no vacías -- mismo criterio que el resto del panel (una idea por línea, sin JSON a mano). */
@@ -277,274 +320,258 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
     }
   }
 
-  if (!tenderId) return <p role="alert" style={{ color: "#b91c1c" }}>Falta el id de la convocatoria en la URL.</p>;
-  if (loadingTender && !tender) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (tenderError) return <p role="alert" style={{ color: "#b91c1c" }}>{tenderError}</p>;
+  if (!tenderId) return <EstadoError mensaje="Falta el id de la convocatoria en la URL." />;
+  if (loadingTender && !tender) return <EstadoCargando etiqueta="Cargando convocatoria…" />;
+  if (tenderError) return <EstadoError mensaje={tenderError} onReintentar={() => void loadTender(tenderId)} />;
   if (!tender) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 900 }}>
-      <div>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
-          ← {tender.title}
+    <div className="flex max-w-[900px] flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {tender.title}
         </Link>
-        <h1 style={{ fontSize: 20, margin: "4px 0 0" }}>Post-adjudicación: cobranza e inconformidades</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">Post-adjudicación: cobranza e inconformidades</h1>
+        <p className="text-[13px] text-muted-foreground">
           Seguimiento de pagos contra el contrato ya adjudicado y redacción de borradores de inconformidad contra el fallo. La presentación de escritos ante cualquier autoridad, y el alta del contrato mismo, no viven en esta pantalla.
         </p>
       </div>
 
-      <section style={sectionCardStyle}>
-        <div>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Facturación y cuentas por cobrar del contrato</h2>
-          <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
-            El vencimiento de cada factura (17 días hábiles desde su verificación, Art. 73 LAASSP) SIEMPRE lo calcula el servidor -- nunca se declara aquí. Una factura pasa a "vencida" en cuanto se cumple el plazo sin registrar el pago.
-          </p>
-        </div>
+      <Tabs defaultValue="cobranza" className="w-full">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="cobranza">Cobranza</TabsTrigger>
+          <TabsTrigger value="inconformidades">Inconformidades</TabsTrigger>
+        </TabsList>
 
-        {billingLoading && invoices === null && !contractMissing && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Cargando…</p>}
+        <TabsContent value="cobranza">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Facturación y cuentas por cobrar del contrato</CardTitle>
+              <CardDescription>
+                El vencimiento de cada factura (17 días hábiles desde su verificación, Art. 73 LAASSP) SIEMPRE lo calcula el servidor -- nunca se declara aquí. Una factura pasa a "vencida" en cuanto se cumple el plazo sin registrar el pago.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {billingLoading && invoices === null && !contractMissing && <EstadoCargando lineas={2} etiqueta="Cargando facturación…" />}
 
-        {contractMissing && (
-          <p role="alert" style={{ margin: 0, fontSize: 13, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 10 }}>
-            Esta convocatoria todavía no tiene un contrato registrado -- la cobranza requiere un contrato existente. El alta del contrato es una pantalla aparte (fuera de esta pieza).
-          </p>
-        )}
+              {contractMissing && (
+                <p role="alert" className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-[13px] text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  Esta convocatoria todavía no tiene un contrato registrado -- la cobranza requiere un contrato existente. El alta del contrato es una pantalla aparte (fuera de esta pieza).
+                </p>
+              )}
 
-        {billingError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {billingError}
-          </p>
-        )}
+              {billingError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {billingError}
+                </p>
+              )}
 
-        {receivables && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-              <p style={{ fontSize: 11, textTransform: "uppercase", color: "#6b7280", margin: 0 }}>Pendiente por cobrar</p>
-              <p style={{ fontSize: 16, margin: "4px 0 0", fontWeight: 600 }}>${receivables.totalPending}</p>
-              <p style={{ fontSize: 11, color: "#9ca3af", margin: "2px 0 0" }}>{receivables.countPending} factura(s)</p>
-            </div>
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-              <p style={{ fontSize: 11, textTransform: "uppercase", color: "#6b7280", margin: 0 }}>Vencido</p>
-              <p style={{ fontSize: 16, margin: "4px 0 0", fontWeight: 600, color: receivables.countOverdue > 0 ? "#991b1b" : undefined }}>${receivables.totalOverdue}</p>
-              <p style={{ fontSize: 11, color: "#9ca3af", margin: "2px 0 0" }}>{receivables.countOverdue} factura(s)</p>
-            </div>
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-              <p style={{ fontSize: 11, textTransform: "uppercase", color: "#6b7280", margin: 0 }}>Al corte de</p>
-              <p style={{ fontSize: 16, margin: "4px 0 0", fontWeight: 600 }}>{formatDate(`${receivables.asOfDate}T00:00:00Z`)}</p>
-            </div>
-          </div>
-        )}
-
-        {invoices && invoices.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {invoices.map((inv) => (
-              <div key={inv.id} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8, borderBottom: "1px solid #f3f4f6", paddingBottom: 8, fontSize: 13 }}>
-                <div style={{ flex: "1 1 220px" }}>
-                  <p style={{ margin: 0, fontWeight: 600 }}>
-                    {inv.concepto} · ${inv.amount}
-                  </p>
-                  <p style={{ margin: "2px 0 0", color: "#6b7280", fontSize: 12 }}>
-                    Verificada {formatDate(`${inv.invoiceVerifiedOn}T00:00:00Z`)} · vence {formatDate(`${inv.dueDate}T00:00:00Z`)}
-                    {inv.paidAt ? ` · pagada ${formatDate(inv.paidAt)}` : ""}
-                  </p>
+              {receivables && (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <StatCard icon={CircleDollarSign} label="Pendiente por cobrar" value={`$${receivables.totalPending}`} nota={`${receivables.countPending} factura(s)`} />
+                  <StatCard icon={Clock} label="Vencido" value={`$${receivables.totalOverdue}`} nota={`${receivables.countOverdue} factura(s)`} />
+                  <StatCard icon={CalendarDays} label="Al corte de" value={formatDate(`${receivables.asOfDate}T00:00:00Z`)} />
                 </div>
-                <InvoiceStatusPill status={inv.status} />
-                {inv.status !== "pagada" && canWrite && (
-                  <button
-                    type="button"
-                    onClick={() => void handleMarkPaid(inv.id)}
-                    disabled={markingPaidId === inv.id}
-                    style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #111827", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
-                  >
-                    {markingPaidId === inv.id ? "Marcando…" : "Marcar pagada"}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {invoices && invoices.length === 0 && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Todavía no hay facturas registradas contra este contrato.</p>}
+              )}
 
-        {markPaidError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {markPaidError}
-          </p>
-        )}
-
-        {canWrite && !contractMissing && (
-          <form onSubmit={(e) => void handleCreateInvoice(e)} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 8, borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "2 1 220px" }}>
-              Concepto
-              <input value={conceptoText} onChange={(e) => setConceptoText(e.target.value)} placeholder="Primera exhibición" style={inputStyle} />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 140px" }}>
-              Monto
-              <input value={amountText} onChange={(e) => setAmountText(e.target.value)} placeholder="12345.67" style={inputStyle} />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 160px" }}>
-              Fecha de verificación
-              <input type="date" value={invoiceVerifiedOnText} onChange={(e) => setInvoiceVerifiedOnText(e.target.value)} style={inputStyle} />
-            </label>
-            <button
-              type="submit"
-              disabled={creatingInvoice}
-              style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-            >
-              {creatingInvoice ? "Registrando…" : "Registrar factura"}
-            </button>
-            {createInvoiceError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 12, flexBasis: "100%" }}>
-                {createInvoiceError}
-              </p>
-            )}
-          </form>
-        )}
-        {!canWrite && !contractMissing && <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede registrar ni marcar facturas -- solo lectura.</p>}
-      </section>
-
-      <section style={sectionCardStyle}>
-        <div>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Inconformidades contra el fallo</h2>
-          <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
-            {`Genera un BORRADOR estructurado (hechos/agravios/pruebas/fundamentos legales/plazo) -- esto NUNCA se presenta ante ninguna autoridad desde aquí, NO es asesoría legal, y siempre requiere revisión de abogado antes de usarse.`}
-          </p>
-        </div>
-
-        {draftsLoading && drafts === null && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Cargando…</p>}
-        {draftsError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {draftsError}
-          </p>
-        )}
-
-        {drafts && drafts.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {drafts.map((d) => (
-              <div key={d.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
-                    Versión {d.version} · límite {formatDate(`${d.plazo.fechaLimite}T00:00:00Z`)} ({d.plazo.diasHabiles} días hábiles)
-                  </p>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <ViabilityPill viability={d.viability} />
-                    <DraftStatusPill status={d.status} />
-                  </div>
-                </div>
-                <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>{d.viabilityRecommendation}</p>
-                <p style={{ margin: 0, fontSize: 11, color: "#991b1b", fontStyle: "italic" }}>{d.disclaimer}</p>
-                <details>
-                  <summary style={{ fontSize: 12, color: "#111827", cursor: "pointer" }}>Ver hechos, agravios y fundamentos ({d.fundamentos.length})</summary>
-                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
-                    <div>
-                      <p style={{ margin: "0 0 2px", fontWeight: 600 }}>Hechos</p>
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        {d.hechos.map((h, i) => (
-                          <li key={i}>{h}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div>
-                      <p style={{ margin: "0 0 2px", fontWeight: 600 }}>Agravios</p>
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        {d.agravios.map((a, i) => (
-                          <li key={i}>{a}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    {d.pruebas.length > 0 && (
-                      <div>
-                        <p style={{ margin: "0 0 2px", fontWeight: 600 }}>Pruebas</p>
-                        <ul style={{ margin: 0, paddingLeft: 18 }}>
-                          {d.pruebas.map((p, i) => (
-                            <li key={i}>{p}</li>
-                          ))}
-                        </ul>
+              {invoices && invoices.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {invoices.map((inv) => (
+                    <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 text-[13px]">
+                      <div className="flex-[1_1_220px]">
+                        <p className="font-semibold text-foreground">
+                          {inv.concepto} · ${inv.amount}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Verificada {formatDate(`${inv.invoiceVerifiedOn}T00:00:00Z`)} · vence {formatDate(`${inv.dueDate}T00:00:00Z`)}
+                          {inv.paidAt ? ` · pagada ${formatDate(inv.paidAt)}` : ""}
+                        </p>
                       </div>
-                    )}
-                    <div>
-                      <p style={{ margin: "0 0 2px", fontWeight: 600 }}>Fundamentos legales</p>
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        {d.fundamentos.map((f, i) => (
-                          <li key={i}>
-                            {f.ley} {f.articulo}: {f.texto}
-                          </li>
-                        ))}
-                      </ul>
+                      <InvoiceStatusPill status={inv.status} />
+                      {inv.status !== "pagada" && canWrite && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => void handleMarkPaid(inv.id)} disabled={markingPaidId === inv.id}>
+                          {markingPaidId === inv.id ? "Marcando…" : "Marcar pagada"}
+                        </Button>
+                      )}
                     </div>
+                  ))}
+                </div>
+              )}
+              {invoices && invoices.length === 0 && <EstadoVacio mensaje="Todavía no hay facturas registradas contra este contrato." />}
+
+              {markPaidError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {markPaidError}
+                </p>
+              )}
+
+              {canWrite && !contractMissing && (
+                <form onSubmit={(e) => void handleCreateInvoice(e)} className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
+                  <div className="flex flex-[2_1_220px] flex-col gap-1.5">
+                    <Label htmlFor="factura-concepto">Concepto</Label>
+                    <Input id="factura-concepto" value={conceptoText} onChange={(e) => setConceptoText(e.target.value)} placeholder="Primera exhibición" />
                   </div>
-                </details>
-                {d.status === "borrador" && canReviewInconformidad && (
-                  <button
-                    type="button"
-                    onClick={() => void handleMarkReviewed(d.id)}
-                    disabled={reviewingId === d.id}
-                    style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 6, border: "1px solid #111827", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
-                  >
-                    {reviewingId === d.id ? "Marcando…" : "Marcar como revisado por abogado"}
-                  </button>
-                )}
-                {d.status === "revisado" && (
-                  <p style={{ margin: 0, fontSize: 11, color: "#166534" }}>
-                    Revisado {d.reviewedAt ? formatDate(d.reviewedAt) : ""}.
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {drafts && drafts.length === 0 && <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Todavía no se ha generado ningún borrador de inconformidad para esta convocatoria.</p>}
+                  <div className="flex flex-[1_1_140px] flex-col gap-1.5">
+                    <Label htmlFor="factura-monto">Monto</Label>
+                    <Input id="factura-monto" value={amountText} onChange={(e) => setAmountText(e.target.value)} placeholder="12345.67" />
+                  </div>
+                  <div className="flex flex-[1_1_160px] flex-col gap-1.5">
+                    <Label htmlFor="factura-verificacion">Fecha de verificación</Label>
+                    <Input id="factura-verificacion" type="date" value={invoiceVerifiedOnText} onChange={(e) => setInvoiceVerifiedOnText(e.target.value)} />
+                  </div>
+                  <Button type="submit" size="sm" disabled={creatingInvoice}>
+                    {creatingInvoice ? "Registrando…" : "Registrar factura"}
+                  </Button>
+                  {createInvoiceError && (
+                    <p role="alert" className="basis-full text-xs text-destructive">
+                      {createInvoiceError}
+                    </p>
+                  )}
+                </form>
+              )}
+              {!canWrite && !contractMissing && <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede registrar ni marcar facturas -- solo lectura.</p>}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {reviewError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {reviewError}
-          </p>
-        )}
-        {!canReviewInconformidad && drafts && drafts.some((d) => d.status === "borrador") && (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede marcar un borrador como revisado -- solo owner/admin/reviewer.</p>
-        )}
+        <TabsContent value="inconformidades">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Inconformidades contra el fallo</CardTitle>
+              <CardDescription>
+                {`Genera un BORRADOR estructurado (hechos/agravios/pruebas/fundamentos legales/plazo) -- esto NUNCA se presenta ante ninguna autoridad desde aquí, NO es asesoría legal, y siempre requiere revisión de abogado antes de usarse.`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {draftsLoading && drafts === null && <EstadoCargando lineas={2} etiqueta="Cargando borradores…" />}
+              {draftsError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {draftsError}
+                </p>
+              )}
 
-        {canWrite ? (
-          <form onSubmit={(e) => void handleGenerateDraft(e)} style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
-            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#374151" }}>Generar un nuevo borrador (cada envío crea una versión nueva, nunca edita una existente)</p>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-              Hechos (uno por línea)
-              <textarea value={hechosText} onChange={(e) => setHechosText(e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-              Agravios (uno por línea)
-              <textarea value={agraviosText} onChange={(e) => setAgraviosText(e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-              Pruebas (uno por línea, opcional -- sin pruebas la viabilidad se clasifica como "baja")
-              <textarea value={pruebasText} onChange={(e) => setPruebasText(e.target.value)} rows={2} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
-            </label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, flex: "1 1 180px" }}>
-                Fecha de notificación del fallo
-                <input type="date" value={falloNotifiedOnText} onChange={(e) => setFalloNotifiedOnText(e.target.value)} style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <input type="checkbox" checked={bajoTratados} onChange={(e) => setBajoTratados(e.target.checked)} />
-                Licitación pública internacional bajo cobertura de tratados (10 días hábiles en vez de 6)
-              </label>
-            </div>
-            {generateDraftError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 12 }}>
-                {generateDraftError}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={generatingDraft}
-              style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-            >
-              {generatingDraft ? "Generando…" : "Generar borrador"}
-            </button>
-          </form>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede generar borradores de inconformidad -- solo lectura.</p>
-        )}
-      </section>
+              {drafts && drafts.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  {drafts.map((d) => (
+                    <div key={d.id} className="flex flex-col gap-2 rounded-xl border border-border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[13px] font-semibold text-foreground">
+                          Versión {d.version} · límite {formatDate(`${d.plazo.fechaLimite}T00:00:00Z`)} ({d.plazo.diasHabiles} días hábiles)
+                        </p>
+                        <div className="flex gap-1.5">
+                          <ViabilityPill viability={d.viability} />
+                          <DraftStatusPill status={d.status} />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{d.viabilityRecommendation}</p>
+                      <p className="text-[11px] italic text-destructive">{d.disclaimer}</p>
+                      <details>
+                        <summary className="cursor-pointer text-xs text-foreground">Ver hechos, agravios y fundamentos ({d.fundamentos.length})</summary>
+                        <div className="mt-2 flex flex-col gap-2 text-xs">
+                          <div>
+                            <p className="mb-0.5 font-semibold text-foreground">Hechos</p>
+                            <ul className="list-disc pl-5 text-muted-foreground">
+                              {d.hechos.map((h, i) => (
+                                <li key={i}>{h}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="mb-0.5 font-semibold text-foreground">Agravios</p>
+                            <ul className="list-disc pl-5 text-muted-foreground">
+                              {d.agravios.map((a, i) => (
+                                <li key={i}>{a}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          {d.pruebas.length > 0 && (
+                            <div>
+                              <p className="mb-0.5 font-semibold text-foreground">Pruebas</p>
+                              <ul className="list-disc pl-5 text-muted-foreground">
+                                {d.pruebas.map((p, i) => (
+                                  <li key={i}>{p}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <div>
+                            <p className="mb-0.5 font-semibold text-foreground">Fundamentos legales</p>
+                            <ul className="list-disc pl-5 text-muted-foreground">
+                              {d.fundamentos.map((f, i) => (
+                                <li key={i}>
+                                  {f.ley} {f.articulo}: {f.texto}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </details>
+                      {d.status === "borrador" && canReviewInconformidad && (
+                        <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => void handleMarkReviewed(d.id)} disabled={reviewingId === d.id}>
+                          {reviewingId === d.id ? "Marcando…" : "Marcar como revisado por abogado"}
+                        </Button>
+                      )}
+                      {d.status === "revisado" && (
+                        <p className="text-[11px] font-medium text-green-600 dark:text-green-500">Revisado {d.reviewedAt ? formatDate(d.reviewedAt) : ""}.</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {drafts && drafts.length === 0 && <EstadoVacio mensaje="Todavía no se ha generado ningún borrador de inconformidad para esta convocatoria." />}
+
+              {reviewError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {reviewError}
+                </p>
+              )}
+              {!canReviewInconformidad && drafts && drafts.some((d) => d.status === "borrador") && (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede marcar un borrador como revisado -- solo owner/admin/reviewer.</p>
+              )}
+
+              {canWrite ? (
+                <form onSubmit={(e) => void handleGenerateDraft(e)} className="flex flex-col gap-2.5 border-t border-border pt-3">
+                  <p className="text-xs font-semibold text-foreground">Generar un nuevo borrador (cada envío crea una versión nueva, nunca edita una existente)</p>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="inc-hechos">Hechos (uno por línea)</Label>
+                    <textarea id="inc-hechos" value={hechosText} onChange={(e) => setHechosText(e.target.value)} rows={3} className={CAMPO_NATIVO} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="inc-agravios">Agravios (uno por línea)</Label>
+                    <textarea id="inc-agravios" value={agraviosText} onChange={(e) => setAgraviosText(e.target.value)} rows={3} className={CAMPO_NATIVO} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="inc-pruebas">Pruebas (uno por línea, opcional -- sin pruebas la viabilidad se clasifica como "baja")</Label>
+                    <textarea id="inc-pruebas" value={pruebasText} onChange={(e) => setPruebasText(e.target.value)} rows={2} className={CAMPO_NATIVO} />
+                  </div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="flex flex-[1_1_180px] flex-col gap-1.5">
+                      <Label htmlFor="inc-fallo">Fecha de notificación del fallo</Label>
+                      <Input id="inc-fallo" type="date" value={falloNotifiedOnText} onChange={(e) => setFalloNotifiedOnText(e.target.value)} />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-foreground">
+                      <input type="checkbox" checked={bajoTratados} onChange={(e) => setBajoTratados(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--primary))]" />
+                      Licitación pública internacional bajo cobertura de tratados (10 días hábiles en vez de 6)
+                    </label>
+                  </div>
+                  {generateDraftError && (
+                    <p role="alert" className="text-xs text-destructive">
+                      {generateDraftError}
+                    </p>
+                  )}
+                  <Button type="submit" size="sm" className="self-start" disabled={generatingDraft}>
+                    {generatingDraft ? "Generando…" : "Generar borrador"}
+                  </Button>
+                </form>
+              ) : (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede generar borradores de inconformidad -- solo lectura.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

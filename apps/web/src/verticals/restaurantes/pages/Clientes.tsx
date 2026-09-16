@@ -1,18 +1,39 @@
 // Clientes (Fase 5) — lista + búsqueda + ficha real (tier/direcciones/"lo de
 // siempre") sobre exactamente lo que customers.ts ya calcula — ver
 // admin-customers.ts. Nunca inventa campos nuevos.
+//
+// Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a
+// los primitivos que `@atiende/ui` ya exporta (`Card` para cada cliente de la lista
+// y para los bloques de la ficha, `Input` para la búsqueda, `Badge` para el tier,
+// `Button` para volver) — mismo acabado que RestaurantesShell.tsx. La lógica de
+// fetch/estado de abajo es idéntica: solo cambia el JSX.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+} from "@atiende/ui";
+import { ArrowLeft, Search } from "lucide-react";
 import { fetchCustomerDetail, fetchCustomers } from "../lib/customers-client.ts";
 import type { CustomerDetail, CustomerSummary, CustomerTier } from "../lib/customers-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-const TIER_META: Record<CustomerTier, { label: string; glyph: string; bg: string; fg: string }> = {
-  BLACK: { label: "Black", glyph: "♛", bg: "#18181b", fg: "#fafafa" },
-  PLATINUM: { label: "Platinum", glyph: "◆", bg: "#e2e8f0", fg: "#334155" },
-  GOLD: { label: "Gold", glyph: "★", bg: "#fef3c7", fg: "#92400e" },
-  BLUE: { label: "Blue", glyph: "●", bg: "#e0e7ff", fg: "#3730a3" },
+/** Mismos 4 tiers de siempre (label/glifo idénticos); el color deja de ser un hex
+ * suelto y pasa a clases de token que funcionan en claro y oscuro. */
+const TIER_META: Record<CustomerTier, { label: string; glyph: string; clase: string }> = {
+  BLACK: { label: "Black", glyph: "♛", clase: "border-transparent bg-foreground text-background" },
+  PLATINUM: { label: "Platinum", glyph: "◆", clase: "border-border bg-muted text-muted-foreground" },
+  GOLD: { label: "Gold", glyph: "★", clase: "border-transparent bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" },
+  BLUE: { label: "Blue", glyph: "●", clase: "border-transparent bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200" },
 };
 
 export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
@@ -31,26 +52,44 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Res
   }, [apiBaseUrl, token, propertyId, search]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Clientes</h1>
-      <input
-        placeholder="Buscar por nombre o teléfono…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, maxWidth: 320 }}
-      />
+    <div className="flex flex-col gap-4 p-6">
+      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Clientes</h1>
+
+      <div className="max-w-xs">
+        <Label htmlFor="restaurantes-clientes-buscar" className="mb-1.5 block text-xs text-muted-foreground">
+          Buscar
+        </Label>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
+          <Input
+            id="restaurantes-clientes-buscar"
+            placeholder="Buscar por nombre o teléfono…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      </div>
 
       {error && <EstadoError mensaje={error} />}
       {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
       {customers && customers.length === 0 && <EstadoVacio mensaje="No se encontraron clientes." />}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
         {customers?.map((c) => (
-          <Link key={c.id} to={`/restaurantes/${orgSlug}/clientes/${c.id}`} style={{ display: "block", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, textDecoration: "none", color: "inherit" }}>
-            <p style={{ margin: 0, fontWeight: 600 }}>{c.name ?? c.phone}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>
-              {c.phone} · {c.orderCount} pedido{c.orderCount === 1 ? "" : "s"}
-            </p>
+          <Link
+            key={c.id}
+            to={`/restaurantes/${orgSlug}/clientes/${c.id}`}
+            className="block rounded-lg no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <Card className="h-full transition-colors hover:bg-muted/50">
+              <CardContent className="p-4">
+                <p className="m-0 font-semibold text-foreground">{c.name ?? c.phone}</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">
+                  {c.phone} · {c.orderCount} pedido{c.orderCount === 1 ? "" : "s"}
+                </p>
+              </CardContent>
+            </Card>
           </Link>
         ))}
       </div>
@@ -77,10 +116,13 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
   }, [apiBaseUrl, token, propertyId, customerId]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 520 }}>
-      <Link to={`/restaurantes/${orgSlug}/clientes`} style={{ fontSize: 13, color: "#6b7280" }}>
-        ← Volver a clientes
-      </Link>
+    <div className="flex max-w-xl flex-col gap-4 p-6">
+      <Button asChild variant="ghost" size="sm" className="self-start px-2 text-muted-foreground">
+        <Link to={`/restaurantes/${orgSlug}/clientes`}>
+          <ArrowLeft />
+          Volver a clientes
+        </Link>
+      </Button>
 
       {error && <EstadoError mensaje={error} />}
       {!detail && !error && <EstadoCargando etiqueta="Cargando cliente…" />}
@@ -88,56 +130,64 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
 
       {detail && !detail.isNew && (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 style={{ fontSize: 20, margin: 0 }}>{detail.name ?? "Sin nombre"}</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="m-0 font-display text-xl font-semibold text-foreground">{detail.name ?? "Sin nombre"}</h1>
             {detail.tier && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 500, background: TIER_META[detail.tier].bg, color: TIER_META[detail.tier].fg }}>
+              <Badge variant="outline" className={`gap-1.5 px-2.5 py-1 font-medium ${TIER_META[detail.tier].clase}`}>
                 <span aria-hidden>{TIER_META[detail.tier].glyph}</span>
                 {TIER_META[detail.tier].label}
-              </span>
+              </Badge>
             )}
           </div>
 
-          <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", rowGap: 8, columnGap: 12, fontSize: 14 }}>
-            <dt style={{ color: "#6b7280" }}>Pedidos totales</dt>
-            <dd style={{ margin: 0 }}>{detail.orderCount}</dd>
+          <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
+            <dt className="text-muted-foreground">Pedidos totales</dt>
+            <dd className="m-0 text-foreground">{detail.orderCount}</dd>
           </dl>
 
-          <section>
-            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600 }}>Direcciones guardadas</p>
-            {detail.addresses.length === 0 ? (
-              <p style={{ color: "#6b7280", fontSize: 13 }}>Sin direcciones guardadas.</p>
-            ) : (
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-                {detail.addresses.map((a, i) => (
-                  <li key={i}>
-                    {a.address} {a.isDefault && <span style={{ color: "#6b7280" }}>(principal)</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <Card>
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-[13px] font-semibold">Direcciones guardadas</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              {detail.addresses.length === 0 ? (
+                <p className="m-0 text-[13px] text-muted-foreground">Sin direcciones guardadas.</p>
+              ) : (
+                <ul className="m-0 list-disc pl-5 text-[13px] text-foreground">
+                  {detail.addresses.map((a, i) => (
+                    <li key={i}>
+                      {a.address} {a.isDefault && <span className="text-muted-foreground">(principal)</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
 
-          <section>
-            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600 }}>Lo que más pide</p>
-            {detail.frequentItems.length === 0 ? (
-              <p style={{ color: "#6b7280", fontSize: 13 }}>Sin historial suficiente todavía.</p>
-            ) : (
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-                {detail.frequentItems.map((item, i) => (
-                  <li key={i}>
-                    {item.quantity}× {item.name}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <Card>
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-[13px] font-semibold">Lo que más pide</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              {detail.frequentItems.length === 0 ? (
+                <p className="m-0 text-[13px] text-muted-foreground">Sin historial suficiente todavía.</p>
+              ) : (
+                <ul className="m-0 list-disc pl-5 text-[13px] text-foreground">
+                  {detail.frequentItems.map((item, i) => (
+                    <li key={i}>
+                      {item.quantity}× {item.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
 
           {detail.agentNotes.length > 0 && (
-            <section style={{ border: "1px dashed #d1d5db", borderRadius: 10, padding: 12 }}>
-              <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#6b7280" }}>Notas para el agente</p>
+            <section className="rounded-lg border border-dashed border-border p-3">
+              <p className="m-0 mb-1.5 text-xs font-semibold text-muted-foreground">Notas para el agente</p>
               {detail.agentNotes.map((note, i) => (
-                <p key={i} style={{ margin: "4px 0 0", fontSize: 13 }}>
+                <p key={i} className="mt-1 text-[13px] text-foreground">
                   {note}
                 </p>
               ))}

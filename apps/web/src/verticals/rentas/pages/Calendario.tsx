@@ -7,8 +7,36 @@
 // (reserva de canal Y bloqueo, GET .../ocupaciones, calendario-client.ts) con
 // crear/cancelar reserva, crear/cancelar bloqueo y modificar fechas de una reserva
 // directa -- las 3 acciones reales que el backend ya soportaba sin UI.
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui): Button/Card/Input/
+// Label/Badge/EstadoCargando/EstadoVacio/EstadoError + clases de token en lugar de
+// los `style={{...}}` hechos a mano. La confirmación de cancelar/liberar (patrón de
+// 2 pasos, ver abajo) pasa a <Dialog> real, pero CONSERVA sus dos pasos exactos: el
+// primer clic solo marca `confirmandoCancelarId`, la llamada al servidor sigue
+// ocurriendo únicamente en el segundo clic explícito. CERO cambios de lógica de
+// negocio: mismos efectos, mismas llamadas, mismas ramas de render.
 import { useEffect, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import type { FormEvent } from "react";
+import { CalendarPlus, Ban, CalendarDays, Pencil } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+} from "@atiende/ui";
 import {
   cancelarBloqueo,
   cancelarReserva,
@@ -24,11 +52,13 @@ import {
 import type { OcupacionCalendario, RazonBloqueo, UnidadOption } from "../lib/calendario-client.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
-const inputStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
-const labelStyle: CSSProperties = { fontSize: 13 };
-const primaryButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" };
-const secondaryButtonStyle: CSSProperties = { padding: "5px 12px", borderRadius: 8, border: "1px solid #6b7280", background: "#fff", color: "#374151", fontSize: 12, cursor: "pointer" };
-const dangerButtonStyle: CSSProperties = { padding: "5px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" };
+/** Mismos tokens que el <Input> de @atiende/ui aplicados al <select> nativo: aquí los
+ * selectores son dropdowns de datos reales (unidades, razones de bloqueo), incluido
+ * el estado `<option>Cargando…</option>` -- se quedan nativos, solo re-estilados. */
+const SELECT_CLASES =
+  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+
+const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
 
 /** Solo las reservas SIN canal externo (o canal 'manual') aceptan modificar fechas —
  * mismo guardia que ya aplica el servidor en `PATCH .../reservas/:id`
@@ -39,10 +69,12 @@ function esReservaDirecta(o: OcupacionCalendario): boolean {
   return o.capa === "reserva" && (o.canalCodigo === null || o.canalCodigo === "manual");
 }
 
-function badgeColorFor(o: OcupacionCalendario): { bg: string; fg: string } {
-  if (o.estado === "cancelado") return { bg: "#f3f4f6", fg: "#6b7280" };
-  if (o.capa === "reserva") return { bg: "#dbeafe", fg: "#1e40af" };
-  return { bg: "#fef3c7", fg: "#92400e" };
+/** Mapea el mismo criterio de color que la versión previa (cancelado = apagado,
+ * reserva = principal, bloqueo = secundario) a las variantes reales de <Badge>. */
+function badgeVarianteFor(o: OcupacionCalendario): "default" | "secondary" | "outline" {
+  if (o.estado === "cancelado") return "outline";
+  if (o.capa === "reserva") return "default";
+  return "secondary";
 }
 
 export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellContext) {
@@ -212,46 +244,50 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
 
   if (unidades && unidades.length === 0) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Calendario</h1>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          Esta propiedad todavía no tiene ninguna unidad configurada.
-        </p>
+      <div className="flex flex-col gap-4">
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Calendario</h1>
+        <EstadoError titulo="Sin unidades" mensaje="Esta propiedad todavía no tiene ninguna unidad configurada." />
       </div>
     );
   }
 
+  const ocupacionConfirmando = ocupaciones?.find((o) => o.id === confirmandoCancelarId) ?? null;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Calendario</h1>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
+    <div className="flex flex-col gap-4">
+      <header className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Calendario</h1>
+        <div className="flex gap-2 flex-wrap">
+          <Button
             type="button"
+            variant={showReservaForm ? "outline" : "default"}
+            size="sm"
             onClick={() => {
               setShowBloqueoForm(false);
               setShowReservaForm((v) => !v);
             }}
-            style={{ ...primaryButtonStyle, background: showReservaForm ? "#fff" : "#111827", color: showReservaForm ? "#111827" : "#fff" }}
           >
+            <CalendarPlus className="w-4 h-4" strokeWidth={1.75} />
             {showReservaForm ? "Cancelar" : "+ Nueva reserva"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => {
               setShowReservaForm(false);
               setShowBloqueoForm((v) => !v);
             }}
-            style={{ ...primaryButtonStyle, background: showBloqueoForm ? "#fff" : "#fff", color: "#111827" }}
           >
+            <Ban className="w-4 h-4" strokeWidth={1.75} />
             {showBloqueoForm ? "Cancelar" : "+ Nuevo bloqueo"}
-          </button>
+          </Button>
         </div>
       </header>
 
-      <label style={{ ...labelStyle, maxWidth: 320 }}>
+      <Label className={`${LABEL_CLASES} max-w-[320px]`}>
         Unidad
-        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} style={inputStyle} disabled={!unidades}>
+        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
           {!unidades && <option>Cargando…</option>}
           {unidades?.map((u) => (
             <option key={u.id} value={u.id}>
@@ -259,164 +295,185 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
             </option>
           ))}
         </select>
-      </label>
+      </Label>
 
       {showReservaForm && (
-        <form onSubmit={handleCrearReserva} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 420 }}>
-          <h2 style={{ fontSize: 14, margin: 0 }}>Nueva reserva directa</h2>
-          <div style={{ display: "flex", gap: 10 }}>
-            <label style={{ ...labelStyle, flex: 1 }}>
-              Check-in
-              <input type="date" value={reservaInicio} onChange={(e) => setReservaInicio(e.target.value)} required style={inputStyle} />
-            </label>
-            <label style={{ ...labelStyle, flex: 1 }}>
-              Check-out
-              <input type="date" value={reservaFin} onChange={(e) => setReservaFin(e.target.value)} required style={inputStyle} />
-            </label>
-          </div>
-          <label style={labelStyle}>
-            Huésped (opcional)
-            <input value={huespedNombre} onChange={(e) => setHuespedNombre(e.target.value)} style={inputStyle} placeholder="Nombre" />
-          </label>
-          <label style={labelStyle}>
-            Contacto del huésped (opcional)
-            <input value={huespedContacto} onChange={(e) => setHuespedContacto(e.target.value)} style={inputStyle} placeholder="Correo o teléfono" />
-          </label>
-          {reservaFormError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {reservaFormError}
-            </p>
-          )}
-          <button type="submit" disabled={creandoReserva} style={{ ...primaryButtonStyle, fontWeight: 600 }}>
-            {creandoReserva ? "Creando…" : "Crear reserva"}
-          </button>
-        </form>
+        <Card className="max-w-[420px]">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm font-semibold">Nueva reserva directa</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <form onSubmit={handleCrearReserva} className="flex flex-col gap-2.5">
+              <div className="flex gap-2.5">
+                <Label className={`${LABEL_CLASES} flex-1`}>
+                  Check-in
+                  <Input type="date" value={reservaInicio} onChange={(e) => setReservaInicio(e.target.value)} required />
+                </Label>
+                <Label className={`${LABEL_CLASES} flex-1`}>
+                  Check-out
+                  <Input type="date" value={reservaFin} onChange={(e) => setReservaFin(e.target.value)} required />
+                </Label>
+              </div>
+              <Label className={LABEL_CLASES}>
+                Huésped (opcional)
+                <Input value={huespedNombre} onChange={(e) => setHuespedNombre(e.target.value)} placeholder="Nombre" />
+              </Label>
+              <Label className={LABEL_CLASES}>
+                Contacto del huésped (opcional)
+                <Input value={huespedContacto} onChange={(e) => setHuespedContacto(e.target.value)} placeholder="Correo o teléfono" />
+              </Label>
+              {reservaFormError && (
+                <p role="alert" className="m-0 text-[13px] text-destructive">
+                  {reservaFormError}
+                </p>
+              )}
+              <Button type="submit" disabled={creandoReserva} size="sm" className="self-start">
+                {creandoReserva ? "Creando…" : "Crear reserva"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {showBloqueoForm && (
-        <form onSubmit={handleCrearBloqueo} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 420 }}>
-          <h2 style={{ fontSize: 14, margin: 0 }}>Nuevo bloqueo</h2>
-          <div style={{ display: "flex", gap: 10 }}>
-            <label style={{ ...labelStyle, flex: 1 }}>
-              Inicio
-              <input type="date" value={bloqueoInicio} onChange={(e) => setBloqueoInicio(e.target.value)} required style={inputStyle} />
-            </label>
-            <label style={{ ...labelStyle, flex: 1 }}>
-              Fin
-              <input type="date" value={bloqueoFin} onChange={(e) => setBloqueoFin(e.target.value)} required style={inputStyle} />
-            </label>
-          </div>
-          <label style={labelStyle}>
-            Razón
-            <select value={bloqueoRazon} onChange={(e) => setBloqueoRazon(e.target.value as RazonBloqueo)} style={inputStyle}>
-              {RAZONES_BLOQUEO.map((r) => (
-                <option key={r} value={r}>
-                  {RAZON_LABELS[r]}
-                </option>
-              ))}
-            </select>
-          </label>
-          {bloqueoFormError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {bloqueoFormError}
-            </p>
-          )}
-          <button type="submit" disabled={creandoBloqueo} style={{ ...primaryButtonStyle, fontWeight: 600 }}>
-            {creandoBloqueo ? "Creando…" : "Crear bloqueo"}
-          </button>
-        </form>
+        <Card className="max-w-[420px]">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm font-semibold">Nuevo bloqueo</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <form onSubmit={handleCrearBloqueo} className="flex flex-col gap-2.5">
+              <div className="flex gap-2.5">
+                <Label className={`${LABEL_CLASES} flex-1`}>
+                  Inicio
+                  <Input type="date" value={bloqueoInicio} onChange={(e) => setBloqueoInicio(e.target.value)} required />
+                </Label>
+                <Label className={`${LABEL_CLASES} flex-1`}>
+                  Fin
+                  <Input type="date" value={bloqueoFin} onChange={(e) => setBloqueoFin(e.target.value)} required />
+                </Label>
+              </div>
+              <Label className={LABEL_CLASES}>
+                Razón
+                <select value={bloqueoRazon} onChange={(e) => setBloqueoRazon(e.target.value as RazonBloqueo)} className={SELECT_CLASES}>
+                  {RAZONES_BLOQUEO.map((r) => (
+                    <option key={r} value={r}>
+                      {RAZON_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </Label>
+              {bloqueoFormError && (
+                <p role="alert" className="m-0 text-[13px] text-destructive">
+                  {bloqueoFormError}
+                </p>
+              )}
+              <Button type="submit" disabled={creandoBloqueo} size="sm" className="self-start">
+                {creandoBloqueo ? "Creando…" : "Crear bloqueo"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
-      {notice && (
-        <p style={{ margin: 0, fontSize: 13, color: "#065f46", background: "#d1fae5", padding: "8px 12px", borderRadius: 8 }}>
-          {notice}
-        </p>
+      {notice && <p className="m-0 rounded-lg border border-border bg-muted px-3 py-2 text-[13px] text-foreground">{notice}</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!ocupaciones && !error && <EstadoCargando lineas={2} />}
+      {ocupaciones && ocupaciones.length === 0 && (
+        <EstadoVacio icon={CalendarDays} titulo="Calendario vacío" mensaje="Esta unidad no tiene ninguna reserva ni bloqueo registrado." />
       )}
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!ocupaciones && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {ocupaciones && ocupaciones.length === 0 && <p style={{ color: "#6b7280" }}>Esta unidad no tiene ninguna reserva ni bloqueo registrado.</p>}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="flex flex-col gap-2.5">
         {ocupaciones?.map((o) => {
-          const colors = badgeColorFor(o);
           const puedeEditar = esReservaDirecta(o) && o.estado === "confirmado";
           const puedeCancelar = o.estado !== "cancelado" && (o.capa === "bloqueo" || o.capa === "reserva");
           return (
-            <div key={o.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600 }}>
-                    {o.rango.inicio} → {o.rango.fin}
-                  </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                    {RAZON_LABELS[o.razon]}
-                    {o.capa === "reserva" && o.canalCodigo ? ` · canal: ${o.canalCodigo}` : ""}
-                    {o.huespedNombre ? ` · huésped: ${o.huespedNombre}` : ""}
-                    {o.huespedContacto ? ` (${o.huespedContacto})` : ""}
-                  </p>
-                </div>
-                <span style={{ alignSelf: "flex-start", fontSize: 12, padding: "3px 10px", borderRadius: 999, background: colors.bg, color: colors.fg }}>
-                  {ESTADO_LABELS[o.estado]}
-                </span>
-              </div>
-
-              {editandoId === o.id ? (
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 10, flexWrap: "wrap" }}>
-                  <label style={{ ...labelStyle, flex: 1, minWidth: 120 }}>
-                    Nuevo check-in
-                    <input type="date" value={editInicio} onChange={(e) => setEditInicio(e.target.value)} style={inputStyle} />
-                  </label>
-                  <label style={{ ...labelStyle, flex: 1, minWidth: 120 }}>
-                    Nuevo check-out
-                    <input type="date" value={editFin} onChange={(e) => setEditFin(e.target.value)} style={inputStyle} />
-                  </label>
-                  <button type="button" onClick={() => void handleGuardarEdit(o)} disabled={guardandoEdit} style={secondaryButtonStyle}>
-                    {guardandoEdit ? "Guardando…" : "Guardar"}
-                  </button>
-                  <button type="button" onClick={() => setEditandoId(null)} style={secondaryButtonStyle}>
-                    Cancelar
-                  </button>
-                  {editError && (
-                    <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 12, width: "100%" }}>
-                      {editError}
+            <Card key={o.id}>
+              <CardContent className="p-4">
+                <div className="flex justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="m-0 font-semibold text-foreground">
+                      {o.rango.inicio} → {o.rango.fin}
                     </p>
-                  )}
+                    <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
+                      {RAZON_LABELS[o.razon]}
+                      {o.capa === "reserva" && o.canalCodigo ? ` · canal: ${o.canalCodigo}` : ""}
+                      {o.huespedNombre ? ` · huésped: ${o.huespedNombre}` : ""}
+                      {o.huespedContacto ? ` (${o.huespedContacto})` : ""}
+                    </p>
+                  </div>
+                  <Badge variant={badgeVarianteFor(o)} className="self-start">
+                    {ESTADO_LABELS[o.estado]}
+                  </Badge>
                 </div>
-              ) : confirmandoCancelarId === o.id ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                  <p role="alert" style={{ margin: 0, fontSize: 13, color: "#b91c1c" }}>
-                    {o.capa === "reserva" ? "¿Seguro que quieres cancelar esta reserva?" : "¿Seguro que quieres liberar este bloqueo?"} Esta acción no se puede
-                    deshacer.
-                  </p>
-                  <button type="button" onClick={() => void handleCancelar(o)} disabled={busyId === o.id} style={dangerButtonStyle}>
-                    {busyId === o.id ? "…" : o.capa === "reserva" ? "Sí, cancelar reserva" : "Sí, liberar bloqueo"}
-                  </button>
-                  <button type="button" onClick={() => setConfirmandoCancelarId(null)} disabled={busyId === o.id} style={secondaryButtonStyle}>
-                    No, mantenerla
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                  {puedeEditar && (
-                    <button type="button" onClick={() => startEdit(o)} disabled={busyId === o.id} style={secondaryButtonStyle}>
-                      Modificar fechas
-                    </button>
-                  )}
-                  {puedeCancelar && (
-                    <button type="button" onClick={() => setConfirmandoCancelarId(o.id)} disabled={busyId === o.id} style={dangerButtonStyle}>
-                      {o.capa === "reserva" ? "Cancelar reserva" : "Liberar bloqueo"}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+
+                {editandoId === o.id ? (
+                  <div className="flex gap-2 items-end mt-2.5 flex-wrap">
+                    <Label className={`${LABEL_CLASES} flex-1 min-w-[120px]`}>
+                      Nuevo check-in
+                      <Input type="date" value={editInicio} onChange={(e) => setEditInicio(e.target.value)} />
+                    </Label>
+                    <Label className={`${LABEL_CLASES} flex-1 min-w-[120px]`}>
+                      Nuevo check-out
+                      <Input type="date" value={editFin} onChange={(e) => setEditFin(e.target.value)} />
+                    </Label>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleGuardarEdit(o)} disabled={guardandoEdit}>
+                      {guardandoEdit ? "Guardando…" : "Guardar"}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditandoId(null)}>
+                      Cancelar
+                    </Button>
+                    {editError && (
+                      <p role="alert" className="m-0 w-full text-xs text-destructive">
+                        {editError}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                    {puedeEditar && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => startEdit(o)} disabled={busyId === o.id}>
+                        <Pencil className="w-4 h-4" strokeWidth={1.75} />
+                        Modificar fechas
+                      </Button>
+                    )}
+                    {puedeCancelar && (
+                      <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmandoCancelarId(o.id)} disabled={busyId === o.id}>
+                        {o.capa === "reserva" ? "Cancelar reserva" : "Liberar bloqueo"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           );
         })}
       </div>
+
+      {/* Segundo paso REAL de la confirmación de 2 pasos: la llamada al servidor solo
+          sale de aquí, nunca del primer clic que abrió este diálogo. */}
+      <Dialog open={ocupacionConfirmando !== null} onOpenChange={(abierto) => { if (!abierto) setConfirmandoCancelarId(null); }}>
+        <DialogContent className="max-w-md">
+          {ocupacionConfirmando && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{ocupacionConfirmando.capa === "reserva" ? "¿Cancelar esta reserva?" : "¿Liberar este bloqueo?"}</DialogTitle>
+                <DialogDescription>
+                  {ocupacionConfirmando.capa === "reserva" ? "¿Seguro que quieres cancelar esta reserva?" : "¿Seguro que quieres liberar este bloqueo?"} Esta acción no se
+                  puede deshacer. ({ocupacionConfirmando.rango.inicio} → {ocupacionConfirmando.rango.fin})
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmandoCancelarId(null)} disabled={busyId === ocupacionConfirmando.id}>
+                  No, mantenerla
+                </Button>
+                <Button type="button" variant="destructive" size="sm" onClick={() => void handleCancelar(ocupacionConfirmando)} disabled={busyId === ocupacionConfirmando.id}>
+                  {busyId === ocupacionConfirmando.id ? "…" : ocupacionConfirmando.capa === "reserva" ? "Sí, cancelar reserva" : "Sí, liberar bloqueo"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

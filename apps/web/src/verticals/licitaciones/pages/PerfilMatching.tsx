@@ -9,8 +9,14 @@
 // -- el enforcement real es SIEMPRE server-side (matchingProfile.ts ya exige
 // WRITE_ROLES en el PUT), este `role` solo oculta el formulario para quien de
 // todas formas recibiría 403.
+//
+// Fase "sistema de diseño real" (contenido) — el formulario inline-styled pasa
+// a `Card` + `Label` + `Input`/`Button` de @atiende/ui (los `<textarea>` siguen
+// nativos, solo restilados con tokens) y los estados de carga/error a
+// `EstadoCargando`/`EstadoError`. Cero cambios de lógica ni de red.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
 import { fetchMatchingProfile, saveMatchingProfile } from "../lib/matching-profile-client.ts";
 import type { MatchingProfile } from "../lib/matching-profile-client.ts";
 import { formatDate } from "../lib/format.ts";
@@ -55,9 +61,11 @@ function profileToForm(profile: MatchingProfile): FormState {
   };
 }
 
-const fieldLabelStyle = { display: "flex", flexDirection: "column" as const, gap: 4, fontSize: 13 };
-const textareaStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontFamily: "inherit", resize: "vertical" as const };
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db" };
+/** `<textarea>` sigue siendo nativo (el sistema no exporta un primitivo
+ * propio): solo se restila con los tokens reales, mismo anillo de foco que
+ * `Input`. */
+const CAMPO_NATIVO =
+  "flex w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function PerfilMatchingPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
   const [profile, setProfile] = useState<MatchingProfile | null>(null);
@@ -132,89 +140,130 @@ export function PerfilMatchingPage({ apiBaseUrl, token, propertyId, role }: Lici
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
+    <div className="flex max-w-[680px] flex-col gap-4">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Perfil de matching</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">Perfil de matching</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Estos 7 criterios alimentan el score y la elegibilidad de la columna "Score" en Convocatorias. Sin configurar al menos uno, la elegibilidad de todas las convocatorias es siempre "No evaluable".
         </p>
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      {loading && !profile && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {loading && !profile && <EstadoCargando etiqueta="Cargando perfil de matching…" />}
 
       {profile && (
-        <>
-          {profile.updatedAt && (
-            <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-              Última actualización: {formatDate(profile.updatedAt)}
-              {profile.updatedBy ? ` · por ${profile.updatedBy}` : ""}
-            </p>
-          )}
-
-          {!canWrite && <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Tu rol ({role}) no puede editar el perfil de matching. Estos valores se muestran de solo lectura.</p>}
-
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <label style={fieldLabelStyle}>
-              Palabras clave (una por línea)
-              <textarea disabled={!canWrite} value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} rows={4} placeholder="mantenimiento de flotilla vehicular&#10;servicio de limpieza" style={textareaStyle} />
-            </label>
-
-            <label style={fieldLabelStyle}>
-              Palabras clave excluyentes (una por línea)
-              <textarea disabled={!canWrite} value={form.excludedKeywords} onChange={(e) => setForm({ ...form, excludedKeywords: e.target.value })} rows={3} placeholder="obra pública" style={textareaStyle} />
-            </label>
-
-            <label style={fieldLabelStyle}>
-              Códigos clasificadores / CPV (uno por línea)
-              <textarea disabled={!canWrite} value={form.classifierCodes} onChange={(e) => setForm({ ...form, classifierCodes: e.target.value })} rows={3} placeholder="50111100" style={textareaStyle} />
-            </label>
-
-            <label style={fieldLabelStyle}>
-              Entidades convocantes de interés (una por línea)
-              <textarea disabled={!canWrite} value={form.entities} onChange={(e) => setForm({ ...form, entities: e.target.value })} rows={3} placeholder="Secretaría de Movilidad" style={textareaStyle} />
-            </label>
-
-            <label style={fieldLabelStyle}>
-              Estados de interés (uno por línea)
-              <textarea disabled={!canWrite} value={form.states} onChange={(e) => setForm({ ...form, states: e.target.value })} rows={3} placeholder="Jalisco&#10;Ciudad de México" style={textareaStyle} />
-            </label>
-
-            <div style={{ display: "flex", gap: 12 }}>
-              <label style={{ ...fieldLabelStyle, flex: 1 }}>
-                Presupuesto mínimo (MXN)
-                <input disabled={!canWrite} type="number" min="0" value={form.budgetMin} onChange={(e) => setForm({ ...form, budgetMin: e.target.value })} style={inputStyle} />
-              </label>
-              <label style={{ ...fieldLabelStyle, flex: 1 }}>
-                Presupuesto máximo (MXN)
-                <input disabled={!canWrite} type="number" min="0" value={form.budgetMax} onChange={(e) => setForm({ ...form, budgetMax: e.target.value })} style={inputStyle} />
-              </label>
-            </div>
-
-            {saveError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {saveError}
-              </p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Criterios de matching</CardTitle>
+            {profile.updatedAt && (
+              <CardDescription>
+                Última actualización: {formatDate(profile.updatedAt)}
+                {profile.updatedBy ? ` · por ${profile.updatedBy}` : ""}
+              </CardDescription>
             )}
-
-            {savedAt !== null && !saveError && (
-              <p role="status" style={{ color: "#166534", margin: 0, fontSize: 13 }}>
-                Perfil guardado.
-              </p>
+            {!canWrite && (
+              <CardDescription>Tu rol ({role}) no puede editar el perfil de matching. Estos valores se muestran de solo lectura.</CardDescription>
             )}
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="perfil-keywords">Palabras clave (una por línea)</Label>
+                <textarea
+                  id="perfil-keywords"
+                  disabled={!canWrite}
+                  value={form.keywords}
+                  onChange={(e) => setForm({ ...form, keywords: e.target.value })}
+                  rows={4}
+                  placeholder="mantenimiento de flotilla vehicular&#10;servicio de limpieza"
+                  className={CAMPO_NATIVO}
+                />
+              </div>
 
-            {canWrite && (
-              <button type="submit" disabled={saving} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, alignSelf: "flex-start" }}>
-                {saving ? "Guardando…" : "Guardar perfil de matching"}
-              </button>
-            )}
-          </form>
-        </>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="perfil-excluidas">Palabras clave excluyentes (una por línea)</Label>
+                <textarea
+                  id="perfil-excluidas"
+                  disabled={!canWrite}
+                  value={form.excludedKeywords}
+                  onChange={(e) => setForm({ ...form, excludedKeywords: e.target.value })}
+                  rows={3}
+                  placeholder="obra pública"
+                  className={CAMPO_NATIVO}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="perfil-codigos">Códigos clasificadores / CPV (uno por línea)</Label>
+                <textarea
+                  id="perfil-codigos"
+                  disabled={!canWrite}
+                  value={form.classifierCodes}
+                  onChange={(e) => setForm({ ...form, classifierCodes: e.target.value })}
+                  rows={3}
+                  placeholder="50111100"
+                  className={CAMPO_NATIVO}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="perfil-entidades">Entidades convocantes de interés (una por línea)</Label>
+                <textarea
+                  id="perfil-entidades"
+                  disabled={!canWrite}
+                  value={form.entities}
+                  onChange={(e) => setForm({ ...form, entities: e.target.value })}
+                  rows={3}
+                  placeholder="Secretaría de Movilidad"
+                  className={CAMPO_NATIVO}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="perfil-estados">Estados de interés (uno por línea)</Label>
+                <textarea
+                  id="perfil-estados"
+                  disabled={!canWrite}
+                  value={form.states}
+                  onChange={(e) => setForm({ ...form, states: e.target.value })}
+                  rows={3}
+                  placeholder="Jalisco&#10;Ciudad de México"
+                  className={CAMPO_NATIVO}
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="perfil-budget-min">Presupuesto mínimo (MXN)</Label>
+                  <Input id="perfil-budget-min" disabled={!canWrite} type="number" min="0" value={form.budgetMin} onChange={(e) => setForm({ ...form, budgetMin: e.target.value })} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="perfil-budget-max">Presupuesto máximo (MXN)</Label>
+                  <Input id="perfil-budget-max" disabled={!canWrite} type="number" min="0" value={form.budgetMax} onChange={(e) => setForm({ ...form, budgetMax: e.target.value })} />
+                </div>
+              </div>
+
+              {saveError && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {saveError}
+                </p>
+              )}
+
+              {savedAt !== null && !saveError && (
+                <p role="status" className="text-[13px] font-medium text-green-600 dark:text-green-500">
+                  Perfil guardado.
+                </p>
+              )}
+
+              {canWrite && (
+                <Button type="submit" size="sm" className="self-start" disabled={saving}>
+                  {saving ? "Guardando…" : "Guardar perfil de matching"}
+                </Button>
+              )}
+            </form>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

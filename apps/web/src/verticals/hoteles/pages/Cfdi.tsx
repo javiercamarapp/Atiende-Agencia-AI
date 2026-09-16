@@ -10,9 +10,15 @@
 // El motor de reglas fiscales (breakdown ISH/DSA, validación previa al timbrado)
 // corre SIEMPRE en el servidor — este panel nunca calcula ni valida montos, solo
 // refleja lo que la ruta ya serializa.
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
+// tarjetas/pills/inputs/checkboxes de estilos inline por Card/Badge/Input/Label/
+// Button reales — mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. Ningún
+// cambio de lógica: mismos props, mismo estado, mismas llamadas de red, misma
+// condición de cada rama.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
 import { cancelarCfdi, consultarEstadoCfdi, emitirCfdiHospedaje, emitirCfdiPago, fetchCfdisByFolio, MOTIVO_CANCELACION_LABELS } from "../lib/cfdi-client.ts";
 import type { CfdiEmisionSummary, MotivoCancelacionSat } from "../lib/cfdi-client.ts";
 import { fetchFolio } from "../lib/folios-client.ts";
@@ -36,7 +42,17 @@ const ESTADO_LABELS: Record<CfdiEmisionSummary["estado"], string> = {
   rechazado: "Rechazado",
 };
 
+const ESTADO_VARIANT: Record<CfdiEmisionSummary["estado"], "default" | "secondary" | "destructive"> = {
+  pendiente: "secondary",
+  timbrado: "default",
+  en_proceso_cancelacion: "secondary",
+  cancelado: "destructive",
+  rechazado: "destructive",
+};
+
 const MOTIVOS: readonly MotivoCancelacionSat[] = ["01", "02", "03", "04"];
+const selectClass =
+  "flex h-11 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPageProps) {
   const [folio, setFolio] = useState<FolioSummary | null>(null);
@@ -167,10 +183,10 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
   const puedeTimbrarPago = cfdiHospedaje?.estado === "timbrado" && cfdiHospedaje.metodoPago === "PPD";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+    <div className="flex flex-col gap-4 max-w-3xl">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>CFDI de hospedaje</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-display font-semibold text-foreground">CFDI de hospedaje</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Folio: {folio.etiqueta} · Saldo: {formatMoney(folio.saldo)}
         </p>
       </header>
@@ -178,132 +194,132 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} />}
 
       <section>
-        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Comprobantes emitidos</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <h2 className="text-sm font-semibold text-foreground mb-2">Comprobantes emitidos</h2>
+        <div className="flex flex-col gap-3">
           {cfdis.length === 0 && <EstadoVacio mensaje="Este folio todavía no tiene ningún CFDI timbrado." />}
           {cfdis.map((c) => (
-            <div key={c.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>
-                    {c.tipo === "hospedaje" ? "Hospedaje" : "Complemento de pago"} · {c.uuidFiscal ?? "sin UUID"}
-                  </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                    RFC {c.rfcReceptor} · Uso {c.usoCfdi} · {c.metodoPago} {c.pac ? `· PAC: ${c.pac}` : ""}
-                  </p>
-                </div>
-                <span
-                  style={{
-                    alignSelf: "flex-start",
-                    fontSize: 12,
-                    padding: "3px 10px",
-                    borderRadius: 999,
-                    background: c.estado === "cancelado" ? "#fee2e2" : c.estado === "timbrado" ? "#dcfce7" : "#f3f4f6",
-                    color: c.estado === "cancelado" ? "#991b1b" : c.estado === "timbrado" ? "#166534" : "#374151",
-                  }}
-                >
-                  {ESTADO_LABELS[c.estado]}
-                </span>
-              </div>
-              <p style={{ margin: "8px 0 0", fontSize: 13 }}>
-                Subtotal {formatMoney(c.subtotal)} · IVA {formatMoney(c.iva)}
-                {c.impuestosLocales.ishMonto > 0 ? ` · ISH ${formatMoney(c.impuestosLocales.ishMonto)}` : ""}
-                {c.impuestosLocales.dsaMonto > 0 ? ` · DSA ${formatMoney(c.impuestosLocales.dsaMonto)}` : ""} · Total <strong>{formatMoney(c.total)}</strong>
-              </p>
-              <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Emitido: {new Date(c.creadoEn).toLocaleString("es-MX")}</p>
-              {c.estado === "timbrado" && cancelTargetId !== c.id && (
-                <button onClick={() => setCancelTargetId(c.id)} disabled={busy} style={{ marginTop: 10, padding: "5px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}>
-                  Cancelar CFDI
-                </button>
-              )}
-              {c.estado === "en_proceso_cancelacion" && (
-                <>
-                  <button onClick={() => void handleConsultarEstado(c.id)} disabled={busy} style={{ marginTop: 10, padding: "5px 12px", borderRadius: 8, border: "1px solid #6b7280", background: "#fff", color: "#374151", fontSize: 12, cursor: "pointer" }}>
-                    Consultar estado real ante el PAC
-                  </button>
-                  <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                    El SAT todavía no confirma si esta cancelación fue aceptada o rechazada. Este botón vuelve a preguntarle al PAC; el estado solo se actualiza aquí si ya confirmó "cancelado".
-                  </p>
-                </>
-              )}
-              {cancelTargetId === c.id && (
-                <form onSubmit={handleCancelar} style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8, border: "1px solid #fecaca", borderRadius: 8, padding: 10 }}>
-                  <select value={cancelMotivo} onChange={(e) => setCancelMotivo(e.target.value as MotivoCancelacionSat)} style={{ padding: 6 }}>
-                    {MOTIVOS.map((m) => (
-                      <option key={m} value={m}>
-                        {MOTIVO_CANCELACION_LABELS[m]}
-                      </option>
-                    ))}
-                  </select>
-                  {cancelMotivo === "01" && (
-                    <input placeholder="Folio fiscal del CFDI que lo sustituye (UUID)" value={cancelFolioSustitucion} onChange={(e) => setCancelFolioSustitucion(e.target.value)} style={{ padding: 6 }} />
-                  )}
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button type="submit" disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#b91c1c", color: "#fff", fontSize: 12, cursor: "pointer" }}>
-                      Confirmar cancelación
-                    </button>
-                    <button type="button" onClick={() => setCancelTargetId(null)} disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}>
-                      Cerrar
-                    </button>
+            <Card key={c.id}>
+              <CardContent className="p-4">
+                <div className="flex justify-between gap-2 flex-wrap">
+                  <div>
+                    <p className="font-medium text-sm text-foreground">
+                      {c.tipo === "hospedaje" ? "Hospedaje" : "Complemento de pago"} · {c.uuidFiscal ?? "sin UUID"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      RFC {c.rfcReceptor} · Uso {c.usoCfdi} · {c.metodoPago} {c.pac ? `· PAC: ${c.pac}` : ""}
+                    </p>
                   </div>
-                </form>
-              )}
-            </div>
+                  <Badge variant={ESTADO_VARIANT[c.estado]} className="self-start">
+                    {ESTADO_LABELS[c.estado]}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm text-foreground">
+                  Subtotal {formatMoney(c.subtotal)} · IVA {formatMoney(c.iva)}
+                  {c.impuestosLocales.ishMonto > 0 ? ` · ISH ${formatMoney(c.impuestosLocales.ishMonto)}` : ""}
+                  {c.impuestosLocales.dsaMonto > 0 ? ` · DSA ${formatMoney(c.impuestosLocales.dsaMonto)}` : ""} · Total <strong>{formatMoney(c.total)}</strong>
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">Emitido: {new Date(c.creadoEn).toLocaleString("es-MX")}</p>
+                {c.estado === "timbrado" && cancelTargetId !== c.id && (
+                  <Button type="button" variant="outline" size="sm" className="mt-2.5 text-destructive border-destructive/40 hover:border-destructive" onClick={() => setCancelTargetId(c.id)} disabled={busy}>
+                    Cancelar CFDI
+                  </Button>
+                )}
+                {c.estado === "en_proceso_cancelacion" && (
+                  <>
+                    <Button type="button" variant="outline" size="sm" className="mt-2.5" onClick={() => void handleConsultarEstado(c.id)} disabled={busy}>
+                      Consultar estado real ante el PAC
+                    </Button>
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      El SAT todavía no confirma si esta cancelación fue aceptada o rechazada. Este botón vuelve a preguntarle al PAC; el estado solo se actualiza aquí si ya confirmó "cancelado".
+                    </p>
+                  </>
+                )}
+                {cancelTargetId === c.id && (
+                  <form onSubmit={handleCancelar} className="mt-2.5 flex flex-col gap-2 border border-destructive/30 rounded-lg p-3">
+                    <select value={cancelMotivo} onChange={(e) => setCancelMotivo(e.target.value as MotivoCancelacionSat)} className={selectClass}>
+                      {MOTIVOS.map((m) => (
+                        <option key={m} value={m}>
+                          {MOTIVO_CANCELACION_LABELS[m]}
+                        </option>
+                      ))}
+                    </select>
+                    {cancelMotivo === "01" && (
+                      <Input placeholder="Folio fiscal del CFDI que lo sustituye (UUID)" value={cancelFolioSustitucion} onChange={(e) => setCancelFolioSustitucion(e.target.value)} />
+                    )}
+                    <div className="flex gap-2">
+                      <Button type="submit" variant="destructive" size="sm" disabled={busy}>
+                        Confirmar cancelación
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setCancelTargetId(null)} disabled={busy}>
+                        Cerrar
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </CardContent>
+            </Card>
           ))}
         </div>
       </section>
 
       {puedeTimbrarHospedaje && (
-        <form onSubmit={handleEmitirHospedaje} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Timbrar CFDI de hospedaje</p>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-            <input type="checkbox" checked={esExtranjero} onChange={(e) => setEsExtranjero(e.target.checked)} disabled={esGlobal} /> Huésped extranjero (RFC genérico XEXX010101000)
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-            <input type="checkbox" checked={esGlobal} onChange={(e) => setEsGlobal(e.target.checked)} disabled={esExtranjero} /> Factura global a público en general (RFC XAXX010101000)
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-            <input type="checkbox" checked={esNoShow} onChange={(e) => setEsNoShow(e.target.checked)} /> No-show (penalización sin estancia)
-          </label>
-          {!esExtranjero && !esGlobal && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input placeholder="RFC receptor" value={rfcReceptor} onChange={(e) => setRfcReceptor(e.target.value.toUpperCase())} style={{ flex: 1, padding: 8, minWidth: 160 }} />
-              <input placeholder="Uso de CFDI (p. ej. G03)" value={usoCfdi} onChange={(e) => setUsoCfdi(e.target.value.toUpperCase())} style={{ flex: 1, padding: 8, minWidth: 140 }} />
-            </div>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 13 }}>Método de pago:</span>
-            <select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value as "PUE" | "PPD")} style={{ padding: 8 }}>
-              <option value="PUE">PUE · pago en una sola exhibición</option>
-              <option value="PPD">PPD · pago en parcialidades o diferido</option>
-            </select>
-          </div>
-          <button type="submit" disabled={busy} style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}>
-            {busy ? "Timbrando…" : "Timbrar CFDI"}
-          </button>
-          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>
-            El servidor calcula el desglose real (subtotal, IVA, ISH, DSA) a partir de los cargos facturables del folio y valida el comprobante antes de timbrarlo — este formulario no calcula ni adivina montos.
-          </p>
-        </form>
+        <Card>
+          <CardContent className="p-4">
+            <form onSubmit={handleEmitirHospedaje} className="flex flex-col gap-3">
+              <p className="text-sm font-semibold text-foreground">Timbrar CFDI de hospedaje</p>
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" checked={esExtranjero} onChange={(e) => setEsExtranjero(e.target.checked)} disabled={esGlobal} className="accent-primary" />
+                Huésped extranjero (RFC genérico XEXX010101000)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" checked={esGlobal} onChange={(e) => setEsGlobal(e.target.checked)} disabled={esExtranjero} className="accent-primary" />
+                Factura global a público en general (RFC XAXX010101000)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" checked={esNoShow} onChange={(e) => setEsNoShow(e.target.checked)} className="accent-primary" />
+                No-show (penalización sin estancia)
+              </label>
+              {!esExtranjero && !esGlobal && (
+                <div className="flex gap-2 flex-wrap">
+                  <Input placeholder="RFC receptor" value={rfcReceptor} onChange={(e) => setRfcReceptor(e.target.value.toUpperCase())} className="flex-1 min-w-[160px]" />
+                  <Input placeholder="Uso de CFDI (p. ej. G03)" value={usoCfdi} onChange={(e) => setUsoCfdi(e.target.value.toUpperCase())} className="flex-1 min-w-[140px]" />
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="cfdi-metodo-pago" className="font-normal">Método de pago:</Label>
+                <select id="cfdi-metodo-pago" value={metodoPago} onChange={(e) => setMetodoPago(e.target.value as "PUE" | "PPD")} className={selectClass}>
+                  <option value="PUE">PUE · pago en una sola exhibición</option>
+                  <option value="PPD">PPD · pago en parcialidades o diferido</option>
+                </select>
+              </div>
+              <Button type="submit" disabled={busy} className="self-start">
+                {busy ? "Timbrando…" : "Timbrar CFDI"}
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                El servidor calcula el desglose real (subtotal, IVA, ISH, DSA) a partir de los cargos facturables del folio y valida el comprobante antes de timbrarlo — este formulario no calcula ni adivina montos.
+              </p>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {puedeTimbrarPago && (
         <section>
-          <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Complementos de pago (CFDI de tipo 'pago')</h2>
-          {pagosCapturados.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Este folio todavía no tiene ningún pago capturado.</p>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <h2 className="text-sm font-semibold text-foreground mb-2">Complementos de pago (CFDI de tipo 'pago')</h2>
+          {pagosCapturados.length === 0 && <p className="text-sm text-muted-foreground">Este folio todavía no tiene ningún pago capturado.</p>}
+          <div className="flex flex-col gap-2">
             {pagosCapturados.map((p) => (
-              <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #f3f4f6", borderRadius: 8, padding: "8px 12px" }}>
-                <span style={{ fontSize: 13 }}>
+              <div key={p.id} className="flex justify-between items-center border border-border rounded-lg px-3 py-2">
+                <span className="text-sm text-foreground">
                   {p.metodo} · {formatMoney(p.monto)} {p.referenciaExterna ? `· Ref: ${p.referenciaExterna}` : ""}
                 </span>
-                <button onClick={() => void handleEmitirPago(cfdiHospedaje!.id, p.id)} disabled={busy} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}>
+                <Button type="button" variant="outline" size="sm" onClick={() => void handleEmitirPago(cfdiHospedaje!.id, p.id)} disabled={busy}>
                   Timbrar complemento de pago
-                </button>
+                </Button>
               </div>
             ))}
           </div>
-          <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
+          <p className="mt-2 text-[11px] text-muted-foreground">
             Timbrar el complemento de un pago que ya tiene uno es seguro: el servidor es idempotente por pago y devuelve el mismo comprobante ya emitido, {cfdisPago.length} emitido(s) hasta ahora en este folio.
           </p>
         </section>

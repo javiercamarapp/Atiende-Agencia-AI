@@ -38,10 +38,15 @@
 //      conteo de tickets sin 403 entre estos 5 roles — fnb/reservations NO están en
 //      esa lista, ver housekeeping.ts) o Pedidos F&B (fnb, único rol de este grupo
 //      cuya área es la cocina).
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza los
+// KPI-tiles/tarjetas de estilos inline por StatCard/Card reales — mismo criterio ya
+// aplicado en HotelesShell.tsx/Login.tsx. Ningún cambio de lógica: mismos props,
+// mismo estado, mismas llamadas de red, misma condición de cada rama.
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { EstadoCargando, EstadoError } from "@atiende/ui";
+import { ArrowRight, BedDouble, CalendarCheck, CalendarClock, CircleDollarSign, PiggyBank, ShieldAlert, TrendingUp, UtensilsCrossed, Wallet, Wrench } from "lucide-react";
+import { Button, Card, CardContent, EstadoCargando, EstadoError, StatCard, Tabs, TabsList, TabsTrigger } from "@atiende/ui";
 import { fetchPlSummary } from "../lib/pl-client.ts";
 import type { PlSummaryResponse } from "../lib/pl-client.ts";
 import { fetchReservations } from "../lib/reservas-client.ts";
@@ -90,24 +95,6 @@ function formatPct(n: number): string {
   return `${n.toFixed(1)}%`;
 }
 
-function Card({ children }: { children: ReactNode }) {
-  return <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, background: "#fff", display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>;
-}
-
-function StatTile({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, background: "#fff" }}>
-      <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: 0 }}>{label}</p>
-      <p style={{ fontSize: 22, fontWeight: 600, margin: "4px 0 0" }}>{value}</p>
-      {note && <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>{note}</p>}
-    </div>
-  );
-}
-
-function linkButtonStyle(): CSSProperties {
-  return { alignSelf: "flex-start", fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" };
-}
-
 /** owner/gm/accountant — ver comentario de cabecera del archivo, punto 1. */
 function ExecutiveSummary({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShellContext) {
   const [days, setDays] = useState<PeriodDays>(30);
@@ -131,28 +118,18 @@ function ExecutiveSummary({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShe
   }, [apiBaseUrl, token, propertyId, days]);
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: 0 }}>Resumen ejecutivo</p>
-        <div style={{ display: "flex", gap: 6 }}>
-          {PERIOD_OPTIONS.map((opt) => (
-            <button
-              key={opt.days}
-              onClick={() => setDays(opt.days)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                background: days === opt.days ? "#111827" : "#fff",
-                color: days === opt.days ? "#fff" : "#111827",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+    <section className="flex flex-col gap-4">
+      <header className="flex items-center justify-between flex-wrap gap-3">
+        <p className="text-xs font-mono uppercase tracking-[0.08em] text-muted-foreground">Resumen ejecutivo</p>
+        <Tabs value={String(days)} onValueChange={(v) => setDays(Number(v) as PeriodDays)}>
+          <TabsList>
+            {PERIOD_OPTIONS.map((opt) => (
+              <TabsTrigger key={opt.days} value={String(opt.days)}>
+                {opt.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </header>
 
       {error && <EstadoError mensaje={error} />}
@@ -160,21 +137,26 @@ function ExecutiveSummary({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShe
 
       {data && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-            <StatTile label="Ocupación" value={formatPct(data.kpis.occupancyPct)} note={`${data.kpis.occupiedRoomNights}/${data.kpis.availableRoomNights} noches-habitación`} />
-            <StatTile label="ADR" value={formatMoney(data.kpis.adr)} note="tarifa promedio diaria" />
-            <StatTile label="RevPAR" value={formatMoney(data.kpis.revpar)} note="ingreso por habitación disponible" />
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            <StatCard icon={BedDouble} label="Ocupación" value={formatPct(data.kpis.occupancyPct)} nota={`${data.kpis.occupiedRoomNights}/${data.kpis.availableRoomNights} noches-habitación`} />
+            <StatCard icon={CircleDollarSign} label="ADR" value={formatMoney(data.kpis.adr)} nota="tarifa promedio diaria" />
+            <StatCard icon={TrendingUp} label="RevPAR" value={formatMoney(data.kpis.revpar)} nota="ingreso por habitación disponible" />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-            <StatTile label="Ingresos totales" value={formatMoney(data.total.ingresosTotales)} />
-            <StatTile label="GOP" value={formatMoney(data.total.gop)} note={`${formatPct(data.total.gopMarginPct)} de margen`} />
-            <StatTile label="EBITDA" value={formatMoney(data.total.ebitda)} />
-            <StatTile label="Utilidad neta" value={formatMoney(data.total.utilidadNeta)} />
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            <StatCard icon={Wallet} label="Ingresos totales" value={formatMoney(data.total.ingresosTotales)} />
+            <StatCard icon={PiggyBank} label="GOP" value={formatMoney(data.total.gop)} nota={`${formatPct(data.total.gopMarginPct)} de margen`} />
+            <StatCard icon={TrendingUp} label="EBITDA" value={formatMoney(data.total.ebitda)} />
+            <StatCard icon={CircleDollarSign} label="Utilidad neta" value={formatMoney(data.total.utilidadNeta)} />
           </div>
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Periodo {data.periodo.desde} — {data.periodo.hasta}.</p>
-          <Link to={`/hoteles/${orgSlug}/pl`} style={linkButtonStyle()}>
-            Ver P&amp;L completo (por departamento + gastos) →
-          </Link>
+          <p className="text-xs text-muted-foreground">
+            Periodo {data.periodo.desde} — {data.periodo.hasta}.
+          </p>
+          <Button asChild variant="link" className="self-start px-0">
+            <Link to={`/hoteles/${orgSlug}/pl`}>
+              Ver P&amp;L completo (por departamento + gastos)
+              <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
+            </Link>
+          </Button>
         </>
       )}
     </section>
@@ -245,62 +227,65 @@ function OperationalSummary({ apiBaseUrl, token, propertyId, orgSlug, role }: Ho
   const alergiasSinConfirmar = pedidos?.filter((p) => p.alergiaDeclarada && !p.cocineroConfirmoEn).length ?? null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
         <Card>
-          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: 0 }}>Reservas de hoy</p>
-          {reservationsError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {reservationsError}
-            </p>
-          )}
-          {reservations === null && !reservationsError && <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Cargando…</p>}
-          {reservations !== null && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              <StatTile label="Llegadas" value={String(llegadasHoy)} />
-              <StatTile label="Salidas" value={String(salidasHoy)} />
-              <StatTile label="En estancia" value={String(enEstancia)} />
-            </div>
-          )}
-          <Link to={`/hoteles/${orgSlug}/reservas`} style={linkButtonStyle()}>
-            Ir a Reservas →
-          </Link>
+          <CardContent className="p-4 flex flex-col gap-2.5">
+            <p className="text-xs font-mono uppercase tracking-[0.08em] text-muted-foreground">Reservas de hoy</p>
+            {reservationsError && <p role="alert" className="text-sm text-destructive">{reservationsError}</p>}
+            {reservations === null && !reservationsError && <p className="text-sm text-muted-foreground">Cargando…</p>}
+            {reservations !== null && (
+              <div className="grid grid-cols-3 gap-2">
+                <StatCard icon={CalendarCheck} label="Llegadas" value={String(llegadasHoy)} />
+                <StatCard icon={CalendarClock} label="Salidas" value={String(salidasHoy)} />
+                <StatCard icon={BedDouble} label="En estancia" value={String(enEstancia)} />
+              </div>
+            )}
+            <Button asChild variant="link" className="self-start px-0">
+              <Link to={`/hoteles/${orgSlug}/reservas`}>
+                Ir a Reservas
+                <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
+              </Link>
+            </Button>
+          </CardContent>
         </Card>
 
         {showTickets && (
           <Card>
-            <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: 0 }}>Mantenimiento</p>
-            {ticketsError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {ticketsError}
-              </p>
-            )}
-            {tickets === null && !ticketsError && <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Cargando…</p>}
-            {tickets !== null && <StatTile label="Tickets abiertos" value={String(tickets.length)} />}
-            <Link to={`/hoteles/${orgSlug}/mantenimiento`} style={linkButtonStyle()}>
-              Ir a Mantenimiento →
-            </Link>
+            <CardContent className="p-4 flex flex-col gap-2.5">
+              <p className="text-xs font-mono uppercase tracking-[0.08em] text-muted-foreground">Mantenimiento</p>
+              {ticketsError && <p role="alert" className="text-sm text-destructive">{ticketsError}</p>}
+              {tickets === null && !ticketsError && <p className="text-sm text-muted-foreground">Cargando…</p>}
+              {tickets !== null && <StatCard icon={Wrench} label="Tickets abiertos" value={String(tickets.length)} />}
+              <Button asChild variant="link" className="self-start px-0">
+                <Link to={`/hoteles/${orgSlug}/mantenimiento`}>
+                  Ir a Mantenimiento
+                  <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
+                </Link>
+              </Button>
+            </CardContent>
           </Card>
         )}
 
         {showPedidos && (
           <Card>
-            <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: 0 }}>Pedidos F&amp;B</p>
-            {pedidosError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {pedidosError}
-              </p>
-            )}
-            {pedidos === null && !pedidosError && <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Cargando…</p>}
-            {pedidos !== null && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-                <StatTile label="Pedidos activos" value={String(pedidos.length)} />
-                <StatTile label="Alergia sin confirmar" value={String(alergiasSinConfirmar)} />
-              </div>
-            )}
-            <Link to={`/hoteles/${orgSlug}/pedidos-fnb`} style={linkButtonStyle()}>
-              Ir a Pedidos F&amp;B →
-            </Link>
+            <CardContent className="p-4 flex flex-col gap-2.5">
+              <p className="text-xs font-mono uppercase tracking-[0.08em] text-muted-foreground">Pedidos F&amp;B</p>
+              {pedidosError && <p role="alert" className="text-sm text-destructive">{pedidosError}</p>}
+              {pedidos === null && !pedidosError && <p className="text-sm text-muted-foreground">Cargando…</p>}
+              {pedidos !== null && (
+                <div className="grid grid-cols-2 gap-2">
+                  <StatCard icon={UtensilsCrossed} label="Pedidos activos" value={String(pedidos.length)} />
+                  <StatCard icon={ShieldAlert} label="Alergia sin confirmar" value={String(alergiasSinConfirmar)} />
+                </div>
+              )}
+              <Button asChild variant="link" className="self-start px-0">
+                <Link to={`/hoteles/${orgSlug}/pedidos-fnb`}>
+                  Ir a Pedidos F&amp;B
+                  <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
+                </Link>
+              </Button>
+            </CardContent>
           </Card>
         )}
       </div>
@@ -310,8 +295,8 @@ function OperationalSummary({ apiBaseUrl, token, propertyId, orgSlug, role }: Ho
 
 export function DashboardPage(ctx: HotelesShellContext) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Panel de {ctx.orgSlug}</h1>
+    <div className="flex flex-col gap-5">
+      <h1 className="text-xl font-display font-semibold text-foreground">Panel de {ctx.orgSlug}</h1>
       {EXECUTIVE_ROLES.has(ctx.role) ? <ExecutiveSummary {...ctx} /> : <OperationalSummary {...ctx} />}
     </div>
   );

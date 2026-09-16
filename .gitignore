@@ -16,3 +16,5 @@ coverage/
 # scripts/build-vercel-function.mjs); el placeholder versionado aquí se sobreescribe
 # siempre con el bundle real en cada build.
 /api/index.js.map
+.vercel
+.env*

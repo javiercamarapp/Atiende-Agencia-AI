@@ -8,8 +8,34 @@
 // .../checklist/run` exige metadatos reales de archivos/firmas/anexos que se
 // capturan en `pages/Cierre.tsx` (Fase 14, enlazada abajo) -- esta ficha solo
 // muestra el último resultado ya corrido, sin duplicar ese formulario aquí.
+//
+// Fase "sistema de diseño real" (contenido) — las cuatro secciones apiladas
+// (matching / go-no-go / resolución / checklist) pasan a `Tabs` reales, los
+// KPIs del encabezado a `StatCard`, los pills de resultado/decisión a `Badge`,
+// y todos los botones/inputs a `Button`/`Input`/`Label` de @atiende/ui. Mismo
+// estado, mismos fetch, mismas ramas condicionales (los triggers de matching y
+// checklist solo aparecen cuando el dato existe, igual que las `<section>` que
+// reemplazan).
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, CalendarClock, CircleDollarSign, FileCheck2, Flag } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  Label,
+  StatCard,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
 import { fetchTender } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchMatchingDetail } from "../lib/matching-client.ts";
@@ -32,16 +58,25 @@ const RESOLUTION_ROLES = new Set(["owner", "admin", "analyst"]);
 // igual con 409); la validación real vive SIEMPRE en el servidor.
 const RESOLVABLE_FROM_STATUSES = new Set(["go", "in_progress", "submitted"]);
 
-const RESULT_COLORS: Record<string, { bg: string; fg: string }> = {
-  verde: { bg: "#dcfce7", fg: "#166534" },
-  ambar: { bg: "#fef9c3", fg: "#854d0e" },
-  rojo: { bg: "#fee2e2", fg: "#991b1b" },
+/** Mismo semáforo verde/ámbar/rojo de antes, ahora sobre variantes de `Badge`
+ * (el ámbar no tiene variante propia en el sistema: se resuelve con `outline`
+ * + tokens, nunca con un hex suelto). */
+const RESULT_BADGE: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
+  verde: { variant: "default" },
+  ambar: { variant: "outline", className: "border-amber-500/60 text-amber-600 dark:text-amber-400" },
+  rojo: { variant: "destructive" },
 };
 
 function ResultDot({ result }: { result: string }) {
-  const colors = RESULT_COLORS[result] ?? { bg: "#f3f4f6", fg: "#4b5563" };
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg }}>{formatComplianceResult(result)}</span>;
+  const cfg = RESULT_BADGE[result] ?? { variant: "secondary" as const };
+  return (
+    <Badge variant={cfg.variant} className={cfg.className}>
+      {formatComplianceResult(result)}
+    </Badge>
+  );
 }
+
+const ENLACE_SECUNDARIO = "inline-flex w-fit items-center gap-1 text-[13px] font-semibold text-foreground no-underline hover:underline";
 
 export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const { tenderId } = useParams<{ tenderId: string }>();
@@ -135,222 +170,256 @@ export function ConvocatoriaDetallePage({ apiBaseUrl, token, propertyId, orgSlug
     }
   }
 
-  if (!tenderId) return <p role="alert" style={{ color: "#b91c1c" }}>Falta el id de la convocatoria en la URL.</p>;
-  if (loading && !tender) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (error) return <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>;
+  if (!tenderId) return <EstadoError mensaje="Falta el id de la convocatoria en la URL." />;
+  if (loading && !tender) return <EstadoCargando etiqueta="Cargando convocatoria…" />;
+  if (error) return <EstadoError mensaje={error} onReintentar={() => void load(tenderId)} />;
   if (!tender) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 860 }}>
-      <div>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias`} style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}>
-          ← Convocatorias
+    <div className="flex max-w-[900px] flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <Link to={`/licitaciones/${orgSlug}/convocatorias`} className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground no-underline hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Convocatorias
         </Link>
-        <h1 style={{ fontSize: 20, margin: "4px 0 0" }}>{tender.title}</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="text-xl font-semibold text-foreground">{tender.title}</h1>
+        <p className="text-[13px] text-muted-foreground">
           {tender.contractingBody ?? "Entidad no declarada"} {tender.externalId ? `· ${tender.externalId}` : ""}
         </p>
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} style={{ display: "inline-block", marginTop: 8, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
-          Subir bases y ver requisitos extraídos →
-        </Link>
-        <br />
-        <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
-          Correr checklist, aprobar y ensamblar el paquete de cierre →
-        </Link>
-        {tender.status === "won" && (
-          <>
-            <br />
-            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/contrato`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
-              Ver/registrar el contrato post-adjudicación →
-            </Link>
-            <br />
-            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/post-adjudicacion`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
-              Cobranza del contrato e inconformidades (post-adjudicación) →
-            </Link>
-          </>
-        )}
-        {tender.status === "lost" && (
-          <>
-            <br />
-            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/autopsia`} style={{ display: "inline-block", marginTop: 4, fontSize: 13, color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+        <div className="mt-2 flex flex-col gap-1">
+          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/requisitos`} className={ENLACE_SECUNDARIO}>
+            Subir bases y ver requisitos extraídos →
+          </Link>
+          <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} className={ENLACE_SECUNDARIO}>
+            Correr checklist, aprobar y ensamblar el paquete de cierre →
+          </Link>
+          {tender.status === "won" && (
+            <>
+              <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/contrato`} className={ENLACE_SECUNDARIO}>
+                Ver/registrar el contrato post-adjudicación →
+              </Link>
+              <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/post-adjudicacion`} className={ENLACE_SECUNDARIO}>
+                Cobranza del contrato e inconformidades (post-adjudicación) →
+              </Link>
+            </>
+          )}
+          {tender.status === "lost" && (
+            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/autopsia`} className={ENLACE_SECUNDARIO}>
               Autopsia del fallo y lecciones aprendidas →
             </Link>
-          </>
-        )}
+          )}
+        </div>
       </div>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-          <p style={{ fontSize: 11, textTransform: "uppercase", color: "#6b7280", margin: 0 }}>Fecha límite</p>
-          <p style={{ fontSize: 14, margin: "4px 0 0", fontWeight: 600 }}>{formatDeadline(tender.submissionDeadline)}</p>
-        </div>
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-          <p style={{ fontSize: 11, textTransform: "uppercase", color: "#6b7280", margin: 0 }}>Presupuesto</p>
-          <p style={{ fontSize: 14, margin: "4px 0 0", fontWeight: 600 }}>{formatMoney(tender.budgetAmount, tender.currency)}</p>
-        </div>
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
-          <p style={{ fontSize: 11, textTransform: "uppercase", color: "#6b7280", margin: 0 }}>Estatus</p>
-          <p style={{ fontSize: 14, margin: "4px 0 0", fontWeight: 600 }}>{formatTenderStatus(tender.status)}</p>
-        </div>
+      <section className="grid gap-3 sm:grid-cols-3">
+        <StatCard icon={CalendarClock} label="Fecha límite" value={formatDeadline(tender.submissionDeadline)} />
+        <StatCard icon={CircleDollarSign} label="Presupuesto" value={formatMoney(tender.budgetAmount, tender.currency)} />
+        <StatCard icon={Flag} label="Estatus" value={formatTenderStatus(tender.status)} />
       </section>
 
-      {match && (
-        <section>
-          <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Matching</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <span style={{ fontSize: 28, fontWeight: 700 }}>{match.score}</span>
-            <span style={{ fontSize: 12, color: "#6b7280" }}>de 100 · elegibilidad: {formatEligibility(match.eligibility.status)}</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {match.criteria.map((c) => (
-              <div key={c.criterion} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, borderBottom: "1px solid #f3f4f6", paddingBottom: 4 }}>
-                <span style={{ color: "#374151" }}>{c.explanation}</span>
-                <span style={{ fontWeight: 600 }}>
-                  {c.score}/{c.maxScore}
-                </span>
-              </div>
-            ))}
-          </div>
-          {match.eligibility.criteria.length > 0 && (
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-              {match.eligibility.criteria.map((c, i) => (
-                <p key={i} style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
-                  {formatEligibility(c.status)}: {c.explanation}
-                </p>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+      <Tabs defaultValue={match ? "matching" : "go-no-go"} className="w-full">
+        <TabsList className="flex-wrap">
+          {match && <TabsTrigger value="matching">Matching</TabsTrigger>}
+          <TabsTrigger value="go-no-go">Go / No-go</TabsTrigger>
+          <TabsTrigger value="resolucion">Resolución</TabsTrigger>
+          {checklist && <TabsTrigger value="checklist">Checklist</TabsTrigger>}
+        </TabsList>
 
-      <section>
-        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Go / No-go</h2>
-        {decisions.length === 0 && <p style={{ fontSize: 13, color: "#6b7280" }}>Sin decisiones registradas todavía.</p>}
-        {decisions.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-            {decisions.map((d) => (
-              <div key={d.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <strong style={{ color: d.decision === "go" ? "#166534" : "#991b1b" }}>{d.decision === "go" ? "GO" : "NO-GO"}</strong>
-                  <span style={{ color: "#6b7280" }}>{formatDate(d.decidedAt)}</span>
+        {match && (
+          <TabsContent value="matching">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Matching</CardTitle>
+                <CardDescription>Desglose del score contra el perfil de la empresa.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-3xl font-bold tabular-nums text-foreground">{match.score}</span>
+                  <span className="text-xs text-muted-foreground">de 100 · elegibilidad: {formatEligibility(match.eligibility.status)}</span>
                 </div>
-                <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                  {d.reasons.map((r, i) => (
-                    <li key={i}>{r}</li>
+                <div className="flex flex-col gap-1.5">
+                  {match.criteria.map((c) => (
+                    <div key={c.criterion} className="flex justify-between gap-3 border-b border-border pb-1 text-[13px]">
+                      <span className="text-muted-foreground">{c.explanation}</span>
+                      <span className="shrink-0 font-semibold tabular-nums text-foreground">
+                        {c.score}/{c.maxScore}
+                      </span>
+                    </div>
                   ))}
-                </ul>
-                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                  Score al decidir: {d.matchScore} · elegibilidad: {formatEligibility(d.matchEligibilityStatus)}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {GO_NO_GO_ROLES.has(role) ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 460 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              Motivos (uno por línea)
-              <textarea value={reasonsText} onChange={(e) => setReasonsText(e.target.value)} rows={3} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontFamily: "inherit" }} />
-            </label>
-            {decisionError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {decisionError}
-              </p>
-            )}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={() => void handleDecision("go")} disabled={submitting !== null} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #166534", background: "#166534", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-                {submitting === "go" ? "Guardando…" : "Marcar Go"}
-              </button>
-              <button type="button" onClick={() => void handleDecision("no_go")} disabled={submitting !== null} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #991b1b", background: "#fff", color: "#991b1b", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-                {submitting === "no_go" ? "Guardando…" : "Marcar No-go"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af" }}>Tu rol ({role}) no puede tomar decisiones go/no-go.</p>
-        )}
-      </section>
-
-      <section>
-        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Resolución (ganada / perdida)</h2>
-        {resolutions.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-            {resolutions.map((r) => (
-              <div key={r.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <strong style={{ color: r.resolution === "won" ? "#166534" : "#991b1b" }}>{r.resolution === "won" ? "GANADA" : "PERDIDA"}</strong>
-                  <span style={{ color: "#6b7280" }}>{formatDate(r.resolvedAt)}</span>
                 </div>
-                <p style={{ margin: "4px 0 0" }}>{r.reason}</p>
-                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Resuelta desde el estado "{formatTenderStatus(r.fromStatus)}".</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tender.status === "won" || tender.status === "lost" ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>
-            Esta convocatoria ya se resolvió como {tender.status === "won" ? "ganada" : "perdida"} -- es un estado terminal, no admite una nueva resolución.
-          </p>
-        ) : !RESOLUTION_ROLES.has(role) ? (
-          <p style={{ fontSize: 12, color: "#9ca3af" }}>Tu rol ({role}) no puede marcar una convocatoria ganada/perdida (se requiere owner/admin/analyst).</p>
-        ) : !RESOLVABLE_FROM_STATUSES.has(tender.status ?? "discovered") ? (
-          <p style={{ fontSize: 13, color: "#6b7280" }}>
-            Todavía no se puede resolver: se requiere una decisión "Go" primero (estado actual: "{formatTenderStatus(tender.status)}"). Nunca se salta directo de una convocatoria sin decisión a ganada/perdida.
-          </p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 460 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-              Motivo
-              <textarea value={resolutionReasonText} onChange={(e) => setResolutionReasonText(e.target.value)} rows={2} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontFamily: "inherit" }} />
-            </label>
-            {resolutionError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {resolutionError}
-              </p>
-            )}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={() => void handleResolve("won")} disabled={resolvingAs !== null} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #166534", background: "#166534", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-                {resolvingAs === "won" ? "Guardando…" : "Marcar ganada"}
-              </button>
-              <button type="button" onClick={() => void handleResolve("lost")} disabled={resolvingAs !== null} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #991b1b", background: "#fff", color: "#991b1b", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-                {resolvingAs === "lost" ? "Guardando…" : "Marcar perdida"}
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {checklist && (
-        <section>
-          <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>
-            Checklist de integridad <ResultDot result={checklist.overallStatus} />
-          </h2>
-          {checklist.items.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#6b7280" }}>Todavía no se ha corrido el checklist de esta convocatoria.</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {checklist.items.map((item) => (
-                <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: "1px solid #f3f4f6", paddingBottom: 6, fontSize: 13 }}>
-                  <div>
-                    <p style={{ margin: 0, fontWeight: 600 }}>{item.dimension}</p>
-                    <p style={{ margin: "2px 0 0", color: "#6b7280" }}>{item.notes}</p>
+                {match.eligibility.criteria.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    {match.eligibility.criteria.map((c, i) => (
+                      <p key={i} className="text-xs text-muted-foreground">
+                        {formatEligibility(c.status)}: {c.explanation}
+                      </p>
+                    ))}
                   </div>
-                  <ResultDot result={item.result} />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        <TabsContent value="go-no-go">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Go / No-go</CardTitle>
+              <CardDescription>Historial completo de decisiones y registro de una nueva.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {decisions.length === 0 && <p className="text-[13px] text-muted-foreground">Sin decisiones registradas todavía.</p>}
+              {decisions.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {decisions.map((d) => (
+                    <div key={d.id} className="rounded-xl border border-border p-3 text-[13px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant={d.decision === "go" ? "default" : "destructive"}>{d.decision === "go" ? "GO" : "NO-GO"}</Badge>
+                        <span className="text-xs text-muted-foreground">{formatDate(d.decidedAt)}</span>
+                      </div>
+                      <ul className="mt-1.5 list-disc pl-5 text-foreground">
+                        {d.reasons.map((r, i) => (
+                          <li key={i}>{r}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        Score al decidir: {d.matchScore} · elegibilidad: {formatEligibility(d.matchEligibilityStatus)}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-          <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
-            Esta ficha solo muestra el último resultado ya corrido --{" "}
-            <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} style={{ color: "#111827", fontWeight: 600 }}>
-              corre el checklist de nuevo o continúa el cierre aquí
-            </Link>
-            .
-          </p>
-        </section>
-      )}
+              )}
+
+              {GO_NO_GO_ROLES.has(role) ? (
+                <div className="flex max-w-[460px] flex-col gap-2">
+                  <Label htmlFor="go-no-go-motivos">Motivos (uno por línea)</Label>
+                  <textarea
+                    id="go-no-go-motivos"
+                    value={reasonsText}
+                    onChange={(e) => setReasonsText(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  />
+                  {decisionError && (
+                    <p role="alert" className="text-[13px] text-destructive">
+                      {decisionError}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => void handleDecision("go")} disabled={submitting !== null}>
+                      {submitting === "go" ? "Guardando…" : "Marcar Go"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void handleDecision("no_go")} disabled={submitting !== null}>
+                      {submitting === "no_go" ? "Guardando…" : "Marcar No-go"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede tomar decisiones go/no-go.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="resolucion">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Resolución (ganada / perdida)</CardTitle>
+              <CardDescription>Estado terminal de la convocatoria — el servidor revalida cada transición.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {resolutions.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {resolutions.map((r) => (
+                    <div key={r.id} className="rounded-xl border border-border p-3 text-[13px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant={r.resolution === "won" ? "default" : "destructive"}>{r.resolution === "won" ? "GANADA" : "PERDIDA"}</Badge>
+                        <span className="text-xs text-muted-foreground">{formatDate(r.resolvedAt)}</span>
+                      </div>
+                      <p className="mt-1.5 text-foreground">{r.reason}</p>
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">Resuelta desde el estado "{formatTenderStatus(r.fromStatus)}".</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {tender.status === "won" || tender.status === "lost" ? (
+                <p className="text-[13px] text-muted-foreground">
+                  Esta convocatoria ya se resolvió como {tender.status === "won" ? "ganada" : "perdida"} -- es un estado terminal, no admite una nueva resolución.
+                </p>
+              ) : !RESOLUTION_ROLES.has(role) ? (
+                <p className="text-xs text-muted-foreground">Tu rol ({role}) no puede marcar una convocatoria ganada/perdida (se requiere owner/admin/analyst).</p>
+              ) : !RESOLVABLE_FROM_STATUSES.has(tender.status ?? "discovered") ? (
+                <p className="text-[13px] text-muted-foreground">
+                  Todavía no se puede resolver: se requiere una decisión "Go" primero (estado actual: "{formatTenderStatus(tender.status)}"). Nunca se salta directo de una convocatoria sin decisión a ganada/perdida.
+                </p>
+              ) : (
+                <div className="flex max-w-[460px] flex-col gap-2">
+                  <Label htmlFor="resolucion-motivo">Motivo</Label>
+                  <textarea
+                    id="resolucion-motivo"
+                    value={resolutionReasonText}
+                    onChange={(e) => setResolutionReasonText(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  />
+                  {resolutionError && (
+                    <p role="alert" className="text-[13px] text-destructive">
+                      {resolutionError}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => void handleResolve("won")} disabled={resolvingAs !== null}>
+                      {resolvingAs === "won" ? "Guardando…" : "Marcar ganada"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void handleResolve("lost")} disabled={resolvingAs !== null}>
+                      {resolvingAs === "lost" ? "Guardando…" : "Marcar perdida"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {checklist && (
+          <TabsContent value="checklist">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <FileCheck2 className="h-4 w-4 text-muted-foreground" />
+                  Checklist de integridad <ResultDot result={checklist.overallStatus} />
+                </CardTitle>
+                <CardDescription>Último resultado ya corrido — esta ficha nunca ejecuta el checklist.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {checklist.items.length === 0 ? (
+                  <p className="text-[13px] text-muted-foreground">Todavía no se ha corrido el checklist de esta convocatoria.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {checklist.items.map((item) => (
+                      <div key={item.id} className="flex justify-between gap-3 border-b border-border pb-1.5 text-[13px]">
+                        <div>
+                          <p className="font-semibold text-foreground">{item.dimension}</p>
+                          <p className="mt-0.5 text-muted-foreground">{item.notes}</p>
+                        </div>
+                        <ResultDot result={item.result} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Esta ficha solo muestra el último resultado ya corrido --{" "}
+                  <Link to={`/licitaciones/${orgSlug}/convocatorias/${tenderId}/cierre`} className="font-semibold text-foreground hover:underline">
+                    corre el checklist de nuevo o continúa el cierre aquí
+                  </Link>
+                  .
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

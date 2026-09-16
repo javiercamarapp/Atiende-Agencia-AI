@@ -15,8 +15,31 @@
 // `POST /rentas/owner-portal/auth/logout` (ver owner-portal.ts + owner-portal-client.ts)
 // ANTES de borrar la sesión local, revocando de verdad el refresh token del lado del
 // servidor (mismo criterio que el logout de staff, `HotelesShell.tsx`/etc.).
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui): Card/Table/Button/
+// StatCard/EstadoCargando/EstadoVacio/EstadoError en vez de los `style={{...}}`
+// hechos a mano. CERO cambios de lógica: mismos efectos, mismas llamadas, mismas
+// ramas de render (cargando / vacío / con datos / detalle abierto).
 import { useEffect, useState } from "react";
-import type { CSSProperties } from "react";
+import { Building2, FileText, LogOut, Wallet } from "lucide-react";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  StatCard,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   clearOwnerPortalSession,
   fetchOwnerPortalMe,
@@ -29,11 +52,6 @@ import {
 import type { OwnerPortalMe, OwnerPortalSession, OwnerPortalStatementDetalle, OwnerPortalStatementSummary, OwnerPortalUnidad } from "../lib/owner-portal-client.ts";
 import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
-
-const sectionStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 };
-const secondaryButtonStyle: CSSProperties = { padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" };
-const logoutButtonStyle: CSSProperties = { padding: "8px 12px", borderRadius: 8, fontSize: 13, color: "#b91c1c", background: "transparent", border: "1px solid #fecaca", cursor: "pointer" };
-const errorStyle: CSSProperties = { color: "#b91c1c", margin: 0, fontSize: 13 };
 
 function centavosAPesos(centavos: number): string {
   return (centavos / 100).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -123,130 +141,156 @@ export function OwnerPortalDashboardPage({ apiBaseUrl, onRequireLogin }: OwnerPo
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: 24, fontFamily: "system-ui, sans-serif", display: "flex", flexDirection: "column", gap: 24 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Portal de propietario</h1>
-          {me && (
-            <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>
-              {me.name} · {me.email ?? "sin correo registrado"}
-            </p>
-          )}
-        </div>
-        <button type="button" onClick={() => void handleLogout()} disabled={cerrandoSesion} style={logoutButtonStyle}>
-          {cerrandoSesion ? "Cerrando sesión…" : "Cerrar sesión"}
-        </button>
-      </header>
+    <main className="min-h-screen bg-background">
+      <div className="mx-auto max-w-[760px] p-6 flex flex-col gap-6">
+        <header className="flex justify-between items-start gap-3">
+          <div>
+            <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Portal de propietario</h1>
+            {me && (
+              <p className="m-0 text-[13px] text-muted-foreground">
+                {me.name} · {me.email ?? "sin correo registrado"}
+              </p>
+            )}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => void handleLogout()} disabled={cerrandoSesion} className="shrink-0 text-destructive">
+            <LogOut className="w-4 h-4" strokeWidth={1.75} />
+            {cerrandoSesion ? "Cerrando sesión…" : "Cerrar sesión"}
+          </Button>
+        </header>
 
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
+        {error && <EstadoError mensaje={error} />}
 
-      {me && me.organizaciones.length > 0 && (
-        <section style={sectionStyle}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Tus empresas gestoras</h2>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-            {me.organizaciones.map((o) => (
-              <li key={o.organizationId}>{o.name}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Tus unidades</h2>
-        {!unidades && <p style={{ color: "#6b7280", fontSize: 13, margin: 0 }}>Cargando…</p>}
-        {unidades && unidades.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>Todavía no tienes ninguna unidad registrada.</p>}
-        {unidades && unidades.length > 0 && (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={{ padding: "4px 0" }}>Unidad</th>
-                <th style={{ padding: "4px 0" }}>Empresa gestora</th>
-              </tr>
-            </thead>
-            <tbody>
-              {unidades.map((u) => (
-                <tr key={u.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "4px 0" }}>{u.name}</td>
-                  <td style={{ padding: "4px 0" }}>{u.organizationName}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Tus statements</h2>
-        {!statements && <p style={{ color: "#6b7280", fontSize: 13, margin: 0 }}>Cargando…</p>}
-        {statements && statements.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>Todavía no tienes ningún statement generado.</p>}
-        {statements && statements.length > 0 && (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={{ padding: "4px 0" }}>Empresa gestora</th>
-                <th style={{ padding: "4px 0" }}>Periodo</th>
-                <th style={{ padding: "4px 0" }}>Versión</th>
-                <th style={{ padding: "4px 0", textAlign: "right" }}>Neto</th>
-                <th style={{ padding: "4px 0" }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {statements.map((s) => (
-                <tr key={s.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "4px 0" }}>{s.organizationName}</td>
-                  <td style={{ padding: "4px 0" }}>
-                    {s.periodo.inicio} → {s.periodo.fin}
-                  </td>
-                  <td style={{ padding: "4px 0" }}>v{s.version}</td>
-                  <td style={{ padding: "4px 0", textAlign: "right" }}>
-                    {centavosAPesos(s.netoCentavos)} {s.moneda}
-                  </td>
-                  <td style={{ padding: "4px 0" }}>
-                    <button type="button" onClick={() => verDetalle(s.id)} style={secondaryButtonStyle}>
-                      Ver detalle
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        {detalle && (
-          <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
-              Statement v{detalle.version} — {detalle.periodo.inicio} → {detalle.periodo.fin} ({detalle.organizationName})
-            </p>
-            {detalle.motivoVersion && <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Motivo de esta versión: {detalle.motivoVersion}</p>}
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                  <th style={{ padding: "4px 0" }}>Reserva</th>
-                  <th style={{ padding: "4px 0" }}>Tipo</th>
-                  <th style={{ padding: "4px 0", textAlign: "right" }}>Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detalle.lineas.map((l, i) => (
-                  <tr key={i} style={{ borderTop: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "4px 0" }}>{l.ocupacionId}</td>
-                    <td style={{ padding: "4px 0" }}>{l.tipo}</td>
-                    <td style={{ padding: "4px 0", textAlign: "right" }}>
-                      {centavosAPesos(l.montoCentavos)} {detalle.moneda}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
-              <span>Neto</span>
-              <span>
-                {centavosAPesos(detalle.totales.netoCentavos)} {detalle.moneda}
-              </span>
-            </div>
+        {(unidades || statements) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <StatCard icon={Building2} label="Unidades" value={unidades ? String(unidades.length) : "—"} sinDato={unidades ? undefined : "Cargando tus unidades…"} />
+            <StatCard icon={FileText} label="Statements" value={statements ? String(statements.length) : "—"} sinDato={statements ? undefined : "Cargando tus statements…"} />
           </div>
         )}
-      </section>
+
+        {me && me.organizaciones.length > 0 && (
+          <Card>
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-[15px] font-semibold">Tus empresas gestoras</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <ul className="m-0 pl-5 text-[13px] text-foreground list-disc">
+                {me.organizaciones.map((o) => (
+                  <li key={o.organizationId}>{o.name}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-[15px] font-semibold">Tus unidades</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            {!unidades && <EstadoCargando lineas={2} etiqueta="Cargando tus unidades…" />}
+            {unidades && unidades.length === 0 && <EstadoVacio icon={Building2} titulo="Sin unidades" mensaje="Todavía no tienes ninguna unidad registrada." />}
+            {unidades && unidades.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-9 px-2">Unidad</TableHead>
+                    <TableHead className="h-9 px-2">Empresa gestora</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {unidades.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="p-2">{u.name}</TableCell>
+                      <TableCell className="p-2 text-muted-foreground">{u.organizationName}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-[15px] font-semibold">Tus statements</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 flex flex-col gap-3">
+            {!statements && <EstadoCargando lineas={2} etiqueta="Cargando tus statements…" />}
+            {statements && statements.length === 0 && <EstadoVacio icon={Wallet} titulo="Sin statements" mensaje="Todavía no tienes ningún statement generado." />}
+            {statements && statements.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-9 px-2">Empresa gestora</TableHead>
+                    <TableHead className="h-9 px-2">Periodo</TableHead>
+                    <TableHead className="h-9 px-2">Versión</TableHead>
+                    <TableHead className="h-9 px-2 text-right">Neto</TableHead>
+                    <TableHead className="h-9 px-2" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {statements.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="p-2">{s.organizationName}</TableCell>
+                      <TableCell className="p-2">
+                        {s.periodo.inicio} → {s.periodo.fin}
+                      </TableCell>
+                      <TableCell className="p-2">v{s.version}</TableCell>
+                      <TableCell className="p-2 text-right tabular-nums">
+                        {centavosAPesos(s.netoCentavos)} {s.moneda}
+                      </TableCell>
+                      <TableCell className="p-2">
+                        <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => verDetalle(s.id)}>
+                          Ver detalle
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+
+            {detalle && (
+              <Card className="border-dashed">
+                <CardHeader className="p-4 pb-2">
+                  <CardTitle className="text-[13px] font-semibold">
+                    Statement v{detalle.version} — {detalle.periodo.inicio} → {detalle.periodo.fin} ({detalle.organizationName})
+                  </CardTitle>
+                  {detalle.motivoVersion && <CardDescription className="text-xs">Motivo de esta versión: {detalle.motivoVersion}</CardDescription>}
+                </CardHeader>
+                <CardContent className="p-4 pt-0 flex flex-col gap-2">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="h-8 px-2 text-xs">Reserva</TableHead>
+                        <TableHead className="h-8 px-2 text-xs">Tipo</TableHead>
+                        <TableHead className="h-8 px-2 text-xs text-right">Monto</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detalle.lineas.map((l, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="p-2 text-xs">{l.ocupacionId}</TableCell>
+                          <TableCell className="p-2 text-xs">{l.tipo}</TableCell>
+                          <TableCell className="p-2 text-xs text-right tabular-nums">
+                            {centavosAPesos(l.montoCentavos)} {detalle.moneda}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="flex justify-between text-[13px] font-bold text-foreground">
+                    <span>Neto</span>
+                    <span className="tabular-nums">
+                      {centavosAPesos(detalle.totales.netoCentavos)} {detalle.moneda}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </main>
   );
 }

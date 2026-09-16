@@ -6,10 +6,33 @@
 // deleteAvailabilityRule/fetchAvailabilityOverrides/upsertAvailabilityOverride/
 // deleteAvailabilityOverride, ver admin.ts::POST/PATCH/DELETE
 // .../availability-rules[/:ruleId] y .../availability-overrides[/:date]).
+//
+// Presentación real (Fase de diseño): la tabla artesanal y los estilos en línea
+// (`inputStyle`/`primaryButtonStyle`/…) se cambian por Card/Table/Input/Label/
+// Button/Badge de @atiende/ui. Las llamadas, el estado y las ramas condicionales
+// de arriba son exactamente los mismos.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { UserRound } from "lucide-react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { CalendarOff, Plus, Trash2, UserRound } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   createAvailabilityRule,
   deleteAvailabilityOverride,
@@ -24,10 +47,10 @@ import type { AvailabilityOverrideSummary, AvailabilityRuleSummary, ProviderDeta
 import { formatDayOfWeek, formatHHMM } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
-const inputStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 };
-const primaryButtonStyle = { padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" };
-const secondaryButtonStyle = { padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 13, cursor: "pointer" };
-const dangerButtonStyle = { padding: "4px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" };
+/** Mismo alto/radio/anillo de foco que el `Input` real de @atiende/ui, para los
+ * `<select>` que se quedan nativos (el design system no exporta un Select). */
+const SELECT_CLASS =
+  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 const DAY_OPTIONS = Array.from({ length: 7 }, (_, i) => i);
 
@@ -206,149 +229,230 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Disponibilidad</h1>
+    <div className="flex max-w-2xl flex-col gap-4">
+      <h1 className="font-display text-xl font-semibold text-foreground">Disponibilidad</h1>
 
       {error && <EstadoError mensaje={error} />}
 
       {providers && providers.length === 0 && <EstadoVacio icon={UserRound} mensaje="Este negocio todavía no tiene proveedores activos." />}
 
       {providers && providers.length > 0 && (
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: "#374151" }}>
-          Proveedor
-          <select value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)} style={{ ...inputStyle, maxWidth: 280 }}>
+        <div className="flex max-w-xs flex-col gap-1.5">
+          <Label htmlFor="citas-disponibilidad-proveedor">Proveedor</Label>
+          <select id="citas-disponibilidad-proveedor" value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)} className={SELECT_CLASS}>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.displayName}
               </option>
             ))}
           </select>
-        </label>
+        </div>
       )}
 
       {!detail && selectedProviderId && !error && <EstadoCargando etiqueta="Cargando disponibilidad…" />}
 
       {detail && (
-        <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6b7280" }}>Horario semanal</p>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Horario semanal</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-32">Día</TableHead>
+                  <TableHead>Horario</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {DAY_OPTIONS.map((dayOfWeek) => {
+                  const rules = rulesByDay.get(dayOfWeek) ?? [];
+                  return (
+                    <TableRow key={dayOfWeek} className="align-top">
+                      <TableCell className="py-3 font-medium text-foreground">{formatDayOfWeek(dayOfWeek)}</TableCell>
+                      <TableCell className={`py-3 ${rules.length === 0 ? "text-muted-foreground" : "text-foreground"}`}>
+                        {rules.length === 0 && "Cerrado"}
+                        {rules.map((r) =>
+                          editingRuleId === r.id ? (
+                            <form key={r.id} onSubmit={handleSaveRule} className="mb-2 flex flex-wrap items-center gap-2">
+                              <Label htmlFor={`citas-regla-inicio-${r.id}`} className="sr-only">
+                                Hora de inicio
+                              </Label>
+                              <Input
+                                id={`citas-regla-inicio-${r.id}`}
+                                type="time"
+                                value={editStartTime}
+                                onChange={(e) => setEditStartTime(e.target.value)}
+                                className="h-9 w-auto"
+                                required
+                              />
+                              <span aria-hidden>–</span>
+                              <Label htmlFor={`citas-regla-fin-${r.id}`} className="sr-only">
+                                Hora de fin
+                              </Label>
+                              <Input id={`citas-regla-fin-${r.id}`} type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="h-9 w-auto" required />
+                              <label className="flex items-center gap-1.5 text-[12px] text-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={editIsActive}
+                                  onChange={(e) => setEditIsActive(e.target.checked)}
+                                  className="size-4 rounded border-border accent-primary"
+                                />
+                                Activo
+                              </label>
+                              <Button type="submit" size="sm" className="h-9" disabled={savingRule}>
+                                {savingRule ? "Guardando…" : "Guardar"}
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setEditingRuleId(null)} disabled={savingRule}>
+                                Cancelar
+                              </Button>
+                            </form>
+                          ) : (
+                            <div key={r.id} className="mb-1 flex flex-wrap items-center gap-2">
+                              <span className={r.isActive ? undefined : "opacity-50"}>
+                                {formatHHMM(r.startTime)} – {formatHHMM(r.endTime)}
+                              </span>
+                              {!r.isActive && <Badge variant="outline">inactivo</Badge>}
+                              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-[12px]" onClick={() => startEditingRule(r)}>
+                                Editar
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-[12px] text-destructive hover:text-destructive"
+                                onClick={() => void handleDeleteRule(r.id)}
+                                disabled={deletingRuleId === r.id}
+                              >
+                                <Trash2 aria-hidden />
+                                {deletingRuleId === r.id ? "Quitando…" : "Quitar"}
+                              </Button>
+                            </div>
+                          ),
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280", fontSize: 12, textTransform: "uppercase" }}>
-                <th style={{ padding: "4px 0" }}>Día</th>
-                <th style={{ padding: "4px 0" }}>Horario</th>
-                <th style={{ padding: "4px 0" }} />
-              </tr>
-            </thead>
-            <tbody>
-              {DAY_OPTIONS.map((dayOfWeek) => {
-                const rules = rulesByDay.get(dayOfWeek) ?? [];
-                return (
-                  <tr key={dayOfWeek} style={{ borderTop: "1px solid #f3f4f6", verticalAlign: "top" }}>
-                    <td style={{ padding: "8px 0", fontWeight: 500 }}>{formatDayOfWeek(dayOfWeek)}</td>
-                    <td style={{ padding: "8px 0", color: rules.length === 0 ? "#9ca3af" : "#111827" }} colSpan={2}>
-                      {rules.length === 0 && "Cerrado"}
-                      {rules.map((r) =>
-                        editingRuleId === r.id ? (
-                          <form key={r.id} onSubmit={handleSaveRule} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                            <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)} style={{ ...inputStyle, padding: "4px 8px" }} required />
-                            <span>–</span>
-                            <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} style={{ ...inputStyle, padding: "4px 8px" }} required />
-                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-                              <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} />
-                              Activo
-                            </label>
-                            <button type="submit" disabled={savingRule} style={{ ...primaryButtonStyle, padding: "4px 10px", fontSize: 12 }}>
-                              {savingRule ? "Guardando…" : "Guardar"}
-                            </button>
-                            <button type="button" onClick={() => setEditingRuleId(null)} disabled={savingRule} style={{ ...secondaryButtonStyle, padding: "4px 10px", fontSize: 12 }}>
-                              Cancelar
-                            </button>
-                          </form>
-                        ) : (
-                          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                            <span style={{ opacity: r.isActive ? 1 : 0.5 }}>
-                              {formatHHMM(r.startTime)} – {formatHHMM(r.endTime)}
-                              {!r.isActive && " (inactivo)"}
-                            </span>
-                            <button type="button" onClick={() => startEditingRule(r)} style={{ ...secondaryButtonStyle, padding: "2px 8px", fontSize: 11 }}>
-                              Editar
-                            </button>
-                            <button type="button" onClick={() => void handleDeleteRule(r.id)} disabled={deletingRuleId === r.id} style={dangerButtonStyle}>
-                              {deletingRuleId === r.id ? "Quitando…" : "Quitar"}
-                            </button>
-                          </div>
-                        ),
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          <form onSubmit={handleCreateRule} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
-            <select value={newDayOfWeek} onChange={(e) => setNewDayOfWeek(Number(e.target.value))} style={inputStyle}>
-              {DAY_OPTIONS.map((d) => (
-                <option key={d} value={d}>
-                  {formatDayOfWeek(d)}
-                </option>
-              ))}
-            </select>
-            <input type="time" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} style={inputStyle} required />
-            <span>–</span>
-            <input type="time" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} style={inputStyle} required />
-            <button type="submit" disabled={creatingRule} style={primaryButtonStyle}>
-              {creatingRule ? "Agregando…" : "Agregar horario"}
-            </button>
-          </form>
-        </section>
+            <form onSubmit={handleCreateRule} className="flex flex-wrap items-end gap-2 border-t border-border pt-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="citas-nuevo-horario-dia">Día</Label>
+                <select id="citas-nuevo-horario-dia" value={newDayOfWeek} onChange={(e) => setNewDayOfWeek(Number(e.target.value))} className={SELECT_CLASS}>
+                  {DAY_OPTIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {formatDayOfWeek(d)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="citas-nuevo-horario-inicio">Desde</Label>
+                <Input id="citas-nuevo-horario-inicio" type="time" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} className="w-auto" required />
+              </div>
+              <span aria-hidden className="pb-3">
+                –
+              </span>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="citas-nuevo-horario-fin">Hasta</Label>
+                <Input id="citas-nuevo-horario-fin" type="time" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} className="w-auto" required />
+              </div>
+              <Button type="submit" disabled={creatingRule}>
+                <Plus aria-hidden />
+                {creatingRule ? "Agregando…" : "Agregar horario"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {detail && (
-        <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6b7280" }}>Excepciones (días específicos)</p>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Excepciones (días específicos)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {!overrides && <EstadoCargando lineas={2} etiqueta="Cargando excepciones…" />}
+            {overrides && overrides.length === 0 && <EstadoVacio icon={CalendarOff} mensaje="Sin excepciones próximas — este proveedor sigue su horario semanal normal." />}
+            {overrides && overrides.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                {overrides.map((o) => (
+                  <div key={o.overrideDate} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-medium text-foreground">{o.overrideDate}</span>
+                    {o.isClosed ? (
+                      <Badge variant="destructive">Cerrado</Badge>
+                    ) : (
+                      <span className="text-foreground">
+                        {formatHHMM(o.startTime ?? "")} – {formatHHMM(o.endTime ?? "")}
+                      </span>
+                    )}
+                    {o.reason && <span className="text-muted-foreground">({o.reason})</span>}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-[12px] text-destructive hover:text-destructive"
+                      onClick={() => void handleDeleteOverride(o.overrideDate)}
+                      disabled={deletingOverrideDate === o.overrideDate}
+                    >
+                      <Trash2 aria-hidden />
+                      {deletingOverrideDate === o.overrideDate ? "Quitando…" : "Quitar"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
 
-          {!overrides && <p style={{ margin: 0, color: "#6b7280" }}>Cargando…</p>}
-          {overrides && overrides.length === 0 && <p style={{ margin: 0, color: "#6b7280" }}>Sin excepciones próximas — este proveedor sigue su horario semanal normal.</p>}
-          {overrides && overrides.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {overrides.map((o) => (
-                <div key={o.overrideDate} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 500 }}>{o.overrideDate}</span>
-                  <span style={{ color: o.isClosed ? "#b91c1c" : "#111827" }}>{o.isClosed ? "Cerrado" : `${formatHHMM(o.startTime ?? "")} – ${formatHHMM(o.endTime ?? "")}`}</span>
-                  {o.reason && <span style={{ color: "#6b7280" }}>({o.reason})</span>}
-                  <button type="button" onClick={() => void handleDeleteOverride(o.overrideDate)} disabled={deletingOverrideDate === o.overrideDate} style={dangerButtonStyle}>
-                    {deletingOverrideDate === o.overrideDate ? "Quitando…" : "Quitar"}
-                  </button>
+            <form onSubmit={handleSaveOverride} className="flex flex-col gap-3 border-t border-border pt-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="citas-excepcion-fecha">Fecha</Label>
+                  <Input id="citas-excepcion-fecha" type="date" value={newOverrideDate} onChange={(e) => setNewOverrideDate(e.target.value)} className="w-auto" required />
                 </div>
-              ))}
-            </div>
-          )}
-
-          <form onSubmit={handleSaveOverride} style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid #f3f4f6", paddingTop: 12 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <input type="date" value={newOverrideDate} onChange={(e) => setNewOverrideDate(e.target.value)} style={inputStyle} required />
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                <input type="checkbox" checked={newOverrideClosed} onChange={(e) => setNewOverrideClosed(e.target.checked)} />
-                Cerrado todo el día
-              </label>
-              {!newOverrideClosed && (
-                <>
-                  <input type="time" value={newOverrideStart} onChange={(e) => setNewOverrideStart(e.target.value)} style={inputStyle} required />
-                  <span>–</span>
-                  <input type="time" value={newOverrideEnd} onChange={(e) => setNewOverrideEnd(e.target.value)} style={inputStyle} required />
-                </>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <input placeholder="Motivo (opcional, ej. Vacaciones)" value={newOverrideReason} onChange={(e) => setNewOverrideReason(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
-              <button type="submit" disabled={savingOverride} style={primaryButtonStyle}>
-                {savingOverride ? "Guardando…" : "Guardar excepción"}
-              </button>
-            </div>
-          </form>
-        </section>
+                <label className="flex h-11 items-center gap-2 text-[13px] text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={newOverrideClosed}
+                    onChange={(e) => setNewOverrideClosed(e.target.checked)}
+                    className="size-4 rounded border-border accent-primary"
+                  />
+                  Cerrado todo el día
+                </label>
+                {!newOverrideClosed && (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="citas-excepcion-inicio">Desde</Label>
+                      <Input id="citas-excepcion-inicio" type="time" value={newOverrideStart} onChange={(e) => setNewOverrideStart(e.target.value)} className="w-auto" required />
+                    </div>
+                    <span aria-hidden className="pb-3">
+                      –
+                    </span>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="citas-excepcion-fin">Hasta</Label>
+                      <Input id="citas-excepcion-fin" type="time" value={newOverrideEnd} onChange={(e) => setNewOverrideEnd(e.target.value)} className="w-auto" required />
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+                  <Label htmlFor="citas-excepcion-motivo">Motivo (opcional)</Label>
+                  <Input
+                    id="citas-excepcion-motivo"
+                    placeholder="Motivo (opcional, ej. Vacaciones)"
+                    value={newOverrideReason}
+                    onChange={(e) => setNewOverrideReason(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" disabled={savingOverride}>
+                  {savingOverride ? "Guardando…" : "Guardar excepción"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

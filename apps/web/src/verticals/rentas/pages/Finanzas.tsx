@@ -34,8 +34,32 @@
 // statements en una superficie SEPARADA de este panel de staff (ver
 // pages/OwnerPortalLogin.tsx/OwnerPortalActivar.tsx/OwnerPortalDashboard.tsx --
 // login propio contra el JWT del portal, nunca el de staff).
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Input/
+// Label/Table/Badge/EstadoVacio + clases de token en lugar de los `style={{...}}`
+// hechos a mano. CERO cambios de lógica: mismos submits, mismas validaciones
+// locales, mismas ramas de render, mismos gates de rol, mismos payloads.
 import { useEffect, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import type { FormEvent } from "react";
+import { FileSpreadsheet, Mail, Plus, Search, Wallet } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   CANALES_PAYOUT,
   centavosAPesos,
@@ -71,14 +95,14 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 const FINANZAS_LECTURA_ROLES = new Set(["admin_gestora", "contador"]);
 const FINANZAS_ESCRITURA_ROLES = new Set(["admin_gestora"]);
 
-const inputStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
-const labelStyle: CSSProperties = { fontSize: 13 };
-const sectionStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 };
-const formRowStyle: CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap" };
-const primaryButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 600 };
-const secondaryButtonStyle: CSSProperties = { padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" };
-const noticeStyle: CSSProperties = { margin: 0, fontSize: 12, color: "#065f46", background: "#d1fae5", padding: "6px 10px", borderRadius: 8 };
-const errorStyle: CSSProperties = { color: "#b91c1c", margin: 0, fontSize: 13 };
+/** Mismos tokens que el <Input> de @atiende/ui aplicados a los <select> nativos: son
+ * dropdowns de datos reales (unidad, reserva, canal, base de comisión) con estados
+ * `<option>Cargando…</option>` / `<option>Sin reservas en esta unidad</option>` --
+ * se quedan nativos y solo se re-estilan. */
+const SELECT_CLASES =
+  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const NOTA_CLASES = "m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground";
 
 const TIPO_LINEA_LABELS: Record<string, string> = {
   ingreso: "Ingreso",
@@ -94,6 +118,14 @@ const ESTADO_CONCILIACION_LABELS: Record<string, string> = {
   discrepancia: "Discrepancia",
 };
 
+/** Mismo criterio semántico que la tabla previa en texto plano, ahora con <Badge>. */
+function varianteConciliacion(estado: string): "default" | "secondary" | "destructive" | "outline" {
+  if (estado === "conciliado") return "default";
+  if (estado === "discrepancia") return "destructive";
+  if (estado === "pendiente") return "secondary";
+  return "outline";
+}
+
 export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
   const puedeLeer = org ? FINANZAS_LECTURA_ROLES.has(org.rol) : false;
@@ -101,25 +133,27 @@ export function FinanzasPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   if (!puedeLeer) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Finanzas</h1>
-        <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
-          Tu rol actual{org ? <> (<strong>{org.rol}</strong>)</> : ""} no tiene acceso de lectura a Finanzas. Roles con acceso: <strong>admin_gestora</strong> y <strong>contador</strong>.
+      <div className="flex flex-col gap-4 max-w-[640px]">
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Finanzas</h1>
+        <p className="m-0 text-[13px] text-muted-foreground">
+          Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso de lectura a Finanzas. Roles con acceso:{" "}
+          <strong className="text-foreground">admin_gestora</strong> y <strong className="text-foreground">contador</strong>.
         </p>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 720 }}>
+    <div className="flex flex-col gap-6 max-w-[720px]">
       <header>
-        <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Finanzas</h1>
-        <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>
+        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Finanzas</h1>
+        <p className="m-0 text-[13px] text-muted-foreground">
           Movimiento financiero por reserva, owner statements y payouts de canal.
           {!puedeEscribir && (
             <>
               {" "}
-              Tu rol (<strong>{org?.rol}</strong>) es de solo lectura — registrar/generar es exclusivo de <strong>admin_gestora</strong>.
+              Tu rol (<strong className="text-foreground">{org?.rol}</strong>) es de solo lectura — registrar/generar es exclusivo de{" "}
+              <strong className="text-foreground">admin_gestora</strong>.
             </>
           )}
         </p>
@@ -207,59 +241,67 @@ function MovimientoSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sec
   }
 
   return (
-    <section style={sectionStyle}>
-      <h2 style={{ fontSize: 15, margin: 0 }}>Movimiento financiero por reserva</h2>
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-[15px] font-semibold">Movimiento financiero por reserva</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 flex flex-col gap-3">
+        <div className="flex gap-2.5 flex-wrap">
+          <Label className={`${LABEL_CLASES} flex-1 min-w-[180px]`}>
+            Unidad
+            <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
+              {!unidades && <option>Cargando…</option>}
+              {unidades?.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.nombre}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Label className={`${LABEL_CLASES} flex-1 min-w-[220px]`}>
+            Reserva
+            <select value={ocupacionId} onChange={(e) => setOcupacionId(e.target.value)} className={SELECT_CLASES} disabled={!ocupaciones || ocupaciones.length === 0}>
+              {!ocupaciones && <option>Cargando…</option>}
+              {ocupaciones && ocupaciones.length === 0 && <option>Sin reservas en esta unidad</option>}
+              {ocupaciones?.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.rango.inicio} → {o.rango.fin} {o.huespedNombre ? `· ${o.huespedNombre}` : ""} ({o.estado})
+                </option>
+              ))}
+            </select>
+          </Label>
+        </div>
 
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 180 }}>
-          Unidad
-          <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} style={inputStyle} disabled={!unidades}>
-            {!unidades && <option>Cargando…</option>}
-            {unidades?.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 220 }}>
-          Reserva
-          <select value={ocupacionId} onChange={(e) => setOcupacionId(e.target.value)} style={inputStyle} disabled={!ocupaciones || ocupaciones.length === 0}>
-            {!ocupaciones && <option>Cargando…</option>}
-            {ocupaciones && ocupaciones.length === 0 && <option>Sin reservas en esta unidad</option>}
-            {ocupaciones?.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.rango.inicio} → {o.rango.fin} {o.huespedNombre ? `· ${o.huespedNombre}` : ""} ({o.estado})
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+        <Button type="button" variant="outline" size="sm" onClick={handleVerMovimiento} disabled={!ocupacionId || cargando} className="self-start">
+          <Search className="w-4 h-4" strokeWidth={1.75} />
+          {cargando ? "Consultando…" : "Ver movimiento registrado"}
+        </Button>
 
-      <button type="button" onClick={handleVerMovimiento} disabled={!ocupacionId || cargando} style={{ ...secondaryButtonStyle, alignSelf: "flex-start" }}>
-        {cargando ? "Consultando…" : "Ver movimiento registrado"}
-      </button>
+        {error && (
+          <p role="alert" className="m-0 text-[13px] text-destructive">
+            {error}
+          </p>
+        )}
 
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
+        {movimiento && <MovimientoResumen m={movimiento} />}
 
-      {movimiento && <MovimientoResumen m={movimiento} />}
-
-      {puedeEscribir && ocupacionId && (
-        <RegistrarMovimientoForm
-          apiBaseUrl={apiBaseUrl}
-          token={token}
-          propertyId={propertyId}
-          ocupacionId={ocupacionId}
-          onRegistrado={(m) => setMovimiento(m)}
-        />
-      )}
-    </section>
+        {puedeEscribir && ocupacionId && (
+          <RegistrarMovimientoForm
+            apiBaseUrl={apiBaseUrl}
+            token={token}
+            propertyId={propertyId}
+            ocupacionId={ocupacionId}
+            onRegistrado={(m) => setMovimiento(m)}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function MovimientoResumen({ m }: { m: MovimientoDetalle }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, borderTop: "1px solid #e5e7eb", paddingTop: 10 }}>
+    <div className="flex flex-col gap-1 text-[13px] border-t border-border pt-2.5">
       <Linea label="Ingreso bruto" valorCentavos={m.ingresoBrutoCentavos} moneda={m.moneda} />
       <Linea label={`Comisión de canal (${m.comisionCanalFuente})`} valorCentavos={-m.comisionCanalCentavos} moneda={m.moneda} />
       <Linea label="Monto recibido del canal" valorCentavos={m.montoRecibidoCentavos} moneda={m.moneda} />
@@ -274,9 +316,9 @@ function MovimientoResumen({ m }: { m: MovimientoDetalle }) {
 function Linea({ label, valorCentavos, moneda, fuerte }: { label: string; valorCentavos: number; moneda: string; fuerte?: boolean }) {
   const signo = valorCentavos < 0 ? "-" : "";
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: fuerte ? 700 : 400 }}>
+    <div className={fuerte ? "flex justify-between font-bold text-foreground" : "flex justify-between text-foreground"}>
       <span>{label}</span>
-      <span>
+      <span className="tabular-nums">
         {signo}
         {centavosAPesos(Math.abs(valorCentavos))} {moneda}
       </span>
@@ -388,68 +430,91 @@ function RegistrarMovimientoForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ ...sectionStyle, borderStyle: "dashed" }}>
-      <h3 style={{ fontSize: 14, margin: 0 }}>Registrar movimiento</h3>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, width: 90 }}>
-          Moneda
-          <input value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())} maxLength={3} required style={inputStyle} placeholder="MXN" />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>
-          Monto bruto (por el canal)
-          <input type="number" min="0" step="0.01" value={montoBruto} onChange={(e) => setMontoBruto(e.target.value)} required style={inputStyle} placeholder="5000.00" />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>
-          Comisión de gestor (%)
-          <input type="number" min="0" max="100" step="0.01" value={comisionGestorPct} onChange={(e) => setComisionGestorPct(e.target.value)} required style={inputStyle} placeholder="10" />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 180 }}>
-          Base de la comisión de gestor
-          <select value={comisionGestorBase} onChange={(e) => setComisionGestorBase(e.target.value as BaseComisionGestor)} style={inputStyle}>
-            <option value="bruto">Sobre el bruto</option>
-            <option value="neto_de_canal">Sobre el neto de comisión de canal</option>
-          </select>
-        </label>
-      </div>
-
-      <div>
-        <p style={{ ...labelStyle, margin: "0 0 6px" }}>Gastos (opcional)</p>
-        {gastos.map((g) => (
-          <div key={g.key} style={{ ...formRowStyle, marginBottom: 6 }}>
-            <input value={g.tipo} onChange={(e) => actualizarGasto(g.key, { tipo: e.target.value })} placeholder="Tipo (ej. limpieza)" style={{ ...inputStyle, flex: 1, minWidth: 140, marginTop: 0 }} />
-            <input value={g.descripcion} onChange={(e) => actualizarGasto(g.key, { descripcion: e.target.value })} placeholder="Descripción (opcional)" style={{ ...inputStyle, flex: 1, minWidth: 160, marginTop: 0 }} />
-            <input type="number" min="0" step="0.01" value={g.monto} onChange={(e) => actualizarGasto(g.key, { monto: e.target.value })} placeholder="Monto" style={{ ...inputStyle, width: 110, marginTop: 0 }} />
-            <button type="button" onClick={() => quitarGasto(g.key)} style={secondaryButtonStyle}>
-              Quitar
-            </button>
+    <Card className="border-dashed">
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-semibold">Registrar movimiento</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="flex gap-2.5 flex-wrap">
+            <Label className={`${LABEL_CLASES} w-[90px]`}>
+              Moneda
+              <Input value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())} maxLength={3} required placeholder="MXN" />
+            </Label>
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[160px]`}>
+              Monto bruto (por el canal)
+              <Input type="number" min="0" step="0.01" value={montoBruto} onChange={(e) => setMontoBruto(e.target.value)} required placeholder="5000.00" />
+            </Label>
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[160px]`}>
+              Comisión de gestor (%)
+              <Input type="number" min="0" max="100" step="0.01" value={comisionGestorPct} onChange={(e) => setComisionGestorPct(e.target.value)} required placeholder="10" />
+            </Label>
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[180px]`}>
+              Base de la comisión de gestor
+              <select value={comisionGestorBase} onChange={(e) => setComisionGestorBase(e.target.value as BaseComisionGestor)} className={SELECT_CLASES}>
+                <option value="bruto">Sobre el bruto</option>
+                <option value="neto_de_canal">Sobre el neto de comisión de canal</option>
+              </select>
+            </Label>
           </div>
-        ))}
-        <button type="button" onClick={agregarGasto} style={secondaryButtonStyle}>
-          + Agregar gasto
-        </button>
-      </div>
 
-      <div>
-        <p style={{ ...labelStyle, margin: "0 0 6px" }}>Impuestos (opcional — siempre sujetos a revisión fiscal)</p>
-        {impuestos.map((i) => (
-          <div key={i.key} style={{ ...formRowStyle, marginBottom: 6 }}>
-            <input value={i.tipo} onChange={(e) => actualizarImpuesto(i.key, { tipo: e.target.value })} placeholder="Tipo (ej. ISR retenido)" style={{ ...inputStyle, flex: 1, minWidth: 160, marginTop: 0 }} />
-            <input type="number" min="0" step="0.01" value={i.monto} onChange={(e) => actualizarImpuesto(i.key, { monto: e.target.value })} placeholder="Monto" style={{ ...inputStyle, width: 110, marginTop: 0 }} />
-            <button type="button" onClick={() => quitarImpuesto(i.key)} style={secondaryButtonStyle}>
-              Quitar
-            </button>
+          <div>
+            <p className="m-0 mb-1.5 text-[13px] text-foreground">Gastos (opcional)</p>
+            {gastos.map((g) => (
+              <div key={g.key} className="flex gap-2.5 flex-wrap mb-1.5">
+                <Input value={g.tipo} onChange={(e) => actualizarGasto(g.key, { tipo: e.target.value })} placeholder="Tipo (ej. limpieza)" className="flex-1 min-w-[140px]" />
+                <Input
+                  value={g.descripcion}
+                  onChange={(e) => actualizarGasto(g.key, { descripcion: e.target.value })}
+                  placeholder="Descripción (opcional)"
+                  className="flex-1 min-w-[160px]"
+                />
+                <Input type="number" min="0" step="0.01" value={g.monto} onChange={(e) => actualizarGasto(g.key, { monto: e.target.value })} placeholder="Monto" className="w-[110px]" />
+                <Button type="button" variant="outline" size="sm" onClick={() => quitarGasto(g.key)}>
+                  Quitar
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={agregarGasto}>
+              <Plus className="w-4 h-4" strokeWidth={1.75} />+ Agregar gasto
+            </Button>
           </div>
-        ))}
-        <button type="button" onClick={agregarImpuesto} style={secondaryButtonStyle}>
-          + Agregar impuesto
-        </button>
-      </div>
 
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-      <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
-        {guardando ? "Registrando…" : "Registrar movimiento"}
-      </button>
-    </form>
+          <div>
+            <p className="m-0 mb-1.5 text-[13px] text-foreground">Impuestos (opcional — siempre sujetos a revisión fiscal)</p>
+            {impuestos.map((i) => (
+              <div key={i.key} className="flex gap-2.5 flex-wrap mb-1.5">
+                <Input value={i.tipo} onChange={(e) => actualizarImpuesto(i.key, { tipo: e.target.value })} placeholder="Tipo (ej. ISR retenido)" className="flex-1 min-w-[160px]" />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={i.monto}
+                  onChange={(e) => actualizarImpuesto(i.key, { monto: e.target.value })}
+                  placeholder="Monto"
+                  className="w-[110px]"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={() => quitarImpuesto(i.key)}>
+                  Quitar
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={agregarImpuesto}>
+              <Plus className="w-4 h-4" strokeWidth={1.75} />+ Agregar impuesto
+            </Button>
+          </div>
+
+          {error && (
+            <p role="alert" className="m-0 text-[13px] text-destructive">
+              {error}
+            </p>
+          )}
+          <Button type="submit" size="sm" disabled={guardando} className="self-start">
+            {guardando ? "Registrando…" : "Registrar movimiento"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -510,128 +575,141 @@ function OwnerStatementsSection({ apiBaseUrl, token, propertyId, puedeEscribir }
   }
 
   return (
-    <section style={sectionStyle}>
-      <h2 style={{ fontSize: 15, margin: 0 }}>Owner statements</h2>
-      <p style={{ color: "#9ca3af", fontSize: 12, margin: 0 }}>
-        No hay un catálogo de propietarios en el backend todavía — ingresa el id del propietario (mismo que usa el portal del propietario).
-      </p>
-
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 220 }}>
-          Id del propietario (ownerId)
-          <input value={ownerId} onChange={(e) => setOwnerId(e.target.value)} style={inputStyle} placeholder="uuid del propietario" />
-        </label>
-        <button type="button" onClick={() => cargarStatements(ownerId)} disabled={cargando} style={{ ...secondaryButtonStyle, alignSelf: "flex-end", marginBottom: 4 }}>
-          {cargando ? "Consultando…" : "Ver statements"}
-        </button>
-        <button type="button" onClick={invitarPropietario} disabled={invitando} style={{ ...secondaryButtonStyle, alignSelf: "flex-end", marginBottom: 4 }}>
-          {invitando ? "Invitando…" : "Invitar a este propietario"}
-        </button>
-      </div>
-
-      {errorInvite && <p role="alert" style={errorStyle}>{errorInvite}</p>}
-      {invite && (
-        <p style={noticeStyle}>
-          Invitación creada (vence {invite.expiresAt}). Comparte este token con el propietario para que active su cuenta en el portal:{" "}
-          <code style={{ userSelect: "all", background: "#fff", padding: "1px 4px", borderRadius: 4 }}>{invite.inviteToken}</code>
-        </p>
-      )}
-
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-
-      {statements && statements.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>Este propietario no tiene ningún statement generado todavía.</p>}
-
-      {statements && statements.length > 0 && (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={{ padding: "4px 0" }}>Periodo</th>
-              <th style={{ padding: "4px 0" }}>Versión</th>
-              <th style={{ padding: "4px 0", textAlign: "right" }}>Neto</th>
-              <th style={{ padding: "4px 0" }}>Generado</th>
-              <th style={{ padding: "4px 0" }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {statements.map((s) => (
-              <tr key={s.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                <td style={{ padding: "4px 0" }}>
-                  {s.periodo.inicio} → {s.periodo.fin}
-                </td>
-                <td style={{ padding: "4px 0" }}>v{s.version}</td>
-                <td style={{ padding: "4px 0", textAlign: "right" }}>
-                  {centavosAPesos(s.netoCentavos)} {s.moneda}
-                </td>
-                <td style={{ padding: "4px 0", color: "#6b7280" }}>{s.generadoEn}</td>
-                <td style={{ padding: "4px 0" }}>
-                  <button type="button" onClick={() => verDetalle(s.id)} style={secondaryButtonStyle}>
-                    Ver detalle
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {detalle && (
-        <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
-            Statement v{detalle.version} — {detalle.periodo.inicio} → {detalle.periodo.fin}
-          </p>
-          {detalle.motivoVersion && (
-            <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Motivo de esta versión: {detalle.motivoVersion}</p>
-          )}
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={{ padding: "4px 0" }}>Reserva</th>
-                <th style={{ padding: "4px 0" }}>Tipo</th>
-                <th style={{ padding: "4px 0", textAlign: "right" }}>Monto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detalle.lineas.map((l: LineaOwnerStatement, i: number) => (
-                <tr key={i} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "4px 0" }}>{l.ocupacionId}</td>
-                  <td style={{ padding: "4px 0" }}>{TIPO_LINEA_LABELS[l.tipo] ?? l.tipo}</td>
-                  <td style={{ padding: "4px 0", textAlign: "right" }}>
-                    {centavosAPesos(l.montoCentavos)} {detalle.moneda}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 13 }}>
-            <Linea label="Ingresos brutos" valorCentavos={detalle.totales.ingresosBrutosCentavos} moneda={detalle.moneda} />
-            <Linea label="Comisión de canal" valorCentavos={-detalle.totales.comisionCanalCentavos} moneda={detalle.moneda} />
-            <Linea label="Comisión de gestor" valorCentavos={-detalle.totales.comisionGestorCentavos} moneda={detalle.moneda} />
-            <Linea label="Gastos" valorCentavos={-detalle.totales.gastosCentavos} moneda={detalle.moneda} />
-            <Linea label="Impuestos" valorCentavos={-detalle.totales.impuestosCentavos} moneda={detalle.moneda} />
-            <Linea label="Neto" valorCentavos={detalle.totales.netoCentavos} moneda={detalle.moneda} fuerte />
-          </div>
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-[15px] font-semibold">Owner statements</CardTitle>
+        <CardDescription className="text-xs">
+          No hay un catálogo de propietarios en el backend todavía — ingresa el id del propietario (mismo que usa el portal del propietario).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 flex flex-col gap-3">
+        <div className="flex gap-2.5 flex-wrap items-end">
+          <Label className={`${LABEL_CLASES} flex-1 min-w-[220px]`}>
+            Id del propietario (ownerId)
+            <Input value={ownerId} onChange={(e) => setOwnerId(e.target.value)} placeholder="uuid del propietario" />
+          </Label>
+          <Button type="button" variant="outline" size="sm" onClick={() => cargarStatements(ownerId)} disabled={cargando}>
+            <Search className="w-4 h-4" strokeWidth={1.75} />
+            {cargando ? "Consultando…" : "Ver statements"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={invitarPropietario} disabled={invitando}>
+            <Mail className="w-4 h-4" strokeWidth={1.75} />
+            {invitando ? "Invitando…" : "Invitar a este propietario"}
+          </Button>
         </div>
-      )}
 
-      {puedeEscribir && (
-        <GenerarStatementForm
-          apiBaseUrl={apiBaseUrl}
-          token={token}
-          propertyId={propertyId}
-          ownerId={ownerId}
-          hayVersionPrevia={(statements?.length ?? 0) > 0}
-          onGenerado={(resultado) => {
-            setUltimoResultado(
-              resultado.creado
-                ? `Statement nuevo creado: versión ${resultado.version}.`
-                : `Sin cambios: el contenido es idéntico al de la versión ${resultado.version} ya existente (idempotente).`,
-            );
-            if (ownerId.trim()) cargarStatements(ownerId);
-          }}
-        />
-      )}
-      {ultimoResultado && <p style={noticeStyle}>{ultimoResultado}</p>}
-    </section>
+        {errorInvite && (
+          <p role="alert" className="m-0 text-[13px] text-destructive">
+            {errorInvite}
+          </p>
+        )}
+        {invite && (
+          <p className={NOTA_CLASES}>
+            Invitación creada (vence {invite.expiresAt}). Comparte este token con el propietario para que active su cuenta en el portal:{" "}
+            <code className="select-all rounded bg-background px-1 py-0.5 font-mono">{invite.inviteToken}</code>
+          </p>
+        )}
+
+        {error && (
+          <p role="alert" className="m-0 text-[13px] text-destructive">
+            {error}
+          </p>
+        )}
+
+        {statements && statements.length === 0 && (
+          <EstadoVacio icon={FileSpreadsheet} titulo="Sin statements" mensaje="Este propietario no tiene ningún statement generado todavía." />
+        )}
+
+        {statements && statements.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="h-9 px-2">Periodo</TableHead>
+                <TableHead className="h-9 px-2">Versión</TableHead>
+                <TableHead className="h-9 px-2 text-right">Neto</TableHead>
+                <TableHead className="h-9 px-2">Generado</TableHead>
+                <TableHead className="h-9 px-2" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {statements.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="p-2">
+                    {s.periodo.inicio} → {s.periodo.fin}
+                  </TableCell>
+                  <TableCell className="p-2">v{s.version}</TableCell>
+                  <TableCell className="p-2 text-right tabular-nums">
+                    {centavosAPesos(s.netoCentavos)} {s.moneda}
+                  </TableCell>
+                  <TableCell className="p-2 text-muted-foreground">{s.generadoEn}</TableCell>
+                  <TableCell className="p-2">
+                    <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => verDetalle(s.id)}>
+                      Ver detalle
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        {detalle && (
+          <div className="border-t border-border pt-2.5 flex flex-col gap-2">
+            <p className="m-0 text-[13px] font-semibold text-foreground">
+              Statement v{detalle.version} — {detalle.periodo.inicio} → {detalle.periodo.fin}
+            </p>
+            {detalle.motivoVersion && <p className="m-0 text-xs text-muted-foreground">Motivo de esta versión: {detalle.motivoVersion}</p>}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-8 px-2 text-xs">Reserva</TableHead>
+                  <TableHead className="h-8 px-2 text-xs">Tipo</TableHead>
+                  <TableHead className="h-8 px-2 text-xs text-right">Monto</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {detalle.lineas.map((l: LineaOwnerStatement, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell className="p-2 text-xs">{l.ocupacionId}</TableCell>
+                    <TableCell className="p-2 text-xs">{TIPO_LINEA_LABELS[l.tipo] ?? l.tipo}</TableCell>
+                    <TableCell className="p-2 text-xs text-right tabular-nums">
+                      {centavosAPesos(l.montoCentavos)} {detalle.moneda}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="flex flex-col gap-0.5 text-[13px]">
+              <Linea label="Ingresos brutos" valorCentavos={detalle.totales.ingresosBrutosCentavos} moneda={detalle.moneda} />
+              <Linea label="Comisión de canal" valorCentavos={-detalle.totales.comisionCanalCentavos} moneda={detalle.moneda} />
+              <Linea label="Comisión de gestor" valorCentavos={-detalle.totales.comisionGestorCentavos} moneda={detalle.moneda} />
+              <Linea label="Gastos" valorCentavos={-detalle.totales.gastosCentavos} moneda={detalle.moneda} />
+              <Linea label="Impuestos" valorCentavos={-detalle.totales.impuestosCentavos} moneda={detalle.moneda} />
+              <Linea label="Neto" valorCentavos={detalle.totales.netoCentavos} moneda={detalle.moneda} fuerte />
+            </div>
+          </div>
+        )}
+
+        {puedeEscribir && (
+          <GenerarStatementForm
+            apiBaseUrl={apiBaseUrl}
+            token={token}
+            propertyId={propertyId}
+            ownerId={ownerId}
+            hayVersionPrevia={(statements?.length ?? 0) > 0}
+            onGenerado={(resultado) => {
+              setUltimoResultado(
+                resultado.creado
+                  ? `Statement nuevo creado: versión ${resultado.version}.`
+                  : `Sin cambios: el contenido es idéntico al de la versión ${resultado.version} ya existente (idempotente).`,
+              );
+              if (ownerId.trim()) cargarStatements(ownerId);
+            }}
+          />
+        )}
+        {ultimoResultado && <p className={NOTA_CLASES}>{ultimoResultado}</p>}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -679,27 +757,37 @@ function GenerarStatementForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ ...sectionStyle, borderStyle: "dashed" }}>
-      <h3 style={{ fontSize: 14, margin: 0 }}>Generar statement</h3>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
-          Periodo inicio
-          <input type="date" value={periodoInicio} onChange={(e) => setPeriodoInicio(e.target.value)} required style={inputStyle} />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
-          Periodo fin
-          <input type="date" value={periodoFin} onChange={(e) => setPeriodoFin(e.target.value)} required style={inputStyle} />
-        </label>
-      </div>
-      <label style={labelStyle}>
-        Motivo de nueva versión {hayVersionPrevia ? "(obligatorio: ya existe al menos una versión)" : "(opcional — todavía no hay ninguna versión previa)"}
-        <input value={motivoVersion} onChange={(e) => setMotivoVersion(e.target.value)} style={inputStyle} placeholder="Corrección de gastos de limpieza reportados tarde" />
-      </label>
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-      <button type="submit" disabled={generando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
-        {generando ? "Generando…" : "Generar statement"}
-      </button>
-    </form>
+    <Card className="border-dashed">
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-semibold">Generar statement</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="flex gap-2.5 flex-wrap">
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
+              Periodo inicio
+              <Input type="date" value={periodoInicio} onChange={(e) => setPeriodoInicio(e.target.value)} required />
+            </Label>
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
+              Periodo fin
+              <Input type="date" value={periodoFin} onChange={(e) => setPeriodoFin(e.target.value)} required />
+            </Label>
+          </div>
+          <Label className={LABEL_CLASES}>
+            Motivo de nueva versión {hayVersionPrevia ? "(obligatorio: ya existe al menos una versión)" : "(opcional — todavía no hay ninguna versión previa)"}
+            <Input value={motivoVersion} onChange={(e) => setMotivoVersion(e.target.value)} placeholder="Corrección de gastos de limpieza reportados tarde" />
+          </Label>
+          {error && (
+            <p role="alert" className="m-0 text-[13px] text-destructive">
+              {error}
+            </p>
+          )}
+          <Button type="submit" size="sm" disabled={generando} className="self-start">
+            {generando ? "Generando…" : "Generar statement"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -735,73 +823,83 @@ function PayoutsSection({ apiBaseUrl, token, propertyId, puedeEscribir }: Sectio
   }
 
   return (
-    <section style={sectionStyle}>
-      <h2 style={{ fontSize: 15, margin: 0 }}>Payouts de canal + conciliación</h2>
-      <p style={{ color: "#9ca3af", fontSize: 12, margin: 0 }}>
-        No hay un listado de payouts ya importados en el backend todavía — al crear uno aquí, su id queda precargado abajo para consultarlo.
-      </p>
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-[15px] font-semibold">Payouts de canal + conciliación</CardTitle>
+        <CardDescription className="text-xs">
+          No hay un listado de payouts ya importados en el backend todavía — al crear uno aquí, su id queda precargado abajo para consultarlo.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 flex flex-col gap-3">
+        <div className="flex gap-2.5 flex-wrap items-end">
+          <Label className={`${LABEL_CLASES} flex-1 min-w-[220px]`}>
+            Id del payout
+            <Input value={payoutId} onChange={(e) => setPayoutId(e.target.value)} placeholder="uuid del payout" />
+          </Label>
+          <Button type="button" variant="outline" size="sm" onClick={() => verPayout(payoutId)} disabled={cargando}>
+            <Wallet className="w-4 h-4" strokeWidth={1.75} />
+            {cargando ? "Consultando…" : "Ver payout"}
+          </Button>
+        </div>
 
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 220 }}>
-          Id del payout
-          <input value={payoutId} onChange={(e) => setPayoutId(e.target.value)} style={inputStyle} placeholder="uuid del payout" />
-        </label>
-        <button type="button" onClick={() => verPayout(payoutId)} disabled={cargando} style={{ ...secondaryButtonStyle, alignSelf: "flex-end", marginBottom: 4 }}>
-          {cargando ? "Consultando…" : "Ver payout"}
-        </button>
-      </div>
+        {error && (
+          <p role="alert" className="m-0 text-[13px] text-destructive">
+            {error}
+          </p>
+        )}
 
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
+        {detalle && <PayoutResumen detalle={detalle} />}
 
-      {detalle && <PayoutResumen detalle={detalle} />}
-
-      {puedeEscribir && (
-        <ImportarPayoutForm
-          apiBaseUrl={apiBaseUrl}
-          token={token}
-          propertyId={propertyId}
-          onCreado={(creado) => {
-            setPayoutId(creado.id);
-            setDetalle({ id: creado.id, propertyId, canalCodigo: creado.canalCodigo, moneda: creado.moneda, montoTotalCentavos: creado.montoTotalCentavos, fechaPayout: creado.fechaPayout, referenciaExterna: null, resumen: creado.resumen, lineas: creado.lineas });
-          }}
-        />
-      )}
-    </section>
+        {puedeEscribir && (
+          <ImportarPayoutForm
+            apiBaseUrl={apiBaseUrl}
+            token={token}
+            propertyId={propertyId}
+            onCreado={(creado) => {
+              setPayoutId(creado.id);
+              setDetalle({ id: creado.id, propertyId, canalCodigo: creado.canalCodigo, moneda: creado.moneda, montoTotalCentavos: creado.montoTotalCentavos, fechaPayout: creado.fechaPayout, referenciaExterna: null, resumen: creado.resumen, lineas: creado.lineas });
+            }}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function PayoutResumen({ detalle }: { detalle: PayoutDetalle }) {
   return (
-    <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-      <p style={{ margin: 0, fontSize: 13 }}>
+    <div className="border-t border-border pt-2.5 flex flex-col gap-2">
+      <p className="m-0 text-[13px] text-foreground">
         <strong>{detalle.canalCodigo}</strong> · {centavosAPesos(detalle.montoTotalCentavos)} {detalle.moneda} · pagado {detalle.fechaPayout}
         {detalle.referenciaExterna ? ` · ref. ${detalle.referenciaExterna}` : ""}
       </p>
-      <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>
+      <p className="m-0 text-xs text-muted-foreground">
         {detalle.resumen.conciliadas} conciliadas · {detalle.resumen.pendientes} pendientes · {detalle.resumen.discrepancias} con discrepancia
       </p>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-        <thead>
-          <tr style={{ textAlign: "left", color: "#6b7280" }}>
-            <th style={{ padding: "4px 0" }}>Referencia</th>
-            <th style={{ padding: "4px 0" }}>Reserva</th>
-            <th style={{ padding: "4px 0", textAlign: "right" }}>Monto</th>
-            <th style={{ padding: "4px 0", textAlign: "right" }}>Esperado</th>
-            <th style={{ padding: "4px 0" }}>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="h-8 px-2 text-xs">Referencia</TableHead>
+            <TableHead className="h-8 px-2 text-xs">Reserva</TableHead>
+            <TableHead className="h-8 px-2 text-xs text-right">Monto</TableHead>
+            <TableHead className="h-8 px-2 text-xs text-right">Esperado</TableHead>
+            <TableHead className="h-8 px-2 text-xs">Estado</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {detalle.lineas.map((l, i) => (
-            <tr key={i} style={{ borderTop: "1px solid #f3f4f6" }}>
-              <td style={{ padding: "4px 0" }}>{l.referenciaExternaReserva ?? "—"}</td>
-              <td style={{ padding: "4px 0" }}>{l.ocupacionId ?? "sin match"}</td>
-              <td style={{ padding: "4px 0", textAlign: "right" }}>{centavosAPesos(l.montoCentavos)}</td>
-              <td style={{ padding: "4px 0", textAlign: "right" }}>{l.montoEsperadoCentavos !== null ? centavosAPesos(l.montoEsperadoCentavos) : "—"}</td>
-              <td style={{ padding: "4px 0" }}>{ESTADO_CONCILIACION_LABELS[l.estado] ?? l.estado}</td>
-            </tr>
+            <TableRow key={i}>
+              <TableCell className="p-2 text-xs">{l.referenciaExternaReserva ?? "—"}</TableCell>
+              <TableCell className="p-2 text-xs">{l.ocupacionId ?? "sin match"}</TableCell>
+              <TableCell className="p-2 text-xs text-right tabular-nums">{centavosAPesos(l.montoCentavos)}</TableCell>
+              <TableCell className="p-2 text-xs text-right tabular-nums">{l.montoEsperadoCentavos !== null ? centavosAPesos(l.montoEsperadoCentavos) : "—"}</TableCell>
+              <TableCell className="p-2 text-xs">
+                <Badge variant={varianteConciliacion(l.estado)}>{ESTADO_CONCILIACION_LABELS[l.estado] ?? l.estado}</Badge>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -858,59 +956,78 @@ function ImportarPayoutForm({ apiBaseUrl, token, propertyId, onCreado }: { apiBa
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ ...sectionStyle, borderStyle: "dashed" }}>
-      <h3 style={{ fontSize: 14, margin: 0 }}>Importar payout</h3>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 150 }}>
-          Canal
-          <select value={canalCodigo} onChange={(e) => setCanalCodigo(e.target.value)} style={inputStyle}>
-            {CANALES_PAYOUT.map((c) => (
-              <option key={c.codigo} value={c.codigo}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={{ ...labelStyle, width: 90 }}>
-          Moneda
-          <input value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())} maxLength={3} required style={inputStyle} placeholder="MXN" />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 140 }}>
-          Fecha de pago
-          <input type="date" value={fechaPayout} onChange={(e) => setFechaPayout(e.target.value)} required style={inputStyle} />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>
-          Referencia externa (opcional)
-          <input value={referenciaExterna} onChange={(e) => setReferenciaExterna(e.target.value)} style={inputStyle} placeholder="Id del reporte del canal" />
-        </label>
-      </div>
-
-      <div>
-        <p style={{ ...labelStyle, margin: "0 0 6px" }}>Líneas del payout (según el reporte del canal, ya normalizadas)</p>
-        {lineas.map((l) => (
-          <div key={l.key} style={{ ...formRowStyle, marginBottom: 6 }}>
-            <input
-              value={l.referencia}
-              onChange={(e) => actualizarLinea(l.key, { referencia: e.target.value })}
-              placeholder="Referencia externa de la reserva (opcional)"
-              style={{ ...inputStyle, flex: 1, minWidth: 200, marginTop: 0 }}
-            />
-            <input type="number" min="0" step="0.01" value={l.monto} onChange={(e) => actualizarLinea(l.key, { monto: e.target.value })} placeholder="Monto" required style={{ ...inputStyle, width: 110, marginTop: 0 }} />
-            <button type="button" onClick={() => quitarLinea(l.key)} disabled={lineas.length === 1} style={secondaryButtonStyle}>
-              Quitar
-            </button>
+    <Card className="border-dashed">
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-semibold">Importar payout</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="flex gap-2.5 flex-wrap">
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[150px]`}>
+              Canal
+              <select value={canalCodigo} onChange={(e) => setCanalCodigo(e.target.value)} className={SELECT_CLASES}>
+                {CANALES_PAYOUT.map((c) => (
+                  <option key={c.codigo} value={c.codigo}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </Label>
+            <Label className={`${LABEL_CLASES} w-[90px]`}>
+              Moneda
+              <Input value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())} maxLength={3} required placeholder="MXN" />
+            </Label>
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[140px]`}>
+              Fecha de pago
+              <Input type="date" value={fechaPayout} onChange={(e) => setFechaPayout(e.target.value)} required />
+            </Label>
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[160px]`}>
+              Referencia externa (opcional)
+              <Input value={referenciaExterna} onChange={(e) => setReferenciaExterna(e.target.value)} placeholder="Id del reporte del canal" />
+            </Label>
           </div>
-        ))}
-        <button type="button" onClick={agregarLinea} style={secondaryButtonStyle}>
-          + Agregar línea
-        </button>
-      </div>
 
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-      <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
-        {guardando ? "Importando…" : "Importar payout"}
-      </button>
-      {ultimoResumen && <p style={noticeStyle}>{ultimoResumen}</p>}
-    </form>
+          <div>
+            <p className="m-0 mb-1.5 text-[13px] text-foreground">Líneas del payout (según el reporte del canal, ya normalizadas)</p>
+            {lineas.map((l) => (
+              <div key={l.key} className="flex gap-2.5 flex-wrap mb-1.5">
+                <Input
+                  value={l.referencia}
+                  onChange={(e) => actualizarLinea(l.key, { referencia: e.target.value })}
+                  placeholder="Referencia externa de la reserva (opcional)"
+                  className="flex-1 min-w-[200px]"
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={l.monto}
+                  onChange={(e) => actualizarLinea(l.key, { monto: e.target.value })}
+                  placeholder="Monto"
+                  required
+                  className="w-[110px]"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={() => quitarLinea(l.key)} disabled={lineas.length === 1}>
+                  Quitar
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={agregarLinea}>
+              <Plus className="w-4 h-4" strokeWidth={1.75} />+ Agregar línea
+            </Button>
+          </div>
+
+          {error && (
+            <p role="alert" className="m-0 text-[13px] text-destructive">
+              {error}
+            </p>
+          )}
+          <Button type="submit" size="sm" disabled={guardando} className="self-start">
+            {guardando ? "Importando…" : "Importar payout"}
+          </Button>
+          {ultimoResumen && <p className={NOTA_CLASES}>{ultimoResumen}</p>}
+        </form>
+      </CardContent>
+    </Card>
   );
 }

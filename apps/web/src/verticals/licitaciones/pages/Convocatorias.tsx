@@ -7,10 +7,17 @@
 // manual (POST .../tenders, Fase 3 pieza 1) -- el único camino de escritura
 // productivo mientras la ingesta automática siga bloqueada (B-02, ver
 // docs/BLOQUEOS.md y el README de apps/api/.../licitaciones).
+//
+// Fase "sistema de diseño real" (contenido) — la tabla inline-styled pasa a
+// `Table` de @atiende/ui, el pill de elegibilidad a `Badge`, el alta manual al
+// shell real `ModalFormularioLateral` (mismo estado `showForm`, misma llamada a
+// createOrUpdateTender) y el botón ad-hoc a `Button`. Cero cambios de lógica.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Plus } from "lucide-react";
+import { Badge, Button, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import { createOrUpdateTender, fetchTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchMatchingList } from "../lib/matching-client.ts";
@@ -20,19 +27,21 @@ import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const WRITE_ROLES = new Set(["owner", "admin", "analyst", "writer", "reviewer"]);
 
-const ELIGIBILITY_COLORS: Record<string, { bg: string; fg: string }> = {
-  cumple: { bg: "#dcfce7", fg: "#166534" },
-  no_cumple: { bg: "#fee2e2", fg: "#991b1b" },
-  no_evaluable: { bg: "#f3f4f6", fg: "#4b5563" },
+/** Mismo mapeo semántico que antes (verde/rojo/gris), ahora sobre las variantes
+ * reales de `Badge` en vez de hex hardcodeados. */
+const ELIGIBILITY_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  cumple: "default",
+  no_cumple: "destructive",
+  no_evaluable: "secondary",
 };
 
 function ScoreBadge({ match }: { match: MatchResult | undefined }) {
-  if (!match) return <span style={{ fontSize: 12, color: "#9ca3af" }}>Sin score</span>;
-  const colors = ELIGIBILITY_COLORS[match.eligibility.status] ?? ELIGIBILITY_COLORS.no_evaluable!;
+  if (!match) return <span className="text-xs text-muted-foreground">Sin score</span>;
+  const variant = ELIGIBILITY_VARIANTS[match.eligibility.status] ?? "secondary";
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <strong style={{ fontSize: 14 }}>{match.score}</strong>
-      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg }}>{formatEligibility(match.eligibility.status)}</span>
+    <span className="inline-flex items-center gap-2">
+      <strong className="text-sm tabular-nums text-foreground">{match.score}</strong>
+      <Badge variant={variant}>{formatEligibility(match.eligibility.status)}</Badge>
     </span>
   );
 }
@@ -121,53 +130,67 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="flex flex-col gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Convocatorias</h1>
-          <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Alta manual mientras la ingesta automática siga bloqueada (ver README).</p>
+          <h1 className="text-xl font-semibold text-foreground">Convocatorias</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">Alta manual mientras la ingesta automática siga bloqueada (ver README).</p>
         </div>
         {WRITE_ROLES.has(role) && (
-          <button onClick={() => setShowForm((v) => !v)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: showForm ? "#fff" : "#111827", color: showForm ? "#111827" : "#fff", cursor: "pointer", fontSize: 13 }}>
-            {showForm ? "Cancelar" : "+ Nueva convocatoria"}
-          </button>
+          <Button type="button" size="sm" onClick={() => setShowForm(true)}>
+            <Plus />
+            Nueva convocatoria
+          </Button>
         )}
       </header>
 
-      {showForm && (
-        <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, maxWidth: 480 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Título *
-            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Folio / número de referencia (externalId)
-            <input value={form.externalId} onChange={(e) => setForm({ ...form, externalId: e.target.value })} placeholder="p. ej. LA-01/2026" style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Entidad convocante
-            <input value={form.contractingBody} onChange={(e) => setForm({ ...form, contractingBody: e.target.value })} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Fecha límite de presentación
-            <input type="datetime-local" value={form.submissionDeadline} onChange={(e) => setForm({ ...form, submissionDeadline: e.target.value })} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Presupuesto estimado (MXN)
-            <input type="number" min="0" value={form.budgetAmount} onChange={(e) => setForm({ ...form, budgetAmount: e.target.value })} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
+      <ModalFormularioLateral
+        open={showForm}
+        onOpenChange={setShowForm}
+        titulo="Nueva convocatoria"
+        subtitulo="Alta manual mientras la ingesta automática siga bloqueada."
+        anchoClase="max-w-3xl"
+        footer={
+          <>
+            <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => setShowForm(false)} disabled={submitting}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="form-nueva-convocatoria" className="rounded-full px-6" disabled={submitting}>
+              {submitting ? "Guardando…" : "Guardar convocatoria"}
+            </Button>
+          </>
+        }
+      >
+        <form id="form-nueva-convocatoria" onSubmit={handleCreate} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nueva-titulo">Título *</Label>
+            <Input id="nueva-titulo" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nueva-external-id">Folio / número de referencia (externalId)</Label>
+            <Input id="nueva-external-id" value={form.externalId} onChange={(e) => setForm({ ...form, externalId: e.target.value })} placeholder="p. ej. LA-01/2026" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nueva-entidad">Entidad convocante</Label>
+            <Input id="nueva-entidad" value={form.contractingBody} onChange={(e) => setForm({ ...form, contractingBody: e.target.value })} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nueva-deadline">Fecha límite de presentación</Label>
+            <Input id="nueva-deadline" type="datetime-local" value={form.submissionDeadline} onChange={(e) => setForm({ ...form, submissionDeadline: e.target.value })} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nueva-presupuesto">Presupuesto estimado (MXN)</Label>
+            <Input id="nueva-presupuesto" type="number" min="0" value={form.budgetAmount} onChange={(e) => setForm({ ...form, budgetAmount: e.target.value })} />
+          </div>
           {formError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+            <p role="alert" className="text-[13px] text-destructive">
               {formError}
             </p>
           )}
-          <button type="submit" disabled={submitting} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-            {submitting ? "Guardando…" : "Guardar convocatoria"}
-          </button>
         </form>
-      )}
+      </ModalFormularioLateral>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {loading && !tenders && <EstadoCargando etiqueta="Cargando convocatorias…" />}
 
@@ -176,36 +199,36 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
       )}
 
       {sorted.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                <th style={{ padding: "6px 8px" }}>Título</th>
-                <th style={{ padding: "6px 8px" }}>Entidad</th>
-                <th style={{ padding: "6px 8px" }}>Fecha límite</th>
-                <th style={{ padding: "6px 8px" }}>Estatus</th>
-                <th style={{ padding: "6px 8px" }}>Score</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="rounded-xl border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Título</TableHead>
+                <TableHead>Entidad</TableHead>
+                <TableHead>Fecha límite</TableHead>
+                <TableHead>Estatus</TableHead>
+                <TableHead>Score</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {sorted.map((t) => (
-                <tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "8px" }}>
-                    <Link to={`/licitaciones/${orgSlug}/convocatorias/${t.id}`} style={{ color: "#111827", fontWeight: 600, textDecoration: "none" }}>
+                <TableRow key={t.id}>
+                  <TableCell className="p-3">
+                    <Link to={`/licitaciones/${orgSlug}/convocatorias/${t.id}`} className="font-semibold text-foreground no-underline hover:underline">
                       {t.title}
                     </Link>
-                    {t.externalId && <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.externalId}</div>}
-                  </td>
-                  <td style={{ padding: "8px", color: "#374151" }}>{t.contractingBody ?? "—"}</td>
-                  <td style={{ padding: "8px", color: "#374151" }}>{formatDeadline(t.submissionDeadline)}</td>
-                  <td style={{ padding: "8px", color: "#374151" }}>{formatTenderStatus(t.status)}</td>
-                  <td style={{ padding: "8px" }}>
+                    {t.externalId && <div className="text-[11px] text-muted-foreground">{t.externalId}</div>}
+                  </TableCell>
+                  <TableCell className="p-3 text-muted-foreground">{t.contractingBody ?? "—"}</TableCell>
+                  <TableCell className="p-3 text-muted-foreground">{formatDeadline(t.submissionDeadline)}</TableCell>
+                  <TableCell className="p-3 text-muted-foreground">{formatTenderStatus(t.status)}</TableCell>
+                  <TableCell className="p-3">
                     <ScoreBadge match={matchByTenderId.get(t.id)} />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

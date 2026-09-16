@@ -27,8 +27,32 @@
 // agenda para no duplicar el selector de proveedor.
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { CalendarX2 } from "lucide-react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, UserX, X } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
+import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
@@ -91,6 +115,20 @@ const COMPLETABLE_STATUSES = new Set(["pending", "confirmed"]);
 const NO_SHOW_STATUSES = new Set(["pending", "confirmed"]);
 
 type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show";
+
+/** Clase compartida para los `<select>` nativos que se quedan nativos (el design
+ * system no exporta un Select propio): mismo alto/radio/anillo de foco que el
+ * `Input` real de @atiende/ui, con tokens en vez de hex. */
+const SELECT_CLASS =
+  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+
+/** Estado de la cita -> variante real de `Badge` (nada de hex artesanales). */
+function statusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "cancelled") return "destructive";
+  if (status === "completed") return "default";
+  if (status === "no_show") return "outline";
+  return "secondary";
+}
 
 export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellContext) {
   const [view, setView] = useState<ViewMode>("month");
@@ -282,15 +320,19 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
 
   const groups = appointments ? groupByDay(appointments) : [];
 
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="flex flex-col gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Agenda</h1>
-          <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0", textTransform: "capitalize" }}>{range.label}</p>
+          <h1 className="font-display text-xl font-semibold text-foreground">Agenda</h1>
+          <p className="mt-1 text-[13px] capitalize text-muted-foreground">{range.label}</p>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <select value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor="citas-agenda-proveedor" className="sr-only">
+            Filtrar por proveedor
+          </Label>
+          <select id="citas-agenda-proveedor" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} className={SELECT_CLASS}>
             <option value="">Todos los proveedores</option>
             {providers?.map((p) => (
               <option key={p.id} value={p.id}>
@@ -298,41 +340,55 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
               </option>
             ))}
           </select>
-          <div style={{ display: "flex", border: "1px solid #d1d5db", borderRadius: 999, overflow: "hidden" }}>
-            {(["month", "week"] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                style={{ padding: "6px 12px", border: "none", background: view === v ? "#111827" : "#fff", color: view === v ? "#fff" : "#111827", fontSize: 12, cursor: "pointer" }}
-              >
-                {v === "month" ? "Mes" : "Semana"}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setAnchor((a) => shiftAnchor(a, view, -1))} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}>
-            ← Anterior
-          </button>
-          <button onClick={() => setAnchor(new Date())} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}>
+
+          <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)}>
+            <TabsList>
+              <TabsTrigger value="month">Mes</TabsTrigger>
+              <TabsTrigger value="week">Semana</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Button variant="outline" size="sm" onClick={() => setAnchor((a) => shiftAnchor(a, view, -1))}>
+            <ChevronLeft aria-hidden />
+            Anterior
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setAnchor(new Date())}>
             Hoy
-          </button>
-          <button onClick={() => setAnchor((a) => shiftAnchor(a, view, 1))} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}>
-            Siguiente →
-          </button>
-          <button
-            onClick={() => setShowNewForm((v) => !v)}
-            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: showNewForm ? "#fff" : "#111827", color: showNewForm ? "#111827" : "#fff", fontSize: 12, cursor: "pointer" }}
-          >
-            {showNewForm ? "Cancelar" : "+ Nueva cita"}
-          </button>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setAnchor((a) => shiftAnchor(a, view, 1))}>
+            Siguiente
+            <ChevronRight aria-hidden />
+          </Button>
+          <Button size="sm" onClick={() => setShowNewForm(true)}>
+            <CalendarPlus aria-hidden />
+            Nueva cita
+          </Button>
         </div>
       </header>
 
-      {showNewForm && (
-        <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-          <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Nueva cita</p>
-          <form onSubmit={handleCreateAppointment} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <select required value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 180px" }}>
+      {/* Alta manual real (misma llamada `createAppointment` de siempre) — antes era
+          una sección plegable inline; ahora es el modal lateral real del design
+          system (ModalFormularioLateral), mismo estado `showNewForm` que la
+          gobernaba. El botón de guardar vive en el pie del modal y dispara el
+          `submit` del <form> de abajo vía `form="citas-nueva-cita"`, para no perder
+          la validación nativa de los campos `required`. */}
+      <ModalFormularioLateral
+        open={showNewForm}
+        onOpenChange={setShowNewForm}
+        titulo="Nueva cita"
+        subtitulo="Alta manual desde el panel — la misma cita que registraría el agente."
+        anchoClase="max-w-3xl"
+        footer={
+          <Button type="submit" form="citas-nueva-cita" disabled={creatingAppointment} className="rounded-full px-6">
+            {creatingAppointment ? "Creando…" : "Crear cita"}
+          </Button>
+        }
+      >
+        <form id="citas-nueva-cita" onSubmit={handleCreateAppointment} className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-nueva-proveedor">Proveedor</Label>
+              <select id="citas-nueva-proveedor" required value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)} className={SELECT_CLASS}>
                 <option value="">Proveedor…</option>
                 {providers?.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -340,7 +396,10 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
                   </option>
                 ))}
               </select>
-              <select required value={newServiceId} onChange={(e) => setNewServiceId(e.target.value)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 180px" }}>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-nueva-servicio">Servicio</Label>
+              <select id="citas-nueva-servicio" required value={newServiceId} onChange={(e) => setNewServiceId(e.target.value)} className={SELECT_CLASS}>
                 <option value="">Servicio…</option>
                 {services?.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -348,60 +407,35 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
                   </option>
                 ))}
               </select>
-              <input
-                required
-                type="datetime-local"
-                value={newStartsAt}
-                onChange={(e) => setNewStartsAt(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 200px" }}
-              />
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input
-                required
-                placeholder="Nombre del cliente"
-                value={newCustomerName}
-                onChange={(e) => setNewCustomerName(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 180px" }}
-              />
-              <input
-                required
-                placeholder="Teléfono"
-                value={newCustomerPhone}
-                onChange={(e) => setNewCustomerPhone(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 140px" }}
-              />
-              <input
-                type="email"
-                placeholder="Correo (opcional)"
-                value={newCustomerEmail}
-                onChange={(e) => setNewCustomerEmail(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, flex: "1 1 180px" }}
-              />
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label htmlFor="citas-nueva-inicio">Fecha y hora</Label>
+              <Input id="citas-nueva-inicio" required type="datetime-local" value={newStartsAt} onChange={(e) => setNewStartsAt(e.target.value)} />
             </div>
-            <input
-              placeholder="Notas (opcional)"
-              value={newNotes}
-              onChange={(e) => setNewNotes(e.target.value)}
-              style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}
-            />
-            {createError && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                {createError}
-              </p>
-            )}
-            <div>
-              <button
-                type="submit"
-                disabled={creatingAppointment}
-                style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}
-              >
-                {creatingAppointment ? "Creando…" : "Crear cita"}
-              </button>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-nueva-cliente">Nombre del cliente</Label>
+              <Input id="citas-nueva-cliente" required placeholder="Nombre del cliente" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
             </div>
-          </form>
-        </section>
-      )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-nueva-telefono">Teléfono</Label>
+              <Input id="citas-nueva-telefono" required placeholder="Teléfono" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-nueva-correo">Correo (opcional)</Label>
+              <Input id="citas-nueva-correo" type="email" placeholder="Correo (opcional)" value={newCustomerEmail} onChange={(e) => setNewCustomerEmail(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="citas-nueva-notas">Notas (opcional)</Label>
+              <Input id="citas-nueva-notas" placeholder="Notas (opcional)" value={newNotes} onChange={(e) => setNewNotes(e.target.value)} />
+            </div>
+          </div>
+          {createError && (
+            <p role="alert" className="text-[13px] text-destructive">
+              {createError}
+            </p>
+          )}
+        </form>
+      </ModalFormularioLateral>
 
       {error && <EstadoError mensaje={error} />}
 
@@ -410,85 +444,72 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
       {appointments && appointments.length === 0 && !loading && <EstadoVacio icon={CalendarX2} mensaje="No hay citas en este rango." />}
 
       {groups.map(([day, dayAppointments]) => (
-        <section key={day} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <p style={{ fontSize: 13, fontWeight: 600, textTransform: "capitalize", margin: 0, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>{formatDateLong(dayAppointments[0]!.startsAt)}</p>
+        <section key={day} className="flex flex-col gap-2">
+          <h2 className="border-b border-border pb-1 text-[13px] font-semibold capitalize text-foreground">{formatDateLong(dayAppointments[0]!.startsAt)}</h2>
           {dayAppointments.map((apt) => (
-            <article key={apt.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, flexWrap: "wrap" }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>
-                  {formatTimeRange(apt.startsAt, apt.endsAt)} — {apt.serviceName ?? "Servicio desconocido"}
-                </p>
-                <p style={{ margin: "2px 0 0", fontSize: 13, color: "#374151" }}>
-                  {apt.customerName ?? "Cliente desconocido"} {apt.customerPhone ? `· ${apt.customerPhone}` : ""}
-                </p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                  {apt.providerName ?? "Proveedor desconocido"} · {formatAppointmentSource(apt.source)}
-                </p>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    background: apt.status === "cancelled" ? "#fee2e2" : apt.status === "completed" ? "#dcfce7" : apt.status === "no_show" ? "#ffedd5" : "#e0e7ff",
-                    color: apt.status === "cancelled" ? "#991b1b" : apt.status === "completed" ? "#166534" : apt.status === "no_show" ? "#9a3412" : "#3730a3",
-                  }}
-                >
-                  {formatAppointmentStatus(apt.status)}
-                </span>
-                {CONFIRMABLE_STATUSES.has(apt.status) && (
-                  <button
-                    onClick={() => void handleConfirm(apt.id)}
-                    disabled={pendingAction !== null && pendingAction.id === apt.id}
-                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #a5b4fc", background: "#fff", color: "#3730a3", fontSize: 12, cursor: "pointer" }}
-                  >
-                    {pendingAction?.id === apt.id && pendingAction.action === "confirm" ? "Confirmando…" : "Confirmar"}
-                  </button>
-                )}
-                {COMPLETABLE_STATUSES.has(apt.status) && (
-                  <button
-                    onClick={() => void handleComplete(apt.id)}
-                    disabled={pendingAction !== null && pendingAction.id === apt.id}
-                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #86efac", background: "#fff", color: "#166534", fontSize: 12, cursor: "pointer" }}
-                  >
-                    {pendingAction?.id === apt.id && pendingAction.action === "complete" ? "Completando…" : "Completar"}
-                  </button>
-                )}
-                {NO_SHOW_STATUSES.has(apt.status) && (
-                  <button
-                    onClick={() => void handleNoShow(apt.id)}
-                    disabled={pendingAction !== null && pendingAction.id === apt.id}
-                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fdba74", background: "#fff", color: "#9a3412", fontSize: 12, cursor: "pointer" }}
-                  >
-                    {pendingAction?.id === apt.id && pendingAction.action === "no_show" ? "Marcando…" : "No-show"}
-                  </button>
-                )}
-                {CANCELABLE_STATUSES.has(apt.status) && (
-                  <button
-                    onClick={() => void handleCancel(apt.id)}
-                    disabled={pendingAction !== null && pendingAction.id === apt.id}
-                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fca5a5", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}
-                  >
-                    {pendingAction?.id === apt.id && pendingAction.action === "cancel" ? "Cancelando…" : "Cancelar"}
-                  </button>
-                )}
-              </div>
-            </article>
+            <Card key={apt.id}>
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    {formatTimeRange(apt.startsAt, apt.endsAt)} — {apt.serviceName ?? "Servicio desconocido"}
+                  </p>
+                  <p className="mt-0.5 text-[13px] text-foreground/80">
+                    {apt.customerName ?? "Cliente desconocido"} {apt.customerPhone ? `· ${apt.customerPhone}` : ""}
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    {apt.providerName ?? "Proveedor desconocido"} · {formatAppointmentSource(apt.source)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={statusBadgeVariant(apt.status)}>{formatAppointmentStatus(apt.status)}</Badge>
+                  {CONFIRMABLE_STATUSES.has(apt.status) && (
+                    <Button variant="outline" size="sm" onClick={() => void handleConfirm(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
+                      <Check aria-hidden />
+                      {pendingAction?.id === apt.id && pendingAction.action === "confirm" ? "Confirmando…" : "Confirmar"}
+                    </Button>
+                  )}
+                  {COMPLETABLE_STATUSES.has(apt.status) && (
+                    <Button variant="outline" size="sm" onClick={() => void handleComplete(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
+                      <CheckCheck aria-hidden />
+                      {pendingAction?.id === apt.id && pendingAction.action === "complete" ? "Completando…" : "Completar"}
+                    </Button>
+                  )}
+                  {NO_SHOW_STATUSES.has(apt.status) && (
+                    <Button variant="outline" size="sm" onClick={() => void handleNoShow(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
+                      <UserX aria-hidden />
+                      {pendingAction?.id === apt.id && pendingAction.action === "no_show" ? "Marcando…" : "No-show"}
+                    </Button>
+                  )}
+                  {CANCELABLE_STATUSES.has(apt.status) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => void handleCancel(apt.id)}
+                      disabled={pendingAction !== null && pendingAction.id === apt.id}
+                    >
+                      <X aria-hidden />
+                      {pendingAction?.id === apt.id && pendingAction.action === "cancel" ? "Cancelando…" : "Cancelar"}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </section>
       ))}
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid #e5e7eb", paddingTop: 16, marginTop: 8 }}>
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <Card className="mt-2">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
           <div>
-            <h2 style={{ fontSize: 16, margin: 0 }}>Lista de espera</h2>
-            <p style={{ fontSize: 12, color: "#6b7280", margin: "2px 0 0" }}>
-              Clientes esperando un horario, en el mismo orden en que se les avisaría (FIFO).
-            </p>
+            <CardTitle className="text-base">Lista de espera</CardTitle>
+            <CardDescription className="mt-1">Clientes esperando un horario, en el mismo orden en que se les avisaría (FIFO).</CardDescription>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <select value={waitlistServiceFilter} onChange={(e) => setWaitlistServiceFilter(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="citas-espera-servicio" className="sr-only">
+              Filtrar la lista de espera por servicio
+            </Label>
+            <select id="citas-espera-servicio" value={waitlistServiceFilter} onChange={(e) => setWaitlistServiceFilter(e.target.value)} className={SELECT_CLASS}>
               <option value="">Todos los servicios</option>
               {services?.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -496,60 +517,68 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
                 </option>
               ))}
             </select>
-            <button
+            <Button
+              size="sm"
               onClick={() => void handleBroadcastWaitlist()}
               disabled={broadcasting || waitlistLoading || (waitlist !== null && waitlist.length === 0)}
-              style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 12, cursor: "pointer" }}
             >
+              <Megaphone aria-hidden />
               {broadcasting ? "Avisando…" : "Avisar a la lista de espera"}
-            </button>
+            </Button>
           </div>
-        </header>
-
-        <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
-          Filtro de proveedor: el mismo selector de arriba ({providerFilter ? providers?.find((p) => p.id === providerFilter)?.displayName ?? providerFilter : "todos los proveedores"}).
-        </p>
-
-        {waitlistError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-            {waitlistError}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-[12px] text-muted-foreground">
+            Filtro de proveedor: el mismo selector de arriba ({providerFilter ? providers?.find((p) => p.id === providerFilter)?.displayName ?? providerFilter : "todos los proveedores"}).
           </p>
-        )}
 
-        {broadcastSummary && (
-          <p style={{ fontSize: 13, color: "#166534", margin: 0 }}>
-            Avisados: {broadcastSummary.notified} de {broadcastSummary.candidatesConsidered} candidatos considerados
-            {broadcastSummary.skippedNoWhatsappConfig > 0 ? ` (${broadcastSummary.skippedNoWhatsappConfig} sin WhatsApp configurado, no se les pudo avisar)` : ""}.
-          </p>
-        )}
+          {waitlistError && <EstadoError mensaje={waitlistError} />}
 
-        {waitlistLoading && !waitlist && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
+          {broadcastSummary && (
+            <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-[13px] text-foreground">
+              Avisados: {broadcastSummary.notified} de {broadcastSummary.candidatesConsidered} candidatos considerados
+              {broadcastSummary.skippedNoWhatsappConfig > 0 ? ` (${broadcastSummary.skippedNoWhatsappConfig} sin WhatsApp configurado, no se les pudo avisar)` : ""}.
+            </p>
+          )}
 
-        {waitlist && waitlist.length === 0 && !waitlistLoading && <p style={{ color: "#6b7280", fontSize: 13 }}>Nadie está esperando con estos filtros.</p>}
+          {waitlistLoading && !waitlist && <EstadoCargando lineas={2} etiqueta="Cargando lista de espera…" />}
 
-        {waitlist && waitlist.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {waitlist.map((candidate) => (
-              <article
-                key={candidate.id}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, border: "1px solid #e5e7eb", borderRadius: 10, padding: "8px 12px", flexWrap: "wrap" }}
-              >
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600, fontSize: 13 }}>
-                    #{candidate.position} — {candidate.customerName}
-                  </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                    {candidate.customerPhone}
-                    {candidate.preferredDateFrom ? ` · desde ${candidate.preferredDateFrom}` : ""}
-                    {candidate.preferredTimeWindow ? ` · ${candidate.preferredTimeWindow}` : ""}
-                  </p>
-                </div>
-                <span style={{ fontSize: 11, color: "#6b7280" }}>{candidate.notifiedCount > 0 ? `ya avisado ${candidate.notifiedCount}x` : "nunca avisado"}</span>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+          {waitlist && waitlist.length === 0 && !waitlistLoading && <EstadoVacio icon={Clock} mensaje="Nadie está esperando con estos filtros." />}
+
+          {waitlist && waitlist.length > 0 && (
+            <Table>
+              <TableCaption>Orden real en que se avisaría a cada cliente (FIFO).</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-14">#</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Preferencias</TableHead>
+                  <TableHead className="text-right">Avisos</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {waitlist.map((candidate) => (
+                  <TableRow key={candidate.id}>
+                    <TableCell className="font-medium text-foreground">#{candidate.position}</TableCell>
+                    <TableCell>
+                      <span className="block font-medium text-foreground">{candidate.customerName}</span>
+                      <span className="block text-[12px] text-muted-foreground">{candidate.customerPhone}</span>
+                    </TableCell>
+                    <TableCell className="text-[12px] text-muted-foreground">
+                      {candidate.preferredDateFrom || candidate.preferredTimeWindow
+                        ? `${candidate.preferredDateFrom ? `desde ${candidate.preferredDateFrom}` : ""}${candidate.preferredDateFrom && candidate.preferredTimeWindow ? " · " : ""}${candidate.preferredTimeWindow ?? ""}`
+                        : "Sin preferencia"}
+                    </TableCell>
+                    <TableCell className="text-right text-[12px] text-muted-foreground">
+                      {candidate.notifiedCount > 0 ? `ya avisado ${candidate.notifiedCount}x` : "nunca avisado"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

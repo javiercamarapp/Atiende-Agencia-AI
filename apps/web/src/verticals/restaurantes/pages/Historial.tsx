@@ -1,13 +1,45 @@
 // Historial de órdenes (Fase 5) — mismo endpoint de listado que Pedidos.tsx (ver
 // comentario de cabecera de admin-orders.ts), con filtro de fecha y paginación por
 // cursor en vez de por-estado-operativo.
+//
+// Presentación real desde esta ronda: la `<table>` hecha a mano con `style={{...}}`
+// pasa a `Table`/`TableHeader`/`TableBody`/`TableRow`/`TableHead`/`TableCell` de
+// `@atiende/ui`, los filtros a `Input`/`Label` (+ `<select>` nativo restilado con
+// tokens) y "Cargar más" a `Button`. El estado de cada orden se pinta con `Badge`.
+// La lógica de carga/paginación de abajo es la MISMA: solo cambia el JSX.
 import { useEffect, useState } from "react";
-import { EstadoError, EstadoVacio } from "@atiende/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
+import { ChevronDown } from "lucide-react";
 import { fetchOrders, ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ALL_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema"];
+
+/** Mismo criterio de color que Pedidos.tsx: "problema" es el único estado que se
+ * destaca en rojo; el resto usa el gris neutro del sistema. */
+function badgeVariantForStatus(status: OrderStatus): "destructive" | "secondary" {
+  return status === "problema" ? "destructive" : "secondary";
+}
+
+const SELECT_CLASES =
+  "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 function formatMoney(n: number): string {
   return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -49,61 +81,81 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   }, [apiBaseUrl, token, propertyId, statusFilter, dateFrom, dateTo]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Historial de órdenes</h1>
+    <div className="flex flex-col gap-4 p-6">
+      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Historial de órdenes</h1>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "")} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
-          <option value="">Todos los estados</option>
-          {ALL_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {ORDER_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-        <label style={{ fontSize: 12, color: "#6b7280" }}>
-          Desde{" "}
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
-        </label>
-        <label style={{ fontSize: 12, color: "#6b7280" }}>
-          Hasta{" "}
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }} />
-        </label>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="restaurantes-historial-estado" className="text-xs text-muted-foreground">
+            Estado
+          </Label>
+          <select
+            id="restaurantes-historial-estado"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "")}
+            className={SELECT_CLASES}
+          >
+            <option value="">Todos los estados</option>
+            {ALL_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {ORDER_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="restaurantes-historial-desde" className="text-xs text-muted-foreground">
+            Desde
+          </Label>
+          <Input id="restaurantes-historial-desde" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="restaurantes-historial-hasta" className="text-xs text-muted-foreground">
+            Hasta
+          </Label>
+          <Input id="restaurantes-historial-hasta" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
+        </div>
       </div>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load(true)} />}
 
       {orders.length === 0 && !loading && !error && <EstadoVacio mensaje="No hay pedidos en este filtro." />}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
-              <th style={{ padding: "6px 8px" }}>Fecha</th>
-              <th style={{ padding: "6px 8px" }}>Cliente</th>
-              <th style={{ padding: "6px 8px" }}>Sucursal</th>
-              <th style={{ padding: "6px 8px" }}>Estado</th>
-              <th style={{ padding: "6px 8px" }}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                <td style={{ padding: "8px" }}>{new Date(o.createdAt).toLocaleString("es-MX")}</td>
-                <td style={{ padding: "8px" }}>{o.customerName}</td>
-                <td style={{ padding: "8px", color: "#6b7280" }}>{o.branch ?? "—"}</td>
-                <td style={{ padding: "8px" }}>{ORDER_STATUS_LABELS[o.status]}</td>
-                <td style={{ padding: "8px" }}>{formatMoney(o.total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableCaption className="sr-only">Historial de órdenes de esta sucursal</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Sucursal</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {orders.map((o) => (
+                <TableRow key={o.id}>
+                  <TableCell className="whitespace-nowrap">{new Date(o.createdAt).toLocaleString("es-MX")}</TableCell>
+                  <TableCell>{o.customerName}</TableCell>
+                  <TableCell className="text-muted-foreground">{o.branch ?? "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant={badgeVariantForStatus(o.status)}>{ORDER_STATUS_LABELS[o.status]}</Badge>
+                  </TableCell>
+                  <TableCell className="tabular-nums">{formatMoney(o.total)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {nextCursor && (
-        <button onClick={() => void load(false)} disabled={loading} style={{ alignSelf: "flex-start", padding: "6px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 13, cursor: "pointer" }}>
+        <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => void load(false)} disabled={loading}>
+          <ChevronDown />
           {loading ? "Cargando…" : "Cargar más"}
-        </button>
+        </Button>
       )}
     </div>
   );

@@ -14,7 +14,26 @@
 // cobranza-client.ts).
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { AlarmClock, AlertTriangle, CheckCircle2, Clock, HandCoins, Hourglass, Send, TrendingUp, Wallet } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  StatCard,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
+import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import { fetchInvoices } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
 import {
@@ -32,11 +51,19 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
 
 const BUCKET_LABELS: Record<CobranzaAgeBucket, string> = { "0-30": "0-30 días", "31-60": "31-60 días", "61-90": "61-90 días", "90+": "90+ días" };
-const BUCKET_COLORS: Record<CobranzaAgeBucket, { bg: string; fg: string }> = {
-  "0-30": { bg: "#dcfce7", fg: "#166534" },
-  "31-60": { bg: "#fef9c3", fg: "#854d0e" },
-  "61-90": { bg: "#fed7aa", fg: "#9a3412" },
-  "90+": { bg: "#fee2e2", fg: "#991b1b" },
+// Mismo gradiente semántico de las píldoras inline originales (verde → ámbar →
+// naranja → rojo conforme envejece la cuenta), ahora sobre el `Badge` real.
+const BUCKET_BADGE: Record<CobranzaAgeBucket, { variant: "destructive" | "outline"; className?: string }> = {
+  "0-30": { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
+  "31-60": { variant: "outline", className: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400" },
+  "61-90": { variant: "outline", className: "border-transparent bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-400" },
+  "90+": { variant: "destructive" },
+};
+const BUCKET_ICONS: Record<CobranzaAgeBucket, typeof Clock> = {
+  "0-30": Clock,
+  "31-60": Hourglass,
+  "61-90": AlarmClock,
+  "90+": AlertTriangle,
 };
 const STAGE_LABELS: Record<CobranzaReminderStage, string> = {
   pre_vencimiento: "Recordatorio amigable (7 días antes)",
@@ -47,19 +74,24 @@ const STAGE_LABELS: Record<CobranzaReminderStage, string> = {
 };
 
 function BucketBadge({ bucket }: { bucket: CobranzaAgeBucket }) {
-  const colors = BUCKET_COLORS[bucket];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, fontWeight: 600 }}>{BUCKET_LABELS[bucket]}</span>;
+  const { variant, className } = BUCKET_BADGE[bucket];
+  return (
+    <Badge variant={variant} className={className}>
+      {BUCKET_LABELS[bucket]}
+    </Badge>
+  );
 }
 
 function ScoreBar({ score }: { score: number }) {
   const pct = Math.round(score * 100);
-  const color = score >= 0.7 ? "#166534" : score >= 0.4 ? "#854d0e" : "#991b1b";
+  const color = score >= 0.7 ? "text-green-700 dark:text-green-400" : score >= 0.4 ? "text-amber-700 dark:text-amber-400" : "text-destructive";
+  const fill = score >= 0.7 ? "bg-green-600 dark:bg-green-500" : score >= 0.4 ? "bg-amber-500" : "bg-destructive";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <div style={{ width: 48, height: 6, borderRadius: 999, background: "#e5e7eb", overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color }} />
+    <div className="flex items-center gap-1.5">
+      <div className="h-1.5 w-12 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className={`h-full ${fill}`} style={{ width: `${pct}%` }} />
       </div>
-      <span style={{ fontSize: 12, color }}>{pct}%</span>
+      <span className={`text-xs tabular-nums ${color}`}>{pct}%</span>
     </div>
   );
 }
@@ -67,33 +99,27 @@ function ScoreBar({ score }: { score: number }) {
 function ResumenCards({ resumen }: { resumen: ResumenCobranza }) {
   const buckets: readonly CobranzaAgeBucket[] = ["0-30", "31-60", "61-90", "90+"];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ flex: "1 1 160px", border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
-          <p style={{ margin: 0, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>Cartera pendiente</p>
-          <p style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 700 }}>{formatMoney(resumen.totalCartera)}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{resumen.totalCount} cuenta(s)</p>
-        </div>
-        <div style={{ flex: "1 1 160px", border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
-          <p style={{ margin: 0, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>Cobro esperado</p>
-          <p style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 700 }}>{formatMoney(resumen.totalEsperado)}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{resumen.tasaRecuperacionEsperada}% tasa esperada</p>
-        </div>
+    <div className="flex flex-col gap-3">
+      {/* Mosaico de KPI sobre el `StatCard` real (mismas 6 cifras, mismas notas). */}
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(170px,1fr))]">
+        <StatCard icon={Wallet} label="Cartera pendiente" value={formatMoney(resumen.totalCartera)} nota={`${resumen.totalCount} cuenta(s)`} />
+        <StatCard icon={TrendingUp} label="Cobro esperado" value={formatMoney(resumen.totalEsperado)} nota={`${resumen.tasaRecuperacionEsperada}% tasa esperada`} />
         {buckets.map((b) => (
-          <div key={b} style={{ flex: "1 1 120px", border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
-            <p style={{ margin: 0, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>{BUCKET_LABELS[b]}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 700 }}>{formatMoney(resumen.porAntiguedad[b].monto)}</p>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-              {resumen.porAntiguedad[b].count} · {resumen.porAntiguedad[b].porcentaje}%
-            </p>
-          </div>
+          <StatCard
+            key={b}
+            icon={BUCKET_ICONS[b]}
+            label={BUCKET_LABELS[b]}
+            value={formatMoney(resumen.porAntiguedad[b].monto)}
+            nota={`${resumen.porAntiguedad[b].count} · ${resumen.porAntiguedad[b].porcentaje}%`}
+          />
         ))}
       </div>
       {resumen.alertas.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div className="flex flex-col gap-1.5">
           {resumen.alertas.map((a, i) => (
-            <p key={i} role="alert" style={{ margin: 0, fontSize: 13, padding: "8px 12px", borderRadius: 8, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" }}>
-              ⚠ {a}
+            <p key={i} role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[13px] text-destructive">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+              {a}
             </p>
           ))}
         </div>
@@ -220,54 +246,77 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="flex flex-col gap-4 px-1">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Cobranza</h1>
-          <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Cartera por antigüedad, score de cobrabilidad y recordatorios reales por correo.</p>
+          <h1 className="font-display text-xl font-semibold text-foreground">Cobranza</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">Cartera por antigüedad, score de cobrabilidad y recordatorios reales por correo.</p>
         </div>
         {puedeGestionar && (
-          <button onClick={() => setShowForm((v) => !v)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: showForm ? "#fff" : "#111827", color: showForm ? "#111827" : "#fff", cursor: "pointer", fontSize: 13 }}>
-            {showForm ? "Cancelar" : "+ Registrar cuenta por cobrar"}
-          </button>
+          <Button variant={showForm ? "outline" : "default"} size="sm" onClick={() => setShowForm((v) => !v)}>
+            <HandCoins />
+            {showForm ? "Cancelar" : "Registrar cuenta por cobrar"}
+          </Button>
         )}
       </header>
 
+      {/* El formulario de alta pasó del panel inline al `ModalFormularioLateral`
+          compartido (4 campos + selector de CFDI: exactamente la forma de
+          "formulario en riel lateral" para la que existe ese shell). El estado
+          `showForm` y `handleRegistrar` son los mismos de antes. */}
       {showForm && (
-        <form onSubmit={handleRegistrar} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, maxWidth: 420 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            CFDI (tipo Ingreso) *
-            <select value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }}>
-              <option value="">Selecciona un CFDI…</option>
-              {invoicesDisponibles.map((inv) => (
-                <option key={inv.id} value={inv.id}>
-                  {inv.folioFiscal.slice(0, 13)}… · {inv.emisorNombre ?? inv.rfcEmisor} · {formatMoney(inv.total)}
-                </option>
-              ))}
-            </select>
-            {invoicesDisponibles.length === 0 && <span style={{ fontSize: 12, color: "#9ca3af" }}>No hay CFDI de ingreso sin cuenta por cobrar todavía.</span>}
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Fecha de vencimiento *
-            <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Nombre del cliente (opcional)
-            <input type="text" value={clienteNombre} onChange={(e) => setClienteNombre(e.target.value)} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Correo de contacto (opcional -- sin esto no se puede enviar recordatorio real)
-            <input type="email" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          {formError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {formError}
-            </p>
-          )}
-          <button type="submit" disabled={submitting} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-            {submitting ? "Registrando…" : "Registrar cuenta"}
-          </button>
-        </form>
+        <ModalFormularioLateral
+          open
+          onOpenChange={(abierto) => {
+            if (!abierto) setShowForm(false);
+          }}
+          titulo="Registrar cuenta por cobrar"
+          subtitulo="Ata un CFDI de ingreso a una fecha de vencimiento para que entre a la cartera y al calendario de recordatorios."
+          anchoClase="max-w-3xl"
+          footer={
+            <Button type="submit" form="cobranza-registrar" disabled={submitting} className="rounded-full px-6">
+              {submitting ? "Registrando…" : "Registrar cuenta"}
+            </Button>
+          }
+        >
+          <form id="cobranza-registrar" onSubmit={handleRegistrar} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cobranza-cfdi">CFDI (tipo Ingreso) *</Label>
+              <select
+                id="cobranza-cfdi"
+                value={invoiceId}
+                onChange={(e) => setInvoiceId(e.target.value)}
+                required
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="">Selecciona un CFDI…</option>
+                {invoicesDisponibles.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.folioFiscal.slice(0, 13)}… · {inv.emisorNombre ?? inv.rfcEmisor} · {formatMoney(inv.total)}
+                  </option>
+                ))}
+              </select>
+              {invoicesDisponibles.length === 0 && <span className="text-xs text-muted-foreground">No hay CFDI de ingreso sin cuenta por cobrar todavía.</span>}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cobranza-vencimiento">Fecha de vencimiento *</Label>
+              <Input id="cobranza-vencimiento" type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} required />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cobranza-cliente">Nombre del cliente (opcional)</Label>
+              <Input id="cobranza-cliente" type="text" value={clienteNombre} onChange={(e) => setClienteNombre(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cobranza-email">Correo de contacto (opcional -- sin esto no se puede enviar recordatorio real)</Label>
+              <Input id="cobranza-email" type="email" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} />
+            </div>
+            {formError && (
+              <p role="alert" className="text-destructive text-sm">
+                {formError}
+              </p>
+            )}
+          </form>
+        </ModalFormularioLateral>
       )}
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
@@ -276,8 +325,8 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
 
       {resumen && <ResumenCards resumen={resumen} />}
 
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
-        <input type="checkbox" checked={soloPendientes} onChange={(e) => setSoloPendientes(e.target.checked)} />
+      <label className="flex items-center gap-2 text-[13px] text-foreground">
+        <input type="checkbox" checked={soloPendientes} onChange={(e) => setSoloPendientes(e.target.checked)} className="h-4 w-4 rounded border-border accent-primary" />
         Solo cuentas pendientes de cobro
       </label>
 
@@ -286,97 +335,99 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
       )}
 
       {cuentas && cuentas.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                <th style={{ padding: "6px 8px" }}>Factura</th>
-                <th style={{ padding: "6px 8px" }}>Cliente</th>
-                <th style={{ padding: "6px 8px" }}>Monto</th>
-                <th style={{ padding: "6px 8px" }}>Vence</th>
-                <th style={{ padding: "6px 8px" }}>Antigüedad</th>
-                <th style={{ padding: "6px 8px" }}>Score</th>
-                <th style={{ padding: "6px 8px" }}>Estatus</th>
-                {puedeGestionar && <th style={{ padding: "6px 8px" }}>Acciones</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {cuentas.map((cuenta) => {
-                const rowState = rowActions[cuenta.id];
-                return (
-                  <tr key={cuenta.id} style={{ borderBottom: "1px solid #f3f4f6", verticalAlign: "top" }}>
-                    <td style={{ padding: "8px", fontFamily: "monospace", fontSize: 12 }}>{cuenta.facturaId ? `${cuenta.facturaId.slice(0, 13)}…` : "—"}</td>
-                    <td style={{ padding: "8px", color: "#374151" }}>
-                      {cuenta.clienteNombre ?? "Sin nombre"}
-                      <div style={{ fontSize: 11, color: "#9ca3af" }}>{cuenta.clienteEmail ?? "sin correo capturado"}</div>
-                    </td>
-                    <td style={{ padding: "8px", color: "#374151" }}>{formatMoney(cuenta.monto)}</td>
-                    <td style={{ padding: "8px", color: "#374151" }}>
-                      {formatDate(cuenta.fechaVencimiento)}
-                      <div style={{ fontSize: 11, color: "#9ca3af" }}>{cuenta.diasVencido > 0 ? `${cuenta.diasVencido} días de atraso` : cuenta.diasVencido < 0 ? `vence en ${-cuenta.diasVencido} días` : "vence hoy"}</div>
-                    </td>
-                    <td style={{ padding: "8px" }}>
-                      <BucketBadge bucket={cuenta.bucket} />
-                    </td>
-                    <td style={{ padding: "8px" }}>
-                      <ScoreBar score={cuenta.score} />
-                    </td>
-                    <td style={{ padding: "8px" }}>
-                      {cuenta.pagadoEn ? (
-                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#dcfce7", color: "#166534", fontWeight: 600 }}>Pagada {formatDate(cuenta.pagadoEn)}</span>
-                      ) : (
-                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fef9c3", color: "#854d0e", fontWeight: 600 }}>Pendiente</span>
-                      )}
-                    </td>
-                    {puedeGestionar && (
-                      <td style={{ padding: "8px" }}>
-                        {!cuenta.pagadoEn && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <select
-                                value={stageChoice[cuenta.id] ?? ""}
-                                onChange={(e) => setStageChoice((prev) => ({ ...prev, [cuenta.id]: e.target.value as CobranzaReminderStage | "" }))}
-                                style={{ flex: 1, padding: "4px 6px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}
-                              >
-                                <option value="">Etapa sugerida</option>
-                                {COBRANZA_REMINDER_STAGES.map((s) => (
-                                  <option key={s} value={s}>
-                                    {STAGE_LABELS[s]}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => void handleEnviarRecordatorio(cuenta)}
-                                disabled={rowState?.loading}
-                                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #111827", background: "#fff", color: "#111827", cursor: "pointer", fontSize: 12 }}
-                              >
-                                {rowState?.loading ? "…" : "Enviar recordatorio"}
-                              </button>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => void handleMarcarPagada(cuenta)}
-                              disabled={rowState?.loading}
-                              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #166534", background: "#fff", color: "#166534", cursor: "pointer", fontSize: 12 }}
-                            >
-                              Marcar pagada
-                            </button>
-                            {rowState?.message && (
-                              <span style={{ fontSize: 11, color: rowState.isError ? "#b91c1c" : "#166534" }} role={rowState.isError ? "alert" : undefined}>
-                                {rowState.message}
-                              </span>
-                            )}
-                          </div>
+        <Card>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Factura</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Monto</TableHead>
+                  <TableHead>Vence</TableHead>
+                  <TableHead>Antigüedad</TableHead>
+                  <TableHead>Score</TableHead>
+                  <TableHead>Estatus</TableHead>
+                  {puedeGestionar && <TableHead>Acciones</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cuentas.map((cuenta) => {
+                  const rowState = rowActions[cuenta.id];
+                  return (
+                    <TableRow key={cuenta.id} className="align-top">
+                      <TableCell className="font-mono text-xs">{cuenta.facturaId ? `${cuenta.facturaId.slice(0, 13)}…` : "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {cuenta.clienteNombre ?? "Sin nombre"}
+                        <div className="text-[11px] text-muted-foreground">{cuenta.clienteEmail ?? "sin correo capturado"}</div>
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">{formatMoney(cuenta.monto)}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDate(cuenta.fechaVencimiento)}
+                        <div className="text-[11px] text-muted-foreground">{cuenta.diasVencido > 0 ? `${cuenta.diasVencido} días de atraso` : cuenta.diasVencido < 0 ? `vence en ${-cuenta.diasVencido} días` : "vence hoy"}</div>
+                      </TableCell>
+                      <TableCell>
+                        <BucketBadge bucket={cuenta.bucket} />
+                      </TableCell>
+                      <TableCell>
+                        <ScoreBar score={cuenta.score} />
+                      </TableCell>
+                      <TableCell>
+                        {cuenta.pagadoEn ? (
+                          <Badge variant="outline" className="border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400">
+                            Pagada {formatDate(cuenta.pagadoEn)}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400">
+                            Pendiente
+                          </Badge>
                         )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </TableCell>
+                      {puedeGestionar && (
+                        <TableCell>
+                          {!cuenta.pagadoEn && (
+                            <div className="flex min-w-56 flex-col gap-1.5">
+                              <div className="flex gap-1.5">
+                                <Label htmlFor={`cobranza-etapa-${cuenta.id}`} className="sr-only">
+                                  Etapa del recordatorio
+                                </Label>
+                                <select
+                                  id={`cobranza-etapa-${cuenta.id}`}
+                                  value={stageChoice[cuenta.id] ?? ""}
+                                  onChange={(e) => setStageChoice((prev) => ({ ...prev, [cuenta.id]: e.target.value as CobranzaReminderStage | "" }))}
+                                  className="h-9 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                >
+                                  <option value="">Etapa sugerida</option>
+                                  {COBRANZA_REMINDER_STAGES.map((s) => (
+                                    <option key={s} value={s}>
+                                      {STAGE_LABELS[s]}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEnviarRecordatorio(cuenta)} disabled={rowState?.loading}>
+                                  <Send />
+                                  {rowState?.loading ? "…" : "Enviar recordatorio"}
+                                </Button>
+                              </div>
+                              <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleMarcarPagada(cuenta)} disabled={rowState?.loading}>
+                                <CheckCircle2 />
+                                Marcar pagada
+                              </Button>
+                              {rowState?.message && (
+                                <span className={`text-[11px] ${rowState.isError ? "text-destructive" : "text-green-700 dark:text-green-400"}`} role={rowState.isError ? "alert" : undefined}>
+                                  {rowState.message}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

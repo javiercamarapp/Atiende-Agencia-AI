@@ -13,8 +13,32 @@
 // Ninguna "solicitud de devolución" se persiste server-side en esta fase (ver
 // cabecera de devolucion-iva.ts): el resultado del paso 6 se muestra tal cual,
 // es responsabilidad de quien opera el despacho archivarlo donde corresponda.
+//
+// Presentación (ronda de design system): los objetos de estilo inline
+// (inputStyle/labelStyle/sectionStyle/buttonPrimary/buttonSecondary/cellInput)
+// se sustituyeron por Card/Input/Label/Button/Badge/Table de @atiende/ui. Los 8
+// pasos siguen apilados en el mismo orden (NO son pestañas): cada uno consume el
+// resultado del anterior y el contador los recorre en secuencia, así que
+// esconderlos detrás de un switcher rompería el flujo guiado real.
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Calculator, CalendarClock, CheckCircle2, ClipboardList, Download, FileSpreadsheet, ListChecks, Plus, Send, Trash2 } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   fetchFacturasPeriodoDevolucionIva,
   postCongruenciaDevolucionIva,
@@ -47,12 +71,10 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 // criterio que Conciliacion.tsx: cosmético, el servidor rechazaría igual.
 const DEVOLUCION_IVA_ROLES = new Set(["admin", "contador"]);
 
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: "100%" } as const;
-const labelStyle = { display: "flex", flexDirection: "column" as const, gap: 4, fontSize: 12, color: "#374151" };
-const sectionStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const buttonPrimary = { padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 } as const;
-const buttonSecondary = { padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#374151", cursor: "pointer", fontSize: 12 } as const;
-const cellInput = { ...inputStyle, width: 110 } as const;
+// Clases compartidas por los `<select>` nativos que se quedan nativos (el
+// design system no exporta un Select propio): misma anatomía que `Input`.
+const SELECT_CELL_CLASS =
+  "h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const TIPO_FACTURA_OPTIONS: readonly TipoFacturaIva[] = ["Ingreso", "Egreso", "Traslado", "Nómina", "Pago"];
 const CATEGORIA_OPTIONS: readonly ClasificacionIva[] = ["acreditable_100", "acreditable_proporcional", "no_acreditable"];
@@ -173,93 +195,153 @@ function FacturasEditor({ filas, setFilas }: { filas: readonly FacturaFila[]; se
     setFilas(filas.map((f) => (f.key === key ? { ...f, [campo]: valor } : f)));
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1200 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={{ padding: "4px 6px" }}>UUID *</th>
-              <th style={{ padding: "4px 6px" }}>RFC emisor *</th>
-              <th style={{ padding: "4px 6px" }}>Emisor</th>
-              <th style={{ padding: "4px 6px" }}>RFC receptor *</th>
-              <th style={{ padding: "4px 6px" }}>Fecha *</th>
-              <th style={{ padding: "4px 6px" }}>Subtotal</th>
-              <th style={{ padding: "4px 6px" }}>IVA</th>
-              <th style={{ padding: "4px 6px" }}>Total</th>
-              <th style={{ padding: "4px 6px" }}>Tipo</th>
-              <th style={{ padding: "4px 6px" }}>Categoría</th>
-              <th style={{ padding: "4px 6px" }}>Proporc.</th>
-              <th style={{ padding: "4px 6px" }}>UUID REP</th>
-              <th style={{ padding: "4px 6px" }} />
-            </tr>
-          </thead>
-          <tbody>
+    <div className="flex flex-col gap-2">
+      <div className="overflow-x-auto">
+        <Table className="min-w-[1200px] text-xs">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="h-9">UUID *</TableHead>
+              <TableHead className="h-9">RFC emisor *</TableHead>
+              <TableHead className="h-9">Emisor</TableHead>
+              <TableHead className="h-9">RFC receptor *</TableHead>
+              <TableHead className="h-9">Fecha *</TableHead>
+              <TableHead className="h-9">Subtotal</TableHead>
+              <TableHead className="h-9">IVA</TableHead>
+              <TableHead className="h-9">Total</TableHead>
+              <TableHead className="h-9">Tipo</TableHead>
+              <TableHead className="h-9">Categoría</TableHead>
+              <TableHead className="h-9">Proporc.</TableHead>
+              <TableHead className="h-9">UUID REP</TableHead>
+              <TableHead className="h-9" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {filas.map((f) => (
-              <tr key={f.key}>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={f.uuid} onChange={(e) => actualizar(f.key, "uuid", e.target.value)} style={{ ...cellInput, width: 160, fontFamily: "monospace" }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={f.rfcEmisor} onChange={(e) => actualizar(f.key, "rfcEmisor", e.target.value.toUpperCase())} style={cellInput} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={f.nombreEmisor} onChange={(e) => actualizar(f.key, "nombreEmisor", e.target.value)} style={{ ...cellInput, width: 150 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={f.rfcReceptor} onChange={(e) => actualizar(f.key, "rfcReceptor", e.target.value.toUpperCase())} style={cellInput} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="date" value={f.fecha} onChange={(e) => actualizar(f.key, "fecha", e.target.value)} style={{ ...cellInput, width: 130 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={f.subtotal} onChange={(e) => actualizar(f.key, "subtotal", e.target.value)} style={{ ...cellInput, width: 90 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={f.iva} onChange={(e) => actualizar(f.key, "iva", e.target.value)} style={{ ...cellInput, width: 90 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={f.total} onChange={(e) => actualizar(f.key, "total", e.target.value)} style={{ ...cellInput, width: 90 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <select value={f.tipo} onChange={(e) => actualizar(f.key, "tipo", e.target.value as TipoFacturaIva)} style={{ ...cellInput, width: 100 }}>
+              <TableRow key={f.key}>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-uuid-${f.key}`} className="sr-only">
+                    UUID
+                  </Label>
+                  <Input id={`fac-uuid-${f.key}`} type="text" value={f.uuid} onChange={(e) => actualizar(f.key, "uuid", e.target.value)} className="h-9 w-40 font-mono text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-rfc-em-${f.key}`} className="sr-only">
+                    RFC emisor
+                  </Label>
+                  <Input id={`fac-rfc-em-${f.key}`} type="text" value={f.rfcEmisor} onChange={(e) => actualizar(f.key, "rfcEmisor", e.target.value.toUpperCase())} className="h-9 w-28 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-emisor-${f.key}`} className="sr-only">
+                    Emisor
+                  </Label>
+                  <Input id={`fac-emisor-${f.key}`} type="text" value={f.nombreEmisor} onChange={(e) => actualizar(f.key, "nombreEmisor", e.target.value)} className="h-9 w-40 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-rfc-rec-${f.key}`} className="sr-only">
+                    RFC receptor
+                  </Label>
+                  <Input id={`fac-rfc-rec-${f.key}`} type="text" value={f.rfcReceptor} onChange={(e) => actualizar(f.key, "rfcReceptor", e.target.value.toUpperCase())} className="h-9 w-28 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-fecha-${f.key}`} className="sr-only">
+                    Fecha
+                  </Label>
+                  <Input id={`fac-fecha-${f.key}`} type="date" value={f.fecha} onChange={(e) => actualizar(f.key, "fecha", e.target.value)} className="h-9 w-32 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-subtotal-${f.key}`} className="sr-only">
+                    Subtotal
+                  </Label>
+                  <Input id={`fac-subtotal-${f.key}`} type="number" step="0.01" value={f.subtotal} onChange={(e) => actualizar(f.key, "subtotal", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-iva-${f.key}`} className="sr-only">
+                    IVA
+                  </Label>
+                  <Input id={`fac-iva-${f.key}`} type="number" step="0.01" value={f.iva} onChange={(e) => actualizar(f.key, "iva", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-total-${f.key}`} className="sr-only">
+                    Total
+                  </Label>
+                  <Input id={`fac-total-${f.key}`} type="number" step="0.01" value={f.total} onChange={(e) => actualizar(f.key, "total", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-tipo-${f.key}`} className="sr-only">
+                    Tipo
+                  </Label>
+                  <select id={`fac-tipo-${f.key}`} value={f.tipo} onChange={(e) => actualizar(f.key, "tipo", e.target.value as TipoFacturaIva)} className={`${SELECT_CELL_CLASS} w-28`}>
                     {TIPO_FACTURA_OPTIONS.map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
                     ))}
                   </select>
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <select value={f.categoria} onChange={(e) => actualizar(f.key, "categoria", e.target.value as ClasificacionIva)} style={{ ...cellInput, width: 160 }}>
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-categoria-${f.key}`} className="sr-only">
+                    Categoría
+                  </Label>
+                  <select id={`fac-categoria-${f.key}`} value={f.categoria} onChange={(e) => actualizar(f.key, "categoria", e.target.value as ClasificacionIva)} className={`${SELECT_CELL_CLASS} w-40`}>
                     {CATEGORIA_OPTIONS.map((c) => (
                       <option key={c} value={c}>
                         {CATEGORIA_LABELS[c]}
                       </option>
                     ))}
                   </select>
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" min={0} max={1} value={f.proporcionalidad} onChange={(e) => actualizar(f.key, "proporcionalidad", e.target.value)} style={{ ...cellInput, width: 70 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={f.referenciaComplementoPago} onChange={(e) => actualizar(f.key, "referenciaComplementoPago", e.target.value)} placeholder="UUID del REP" style={{ ...cellInput, width: 140, fontFamily: "monospace" }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <button type="button" onClick={() => setFilas(filas.filter((r) => r.key !== f.key))} style={{ ...buttonSecondary, color: "#b91c1c", borderColor: "#fecaca" }}>
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-proporc-${f.key}`} className="sr-only">
+                    Proporcionalidad
+                  </Label>
+                  <Input
+                    id={`fac-proporc-${f.key}`}
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={1}
+                    value={f.proporcionalidad}
+                    onChange={(e) => actualizar(f.key, "proporcionalidad", e.target.value)}
+                    className="h-9 w-[70px] text-xs"
+                  />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`fac-rep-${f.key}`} className="sr-only">
+                    UUID del complemento de pago
+                  </Label>
+                  <Input
+                    id={`fac-rep-${f.key}`}
+                    type="text"
+                    value={f.referenciaComplementoPago}
+                    onChange={(e) => actualizar(f.key, "referenciaComplementoPago", e.target.value)}
+                    placeholder="UUID del REP"
+                    className="h-9 w-36 font-mono text-xs"
+                  />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
+                    onClick={() => setFilas(filas.filter((r) => r.key !== f.key))}
+                  >
+                    <Trash2 />
                     Quitar
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
       <div>
-        <button type="button" onClick={() => setFilas([...filas, nuevaFacturaFila()])} style={buttonSecondary}>
-          + Agregar factura
-        </button>
+        <Button type="button" variant="outline" size="sm" onClick={() => setFilas([...filas, nuevaFacturaFila()])}>
+          <Plus />
+          Agregar factura
+        </Button>
       </div>
-      <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>
+      <p className="text-[11px] text-muted-foreground">
         Sin UUID REP (complemento de pago), el IVA de esa factura no cuenta como efectivamente pagado (LIVA Art. 5 fracc. III). Este lote alimenta DIOT, conciliación, congruencia y el papel de trabajo de abajo.
       </p>
     </div>
@@ -271,69 +353,101 @@ function DeclaracionesEditor({ filas, setFilas }: { filas: readonly DeclaracionF
     setFilas(filas.map((d) => (d.key === key ? { ...d, [campo]: valor } : d)));
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={{ padding: "4px 6px" }}>Mes *</th>
-              <th style={{ padding: "4px 6px" }}>Año *</th>
-              <th style={{ padding: "4px 6px" }}>IVA cobrado</th>
-              <th style={{ padding: "4px 6px" }}>IVA pagado</th>
-              <th style={{ padding: "4px 6px" }}>Saldo a favor</th>
-              <th style={{ padding: "4px 6px" }}>Saldo a cargo</th>
-              <th style={{ padding: "4px 6px" }} />
-            </tr>
-          </thead>
-          <tbody>
+    <div className="flex flex-col gap-2">
+      <div className="overflow-x-auto">
+        <Table className="min-w-[640px] text-xs">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="h-9">Mes *</TableHead>
+              <TableHead className="h-9">Año *</TableHead>
+              <TableHead className="h-9">IVA cobrado</TableHead>
+              <TableHead className="h-9">IVA pagado</TableHead>
+              <TableHead className="h-9">Saldo a favor</TableHead>
+              <TableHead className="h-9">Saldo a cargo</TableHead>
+              <TableHead className="h-9" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {filas.map((d) => (
-              <tr key={d.key}>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" min={1} max={12} value={d.mes} onChange={(e) => actualizar(d.key, "mes", e.target.value)} style={{ ...cellInput, width: 70 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" value={d.año} onChange={(e) => actualizar(d.key, "año", e.target.value)} style={{ ...cellInput, width: 80 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={d.ivaCobrado} onChange={(e) => actualizar(d.key, "ivaCobrado", e.target.value)} style={{ ...cellInput, width: 100 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={d.ivaPagado} onChange={(e) => actualizar(d.key, "ivaPagado", e.target.value)} style={{ ...cellInput, width: 100 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={d.saldoFavor} onChange={(e) => actualizar(d.key, "saldoFavor", e.target.value)} style={{ ...cellInput, width: 100 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={d.saldoContra} onChange={(e) => actualizar(d.key, "saldoContra", e.target.value)} style={{ ...cellInput, width: 100 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <button type="button" onClick={() => setFilas(filas.filter((r) => r.key !== d.key))} style={{ ...buttonSecondary, color: "#b91c1c", borderColor: "#fecaca" }}>
+              <TableRow key={d.key}>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`decl-mes-${d.key}`} className="sr-only">
+                    Mes
+                  </Label>
+                  <Input id={`decl-mes-${d.key}`} type="number" min={1} max={12} value={d.mes} onChange={(e) => actualizar(d.key, "mes", e.target.value)} className="h-9 w-[70px] text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`decl-anio-${d.key}`} className="sr-only">
+                    Año
+                  </Label>
+                  <Input id={`decl-anio-${d.key}`} type="number" value={d.año} onChange={(e) => actualizar(d.key, "año", e.target.value)} className="h-9 w-20 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`decl-cobrado-${d.key}`} className="sr-only">
+                    IVA cobrado
+                  </Label>
+                  <Input id={`decl-cobrado-${d.key}`} type="number" step="0.01" value={d.ivaCobrado} onChange={(e) => actualizar(d.key, "ivaCobrado", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`decl-pagado-${d.key}`} className="sr-only">
+                    IVA pagado
+                  </Label>
+                  <Input id={`decl-pagado-${d.key}`} type="number" step="0.01" value={d.ivaPagado} onChange={(e) => actualizar(d.key, "ivaPagado", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`decl-favor-${d.key}`} className="sr-only">
+                    Saldo a favor
+                  </Label>
+                  <Input id={`decl-favor-${d.key}`} type="number" step="0.01" value={d.saldoFavor} onChange={(e) => actualizar(d.key, "saldoFavor", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`decl-contra-${d.key}`} className="sr-only">
+                    Saldo a cargo
+                  </Label>
+                  <Input id={`decl-contra-${d.key}`} type="number" step="0.01" value={d.saldoContra} onChange={(e) => actualizar(d.key, "saldoContra", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive"
+                    onClick={() => setFilas(filas.filter((r) => r.key !== d.key))}
+                  >
+                    <Trash2 />
                     Quitar
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
       <div>
-        <button type="button" onClick={() => setFilas([...filas, nuevaDeclaracionFila()])} style={buttonSecondary}>
-          + Agregar declaración
-        </button>
+        <Button type="button" variant="outline" size="sm" onClick={() => setFilas([...filas, nuevaDeclaracionFila()])}>
+          <Plus />
+          Agregar declaración
+        </Button>
       </div>
     </div>
   );
 }
 
-const ESTATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  match: { bg: "#dcfce7", fg: "#166534" },
-  mismatch: { bg: "#fee2e2", fg: "#991b1b" },
-  missing: { bg: "#fee2e2", fg: "#991b1b" },
+// Mismo semáforo que las píldoras inline originales (verde = match, rojo =
+// mismatch/missing, gris = cualquier otro estatus que devuelva el motor).
+const ESTATUS_BADGE: Record<string, { variant: "destructive" | "outline"; className?: string }> = {
+  match: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
+  mismatch: { variant: "destructive" },
+  missing: { variant: "destructive" },
 };
 
 function EstatusBadge({ status }: { status: string }) {
-  const c = ESTATUS_COLORS[status] ?? { bg: "#e5e7eb", fg: "#374151" };
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: c.bg, color: c.fg, fontWeight: 600 }}>{status}</span>;
+  const { variant, className } = ESTATUS_BADGE[status] ?? { variant: "outline" as const, className: "border-transparent bg-muted text-muted-foreground" };
+  return (
+    <Badge variant={variant} className={className}>
+      {status}
+    </Badge>
+  );
 }
 
 export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
@@ -576,9 +690,9 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
 
   if (!puedeGestionar) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Devolución de IVA</h1>
-        <p role="alert" style={{ color: "#b91c1c" }}>
+      <div className="flex flex-col gap-2 px-1">
+        <h1 className="font-display text-xl font-semibold text-foreground">Devolución de IVA</h1>
+        <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede correr el flujo de devolución de IVA -- el servidor lo rechazaría igual.
         </p>
       </div>
@@ -586,395 +700,458 @@ export function DevolucionIvaPage({ apiBaseUrl, token, propertyId, role }: Despa
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5 px-1">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Devolución de IVA</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="font-display text-xl font-semibold text-foreground">Devolución de IVA</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Flujo guiado del papel de trabajo de devolución de IVA: facturas del periodo → DIOT → conciliación → saldo a favor → congruencia (REQ-IVA-010) → solicitud → plazo de resolución (Art. 22 CFF) → papel de trabajo.
         </p>
       </header>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Periodo</h2>
-        <label style={{ ...labelStyle, width: 160 }}>
-          Periodo (YYYY-MM) *
-          <input type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} style={inputStyle} />
-        </label>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>1. Facturas del periodo</h2>
-        {errorFacturas && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {errorFacturas}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleCargarFacturas()} disabled={cargandoFacturas} style={buttonPrimary}>
-            {cargandoFacturas ? "Cargando…" : "Cargar CFDI ya ingeridos del periodo"}
-          </button>
-        </div>
-        {clasificacionResumen && (
-          <div style={{ display: "flex", gap: 20, fontSize: 13 }}>
-            <span>
-              <strong>Acreditable 100%:</strong> {clasificacionResumen.acreditable100}
-            </span>
-            <span>
-              <strong>Acreditable proporcional:</strong> {clasificacionResumen.acreditableProporcional}
-            </span>
-            <span>
-              <strong>No acreditable:</strong> {clasificacionResumen.noAcreditable}
-            </span>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">Periodo</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex w-44 flex-col gap-1.5">
+            <Label htmlFor="iva-periodo">Periodo (YYYY-MM) *</Label>
+            <Input id="iva-periodo" type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} />
           </div>
-        )}
-        <FacturasEditor filas={facturaFilas} setFilas={setFacturaFilas} />
-      </section>
+        </CardContent>
+      </Card>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>2. DIOT</h2>
-        {diotError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {diotError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleGenerarDiot()} disabled={diotLoading} style={buttonPrimary}>
-            {diotLoading ? "Generando…" : "Generar DIOT"}
-          </button>
-        </div>
-        {diotErrores.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {diotErrores.map((e, i) => (
-              <p key={i} role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 12 }}>
-                {e}
-              </p>
-            ))}
-          </div>
-        )}
-        {diotEntries && diotEntries.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                  <th style={{ padding: "6px 8px" }}>RFC tercero</th>
-                  <th style={{ padding: "6px 8px" }}>Nombre</th>
-                  <th style={{ padding: "6px 8px" }}>Monto neto</th>
-                  <th style={{ padding: "6px 8px" }}>IVA trasladado</th>
-                  <th style={{ padding: "6px 8px" }}>IVA acreditable</th>
-                  <th style={{ padding: "6px 8px" }}># CFDI</th>
-                </tr>
-              </thead>
-              <tbody>
-                {diotEntries.map((e, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.rfcTercero}</td>
-                    <td style={{ padding: "6px 8px" }}>{e.nombre || "—"}</td>
-                    <td style={{ padding: "6px 8px" }}>{formatMoney(e.montoNeto)}</td>
-                    <td style={{ padding: "6px 8px" }}>{formatMoney(e.ivaTrasladado)}</td>
-                    <td style={{ padding: "6px 8px" }}>{formatMoney(e.ivaAcreditable)}</td>
-                    <td style={{ padding: "6px 8px" }}>{e.foliosFiscales.length}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Declaraciones mensuales</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Captura las declaraciones mensuales de IVA ya presentadas -- alimentan conciliación, saldo a favor, congruencia y solicitud.</p>
-        <DeclaracionesEditor filas={declaracionFilas} setFilas={setDeclaracionFilas} />
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>3. Conciliación (facturas ↔ DIOT ↔ declaración)</h2>
-        {conciliacionError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {conciliacionError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleConciliar()} disabled={conciliacionLoading} style={buttonPrimary}>
-            {conciliacionLoading ? "Conciliando…" : "Conciliar"}
-          </button>
-        </div>
-        {facturasVsDiot && (
-          <div style={{ overflowX: "auto" }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 4px" }}>Facturas vs DIOT</p>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                  <th style={{ padding: "6px 8px" }}>Factura</th>
-                  <th style={{ padding: "6px 8px" }}>Estatus</th>
-                  <th style={{ padding: "6px 8px" }}>Detalle</th>
-                </tr>
-              </thead>
-              <tbody>
-                {facturasVsDiot.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "6px 8px", fontFamily: "monospace", fontSize: 11 }}>{r.facturaUuid}</td>
-                    <td style={{ padding: "6px 8px" }}>
-                      <EstatusBadge status={r.status} />
-                    </td>
-                    <td style={{ padding: "6px 8px", color: "#6b7280" }}>{r.detalles}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {diotVsDeclaracion && diotVsDeclaracion.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 4px" }}>DIOT vs declaración</p>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                  <th style={{ padding: "6px 8px" }}>IVA DIOT</th>
-                  <th style={{ padding: "6px 8px" }}>IVA declaración</th>
-                  <th style={{ padding: "6px 8px" }}>Diferencia</th>
-                  <th style={{ padding: "6px 8px" }}>Estatus</th>
-                </tr>
-              </thead>
-              <tbody>
-                {diotVsDeclaracion.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "6px 8px" }}>{formatMoney(r.diotIvaTotal)}</td>
-                    <td style={{ padding: "6px 8px" }}>{formatMoney(r.declaracionIvaAcreditable)}</td>
-                    <td style={{ padding: "6px 8px" }}>{formatMoney(r.diferencia)}</td>
-                    <td style={{ padding: "6px 8px" }}>
-                      <EstatusBadge status={r.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>4. Saldo a favor / monto de devolución</h2>
-        {saldoError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {saldoError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleCalcularSaldo()} disabled={saldoLoading} style={buttonPrimary}>
-            {saldoLoading ? "Calculando…" : "Calcular saldo a favor"}
-          </button>
-        </div>
-        {montoDevolucion && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <span>
-                <strong>Saldo a favor:</strong> {formatMoney(saldoFavor ?? 0)}
-              </span>
-              <span>
-                <strong>Monto de devolución sugerido:</strong> {formatMoney(montoDevolucion.montoDevolucionSugerido)}
-              </span>
-              <span>
-                <strong>Periodo más antiguo:</strong> {montoDevolucion.periodoMasAntiguo ?? "—"}
-              </span>
-            </div>
-            {saldoVerificacion && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <strong>Verificación:</strong>
-                <EstatusBadge status={saldoVerificacion.consistente ? "match" : "mismatch"} />
-                <span style={{ color: "#6b7280" }}>diferencia {formatMoney(saldoVerificacion.diferencia)}</span>
-              </div>
-            )}
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>
-              El factor de actualización (INPC) y la verificación de prescripción de 5 años son placeholders documentados del motor -- no sustituyen la actualización fiscal real.
-            </p>
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>5. Congruencia DIOT ↔ CFDI ↔ declaración (REQ-IVA-010)</h2>
-        <label style={{ ...labelStyle, width: 160 }}>
-          Tolerancia (MXN)
-          <input type="number" step="0.01" value={tolerancia} onChange={(e) => setTolerancia(e.target.value)} style={inputStyle} />
-        </label>
-        {congruenciaError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {congruenciaError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleVerificarCongruencia()} disabled={congruenciaLoading} style={buttonPrimary}>
-            {congruenciaLoading ? "Verificando…" : "Verificar congruencia"}
-          </button>
-        </div>
-        {congruencia && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <strong>{congruencia.congruente ? "Congruente" : "No congruente"}</strong>
-              <EstatusBadge status={congruencia.congruente ? "match" : "mismatch"} />
-            </div>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <span>CFDI: {formatMoney(congruencia.totalCfdiIvaAcreditable)}</span>
-              <span>DIOT: {formatMoney(congruencia.totalDiotIvaAcreditable)}</span>
-              <span>Declaración: {formatMoney(congruencia.totalDeclaracionIvaPagado)}</span>
-              <span>Diferencia máxima: {formatMoney(congruencia.diferenciaMaxima)}</span>
-            </div>
-            {!congruencia.diotExiste && <p style={{ color: "#b91c1c", margin: 0 }}>No existe DIOT registrada para el periodo.</p>}
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>6. Solicitud de devolución</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
-          Usa el monto sugerido del paso 4. Por encima de ${" "}
-          10,001 MXN, el servidor exige congruencia (paso 5) para dejarla lista para envío -- si no es congruente, queda "requiere aclaración". No se persiste: archívala donde corresponda.
-        </p>
-        <form onSubmit={handlePrepararSolicitud} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 480 }}>
-          <label style={labelStyle}>
-            Cuenta bancaria (opcional)
-            <input type="text" value={cuentaBanco} onChange={(e) => setCuentaBanco(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            CLABE (opcional, 18 dígitos)
-            <input type="text" value={clabe} onChange={(e) => setClabe(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            Documentos soporte (separados por coma)
-            <input type="text" value={documentosTexto} onChange={(e) => setDocumentosTexto(e.target.value)} placeholder="cfdi.zip, diot.txt, declaraciones.pdf" style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            Tenant ID (opcional)
-            <input type="text" value={tenantId} onChange={(e) => setTenantId(e.target.value)} style={inputStyle} />
-          </label>
-          {solicitudError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {solicitudError}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">1. Facturas del periodo</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {errorFacturas && (
+            <p role="alert" className="text-destructive text-sm">
+              {errorFacturas}
             </p>
           )}
           <div>
-            <button type="submit" disabled={solicitudLoading} style={buttonPrimary}>
-              {solicitudLoading ? "Preparando…" : "Preparar solicitud"}
-            </button>
+            <Button type="button" onClick={() => void handleCargarFacturas()} disabled={cargandoFacturas}>
+              <Download />
+              {cargandoFacturas ? "Cargando…" : "Cargar CFDI ya ingeridos del periodo"}
+            </Button>
           </div>
-        </form>
-        {solicitud && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+          {clasificacionResumen && (
+            <div className="flex gap-5 text-[13px] text-foreground">
               <span>
-                <strong>Folio:</strong> <span style={{ fontFamily: "monospace" }}>{solicitud.solicitudId}</span>
+                <strong>Acreditable 100%:</strong> {clasificacionResumen.acreditable100}
               </span>
               <span>
-                <strong>Monto solicitado:</strong> {formatMoney(solicitud.montoSolicitado)}
+                <strong>Acreditable proporcional:</strong> {clasificacionResumen.acreditableProporcional}
               </span>
               <span>
-                <strong>Status:</strong> {solicitud.status}
+                <strong>No acreditable:</strong> {clasificacionResumen.noAcreditable}
               </span>
             </div>
-            {solicitud.estado === "lista_para_envio" ? (
-              <p style={{ color: "#166534", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: 8, padding: 8, margin: 0 }}>Lista para envío.</p>
-            ) : (
-              <p role="alert" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 8, margin: 0 }}>
-                Requiere aclaración: {solicitud.motivoAclaracion}
-              </p>
-            )}
-          </div>
-        )}
-      </section>
+          )}
+          <FacturasEditor filas={facturaFilas} setFilas={setFacturaFilas} />
+        </CardContent>
+      </Card>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>7. Plazo de resolución (Art. 22 CFF)</h2>
-        <form onSubmit={handleCalcularPlazo} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 320 }}>
-          <label style={labelStyle}>
-            Fecha de presentación *
-            <input type="date" value={fechaPresentacion} onChange={(e) => setFechaPresentacion(e.target.value)} required style={inputStyle} />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-            <input type="checkbox" checked={hayDictamenOGarantia} onChange={(e) => setHayDictamenOGarantia(e.target.checked)} />
-            Hay dictamen de contador público registrado o garantía del interés fiscal (plazo de 20 días hábiles en vez de 40)
-          </label>
-          {plazoError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {plazoError}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">2. DIOT</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {diotError && (
+            <p role="alert" className="text-destructive text-sm">
+              {diotError}
             </p>
           )}
           <div>
-            <button type="submit" disabled={plazoLoading} style={buttonPrimary}>
-              {plazoLoading ? "Calculando…" : "Calcular plazo"}
-            </button>
+            <Button type="button" onClick={() => void handleGenerarDiot()} disabled={diotLoading}>
+              <FileSpreadsheet />
+              {diotLoading ? "Generando…" : "Generar DIOT"}
+            </Button>
           </div>
-        </form>
-        {fechaLimite && (
-          <p style={{ fontSize: 13, margin: 0 }}>
-            <strong>Fecha límite de resolución:</strong> {fechaLimite}
-          </p>
-        )}
-      </section>
+          {diotErrores.length > 0 && (
+            <div className="flex flex-col gap-1">
+              {diotErrores.map((e, i) => (
+                <p key={i} role="alert" className="text-destructive text-xs">
+                  {e}
+                </p>
+              ))}
+            </div>
+          )}
+          {diotEntries && diotEntries.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-9">RFC tercero</TableHead>
+                    <TableHead className="h-9">Nombre</TableHead>
+                    <TableHead className="h-9">Monto neto</TableHead>
+                    <TableHead className="h-9">IVA trasladado</TableHead>
+                    <TableHead className="h-9">IVA acreditable</TableHead>
+                    <TableHead className="h-9"># CFDI</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {diotEntries.map((e, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="p-2 font-mono">{e.rfcTercero}</TableCell>
+                      <TableCell className="p-2">{e.nombre || "—"}</TableCell>
+                      <TableCell className="p-2 tabular-nums">{formatMoney(e.montoNeto)}</TableCell>
+                      <TableCell className="p-2 tabular-nums">{formatMoney(e.ivaTrasladado)}</TableCell>
+                      <TableCell className="p-2 tabular-nums">{formatMoney(e.ivaAcreditable)}</TableCell>
+                      <TableCell className="p-2 tabular-nums">{e.foliosFiscales.length}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>8. Papel de trabajo</h2>
-        <label style={labelStyle}>
-          Documentos soporte (separados por coma)
-          <input type="text" value={documentosSoporteTexto} onChange={(e) => setDocumentosSoporteTexto(e.target.value)} placeholder="cfdi.zip, diot.txt, estados_cuenta.pdf" style={{ ...inputStyle, maxWidth: 420 }} />
-        </label>
-        {papelError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {papelError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleGenerarPapel()} disabled={papelLoading} style={buttonPrimary}>
-            {papelLoading ? "Generando…" : "Generar papel de trabajo"}
-          </button>
-        </div>
-        {papel && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <span>
-                <strong>Facturas:</strong> {papel.metadata.totalFacturas}
-              </span>
-              <span>
-                <strong>Entradas DIOT:</strong> {papel.metadata.totalDiotEntries}
-              </span>
-              <span>
-                <strong>Declaraciones:</strong> {papel.metadata.totalDeclaraciones}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <p style={{ fontWeight: 600, margin: 0 }}>1. Resumen del periodo</p>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", color: "#374151" }}>
-                <span>Subtotal: {formatMoney(papel.secciones["1_resumen_periodo"].resumenFacturas.totalSubtotal)}</span>
-                <span>IVA trasladado: {formatMoney(papel.secciones["1_resumen_periodo"].resumenFacturas.totalIvaTrasladado)}</span>
-                <span>Total: {formatMoney(papel.secciones["1_resumen_periodo"].resumenFacturas.totalGravado)}</span>
-              </div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <p style={{ fontWeight: 600, margin: 0 }}>3. Conciliación CFDI ↔ DIOT</p>
-              <span style={{ color: "#374151" }}>
-                {papel.secciones["3_conciliacion_cfdi_diot"].matches}/{papel.secciones["3_conciliacion_cfdi_diot"].totalFacturas} conciliadas ({papel.secciones["3_conciliacion_cfdi_diot"].tasaConciliacion}%)
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <p style={{ fontWeight: 600, margin: 0 }}>5. Cálculo de saldo</p>
-              <span style={{ color: "#374151" }}>
-                Saldo a favor: {formatMoney(papel.secciones["5_calculo_saldo"].saldoAFavor)} · Monto sugerido: {formatMoney(papel.secciones["5_calculo_saldo"].montoDevolucion.montoDevolucionSugerido)}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <p style={{ fontWeight: 600, margin: 0 }}>6. Documentos soporte</p>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", color: "#374151" }}>
-                <span>CFDI: {papel.secciones["6_documentos_soporte"].checklist.cfdiCompra ? "✓" : "✗"}</span>
-                <span>DIOT: {papel.secciones["6_documentos_soporte"].checklist.diot ? "✓" : "✗"}</span>
-                <span>Declaraciones: {papel.secciones["6_documentos_soporte"].checklist.declaraciones ? "✓" : "✗"}</span>
-                <span>Estados de cuenta: {papel.secciones["6_documentos_soporte"].checklist.estadosCuenta ? "✓" : "✗"}</span>
-                <span>Balanza: {papel.secciones["6_documentos_soporte"].checklist.balanza ? "✓" : "✗"}</span>
-              </div>
-            </div>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>{papel.secciones["7_no_discrepancia_fiscal_depositos"].advertenciaFiscal}</p>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">Declaraciones mensuales</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">Captura las declaraciones mensuales de IVA ya presentadas -- alimentan conciliación, saldo a favor, congruencia y solicitud.</p>
+          <DeclaracionesEditor filas={declaracionFilas} setFilas={setDeclaracionFilas} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">3. Conciliación (facturas ↔ DIOT ↔ declaración)</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {conciliacionError && (
+            <p role="alert" className="text-destructive text-sm">
+              {conciliacionError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleConciliar()} disabled={conciliacionLoading}>
+              <ListChecks />
+              {conciliacionLoading ? "Conciliando…" : "Conciliar"}
+            </Button>
           </div>
-        )}
-      </section>
+          {facturasVsDiot && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-foreground">Facturas vs DIOT</p>
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-9">Factura</TableHead>
+                      <TableHead className="h-9">Estatus</TableHead>
+                      <TableHead className="h-9">Detalle</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {facturasVsDiot.map((r, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="p-2 font-mono text-[11px]">{r.facturaUuid}</TableCell>
+                        <TableCell className="p-2">
+                          <EstatusBadge status={r.status} />
+                        </TableCell>
+                        <TableCell className="p-2 text-muted-foreground">{r.detalles}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+          {diotVsDeclaracion && diotVsDeclaracion.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-foreground">DIOT vs declaración</p>
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-9">IVA DIOT</TableHead>
+                      <TableHead className="h-9">IVA declaración</TableHead>
+                      <TableHead className="h-9">Diferencia</TableHead>
+                      <TableHead className="h-9">Estatus</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {diotVsDeclaracion.map((r, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="p-2 tabular-nums">{formatMoney(r.diotIvaTotal)}</TableCell>
+                        <TableCell className="p-2 tabular-nums">{formatMoney(r.declaracionIvaAcreditable)}</TableCell>
+                        <TableCell className="p-2 tabular-nums">{formatMoney(r.diferencia)}</TableCell>
+                        <TableCell className="p-2">
+                          <EstatusBadge status={r.status} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">4. Saldo a favor / monto de devolución</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {saldoError && (
+            <p role="alert" className="text-destructive text-sm">
+              {saldoError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleCalcularSaldo()} disabled={saldoLoading}>
+              <Calculator />
+              {saldoLoading ? "Calculando…" : "Calcular saldo a favor"}
+            </Button>
+          </div>
+          {montoDevolucion && (
+            <div className="flex flex-col gap-1.5 text-[13px] text-foreground">
+              <div className="flex flex-wrap gap-5">
+                <span>
+                  <strong>Saldo a favor:</strong> {formatMoney(saldoFavor ?? 0)}
+                </span>
+                <span>
+                  <strong>Monto de devolución sugerido:</strong> {formatMoney(montoDevolucion.montoDevolucionSugerido)}
+                </span>
+                <span>
+                  <strong>Periodo más antiguo:</strong> {montoDevolucion.periodoMasAntiguo ?? "—"}
+                </span>
+              </div>
+              {saldoVerificacion && (
+                <div className="flex items-center gap-2">
+                  <strong>Verificación:</strong>
+                  <EstatusBadge status={saldoVerificacion.consistente ? "match" : "mismatch"} />
+                  <span className="text-muted-foreground">diferencia {formatMoney(saldoVerificacion.diferencia)}</span>
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                El factor de actualización (INPC) y la verificación de prescripción de 5 años son placeholders documentados del motor -- no sustituyen la actualización fiscal real.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">5. Congruencia DIOT ↔ CFDI ↔ declaración (REQ-IVA-010)</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex w-44 flex-col gap-1.5">
+            <Label htmlFor="iva-tolerancia">Tolerancia (MXN)</Label>
+            <Input id="iva-tolerancia" type="number" step="0.01" value={tolerancia} onChange={(e) => setTolerancia(e.target.value)} />
+          </div>
+          {congruenciaError && (
+            <p role="alert" className="text-destructive text-sm">
+              {congruenciaError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleVerificarCongruencia()} disabled={congruenciaLoading}>
+              <CheckCircle2 />
+              {congruenciaLoading ? "Verificando…" : "Verificar congruencia"}
+            </Button>
+          </div>
+          {congruencia && (
+            <div className="flex flex-col gap-1.5 text-[13px] text-foreground">
+              <div className="flex items-center gap-2">
+                <strong>{congruencia.congruente ? "Congruente" : "No congruente"}</strong>
+                <EstatusBadge status={congruencia.congruente ? "match" : "mismatch"} />
+              </div>
+              <div className="flex flex-wrap gap-5">
+                <span>CFDI: {formatMoney(congruencia.totalCfdiIvaAcreditable)}</span>
+                <span>DIOT: {formatMoney(congruencia.totalDiotIvaAcreditable)}</span>
+                <span>Declaración: {formatMoney(congruencia.totalDeclaracionIvaPagado)}</span>
+                <span>Diferencia máxima: {formatMoney(congruencia.diferenciaMaxima)}</span>
+              </div>
+              {!congruencia.diotExiste && <p className="text-destructive">No existe DIOT registrada para el periodo.</p>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">6. Solicitud de devolución</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Usa el monto sugerido del paso 4. Por encima de ${" "}
+            10,001 MXN, el servidor exige congruencia (paso 5) para dejarla lista para envío -- si no es congruente, queda "requiere aclaración". No se persiste: archívala donde corresponda.
+          </p>
+          <form onSubmit={handlePrepararSolicitud} className="flex max-w-lg flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sol-cuenta">Cuenta bancaria (opcional)</Label>
+              <Input id="sol-cuenta" type="text" value={cuentaBanco} onChange={(e) => setCuentaBanco(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sol-clabe">CLABE (opcional, 18 dígitos)</Label>
+              <Input id="sol-clabe" type="text" value={clabe} onChange={(e) => setClabe(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sol-documentos">Documentos soporte (separados por coma)</Label>
+              <Input id="sol-documentos" type="text" value={documentosTexto} onChange={(e) => setDocumentosTexto(e.target.value)} placeholder="cfdi.zip, diot.txt, declaraciones.pdf" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sol-tenant">Tenant ID (opcional)</Label>
+              <Input id="sol-tenant" type="text" value={tenantId} onChange={(e) => setTenantId(e.target.value)} />
+            </div>
+            {solicitudError && (
+              <p role="alert" className="text-destructive text-sm">
+                {solicitudError}
+              </p>
+            )}
+            <div>
+              <Button type="submit" disabled={solicitudLoading}>
+                <Send />
+                {solicitudLoading ? "Preparando…" : "Preparar solicitud"}
+              </Button>
+            </div>
+          </form>
+          {solicitud && (
+            <div className="flex flex-col gap-1.5 text-[13px] text-foreground">
+              <div className="flex flex-wrap gap-5">
+                <span>
+                  <strong>Folio:</strong> <span className="font-mono">{solicitud.solicitudId}</span>
+                </span>
+                <span>
+                  <strong>Monto solicitado:</strong> {formatMoney(solicitud.montoSolicitado)}
+                </span>
+                <span>
+                  <strong>Status:</strong> {solicitud.status}
+                </span>
+              </div>
+              {solicitud.estado === "lista_para_envio" ? (
+                <p className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-400">Lista para envío.</p>
+              ) : (
+                <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                  Requiere aclaración: {solicitud.motivoAclaracion}
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">7. Plazo de resolución (Art. 22 CFF)</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <form onSubmit={handleCalcularPlazo} className="flex max-w-sm flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="plazo-fecha">Fecha de presentación *</Label>
+              <Input id="plazo-fecha" type="date" value={fechaPresentacion} onChange={(e) => setFechaPresentacion(e.target.value)} required />
+            </div>
+            <label className="flex items-start gap-2 text-[13px] text-foreground">
+              <input
+                type="checkbox"
+                checked={hayDictamenOGarantia}
+                onChange={(e) => setHayDictamenOGarantia(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
+              />
+              Hay dictamen de contador público registrado o garantía del interés fiscal (plazo de 20 días hábiles en vez de 40)
+            </label>
+            {plazoError && (
+              <p role="alert" className="text-destructive text-sm">
+                {plazoError}
+              </p>
+            )}
+            <div>
+              <Button type="submit" disabled={plazoLoading}>
+                <CalendarClock />
+                {plazoLoading ? "Calculando…" : "Calcular plazo"}
+              </Button>
+            </div>
+          </form>
+          {fechaLimite && (
+            <p className="text-[13px] text-foreground">
+              <strong>Fecha límite de resolución:</strong> {fechaLimite}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">8. Papel de trabajo</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex max-w-md flex-col gap-1.5">
+            <Label htmlFor="papel-documentos">Documentos soporte (separados por coma)</Label>
+            <Input
+              id="papel-documentos"
+              type="text"
+              value={documentosSoporteTexto}
+              onChange={(e) => setDocumentosSoporteTexto(e.target.value)}
+              placeholder="cfdi.zip, diot.txt, estados_cuenta.pdf"
+            />
+          </div>
+          {papelError && (
+            <p role="alert" className="text-destructive text-sm">
+              {papelError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleGenerarPapel()} disabled={papelLoading}>
+              <ClipboardList />
+              {papelLoading ? "Generando…" : "Generar papel de trabajo"}
+            </Button>
+          </div>
+          {papel && (
+            <div className="flex flex-col gap-3 text-[13px] text-foreground">
+              <div className="flex flex-wrap gap-5">
+                <span>
+                  <strong>Facturas:</strong> {papel.metadata.totalFacturas}
+                </span>
+                <span>
+                  <strong>Entradas DIOT:</strong> {papel.metadata.totalDiotEntries}
+                </span>
+                <span>
+                  <strong>Declaraciones:</strong> {papel.metadata.totalDeclaraciones}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="font-semibold">1. Resumen del periodo</p>
+                <div className="flex flex-wrap gap-4 text-muted-foreground">
+                  <span>Subtotal: {formatMoney(papel.secciones["1_resumen_periodo"].resumenFacturas.totalSubtotal)}</span>
+                  <span>IVA trasladado: {formatMoney(papel.secciones["1_resumen_periodo"].resumenFacturas.totalIvaTrasladado)}</span>
+                  <span>Total: {formatMoney(papel.secciones["1_resumen_periodo"].resumenFacturas.totalGravado)}</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="font-semibold">3. Conciliación CFDI ↔ DIOT</p>
+                <span className="text-muted-foreground">
+                  {papel.secciones["3_conciliacion_cfdi_diot"].matches}/{papel.secciones["3_conciliacion_cfdi_diot"].totalFacturas} conciliadas ({papel.secciones["3_conciliacion_cfdi_diot"].tasaConciliacion}%)
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="font-semibold">5. Cálculo de saldo</p>
+                <span className="text-muted-foreground">
+                  Saldo a favor: {formatMoney(papel.secciones["5_calculo_saldo"].saldoAFavor)} · Monto sugerido: {formatMoney(papel.secciones["5_calculo_saldo"].montoDevolucion.montoDevolucionSugerido)}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="font-semibold">6. Documentos soporte</p>
+                <div className="flex flex-wrap gap-3 text-muted-foreground">
+                  <span>CFDI: {papel.secciones["6_documentos_soporte"].checklist.cfdiCompra ? "✓" : "✗"}</span>
+                  <span>DIOT: {papel.secciones["6_documentos_soporte"].checklist.diot ? "✓" : "✗"}</span>
+                  <span>Declaraciones: {papel.secciones["6_documentos_soporte"].checklist.declaraciones ? "✓" : "✗"}</span>
+                  <span>Estados de cuenta: {papel.secciones["6_documentos_soporte"].checklist.estadosCuenta ? "✓" : "✗"}</span>
+                  <span>Balanza: {papel.secciones["6_documentos_soporte"].checklist.balanza ? "✓" : "✗"}</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">{papel.secciones["7_no_discrepancia_fiscal_depositos"].advertenciaFiscal}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

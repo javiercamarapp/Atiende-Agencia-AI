@@ -13,7 +13,27 @@
 // existente y muestra su resultado.
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { CalendarClock, CheckCircle2, ExternalLink, TrendingUp } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   calcularVencimientos,
   completarVencimiento,
@@ -26,19 +46,24 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
 
-const PRIORIDAD_COLORS: Record<FiscalDeadline["prioridad"], { bg: string; fg: string }> = {
-  critica: { bg: "#fee2e2", fg: "#991b1b" },
-  alta: { bg: "#fed7aa", fg: "#9a3412" },
-  media: { bg: "#fef9c3", fg: "#854d0e" },
-  baja: { bg: "#dcfce7", fg: "#166534" },
+// Misma carga semántica exacta que las píldoras inline originales, ahora sobre
+// el `Badge` real de @atiende/ui (`variant` donde hay token semántico; escala
+// neutra de Tailwind para verde/ámbar/naranja, igual que StatCard).
+type BadgeSpec = { variant: "default" | "secondary" | "destructive" | "outline"; className?: string };
+
+const PRIORIDAD_BADGE: Record<FiscalDeadline["prioridad"], BadgeSpec> = {
+  critica: { variant: "destructive" },
+  alta: { variant: "outline", className: "border-transparent bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-400" },
+  media: { variant: "outline", className: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400" },
+  baja: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
 };
 
-const ESTADO_COLORS: Record<EstadoVencimiento, { bg: string; fg: string }> = {
-  pendiente: { bg: "#e5e7eb", fg: "#374151" },
-  en_proceso: { bg: "#dbeafe", fg: "#1e40af" },
-  completado: { bg: "#dcfce7", fg: "#166534" },
-  vencido: { bg: "#fee2e2", fg: "#991b1b" },
-  escalado: { bg: "#fde68a", fg: "#92400e" },
+const ESTADO_BADGE: Record<EstadoVencimiento, BadgeSpec> = {
+  pendiente: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground" },
+  en_proceso: { variant: "secondary" },
+  completado: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
+  vencido: { variant: "destructive" },
+  escalado: { variant: "outline", className: "border-transparent bg-amber-200 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300" },
 };
 
 const ESTADO_FILTROS: ReadonlyArray<{ value: EstadoVencimiento | ""; label: string }> = [
@@ -51,13 +76,21 @@ const ESTADO_FILTROS: ReadonlyArray<{ value: EstadoVencimiento | ""; label: stri
 ];
 
 function PrioridadBadge({ prioridad }: { prioridad: FiscalDeadline["prioridad"] }) {
-  const colors = PRIORIDAD_COLORS[prioridad];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, fontWeight: 600 }}>{formatPrioridadVencimiento(prioridad)}</span>;
+  const { variant, className } = PRIORIDAD_BADGE[prioridad];
+  return (
+    <Badge variant={variant} className={className}>
+      {formatPrioridadVencimiento(prioridad)}
+    </Badge>
+  );
 }
 
 function EstadoBadge({ estado }: { estado: EstadoVencimiento }) {
-  const colors = ESTADO_COLORS[estado];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: colors.bg, color: colors.fg, fontWeight: 600 }}>{formatEstadoVencimiento(estado)}</span>;
+  const { variant, className } = ESTADO_BADGE[estado];
+  return (
+    <Badge variant={variant} className={className}>
+      {formatEstadoVencimiento(estado)}
+    </Badge>
+  );
 }
 
 interface RowActionState {
@@ -154,62 +187,81 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="flex flex-col gap-4 px-1">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Vencimientos fiscales</h1>
-          <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>ISR, IVA, DIOT y Nómina -- fecha límite día 17 del mes siguiente, prioridad y escalamiento automáticos.</p>
+          <h1 className="font-display text-xl font-semibold text-foreground">Vencimientos fiscales</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">ISR, IVA, DIOT y Nómina -- fecha límite día 17 del mes siguiente, prioridad y escalamiento automáticos.</p>
         </div>
         {puedeGestionar && (
-          <button
-            onClick={() => setShowCalcularForm((v) => !v)}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: showCalcularForm ? "#fff" : "#111827", color: showCalcularForm ? "#111827" : "#fff", cursor: "pointer", fontSize: 13 }}
-          >
-            {showCalcularForm ? "Cancelar" : "+ Calcular vencimientos del periodo"}
-          </button>
+          <Button variant={showCalcularForm ? "outline" : "default"} size="sm" onClick={() => setShowCalcularForm((v) => !v)}>
+            <CalendarClock />
+            {showCalcularForm ? "Cancelar" : "Calcular vencimientos del periodo"}
+          </Button>
         )}
       </header>
 
+      {/* Panel inline plegable (no overlay): dos campos que el staff llena
+          mirando la tabla de vencimientos de abajo. Solo cambia la piel. */}
       {showCalcularForm && (
-        <form onSubmit={handleCalcular} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, maxWidth: 340 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Año *
-            <input type="number" value={calcAnio} onChange={(e) => setCalcAnio(Number(e.target.value))} required style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            Mes *
-            <select value={calcMes} onChange={(e) => setCalcMes(Number(e.target.value))} style={{ padding: 8, borderRadius: 6, border: "1px solid #d1d5db" }}>
-              {MESES.slice(1).map((nombre, i) => (
-                <option key={i + 1} value={i + 1}>
-                  {nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Genera las 4 obligaciones estándar (ISR/IVA/DIOT/Nómina) con fecha límite el día 17 del mes siguiente.</p>
-          {calcError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {calcError}
-            </p>
-          )}
-          <button type="submit" disabled={calculando} style={{ padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-            {calculando ? "Calculando…" : "Calcular"}
-          </button>
-        </form>
+        <Card className="max-w-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Calcular vencimientos</CardTitle>
+            <CardDescription>Genera las 4 obligaciones estándar (ISR/IVA/DIOT/Nómina) con fecha límite el día 17 del mes siguiente.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCalcular} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="venc-anio">Año *</Label>
+                <Input id="venc-anio" type="number" value={calcAnio} onChange={(e) => setCalcAnio(Number(e.target.value))} required />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="venc-mes">Mes *</Label>
+                <select
+                  id="venc-mes"
+                  value={calcMes}
+                  onChange={(e) => setCalcMes(Number(e.target.value))}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {MESES.slice(1).map((nombre, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {calcError && (
+                <p role="alert" className="text-destructive text-sm">
+                  {calcError}
+                </p>
+              )}
+              <Button type="submit" disabled={calculando} className="w-full">
+                {calculando ? "Calculando…" : "Calcular"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
-        Filtrar por estado
-        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as EstadoVencimiento | "")} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 }}>
+      <div className="flex items-center gap-2">
+        <Label htmlFor="venc-filtro-estado" className="text-[13px] text-foreground">
+          Filtrar por estado
+        </Label>
+        <select
+          id="venc-filtro-estado"
+          value={filtroEstado}
+          onChange={(e) => setFiltroEstado(e.target.value as EstadoVencimiento | "")}
+          className="h-9 rounded-md border border-input bg-background px-2 text-[13px] text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
           {ESTADO_FILTROS.map((f) => (
             <option key={f.value} value={f.value}>
               {f.label}
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
       {loading && !vencimientos && <EstadoCargando etiqueta="Cargando vencimientos…" />}
 
@@ -218,90 +270,89 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
       )}
 
       {vencimientos && vencimientos.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                <th style={{ padding: "6px 8px" }}>Tipo</th>
-                <th style={{ padding: "6px 8px" }}>Periodo</th>
-                <th style={{ padding: "6px 8px" }}>Fecha límite</th>
-                <th style={{ padding: "6px 8px" }}>Prioridad</th>
-                <th style={{ padding: "6px 8px" }}>Estado</th>
-                {puedeGestionar && <th style={{ padding: "6px 8px" }}>Acciones</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {vencimientos.map((d) => {
-                const rowState = rowActions[d.id];
-                const finalizado = d.estado === "completado";
-                return (
-                  <tr key={d.id} style={{ borderBottom: "1px solid #f3f4f6", verticalAlign: "top" }}>
-                    <td style={{ padding: "8px", fontWeight: 600, color: "#111827" }}>{d.tipo}</td>
-                    <td style={{ padding: "8px", color: "#374151" }}>{d.periodo}</td>
-                    <td style={{ padding: "8px", color: "#374151" }}>
-                      {formatDate(d.fechaLimite)}
-                      <div style={{ fontSize: 11, color: "#9ca3af" }}>{d.diasRestantes < 0 ? `${-d.diasRestantes} día(s) de atraso` : d.diasRestantes === 0 ? "vence hoy" : `vence en ${d.diasRestantes} día(s)`}</div>
-                    </td>
-                    <td style={{ padding: "8px" }}>
-                      <PrioridadBadge prioridad={d.prioridad} />
-                    </td>
-                    <td style={{ padding: "8px" }}>
-                      <EstadoBadge estado={d.estado} />
-                      {finalizado && d.fechaPresentacion && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Presentado {formatDate(d.fechaPresentacion)}</div>}
-                      {finalizado && d.comprobanteUrl && (
-                        <div style={{ fontSize: 11, marginTop: 2 }}>
-                          <a href={d.comprobanteUrl} target="_blank" rel="noreferrer">
-                            Ver comprobante
-                          </a>
-                        </div>
-                      )}
-                    </td>
-                    {puedeGestionar && (
-                      <td style={{ padding: "8px" }}>
-                        {!finalizado && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
-                            <input
-                              type="text"
-                              placeholder="URL de comprobante (opcional)"
-                              value={comprobanteDrafts[d.id] ?? ""}
-                              onChange={(e) => setComprobanteDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                              style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12 }}
-                            />
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <button
-                                type="button"
-                                onClick={() => void handleCompletar(d)}
-                                disabled={rowState?.loading}
-                                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #166534", background: "#fff", color: "#166534", cursor: "pointer", fontSize: 12 }}
-                              >
-                                {rowState?.loading ? "…" : "Marcar completado"}
-                              </button>
-                              {d.estado !== "escalado" && (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleEscalar(d)}
-                                  disabled={rowState?.loading}
-                                  style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #b45309", background: "#fff", color: "#b45309", cursor: "pointer", fontSize: 12 }}
-                                >
-                                  Escalar
-                                </button>
-                              )}
-                            </div>
-                            {rowState?.message && (
-                              <span style={{ fontSize: 11, color: rowState.isError ? "#b91c1c" : "#166534" }} role={rowState.isError ? "alert" : undefined}>
-                                {rowState.message}
-                              </span>
-                            )}
+        <Card>
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Periodo</TableHead>
+                  <TableHead>Fecha límite</TableHead>
+                  <TableHead>Prioridad</TableHead>
+                  <TableHead>Estado</TableHead>
+                  {puedeGestionar && <TableHead>Acciones</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {vencimientos.map((d) => {
+                  const rowState = rowActions[d.id];
+                  const finalizado = d.estado === "completado";
+                  return (
+                    <TableRow key={d.id} className="align-top">
+                      <TableCell className="font-semibold text-foreground">{d.tipo}</TableCell>
+                      <TableCell className="text-muted-foreground">{d.periodo}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDate(d.fechaLimite)}
+                        <div className="text-[11px] text-muted-foreground">{d.diasRestantes < 0 ? `${-d.diasRestantes} día(s) de atraso` : d.diasRestantes === 0 ? "vence hoy" : `vence en ${d.diasRestantes} día(s)`}</div>
+                      </TableCell>
+                      <TableCell>
+                        <PrioridadBadge prioridad={d.prioridad} />
+                      </TableCell>
+                      <TableCell>
+                        <EstadoBadge estado={d.estado} />
+                        {finalizado && d.fechaPresentacion && <div className="mt-1 text-[11px] text-muted-foreground">Presentado {formatDate(d.fechaPresentacion)}</div>}
+                        {finalizado && d.comprobanteUrl && (
+                          <div className="mt-0.5 text-[11px]">
+                            <a href={d.comprobanteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline underline-offset-2">
+                              Ver comprobante
+                              <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+                            </a>
                           </div>
                         )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </TableCell>
+                      {puedeGestionar && (
+                        <TableCell>
+                          {!finalizado && (
+                            <div className="flex min-w-56 flex-col gap-1.5">
+                              <Label htmlFor={`venc-comprobante-${d.id}`} className="sr-only">
+                                URL de comprobante
+                              </Label>
+                              <Input
+                                id={`venc-comprobante-${d.id}`}
+                                type="text"
+                                placeholder="URL de comprobante (opcional)"
+                                value={comprobanteDrafts[d.id] ?? ""}
+                                onChange={(e) => setComprobanteDrafts((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                                className="h-9 text-xs"
+                              />
+                              <div className="flex gap-1.5">
+                                <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleCompletar(d)} disabled={rowState?.loading}>
+                                  <CheckCircle2 />
+                                  {rowState?.loading ? "…" : "Marcar completado"}
+                                </Button>
+                                {d.estado !== "escalado" && (
+                                  <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={() => void handleEscalar(d)} disabled={rowState?.loading}>
+                                    <TrendingUp />
+                                    Escalar
+                                  </Button>
+                                )}
+                              </div>
+                              {rowState?.message && (
+                                <span className={`text-[11px] ${rowState.isError ? "text-destructive" : "text-green-700 dark:text-green-400"}`} role={rowState.isError ? "alert" : undefined}>
+                                  {rowState.message}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

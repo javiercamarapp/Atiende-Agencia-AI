@@ -69,6 +69,9 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   // `sessionsRevokedAtByUserId` arriba: no forzar a cada fixture existente que
   // construye un `StaffUserRow` a conocer un campo que no le corresponde.
   private readonly staffIdByGoogleSub = new Map<string, string>();
+  // "Continuar con correo" sin contraseña — tokenHash -> {staffId, expiresAt,
+  // used}, mismo dato que `core.magic_link_token` en Postgres.
+  private readonly magicLinkTokens = new Map<string, { staffId: string; expiresAt: string; used: boolean }>();
 
   addStaff(staff: StaffUserRow): void {
     if (this.staffIdByEmail.has(staff.email)) {
@@ -314,5 +317,20 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     const existingStaffId = this.staffIdByGoogleSub.get(input.sub);
     if (existingStaffId && existingStaffId !== input.staffId) return; // mismo criterio no-op que el `on conflict ... where` de Postgres.
     this.staffIdByGoogleSub.set(input.sub, input.staffId);
+  }
+
+  // ---- "Continuar con correo" sin contraseña — ver el contrato completo en
+  // `core-repository.ts::createMagicLinkToken`/`consumeMagicLinkToken`. ----
+
+  async createMagicLinkToken(input: { readonly staffId: string; readonly tokenHash: string; readonly expiresAt: string }): Promise<void> {
+    this.magicLinkTokens.set(input.tokenHash, { staffId: input.staffId, expiresAt: input.expiresAt, used: false });
+  }
+
+  async consumeMagicLinkToken(tokenHash: string): Promise<StaffUserRow | null> {
+    const entry = this.magicLinkTokens.get(tokenHash);
+    if (!entry || entry.used || new Date(entry.expiresAt).getTime() <= Date.now()) return null;
+    entry.used = true;
+    const staff = this.staffById.get(entry.staffId);
+    return staff ? this.withSessionsRevokedAt(staff) : null;
   }
 }

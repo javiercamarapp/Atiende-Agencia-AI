@@ -18,6 +18,23 @@
 // se manda un `taxes` capturado en el navegador.
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Calculator, Copy, FileCode2, Plus, Trash2 } from "lucide-react";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Separator,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import { calcularNomina, generarXmlNomina } from "../lib/nomina-client.ts";
 import type { ComprobanteNomina, EmployeePayroll, GenerarXmlNominaInput, PayrollPeriodResultado, TipoNomina } from "../lib/nomina-client.ts";
 import { formatMoney, formatPeriodo } from "../lib/format.ts";
@@ -27,9 +44,6 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 // cosmético, el servidor aplica exactamente el mismo filtro vía
 // assertVerticalRole en las dos rutas de nomina.ts. Nunca la única barrera.
 const NOMINA_ROLES = new Set(["admin", "contador"]);
-
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: "100%" } as const;
-const labelStyle = { display: "flex", flexDirection: "column" as const, gap: 4, fontSize: 12, color: "#374151" };
 
 interface EmpleadoFila {
   readonly key: string;
@@ -87,13 +101,13 @@ function toNumberOrUndefined(raw: string): number | undefined {
 
 function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="flex flex-col gap-3">
       {resultado.requiresHumanReview && (
-        <p role="alert" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 10, fontSize: 13, margin: 0 }}>
+        <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
           Requiere revisión humana: {resultado.humanReviewReason}
         </p>
       )}
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 13 }}>
+      <div className="flex flex-wrap gap-6 text-[13px] text-foreground">
         <span>
           <strong>Periodo:</strong> {formatPeriodo(resultado.year, resultado.month)}
         </span>
@@ -110,40 +124,42 @@ function DesgloseTabla({ resultado }: { resultado: PayrollPeriodResultado }) {
           <strong>Total IMSS patronal:</strong> {formatMoney(resultado.totalImssPatronal)}
         </span>
       </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-              <th style={{ padding: "6px 8px" }}>Empleado</th>
-              <th style={{ padding: "6px 8px" }}>Bruto</th>
-              <th style={{ padding: "6px 8px" }}>Percepciones</th>
-              <th style={{ padding: "6px 8px" }}>ISR</th>
-              <th style={{ padding: "6px 8px" }}>IMSS obrero</th>
-              <th style={{ padding: "6px 8px" }}>IMSS patronal</th>
-              <th style={{ padding: "6px 8px" }}>Infonavit</th>
-              <th style={{ padding: "6px 8px" }}>Deducciones</th>
-              <th style={{ padding: "6px 8px" }}>Neto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {resultado.employees.map((e: EmployeePayroll) => (
-              <tr key={e.employeeId || e.nombre} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                <td style={{ padding: "8px" }}>{e.nombre || e.employeeId || "—"}</td>
-                <td style={{ padding: "8px" }}>{formatMoney(e.salarioBruto)}</td>
-                <td style={{ padding: "8px" }}>{formatMoney(e.percepciones)}</td>
-                <td style={{ padding: "8px" }}>{formatMoney(e.taxes.isr)}</td>
-                <td style={{ padding: "8px" }}>{formatMoney(e.taxes.imssObrero)}</td>
-                <td style={{ padding: "8px" }}>{formatMoney(e.taxes.imssPatronal)}</td>
-                <td style={{ padding: "8px" }}>{formatMoney(e.taxes.infonavit)}</td>
-                <td style={{ padding: "8px" }}>{formatMoney(e.deducciones)}</td>
-                <td style={{ padding: "8px", fontWeight: 700 }}>{formatMoney(e.neto)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>
-        {resultado.referenciaLegal} -- Cálculo sin persistencia. Clave de idempotencia: <code>{resultado.idempotencyKey}</code>
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Empleado</TableHead>
+                <TableHead>Bruto</TableHead>
+                <TableHead>Percepciones</TableHead>
+                <TableHead>ISR</TableHead>
+                <TableHead>IMSS obrero</TableHead>
+                <TableHead>IMSS patronal</TableHead>
+                <TableHead>Infonavit</TableHead>
+                <TableHead>Deducciones</TableHead>
+                <TableHead>Neto</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {resultado.employees.map((e: EmployeePayroll) => (
+                <TableRow key={e.employeeId || e.nombre}>
+                  <TableCell>{e.nombre || e.employeeId || "—"}</TableCell>
+                  <TableCell className="tabular-nums">{formatMoney(e.salarioBruto)}</TableCell>
+                  <TableCell className="tabular-nums">{formatMoney(e.percepciones)}</TableCell>
+                  <TableCell className="tabular-nums">{formatMoney(e.taxes.isr)}</TableCell>
+                  <TableCell className="tabular-nums">{formatMoney(e.taxes.imssObrero)}</TableCell>
+                  <TableCell className="tabular-nums">{formatMoney(e.taxes.imssPatronal)}</TableCell>
+                  <TableCell className="tabular-nums">{formatMoney(e.taxes.infonavit)}</TableCell>
+                  <TableCell className="tabular-nums">{formatMoney(e.deducciones)}</TableCell>
+                  <TableCell className="font-bold tabular-nums">{formatMoney(e.neto)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      <p className="text-[11px] text-muted-foreground">
+        {resultado.referenciaLegal} -- Cálculo sin persistencia. Clave de idempotencia: <code className="rounded bg-muted px-1 py-0.5 font-mono">{resultado.idempotencyKey}</code>
       </p>
     </div>
   );
@@ -163,17 +179,20 @@ function ComprobanteXml({ comprobante }: { comprobante: ComprobanteNomina }) {
   }
 
   return (
-    <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 13 }}>
-          <strong>Folio {comprobante.folio}</strong> -- empleado {comprobante.employeeId}
-        </span>
-        <button type="button" onClick={copiar} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12 }}>
-          {copiado ? "Copiado" : "Copiar XML"}
-        </button>
-      </div>
-      <pre style={{ margin: 0, maxHeight: 220, overflow: "auto", background: "#f9fafb", padding: 10, borderRadius: 6, fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{comprobante.xml}</pre>
-    </div>
+    <Card>
+      <CardContent className="flex flex-col gap-2 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-[13px] text-foreground">
+            <strong>Folio {comprobante.folio}</strong> -- empleado {comprobante.employeeId}
+          </span>
+          <Button type="button" variant="outline" size="sm" className="h-9 px-3 text-xs" onClick={copiar}>
+            <Copy />
+            {copiado ? "Copiado" : "Copiar XML"}
+          </Button>
+        </div>
+        <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-2.5 font-mono text-[11px] text-foreground">{comprobante.xml}</pre>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -204,9 +223,9 @@ export function NominaPage(ctx: DespachosShellContext) {
 
   if (!puedeUsar) {
     return (
-      <div>
-        <h1 style={{ fontSize: 20, margin: "0 0 8px" }}>Nómina</h1>
-        <p role="alert" style={{ color: "#b91c1c" }}>
+      <div className="px-1">
+        <h1 className="mb-2 font-display text-xl font-semibold text-foreground">Nómina</h1>
+        <p role="alert" className="text-destructive text-sm">
           Tu rol ({ctx.role}) no tiene acceso a nómina. Solo admin/contador.
         </p>
       </div>
@@ -333,215 +352,272 @@ export function NominaPage(ctx: DespachosShellContext) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+    <div className="flex flex-col gap-7 px-1">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Nómina</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Calcula ISR, IMSS e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
+        <h1 className="font-display text-xl font-semibold text-foreground">Nómina</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">Calcula ISR, IMSS e Infonavit de un periodo y genera el XML del complemento Nómina 1.2 (sin timbrar).</p>
       </header>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <h2 style={{ fontSize: 16, margin: 0 }}>Periodo y empleados</h2>
-        <form onSubmit={handleCalcular} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <label style={{ ...labelStyle, width: 100 }}>
-              Mes
-              <input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(e.target.value)} style={inputStyle} />
-            </label>
-            <label style={{ ...labelStyle, width: 100 }}>
-              Año
-              <input type="number" value={year} onChange={(e) => setYear(e.target.value)} style={inputStyle} />
-            </label>
-            <label style={{ ...labelStyle, width: 130 }}>
-              Días pagados
-              <input type="number" value={diasPagados} onChange={(e) => setDiasPagados(e.target.value)} style={inputStyle} />
-            </label>
-            <label style={{ ...labelStyle, width: 200 }}>
-              Salario diario por defecto
-              <input type="number" step="0.01" value={salarioDiarioDefault} onChange={(e) => setSalarioDiarioDefault(e.target.value)} placeholder="Opcional" style={inputStyle} />
-            </label>
-          </div>
+      <section className="flex flex-col gap-3.5">
+        <h2 className="font-display text-base font-semibold text-foreground">Periodo y empleados</h2>
+        <form onSubmit={handleCalcular} className="flex flex-col gap-4">
+          <Card>
+            <CardContent className="flex flex-wrap gap-3 p-4">
+              <div className="flex w-24 flex-col gap-1.5">
+                <Label htmlFor="nomina-mes">Mes</Label>
+                <Input id="nomina-mes" type="number" min={1} max={12} value={month} onChange={(e) => setMonth(e.target.value)} />
+              </div>
+              <div className="flex w-24 flex-col gap-1.5">
+                <Label htmlFor="nomina-anio">Año</Label>
+                <Input id="nomina-anio" type="number" value={year} onChange={(e) => setYear(e.target.value)} />
+              </div>
+              <div className="flex w-32 flex-col gap-1.5">
+                <Label htmlFor="nomina-dias">Días pagados</Label>
+                <Input id="nomina-dias" type="number" value={diasPagados} onChange={(e) => setDiasPagados(e.target.value)} />
+              </div>
+              <div className="flex w-52 flex-col gap-1.5">
+                <Label htmlFor="nomina-salario-default">Salario diario por defecto</Label>
+                <Input id="nomina-salario-default" type="number" step="0.01" value={salarioDiarioDefault} onChange={(e) => setSalarioDiarioDefault(e.target.value)} placeholder="Opcional" />
+              </div>
+            </CardContent>
+          </Card>
 
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 640 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                  <th style={{ padding: "4px 6px" }}>ID empleado</th>
-                  <th style={{ padding: "4px 6px" }}>Nombre</th>
-                  <th style={{ padding: "4px 6px" }}>Salario bruto</th>
-                  <th style={{ padding: "4px 6px" }}>Percepciones</th>
-                  <th style={{ padding: "4px 6px" }}>Salario diario</th>
-                  <th style={{ padding: "4px 6px" }} />
-                </tr>
-              </thead>
-              <tbody>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[640px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">ID empleado</TableHead>
+                  <TableHead className="h-9">Nombre</TableHead>
+                  <TableHead className="h-9">Salario bruto</TableHead>
+                  <TableHead className="h-9">Percepciones</TableHead>
+                  <TableHead className="h-9">Salario diario</TableHead>
+                  <TableHead className="h-9" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {empleados.map((f) => (
-                  <tr key={f.key}>
-                    <td style={{ padding: "4px 6px" }}>
-                      <input value={f.employeeId} onChange={(e) => actualizarFila(f.key, { employeeId: e.target.value })} style={inputStyle} />
-                    </td>
-                    <td style={{ padding: "4px 6px" }}>
-                      <input value={f.nombre} onChange={(e) => actualizarFila(f.key, { nombre: e.target.value })} style={inputStyle} />
-                    </td>
-                    <td style={{ padding: "4px 6px" }}>
-                      <input type="number" step="0.01" value={f.salarioBruto} onChange={(e) => actualizarFila(f.key, { salarioBruto: e.target.value })} style={inputStyle} />
-                    </td>
-                    <td style={{ padding: "4px 6px" }}>
-                      <input type="number" step="0.01" value={f.percepciones} onChange={(e) => actualizarFila(f.key, { percepciones: e.target.value })} placeholder="0" style={inputStyle} />
-                    </td>
-                    <td style={{ padding: "4px 6px" }}>
-                      <input type="number" step="0.01" value={f.salarioDiario} onChange={(e) => actualizarFila(f.key, { salarioDiario: e.target.value })} placeholder="Opcional" style={inputStyle} />
-                    </td>
-                    <td style={{ padding: "4px 6px" }}>
-                      <button type="button" onClick={() => quitarFila(f.key)} disabled={empleados.length <= 1} style={{ border: "none", background: "transparent", color: "#b91c1c", cursor: "pointer", fontSize: 12 }}>
+                  <TableRow key={f.key}>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-id-${f.key}`} className="sr-only">
+                        ID empleado
+                      </Label>
+                      <Input id={`nomina-id-${f.key}`} value={f.employeeId} onChange={(e) => actualizarFila(f.key, { employeeId: e.target.value })} className="h-9 text-[13px]" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-nombre-${f.key}`} className="sr-only">
+                        Nombre
+                      </Label>
+                      <Input id={`nomina-nombre-${f.key}`} value={f.nombre} onChange={(e) => actualizarFila(f.key, { nombre: e.target.value })} className="h-9 text-[13px]" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-bruto-${f.key}`} className="sr-only">
+                        Salario bruto
+                      </Label>
+                      <Input id={`nomina-bruto-${f.key}`} type="number" step="0.01" value={f.salarioBruto} onChange={(e) => actualizarFila(f.key, { salarioBruto: e.target.value })} className="h-9 text-[13px]" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-percepciones-${f.key}`} className="sr-only">
+                        Percepciones
+                      </Label>
+                      <Input id={`nomina-percepciones-${f.key}`} type="number" step="0.01" value={f.percepciones} onChange={(e) => actualizarFila(f.key, { percepciones: e.target.value })} placeholder="0" className="h-9 text-[13px]" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Label htmlFor={`nomina-diario-${f.key}`} className="sr-only">
+                        Salario diario
+                      </Label>
+                      <Input id={`nomina-diario-${f.key}`} type="number" step="0.01" value={f.salarioDiario} onChange={(e) => actualizarFila(f.key, { salarioDiario: e.target.value })} placeholder="Opcional" className="h-9 text-[13px]" />
+                    </TableCell>
+                    <TableCell className="p-1.5">
+                      <Button type="button" variant="ghost" size="sm" className="h-9 px-3 text-xs text-destructive hover:text-destructive" onClick={() => quitarFila(f.key)} disabled={empleados.length <= 1}>
+                        <Trash2 />
                         Quitar
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
-          <button type="button" onClick={agregarFila} style={{ alignSelf: "flex-start", padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12 }}>
-            + Agregar empleado
-          </button>
+          <Button type="button" variant="outline" size="sm" className="self-start" onClick={agregarFila}>
+            <Plus />
+            Agregar empleado
+          </Button>
 
           {errorCalculo && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+            <p role="alert" className="text-destructive text-sm">
               {errorCalculo}
             </p>
           )}
-          <button
-            type="submit"
-            disabled={calculando}
-            style={{ alignSelf: "flex-start", padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-          >
+          <Button type="submit" disabled={calculando} className="self-start">
+            <Calculator />
             {calculando ? "Calculando…" : "Calcular nómina"}
-          </button>
+          </Button>
         </form>
 
         {resultado && <DesgloseTabla resultado={resultado} />}
       </section>
 
       {resultado && (
-        <section style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: "1px solid #e5e7eb", paddingTop: 20 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Generar XML del complemento Nómina 1.2</h2>
-          <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>Genera el XML SIN sellar para cada empleado del periodo de arriba. El sellado con la FIEL/CSD real y el timbrado ante el PAC quedan fuera de esta página.</p>
-          <form onSubmit={handleGenerarXml} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <label style={{ ...labelStyle, width: 180 }}>
-                RFC emisor *
-                <input value={emisorRfc} onChange={(e) => setEmisorRfc(e.target.value)} style={inputStyle} />
-              </label>
-              <label style={{ ...labelStyle, width: 260 }}>
-                Nombre / razón social emisor *
-                <input value={emisorNombre} onChange={(e) => setEmisorNombre(e.target.value)} style={inputStyle} />
-              </label>
-              <label style={{ ...labelStyle, width: 160 }}>
-                Régimen fiscal *
-                <input value={emisorRegimenFiscal} onChange={(e) => setEmisorRegimenFiscal(e.target.value)} placeholder="601" style={inputStyle} />
-              </label>
-              <label style={{ ...labelStyle, width: 160 }}>
-                Lugar de expedición (CP) *
-                <input value={emisorLugarExpedicion} onChange={(e) => setEmisorLugarExpedicion(e.target.value)} style={inputStyle} />
-              </label>
-              <label style={{ ...labelStyle, width: 200 }}>
-                No. certificado
-                <input value={emisorNoCertificado} onChange={(e) => setEmisorNoCertificado(e.target.value)} placeholder="Opcional" style={inputStyle} />
-              </label>
-              <label style={{ ...labelStyle, width: 140 }}>
-                Tipo de nómina
-                <select value={tipoNomina} onChange={(e) => setTipoNomina(e.target.value as TipoNomina)} style={inputStyle}>
-                  <option value="O">O -- Ordinaria</option>
-                  <option value="E">E -- Extraordinaria</option>
-                </select>
-              </label>
-              <label style={{ ...labelStyle, width: 120 }}>
-                Serie
-                <input value={serie} onChange={(e) => setSerie(e.target.value)} placeholder="Opcional" style={inputStyle} />
-              </label>
-            </div>
+        <section className="flex flex-col gap-3.5">
+          <Separator />
+          <h2 className="font-display text-base font-semibold text-foreground">Generar XML del complemento Nómina 1.2</h2>
+          <p className="text-xs text-muted-foreground">Genera el XML SIN sellar para cada empleado del periodo de arriba. El sellado con la FIEL/CSD real y el timbrado ante el PAC quedan fuera de esta página.</p>
+          <form onSubmit={handleGenerarXml} className="flex flex-col gap-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Datos fiscales del emisor</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <div className="flex w-44 flex-col gap-1.5">
+                  <Label htmlFor="emisor-rfc">RFC emisor *</Label>
+                  <Input id="emisor-rfc" value={emisorRfc} onChange={(e) => setEmisorRfc(e.target.value)} />
+                </div>
+                <div className="flex w-64 flex-col gap-1.5">
+                  <Label htmlFor="emisor-nombre">Nombre / razón social emisor *</Label>
+                  <Input id="emisor-nombre" value={emisorNombre} onChange={(e) => setEmisorNombre(e.target.value)} />
+                </div>
+                <div className="flex w-40 flex-col gap-1.5">
+                  <Label htmlFor="emisor-regimen">Régimen fiscal *</Label>
+                  <Input id="emisor-regimen" value={emisorRegimenFiscal} onChange={(e) => setEmisorRegimenFiscal(e.target.value)} placeholder="601" />
+                </div>
+                <div className="flex w-40 flex-col gap-1.5">
+                  <Label htmlFor="emisor-lugar">Lugar de expedición (CP) *</Label>
+                  <Input id="emisor-lugar" value={emisorLugarExpedicion} onChange={(e) => setEmisorLugarExpedicion(e.target.value)} />
+                </div>
+                <div className="flex w-52 flex-col gap-1.5">
+                  <Label htmlFor="emisor-certificado">No. certificado</Label>
+                  <Input id="emisor-certificado" value={emisorNoCertificado} onChange={(e) => setEmisorNoCertificado(e.target.value)} placeholder="Opcional" />
+                </div>
+                <div className="flex w-36 flex-col gap-1.5">
+                  <Label htmlFor="emisor-tipo-nomina">Tipo de nómina</Label>
+                  <select
+                    id="emisor-tipo-nomina"
+                    value={tipoNomina}
+                    onChange={(e) => setTipoNomina(e.target.value as TipoNomina)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="O">O -- Ordinaria</option>
+                    <option value="E">E -- Extraordinaria</option>
+                  </select>
+                </div>
+                <div className="flex w-32 flex-col gap-1.5">
+                  <Label htmlFor="emisor-serie">Serie</Label>
+                  <Input id="emisor-serie" value={serie} onChange={(e) => setSerie(e.target.value)} placeholder="Opcional" />
+                </div>
+              </CardContent>
+            </Card>
 
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>
+            <p className="text-[11px] text-muted-foreground">
               Tipo contrato/régimen/periodicidad usan los catálogos c_TipoContrato, c_TipoRegimen y c_PeriodicidadPago del Anexo 20 del SAT (p. ej. tipo contrato "01" = tiempo indeterminado, régimen "02" =
               Sueldos, periodicidad "05" = Mensual, "04" = Quincenal). Entidad federativa usa el catálogo c_Estado (p. ej. "CMX", "JAL", "NLE").
             </p>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 1100 }}>
-                <thead>
-                  <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                    <th style={{ padding: "4px 6px" }}>Empleado</th>
-                    <th style={{ padding: "4px 6px" }}>RFC receptor *</th>
-                    <th style={{ padding: "4px 6px" }}>Nombre receptor</th>
-                    <th style={{ padding: "4px 6px" }}>CP fiscal receptor *</th>
-                    <th style={{ padding: "4px 6px" }}>Régimen fiscal receptor</th>
-                    <th style={{ padding: "4px 6px" }}>Folio *</th>
-                    <th style={{ padding: "4px 6px" }}>CURP *</th>
-                    <th style={{ padding: "4px 6px" }}>No. empleado *</th>
-                    <th style={{ padding: "4px 6px" }}>Tipo contrato *</th>
-                    <th style={{ padding: "4px 6px" }}>Tipo régimen *</th>
-                    <th style={{ padding: "4px 6px" }}>Periodicidad *</th>
-                    <th style={{ padding: "4px 6px" }}>Ent. federativa *</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[1100px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-9">Empleado</TableHead>
+                    <TableHead className="h-9">RFC receptor *</TableHead>
+                    <TableHead className="h-9">Nombre receptor</TableHead>
+                    <TableHead className="h-9">CP fiscal receptor *</TableHead>
+                    <TableHead className="h-9">Régimen fiscal receptor</TableHead>
+                    <TableHead className="h-9">Folio *</TableHead>
+                    <TableHead className="h-9">CURP *</TableHead>
+                    <TableHead className="h-9">No. empleado *</TableHead>
+                    <TableHead className="h-9">Tipo contrato *</TableHead>
+                    <TableHead className="h-9">Tipo régimen *</TableHead>
+                    <TableHead className="h-9">Periodicidad *</TableHead>
+                    <TableHead className="h-9">Ent. federativa *</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {empleados.map((f) => (
-                    <tr key={f.key}>
-                      <td style={{ padding: "4px 6px" }}>{f.nombre || f.employeeId || "—"}</td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.rfcReceptor} onChange={(e) => actualizarFila(f.key, { rfcReceptor: e.target.value })} style={inputStyle} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.nombreReceptor} onChange={(e) => actualizarFila(f.key, { nombreReceptor: e.target.value })} placeholder="= nombre de nómina" style={inputStyle} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.domicilioFiscalReceptor} onChange={(e) => actualizarFila(f.key, { domicilioFiscalReceptor: e.target.value })} style={inputStyle} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.regimenFiscalReceptor} onChange={(e) => actualizarFila(f.key, { regimenFiscalReceptor: e.target.value })} placeholder="Opcional" style={inputStyle} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.folio} onChange={(e) => actualizarFila(f.key, { folio: e.target.value })} style={inputStyle} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.curp} onChange={(e) => actualizarFila(f.key, { curp: e.target.value })} maxLength={18} style={{ ...inputStyle, width: 170 }} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.numEmpleado} onChange={(e) => actualizarFila(f.key, { numEmpleado: e.target.value })} style={{ ...inputStyle, width: 110 }} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.tipoContrato} onChange={(e) => actualizarFila(f.key, { tipoContrato: e.target.value })} placeholder="01" style={{ ...inputStyle, width: 70 }} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.tipoRegimen} onChange={(e) => actualizarFila(f.key, { tipoRegimen: e.target.value })} placeholder="02" style={{ ...inputStyle, width: 70 }} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.periodicidadPago} onChange={(e) => actualizarFila(f.key, { periodicidadPago: e.target.value })} placeholder="05" style={{ ...inputStyle, width: 70 }} />
-                      </td>
-                      <td style={{ padding: "4px 6px" }}>
-                        <input value={f.claveEntFed} onChange={(e) => actualizarFila(f.key, { claveEntFed: e.target.value })} placeholder="CMX" maxLength={3} style={{ ...inputStyle, width: 70 }} />
-                      </td>
-                    </tr>
+                    <TableRow key={f.key}>
+                      <TableCell className="p-1.5">{f.nombre || f.employeeId || "—"}</TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-rfc-${f.key}`} className="sr-only">
+                          RFC receptor
+                        </Label>
+                        <Input id={`xml-rfc-${f.key}`} value={f.rfcReceptor} onChange={(e) => actualizarFila(f.key, { rfcReceptor: e.target.value })} className="h-9 text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-nombre-rec-${f.key}`} className="sr-only">
+                          Nombre receptor
+                        </Label>
+                        <Input id={`xml-nombre-rec-${f.key}`} value={f.nombreReceptor} onChange={(e) => actualizarFila(f.key, { nombreReceptor: e.target.value })} placeholder="= nombre de nómina" className="h-9 text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-cp-${f.key}`} className="sr-only">
+                          CP fiscal receptor
+                        </Label>
+                        <Input id={`xml-cp-${f.key}`} value={f.domicilioFiscalReceptor} onChange={(e) => actualizarFila(f.key, { domicilioFiscalReceptor: e.target.value })} className="h-9 text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-regimen-rec-${f.key}`} className="sr-only">
+                          Régimen fiscal receptor
+                        </Label>
+                        <Input id={`xml-regimen-rec-${f.key}`} value={f.regimenFiscalReceptor} onChange={(e) => actualizarFila(f.key, { regimenFiscalReceptor: e.target.value })} placeholder="Opcional" className="h-9 text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-folio-${f.key}`} className="sr-only">
+                          Folio
+                        </Label>
+                        <Input id={`xml-folio-${f.key}`} value={f.folio} onChange={(e) => actualizarFila(f.key, { folio: e.target.value })} className="h-9 text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-curp-${f.key}`} className="sr-only">
+                          CURP
+                        </Label>
+                        <Input id={`xml-curp-${f.key}`} value={f.curp} onChange={(e) => actualizarFila(f.key, { curp: e.target.value })} maxLength={18} className="h-9 w-44 text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-num-${f.key}`} className="sr-only">
+                          Número de empleado
+                        </Label>
+                        <Input id={`xml-num-${f.key}`} value={f.numEmpleado} onChange={(e) => actualizarFila(f.key, { numEmpleado: e.target.value })} className="h-9 w-28 text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-contrato-${f.key}`} className="sr-only">
+                          Tipo de contrato
+                        </Label>
+                        <Input id={`xml-contrato-${f.key}`} value={f.tipoContrato} onChange={(e) => actualizarFila(f.key, { tipoContrato: e.target.value })} placeholder="01" className="h-9 w-[70px] text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-regimen-${f.key}`} className="sr-only">
+                          Tipo de régimen
+                        </Label>
+                        <Input id={`xml-regimen-${f.key}`} value={f.tipoRegimen} onChange={(e) => actualizarFila(f.key, { tipoRegimen: e.target.value })} placeholder="02" className="h-9 w-[70px] text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-periodicidad-${f.key}`} className="sr-only">
+                          Periodicidad de pago
+                        </Label>
+                        <Input id={`xml-periodicidad-${f.key}`} value={f.periodicidadPago} onChange={(e) => actualizarFila(f.key, { periodicidadPago: e.target.value })} placeholder="05" className="h-9 w-[70px] text-[13px]" />
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Label htmlFor={`xml-entfed-${f.key}`} className="sr-only">
+                          Entidad federativa
+                        </Label>
+                        <Input id={`xml-entfed-${f.key}`} value={f.claveEntFed} onChange={(e) => actualizarFila(f.key, { claveEntFed: e.target.value })} placeholder="CMX" maxLength={3} className="h-9 w-[70px] text-[13px]" />
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             {errorXml && (
-              <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+              <p role="alert" className="text-destructive text-sm">
                 {errorXml}
               </p>
             )}
-            <button
-              type="submit"
-              disabled={generandoXml}
-              style={{ alignSelf: "flex-start", padding: 10, borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
-            >
+            <Button type="submit" disabled={generandoXml} className="self-start">
+              <FileCode2 />
               {generandoXml ? "Generando…" : "Generar XML"}
-            </button>
+            </Button>
           </form>
 
           {xmlResultado && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="flex flex-col gap-3">
               {xmlResultado.map((c) => (
                 <ComprobanteXml key={`${c.employeeId}-${c.folio}`} comprobante={c} />
               ))}

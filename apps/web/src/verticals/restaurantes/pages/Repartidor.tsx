@@ -4,8 +4,14 @@
 // ese sidebar apunta a Productos/Sucursales/Historial/Clientes, todas rutas
 // MANAGER_ROLES que un repartidor real nunca puede abrir (le devolverían 403) — este
 // componente resuelve su propia sesión/property, mismo patrón de useEffect que
-// RestaurantesShell, pero sin ese nav. Estilos inline, sin design system nuevo —
-// mismo criterio que el resto de este vertical (ver Pedidos.tsx).
+// RestaurantesShell, pero sin ese nav.
+//
+// Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
+// primitivos de `@atiende/ui` — `Card` por entrega, `Badge` para el estado, `Button`
+// para Mapa/Llamar/avanzar/reportar — y el `window.prompt` del navegador que pedía la
+// nota de incidencia pasa a un `Dialog` real del sistema de diseño (mismas tres ramas
+// de siempre: cancelar = no-op, nota vacía = el mismo mensaje de error, nota con texto
+// = la misma llamada a `updateAssignedOrderStatus(..., "problema", nota.trim())`).
 //
 // Ronda 13 — hallazgo de auditoría (severidad ALTA, "único consumidor autenticado de
 // apps/web que no escucha SESSION_EXPIRED_EVENT"): al estar FUERA de
@@ -26,7 +32,23 @@
 // esta página unas líneas abajo.
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Label,
+} from "@atiende/ui";
+import { AlertTriangle, MapPin, Map as MapIcon, Phone } from "lucide-react";
 import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { fetchBranches } from "../dashboard-client.ts";
@@ -63,6 +85,10 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
   const [orders, setOrders] = useState<readonly RepartidorOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changingId, setChangingId] = useState<string | null>(null);
+  // Pedido cuyo reporte de incidencia está abierto (antes: el `window.prompt` del
+  // navegador) y el texto que el repartidor lleva escrito.
+  const [incidenciaOrder, setIncidenciaOrder] = useState<RepartidorOrder | null>(null);
+  const [incidenciaNota, setIncidenciaNota] = useState("");
 
   async function load() {
     setError(null);
@@ -92,9 +118,21 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
     }
   }
 
-  async function handleReportarIncidencia(order: RepartidorOrder) {
-    const nota = window.prompt("¿Qué pasó? (se guarda y administración lo ve de inmediato)");
-    if (nota === null) return; // canceló el prompt
+  function abrirIncidencia(order: RepartidorOrder) {
+    setIncidenciaNota("");
+    setIncidenciaOrder(order);
+  }
+
+  function cerrarIncidencia() {
+    setIncidenciaOrder(null);
+    setIncidenciaNota("");
+  }
+
+  async function handleReportarIncidencia() {
+    const order = incidenciaOrder;
+    if (!order) return; // equivalente a haber cancelado el prompt de antes
+    const nota = incidenciaNota;
+    cerrarIncidencia();
     if (!nota.trim()) {
       setError("Escribe qué pasó antes de reportar la incidencia.");
       return;
@@ -115,8 +153,9 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
   const resto = orders?.filter((o) => o.status !== "preparando" && o.status !== "en_camino") ?? [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: 24, fontFamily: "system-ui, sans-serif", maxWidth: 720, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Mis entregas</h1>
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-6">
+      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Mis entregas</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {!orders && !error && <EstadoCargando etiqueta="Cargando tus entregas…" />}
@@ -125,70 +164,109 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
       {[...activos, ...resto].map((o) => {
         const nextLabel = NEXT_STATUS_LABEL[o.status];
         return (
-          <div key={o.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600 }}>
-                  {o.customerName} · {formatMoney(o.total)}
-                </p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                  {o.customerPhone} · {new Date(o.createdAt).toLocaleString("es-MX")}
-                </p>
+          <Card key={o.id}>
+            <CardContent className="p-4">
+              <div className="flex flex-wrap justify-between gap-2">
+                <div>
+                  <p className="m-0 font-semibold text-foreground">
+                    {o.customerName} · {formatMoney(o.total)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {o.customerPhone} · {new Date(o.createdAt).toLocaleString("es-MX")}
+                  </p>
+                </div>
+                <Badge variant={o.status === "problema" ? "destructive" : "secondary"} className="self-start">
+                  {STATUS_LABELS[o.status]}
+                </Badge>
               </div>
-              <span
-                style={{
-                  alignSelf: "flex-start",
-                  fontSize: 12,
-                  padding: "3px 10px",
-                  borderRadius: 999,
-                  background: o.status === "problema" ? "#fee2e2" : "#f3f4f6",
-                  color: o.status === "problema" ? "#991b1b" : "#374151",
-                }}
-              >
-                {STATUS_LABELS[o.status]}
-              </span>
-            </div>
 
-            {o.customerAddress && <p style={{ margin: "8px 0 0", fontSize: 13, color: "#374151" }}>📍 {o.customerAddress}</p>}
-            <p style={{ margin: "6px 0 0", fontSize: 13, color: "#374151" }}>{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
-            {o.incidentNote && <p style={{ margin: "6px 0 0", fontSize: 13, color: "#991b1b" }}>⚠ {o.incidentNote}</p>}
-
-            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
               {o.customerAddress && (
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.customerAddress)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 12, textDecoration: "none", color: "#111827" }}
-                >
-                  Mapa
-                </a>
+                <p className="mt-2 flex items-start gap-1.5 text-[13px] text-foreground">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+                  {o.customerAddress}
+                </p>
               )}
-              <a href={`tel:${o.customerPhone}`} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 12, textDecoration: "none", color: "#111827" }}>
-                Llamar
-              </a>
-              {nextLabel && (
-                <button
-                  onClick={() => void handleAvanzar(o)}
-                  disabled={changingId === o.id}
-                  style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 12, cursor: "pointer" }}
-                >
-                  {changingId === o.id ? "…" : nextLabel}
-                </button>
+              <p className="mt-1.5 text-[13px] text-foreground">{o.items.map((it) => `${it.quantity}× ${it.name}`).join(", ")}</p>
+              {o.incidentNote && (
+                <p className="mt-1.5 flex items-start gap-1.5 text-[13px] text-destructive">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                  {o.incidentNote}
+                </p>
               )}
-              {(o.status === "pending" || o.status === "preparando" || o.status === "en_camino") && (
-                <button
-                  onClick={() => void handleReportarIncidencia(o)}
-                  disabled={changingId === o.id}
-                  style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}
-                >
-                  Reportar incidencia
-                </button>
-              )}
-            </div>
-          </div>
+
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {o.customerAddress && (
+                  <Button asChild variant="outline" size="sm" className="h-9 text-xs">
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.customerAddress)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <MapIcon />
+                      Mapa
+                    </a>
+                  </Button>
+                )}
+                <Button asChild variant="outline" size="sm" className="h-9 text-xs">
+                  <a href={`tel:${o.customerPhone}`}>
+                    <Phone />
+                    Llamar
+                  </a>
+                </Button>
+                {nextLabel && (
+                  <Button type="button" size="sm" className="h-9 text-xs" onClick={() => void handleAvanzar(o)} disabled={changingId === o.id}>
+                    {changingId === o.id ? "…" : nextLabel}
+                  </Button>
+                )}
+                {(o.status === "pending" || o.status === "preparando" || o.status === "en_camino") && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 border-destructive/40 text-xs text-destructive hover:border-destructive"
+                    onClick={() => abrirIncidencia(o)}
+                    disabled={changingId === o.id}
+                  >
+                    <AlertTriangle />
+                    Reportar incidencia
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         );
       })}
+
+      <Dialog open={incidenciaOrder !== null} onOpenChange={(abierto) => !abierto && cerrarIncidencia()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reportar incidencia</DialogTitle>
+            <DialogDescription>¿Qué pasó? (se guarda y administración lo ve de inmediato)</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="repartidor-incidencia-nota" className="text-xs text-muted-foreground">
+              Nota para administración
+            </Label>
+            <textarea
+              id="repartidor-incidencia-nota"
+              value={incidenciaNota}
+              onChange={(e) => setIncidenciaNota(e.target.value)}
+              rows={4}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              placeholder="Ej. El cliente no abrió y no contesta el teléfono."
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={cerrarIncidencia}>
+              Volver
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void handleReportarIncidencia()}>
+              Reportar incidencia
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      </div>
     </div>
   );
 }
@@ -254,7 +332,7 @@ export function RepartidorPedidosPage() {
 
   if (error) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+      <main className="min-h-screen bg-background p-6">
         <EstadoError mensaje={error} />
       </main>
     );
@@ -262,7 +340,7 @@ export function RepartidorPedidosPage() {
 
   if (!propertyId) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+      <main className="min-h-screen bg-background p-6">
         <EstadoCargando etiqueta="Cargando…" />
       </main>
     );

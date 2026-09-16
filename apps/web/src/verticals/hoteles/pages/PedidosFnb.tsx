@@ -15,9 +15,16 @@
 //      negocio en vez de descubrirla con un 409.
 // El gateo por rol aquí es SIEMPRE cosmético: assertVerticalRole en pedidosFnb.ts es
 // el enforcement real, ver el comentario de `role` en HotelesShell.tsx.
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
+// botones/tarjetas/inputs de estilos inline por Button/Card/Badge/Input/Label
+// reales — mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. Ningún cambio
+// de lógica: mismos props, mismo estado, mismas llamadas de red, misma condición
+// de cada rama.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { Plus, X } from "lucide-react";
+import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
 import {
   asegurarSeguridadFnb,
   confirmarCocinaFnb,
@@ -147,168 +154,140 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="flex flex-col gap-4">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Pedidos F&amp;B</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+          <h1 className="text-xl font-display font-semibold text-foreground">Pedidos F&amp;B</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
             Guardia de alergias (REQ-AB-004): con alergia/restricción declarada, nadie puede afirmarle al huésped que el platillo es seguro hasta que cocina lo confirme.
           </p>
         </div>
         {canTomarPedido && (
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: showForm ? "#fff" : "#111827", color: showForm ? "#111827" : "#fff", fontSize: 13, cursor: "pointer" }}
-          >
-            {showForm ? "Cancelar" : "+ Tomar pedido"}
-          </button>
+          <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
+            {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
+            {showForm ? "Cancelar" : "Tomar pedido"}
+          </Button>
         )}
       </header>
 
       {showForm && canTomarPedido && (
-        <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 480 }}>
-          <label style={{ fontSize: 13 }}>
-            Habitación (opcional)
-            <input value={roomId} onChange={(e) => setRoomId(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-          </label>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Platillos</span>
-            {draftItems.map((item, index) => (
-              <div key={index} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <input
-                  value={item.nombre}
-                  onChange={(e) => updateDraftItem(index, { nombre: e.target.value })}
-                  placeholder="Nombre del platillo"
-                  style={{ flex: 1, padding: 8 }}
-                />
-                <input
-                  value={item.notas}
-                  onChange={(e) => updateDraftItem(index, { notas: e.target.value })}
-                  placeholder="Notas (opcional)"
-                  style={{ flex: 1, padding: 8 }}
-                />
-                <button type="button" onClick={() => removeDraftItem(index)} disabled={draftItems.length <= 1} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}>
-                  ×
-                </button>
+        <Card className="max-w-lg">
+          <CardContent className="p-4">
+            <form onSubmit={handleCreate} className="flex flex-col gap-3">
+              <div>
+                <Label htmlFor="fnb-room">Habitación (opcional)</Label>
+                <Input id="fnb-room" value={roomId} onChange={(e) => setRoomId(e.target.value)} className="mt-1" />
               </div>
-            ))}
-            <button type="button" onClick={addDraftItem} style={{ alignSelf: "flex-start", padding: "4px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", fontSize: 12, cursor: "pointer" }}>
-              + Agregar platillo
-            </button>
-          </div>
 
-          <label style={{ fontSize: 13 }}>
-            Notas generales (opcional)
-            <textarea value={notas} onChange={(e) => setNotas(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4, minHeight: 60 }} />
-          </label>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-semibold text-foreground">Platillos</span>
+                {draftItems.map((item, index) => (
+                  <div key={index} className="flex gap-2 items-start">
+                    <Input value={item.nombre} onChange={(e) => updateDraftItem(index, { nombre: e.target.value })} placeholder="Nombre del platillo" className="flex-1" />
+                    <Input value={item.notas} onChange={(e) => updateDraftItem(index, { notas: e.target.value })} placeholder="Notas (opcional)" className="flex-1" />
+                    <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={() => removeDraftItem(index)} disabled={draftItems.length <= 1}>
+                      <X className="w-4 h-4" strokeWidth={1.75} />
+                    </Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" className="self-start" onClick={addDraftItem}>
+                  + Agregar platillo
+                </Button>
+              </div>
 
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-            <input type="checkbox" checked={alergiaDeclarada} onChange={(e) => setAlergiaDeclarada(e.target.checked)} />
-            El huésped declaró una alergia/restricción alimentaria
-          </label>
-          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>
-            Aunque dejes esto sin marcar, el servidor revisa las notas de texto libre y marca el pedido igual si detecta (o no logra descartar) una alergia — fail-closed, ver fnbAllergyGuard.ts.
-          </p>
+              <div>
+                <Label htmlFor="fnb-notas">Notas generales (opcional)</Label>
+                <textarea
+                  id="fnb-notas"
+                  value={notas}
+                  onChange={(e) => setNotas(e.target.value)}
+                  className="mt-1 flex w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
 
-          {formError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {formError}
-            </p>
-          )}
-          <button type="submit" disabled={creating} style={{ padding: 10, fontWeight: 600, borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer" }}>
-            {creating ? "Enviando…" : "Tomar pedido"}
-          </button>
-        </form>
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" checked={alergiaDeclarada} onChange={(e) => setAlergiaDeclarada(e.target.checked)} className="accent-primary" />
+                El huésped declaró una alergia/restricción alimentaria
+              </label>
+              <p className="text-[11px] text-muted-foreground">
+                Aunque dejes esto sin marcar, el servidor revisa las notas de texto libre y marca el pedido igual si detecta (o no logra descartar) una alergia — fail-closed, ver fnbAllergyGuard.ts.
+              </p>
+
+              {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
+              <Button type="submit" disabled={creating}>
+                {creating ? "Enviando…" : "Tomar pedido"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
       {!pedidos && !error && <EstadoCargando etiqueta="Cargando pedidos…" />}
       {pedidos && pedidos.length === 0 && <EstadoVacio mensaje="Todavía no hay pedidos de F&B." />}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="flex flex-col gap-3">
         {pedidos?.map((p) => {
           const pendienteConfirmar = p.alergiaDeclarada && !p.cocineroConfirmoPor;
           return (
-            <div key={p.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600 }}>{p.roomId ? `Habitación ${p.roomId}` : "Sin habitación"}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>
-                    {p.items.map((it) => it.nombre).join(", ")} · Tomado: {new Date(p.creadoEn).toLocaleString("es-MX")}
-                  </p>
+            <Card key={p.id}>
+              <CardContent className="p-4">
+                <div className="flex justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="font-semibold text-foreground">{p.roomId ? `Habitación ${p.roomId}` : "Sin habitación"}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {p.items.map((it) => it.nombre).join(", ")} · Tomado: {new Date(p.creadoEn).toLocaleString("es-MX")}
+                    </p>
+                  </div>
+                  {p.alergiaDeclarada && (
+                    <Badge variant={pendienteConfirmar ? "destructive" : "secondary"} className="self-start">
+                      Alergia declarada · {pendienteConfirmar ? "Pendiente de confirmar" : "Confirmada por cocina"}
+                    </Badge>
+                  )}
                 </div>
-                {p.alergiaDeclarada && (
-                  <span
-                    style={{
-                      alignSelf: "flex-start",
-                      fontSize: 12,
-                      padding: "3px 10px",
-                      borderRadius: 999,
-                      background: pendienteConfirmar ? "#fee2e2" : "#dcfce7",
-                      color: pendienteConfirmar ? "#991b1b" : "#166534",
-                    }}
-                  >
-                    Alergia declarada · {pendienteConfirmar ? "Pendiente de confirmar" : "Confirmada por cocina"}
-                  </span>
+
+                {p.notas && <p className="mt-2 text-sm text-foreground">Notas: {p.notas}</p>}
+                {p.items.some((it) => it.notas) && (
+                  <ul className="mt-1.5 pl-4 text-xs text-muted-foreground list-disc">
+                    {p.items.filter((it) => it.notas).map((it, i) => (
+                      <li key={i}>
+                        {it.nombre}: {it.notas}
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </div>
 
-              {p.notas && <p style={{ margin: "8px 0 0", fontSize: 13, color: "#374151" }}>Notas: {p.notas}</p>}
-              {p.items.some((it) => it.notas) && (
-                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, color: "#6b7280" }}>
-                  {p.items.filter((it) => it.notas).map((it, i) => (
-                    <li key={i}>
-                      {it.nombre}: {it.notas}
-                    </li>
-                  ))}
-                </ul>
-              )}
+                {p.alergiaDeclarada && p.alergiaDetectadaVia && (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">Origen: {FNB_ALLERGY_VIA_LABELS[p.alergiaDetectadaVia]}</p>
+                )}
 
-              {p.alergiaDeclarada && p.alergiaDetectadaVia && (
-                <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Origen: {FNB_ALLERGY_VIA_LABELS[p.alergiaDetectadaVia]}</p>
-              )}
+                <p className={`mt-2 text-sm ${p.seguridadAseguradaEn ? "text-green-700 dark:text-green-500" : "text-foreground"}`}>{p.mensajeSeguridad}</p>
+                {p.seguridadAseguradaEn && <p className="mt-0.5 text-[11px] text-muted-foreground">Asegurado el {new Date(p.seguridadAseguradaEn).toLocaleString("es-MX")}</p>}
+                {p.cocineroConfirmoEn && <p className="mt-0.5 text-[11px] text-muted-foreground">Cocina confirmó el {new Date(p.cocineroConfirmoEn).toLocaleString("es-MX")}</p>}
 
-              <p style={{ margin: "8px 0 0", fontSize: 13, color: p.seguridadAseguradaEn ? "#166534" : "#374151" }}>{p.mensajeSeguridad}</p>
-              {p.seguridadAseguradaEn && (
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Asegurado el {new Date(p.seguridadAseguradaEn).toLocaleString("es-MX")}</p>
-              )}
-              {p.cocineroConfirmoEn && (
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>Cocina confirmó el {new Date(p.cocineroConfirmoEn).toLocaleString("es-MX")}</p>
-              )}
-
-              {canConfirmarCocina && (
-                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {pendienteConfirmar && (
-                    <button
-                      onClick={() => void handleConfirmarCocina(p)}
-                      disabled={busyId === p.id}
-                      style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 12, cursor: "pointer" }}
-                    >
-                      {busyId === p.id ? "…" : "Confirmar en cocina"}
-                    </button>
-                  )}
-                  {!p.seguridadAseguradaEn && (
-                    <button
-                      onClick={() => void handleAsegurarSeguridad(p)}
-                      disabled={busyId === p.id || !p.puedeAsegurarSeguridad}
-                      title={!p.puedeAsegurarSeguridad ? "Falta la confirmación de cocina para poder asegurar seguridad." : undefined}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: 8,
-                        border: "1px solid #111827",
-                        background: "#fff",
-                        color: p.puedeAsegurarSeguridad ? "#111827" : "#9ca3af",
-                        fontSize: 12,
-                        cursor: p.puedeAsegurarSeguridad ? "pointer" : "not-allowed",
-                      }}
-                    >
-                      {busyId === p.id ? "…" : "Asegurar seguridad al huésped"}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+                {canConfirmarCocina && (
+                  <div className="mt-2.5 flex gap-2 flex-wrap">
+                    {pendienteConfirmar && (
+                      <Button type="button" size="sm" onClick={() => void handleConfirmarCocina(p)} disabled={busyId === p.id}>
+                        {busyId === p.id ? "…" : "Confirmar en cocina"}
+                      </Button>
+                    )}
+                    {!p.seguridadAseguradaEn && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleAsegurarSeguridad(p)}
+                        disabled={busyId === p.id || !p.puedeAsegurarSeguridad}
+                        title={!p.puedeAsegurarSeguridad ? "Falta la confirmación de cocina para poder asegurar seguridad." : undefined}
+                      >
+                        {busyId === p.id ? "…" : "Asegurar seguridad al huésped"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           );
         })}
       </div>

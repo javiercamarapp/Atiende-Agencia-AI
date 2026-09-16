@@ -16,8 +16,32 @@
 // distintas sobre el mismo lote, nunca 3 capturas separadas. La clasificación de
 // depósito es la única acción que no depende del lote (opera sobre un solo
 // depósito suelto).
+//
+// Presentación (ronda de design system): los objetos de estilo inline
+// (inputStyle/labelStyle/sectionStyle/buttonPrimary/buttonSecondary) se
+// sustituyeron por Card/Input/Label/Button/Badge/Table de @atiende/ui. Las 5
+// secciones siguen apiladas (NO son pestañas): 2, 3 y 5 dependen del lote
+// capturado en la 1 y el contador las corre en secuencia sobre el mismo lote,
+// así que esconderlas detrás de un switcher rompería el flujo real.
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { AlertTriangle, ListChecks, Plus, Search, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   clasificarDepositoConciliacion,
   correrMatchingConciliacion,
@@ -44,12 +68,6 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 // el servidor rechazaría cualquier acción igual. Cosmético -- nunca la única
 // barrera.
 const CONCILIACION_ROLES = new Set(["admin", "contador"]);
-
-const inputStyle = { padding: 8, borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, width: "100%" } as const;
-const labelStyle = { display: "flex", flexDirection: "column" as const, gap: 4, fontSize: 12, color: "#374151" };
-const sectionStyle = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column" as const, gap: 12 };
-const buttonPrimary = { padding: "8px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 } as const;
-const buttonSecondary = { padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#374151", cursor: "pointer", fontSize: 12 } as const;
 
 interface MovimientoFila {
   readonly key: string;
@@ -83,18 +101,23 @@ function filaAInput(f: MovimientoFila): MovimientoBancarioInput | null {
 }
 
 const NIVEL_LABELS: Record<NivelCoincidencia, string> = { exacto: "Exacto", fuzzy: "Fuzzy", multi_linea: "Multi-línea", llm: "Asistido por IA", manual: "Manual" };
-const NIVEL_COLORS: Record<NivelCoincidencia, { bg: string; fg: string }> = {
-  exacto: { bg: "#dcfce7", fg: "#166534" },
-  fuzzy: { bg: "#dbeafe", fg: "#1e40af" },
-  multi_linea: { bg: "#e0e7ff", fg: "#3730a3" },
-  llm: { bg: "#f3e8ff", fg: "#6b21a8" },
-  manual: { bg: "#e5e7eb", fg: "#374151" },
+
+// Misma carga semántica que las píldoras inline originales, ahora sobre el
+// `Badge` real de @atiende/ui.
+type BadgeSpec = { variant: "default" | "secondary" | "destructive" | "outline"; className?: string };
+
+const NIVEL_BADGE: Record<NivelCoincidencia, BadgeSpec> = {
+  exacto: { variant: "outline", className: "border-transparent bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400" },
+  fuzzy: { variant: "secondary" },
+  multi_linea: { variant: "outline", className: "border-transparent bg-indigo-100 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-400" },
+  llm: { variant: "outline", className: "border-transparent bg-purple-100 text-purple-800 dark:bg-purple-500/15 dark:text-purple-400" },
+  manual: { variant: "outline", className: "border-transparent bg-muted text-muted-foreground" },
 };
 
-const SEVERIDAD_COLORS: Record<SeveridadAlerta, { bg: string; fg: string }> = {
-  info: { bg: "#dbeafe", fg: "#1e40af" },
-  warning: { bg: "#fef9c3", fg: "#854d0e" },
-  critical: { bg: "#fee2e2", fg: "#991b1b" },
+const SEVERIDAD_BADGE: Record<SeveridadAlerta, BadgeSpec> = {
+  info: { variant: "secondary" },
+  warning: { variant: "outline", className: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400" },
+  critical: { variant: "destructive" },
 };
 
 const CLASIFICACION_LABELS: Record<ClasificacionDeposito, string> = {
@@ -106,14 +129,22 @@ const CLASIFICACION_LABELS: Record<ClasificacionDeposito, string> = {
 };
 
 function NivelBadge({ level }: { level: NivelCoincidencia }) {
-  const c = NIVEL_COLORS[level];
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: c.bg, color: c.fg, fontWeight: 600 }}>{NIVEL_LABELS[level]}</span>;
+  const { variant, className } = NIVEL_BADGE[level];
+  return (
+    <Badge variant={variant} className={className}>
+      {NIVEL_LABELS[level]}
+    </Badge>
+  );
 }
 
 function SeveridadBadge({ severity }: { severity: SeveridadAlerta }) {
-  const c = SEVERIDAD_COLORS[severity];
+  const { variant, className } = SEVERIDAD_BADGE[severity];
   const label = severity === "info" ? "Info" : severity === "warning" ? "Atención" : "Crítica";
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: c.bg, color: c.fg, fontWeight: 600 }}>{label}</span>;
+  return (
+    <Badge variant={variant} className={className}>
+      {label}
+    </Badge>
+  );
 }
 
 function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila[]; setFilas: (f: readonly MovimientoFila[]) => void }) {
@@ -124,57 +155,84 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
     setFilas(filas.filter((f) => f.key !== key));
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 720 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={{ padding: "4px 6px" }}>Fecha *</th>
-              <th style={{ padding: "4px 6px" }}>Descripción</th>
-              <th style={{ padding: "4px 6px" }}>Referencia</th>
-              <th style={{ padding: "4px 6px" }}>Cargo</th>
-              <th style={{ padding: "4px 6px" }}>Abono</th>
-              <th style={{ padding: "4px 6px" }}>Banco</th>
-              <th style={{ padding: "4px 6px" }} />
-            </tr>
-          </thead>
-          <tbody>
+    <div className="flex flex-col gap-2">
+      <div className="overflow-x-auto">
+        <Table className="min-w-[720px] text-xs">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="h-9">Fecha *</TableHead>
+              <TableHead className="h-9">Descripción</TableHead>
+              <TableHead className="h-9">Referencia</TableHead>
+              <TableHead className="h-9">Cargo</TableHead>
+              <TableHead className="h-9">Abono</TableHead>
+              <TableHead className="h-9">Banco</TableHead>
+              <TableHead className="h-9" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {filas.map((f) => (
-              <tr key={f.key}>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="date" value={f.fecha} onChange={(e) => actualizarFila(f.key, "fecha", e.target.value)} style={{ ...inputStyle, width: 130 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={f.descripcion} onChange={(e) => actualizarFila(f.key, "descripcion", e.target.value)} placeholder="p.ej. PAGO PROVEEDOR" style={{ ...inputStyle, width: 200 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={f.referencia} onChange={(e) => actualizarFila(f.key, "referencia", e.target.value)} style={{ ...inputStyle, width: 120 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={f.cargo} onChange={(e) => actualizarFila(f.key, "cargo", e.target.value)} style={{ ...inputStyle, width: 100 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="number" step="0.01" value={f.abono} onChange={(e) => actualizarFila(f.key, "abono", e.target.value)} style={{ ...inputStyle, width: 100 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <input type="text" value={f.banco} onChange={(e) => actualizarFila(f.key, "banco", e.target.value)} placeholder="generic" style={{ ...inputStyle, width: 100 }} />
-                </td>
-                <td style={{ padding: "3px 6px" }}>
-                  <button type="button" onClick={() => eliminarFila(f.key)} style={{ ...buttonSecondary, color: "#b91c1c", borderColor: "#fecaca" }}>
+              <TableRow key={f.key}>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`mov-fecha-${f.key}`} className="sr-only">
+                    Fecha
+                  </Label>
+                  <Input id={`mov-fecha-${f.key}`} type="date" value={f.fecha} onChange={(e) => actualizarFila(f.key, "fecha", e.target.value)} className="h-9 w-32 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`mov-desc-${f.key}`} className="sr-only">
+                    Descripción
+                  </Label>
+                  <Input
+                    id={`mov-desc-${f.key}`}
+                    type="text"
+                    value={f.descripcion}
+                    onChange={(e) => actualizarFila(f.key, "descripcion", e.target.value)}
+                    placeholder="p.ej. PAGO PROVEEDOR"
+                    className="h-9 w-52 text-xs"
+                  />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`mov-ref-${f.key}`} className="sr-only">
+                    Referencia
+                  </Label>
+                  <Input id={`mov-ref-${f.key}`} type="text" value={f.referencia} onChange={(e) => actualizarFila(f.key, "referencia", e.target.value)} className="h-9 w-32 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`mov-cargo-${f.key}`} className="sr-only">
+                    Cargo
+                  </Label>
+                  <Input id={`mov-cargo-${f.key}`} type="number" step="0.01" value={f.cargo} onChange={(e) => actualizarFila(f.key, "cargo", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`mov-abono-${f.key}`} className="sr-only">
+                    Abono
+                  </Label>
+                  <Input id={`mov-abono-${f.key}`} type="number" step="0.01" value={f.abono} onChange={(e) => actualizarFila(f.key, "abono", e.target.value)} className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Label htmlFor={`mov-banco-${f.key}`} className="sr-only">
+                    Banco
+                  </Label>
+                  <Input id={`mov-banco-${f.key}`} type="text" value={f.banco} onChange={(e) => actualizarFila(f.key, "banco", e.target.value)} placeholder="generic" className="h-9 w-24 text-xs" />
+                </TableCell>
+                <TableCell className="p-1.5">
+                  <Button type="button" variant="outline" size="sm" className="h-9 border-destructive/40 px-3 text-xs text-destructive hover:border-destructive" onClick={() => eliminarFila(f.key)}>
+                    <Trash2 />
                     Quitar
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
       <div>
-        <button type="button" onClick={() => setFilas([...filas, nuevaFila()])} style={buttonSecondary}>
-          + Agregar movimiento
-        </button>
+        <Button type="button" variant="outline" size="sm" onClick={() => setFilas([...filas, nuevaFila()])}>
+          <Plus />
+          Agregar movimiento
+        </Button>
       </div>
-      <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>
+      <p className="text-[11px] text-muted-foreground">
         Captura los movimientos del estado de cuenta ya identificados (cargo = salida, abono = entrada). Este lote se usa para las 3 acciones de abajo (matching, alertas y verificación SPEI/proveedor).
       </p>
     </div>
@@ -183,8 +241,8 @@ function MovimientosEditor({ filas, setFilas }: { filas: readonly MovimientoFila
 
 function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 13 }}>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-6 text-[13px] text-foreground">
         <span>
           <strong>Confianza:</strong> {(resultado.confidence * 100).toFixed(0)}%
         </span>
@@ -203,86 +261,92 @@ function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) 
       </div>
 
       {resultado.matched.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <p style={{ fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 4px" }}>Coincidencias ({resultado.matched.length})</p>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                <th style={{ padding: "6px 8px" }}>Nivel</th>
-                <th style={{ padding: "6px 8px" }}>Score</th>
-                <th style={{ padding: "6px 8px" }}>Monto banco</th>
-                <th style={{ padding: "6px 8px" }}>Monto CFDI</th>
-                <th style={{ padding: "6px 8px" }}>Fecha banco</th>
-                <th style={{ padding: "6px 8px" }}>Fecha CFDI</th>
-                <th style={{ padding: "6px 8px" }}>Detalle</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resultado.matched.map((m, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "6px 8px" }}>
-                    <NivelBadge level={m.level} />
-                  </td>
-                  <td style={{ padding: "6px 8px" }}>{m.score.toFixed(0)}</td>
-                  <td style={{ padding: "6px 8px" }}>{formatMoney(m.montoBanco)}</td>
-                  <td style={{ padding: "6px 8px" }}>{formatMoney(m.montoRegistro)}</td>
-                  <td style={{ padding: "6px 8px" }}>{m.fechaBanco}</td>
-                  <td style={{ padding: "6px 8px" }}>{m.fechaRegistro}</td>
-                  <td style={{ padding: "6px 8px", color: "#6b7280" }}>{m.detail}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div>
+          <p className="mb-1 text-xs font-semibold text-foreground">Coincidencias ({resultado.matched.length})</p>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">Nivel</TableHead>
+                  <TableHead className="h-9">Score</TableHead>
+                  <TableHead className="h-9">Monto banco</TableHead>
+                  <TableHead className="h-9">Monto CFDI</TableHead>
+                  <TableHead className="h-9">Fecha banco</TableHead>
+                  <TableHead className="h-9">Fecha CFDI</TableHead>
+                  <TableHead className="h-9">Detalle</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {resultado.matched.map((m, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="p-2">
+                      <NivelBadge level={m.level} />
+                    </TableCell>
+                    <TableCell className="p-2 tabular-nums">{m.score.toFixed(0)}</TableCell>
+                    <TableCell className="p-2 tabular-nums">{formatMoney(m.montoBanco)}</TableCell>
+                    <TableCell className="p-2 tabular-nums">{formatMoney(m.montoRegistro)}</TableCell>
+                    <TableCell className="p-2">{m.fechaBanco}</TableCell>
+                    <TableCell className="p-2">{m.fechaRegistro}</TableCell>
+                    <TableCell className="p-2 text-muted-foreground">{m.detail}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 
       {resultado.unmatchedBank.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <p style={{ fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 4px" }}>Movimientos bancarios sin conciliar ({resultado.unmatchedBank.length})</p>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                <th style={{ padding: "6px 8px" }}>Fecha</th>
-                <th style={{ padding: "6px 8px" }}>Descripción</th>
-                <th style={{ padding: "6px 8px" }}>Monto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resultado.unmatchedBank.map((m, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "6px 8px" }}>{m.fecha}</td>
-                  <td style={{ padding: "6px 8px" }}>{m.descripcion || "—"}</td>
-                  <td style={{ padding: "6px 8px" }}>{formatMoney(m.monto)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div>
+          <p className="mb-1 text-xs font-semibold text-foreground">Movimientos bancarios sin conciliar ({resultado.unmatchedBank.length})</p>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">Fecha</TableHead>
+                  <TableHead className="h-9">Descripción</TableHead>
+                  <TableHead className="h-9">Monto</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {resultado.unmatchedBank.map((m, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="p-2">{m.fecha}</TableCell>
+                    <TableCell className="p-2">{m.descripcion || "—"}</TableCell>
+                    <TableCell className="p-2 tabular-nums">{formatMoney(m.monto)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 
       {resultado.unmatchedBooks.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <p style={{ fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 4px" }}>CFDI sin conciliar ({resultado.unmatchedBooks.length})</p>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#6b7280" }}>
-                <th style={{ padding: "6px 8px" }}>Fecha</th>
-                <th style={{ padding: "6px 8px" }}>Emisor</th>
-                <th style={{ padding: "6px 8px" }}>Folio fiscal</th>
-                <th style={{ padding: "6px 8px" }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resultado.unmatchedBooks.map((r, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "6px 8px" }}>{r.fecha}</td>
-                  <td style={{ padding: "6px 8px" }}>{r.descripcion ?? "—"}</td>
-                  <td style={{ padding: "6px 8px", fontFamily: "monospace", fontSize: 11 }}>{r.folioFiscal ?? "—"}</td>
-                  <td style={{ padding: "6px 8px" }}>{typeof r.total === "number" ? formatMoney(r.total) : (r.total ?? "—")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div>
+          <p className="mb-1 text-xs font-semibold text-foreground">CFDI sin conciliar ({resultado.unmatchedBooks.length})</p>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">Fecha</TableHead>
+                  <TableHead className="h-9">Emisor</TableHead>
+                  <TableHead className="h-9">Folio fiscal</TableHead>
+                  <TableHead className="h-9">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {resultado.unmatchedBooks.map((r, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="p-2">{r.fecha}</TableCell>
+                    <TableCell className="p-2">{r.descripcion ?? "—"}</TableCell>
+                    <TableCell className="p-2 font-mono text-[11px]">{r.folioFiscal ?? "—"}</TableCell>
+                    <TableCell className="p-2 tabular-nums">{typeof r.total === "number" ? formatMoney(r.total) : (r.total ?? "—")}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
     </div>
@@ -412,9 +476,9 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, role }: Despac
 
   if (!puedeGestionar) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Conciliación bancaria</h1>
-        <p role="alert" style={{ color: "#b91c1c" }}>
+      <div className="flex flex-col gap-2 px-1">
+        <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
+        <p role="alert" className="text-destructive text-sm">
           Esta función requiere rol admin o contador. Tu rol actual ({role}) no puede correr matching, alertas ni verificaciones -- el servidor las rechazaría igual.
         </p>
       </div>
@@ -422,178 +486,213 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, role }: Despac
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5 px-1">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Conciliación bancaria</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Corre el matching determinista contra los CFDI ya ingeridos, revisa alertas de antigüedad/comisión/duplicados, clasifica depósitos (CFF Art. 59 fr. III) y verifica pagos SPEI/proveedor.
         </p>
       </header>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>1. Movimientos bancarios</h2>
-        <MovimientosEditor filas={filas} setFilas={setFilas} />
-      </section>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">1. Movimientos bancarios</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MovimientosEditor filas={filas} setFilas={setFilas} />
+        </CardContent>
+      </Card>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>2. Matching contra CFDI</h2>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <label style={{ ...labelStyle, width: 160 }}>
-            Tolerancia de fecha (días)
-            <input type="number" value={dateToleranceDays} onChange={(e) => setDateToleranceDays(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, width: 160 }}>
-            Tolerancia de monto (%)
-            <input type="number" step="0.1" value={montoTolerancePct} onChange={(e) => setMontoTolerancePct(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, width: 160 }}>
-            Umbral fuzzy (0-100)
-            <input type="number" value={fuzzyThreshold} onChange={(e) => setFuzzyThreshold(e.target.value)} style={inputStyle} />
-          </label>
-        </div>
-        {matchError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {matchError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleMatching()} disabled={matchLoading} style={buttonPrimary}>
-            {matchLoading ? "Corriendo…" : "Correr matching"}
-          </button>
-        </div>
-        {matchResultado && <ResultadoMatching resultado={matchResultado} />}
-      </section>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">2. Matching contra CFDI</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-3">
+            <div className="flex w-40 flex-col gap-1.5">
+              <Label htmlFor="match-tol-fecha">Tolerancia de fecha (días)</Label>
+              <Input id="match-tol-fecha" type="number" value={dateToleranceDays} onChange={(e) => setDateToleranceDays(e.target.value)} />
+            </div>
+            <div className="flex w-40 flex-col gap-1.5">
+              <Label htmlFor="match-tol-monto">Tolerancia de monto (%)</Label>
+              <Input id="match-tol-monto" type="number" step="0.1" value={montoTolerancePct} onChange={(e) => setMontoTolerancePct(e.target.value)} />
+            </div>
+            <div className="flex w-40 flex-col gap-1.5">
+              <Label htmlFor="match-fuzzy">Umbral fuzzy (0-100)</Label>
+              <Input id="match-fuzzy" type="number" value={fuzzyThreshold} onChange={(e) => setFuzzyThreshold(e.target.value)} />
+            </div>
+          </div>
+          {matchError && (
+            <p role="alert" className="text-destructive text-sm">
+              {matchError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleMatching()} disabled={matchLoading}>
+              <ListChecks />
+              {matchLoading ? "Corriendo…" : "Correr matching"}
+            </Button>
+          </div>
+          {matchResultado && <ResultadoMatching resultado={matchResultado} />}
+        </CardContent>
+      </Card>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>3. Alertas</h2>
-        <label style={{ ...labelStyle, width: 240 }}>
-          Ingreso declarado del periodo (opcional, Art. 91 LISR)
-          <input type="number" step="0.01" value={declaredIncome} onChange={(e) => setDeclaredIncome(e.target.value)} style={inputStyle} />
-        </label>
-        {alertasError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {alertasError}
-          </p>
-        )}
-        <div>
-          <button type="button" onClick={() => void handleAlertas()} disabled={alertasLoading} style={buttonPrimary}>
-            {alertasLoading ? "Revisando…" : "Ver alertas"}
-          </button>
-        </div>
-        {alertas && alertas.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Sin alertas para este lote.</p>}
-        {alertas && alertas.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {alertas.map((a, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, borderBottom: "1px solid #f3f4f6", paddingBottom: 6 }}>
-                <SeveridadBadge severity={a.severity} />
-                <div style={{ fontSize: 13 }}>
-                  <div>{a.message}</div>
-                  <div style={{ fontSize: 11, color: "#9ca3af" }}>
-                    regla: {a.rule} {a.fecha && `· ${a.fecha}`} {a.daysUnreconciled > 0 && `· ${a.daysUnreconciled}d sin conciliar`}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">3. Alertas</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex w-60 flex-col gap-1.5">
+            <Label htmlFor="alertas-ingreso">Ingreso declarado del periodo (opcional, Art. 91 LISR)</Label>
+            <Input id="alertas-ingreso" type="number" step="0.01" value={declaredIncome} onChange={(e) => setDeclaredIncome(e.target.value)} />
+          </div>
+          {alertasError && (
+            <p role="alert" className="text-destructive text-sm">
+              {alertasError}
+            </p>
+          )}
+          <div>
+            <Button type="button" onClick={() => void handleAlertas()} disabled={alertasLoading}>
+              <AlertTriangle />
+              {alertasLoading ? "Revisando…" : "Ver alertas"}
+            </Button>
+          </div>
+          {alertas && alertas.length === 0 && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Sin alertas para este lote.
+            </p>
+          )}
+          {alertas && alertas.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {alertas.map((a, i) => (
+                <div key={i} className="flex items-start gap-2 border-b border-border pb-1.5">
+                  <SeveridadBadge severity={a.severity} />
+                  <div className="text-[13px] text-foreground">
+                    <div>{a.message}</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      regla: {a.rule} {a.fecha && `· ${a.fecha}`} {a.daysUnreconciled > 0 && `· ${a.daysUnreconciled}d sin conciliar`}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Clasificar depósito (CFF Art. 59 fr. III)</h2>
-        <form onSubmit={handleClasificar} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 420 }}>
-          <label style={labelStyle}>
-            Descripción del depósito *
-            <input type="text" value={clasifDescripcion} onChange={(e) => setClasifDescripcion(e.target.value)} required placeholder="p.ej. APORTACION SOCIO CAPITAL" style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            Referencia (opcional)
-            <input type="text" value={clasifReferencia} onChange={(e) => setClasifReferencia(e.target.value)} style={inputStyle} />
-          </label>
-          {clasifError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {clasifError}
-            </p>
-          )}
-          <div>
-            <button type="submit" disabled={clasifLoading} style={buttonPrimary}>
-              {clasifLoading ? "Clasificando…" : "Clasificar"}
-            </button>
-          </div>
-        </form>
-        {clasifResultado && (
-          <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 4 }}>
-            <div>
-              <strong>Clasificación:</strong> {CLASIFICACION_LABELS[clasifResultado.clasificacion]} ({(clasifResultado.confidence * 100).toFixed(0)}% confianza)
+              ))}
             </div>
-            {clasifResultado.articuloCff && <div style={{ color: "#6b7280" }}>{clasifResultado.articuloCff}</div>}
-            {clasifResultado.requiresHumanReview && (
-              <p role="alert" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 8, margin: 0 }}>
-                Requiere revisión humana antes de persistirse -- confianza baja o clasificación no trivial.
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">Clasificar depósito (CFF Art. 59 fr. III)</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <form onSubmit={handleClasificar} className="flex max-w-md flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="clasif-descripcion">Descripción del depósito *</Label>
+              <Input
+                id="clasif-descripcion"
+                type="text"
+                value={clasifDescripcion}
+                onChange={(e) => setClasifDescripcion(e.target.value)}
+                required
+                placeholder="p.ej. APORTACION SOCIO CAPITAL"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="clasif-referencia">Referencia (opcional)</Label>
+              <Input id="clasif-referencia" type="text" value={clasifReferencia} onChange={(e) => setClasifReferencia(e.target.value)} />
+            </div>
+            {clasifError && (
+              <p role="alert" className="text-destructive text-sm">
+                {clasifError}
               </p>
             )}
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Verificar pago SPEI / proveedor</h2>
-        <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Busca, dentro del lote de movimientos capturado arriba, el que mejor coincida con la clave de rastreo (o el RFC del proveedor) más monto y fecha.</p>
-        <form onSubmit={handleVerificarSpei} style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 420 }}>
-          <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <input type="radio" checked={speiModo === "clave"} onChange={() => setSpeiModo("clave")} /> Clave de rastreo SPEI
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <input type="radio" checked={speiModo === "rfc"} onChange={() => setSpeiModo("rfc")} /> RFC de proveedor
-            </label>
-          </div>
-          {speiModo === "clave" ? (
-            <label style={labelStyle}>
-              Clave de rastreo *
-              <input type="text" value={speiClave} onChange={(e) => setSpeiClave(e.target.value)} required style={inputStyle} />
-            </label>
-          ) : (
-            <label style={labelStyle}>
-              RFC del proveedor *
-              <input type="text" value={speiRfc} onChange={(e) => setSpeiRfc(e.target.value.toUpperCase())} required style={inputStyle} />
-            </label>
-          )}
-          <label style={labelStyle}>
-            Monto *
-            <input type="number" step="0.01" value={speiMonto} onChange={(e) => setSpeiMonto(e.target.value)} required style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            Fecha del pago *
-            <input type="date" value={speiFecha} onChange={(e) => setSpeiFecha(e.target.value)} required style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, width: 160 }}>
-            Tolerancia de fecha (días)
-            <input type="number" value={speiTolerancia} onChange={(e) => setSpeiTolerancia(e.target.value)} style={inputStyle} />
-          </label>
-          {speiError && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {speiError}
-            </p>
-          )}
-          <div>
-            <button type="submit" disabled={speiLoading} style={buttonPrimary}>
-              {speiLoading ? "Verificando…" : "Verificar"}
-            </button>
-          </div>
-        </form>
-        {speiResultado && (
-          <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 4 }}>
             <div>
-              <strong>{speiResultado.verified ? "Verificado" : "No verificado"}</strong> -- score {speiResultado.bestScore.toFixed(0)}
+              <Button type="submit" disabled={clasifLoading}>
+                <Search />
+                {clasifLoading ? "Clasificando…" : "Clasificar"}
+              </Button>
             </div>
-            {speiResultado.movementIdx !== null && movimientosLote[speiResultado.movementIdx] && (
-              <div style={{ color: "#6b7280" }}>
-                Mejor coincidencia: {movimientosLote[speiResultado.movementIdx]!.fecha} -- {movimientosLote[speiResultado.movementIdx]!.descripcion || "(sin descripción)"}
+          </form>
+          {clasifResultado && (
+            <div className="flex flex-col gap-1 text-[13px] text-foreground">
+              <div>
+                <strong>Clasificación:</strong> {CLASIFICACION_LABELS[clasifResultado.clasificacion]} ({(clasifResultado.confidence * 100).toFixed(0)}% confianza)
+              </div>
+              {clasifResultado.articuloCff && <div className="text-muted-foreground">{clasifResultado.articuloCff}</div>}
+              {clasifResultado.requiresHumanReview && (
+                <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                  Requiere revisión humana antes de persistirse -- confianza baja o clasificación no trivial.
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-[15px]">Verificar pago SPEI / proveedor</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">Busca, dentro del lote de movimientos capturado arriba, el que mejor coincida con la clave de rastreo (o el RFC del proveedor) más monto y fecha.</p>
+          <form onSubmit={handleVerificarSpei} className="flex max-w-md flex-col gap-3">
+            <div className="flex gap-4 text-[13px] text-foreground">
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={speiModo === "clave"} onChange={() => setSpeiModo("clave")} className="h-4 w-4 accent-primary" /> Clave de rastreo SPEI
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={speiModo === "rfc"} onChange={() => setSpeiModo("rfc")} className="h-4 w-4 accent-primary" /> RFC de proveedor
+              </label>
+            </div>
+            {speiModo === "clave" ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="spei-clave">Clave de rastreo *</Label>
+                <Input id="spei-clave" type="text" value={speiClave} onChange={(e) => setSpeiClave(e.target.value)} required />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="spei-rfc">RFC del proveedor *</Label>
+                <Input id="spei-rfc" type="text" value={speiRfc} onChange={(e) => setSpeiRfc(e.target.value.toUpperCase())} required />
               </div>
             )}
-          </div>
-        )}
-      </section>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="spei-monto">Monto *</Label>
+              <Input id="spei-monto" type="number" step="0.01" value={speiMonto} onChange={(e) => setSpeiMonto(e.target.value)} required />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="spei-fecha">Fecha del pago *</Label>
+              <Input id="spei-fecha" type="date" value={speiFecha} onChange={(e) => setSpeiFecha(e.target.value)} required />
+            </div>
+            <div className="flex w-40 flex-col gap-1.5">
+              <Label htmlFor="spei-tolerancia">Tolerancia de fecha (días)</Label>
+              <Input id="spei-tolerancia" type="number" value={speiTolerancia} onChange={(e) => setSpeiTolerancia(e.target.value)} />
+            </div>
+            {speiError && (
+              <p role="alert" className="text-destructive text-sm">
+                {speiError}
+              </p>
+            )}
+            <div>
+              <Button type="submit" disabled={speiLoading}>
+                <ShieldCheck />
+                {speiLoading ? "Verificando…" : "Verificar"}
+              </Button>
+            </div>
+          </form>
+          {speiResultado && (
+            <div className="flex flex-col gap-1 text-[13px] text-foreground">
+              <div>
+                <strong>{speiResultado.verified ? "Verificado" : "No verificado"}</strong> -- score {speiResultado.bestScore.toFixed(0)}
+              </div>
+              {speiResultado.movementIdx !== null && movimientosLote[speiResultado.movementIdx] && (
+                <div className="text-muted-foreground">
+                  Mejor coincidencia: {movimientosLote[speiResultado.movementIdx]!.fecha} -- {movimientosLote[speiResultado.movementIdx]!.descripcion || "(sin descripción)"}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

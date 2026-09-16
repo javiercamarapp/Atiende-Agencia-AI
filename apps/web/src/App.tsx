@@ -18,6 +18,9 @@ import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx"
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
 import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
+import { TerminosPage } from "./pages/Terminos.tsx";
+import { PrivacidadPage } from "./pages/Privacidad.tsx";
+import { Toaster } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -501,6 +504,13 @@ const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx)
 export function App() {
   return (
     <BrowserRouter>
+      {/* Hallazgo real (verificado con grep, no supuesto): ningún `<Toaster />`
+          estaba montado en toda la app -- cada `toast(...)` (BotonChatDatos,
+          los 6 Login.tsx de "Continuar con Google", etc.) empujaba a la cola
+          interna de sonner pero nada la pintaba en pantalla. Montado UNA sola
+          vez aquí, a nivel raíz, para que TODA notificación de toda vertical
+          se vea de verdad. */}
+      <Toaster />
       <Routes>
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
         <Route path="/restaurantes/:orgSlug" element={<RestaurantesDashboardRoute />} />
@@ -519,6 +529,8 @@ export function App() {
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
+        <Route path="/terminos" element={<TerminosPage />} />
+        <Route path="/privacidad" element={<PrivacidadPage />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />

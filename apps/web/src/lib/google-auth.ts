@@ -37,3 +37,30 @@ const MENSAJES_GOOGLE_ERROR: Record<string, string> = {
 export function mensajeGoogleError(codigo: string): string {
   return MENSAJES_GOOGLE_ERROR[codigo] ?? MENSAJES_GOOGLE_ERROR.error_desconocido!;
 }
+
+// "Continuar con correo" sin contraseña — backend real en
+// `apps/api/src/routes/auth-magic-link.ts`. `iniciarMagicLink` SIEMPRE resuelve
+// `{ok:true}` si el request llegó (anti-enumeración: el backend responde el
+// mismo 200 exista o no ese correo) — el único caso de error real que expone es
+// "no se pudo contactar al servidor", nunca "ese correo no existe".
+export async function iniciarMagicLink(apiBaseUrl: string, email: string, vertical: string): Promise<{ ok: boolean }> {
+  try {
+    const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/magic-link/iniciar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, vertical }),
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: false };
+  }
+}
+
+const MENSAJES_MAGIC_LINK_ERROR: Record<string, string> = {
+  invalido: "El enlace no es válido. Vuelve a intentarlo desde aquí.",
+  invalido_o_expirado: "Ese enlace ya se usó o venció (duran 15 minutos). Pide uno nuevo.",
+};
+
+export function mensajeMagicLinkError(codigo: string): string {
+  return MENSAJES_MAGIC_LINK_ERROR[codigo] ?? "No se pudo completar el inicio de sesión. Vuelve a intentarlo.";
+}
