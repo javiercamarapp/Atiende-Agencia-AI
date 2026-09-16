@@ -13,26 +13,27 @@
 // aprovisionado en este monorepo. Alta de huésped y asignación de habitación al
 // reservar viven en Reservas.tsx (acciones de front-of-house cotidianas, no de
 // catálogo administrativo).
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
+// las 3 secciones de estilos inline por Card/Input/Label/Button reales — mismo
+// criterio ya aplicado en HotelesShell.tsx/Login.tsx; los mensajes de éxito
+// transitorios ("Tipo de habitación creado.", etc.) ahora usan `toast` en vez de
+// un banner persistente, ya que son avisos de un solo uso, no estado de página.
 import { useEffect, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
-import { EstadoError } from "@atiende/ui";
+import type { FormEvent } from "react";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoError, Input, Label, toast } from "@atiende/ui";
 import { createRateRange, createRoom, createRoomType, fetchAllRooms } from "../lib/catalogo-client.ts";
 import { fetchRoomTypes } from "../lib/reservas-client.ts";
 import type { RoomOption, RoomTypeOption } from "../lib/reservas-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
-function inputStyle(): CSSProperties {
-  return { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
-}
-
-const sectionStyle: CSSProperties = { display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 480 };
-const submitStyle: CSSProperties = { padding: 10, fontWeight: 600, borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer" };
+const selectClass =
+  "mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
   const [roomTypes, setRoomTypes] = useState<readonly RoomTypeOption[] | null>(null);
   const [rooms, setRooms] = useState<readonly RoomOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mensaje, setMensaje] = useState<string | null>(null);
 
   async function reload() {
     setError(null);
@@ -64,7 +65,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
       await createRoomType(fetch, apiBaseUrl, token, propertyId, nombreTipo.trim(), Number(capacidadTipo) || undefined);
       setNombreTipo("");
       setCapacidadTipo("2");
-      setMensaje("Tipo de habitación creado.");
+      toast.success("Tipo de habitación creado.");
       await reload();
     } catch (err) {
       setErrorTipo(err instanceof Error ? err.message : "No se pudo crear el tipo de habitación.");
@@ -88,7 +89,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
     try {
       await createRoom(fetch, apiBaseUrl, token, propertyId, roomTypeIdHabitacion, codigoHabitacion.trim());
       setCodigoHabitacion("");
-      setMensaje("Habitación creada.");
+      toast.success("Habitación creada.");
       await reload();
     } catch (err) {
       setErrorHabitacion(err instanceof Error ? err.message : "No se pudo crear la habitación.");
@@ -118,7 +119,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
       setFechaInicio("");
       setFechaFin("");
       setPrecio("");
-      setMensaje(`Tarifa sembrada: ${result.nochesSembradas} noche(s) a ${result.precio} ${result.moneda}.`);
+      toast.success(`Tarifa sembrada: ${result.nochesSembradas} noche(s) a ${result.precio} ${result.moneda}.`);
     } catch (err) {
       setErrorTarifa(err instanceof Error ? err.message : "No se pudo crear la tarifa.");
     } finally {
@@ -127,134 +128,129 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Catálogo</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Tipos de habitación, habitaciones físicas y tarifas de esta property.</p>
+        <h1 className="text-xl font-display font-semibold text-foreground">Catálogo</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Tipos de habitación, habitaciones físicas y tarifas de esta property.</p>
       </header>
 
-      {mensaje && (
-        <p style={{ margin: 0, fontSize: 13, color: "#065f46" }} role="status">
-          {mensaje}
-        </p>
-      )}
       {error && <EstadoError mensaje={error} onReintentar={() => void reload()} />}
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Tipos de habitación</h2>
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-          {roomTypes === null && <li style={{ color: "#6b7280", listStyle: "none", marginLeft: -18 }}>Cargando…</li>}
-          {roomTypes?.length === 0 && <li style={{ color: "#6b7280", listStyle: "none", marginLeft: -18 }}>Sin tipos de habitación todavía.</li>}
-          {roomTypes?.map((rt) => (
-            <li key={rt.id}>
-              {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
-            </li>
-          ))}
-        </ul>
-        <form onSubmit={handleCrearTipo} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ fontSize: 13 }}>
-            Nombre
-            <input value={nombreTipo} onChange={(e) => setNombreTipo(e.target.value)} placeholder="Ej. Habitación Doble Vista al Mar" style={inputStyle()} />
-          </label>
-          <label style={{ fontSize: 13 }}>
-            Capacidad máxima de huéspedes
-            <input type="number" min="1" value={capacidadTipo} onChange={(e) => setCapacidadTipo(e.target.value)} style={inputStyle()} />
-          </label>
-          {errorTipo && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {errorTipo}
-            </p>
-          )}
-          <button type="submit" disabled={creandoTipo} style={submitStyle}>
-            {creandoTipo ? "Creando…" : "Crear tipo de habitación"}
-          </button>
-        </form>
-      </section>
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle className="text-base">Tipos de habitación</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <ul className="text-sm space-y-1">
+            {roomTypes === null && <li className="text-muted-foreground">Cargando…</li>}
+            {roomTypes?.length === 0 && <li className="text-muted-foreground">Sin tipos de habitación todavía.</li>}
+            {roomTypes?.map((rt) => (
+              <li key={rt.id} className="text-foreground">
+                {rt.nombre} (máx. {rt.capacidadMaxima} huéspedes)
+              </li>
+            ))}
+          </ul>
+          <form onSubmit={handleCrearTipo} className="flex flex-col gap-3">
+            <div>
+              <Label htmlFor="cat-nombre-tipo">Nombre</Label>
+              <Input id="cat-nombre-tipo" value={nombreTipo} onChange={(e) => setNombreTipo(e.target.value)} placeholder="Ej. Habitación Doble Vista al Mar" className="mt-1" />
+            </div>
+            <div>
+              <Label htmlFor="cat-capacidad-tipo">Capacidad máxima de huéspedes</Label>
+              <Input id="cat-capacidad-tipo" type="number" min="1" value={capacidadTipo} onChange={(e) => setCapacidadTipo(e.target.value)} className="mt-1" />
+            </div>
+            {errorTipo && <p role="alert" className="text-sm text-destructive">{errorTipo}</p>}
+            <Button type="submit" disabled={creandoTipo}>
+              {creandoTipo ? "Creando…" : "Crear tipo de habitación"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Habitaciones físicas</h2>
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, maxHeight: 140, overflow: "auto" }}>
-          {rooms === null && <li style={{ color: "#6b7280", listStyle: "none", marginLeft: -18 }}>Cargando…</li>}
-          {rooms?.length === 0 && <li style={{ color: "#6b7280", listStyle: "none", marginLeft: -18 }}>Sin habitaciones todavía.</li>}
-          {rooms?.map((r) => (
-            <li key={r.id}>
-              {r.codigo} — {roomTypes?.find((rt) => rt.id === r.roomTypeId)?.nombre ?? r.roomTypeId} ({r.estado})
-            </li>
-          ))}
-        </ul>
-        <form onSubmit={handleCrearHabitacion} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ fontSize: 13 }}>
-            Tipo de habitación
-            <select value={roomTypeIdHabitacion} onChange={(e) => setRoomTypeIdHabitacion(e.target.value)} style={inputStyle()}>
-              <option value="" disabled>
-                Selecciona un tipo de habitación
-              </option>
-              {roomTypes?.map((rt) => (
-                <option key={rt.id} value={rt.id}>
-                  {rt.nombre}
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle className="text-base">Habitaciones físicas</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <ul className="text-sm space-y-1 max-h-36 overflow-auto">
+            {rooms === null && <li className="text-muted-foreground">Cargando…</li>}
+            {rooms?.length === 0 && <li className="text-muted-foreground">Sin habitaciones todavía.</li>}
+            {rooms?.map((r) => (
+              <li key={r.id} className="text-foreground">
+                {r.codigo} — {roomTypes?.find((rt) => rt.id === r.roomTypeId)?.nombre ?? r.roomTypeId} ({r.estado})
+              </li>
+            ))}
+          </ul>
+          <form onSubmit={handleCrearHabitacion} className="flex flex-col gap-3">
+            <div>
+              <Label htmlFor="cat-tipo-habitacion">Tipo de habitación</Label>
+              <select id="cat-tipo-habitacion" value={roomTypeIdHabitacion} onChange={(e) => setRoomTypeIdHabitacion(e.target.value)} className={selectClass}>
+                <option value="" disabled>
+                  Selecciona un tipo de habitación
                 </option>
-              ))}
-            </select>
-          </label>
-          <label style={{ fontSize: 13 }}>
-            Código / número de cuarto
-            <input value={codigoHabitacion} onChange={(e) => setCodigoHabitacion(e.target.value)} placeholder="Ej. 101" style={inputStyle()} />
-          </label>
-          {errorHabitacion && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {errorHabitacion}
-            </p>
-          )}
-          <button type="submit" disabled={creandoHabitacion} style={submitStyle}>
-            {creandoHabitacion ? "Creando…" : "Crear habitación"}
-          </button>
-        </form>
-      </section>
+                {roomTypes?.map((rt) => (
+                  <option key={rt.id} value={rt.id}>
+                    {rt.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="cat-codigo-habitacion">Código / número de cuarto</Label>
+              <Input id="cat-codigo-habitacion" value={codigoHabitacion} onChange={(e) => setCodigoHabitacion(e.target.value)} placeholder="Ej. 101" className="mt-1" />
+            </div>
+            {errorHabitacion && <p role="alert" className="text-sm text-destructive">{errorHabitacion}</p>}
+            <Button type="submit" disabled={creandoHabitacion}>
+              {creandoHabitacion ? "Creando…" : "Crear habitación"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Tarifas</h2>
-        <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
-          Siembra el precio por noche de un rango de fechas para un tipo de habitación — sin esto, crear una reserva contra esas fechas falla con
-          "sin tarifa". Un rango que traslapa fechas ya sembradas las sobreescribe.
-        </p>
-        <form onSubmit={handleCrearTarifa} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ fontSize: 13 }}>
-            Tipo de habitación
-            <select value={roomTypeIdTarifa} onChange={(e) => setRoomTypeIdTarifa(e.target.value)} style={inputStyle()}>
-              <option value="" disabled>
-                Selecciona un tipo de habitación
-              </option>
-              {roomTypes?.map((rt) => (
-                <option key={rt.id} value={rt.id}>
-                  {rt.nombre}
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle className="text-base">Tarifas</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Siembra el precio por noche de un rango de fechas para un tipo de habitación — sin esto, crear una reserva contra esas fechas falla con
+            "sin tarifa". Un rango que traslapa fechas ya sembradas las sobreescribe.
+          </p>
+          <form onSubmit={handleCrearTarifa} className="flex flex-col gap-3">
+            <div>
+              <Label htmlFor="cat-tipo-tarifa">Tipo de habitación</Label>
+              <select id="cat-tipo-tarifa" value={roomTypeIdTarifa} onChange={(e) => setRoomTypeIdTarifa(e.target.value)} className={selectClass}>
+                <option value="" disabled>
+                  Selecciona un tipo de habitación
                 </option>
-              ))}
-            </select>
-          </label>
-          <div style={{ display: "flex", gap: 10 }}>
-            <label style={{ fontSize: 13, flex: 1 }}>
-              Desde
-              <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} style={inputStyle()} />
-            </label>
-            <label style={{ fontSize: 13, flex: 1 }}>
-              Hasta
-              <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} style={inputStyle()} />
-            </label>
-          </div>
-          <label style={{ fontSize: 13 }}>
-            Precio por noche (MXN)
-            <input type="number" min="0" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} style={inputStyle()} />
-          </label>
-          {errorTarifa && (
-            <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-              {errorTarifa}
-            </p>
-          )}
-          <button type="submit" disabled={creandoTarifa} style={submitStyle}>
-            {creandoTarifa ? "Sembrando…" : "Crear tarifa"}
-          </button>
-        </form>
-      </section>
+                {roomTypes?.map((rt) => (
+                  <option key={rt.id} value={rt.id}>
+                    {rt.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Label htmlFor="cat-fecha-inicio">Desde</Label>
+                <Input id="cat-fecha-inicio" type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="mt-1" />
+              </div>
+              <div className="flex-1">
+                <Label htmlFor="cat-fecha-fin">Hasta</Label>
+                <Input id="cat-fecha-fin" type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="mt-1" />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="cat-precio">Precio por noche (MXN)</Label>
+              <Input id="cat-precio" type="number" min="0" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} className="mt-1" />
+            </div>
+            {errorTarifa && <p role="alert" className="text-sm text-destructive">{errorTarifa}</p>}
+            <Button type="submit" disabled={creandoTarifa}>
+              {creandoTarifa ? "Sembrando…" : "Crear tarifa"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

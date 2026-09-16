@@ -3,14 +3,32 @@
 // folios-client.ts). El motor de montos SIEMPRE corre en el servidor — este panel
 // nunca calcula impuesto/saldo por su cuenta, solo refleja lo que el servidor
 // devuelve.
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
+// tarjetas/pills/inputs de estilos inline por Card/Badge/Input/Button reales — mismo
+// criterio ya aplicado en HotelesShell.tsx/Login.tsx. El modal de confirmación de
+// cierre (antes `<ConfirmModal>` de estilos inline, ver components/ConfirmModal.tsx)
+// ahora usa `Dialog`/`DialogContent` reales del design system — mismo contrato
+// (open/onConfirm/onCancel/busy), sin cambiar cuándo se abre ni qué confirma.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { EstadoCargando, EstadoError } from "@atiende/ui";
+import { Receipt } from "lucide-react";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EstadoCargando,
+  EstadoError,
+  Input,
+} from "@atiende/ui";
 import { addCharge, addDiscount, addPayment, closeFolio, fetchFolio, reverseCharge, CHARGE_CONCEPT_LABELS } from "../lib/folios-client.ts";
 import type { AddChargeInput, FolioSummary } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
-import { ConfirmModal } from "../components/ConfirmModal.tsx";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 export interface FolioPageProps extends HotelesShellContext {
@@ -22,6 +40,8 @@ function formatMoney(n: number): string {
 }
 
 const CHARGE_CONCEPTS: readonly AddChargeInput["concepto"][] = ["hospedaje", "ab", "extras", "ajuste", "propina", "otro"];
+const selectClass =
+  "flex h-11 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: FolioPageProps) {
   const [folio, setFolio] = useState<FolioSummary | null>(null);
@@ -42,7 +62,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
   // confirmación: ... cerrar folio ejecuta de inmediato con un clic"): cerrar un
   // folio es IRREVERSIBLE desde este panel (no hay ningún botón de "reabrir") --
   // `null` = modal cerrado; en otro caso guarda el motivo de cierre pendiente de
-  // confirmar. Ver components/ConfirmModal.tsx.
+  // confirmar. Ver el <Dialog> de confirmación al final de este archivo.
   const [pendingClose, setPendingClose] = useState<"saldo_cero" | "cuenta_por_cobrar" | null>(null);
 
   async function load() {
@@ -111,9 +131,9 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
 
   // Hallazgo de auditoría (severidad ALTA, "acciones destructivas sin
   // confirmación"): dar clic en "Cerrar folio"/"Cerrar como cuenta por cobrar" ya
-  // NO cierra nada por sí solo -- solo abre el modal real (ver
-  // components/ConfirmModal.tsx, "modal, no window.confirm"); `handleConfirmClose`
-  // es la única función que de verdad llama a `closeFolio`.
+  // NO cierra nada por sí solo -- solo abre el modal real (ver el <Dialog> de abajo,
+  // "modal, no window.confirm"); `handleConfirmClose` es la única función que de
+  // verdad llama a `closeFolio`.
   function handleClose(motivo: "saldo_cero" | "cuenta_por_cobrar") {
     setPendingClose(motivo);
   }
@@ -148,41 +168,44 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
   const isOpen = folio.estado === "abierto";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+    <div className="flex flex-col gap-4 max-w-3xl">
       <header>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Folio: {folio.etiqueta}</h1>
-          <Link to={`/hoteles/${orgSlug}/folios/${folioId}/cfdi`} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "1px solid #111827", color: "#111827", textDecoration: "none" }}>
-            CFDI de este folio
-          </Link>
+        <div className="flex justify-between items-start gap-3 flex-wrap">
+          <h1 className="text-xl font-display font-semibold text-foreground">Folio: {folio.etiqueta}</h1>
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/hoteles/${orgSlug}/folios/${folioId}/cfdi`}>
+              <Receipt className="w-4 h-4" strokeWidth={1.75} />
+              CFDI de este folio
+            </Link>
+          </Button>
         </div>
-        <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+        <p className="mt-1 text-sm text-muted-foreground">
           {folio.esPrincipal ? "Folio principal" : "Folio secundario"} · Estado: {folio.estado}
           {folio.motivoCierre ? ` (${folio.motivoCierre})` : ""}
         </p>
-        <p style={{ fontSize: 24, fontWeight: 700, margin: "10px 0 0" }}>Saldo: {formatMoney(folio.saldo)}</p>
+        <p className="mt-2.5 text-2xl font-semibold text-foreground">Saldo: {formatMoney(folio.saldo)}</p>
       </header>
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} />}
 
       <section>
-        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Cargos</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {folio.cargos.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Sin cargos.</p>}
+        <h2 className="text-sm font-semibold text-foreground mb-2">Cargos</h2>
+        <div className="flex flex-col gap-1.5">
+          {folio.cargos.length === 0 && <p className="text-sm text-muted-foreground">Sin cargos.</p>}
           {folio.cargos.map((ch) => (
-            <div key={ch.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #f3f4f6", borderRadius: 8, padding: "8px 12px", opacity: ch.revertidoPor ? 0.5 : 1 }}>
+            <div key={ch.id} className={`flex justify-between items-center border border-border rounded-lg px-3 py-2 ${ch.revertidoPor ? "opacity-50" : ""}`}>
               <div>
-                <p style={{ margin: 0, fontSize: 13 }}>
+                <p className="text-sm text-foreground">
                   {CHARGE_CONCEPT_LABELS[ch.concepto]} · {ch.descripcion}
                 </p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>{new Date(ch.creadoEn).toLocaleString("es-MX")}</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">{new Date(ch.creadoEn).toLocaleString("es-MX")}</p>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{formatMoney(ch.monto + ch.impuesto)}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-foreground">{formatMoney(ch.monto + ch.impuesto)}</span>
                 {isOpen && !ch.revertidoPor && ch.concepto !== "reverso" && (
-                  <button onClick={() => void handleReverse(ch.id)} disabled={busy} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 11, cursor: "pointer" }}>
+                  <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs text-destructive border-destructive/40 hover:border-destructive" onClick={() => void handleReverse(ch.id)} disabled={busy}>
                     Reversar
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -191,96 +214,102 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
       </section>
 
       {isOpen && (
-        <form onSubmit={handleAddCharge} style={{ display: "flex", flexDirection: "column", gap: 8, border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Agregar cargo</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input placeholder="Descripción" value={chargeDesc} onChange={(e) => setChargeDesc(e.target.value)} style={{ flex: 2, padding: 8, minWidth: 160 }} />
-            <input placeholder="Monto" type="number" min="0.01" step="0.01" value={chargeAmount} onChange={(e) => setChargeAmount(e.target.value)} style={{ flex: 1, padding: 8, minWidth: 100 }} />
-            <select value={chargeConcept} onChange={(e) => setChargeConcept(e.target.value as AddChargeInput["concepto"])} style={{ padding: 8 }}>
+        <form onSubmit={handleAddCharge} className="flex flex-col gap-2 border border-border rounded-lg p-4">
+          <p className="text-sm font-semibold text-foreground">Agregar cargo</p>
+          <div className="flex gap-2 flex-wrap">
+            <Input placeholder="Descripción" value={chargeDesc} onChange={(e) => setChargeDesc(e.target.value)} className="flex-[2] min-w-[160px]" />
+            <Input placeholder="Monto" type="number" min="0.01" step="0.01" value={chargeAmount} onChange={(e) => setChargeAmount(e.target.value)} className="flex-1 min-w-[100px]" />
+            <select value={chargeConcept} onChange={(e) => setChargeConcept(e.target.value as AddChargeInput["concepto"])} className={selectClass}>
               {CHARGE_CONCEPTS.map((c) => (
                 <option key={c} value={c}>
                   {CHARGE_CONCEPT_LABELS[c]}
                 </option>
               ))}
             </select>
-            <button type="submit" disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}>
+            <Button type="submit" disabled={busy}>
               Agregar
-            </button>
+            </Button>
           </div>
         </form>
       )}
 
       {isOpen && (
-        <form onSubmit={handleAddDiscount} style={{ display: "flex", flexDirection: "column", gap: 8, border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Aplicar descuento</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input placeholder="Motivo" value={discountDesc} onChange={(e) => setDiscountDesc(e.target.value)} style={{ flex: 2, padding: 8, minWidth: 160 }} />
-            <input placeholder="Monto" type="number" min="0.01" step="0.01" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} style={{ flex: 1, padding: 8, minWidth: 100 }} />
-            <button type="submit" disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 13, cursor: "pointer" }}>
+        <form onSubmit={handleAddDiscount} className="flex flex-col gap-2 border border-border rounded-lg p-4">
+          <p className="text-sm font-semibold text-foreground">Aplicar descuento</p>
+          <div className="flex gap-2 flex-wrap">
+            <Input placeholder="Motivo" value={discountDesc} onChange={(e) => setDiscountDesc(e.target.value)} className="flex-[2] min-w-[160px]" />
+            <Input placeholder="Monto" type="number" min="0.01" step="0.01" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} className="flex-1 min-w-[100px]" />
+            <Button type="submit" variant="outline" disabled={busy}>
               Aplicar
-            </button>
+            </Button>
           </div>
-          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Un descuento por arriba del umbral de la property requiere autorización de un rol admin (owner/gm) — el servidor lo exige, este formulario no lo evita.</p>
+          <p className="text-[11px] text-muted-foreground">Un descuento por arriba del umbral de la property requiere autorización de un rol admin (owner/gm) — el servidor lo exige, este formulario no lo evita.</p>
         </form>
       )}
 
       <section>
-        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Pagos</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {folio.pagos.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Sin pagos.</p>}
+        <h2 className="text-sm font-semibold text-foreground mb-2">Pagos</h2>
+        <div className="flex flex-col gap-1.5">
+          {folio.pagos.length === 0 && <p className="text-sm text-muted-foreground">Sin pagos.</p>}
           {folio.pagos.map((p) => (
-            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", border: "1px solid #f3f4f6", borderRadius: 8, padding: "8px 12px" }}>
-              <span style={{ fontSize: 13 }}>
+            <div key={p.id} className="flex justify-between border border-border rounded-lg px-3 py-2">
+              <span className="text-sm text-foreground">
                 {p.metodo} · {p.estado}
               </span>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{formatMoney(p.monto)}</span>
+              <span className="text-sm font-semibold text-foreground">{formatMoney(p.monto)}</span>
             </div>
           ))}
         </div>
       </section>
 
       {isOpen && (
-        <form onSubmit={handleAddPayment} style={{ display: "flex", flexDirection: "column", gap: 8, border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Registrar pago</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input placeholder="Monto" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} style={{ flex: 1, padding: 8, minWidth: 100 }} />
-            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "efectivo" | "transferencia")} style={{ padding: 8 }}>
+        <form onSubmit={handleAddPayment} className="flex flex-col gap-2 border border-border rounded-lg p-4">
+          <p className="text-sm font-semibold text-foreground">Registrar pago</p>
+          <div className="flex gap-2 flex-wrap">
+            <Input placeholder="Monto" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="flex-1 min-w-[100px]" />
+            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "efectivo" | "transferencia")} className={selectClass}>
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
             </select>
-            <button type="submit" disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}>
+            <Button type="submit" disabled={busy}>
               Registrar
-            </button>
+            </Button>
           </div>
-          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Pago con tarjeta no disponible en este panel: exige un token real de pasarela, nunca un número de tarjeta capturado a mano.</p>
+          <p className="text-[11px] text-muted-foreground">Pago con tarjeta no disponible en este panel: exige un token real de pasarela, nunca un número de tarjeta capturado a mano.</p>
         </form>
       )}
 
       {isOpen && (
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => handleClose("saldo_cero")} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 13, cursor: "pointer" }}>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" onClick={() => handleClose("saldo_cero")} disabled={busy}>
             Cerrar folio (saldo en cero)
-          </button>
-          <button onClick={() => handleClose("cuenta_por_cobrar")} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #b45309", background: "#fff", color: "#b45309", fontSize: 13, cursor: "pointer" }}>
+          </Button>
+          <Button type="button" variant="outline" className="text-amber-700 border-amber-700/40 hover:border-amber-700 dark:text-amber-500" onClick={() => handleClose("cuenta_por_cobrar")} disabled={busy}>
             Cerrar como cuenta por cobrar
-          </button>
+          </Button>
         </div>
       )}
 
-      <ConfirmModal
-        open={pendingClose !== null}
-        title={pendingClose === "cuenta_por_cobrar" ? "Cerrar como cuenta por cobrar" : "Cerrar folio"}
-        message={
-          pendingClose === "cuenta_por_cobrar"
-            ? `¿Cerrar este folio (saldo ${formatMoney(folio.saldo)}) como cuenta por cobrar? Esta acción es irreversible desde este panel: el folio queda cerrado y el saldo pendiente pasa a cobranza.`
-            : `¿Cerrar este folio con saldo en cero? Esta acción es irreversible desde este panel: el folio queda cerrado y ya no admite cargos ni pagos nuevos.`
-        }
-        confirmLabel={pendingClose === "cuenta_por_cobrar" ? "Sí, cerrar como cuenta por cobrar" : "Sí, cerrar folio"}
-        cancelLabel="Volver"
-        busy={busy}
-        onConfirm={() => void handleConfirmClose()}
-        onCancel={() => setPendingClose(null)}
-      />
+      <Dialog open={pendingClose !== null} onOpenChange={(open) => { if (!open && !busy) setPendingClose(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{pendingClose === "cuenta_por_cobrar" ? "Cerrar como cuenta por cobrar" : "Cerrar folio"}</DialogTitle>
+            <DialogDescription>
+              {pendingClose === "cuenta_por_cobrar"
+                ? `¿Cerrar este folio (saldo ${formatMoney(folio.saldo)}) como cuenta por cobrar? Esta acción es irreversible desde este panel: el folio queda cerrado y el saldo pendiente pasa a cobranza.`
+                : `¿Cerrar este folio con saldo en cero? Esta acción es irreversible desde este panel: el folio queda cerrado y ya no admite cargos ni pagos nuevos.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPendingClose(null)} disabled={busy}>
+              Volver
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void handleConfirmClose()} disabled={busy}>
+              {pendingClose === "cuenta_por_cobrar" ? "Sí, cerrar como cuenta por cobrar" : "Sí, cerrar folio"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

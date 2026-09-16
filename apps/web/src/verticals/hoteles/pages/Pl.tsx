@@ -16,9 +16,35 @@
 // solo oculta el link "P&L" del nav para estos 3 roles; un rol sin acceso que navegue
 // directo a esta URL ve el 403 real del servidor como mensaje de error, igual que
 // Mantenimiento.tsx/Fraude.tsx con sus propios roles).
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
+// las tablas/tarjetas/inputs de estilos inline por Card/Table/Input/Label/Button/
+// Tabs reales — mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. Ningún
+// cambio de lógica: mismos props, mismo estado, mismas llamadas de red.
 import { useEffect, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import type { FormEvent } from "react";
+import { Plus } from "lucide-react";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@atiende/ui";
 import {
   createPlExpense,
   fetchPlExpenses,
@@ -63,62 +89,61 @@ function formatPct(n: number | null): string {
   return n == null ? "—" : `${n.toFixed(1)}%`;
 }
 
-const th: CSSProperties = { textAlign: "right", padding: "6px 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", color: "#6b7280", borderBottom: "1px solid #e5e7eb" };
-const thLeft: CSSProperties = { ...th, textAlign: "left" };
-const td: CSSProperties = { textAlign: "right", padding: "6px 10px", fontSize: 13, borderBottom: "1px solid #f3f4f6" };
-const tdLeft: CSSProperties = { ...td, textAlign: "left" };
-const sectionLabelStyle: CSSProperties = { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" };
-const cardStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, background: "#fff" };
-const totalRowStyle: CSSProperties = { fontWeight: 700, background: "#f9fafb" };
+const selectClass =
+  "mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 /** Ingresos por departamento -> Utilidad departamental (los 3 departamentos operados,
  * los únicos con `revenue` propio — ver `USALI_REVENUE_DEPARTMENTS`). */
 function DepartmentTable({ pl }: { pl: PlFullResponse["total"] }) {
   return (
-    <div style={cardStyle}>
-      <p style={sectionLabelStyle}>Ingresos por departamento → Utilidad departamental</p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
-          <thead>
-            <tr>
-              <th style={thLeft}>Departamento</th>
-              <th style={th}>Ingresos</th>
-              <th style={th}>Costo de ventas</th>
-              <th style={th}>Nómina</th>
-              <th style={th}>Otros gastos</th>
-              <th style={th}>Gastos totales</th>
-              <th style={th}>Utilidad departamental</th>
-              <th style={th}>Margen</th>
-            </tr>
-          </thead>
-          <tbody>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+          Ingresos por departamento → Utilidad departamental
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Departamento</TableHead>
+              <TableHead className="text-right">Ingresos</TableHead>
+              <TableHead className="text-right">Costo de ventas</TableHead>
+              <TableHead className="text-right">Nómina</TableHead>
+              <TableHead className="text-right">Otros gastos</TableHead>
+              <TableHead className="text-right">Gastos totales</TableHead>
+              <TableHead className="text-right">Utilidad departamental</TableHead>
+              <TableHead className="text-right">Margen</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {USALI_REVENUE_DEPARTMENTS.map((dept) => {
               const row = pl.departamentos.find((d) => d.department === dept);
               if (!row) return null;
               return (
-                <tr key={dept}>
-                  <td style={tdLeft}>{USALI_DEPARTMENT_LABELS[dept]}</td>
-                  <td style={td}>{formatMoney(row.revenue)}</td>
-                  <td style={td}>{formatMoney(row.costOfSales)}</td>
-                  <td style={td}>{formatMoney(row.payroll)}</td>
-                  <td style={td}>{formatMoney(row.otherExpenses)}</td>
-                  <td style={td}>{formatMoney(row.totalExpenses)}</td>
-                  <td style={td}>{formatMoney(row.departmentalProfit)}</td>
-                  <td style={td}>{formatPct(row.profitMarginPct)}</td>
-                </tr>
+                <TableRow key={dept}>
+                  <TableCell>{USALI_DEPARTMENT_LABELS[dept]}</TableCell>
+                  <TableCell className="text-right">{formatMoney(row.revenue)}</TableCell>
+                  <TableCell className="text-right">{formatMoney(row.costOfSales)}</TableCell>
+                  <TableCell className="text-right">{formatMoney(row.payroll)}</TableCell>
+                  <TableCell className="text-right">{formatMoney(row.otherExpenses)}</TableCell>
+                  <TableCell className="text-right">{formatMoney(row.totalExpenses)}</TableCell>
+                  <TableCell className="text-right">{formatMoney(row.departmentalProfit)}</TableCell>
+                  <TableCell className="text-right">{formatPct(row.profitMarginPct)}</TableCell>
+                </TableRow>
               );
             })}
-            <tr style={totalRowStyle}>
-              <td style={tdLeft}>Total</td>
-              <td style={td}>{formatMoney(pl.ingresosTotales)}</td>
-              <td style={td} colSpan={4} />
-              <td style={td}>{formatMoney(pl.utilidadDepartamentalTotal)}</td>
-              <td style={td}>{pl.ingresosTotales > 0 ? formatPct((pl.utilidadDepartamentalTotal / pl.ingresosTotales) * 100) : "—"}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+            <TableRow className="font-bold bg-muted/50">
+              <TableCell>Total</TableCell>
+              <TableCell className="text-right">{formatMoney(pl.ingresosTotales)}</TableCell>
+              <TableCell colSpan={4} />
+              <TableCell className="text-right">{formatMoney(pl.utilidadDepartamentalTotal)}</TableCell>
+              <TableCell className="text-right">{pl.ingresosTotales > 0 ? formatPct((pl.utilidadDepartamentalTotal / pl.ingresosTotales) * 100) : "—"}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -126,97 +151,105 @@ function DepartmentTable({ pl }: { pl: PlFullResponse["total"] }) {
  * operativos -> Utilidad neta (el resto del Summary Operating Statement USALI). */
 function SummaryStatement({ pl }: { pl: PlFullResponse["total"] }) {
   return (
-    <div style={cardStyle}>
-      <p style={sectionLabelStyle}>Gastos no distribuidos → GOP → EBITDA → Utilidad neta</p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 360 }}>
-          <tbody>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+          Gastos no distribuidos → GOP → EBITDA → Utilidad neta
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <Table>
+          <TableBody>
             {USALI_UNDISTRIBUTED_DEPARTMENTS.map((dept) => {
               const row = pl.gastosNoDistribuidos.find((d) => d.department === dept);
               return (
-                <tr key={dept}>
-                  <td style={tdLeft}>{USALI_DEPARTMENT_LABELS[dept]}</td>
-                  <td style={td}>{formatMoney(row?.amount ?? 0)}</td>
-                </tr>
+                <TableRow key={dept}>
+                  <TableCell>{USALI_DEPARTMENT_LABELS[dept]}</TableCell>
+                  <TableCell className="text-right">{formatMoney(row?.amount ?? 0)}</TableCell>
+                </TableRow>
               );
             })}
-            <tr style={totalRowStyle}>
-              <td style={tdLeft}>Total gastos no distribuidos</td>
-              <td style={td}>{formatMoney(pl.totalGastosNoDistribuidos)}</td>
-            </tr>
-            <tr>
-              <td style={tdLeft}>Utilidad departamental total</td>
-              <td style={td}>{formatMoney(pl.utilidadDepartamentalTotal)}</td>
-            </tr>
-            <tr style={totalRowStyle}>
-              <td style={tdLeft}>GOP (Gross Operating Profit)</td>
-              <td style={td}>
-                {formatMoney(pl.gop)} <span style={{ fontWeight: 400, color: "#6b7280" }}>({formatPct(pl.gopMarginPct)})</span>
-              </td>
-            </tr>
-            <tr>
-              <td style={tdLeft}>{USALI_DEPARTMENT_LABELS.cuota_administracion}</td>
-              <td style={td}>{formatMoney(pl.cuotaAdministracion)}</td>
-            </tr>
-            <tr style={totalRowStyle}>
-              <td style={tdLeft}>EBITDA</td>
-              <td style={td}>{formatMoney(pl.ebitda)}</td>
-            </tr>
-            <tr>
-              <td style={tdLeft}>{USALI_DEPARTMENT_LABELS.no_operativo}</td>
-              <td style={td}>{formatMoney(pl.gastosNoOperativos)}</td>
-            </tr>
-            <tr style={{ ...totalRowStyle, fontSize: 15 }}>
-              <td style={tdLeft}>Utilidad neta</td>
-              <td style={td}>{formatMoney(pl.utilidadNeta)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+            <TableRow className="font-bold bg-muted/50">
+              <TableCell>Total gastos no distribuidos</TableCell>
+              <TableCell className="text-right">{formatMoney(pl.totalGastosNoDistribuidos)}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell>Utilidad departamental total</TableCell>
+              <TableCell className="text-right">{formatMoney(pl.utilidadDepartamentalTotal)}</TableCell>
+            </TableRow>
+            <TableRow className="font-bold bg-muted/50">
+              <TableCell>GOP (Gross Operating Profit)</TableCell>
+              <TableCell className="text-right">
+                {formatMoney(pl.gop)} <span className="font-normal text-muted-foreground">({formatPct(pl.gopMarginPct)})</span>
+              </TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell>{USALI_DEPARTMENT_LABELS.cuota_administracion}</TableCell>
+              <TableCell className="text-right">{formatMoney(pl.cuotaAdministracion)}</TableCell>
+            </TableRow>
+            <TableRow className="font-bold bg-muted/50">
+              <TableCell>EBITDA</TableCell>
+              <TableCell className="text-right">{formatMoney(pl.ebitda)}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell>{USALI_DEPARTMENT_LABELS.no_operativo}</TableCell>
+              <TableCell className="text-right">{formatMoney(pl.gastosNoOperativos)}</TableCell>
+            </TableRow>
+            <TableRow className="font-bold bg-muted/50 text-base">
+              <TableCell>Utilidad neta</TableCell>
+              <TableCell className="text-right">{formatMoney(pl.utilidadNeta)}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
 function BreakevenAndAlerts({ data }: { data: PlFullResponse }) {
   const be = data.puntoEquilibrio;
   return (
-    <div style={cardStyle}>
-      <p style={sectionLabelStyle}>Punto de equilibrio dinámico</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 13 }}>
-        <div>
-          <p style={{ margin: 0, color: "#6b7280" }}>Ocupación real</p>
-          <p style={{ margin: "2px 0 0", fontWeight: 600 }}>{formatPct(be.actualOccupancyPct)}</p>
-        </div>
-        <div>
-          <p style={{ margin: 0, color: "#6b7280" }}>Ocupación de equilibrio</p>
-          <p style={{ margin: "2px 0 0", fontWeight: 600 }}>{formatPct(be.breakevenOccupancyPct)}</p>
-        </div>
-        <div>
-          <p style={{ margin: 0, color: "#6b7280" }}>Brecha</p>
-          <p style={{ margin: "2px 0 0", fontWeight: 600, color: be.occupancyGapPct != null && be.occupancyGapPct < 0 ? "#b91c1c" : "#166534" }}>
-            {be.occupancyGapPct == null ? "—" : `${be.occupancyGapPct >= 0 ? "+" : ""}${be.occupancyGapPct.toFixed(1)} pp`}
-          </p>
-        </div>
-        <div>
-          <p style={{ margin: 0, color: "#6b7280" }}>Margen de contribución/habitación</p>
-          <p style={{ margin: "2px 0 0", fontWeight: 600 }}>{formatMoney(be.contributionMarginPerRoom)}</p>
-        </div>
-      </div>
-      {data.ownersReport.alertas.length > 0 && (
-        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-          {data.ownersReport.alertas.map((alerta, i) => (
-            <p key={i} role="alert" style={{ margin: 0, fontSize: 13, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px" }}>
-              {alerta}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">Punto de equilibrio dinámico</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+          <div>
+            <p className="text-sm text-muted-foreground">Ocupación real</p>
+            <p className="mt-0.5 font-semibold text-foreground">{formatPct(be.actualOccupancyPct)}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Ocupación de equilibrio</p>
+            <p className="mt-0.5 font-semibold text-foreground">{formatPct(be.breakevenOccupancyPct)}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Brecha</p>
+            <p className={`mt-0.5 font-semibold ${be.occupancyGapPct != null && be.occupancyGapPct < 0 ? "text-destructive" : "text-green-700 dark:text-green-500"}`}>
+              {be.occupancyGapPct == null ? "—" : `${be.occupancyGapPct >= 0 ? "+" : ""}${be.occupancyGapPct.toFixed(1)} pp`}
             </p>
-          ))}
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Margen de contribución/habitación</p>
+            <p className="mt-0.5 font-semibold text-foreground">{formatMoney(be.contributionMarginPerRoom)}</p>
+          </div>
         </div>
-      )}
-      {data.alcance.pendiente.length > 0 && (
-        <p style={{ marginTop: 12, fontSize: 11, color: "#9ca3af" }}>
-          Fuera de alcance de este P&amp;L todavía: {data.alcance.pendiente.map((p) => p.split(":")[0]).join(", ")}.
-        </p>
-      )}
-    </div>
+        {data.ownersReport.alertas.length > 0 && (
+          <div className="mt-3 flex flex-col gap-1.5">
+            {data.ownersReport.alertas.map((alerta, i) => (
+              <p key={i} role="alert" className="text-sm text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-2.5 py-2">
+                {alerta}
+              </p>
+            ))}
+          </div>
+        )}
+        {data.alcance.pendiente.length > 0 && (
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            Fuera de alcance de este P&amp;L todavía: {data.alcance.pendiente.map((p) => p.split(":")[0]).join(", ")}.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -250,88 +283,90 @@ function ExpenseForm({ apiBaseUrl, token, propertyId, defaultFecha, onCreated }:
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 460 }}>
-      <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Registrar gasto</p>
-      <label style={{ fontSize: 13 }}>
-        Departamento
-        <select value={departamento} onChange={(e) => setDepartamento(e.target.value as UsaliDepartment)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}>
-          {USALI_ALL_DEPARTMENTS.map((d) => (
-            <option key={d} value={d}>
-              {USALI_DEPARTMENT_LABELS[d]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div style={{ display: "flex", gap: 10 }}>
-        <label style={{ fontSize: 13, flex: 1 }}>
-          Categoría
-          <select value={categoria} onChange={(e) => setCategoria(e.target.value as UsaliExpenseCategory)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}>
-            {USALI_EXPENSE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {USALI_EXPENSE_CATEGORY_LABELS[c]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={{ fontSize: 13, flex: 1 }}>
-          Fecha
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-        </label>
-      </div>
-      <label style={{ fontSize: 13 }}>
-        Descripción
-        <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-      </label>
-      <label style={{ fontSize: 13 }}>
-        Monto (MXN)
-        <input type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-      </label>
-      {formError && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-          {formError}
-        </p>
-      )}
-      <button type="submit" disabled={creating} style={{ padding: 10, fontWeight: 600, borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer" }}>
-        {creating ? "Registrando…" : "Registrar gasto"}
-      </button>
-    </form>
+    <Card className="max-w-md">
+      <CardContent className="p-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <p className="text-sm font-semibold text-foreground">Registrar gasto</p>
+          <div>
+            <Label htmlFor="pl-departamento">Departamento</Label>
+            <select id="pl-departamento" value={departamento} onChange={(e) => setDepartamento(e.target.value as UsaliDepartment)} className={selectClass}>
+              {USALI_ALL_DEPARTMENTS.map((d) => (
+                <option key={d} value={d}>
+                  {USALI_DEPARTMENT_LABELS[d]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Label htmlFor="pl-categoria">Categoría</Label>
+              <select id="pl-categoria" value={categoria} onChange={(e) => setCategoria(e.target.value as UsaliExpenseCategory)} className={selectClass}>
+                {USALI_EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {USALI_EXPENSE_CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <Label htmlFor="pl-fecha">Fecha</Label>
+              <Input id="pl-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required className="mt-1" />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="pl-descripcion">Descripción</Label>
+            <Input id="pl-descripcion" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required className="mt-1" />
+          </div>
+          <div>
+            <Label htmlFor="pl-monto">Monto (MXN)</Label>
+            <Input id="pl-monto" type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required className="mt-1" />
+          </div>
+          {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
+          <Button type="submit" disabled={creating}>
+            {creating ? "Registrando…" : "Registrar gasto"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
 function ExpenseHistory({ expenses, error }: { expenses: readonly PlExpenseEntry[] | null; error: string | null }) {
   return (
-    <div style={cardStyle}>
-      <p style={sectionLabelStyle}>Historial de gastos del periodo</p>
-      {error && <EstadoError mensaje={error} />}
-      {!expenses && !error && <EstadoCargando lineas={2} etiqueta="Cargando historial de gastos…" />}
-      {expenses && expenses.length === 0 && <EstadoVacio mensaje="Sin gastos registrados en este periodo." />}
-      {expenses && expenses.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
-            <thead>
-              <tr>
-                <th style={thLeft}>Fecha</th>
-                <th style={thLeft}>Departamento</th>
-                <th style={thLeft}>Categoría</th>
-                <th style={thLeft}>Descripción</th>
-                <th style={th}>Monto</th>
-              </tr>
-            </thead>
-            <tbody>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">Historial de gastos del periodo</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {error && <EstadoError mensaje={error} />}
+        {!expenses && !error && <EstadoCargando lineas={2} etiqueta="Cargando historial de gastos…" />}
+        {expenses && expenses.length === 0 && <EstadoVacio mensaje="Sin gastos registrados en este periodo." />}
+        {expenses && expenses.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Departamento</TableHead>
+                <TableHead>Categoría</TableHead>
+                <TableHead>Descripción</TableHead>
+                <TableHead className="text-right">Monto</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {expenses.map((e) => (
-                <tr key={e.id}>
-                  <td style={tdLeft}>{e.fecha}</td>
-                  <td style={tdLeft}>{USALI_DEPARTMENT_LABELS[e.departamento]}</td>
-                  <td style={tdLeft}>{USALI_EXPENSE_CATEGORY_LABELS[e.categoria]}</td>
-                  <td style={tdLeft}>{e.descripcion}</td>
-                  <td style={td}>{formatMoney(e.monto)}</td>
-                </tr>
+                <TableRow key={e.id}>
+                  <TableCell>{e.fecha}</TableCell>
+                  <TableCell>{USALI_DEPARTMENT_LABELS[e.departamento]}</TableCell>
+                  <TableCell>{USALI_EXPENSE_CATEGORY_LABELS[e.categoria]}</TableCell>
+                  <TableCell>{e.descripcion}</TableCell>
+                  <TableCell className="text-right">{formatMoney(e.monto)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -382,33 +417,23 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+    <div className="flex flex-col gap-5">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>P&amp;L — Estado de resultados USALI</h1>
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: "4px 0 0" }}>
+          <h1 className="text-xl font-display font-semibold text-foreground">P&amp;L — Estado de resultados USALI</h1>
+          <p className="mt-1 text-[11px] text-muted-foreground">
             Periodo {desde} — {hasta}. Formato-resumen 12ª edición: Ingresos por departamento → Utilidad departamental → Gastos no distribuidos → GOP → cuota de administración → EBITDA → Utilidad neta.
           </p>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {PERIOD_OPTIONS.map((opt) => (
-            <button
-              key={opt.days}
-              onClick={() => setDays(opt.days)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                background: days === opt.days ? "#111827" : "#fff",
-                color: days === opt.days ? "#fff" : "#111827",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <Tabs value={String(days)} onValueChange={(v) => setDays(Number(v) as PeriodDays)}>
+          <TabsList>
+            {PERIOD_OPTIONS.map((opt) => (
+              <TabsTrigger key={opt.days} value={String(opt.days)}>
+                {opt.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </header>
 
       {error && <EstadoError mensaje={error} />}
@@ -416,21 +441,19 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
 
       {data && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, alignItems: "start" }}>
+          <div className="grid gap-4 items-start" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
             <DepartmentTable pl={data.total} />
             <SummaryStatement pl={data.total} />
           </div>
 
           <BreakevenAndAlerts data={data} />
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <p style={sectionLabelStyle}>Gastos</p>
-            <button
-              onClick={() => setShowForm((v) => !v)}
-              style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: showForm ? "#fff" : "#111827", color: showForm ? "#111827" : "#fff", fontSize: 13, cursor: "pointer" }}
-            >
-              {showForm ? "Cancelar" : "+ Registrar gasto"}
-            </button>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold uppercase tracking-[0.04em] text-muted-foreground">Gastos</p>
+            <Button type="button" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
+              {!showForm && <Plus className="w-4 h-4" strokeWidth={1.75} />}
+              {showForm ? "Cancelar" : "Registrar gasto"}
+            </Button>
           </div>
 
           {showForm && <ExpenseForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} defaultFecha={hasta} onCreated={handleExpenseCreated} />}

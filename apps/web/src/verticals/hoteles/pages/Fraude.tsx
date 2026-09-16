@@ -2,8 +2,14 @@
 // escaneo determinista real y resolver (confirmar/descartar) las alertas generadas.
 // El escaneo nunca usa un LLM (ver fraude.ts) — solo los 2 patrones deterministas
 // portados a @atiende/domain-hoteles.
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza los
+// botones/pills/tarjetas de estilos inline por Button/Tabs/Card/Badge reales — mismo
+// criterio ya aplicado en HotelesShell.tsx/Login.tsx. Ningún cambio de lógica: mismos
+// props, mismo estado, mismas llamadas de red, misma condición de cada rama.
 import { useEffect, useState } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { ShieldAlert } from "lucide-react";
+import { Badge, Button, Card, CardContent, EstadoCargando, EstadoError, EstadoVacio, Tabs, TabsContent, TabsList, TabsTrigger, toast } from "@atiende/ui";
 import { fetchFraudAlerts, resolveFraudAlert, runFraudScan, FRAUD_ALERT_STATUS_LABELS } from "../lib/fraude-client.ts";
 import type { FraudAlertStatus, FraudAlertSummary } from "../lib/fraude-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
@@ -15,7 +21,6 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
   const [alerts, setAlerts] = useState<readonly FraudAlertSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   async function load() {
@@ -33,11 +38,10 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
 
   async function handleScan() {
     setScanning(true);
-    setScanMessage(null);
     setError(null);
     try {
       const result = await runFraudScan(fetch, apiBaseUrl, token, propertyId);
-      setScanMessage(`Escaneo completo: ${result.generadas} alerta(s) nueva(s), ${result.yaExistentes} ya existían.`);
+      toast.success(`Escaneo completo: ${result.generadas} alerta(s) nueva(s), ${result.yaExistentes} ya existían.`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo ejecutar el escaneo.");
@@ -71,61 +75,62 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Fraude interno</h1>
-        <button onClick={() => void handleScan()} disabled={scanning} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" }}>
+    <div className="flex flex-col gap-4">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="text-xl font-display font-semibold text-foreground">Fraude interno</h1>
+        <Button type="button" onClick={() => void handleScan()} disabled={scanning}>
+          <ShieldAlert className="w-4 h-4" strokeWidth={1.75} />
           {scanning ? "Escaneando…" : "Ejecutar escaneo"}
-        </button>
+        </Button>
       </header>
 
-      {scanMessage && <p style={{ margin: 0, fontSize: 13, color: "#065f46" }}>{scanMessage}</p>}
+      <Tabs value={filter} onValueChange={(v) => setFilter(v as FraudAlertStatus | "todas")}>
+        <TabsList>
+          {FILTERS.map((f) => (
+            <TabsTrigger key={f} value={f}>
+              {f === "todas" ? "Todas" : FRAUD_ALERT_STATUS_LABELS[f]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {FILTERS.map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid #d1d5db", background: filter === f ? "#111827" : "#fff", color: filter === f ? "#fff" : "#111827", fontSize: 12, cursor: "pointer" }}
-          >
-            {f === "todas" ? "Todas" : FRAUD_ALERT_STATUS_LABELS[f]}
-          </button>
-        ))}
-      </div>
+        <TabsContent value={filter} className="flex flex-col gap-4 mt-4">
+          {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+          {!alerts && !error && <EstadoCargando etiqueta="Cargando alertas…" />}
+          {alerts && alerts.length === 0 && <EstadoVacio mensaje="No hay alertas en este filtro." />}
 
-      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
-      {!alerts && !error && <EstadoCargando etiqueta="Cargando alertas…" />}
-      {alerts && alerts.length === 0 && <EstadoVacio mensaje="No hay alertas en este filtro." />}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {alerts?.map((a) => (
-          <div key={a.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600 }}>{a.patron}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{a.razon}</p>
-              </div>
-              <span style={{ alignSelf: "flex-start", fontSize: 12, padding: "3px 10px", borderRadius: 999, background: a.estado === "pendiente" ? "#fef3c7" : "#f3f4f6", color: a.estado === "pendiente" ? "#92400e" : "#374151" }}>
-                {FRAUD_ALERT_STATUS_LABELS[a.estado]}
-              </span>
-            </div>
-            <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
-              Folio: {a.folioId} {a.cargoId ? `· Cargo: ${a.cargoId}` : ""} · Roles destinatario: {a.rolesDestinatario.join(", ")}
-            </p>
-            {a.notaDecision && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#6b7280" }}>Nota: {a.notaDecision}</p>}
-            {a.estado === "pendiente" && (
-              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                <button onClick={() => void handleResolve(a, "confirmar")} disabled={busyId === a.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 12, cursor: "pointer" }}>
-                  Confirmar
-                </button>
-                <button onClick={() => void handleResolve(a, "descartar")} disabled={busyId === a.id} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" }}>
-                  Descartar
-                </button>
-              </div>
-            )}
+          <div className="flex flex-col gap-3">
+            {alerts?.map((a) => (
+              <Card key={a.id}>
+                <CardContent className="p-4 flex flex-col gap-2">
+                  <div className="flex justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="font-medium text-foreground">{a.patron}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{a.razon}</p>
+                    </div>
+                    <Badge variant={a.estado === "pendiente" ? "default" : "secondary"} className="self-start">
+                      {FRAUD_ALERT_STATUS_LABELS[a.estado]}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Folio: {a.folioId} {a.cargoId ? `· Cargo: ${a.cargoId}` : ""} · Roles destinatario: {a.rolesDestinatario.join(", ")}
+                  </p>
+                  {a.notaDecision && <p className="text-xs text-muted-foreground">Nota: {a.notaDecision}</p>}
+                  {a.estado === "pendiente" && (
+                    <div className="flex gap-2 mt-1">
+                      <Button type="button" variant="destructive" size="sm" onClick={() => void handleResolve(a, "confirmar")} disabled={busyId === a.id}>
+                        Confirmar
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => void handleResolve(a, "descartar")} disabled={busyId === a.id}>
+                        Descartar
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
           </div>
-        ))}
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

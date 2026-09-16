@@ -16,9 +16,32 @@
 // asistencia.ts) — nunca la única barrera. Constante duplicada aquí a propósito:
 // apps/web no depende de ningún paquete domain-* (ver comentario de cabecera de
 // reservas-client.ts/folios-client.ts).
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza
+// tarjetas/tablas/inputs de estilos inline por Card/Table/Input/Label/Button
+// reales — mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. El aviso
+// transitorio "Horario guardado." ahora usa `toast` en vez de un banner
+// persistente. Ningún cambio de lógica: mismos props, mismo estado, mismas
+// llamadas de red.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { EstadoCargando, EstadoVacio } from "@atiende/ui";
+import { LogIn, LogOut } from "lucide-react";
+import {
+  Button,
+  Card,
+  CardContent,
+  EstadoCargando,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  toast,
+} from "@atiende/ui";
 import {
   checkIn,
   fetchAttendance,
@@ -87,78 +110,64 @@ export function AsistenciaPage({ apiBaseUrl, token, propertyId, role }: HotelesS
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+    <div className="flex flex-col gap-6">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Asistencia</h1>
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>Checador de autoservicio — LFT art. 132 fr. XXXIV.</p>
+        <h1 className="text-xl font-display font-semibold text-foreground">Asistencia</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Checador de autoservicio — LFT art. 132 fr. XXXIV.</p>
       </header>
 
-      <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 420, display: "flex", flexDirection: "column", gap: 10 }}>
-        <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>
-          {ultimoEvento ? (
-            <>
-              Último registro: <strong>{ultimoEvento.eventType === "entrada" ? "Entrada" : "Salida"}</strong> el {formatHora(ultimoEvento.recordedAt)}
-            </>
-          ) : (
-            "Todavía no tienes ningún registro de asistencia."
-          )}
-        </p>
-        <label style={{ fontSize: 13 }}>
-          Nota (opcional)
-          <input value={notaFichaje} onChange={(e) => setNotaFichaje(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-        </label>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => void handleFichar("entrada")}
-            disabled={fichando !== null}
-            style={{
-              flex: 1,
-              padding: "12px 14px",
-              fontWeight: 600,
-              borderRadius: 8,
-              border: "1px solid #065f46",
-              background: siguienteEvento === "entrada" ? "#065f46" : "#fff",
-              color: siguienteEvento === "entrada" ? "#fff" : "#065f46",
-              cursor: fichando !== null ? "default" : "pointer",
-            }}
-          >
-            {fichando === "entrada" ? "Registrando…" : "Marcar entrada"}
-          </button>
-          <button
-            onClick={() => void handleFichar("salida")}
-            disabled={fichando !== null}
-            style={{
-              flex: 1,
-              padding: "12px 14px",
-              fontWeight: 600,
-              borderRadius: 8,
-              border: "1px solid #991b1b",
-              background: siguienteEvento === "salida" ? "#991b1b" : "#fff",
-              color: siguienteEvento === "salida" ? "#fff" : "#991b1b",
-              cursor: fichando !== null ? "default" : "pointer",
-            }}
-          >
-            {fichando === "salida" ? "Registrando…" : "Marcar salida"}
-          </button>
-        </div>
-        {errorPropio && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {errorPropio}
+      <Card className="max-w-md">
+        <CardContent className="p-4 flex flex-col gap-3">
+          <p className="text-sm text-foreground">
+            {ultimoEvento ? (
+              <>
+                Último registro: <strong>{ultimoEvento.eventType === "entrada" ? "Entrada" : "Salida"}</strong> el {formatHora(ultimoEvento.recordedAt)}
+              </>
+            ) : (
+              "Todavía no tienes ningún registro de asistencia."
+            )}
           </p>
-        )}
-      </section>
+          <div>
+            <Label htmlFor="asis-nota">Nota (opcional)</Label>
+            <Input id="asis-nota" value={notaFichaje} onChange={(e) => setNotaFichaje(e.target.value)} className="mt-1" />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              className="flex-1"
+              variant={siguienteEvento === "entrada" ? "default" : "outline"}
+              onClick={() => void handleFichar("entrada")}
+              disabled={fichando !== null}
+            >
+              <LogIn className="w-4 h-4" strokeWidth={1.75} />
+              {fichando === "entrada" ? "Registrando…" : "Marcar entrada"}
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              variant={siguienteEvento === "salida" ? "destructive" : "outline"}
+              onClick={() => void handleFichar("salida")}
+              disabled={fichando !== null}
+            >
+              <LogOut className="w-4 h-4" strokeWidth={1.75} />
+              {fichando === "salida" ? "Registrando…" : "Marcar salida"}
+            </Button>
+          </div>
+          {errorPropio && <p role="alert" className="text-sm text-destructive">{errorPropio}</p>}
+        </CardContent>
+      </Card>
 
       <section>
-        <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Tus últimos 7 días</h2>
+        <h2 className="text-sm font-semibold text-foreground mb-2">Tus últimos 7 días</h2>
         {!misEventos && !errorPropio && <EstadoCargando lineas={2} etiqueta="Cargando tu historial…" />}
         {misEventos && misEventos.length === 0 && <EstadoVacio mensaje="Sin registros en este rango." />}
         {misEventos && misEventos.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div className="flex flex-col gap-1">
             {[...misEventos].reverse().map((e) => (
-              <div key={e.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 10px", border: "1px solid #f3f4f6", borderRadius: 8 }}>
-                <span>{e.eventType === "entrada" ? "Entrada" : "Salida"}</span>
-                <span style={{ color: "#6b7280" }}>{formatHora(e.recordedAt)}</span>
-                {e.nota && <span style={{ color: "#9ca3af" }}>{e.nota}</span>}
+              <div key={e.id} className="flex justify-between text-sm px-2.5 py-1.5 border border-border rounded-lg">
+                <span className="text-foreground">{e.eventType === "entrada" ? "Entrada" : "Salida"}</span>
+                <span className="text-muted-foreground">{formatHora(e.recordedAt)}</span>
+                {e.nota && <span className="text-muted-foreground">{e.nota}</span>}
               </div>
             ))}
           </div>
@@ -183,7 +192,6 @@ function AdministracionAsistencia({ apiBaseUrl, token, propertyId }: { apiBaseUr
   const [authorizedOvertimeMinutes, setAuthorizedOvertimeMinutes] = useState(0);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
-  const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
 
   // Cruce
   const [desde, setDesde] = useState(sevenDaysAgoIso());
@@ -196,7 +204,6 @@ function AdministracionAsistencia({ apiBaseUrl, token, propertyId }: { apiBaseUr
   async function handleGuardarHorario(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setScheduleError(null);
-    setScheduleMessage(null);
     if (!staffUserId.trim()) return setScheduleError("staffUserId: requerido (UUID del empleado).");
     if (!scheduledStart || !scheduledEnd) return setScheduleError("Hora de inicio y fin del turno son requeridas.");
     setSavingSchedule(true);
@@ -208,7 +215,7 @@ function AdministracionAsistencia({ apiBaseUrl, token, propertyId }: { apiBaseUr
         scheduledEnd: new Date(scheduledEnd).toISOString(),
         authorizedOvertimeMinutes,
       });
-      setScheduleMessage("Horario guardado.");
+      toast.success("Horario guardado.");
     } catch (err) {
       setScheduleError(err instanceof Error ? err.message : "No se pudo guardar el horario.");
     } finally {
@@ -252,105 +259,101 @@ function AdministracionAsistencia({ apiBaseUrl, token, propertyId }: { apiBaseUr
   }
 
   return (
-    <section style={{ borderTop: "1px solid #e5e7eb", paddingTop: 20, display: "flex", flexDirection: "column", gap: 20 }}>
+    <section className="border-t border-border pt-5 flex flex-col gap-5">
       <div>
-        <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>Administración de asistencia</h2>
-        <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Programar horarios, cruzarlos contra lo trabajado y exportar a la STPS. Solo owner/gm.</p>
+        <h2 className="text-base font-semibold text-foreground">Administración de asistencia</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">Programar horarios, cruzarlos contra lo trabajado y exportar a la STPS. Solo owner/gm.</p>
       </div>
 
-      <label style={{ fontSize: 13, maxWidth: 420 }}>
-        Empleado (staffUserId, UUID)
-        <input value={staffUserId} onChange={(e) => setStaffUserId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" style={{ display: "block", width: "100%", padding: 8, marginTop: 4, fontFamily: "monospace", fontSize: 12 }} />
-      </label>
+      <div className="max-w-md">
+        <Label htmlFor="asis-staff-id">Empleado (staffUserId, UUID)</Label>
+        <Input id="asis-staff-id" value={staffUserId} onChange={(e) => setStaffUserId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" className="mt-1 font-mono text-xs" />
+      </div>
 
-      <form onSubmit={handleGuardarHorario} style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, maxWidth: 420 }}>
-        <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Programar horario</p>
-        <label style={{ fontSize: 13 }}>
-          Fecha
-          <input type="date" value={workDate} onChange={(e) => setWorkDate(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-        </label>
-        <div style={{ display: "flex", gap: 10 }}>
-          <label style={{ fontSize: 13, flex: 1 }}>
-            Entrada programada
-            <input type="datetime-local" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-          </label>
-          <label style={{ fontSize: 13, flex: 1 }}>
-            Salida programada
-            <input type="datetime-local" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} required style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-          </label>
-        </div>
-        <label style={{ fontSize: 13 }}>
-          Horas extra autorizadas (minutos)
-          <input type="number" min={0} value={authorizedOvertimeMinutes} onChange={(e) => setAuthorizedOvertimeMinutes(Number(e.target.value) || 0)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
-        </label>
-        {scheduleError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {scheduleError}
-          </p>
-        )}
-        {scheduleMessage && (
-          <p style={{ color: "#065f46", margin: 0, fontSize: 13 }}>{scheduleMessage}</p>
-        )}
-        <button type="submit" disabled={savingSchedule} style={{ padding: 10, fontWeight: 600, borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", cursor: "pointer" }}>
-          {savingSchedule ? "Guardando…" : "Guardar horario"}
-        </button>
-      </form>
+      <Card className="max-w-md">
+        <CardContent className="p-4">
+          <form onSubmit={handleGuardarHorario} className="flex flex-col gap-3">
+            <p className="text-sm font-semibold text-foreground">Programar horario</p>
+            <div>
+              <Label htmlFor="asis-fecha">Fecha</Label>
+              <Input id="asis-fecha" type="date" value={workDate} onChange={(e) => setWorkDate(e.target.value)} required className="mt-1" />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Label htmlFor="asis-entrada-prog">Entrada programada</Label>
+                <Input id="asis-entrada-prog" type="datetime-local" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} required className="mt-1" />
+              </div>
+              <div className="flex-1">
+                <Label htmlFor="asis-salida-prog">Salida programada</Label>
+                <Input id="asis-salida-prog" type="datetime-local" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} required className="mt-1" />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="asis-extra-min">Horas extra autorizadas (minutos)</Label>
+              <Input
+                id="asis-extra-min"
+                type="number"
+                min={0}
+                value={authorizedOvertimeMinutes}
+                onChange={(e) => setAuthorizedOvertimeMinutes(Number(e.target.value) || 0)}
+                className="mt-1"
+              />
+            </div>
+            {scheduleError && <p role="alert" className="text-sm text-destructive">{scheduleError}</p>}
+            <Button type="submit" disabled={savingSchedule}>
+              {savingSchedule ? "Guardando…" : "Guardar horario"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Cruce contra lo trabajado</p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <label style={{ fontSize: 13 }}>
-            Desde
-            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={{ display: "block", padding: 8, marginTop: 4 }} />
-          </label>
-          <label style={{ fontSize: 13 }}>
-            Hasta
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={{ display: "block", padding: 8, marginTop: 4 }} />
-          </label>
-          <button onClick={() => void handleConsultarCruce()} disabled={consultandoCruce} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 13, cursor: "pointer" }}>
-            {consultandoCruce ? "Calculando…" : "Calcular cruce"}
-          </button>
-          <button onClick={() => void handleExportarStps()} disabled={exportando} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#fff", color: "#111827", fontSize: 13, cursor: "pointer" }}>
-            {exportando ? "Exportando…" : "Exportar CSV (STPS)"}
-          </button>
-        </div>
-
-        {cruceError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-            {cruceError}
-          </p>
-        )}
-
-        {cruce && cruce.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Sin días en este rango.</p>}
-        {cruce && cruce.length > 0 && (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
-                  <th style={{ padding: "6px 8px" }}>Fecha</th>
-                  <th style={{ padding: "6px 8px" }}>Estado</th>
-                  <th style={{ padding: "6px 8px" }}>Programadas</th>
-                  <th style={{ padding: "6px 8px" }}>Trabajadas</th>
-                  <th style={{ padding: "6px 8px" }}>Extra autorizada</th>
-                  <th style={{ padding: "6px 8px" }}>Extra NO autorizada</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cruce.map((row) => (
-                  <tr key={row.fecha} style={{ borderBottom: "1px solid #f3f4f6", background: row.alerta ? "#fef2f2" : undefined }}>
-                    <td style={{ padding: "6px 8px" }}>{row.fecha}</td>
-                    <td style={{ padding: "6px 8px" }}>{row.estado}</td>
-                    <td style={{ padding: "6px 8px" }}>{row.horasProgramadas ?? "—"}</td>
-                    <td style={{ padding: "6px 8px" }}>{row.horasTrabajadas}</td>
-                    <td style={{ padding: "6px 8px" }}>{row.horasExtraAutorizadas}</td>
-                    <td style={{ padding: "6px 8px", fontWeight: row.horasExtraNoAutorizadas > 0 ? 700 : 400, color: row.horasExtraNoAutorizadas > 0 ? "#b91c1c" : undefined }}>
-                      {row.horasExtraNoAutorizadas}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm font-semibold text-foreground">Cruce contra lo trabajado</p>
+        <div className="flex gap-3 flex-wrap items-end">
+          <div>
+            <Label htmlFor="asis-desde">Desde</Label>
+            <Input id="asis-desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1" />
           </div>
+          <div>
+            <Label htmlFor="asis-hasta">Hasta</Label>
+            <Input id="asis-hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="mt-1" />
+          </div>
+          <Button type="button" variant="outline" onClick={() => void handleConsultarCruce()} disabled={consultandoCruce}>
+            {consultandoCruce ? "Calculando…" : "Calcular cruce"}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void handleExportarStps()} disabled={exportando}>
+            {exportando ? "Exportando…" : "Exportar CSV (STPS)"}
+          </Button>
+        </div>
+
+        {cruceError && <p role="alert" className="text-sm text-destructive">{cruceError}</p>}
+
+        {cruce && cruce.length === 0 && <p className="text-sm text-muted-foreground">Sin días en este rango.</p>}
+        {cruce && cruce.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Programadas</TableHead>
+                <TableHead>Trabajadas</TableHead>
+                <TableHead>Extra autorizada</TableHead>
+                <TableHead>Extra NO autorizada</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cruce.map((row) => (
+                <TableRow key={row.fecha} className={row.alerta ? "bg-destructive/5" : undefined}>
+                  <TableCell>{row.fecha}</TableCell>
+                  <TableCell>{row.estado}</TableCell>
+                  <TableCell>{row.horasProgramadas ?? "—"}</TableCell>
+                  <TableCell>{row.horasTrabajadas}</TableCell>
+                  <TableCell>{row.horasExtraAutorizadas}</TableCell>
+                  <TableCell className={row.horasExtraNoAutorizadas > 0 ? "font-bold text-destructive" : undefined}>{row.horasExtraNoAutorizadas}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </div>
     </section>
