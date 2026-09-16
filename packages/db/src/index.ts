@@ -13,8 +13,9 @@ export type {
   AcceptStaffInviteResult,
   RevokeRefreshTokenInput,
   SuperadminOrganizationRow,
+  NotificationRow,
 } from "./core-repository.ts";
-export { StaffInviteInvalidError, MembershipRoleUpdateError } from "./core-repository.ts";
+export { StaffInviteInvalidError, MembershipRoleUpdateError, NotificationNotFoundError } from "./core-repository.ts";
 export { InMemoryCoreRepository } from "./in-memory-core-repository.ts";
 export type { SeedOrganization, SeedMembership } from "./in-memory-core-repository.ts";
 export { PostgresCoreRepository } from "./postgres-core-repository.ts";

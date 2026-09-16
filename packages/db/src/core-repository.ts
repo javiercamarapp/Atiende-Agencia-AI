@@ -174,6 +174,23 @@ export interface RevokeRefreshTokenInput {
   readonly expiresAt: string;
 }
 
+/** Fila real de `core.notification`, ya resuelta con `readAt` (null = no leída) vía
+ *  el LEFT JOIN de `core.list_notifications_for_staff` -- ver
+ *  `supabase/migrations/20240101000115_0013_notifications_schema.sql`. Genérica a
+ *  propósito (mismo criterio que `MembershipRow.vertical`): `vertical`/`entidadTipo`/
+ *  `entidadId` son opacos para `core`, cada dominio decide qué escribir ahí. */
+export interface NotificationRow {
+  readonly id: string;
+  readonly vertical: string | null;
+  readonly titulo: string;
+  readonly cuerpo: string | null;
+  readonly entidadTipo: string | null;
+  readonly entidadId: string | null;
+  readonly createdAt: string;
+  /** null = no leída. */
+  readonly readAt: string | null;
+}
+
 export interface CoreRepository {
   findStaffByEmail(email: string): Promise<StaffUserRow | null>;
   findStaffById(id: string): Promise<StaffUserRow | null>;
@@ -262,6 +279,27 @@ export interface CoreRepository {
    *  autorización interna que `listAllOrganizationsForSuperadmin` — un `Map`
    *  vacío para un caller que no es superadmin. */
   countStaffByOrganizationForSuperadmin(callerId: string): Promise<ReadonlyMap<string, number>>;
+  /** Infraestructura de notificaciones (genérica, 6 verticales + superadmin) — ver el
+   *  comentario de cabecera de `supabase/migrations/20240101000115_0013_notifications_
+   *  schema.sql`. Últimas 50, más recientes primero, con `readAt` ya resuelto — el
+   *  frontend nunca calcula "leída" por su cuenta. Vive en `CoreRepository` (sesión de
+   *  sistema, mismo patrón que `isPlatformSuperadmin`) y no en una interfaz-fábrica
+   *  aparte porque `core.list_notifications_for_staff` recibe `p_staff_id` explícito y
+   *  no depende de `auth.uid()` — el caller HTTP (`routes/notifications.ts`) siempre
+   *  pasa `c.get("userId")` de la sesión JWT ya verificada, nunca un id ajeno. */
+  listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]>;
+  /** Conteo real para el badge de la campana — misma fuente de verdad que
+   *  `listNotificationsForStaff`, nunca recalculado en cliente restando arreglos. */
+  countUnreadNotificationsForStaff(staffId: string): Promise<number>;
+  /** Marca UNA notificación leída — idempotente (upsert). Lanza si la notificación no
+   *  existe o pertenece a OTRO staff (ver `core.mark_notification_read`, SQLSTATE
+   *  P0002) — el adaptador la traduce a `NotificationNotFoundError`. */
+  markNotificationRead(staffId: string, notificationId: string): Promise<void>;
+  /** Marca TODAS las notificaciones del staff leídas en una sola llamada — mismo
+   *  criterio que `restaurantes.mark_all_notifications_read` de la referencia (un solo
+   *  INSERT masivo evaluado en Postgres, nunca N llamadas del cliente). Devuelve
+   *  cuántas quedaron marcadas leídas en ESTA llamada. */
+  markAllNotificationsRead(staffId: string): Promise<number>;
 }
 
 /** Fila de `core.organization`, tal cual la ve el back office de plataforma —
@@ -353,5 +391,16 @@ export class MembershipRoleUpdateError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "MembershipRoleUpdateError";
+  }
+}
+
+/** Lanzado por `markNotificationRead` cuando la notificación no existe o pertenece a
+ *  OTRO staff (`core.mark_notification_read`, SQLSTATE P0002) — un solo caso, mismo
+ *  criterio de mensaje único que `StaffInviteInvalidError` (nunca le confirma a quien
+ *  llama si el id existe pero es ajeno, o si simplemente no existe). */
+export class NotificationNotFoundError extends Error {
+  constructor() {
+    super("La notificación no existe o no pertenece a este staff.");
+    this.name = "NotificationNotFoundError";
   }
 }

@@ -20,6 +20,7 @@ import type {
   CoreStaffRepository,
   CreateStaffInviteInput,
   MembershipRow,
+  NotificationRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
   RevokeRefreshTokenInput,
@@ -28,7 +29,7 @@ import type {
   StaffUserRow,
   SuperadminOrganizationRow,
 } from "./core-repository.ts";
-import { MembershipRoleUpdateError, StaffInviteInvalidError } from "./core-repository.ts";
+import { MembershipRoleUpdateError, NotificationNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
 
 interface StaffUserRawRow {
   readonly id: string;
@@ -89,6 +90,30 @@ function mapOrganizationMemberWithRole(row: OrganizationMemberWithRoleRawRow): O
     platformRole: row.platform_role,
     verticalRole: row.vertical_role,
     propertyIds: row.property_ids,
+  };
+}
+
+interface NotificationRawRow {
+  readonly id: string;
+  readonly vertical: string | null;
+  readonly titulo: string;
+  readonly cuerpo: string | null;
+  readonly entidad_tipo: string | null;
+  readonly entidad_id: string | null;
+  readonly created_at: string;
+  readonly read_at: string | null;
+}
+
+function mapNotification(row: NotificationRawRow): NotificationRow {
+  return {
+    id: row.id,
+    vertical: row.vertical,
+    titulo: row.titulo,
+    cuerpo: row.cuerpo,
+    entidadTipo: row.entidad_tipo,
+    entidadId: row.entidad_id,
+    createdAt: row.created_at,
+    readAt: row.read_at,
   };
 }
 
@@ -395,5 +420,45 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       [callerId],
     );
     return new Map(rows.map((r) => [r.organization_id, Number(r.staff_count)]));
+  }
+
+  // ---- Infraestructura de notificaciones — ver el comentario de cabecera de
+  // `supabase/migrations/20240101000115_0013_notifications_schema.sql`: las 4
+  // funciones son `security definer` que reciben `p_staff_id` explícito, mismo
+  // criterio que login/`isPlatformSuperadmin` — ninguna depende de `auth.uid()`. ----
+
+  async listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]> {
+    const { rows } = await this.db.query<NotificationRawRow>(
+      `select id, vertical, titulo, cuerpo, entidad_tipo, entidad_id, created_at, read_at
+       from core.list_notifications_for_staff($1);`,
+      [staffId],
+    );
+    return rows.map(mapNotification);
+  }
+
+  async countUnreadNotificationsForStaff(staffId: string): Promise<number> {
+    const { rows } = await this.db.query<{ count_unread_notifications_for_staff: number }>(
+      `select core.count_unread_notifications_for_staff($1) as count_unread_notifications_for_staff;`,
+      [staffId],
+    );
+    return rows[0]?.count_unread_notifications_for_staff ?? 0;
+  }
+
+  async markNotificationRead(staffId: string, notificationId: string): Promise<void> {
+    try {
+      await this.db.query(`select core.mark_notification_read($1, $2);`, [staffId, notificationId]);
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "P0002") throw new NotificationNotFoundError();
+      throw err;
+    }
+  }
+
+  async markAllNotificationsRead(staffId: string): Promise<number> {
+    const { rows } = await this.db.query<{ mark_all_notifications_read: number }>(
+      `select core.mark_all_notifications_read($1) as mark_all_notifications_read;`,
+      [staffId],
+    );
+    return rows[0]?.mark_all_notifications_read ?? 0;
   }
 }

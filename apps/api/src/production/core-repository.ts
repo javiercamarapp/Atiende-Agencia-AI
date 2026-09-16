@@ -10,7 +10,7 @@
 // (nunca reutiliza una conexión entre requests, correcto para el `pg.Pool` de
 // `ManagedPostgresEngine`) y delega en un `PostgresCoreRepository` construido sobre esa
 // sesión efímera.
-import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, MembershipRow, RevokeRefreshTokenInput, StaffInviteRow, StaffUserRow, SuperadminOrganizationRow } from "@atiende/db";
+import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, MembershipRow, NotificationRow, RevokeRefreshTokenInput, StaffInviteRow, StaffUserRow, SuperadminOrganizationRow } from "@atiende/db";
 import { PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -100,5 +100,25 @@ export class ProductionCoreRepository implements CoreRepository {
 
   countStaffByOrganizationForSuperadmin(callerId: string): Promise<ReadonlyMap<string, number>> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).countStaffByOrganizationForSuperadmin(callerId));
+  }
+
+  // ---- Infraestructura de notificaciones — sesión de sistema igual que el resto de
+  // este archivo: las 4 funciones SQL son `security definer` con `p_staff_id`
+  // explícito (nunca `auth.uid()`), mismo motivo que `isPlatformSuperadmin`. ----
+
+  listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).listNotificationsForStaff(staffId));
+  }
+
+  countUnreadNotificationsForStaff(staffId: string): Promise<number> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).countUnreadNotificationsForStaff(staffId));
+  }
+
+  markNotificationRead(staffId: string, notificationId: string): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).markNotificationRead(staffId, notificationId));
+  }
+
+  markAllNotificationsRead(staffId: string): Promise<number> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).markAllNotificationsRead(staffId));
   }
 }
