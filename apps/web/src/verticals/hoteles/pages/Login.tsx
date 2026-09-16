@@ -186,15 +186,15 @@ export function HotelesLoginPage({ apiBaseUrl }: HotelesLoginPageProps) {
         </div>
       </section>
 
-      <aside className="hidden lg:flex lg:flex-col lg:py-3 lg:pr-3">
-        <figure className="login-lamina min-h-0 flex-1 flex items-end">
+      <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
+        <figure className="login-lamina min-h-0 flex-1 flex items-center justify-center">
           <img
             src={`${import.meta.env.BASE_URL}images/login-hero-hoteles.png`}
             alt="Hotel de playa en Cancún al atardecer."
             className="login-foto-marca absolute inset-0 w-full h-full object-cover"
           />
           <div className="login-velo" />
-          <figcaption className="p-9 z-10">
+          <figcaption className="absolute inset-x-0 bottom-0 p-9 z-10">
             <p className="login-kicker" style={{ color: "color-mix(in srgb, white 78%, transparent)" }}>
               Reservas y operación por WhatsApp
             </p>
