@@ -63,6 +63,7 @@ import { broadcastWaitlist, fetchWaitlist } from "../lib/waitlist-client.ts";
 import type { WaitlistCandidate } from "../lib/waitlist-client.ts";
 import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatTimeRange } from "../lib/format.ts";
 import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
+import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 type ViewMode = "month" | "week";
@@ -130,7 +131,7 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
   return "secondary";
 }
 
-export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellContext) {
+export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName, staffEmail }: CitasShellContext) {
   const [view, setView] = useState<ViewMode>("month");
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
@@ -325,6 +326,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
+          <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
           <h1 className="font-display text-xl font-semibold text-foreground">Agenda</h1>
           <p className="mt-1 text-[13px] capitalize text-muted-foreground">{range.label}</p>
         </div>

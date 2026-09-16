@@ -9,6 +9,8 @@ export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando } from "./components/EstadoCargando.js";
 export { Sidebar, type SidebarItem, type SidebarSection, type SidebarProps } from "./components/Sidebar.js";
 export { BottomNav, MobileHeader, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.js";
+export { DashboardHeader, type DashboardHeaderProps } from "./components/DashboardHeader.js";
+export { NotificationBell, type NotificationBellItem, type NotificationBellProps } from "./components/NotificationBell.js";
 
 export { Button, buttonVariants, type ButtonProps } from "./components/ui/button.js";
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
@@ -41,6 +43,19 @@ export {
   DialogTitle,
   DialogDescription,
 } from "./components/ui/dialog.js";
+export {
+  AlertDialog,
+  AlertDialogPortal,
+  AlertDialogOverlay,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "./components/ui/alert-dialog.js";
 export {
   Sheet,
   SheetClose,

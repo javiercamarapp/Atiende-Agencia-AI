@@ -9,9 +9,11 @@
 // Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
 // primitivos de `@atiende/ui` — `Card` por entrega, `Badge` para el estado, `Button`
 // para Mapa/Llamar/avanzar/reportar — y el `window.prompt` del navegador que pedía la
-// nota de incidencia pasa a un `Dialog` real del sistema de diseño (mismas tres ramas
-// de siempre: cancelar = no-op, nota vacía = el mismo mensaje de error, nota con texto
-// = la misma llamada a `updateAssignedOrderStatus(..., "problema", nota.trim())`).
+// nota de incidencia pasa a un `AlertDialog` real del sistema de diseño (no
+// `Dialog`/`ModalFormularioLateral` -- una confirmación no es un formulario, mismo
+// criterio que la referencia real; mismas tres ramas de siempre: cancelar = no-op,
+// nota vacía = el mismo mensaje de error, nota con texto = la misma llamada a
+// `updateAssignedOrderStatus(..., "problema", nota.trim())`).
 //
 // Ronda 13 — hallazgo de auditoría (severidad ALTA, "único consumidor autenticado de
 // apps/web que no escucha SESSION_EXPIRED_EVENT"): al estar FUERA de
@@ -33,16 +35,18 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
   CardContent,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -237,12 +241,12 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
         );
       })}
 
-      <Dialog open={incidenciaOrder !== null} onOpenChange={(abierto) => !abierto && cerrarIncidencia()}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reportar incidencia</DialogTitle>
-            <DialogDescription>¿Qué pasó? (se guarda y administración lo ve de inmediato)</DialogDescription>
-          </DialogHeader>
+      <AlertDialog open={incidenciaOrder !== null} onOpenChange={(abierto) => !abierto && cerrarIncidencia()}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reportar incidencia</AlertDialogTitle>
+            <AlertDialogDescription>¿Qué pasó? (se guarda y administración lo ve de inmediato)</AlertDialogDescription>
+          </AlertDialogHeader>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="repartidor-incidencia-nota" className="text-xs text-muted-foreground">
               Nota para administración
@@ -256,16 +260,20 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
               placeholder="Ej. El cliente no abrió y no contesta el teléfono."
             />
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={cerrarIncidencia}>
-              Volver
-            </Button>
-            <Button type="button" variant="destructive" onClick={() => void handleReportarIncidencia()}>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cerrarIncidencia}>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                void handleReportarIncidencia();
+              }}
+            >
               Reportar incidencia
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </div>
     </div>
   );

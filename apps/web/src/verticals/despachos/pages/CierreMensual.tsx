@@ -35,6 +35,7 @@ import {
 import { crearPeriodo, fetchPeriodos } from "../lib/cierre-mensual-client.ts";
 import type { ClosePeriod } from "../lib/cierre-mensual-client.ts";
 import { formatDate, formatPeriodStatus, formatPeriodo } from "../lib/format.ts";
+import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
@@ -61,7 +62,7 @@ function StatusBadge({ status }: { status: ClosePeriod["status"] }) {
 
 const NOW = new Date();
 
-export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
+export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role, staffFullName, staffEmail }: DespachosShellContext) {
   const [periodos, setPeriodos] = useState<readonly ClosePeriod[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +121,7 @@ export function CierreMensualPage({ apiBaseUrl, token, propertyId, orgSlug, role
     <div className="flex flex-col gap-4 px-1">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
+          <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
           <h1 className="font-display text-xl font-semibold text-foreground">Cierre mensual</h1>
           <p className="mt-1 text-[13px] text-muted-foreground">Checklist de 15 tareas por período: CFDI, bancos, nómina, declaraciones, contabilidad electrónica y reportes.</p>
         </div>

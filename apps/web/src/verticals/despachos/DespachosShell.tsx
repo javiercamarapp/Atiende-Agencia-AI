@@ -71,6 +71,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   BookOpen,
+  Briefcase,
   CalendarCheck,
   CalendarClock,
   FileDigit,
@@ -83,8 +84,10 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
-import { Sidebar, type SidebarSection } from "@atiende/ui";
+import { DashboardHeader, NotificationBell, Sidebar, type SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { useNotifications } from "../../lib/useNotifications.ts";
+import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { clearDespachosSession, logout, readPersistedDespachosSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
@@ -102,6 +105,11 @@ export interface DespachosShellContext {
    * readonly, ver domain-despachos/src/roles.ts) — cosmético, para ocultar botones
    * que el servidor rechazaría igual; nunca la única barrera. */
   readonly role: string;
+  /** Nombre completo y correo del staff en sesión — expuestos a las páginas hijas
+   * (header compartido) solo para pintar el saludo real (`saludoConNombre`, ver
+   * CierreMensual.tsx), mismo patrón ya expuesto en CitasShellContext/RentasShellContext. */
+  readonly staffFullName: string | undefined;
+  readonly staffEmail: string;
 }
 
 export interface DespachosShellProps {
@@ -244,6 +252,14 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
     };
   }, [session, apiBaseUrl, orgSlug]);
 
+  // Campana de notificaciones del header (DashboardHeader/NotificationBell) --
+  // llamada SIEMPRE, antes de los early return de sesión de abajo, para no violar
+  // las reglas de hooks (mismo patrón exacto que CitasShell.tsx/RentasShell.tsx);
+  // `session?.token ?? ""` deja que el propio hook maneje un token vacío mientras
+  // la sesión resuelve/no existe -- en esas ramas el header ni siquiera llega a
+  // pintarse.
+  const notif = useNotifications(apiBaseUrl, session?.token ?? "");
+
   if (session === undefined) return null; // resolviendo sesión persistida
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
@@ -330,16 +346,32 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       />
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="h-14 shrink-0 flex items-center justify-between gap-3 px-1">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Despachos · {orgSlug}</p>
-            <p className="text-sm font-medium text-foreground truncate">
-              {activeBranch?.name ?? orgSlug}
-              {loggingOut && " · Cerrando sesión…"}
-            </p>
-          </div>
-          <BotonChatDatos className="shrink-0" />
-        </header>
+        <DashboardHeader
+          variant="vertical"
+          icon={<Briefcase className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+          title={`Despachos · ${activeBranch?.name ?? orgSlug}`}
+          fecha={fechaCortaEsMx()}
+          notificationBell={
+            <NotificationBell
+              items={notif.items}
+              unreadCount={notif.unreadCount}
+              loading={notif.loading}
+              onOpenChange={(open) => {
+                if (open) notif.refetch();
+              }}
+              onMarkRead={notif.onMarkRead}
+              onMarkAllRead={notif.onMarkAllRead}
+            />
+          }
+          chatButton={<BotonChatDatos />}
+        />
+        {/* DashboardHeader no tiene slot propio para este aviso -- mismo criterio que
+            RentasShell.tsx: se conserva como anuncio accesible en vez de perderlo. */}
+        {loggingOut && (
+          <span className="sr-only" role="status">
+            Cerrando sesión…
+          </span>
+        )}
 
         {/* Fase 19 -- `key={propertyId}` fuerza a React a desmontar/remontar las
             páginas hijas cuando el contribuyente activo cambia DENTRO de la misma
@@ -354,7 +386,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
             comportamiento: un remount con las mismas dependencias dispara el mismo
             fetch que ya disparaban. */}
         <main key={propertyId} className="flex-1 overflow-auto pb-6">
-          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
         </main>
       </div>
     </div>

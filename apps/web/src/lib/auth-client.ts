@@ -18,6 +18,12 @@ export interface LoginSession {
   readonly token: string;
   readonly refreshToken: string;
   readonly email: string;
+  /** `core.staff_user.full_name` real -- opcional a propósito: una sesión vieja
+   *  persistida en localStorage ANTES de este campo se sigue leyendo bien (nunca
+   *  falla el parseo, ver `readPersistedSession`) pero simplemente no lo trae.
+   *  Cualquier saludo debe caer a `email` cuando esté ausente/vacío (ver
+   *  `apps/web/src/lib/greeting.ts`). */
+  readonly fullName?: string;
   readonly organizations: readonly OrganizationSummary[];
 }
 

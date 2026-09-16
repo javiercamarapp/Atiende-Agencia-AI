@@ -28,6 +28,7 @@
 // Badge/EstadoVacio y clases de token (bg-card, text-muted-foreground, ...). CERO
 // cambios de lógica: mismas props, mismo estado, mismo onClick/aria-pressed.
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@atiende/ui";
+import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { RentasShellContext } from "../RentasShell.tsx";
 
 export function RentasDashboardPage({ orgSlug, properties, propertyId, setPropertyId, session }: RentasShellContext) {
@@ -36,16 +37,13 @@ export function RentasDashboardPage({ orgSlug, properties, propertyId, setProper
   return (
     <div className="flex flex-col gap-4 max-w-[640px]">
       <div>
+        <p className="text-sm text-muted-foreground m-0 mb-1">{saludoConNombre(session.fullName, session.email)}</p>
         <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">{org?.nombre ?? orgSlug}</h1>
-        <p className="text-sm text-muted-foreground m-0">
-          Sesión iniciada como <strong className="text-foreground font-medium">{session.email}</strong>
-          {org ? (
-            <>
-              {" "}
-              · rol <strong className="text-foreground font-medium">{org.rol}</strong>
-            </>
-          ) : null}
-        </p>
+        {org ? (
+          <p className="text-sm text-muted-foreground m-0">
+            Rol <strong className="text-foreground font-medium">{org.rol}</strong>
+          </p>
+        ) : null}
       </div>
 
       <Card>

@@ -11,26 +11,30 @@
 // Ronda de portado del sistema de diseño real (@atiende/ui): Button/Card/Input/
 // Label/Badge/EstadoCargando/EstadoVacio/EstadoError + clases de token en lugar de
 // los `style={{...}}` hechos a mano. La confirmación de cancelar/liberar (patrón de
-// 2 pasos, ver abajo) pasa a <Dialog> real, pero CONSERVA sus dos pasos exactos: el
-// primer clic solo marca `confirmandoCancelarId`, la llamada al servidor sigue
-// ocurriendo únicamente en el segundo clic explícito. CERO cambios de lógica de
-// negocio: mismos efectos, mismas llamadas, mismas ramas de render.
+// 2 pasos, ver abajo) pasa a <AlertDialog> real (no ModalFormularioLateral -- una
+// confirmación no es un formulario, mismo criterio que la referencia real), pero
+// CONSERVA sus dos pasos exactos: el primer clic solo marca
+// `confirmandoCancelarId`, la llamada al servidor sigue ocurriendo únicamente en
+// el segundo clic explícito. CERO cambios de lógica de negocio: mismos efectos,
+// mismas llamadas, mismas ramas de render.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { CalendarPlus, Ban, CalendarDays, Pencil } from "lucide-react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -451,29 +455,36 @@ export function CalendarioPage({ apiBaseUrl, token, propertyId }: RentasShellCon
 
       {/* Segundo paso REAL de la confirmación de 2 pasos: la llamada al servidor solo
           sale de aquí, nunca del primer clic que abrió este diálogo. */}
-      <Dialog open={ocupacionConfirmando !== null} onOpenChange={(abierto) => { if (!abierto) setConfirmandoCancelarId(null); }}>
-        <DialogContent className="max-w-md">
+      <AlertDialog open={ocupacionConfirmando !== null} onOpenChange={(abierto) => { if (!abierto) setConfirmandoCancelarId(null); }}>
+        <AlertDialogContent className="max-w-md">
           {ocupacionConfirmando && (
             <>
-              <DialogHeader>
-                <DialogTitle>{ocupacionConfirmando.capa === "reserva" ? "¿Cancelar esta reserva?" : "¿Liberar este bloqueo?"}</DialogTitle>
-                <DialogDescription>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{ocupacionConfirmando.capa === "reserva" ? "¿Cancelar esta reserva?" : "¿Liberar este bloqueo?"}</AlertDialogTitle>
+                <AlertDialogDescription>
                   {ocupacionConfirmando.capa === "reserva" ? "¿Seguro que quieres cancelar esta reserva?" : "¿Seguro que quieres liberar este bloqueo?"} Esta acción no se
                   puede deshacer. ({ocupacionConfirmando.rango.inicio} → {ocupacionConfirmando.rango.fin})
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmandoCancelarId(null)} disabled={busyId === ocupacionConfirmando.id}>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setConfirmandoCancelarId(null)} disabled={busyId === ocupacionConfirmando.id}>
                   No, mantenerla
-                </Button>
-                <Button type="button" variant="destructive" size="sm" onClick={() => void handleCancelar(ocupacionConfirmando)} disabled={busyId === ocupacionConfirmando.id}>
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void handleCancelar(ocupacionConfirmando);
+                  }}
+                  disabled={busyId === ocupacionConfirmando.id}
+                >
                   {busyId === ocupacionConfirmando.id ? "…" : ocupacionConfirmando.capa === "reserva" ? "Sí, cancelar reserva" : "Sí, liberar bloqueo"}
-                </Button>
-              </DialogFooter>
+                </AlertDialogAction>
+              </AlertDialogFooter>
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

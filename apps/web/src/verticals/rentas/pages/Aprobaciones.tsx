@@ -36,11 +36,21 @@
 // Label/EstadoCargando/EstadoVacio/EstadoError y clases de token en lugar de los
 // `style={{...}}` hechos a mano. El rechazo conserva EXACTAMENTE sus dos pasos
 // (revelar textarea de motivo -> "Confirmar rechazo") y el motivo sigue siendo
-// obligatorio; el paso de confirmación pasa a <Dialog> real. CERO cambios de lógica.
+// obligatorio; el paso de confirmación pasa a <AlertDialog> real (no
+// ModalFormularioLateral -- una confirmación no es un formulario, mismo criterio
+// que la referencia real). CERO cambios de lógica.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Check, Inbox, MessageSquarePlus, X } from "lucide-react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
@@ -48,12 +58,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -144,7 +148,7 @@ function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar,
 
             {/* Paso 2 del rechazo: el motivo sigue siendo obligatorio y la llamada al
                 servidor solo sale de "Confirmar rechazo", igual que antes. */}
-            <Dialog
+            <AlertDialog
               open={rechazando}
               onOpenChange={(abierto) => {
                 if (!abierto) {
@@ -154,11 +158,11 @@ function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar,
                 }
               }}
             >
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Rechazar este borrador</DialogTitle>
-                  <DialogDescription>El motivo queda registrado en el historial de la conversación y es obligatorio.</DialogDescription>
-                </DialogHeader>
+              <AlertDialogContent className="max-w-md">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Rechazar este borrador</AlertDialogTitle>
+                  <AlertDialogDescription>El motivo queda registrado en el historial de la conversación y es obligatorio.</AlertDialogDescription>
+                </AlertDialogHeader>
                 <Label className={LABEL_CLASES}>
                   Motivo del rechazo
                   <textarea
@@ -177,11 +181,8 @@ function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar,
                     {motivoError}
                   </p>
                 )}
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
+                <AlertDialogFooter>
+                  <AlertDialogCancel
                     onClick={() => {
                       setRechazando(false);
                       setMotivo("");
@@ -190,13 +191,23 @@ function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar,
                     disabled={busy}
                   >
                     Cancelar
-                  </Button>
-                  <Button type="button" variant="destructive" size="sm" onClick={confirmarRechazo} disabled={busy}>
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    // preventDefault: `confirmarRechazo` puede rechazar el intento (motivo
+                    // vacío -> `setMotivoError`, sin cerrar) -- el cierre solo lo decide
+                    // `onRechazar`/el estado `rechazando`, nunca el clic en sí.
+                    onClick={(e) => {
+                      e.preventDefault();
+                      confirmarRechazo();
+                    }}
+                    disabled={busy}
+                  >
                     {busy ? "Rechazando…" : "Confirmar rechazo"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </>
         ) : (
           <p className="m-0 text-xs text-muted-foreground">

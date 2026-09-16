@@ -39,25 +39,29 @@ const VERTICALES: readonly VerticalEntry[] = [
 
 export function SeleccionarVerticalPage() {
   return (
-    <main className="login min-h-screen flex flex-col items-center px-6 py-14 sm:py-20">
-      <header className="login-entra mb-12">
-        <AtiendeWordmark />
+    <main className="login min-h-screen flex flex-col items-center px-6 py-6 sm:py-8">
+      <header className="login-entra mb-4">
+        <AtiendeWordmark className="scale-90 origin-center" />
       </header>
 
       <div className="login-entra w-full max-w-4xl text-center" style={{ animationDelay: "60ms" }}>
         <p className="login-kicker">Bienvenido a atiende.ai</p>
-        <h1 className="login-serif mt-4 text-[32px] sm:text-[40px] text-foreground">¿A qué negocio quieres entrar?</h1>
-        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+        <h1 className="login-serif mt-2 text-[22px] sm:text-[28px] text-foreground">¿A qué negocio quieres entrar?</h1>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
           Elige tu vertical para ir a su panel de acceso.
         </p>
       </div>
 
-      <div className="login-entra grid w-full max-w-4xl grid-cols-2 gap-3 mt-10 sm:grid-cols-3" style={{ animationDelay: "120ms" }}>
+      {/* Tarjetas 4:3 (antes 3:4, casi el doble de alto que de ancho) --
+          pedido explícito: que la página quepa completa en un viewport de
+          ~900px de alto sin scroll. Más corta = 6 tarjetas + header + título +
+          footer caben sin recortar la descripción en hover. */}
+      <div className="login-entra grid w-full max-w-4xl grid-cols-2 gap-2.5 mt-5 sm:grid-cols-3" style={{ animationDelay: "120ms" }}>
         {VERTICALES.map(({ slug, nombre, descripcion }) => (
           <Link
             key={slug}
             to={`/${slug}/login`}
-            className="group relative block aspect-[3/4] overflow-hidden rounded-2xl border border-border/60 no-underline shadow-[0_10px_30px_-8px_rgb(0,0,0,0.12)]"
+            className="group relative block aspect-[4/3] overflow-hidden rounded-2xl border border-border/60 no-underline shadow-[0_10px_30px_-8px_rgb(0,0,0,0.12)]"
           >
             <img
               src={`${import.meta.env.BASE_URL}images/login-hero-${slug}.jpg`}
@@ -65,9 +69,9 @@ export function SeleccionarVerticalPage() {
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105 group-focus-visible:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
-              <span className="block text-[14px] sm:text-[15px] font-semibold text-white">{nombre}</span>
-              <span className="mt-0 grid grid-rows-[0fr] text-[12px] leading-snug text-white/80 opacity-0 transition-all duration-300 ease-out group-hover:mt-1.5 group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-visible:mt-1.5 group-focus-visible:grid-rows-[1fr] group-focus-visible:opacity-100">
+            <div className="absolute inset-x-0 bottom-0 p-3 sm:p-3.5">
+              <span className="block text-[13px] sm:text-[14px] font-semibold text-white">{nombre}</span>
+              <span className="mt-0 grid grid-rows-[0fr] text-[11px] leading-snug text-white/80 opacity-0 transition-all duration-300 ease-out group-hover:mt-1 group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-visible:mt-1 group-focus-visible:grid-rows-[1fr] group-focus-visible:opacity-100">
                 <span className="overflow-hidden">{descripcion}</span>
               </span>
             </div>
@@ -75,7 +79,7 @@ export function SeleccionarVerticalPage() {
         ))}
       </div>
 
-      <p className="login-entra mt-12 text-pretty text-center text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "180ms" }}>
+      <p className="login-entra mt-6 text-pretty text-center text-[11px] leading-relaxed text-muted-foreground" style={{ animationDelay: "180ms" }}>
         Al continuar, aceptas los{" "}
         <Link to="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
           Términos de Servicio

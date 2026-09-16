@@ -25,11 +25,13 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { EstadoError, Sidebar } from "@atiende/ui";
+import { DashboardHeader, EstadoError, NotificationBell, Sidebar } from "@atiende/ui";
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import type { LoginSession } from "../../lib/auth-client.ts";
+import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { useNotifications } from "../../lib/useNotifications.ts";
 import { fetchBranches, resolveActivePropertyId } from "./dashboard-client.ts";
 import type { BranchOption } from "./dashboard-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
@@ -48,6 +50,13 @@ export interface RestaurantesShellContext {
    * acciones que el servidor rechazaría igual (STAFF_INVITE_ROLES en admin-staff.ts
    * es SIEMPRE el enforcement real). */
   readonly role: string;
+  /** Nombre/correo reales del staff en sesión, para el saludo de la landing
+   * (`saludoConNombre`, ver Dashboard.tsx) — antes este contexto no exponía nada de
+   * `session` más allá de `token`. `staffFullName` puede venir ausente (ver el
+   * comentario de `LoginSession.fullName` en auth-client.ts), `saludoConNombre` ya
+   * cae a `staffEmail` en ese caso. */
+  readonly staffFullName: string | undefined;
+  readonly staffEmail: string;
 }
 
 export interface RestaurantesShellProps {
@@ -118,6 +127,14 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // sesión' en ninguna pantalla de restaurantes"): /auth/logout ya existe en el
   // backend (compartido entre verticales), solo faltaba el botón.
   const [loggingOut, setLoggingOut] = useState(false);
+  // Regla de hooks: este componente tiene returns condicionales más abajo (sesión sin
+  // resolver, error, sucursales cargando/vacías, redirección de repartidor) — el hook
+  // vive ANTES de todos ellos, en un punto que SIEMPRE se ejecuta, en vez de moverlo
+  // después de un return condicional. `session?.token ?? ""` deja que el hook arranque
+  // con un token vacío mientras la sesión resuelve (useNotifications ya maneja bien
+  // ese caso, ver su comentario de cabecera) y en las ramas de early-return el header
+  // ni siquiera se pinta.
+  const notif = useNotifications(apiBaseUrl, session?.token ?? "");
 
   useEffect(() => {
     const s = readPersistedSession(window.localStorage);
@@ -273,13 +290,30 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       <Sidebar sections={sections} user={{ email: session.email, rol: role }} onLogout={() => void handleLogout()} hotelSelector={sucursalSelector} />
 
       <div className="flex-1 min-w-0 flex flex-col gap-3">
-        <header className="h-14 shrink-0 flex items-center justify-between gap-3 px-1">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Restaurantes · {orgSlug}</p>
-            <p className="text-sm font-medium text-foreground truncate">{activeBranch.name}</p>
-          </div>
-          <BotonChatDatos />
-        </header>
+        <DashboardHeader
+          variant="vertical"
+          icon={<UtensilsCrossed className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+          title={
+            <span className="min-w-0 flex flex-col">
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Restaurantes · {orgSlug}</span>
+              <span className="text-sm font-medium text-foreground truncate">{activeBranch.name}</span>
+            </span>
+          }
+          fecha={fechaCortaEsMx()}
+          notificationBell={
+            <NotificationBell
+              items={notif.items}
+              unreadCount={notif.unreadCount}
+              loading={notif.loading}
+              onOpenChange={(open) => {
+                if (open) notif.refetch();
+              }}
+              onMarkRead={notif.onMarkRead}
+              onMarkAllRead={notif.onMarkAllRead}
+            />
+          }
+          chatButton={<BotonChatDatos />}
+        />
 
         {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
             cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
@@ -287,7 +321,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
             página que cachee en su propio useState un resultado calculado para la
             sucursal anterior queda cubierta sin tener que auditarlas una por una. */}
         <main key={propertyId} className="flex-1 min-w-0 overflow-auto rounded-2xl border border-border bg-card">
-          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+          {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
         </main>
       </div>
     </div>

@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Badge, Button, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
+import { saludoConNombre } from "../../../lib/greeting.ts";
 import { createOrUpdateTender, fetchTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchMatchingList } from "../lib/matching-client.ts";
@@ -70,7 +71,7 @@ function toIsoWithOffset(localValue: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${hh}:${mm}`;
 }
 
-export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
+export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role, staffFullName, staffEmail }: LicitacionesShellContext) {
   const [tenders, setTenders] = useState<readonly TenderSummary[] | null>(null);
   const [matching, setMatching] = useState<readonly MatchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -133,6 +134,7 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
+          <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
           <h1 className="text-xl font-semibold text-foreground">Convocatorias</h1>
           <p className="mt-1 text-[13px] text-muted-foreground">Alta manual mientras la ingesta automática siga bloqueada (ver README).</p>
         </div>

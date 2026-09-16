@@ -55,6 +55,7 @@ import { fetchTickets } from "../lib/housekeeping-client.ts";
 import type { MaintenanceTicketSummary } from "../lib/housekeeping-client.ts";
 import { fetchPedidosFnb } from "../lib/pedidos-fnb-client.ts";
 import type { FnbPedido } from "../lib/pedidos-fnb-client.ts";
+import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 // Mismo conjunto exacto que `PL_ROLES` (domain-hoteles/src/roles.ts) — redeclarado a
@@ -296,7 +297,10 @@ function OperationalSummary({ apiBaseUrl, token, propertyId, orgSlug, role }: Ho
 export function DashboardPage(ctx: HotelesShellContext) {
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="text-xl font-display font-semibold text-foreground">Panel de {ctx.orgSlug}</h1>
+      <div>
+        <p className="text-sm text-muted-foreground">{saludoConNombre(ctx.staffFullName, ctx.staffEmail)}</p>
+        <h1 className="text-xl font-display font-semibold text-foreground">Panel de {ctx.orgSlug}</h1>
+      </div>
       {EXECUTIVE_ROLES.has(ctx.role) ? <ExecutiveSummary {...ctx} /> : <OperationalSummary {...ctx} />}
     </div>
   );

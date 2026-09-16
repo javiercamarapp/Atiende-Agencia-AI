@@ -18,17 +18,20 @@ import type {
   AcceptStaffInviteResult,
   CoreRepository,
   CoreStaffRepository,
+  CreateProspectoInput,
   CreateStaffInviteInput,
   MembershipRow,
+  NotificationRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
+  ProspectoRow,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffInviteStatus,
   StaffUserRow,
   SuperadminOrganizationRow,
 } from "./core-repository.ts";
-import { MembershipRoleUpdateError, StaffInviteInvalidError } from "./core-repository.ts";
+import { MembershipRoleUpdateError, NotificationNotFoundError, ProspectoNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
 
 interface StaffUserRawRow {
   readonly id: string;
@@ -89,6 +92,68 @@ function mapOrganizationMemberWithRole(row: OrganizationMemberWithRoleRawRow): O
     platformRole: row.platform_role,
     verticalRole: row.vertical_role,
     propertyIds: row.property_ids,
+  };
+}
+
+interface NotificationRawRow {
+  readonly id: string;
+  readonly vertical: string | null;
+  readonly titulo: string;
+  readonly cuerpo: string | null;
+  readonly entidad_tipo: string | null;
+  readonly entidad_id: string | null;
+  readonly created_at: string;
+  readonly read_at: string | null;
+}
+
+function mapNotification(row: NotificationRawRow): NotificationRow {
+  return {
+    id: row.id,
+    vertical: row.vertical,
+    titulo: row.titulo,
+    cuerpo: row.cuerpo,
+    entidadTipo: row.entidad_tipo,
+    entidadId: row.entidad_id,
+    createdAt: row.created_at,
+    readAt: row.read_at,
+  };
+}
+
+// core.prospecto: `list`/`create`/`update_prospecto_for_superadmin` devuelven la
+// fila REAL de la tabla (`returns setof core.prospecto`/`returns core.prospecto`,
+// ver la migración 0012) -- mismas columnas snake_case que la tabla, nunca una
+// forma distinta por función.
+interface ProspectoRawRow {
+  readonly id: string;
+  readonly empresa: string;
+  readonly vertical: string;
+  readonly ciudad: string | null;
+  readonly contacto_nombre: string | null;
+  readonly telefono: string | null;
+  readonly correo: string | null;
+  readonly estado: string;
+  readonly fuente: string | null;
+  readonly notas: string | null;
+  readonly creado_por: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+function mapProspecto(row: ProspectoRawRow): ProspectoRow {
+  return {
+    id: row.id,
+    empresa: row.empresa,
+    vertical: row.vertical,
+    ciudad: row.ciudad,
+    contactoNombre: row.contacto_nombre,
+    telefono: row.telefono,
+    correo: row.correo,
+    estado: row.estado,
+    fuente: row.fuente,
+    notas: row.notas,
+    creadoPor: row.creado_por,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -395,5 +460,87 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       [callerId],
     );
     return new Map(rows.map((r) => [r.organization_id, Number(r.staff_count)]));
+  }
+
+  // ---- Infraestructura de notificaciones — ver el comentario de cabecera de
+  // `supabase/migrations/20240101000115_0013_notifications_schema.sql`: las 4
+  // funciones son `security definer` que reciben `p_staff_id` explícito, mismo
+  // criterio que login/`isPlatformSuperadmin` — ninguna depende de `auth.uid()`. ----
+
+  async listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]> {
+    const { rows } = await this.db.query<NotificationRawRow>(
+      `select id, vertical, titulo, cuerpo, entidad_tipo, entidad_id, created_at, read_at
+       from core.list_notifications_for_staff($1);`,
+      [staffId],
+    );
+    return rows.map(mapNotification);
+  }
+
+  async countUnreadNotificationsForStaff(staffId: string): Promise<number> {
+    const { rows } = await this.db.query<{ count_unread_notifications_for_staff: number }>(
+      `select core.count_unread_notifications_for_staff($1) as count_unread_notifications_for_staff;`,
+      [staffId],
+    );
+    return rows[0]?.count_unread_notifications_for_staff ?? 0;
+  }
+
+  async markNotificationRead(staffId: string, notificationId: string): Promise<void> {
+    try {
+      await this.db.query(`select core.mark_notification_read($1, $2);`, [staffId, notificationId]);
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "P0002") throw new NotificationNotFoundError();
+      throw err;
+    }
+  }
+
+  async markAllNotificationsRead(staffId: string): Promise<number> {
+    const { rows } = await this.db.query<{ mark_all_notifications_read: number }>(
+      `select core.mark_all_notifications_read($1) as mark_all_notifications_read;`,
+      [staffId],
+    );
+    return rows[0]?.mark_all_notifications_read ?? 0;
+  }
+
+  // ---- "Cerebro de ventas" — ver el comentario de cabecera de
+  // `supabase/migrations/20240101000114_0012_superadmin_prospectos.sql`: las 3
+  // funciones son `security definer`, validan `is_platform_superadmin(p_caller_id)`
+  // DENTRO de la función SQL. ----
+
+  async listProspectosForSuperadmin(callerId: string): Promise<readonly ProspectoRow[]> {
+    const { rows } = await this.db.query<ProspectoRawRow>(
+      `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+       from core.list_prospectos_for_superadmin($1);`,
+      [callerId],
+    );
+    return rows.map(mapProspecto);
+  }
+
+  async createProspectoForSuperadmin(callerId: string, input: CreateProspectoInput): Promise<ProspectoRow> {
+    const { rows } = await this.db.query<ProspectoRawRow>(
+      `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+       from core.create_prospecto_for_superadmin($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+      [callerId, input.empresa, input.vertical, input.ciudad, input.contactoNombre, input.telefono, input.correo, input.fuente, input.notas],
+    );
+    const row = rows[0];
+    if (!row) throw new Error("create_prospecto_for_superadmin no devolvió ninguna fila.");
+    return mapProspecto(row);
+  }
+
+  async updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow> {
+    try {
+      const { rows } = await this.db.query<ProspectoRawRow>(
+        `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+         from core.update_prospecto_for_superadmin($1, $2, $3, $4);`,
+        [callerId, prospectoId, estado, notas],
+      );
+      const row = rows[0];
+      if (!row) throw new ProspectoNotFoundError();
+      return mapProspecto(row);
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "P0002") throw new ProspectoNotFoundError();
+      throw err;
+    }
   }
 }

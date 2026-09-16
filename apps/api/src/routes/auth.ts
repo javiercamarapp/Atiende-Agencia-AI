@@ -77,7 +77,7 @@ function validateLoginBody(body: LoginBody): { email: string; password: string }
  *  diferencia de hoteles, que sí duplica esta función en su propio `auth-google.ts`
  *  por evitar un choque de merge entre correctores en paralelo de esa fase; aquí no
  *  aplica el mismo riesgo, así que se prefiere una sola fuente de verdad). */
-export async function issueSession(deps: AppDeps, staffId: string, email: string) {
+export async function issueSession(deps: AppDeps, staffId: string, email: string, fullName: string) {
   const memberships = await deps.coreRepo.findMembershipsByUserId(staffId);
   const first = memberships[0];
   // Fase 1: un token corresponde a UNA organización activa (mismo patrón que
@@ -100,6 +100,11 @@ export async function issueSession(deps: AppDeps, staffId: string, email: string
     token,
     refreshToken,
     email,
+    // Nombre real del staff (`core.staff_user.full_name`, siempre presente -- lo pide
+    // el propio formulario de aceptar invitación) -- se agrega aquí para que el
+    // saludo real ("Buenos días, {nombre}") de cada Dashboard tenga algo mejor que el
+    // correo, sin depender de una llamada aparte.
+    fullName,
     organizations: memberships.map((m) => ({ id: m.organizationId, slug: m.organizationSlug, nombre: m.organizationName, vertical: m.vertical, rol: m.verticalRole })),
   };
 }
@@ -130,7 +135,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       throw Errors.forbidden("Todavía no confirmas tu correo. Revisa tu bandeja o pide que te reenvíen el enlace de verificación.");
     }
 
-    return c.json(await issueSession(deps, staff.id, staff.email), 200);
+    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName), 200);
   });
 
   app.post("/auth/refresh", async (c) => {
@@ -191,7 +196,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // si el staff hubiera hecho logout explícito con él.
     await deps.coreRepo.revokeRefreshToken({ jti, userId: sub, expiresAt: new Date(exp * 1000).toISOString() });
 
-    return c.json(await issueSession(deps, staff.id, staff.email), 200);
+    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName), 200);
   });
 
   // Hallazgo de auditoría (severidad ALTA, "sin logout explícito en el panel de
@@ -245,15 +250,22 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.use("/auth/me", authMiddleware(deps.env));
   app.get("/auth/me", async (c) => {
     const userId = c.get("userId");
-    // Ejecutados en paralelo -- son dos lecturas independientes de la misma
-    // sesión de staff, ninguna depende del resultado de la otra.
-    const [memberships, isPlatformSuperadmin] = await Promise.all([
+    // Ejecutados en paralelo -- son tres lecturas independientes de la misma
+    // sesión de staff, ninguna depende del resultado de las otras. `staff` se
+    // agrega aquí SOLO por `fullName` -- GoogleCallback.tsx (el único caller real
+    // de este endpoint) arma su `LoginSession` desde esta respuesta, y sin esto
+    // un login por Google se quedaría sin nombre real para el saludo (a
+    // diferencia de login/refresh/accept-invite, que ya lo traen de
+    // `issueSession`).
+    const [memberships, isPlatformSuperadmin, staff] = await Promise.all([
       deps.coreRepo.findMembershipsByUserId(userId),
       deps.coreRepo.isPlatformSuperadmin(userId),
+      deps.coreRepo.findStaffById(userId),
     ]);
     return c.json({
       id: userId,
       email: c.get("userEmail"),
+      fullName: staff?.fullName ?? "",
       organizations: memberships.map((m) => ({ id: m.organizationId, slug: m.organizationSlug, nombre: m.organizationName, vertical: m.vertical, rol: m.verticalRole })),
       // Back office de plataforma (`apps/web/src/superadmin/**`) -- el puente
       // de login compartido (`shell/GoogleCallback.tsx`) redirige aquí en vez
@@ -340,7 +352,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     // Sesión inmediata (mismo `issueSession` que login/refresh) — el invitado queda
     // "vinculado" Y autenticado en una sola llamada, sin un paso extra de login.
-    return c.json(await issueSession(deps, result.staffId, result.email), 200);
+    return c.json(await issueSession(deps, result.staffId, result.email, fullName), 200);
   });
 
   return app;

@@ -45,6 +45,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  BedDouble,
   CalendarCheck,
   ClipboardCheck,
   LayoutDashboard,
@@ -55,9 +56,11 @@ import {
   UtensilsCrossed,
   Wrench,
 } from "lucide-react";
-import { AtiendeWordmark, EstadoCargando, EstadoError, MobileHeader, Sidebar } from "@atiende/ui";
+import { AtiendeWordmark, DashboardHeader, EstadoCargando, EstadoError, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { useNotifications } from "../../lib/useNotifications.ts";
 import { clearHotelesSession, logout, readPersistedHotelesSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
@@ -80,6 +83,12 @@ export interface HotelesShellContext {
    * (TOMAR_PEDIDO_ROLES/CONFIRMAR_COCINA_ROLES en roles.ts, exigidas por
    * assertVerticalRole en pedidosFnb.ts, son SIEMPRE el enforcement real). */
   readonly role: string;
+  /** Nombre completo y correo del staff en sesión — expuestos a las páginas hijas
+   * (header compartido, DashboardHeader/NotificationBell) solo para pintar el
+   * saludo real (`saludoConNombre`, ver pages/Dashboard.tsx); antes este contexto
+   * no exponía nada de identidad del staff más allá de lo que ya necesitaba `role`. */
+  readonly staffFullName: string | undefined;
+  readonly staffEmail: string;
 }
 
 export interface HotelesShellProps {
@@ -131,7 +140,13 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
   // que un clic doble en un equipo compartido de recepción no dispare dos requests —
   // `logout()` es best-effort (nunca lanza, ver su comentario de cabecera en
   // apps/web/src/lib/auth-client.ts), así que esto es solo UX, no manejo de error.
-  const [loggingOut, setLoggingOut] = useState(false);
+  // El indicador visual de "Cerrando sesión…" que leía este estado vivía en el
+  // `<header>` que este cambio reemplaza por `DashboardHeader` (sin slot para
+  // texto libre) — mismo criterio ya aplicado en CitasShell.tsx/LicitacionesShell.tsx
+  // al integrar el mismo header compartido. `setLoggingOut` se conserva (sigue
+  // siendo la UX de "no dispares un segundo POST /auth/logout con doble clic");
+  // solo se deja de leer el valor.
+  const [, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const s = readPersistedHotelesSession(window.localStorage);
@@ -197,6 +212,14 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       onRequireLogin();
     }
   }
+
+  // Campana de notificaciones (header compartido) — llamada AQUÍ, antes de los
+  // returns condicionales de abajo (reglas de hooks: un hook no puede vivir
+  // después de un return condicional). `session?.token ?? ""` deja que el hook
+  // se monte igual mientras la sesión resuelve/no existe; ya maneja bien un
+  // token vacío (ver cabecera de useNotifications.ts) y en esas ramas el header
+  // ni siquiera llega a pintarse.
+  const notif = useNotifications(apiBaseUrl, session?.token ?? "");
 
   if (session === undefined) return null; // resolviendo sesión persistida
   if (!session) return null; // onRequireLogin ya disparó la redirección
@@ -321,19 +344,30 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       <MobileHeader title={<AtiendeWordmark className="scale-90 origin-left" />} action={hotelSelector} />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="hidden md:flex items-center justify-between gap-3 px-3 py-2">
-          <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-            Hoteles · {orgSlug}
-          </p>
-          <div className="flex items-center gap-3">
-            <BotonChatDatos />
-            <span className="text-sm text-muted-foreground truncate max-w-[220px]">{session.email}</span>
-            {loggingOut && <span className="text-xs text-muted-foreground">Cerrando sesión…</span>}
-          </div>
-        </header>
+        <div className="hidden md:block">
+          <DashboardHeader
+            variant="vertical"
+            icon={<BedDouble className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+            title={`Hoteles · ${orgSlug}`}
+            fecha={fechaCortaEsMx()}
+            notificationBell={
+              <NotificationBell
+                items={notif.items}
+                unreadCount={notif.unreadCount}
+                loading={notif.loading}
+                onOpenChange={(open) => {
+                  if (open) notif.refetch();
+                }}
+                onMarkRead={notif.onMarkRead}
+                onMarkAllRead={notif.onMarkAllRead}
+              />
+            }
+            chatButton={<BotonChatDatos />}
+          />
+        </div>
         <main className="flex-1 overflow-auto px-4 pt-20 pb-6 md:pt-4 md:px-6">
           <div key={propertyId} className="max-w-6xl mx-auto w-full">
-            {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+            {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
           </div>
         </main>
       </div>

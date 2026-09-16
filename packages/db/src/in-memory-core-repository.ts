@@ -19,16 +19,19 @@ import type {
   AcceptStaffInviteResult,
   CoreRepository,
   CoreStaffRepository,
+  CreateProspectoInput,
   CreateStaffInviteInput,
   MembershipRow,
+  NotificationRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
+  ProspectoRow,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
   SuperadminOrganizationRow,
 } from "./core-repository.ts";
-import { MembershipRoleUpdateError, StaffInviteInvalidError } from "./core-repository.ts";
+import { MembershipRoleUpdateError, NotificationNotFoundError, ProspectoNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
 
 export interface SeedOrganization {
   readonly id: string;
@@ -80,6 +83,34 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   private readonly magicLinkTokens = new Map<string, { staffId: string; expiresAt: string; used: boolean }>();
   // Back office de plataforma — mismo dato que `core.platform_superadmin`.
   private readonly platformSuperadmins = new Set<string>();
+  // Infraestructura de notificaciones — mismo dato que `core.notification`, con
+  // `staffUserId` guardado aparte (no expuesto en `NotificationRow`, mismo criterio
+  // que `SeedMembership.userId` para membership) para poder filtrar por dueño.
+  private readonly notifications = new Map<string, NotificationRow & { readonly staffUserId: string }>();
+  // "notificationId" leída por CADA staff que la marcó — mismo dato que
+  // `core.notification_read` (clave compuesta staff+notificación), aquí como
+  // `Set<`${staffUserId}:${notificationId}`>` porque `NotificationRow.readAt` ya vive
+  // mezclado por-lectura en `withReadAt` de abajo, nunca mutado en la fila guardada.
+  private readonly notificationReadsByStaff = new Map<string, Set<string>>();
+  // `readKey (\`${staffUserId}:${notificationId}\`) -> readAt` guardado aparte de
+  // `notificationReadsByStaff` (que solo necesita saber SI se leyó, para `Set.has`)
+  // porque el propio `NotificationRow` necesita el timestamp real -- misma
+  // separación de mapas que `sessionsRevokedAtByUserId` arriba (nunca mutar la fila
+  // guardada en `this.notifications`, mezclar solo al leer).
+  private readonly readAtByKey = new Map<string, string>();
+  // "Cerebro de ventas" — mismo dato que `core.prospecto`.
+  private readonly prospectos = new Map<string, ProspectoRow>();
+
+  /** Solo para fixtures de prueba (`apps/api/tests/fixtures.ts`) — agrega una
+   *  notificación ya creada (mismo criterio que `addStaff`/`addMembership`: nunca
+   *  invocado desde código de producción, ahí el alta real vive donde sea que un
+   *  dominio decida escribir `core.notification`). `readAt` se ignora aquí a
+   *  propósito (siempre nace no leída, igual que una fila real recién insertada) —
+   *  usa `markNotificationRead`/`markAllNotificationsRead` para simular que ya se
+   *  leyó. */
+  addNotification(staffUserId: string, notification: Omit<NotificationRow, "readAt">): void {
+    this.notifications.set(notification.id, { ...notification, readAt: null, staffUserId });
+  }
 
   /** Solo para fixtures de prueba (`apps/api/tests/fixtures.ts`) — mismo
    *  criterio que `addStaff`/`addMembership`, nunca invocado desde código de
@@ -376,5 +407,100 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
       counts.set(m.organizationId, (counts.get(m.organizationId) ?? 0) + 1);
     }
     return counts;
+  }
+
+  // ---- Infraestructura de notificaciones — ver el contrato completo en
+  // `core-repository.ts`. En memoria no hay ninguna sesión/RLS que emular (mismo
+  // criterio que el resto de este archivo): solo filtra `this.notifications` por
+  // `staffUserId` y resuelve `readAt` contra `notificationReadsByStaff`. ----
+
+  private withReadAt(n: NotificationRow & { readonly staffUserId: string }, staffId: string): NotificationRow {
+    const readKey = `${staffId}:${n.id}`;
+    const read = this.notificationReadsByStaff.get(staffId)?.has(n.id) ?? false;
+    return { id: n.id, vertical: n.vertical, titulo: n.titulo, cuerpo: n.cuerpo, entidadTipo: n.entidadTipo, entidadId: n.entidadId, createdAt: n.createdAt, readAt: read ? (this.readAtByKey.get(readKey) ?? new Date().toISOString()) : null };
+  }
+
+  async listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]> {
+    return [...this.notifications.values()]
+      .filter((n) => n.staffUserId === staffId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 50)
+      .map((n) => this.withReadAt(n, staffId));
+  }
+
+  async countUnreadNotificationsForStaff(staffId: string): Promise<number> {
+    const read = this.notificationReadsByStaff.get(staffId);
+    return [...this.notifications.values()].filter((n) => n.staffUserId === staffId && !(read?.has(n.id) ?? false)).length;
+  }
+
+  async markNotificationRead(staffId: string, notificationId: string): Promise<void> {
+    const notification = this.notifications.get(notificationId);
+    if (!notification || notification.staffUserId !== staffId) throw new NotificationNotFoundError();
+    let read = this.notificationReadsByStaff.get(staffId);
+    if (!read) {
+      read = new Set<string>();
+      this.notificationReadsByStaff.set(staffId, read);
+    }
+    if (!read.has(notificationId)) {
+      read.add(notificationId);
+      this.readAtByKey.set(`${staffId}:${notificationId}`, new Date().toISOString());
+    }
+  }
+
+  async markAllNotificationsRead(staffId: string): Promise<number> {
+    let read = this.notificationReadsByStaff.get(staffId);
+    if (!read) {
+      read = new Set<string>();
+      this.notificationReadsByStaff.set(staffId, read);
+    }
+    let affected = 0;
+    const now = new Date().toISOString();
+    for (const n of this.notifications.values()) {
+      if (n.staffUserId !== staffId || read.has(n.id)) continue;
+      read.add(n.id);
+      this.readAtByKey.set(`${staffId}:${n.id}`, now);
+      affected += 1;
+    }
+    return affected;
+  }
+
+  // ---- "Cerebro de ventas" — ver el contrato completo en `core-repository.ts`. En
+  // memoria, el chequeo de autorización espeja el `where core.is_platform_superadmin
+  // (p_caller_id)` real: `list` devuelve vacío, `create`/`update` lanzan. ----
+
+  async listProspectosForSuperadmin(callerId: string): Promise<readonly ProspectoRow[]> {
+    if (!this.platformSuperadmins.has(callerId)) return [];
+    return [...this.prospectos.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async createProspectoForSuperadmin(callerId: string, input: CreateProspectoInput): Promise<ProspectoRow> {
+    if (!this.platformSuperadmins.has(callerId)) throw new Error("forbidden");
+    const now = new Date().toISOString();
+    const row: ProspectoRow = {
+      id: randomUUID(),
+      empresa: input.empresa,
+      vertical: input.vertical,
+      ciudad: input.ciudad,
+      contactoNombre: input.contactoNombre,
+      telefono: input.telefono,
+      correo: input.correo,
+      estado: "nuevo",
+      fuente: input.fuente,
+      notas: input.notas,
+      creadoPor: callerId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.prospectos.set(row.id, row);
+    return row;
+  }
+
+  async updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow> {
+    if (!this.platformSuperadmins.has(callerId)) throw new Error("forbidden");
+    const current = this.prospectos.get(prospectoId);
+    if (!current) throw new ProspectoNotFoundError();
+    const updated: ProspectoRow = { ...current, estado: estado ?? current.estado, notas: notas ?? current.notas, updatedAt: new Date().toISOString() };
+    this.prospectos.set(prospectoId, updated);
+    return updated;
   }
 }

@@ -7,21 +7,26 @@
 // Visual (ronda de integración del design system real, @atiende/ui): reemplaza
 // tarjetas/pills/inputs de estilos inline por Card/Badge/Input/Button reales — mismo
 // criterio ya aplicado en HotelesShell.tsx/Login.tsx. El modal de confirmación de
-// cierre (antes `<ConfirmModal>` de estilos inline, ver components/ConfirmModal.tsx)
-// ahora usa `Dialog`/`DialogContent` reales del design system — mismo contrato
-// (open/onConfirm/onCancel/busy), sin cambiar cuándo se abre ni qué confirma.
+// cierre (antes `<ConfirmModal>` de estilos inline, ver components/ConfirmModal.tsx,
+// ahora eliminado por no usarse en ningún lado) usa `AlertDialog` real del design
+// system (no `Dialog`/`ModalFormularioLateral` -- mismo criterio que la referencia
+// real, atiende-restaurantes/PedidosSection.tsx: una confirmación sí/no no es un
+// formulario) — mismo contrato (open/onConfirm/onCancel/busy), sin cambiar cuándo
+// se abre ni qué confirma.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Receipt } from "lucide-react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   EstadoCargando,
   EstadoError,
   Input,
@@ -290,26 +295,35 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
         </div>
       )}
 
-      <Dialog open={pendingClose !== null} onOpenChange={(open) => { if (!open && !busy) setPendingClose(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{pendingClose === "cuenta_por_cobrar" ? "Cerrar como cuenta por cobrar" : "Cerrar folio"}</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={pendingClose !== null} onOpenChange={(open) => { if (!open && !busy) setPendingClose(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingClose === "cuenta_por_cobrar" ? "Cerrar como cuenta por cobrar" : "Cerrar folio"}</AlertDialogTitle>
+            <AlertDialogDescription>
               {pendingClose === "cuenta_por_cobrar"
                 ? `¿Cerrar este folio (saldo ${formatMoney(folio.saldo)}) como cuenta por cobrar? Esta acción es irreversible desde este panel: el folio queda cerrado y el saldo pendiente pasa a cobranza.`
                 : `¿Cerrar este folio con saldo en cero? Esta acción es irreversible desde este panel: el folio queda cerrado y ya no admite cargos ni pagos nuevos.`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPendingClose(null)} disabled={busy}>
-              Volver
-            </Button>
-            <Button type="button" variant="destructive" onClick={() => void handleConfirmClose()} disabled={busy}>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                // preventDefault: AlertDialogAction cierra solo por defecto -- este modal
+                // sigue controlado por `pendingClose`/`busy` (mismo criterio que antes de
+                // migrar de Dialog), no queremos que se cierre de golpe antes de que
+                // termine `handleConfirmClose` (que muestra un estado "busy" mientras corre).
+                e.preventDefault();
+                void handleConfirmClose();
+              }}
+              disabled={busy}
+            >
               {pendingClose === "cuenta_por_cobrar" ? "Sí, cerrar como cuenta por cobrar" : "Sí, cerrar folio"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

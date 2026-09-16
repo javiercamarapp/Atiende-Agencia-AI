@@ -15,10 +15,12 @@
 // mismo listener de SESSION_EXPIRED_EVENT.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Building2, Gavel, Radar, Target, Users } from "lucide-react";
-import { Sidebar, EstadoError, EstadoVacio, MobileHeader, BottomNav } from "@atiende/ui";
+import { Building2, FileText, Gavel, Radar, Target, Users } from "lucide-react";
+import { Sidebar, DashboardHeader, NotificationBell, EstadoError, EstadoVacio, MobileHeader, BottomNav } from "@atiende/ui";
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { useNotifications } from "../../lib/useNotifications.ts";
+import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches } from "./lib/admin-client.ts";
@@ -36,6 +38,11 @@ export interface LicitacionesShellContext {
    * ver domain-licitaciones/src/roles.ts) — cosmético, para ocultar botones que el
    * servidor rechazaría igual; nunca la única barrera. */
   readonly role: string;
+  /** Para el saludo real (`saludoConNombre`) del landing (Convocatorias.tsx) --
+   *  el Shell ya resuelve `session` pero no lo exponía completo a las páginas
+   *  hijas, solo estos dos campos puntuales. */
+  readonly staffFullName: string | undefined;
+  readonly staffEmail: string;
 }
 
 export interface LicitacionesShellProps {
@@ -60,6 +67,11 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // Mismo hallazgo de auditoría que hoteles/restaurantes/citas: /auth/logout ya
   // existe en el backend (compartido entre verticales), solo faltaba el botón.
   const [loggingOut, setLoggingOut] = useState(false);
+  // Regla de hooks: este componente tiene early-returns condicionales más abajo
+  // (sesión sin resolver/ausente, error, branches cargando/vacío) -- el hook se
+  // llama aquí, ANTES de cualquiera de esos returns, con `session?.token ?? ""`
+  // (useNotifications ya tolera un token vacío, ver su comentario de cabecera).
+  const notif = useNotifications(apiBaseUrl, session?.token ?? "");
 
   useEffect(() => {
     const s = readPersistedLicitacionesSession(window.localStorage);
@@ -178,7 +190,15 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     },
   ];
 
-  const contexto: LicitacionesShellContext = { apiBaseUrl, token: session.token, propertyId, orgSlug, role };
+  const contexto: LicitacionesShellContext = {
+    apiBaseUrl,
+    token: session.token,
+    propertyId,
+    orgSlug,
+    role,
+    staffFullName: session.fullName,
+    staffEmail: session.email,
+  };
 
   return (
     <div className="min-h-screen bg-muted/30 flex gap-3 p-3">
@@ -204,15 +224,26 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       />
 
       <div className="flex-1 min-w-0 flex flex-col gap-3 pt-16 pb-20 md:pt-0 md:pb-0">
-        <header className="hidden md:flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 shrink-0">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Licitaciones · {orgSlug}</p>
-            <p className="text-[13px] text-foreground">
-              Rol: <span className="text-muted-foreground">{role}</span>
-            </p>
-          </div>
-          <BotonChatDatos />
-        </header>
+        <DashboardHeader
+          className="hidden md:flex"
+          variant="vertical"
+          icon={<FileText className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+          title={`Licitaciones · ${orgSlug}`}
+          fecha={fechaCortaEsMx()}
+          notificationBell={
+            <NotificationBell
+              items={notif.items}
+              unreadCount={notif.unreadCount}
+              loading={notif.loading}
+              onOpenChange={(open) => {
+                if (open) notif.refetch();
+              }}
+              onMarkRead={notif.onMarkRead}
+              onMarkAllRead={notif.onMarkAllRead}
+            />
+          }
+          chatButton={<BotonChatDatos />}
+        />
 
         <main className="flex-1 min-w-0 overflow-auto rounded-2xl border border-border bg-card p-4 sm:p-6">{children(contexto)}</main>
       </div>

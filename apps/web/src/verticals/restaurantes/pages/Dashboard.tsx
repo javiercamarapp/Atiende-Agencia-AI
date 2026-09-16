@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { fetchDashboardData, formatDays, formatInt, formatMoney, formatPct, formatSignedPct, PERIOD_OPTIONS } from "../dashboard-client.ts";
 import type { DashboardData, StatsPeriod } from "../dashboard-client.ts";
+import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 /** Mismos 4 tiers de siempre (label/glifo idénticos); el color deja de ser un hex
@@ -82,7 +83,7 @@ function TituloSeccion({ children }: { children: string }) {
   return <p className="m-0 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">{children}</p>;
 }
 
-export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullName, staffEmail }: RestaurantesShellContext) {
   const [period, setPeriod] = useState<StatsPeriod>("30");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -114,7 +115,10 @@ export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSl
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">Panel de {orgSlug}</h1>
+        <div className="flex flex-col gap-1">
+          <p className="m-0 text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
+          <h1 className="m-0 font-display text-xl font-semibold text-foreground">Panel de {orgSlug}</h1>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={period} onValueChange={(v) => setPeriod(v as StatsPeriod)}>
             <TabsList className="flex-wrap">

@@ -5,22 +5,26 @@
 //
 // Presentación real desde esta ronda: los `style={{...}}` inline de antes pasan a los
 // primitivos de `@atiende/ui` — `Tabs` para el filtro por estado, `Card` por pedido,
-// `Badge` para el estado, `Button` para cada transición y `Dialog` para la
+// `Badge` para el estado, `Button` para cada transición y `AlertDialog` para la
 // confirmación de "cancelado" (antes un `window.confirm` del navegador, ver el
-// comentario de `handleChangeStatus`). El gate de confirmación, las transiciones
-// ofrecidas y todas las llamadas al backend son EXACTAMENTE las mismas.
+// comentario de `handleChangeStatus`; no `Dialog`/`ModalFormularioLateral` -- una
+// confirmación no es un formulario, mismo criterio que la referencia real). El
+// gate de confirmación, las transiciones ofrecidas y todas las llamadas al
+// backend son EXACTAMENTE las mismas.
 import { useEffect, useState } from "react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
   CardContent,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -61,7 +65,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
   const [assigningId, setAssigningId] = useState<string | null>(null);
   // Pedido esperando la confirmación de cancelación (ver `handleChangeStatus`) —
   // `null` mientras no haya ninguna en curso, que es lo que mantiene cerrado el
-  // <Dialog> del final del archivo.
+  // <AlertDialog> del final del archivo.
   const [pedidoACancelar, setPedidoACancelar] = useState<OrderSummary | null>(null);
 
   async function load() {
@@ -118,7 +122,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
   // real que citas/Agenda.tsx::runLifecycleAction usa para su acción "cancel". Las demás
   // transiciones (preparando/en_camino/entregado/problema, y "completado" mismo — el
   // desenlace ESPERADO del flujo feliz) no ganan nada con un confirm de más. El gate es
-  // el MISMO de siempre; desde esta ronda lo pinta el <Dialog> del sistema de diseño en
+  // el MISMO de siempre; desde esta ronda lo pinta el <AlertDialog> del sistema de diseño en
   // vez del `window.confirm` del navegador.
   function handleChangeStatus(order: OrderSummary, nextStatus: OrderStatus) {
     if (nextStatus === "cancelado") {
@@ -253,24 +257,28 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
         ))}
       </div>
 
-      <Dialog open={pedidoACancelar !== null} onOpenChange={(abierto) => !abierto && setPedidoACancelar(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Cancelar pedido</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={pedidoACancelar !== null} onOpenChange={(abierto) => !abierto && setPedidoACancelar(null)}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar pedido</AlertDialogTitle>
+            <AlertDialogDescription>
               {pedidoACancelar ? `¿Cancelar el pedido de ${pedidoACancelar.customerName}? Esta acción no se puede deshacer.` : null}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPedidoACancelar(null)}>
-              Volver
-            </Button>
-            <Button type="button" variant="destructive" onClick={() => void confirmarCancelacion()}>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPedidoACancelar(null)}>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmarCancelacion();
+              }}
+            >
               Cancelar el pedido
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

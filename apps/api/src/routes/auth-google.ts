@@ -159,7 +159,7 @@ export function authGoogleRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         staff = existingByEmail;
       }
 
-      const session = await issueSession(deps, staff.id, staff.email);
+      const session = await issueSession(deps, staff.id, staff.email, staff.fullName);
 
       const url = new URL(`/${vertical}/auth/google/callback`, deps.env.appBaseUrl);
       url.searchParams.set("token", session.token);

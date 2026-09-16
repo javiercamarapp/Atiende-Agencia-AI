@@ -9,25 +9,30 @@
 // botones/pills/tarjetas/inputs de estilos inline por Button/Tabs/Card/Badge/Input/
 // Label reales — mismo criterio ya aplicado en HotelesShell.tsx/Login.tsx. El modal
 // de confirmación de cancelación (antes `<ConfirmModal>` de estilos inline, ver
-// components/ConfirmModal.tsx) ahora usa `Dialog`/`DialogContent` reales del design
-// system — mismo contrato (open/onConfirm/onCancel/busy), sin cambiar cuándo se abre
-// ni qué confirma. Ningún cambio de lógica: mismos props, mismo estado, mismas
-// llamadas de red, misma condición de cada rama.
+// components/ConfirmModal.tsx, ahora eliminado por no usarse en ningún lado) usa
+// `AlertDialog` real del design system (no `Dialog`/`ModalFormularioLateral` --
+// mismo criterio que la referencia real, atiende-restaurantes/PedidosSection.tsx:
+// una confirmación sí/no no es un formulario) — mismo contrato
+// (open/onConfirm/onCancel/busy), sin cambiar cuándo se abre ni qué confirma.
+// Ningún cambio de lógica: mismos props, mismo estado, mismas llamadas de red,
+// misma condición de cada rama.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
   CardContent,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
@@ -521,31 +526,35 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
         </TabsContent>
       </Tabs>
 
-      <Dialog open={pendingCancel !== null} onOpenChange={(open) => { if (!open) setPendingCancel(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancelar reserva</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={pendingCancel !== null} onOpenChange={(open) => { if (!open) setPendingCancel(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar reserva</AlertDialogTitle>
+            <AlertDialogDescription>
               {pendingCancel
                 ? `¿Cancelar la reserva ${pendingCancel.checkInDate} → ${pendingCancel.checkOutDate}? Esta acción libera la disponibilidad reservada y puede aplicar una penalización de cancelación.`
                 : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPendingCancel(null)} disabled={pendingCancel !== null && busyId === pendingCancel.id}>
-              Volver
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => void handleConfirmCancel()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pendingCancel !== null && busyId === pendingCancel.id}>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              // preventDefault: AlertDialogAction cierra solo por defecto -- este modal
+              // sigue controlado por `pendingCancel`/`busyId` (mismo criterio que antes de
+              // migrar de Dialog), no queremos que se cierre antes de que termine
+              // `handleConfirmCancel`.
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmCancel();
+              }}
               disabled={pendingCancel !== null && busyId === pendingCancel.id}
             >
               Sí, cancelar reserva
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
