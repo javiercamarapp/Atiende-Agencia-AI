@@ -23,6 +23,7 @@ import { PrivacidadPage } from "./pages/Privacidad.tsx";
 import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
 import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
 import { Toaster } from "@atiende/ui";
+import { Analytics } from "@vercel/analytics/react";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -524,6 +525,7 @@ export function App() {
           vez aquí, a nivel raíz, para que TODA notificación de toda vertical
           se vea de verdad. */}
       <Toaster />
+      <Analytics />
       <Routes>
         <Route path="/restaurantes/login" element={<RestaurantesLoginRoute />} />
         <Route path="/restaurantes/:orgSlug" element={<RestaurantesDashboardRoute />} />
