@@ -201,7 +201,9 @@ export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
               Pedidos por WhatsApp, sin fricción
             </p>
             <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
-              Tus meseros y tu agente de IA, tomando el mismo pedido.
+              El agente toma el pedido, lo manda a cocina,
+              <br />
+              cobra y cierra la caja — todo por WhatsApp.
             </p>
           </figcaption>
         </figure>

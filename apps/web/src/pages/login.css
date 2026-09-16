@@ -57,7 +57,10 @@
   border-color: hsl(var(--border));
   color: hsl(var(--foreground));
 }
-.login-btn-borde:hover { border-color: color-mix(in srgb, hsl(var(--foreground)) 26%, transparent); }
+.login-btn-borde:hover {
+  border-color: color-mix(in srgb, hsl(var(--foreground)) 26%, transparent);
+  box-shadow: 0 8px 20px color-mix(in srgb, #000000 10%, transparent);
+}
 .login-btn-borde:disabled { opacity: 0.6; cursor: default; }
 
 .login-campo {
@@ -122,7 +125,7 @@
   .login-btn {
     transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   }
-  .login-btn:hover { transform: translateY(-1px); }
+  .login-btn:hover { transform: translateY(-2px); }
   .login-btn-tinta:hover {
     box-shadow: 0 10px 26px color-mix(in srgb, #1D4ED8 28%, transparent);
   }

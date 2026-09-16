@@ -192,9 +192,9 @@ export function CitasLoginPage({ apiBaseUrl }: CitasLoginPageProps) {
               Citas y turnos por WhatsApp
             </p>
             <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
-              Reservas sincronizadas con Google Calendar.
+              El agente agenda, confirma, reagenda
               <br />
-              Sin dobles citas, sin agenda perdida.
+              y sincroniza tu Google Calendar solo.
             </p>
           </figcaption>
         </figure>

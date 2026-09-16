@@ -206,7 +206,9 @@ export function LicitacionesLoginPage({ apiBaseUrl }: LicitacionesLoginPageProps
               Convocatorias rastreadas y respondidas a tiempo
             </p>
             <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
-              Matching automático y control de cada fecha límite, en un solo panel.
+              El agente rastrea la convocatoria, evalúa el matching
+              <br />
+              y no deja pasar ninguna fecha límite.
             </p>
           </figcaption>
         </figure>
