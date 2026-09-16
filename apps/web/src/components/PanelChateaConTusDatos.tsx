@@ -22,7 +22,7 @@
 // AdminDashboard), este componente se monta como overlay de pantalla completa
 // (ver BotonChatDatos.tsx) — ningún Shell necesita conocer un estado de sección
 // nuevo para usarlo.
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { ArrowUp, Edit, History, Paperclip, PanelRightClose, Search, X } from "lucide-react";
 import { AtiendeMark, AtiendeWordmark, Button, toast } from "@atiende/ui";
 import { CampoPixeles } from "./CampoPixeles.tsx";
@@ -30,7 +30,16 @@ import { CampoPixeles } from "./CampoPixeles.tsx";
 interface MensajeChat {
   readonly rol: "usuario" | "asistente";
   readonly texto: string;
+  /** Nombres de archivo adjuntos a ESTA pregunta (fotos/PDF/XML) — se guardan
+   *  con la pregunta tal como en la referencia real, pero nunca se leen ni se
+   *  analizan (ver `RESPUESTA_HONESTA`/el aviso que se agrega cuando hay
+   *  adjuntos): no hay backend de OCR/parsing real conectado todavía. */
+  readonly archivos?: readonly string[];
 }
+
+const TIPOS_ADJUNTO_ACEPTADOS = "image/*,.pdf,.xml,application/pdf,text/xml,application/xml";
+const MAX_ARCHIVOS_ADJUNTOS = 5;
+const MAX_BYTES_POR_ARCHIVO = 15 * 1024 * 1024;
 
 interface CategoriaPregunta {
   readonly titulo: string;
@@ -70,8 +79,37 @@ export function PanelChateaConTusDatos({ onClose, nombreNegocio }: PanelChateaCo
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
   const [historialPreguntas, setHistorialPreguntas] = useState<readonly string[]>([]);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
+  const [archivosAdjuntos, setArchivosAdjuntos] = useState<readonly File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  function handleFilesSeleccionados(e: ChangeEvent<HTMLInputElement>) {
+    const nuevos = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (nuevos.length === 0) return;
+    const sobrepeso = nuevos.filter((f) => f.size > MAX_BYTES_POR_ARCHIVO);
+    const validos = nuevos.filter((f) => f.size <= MAX_BYTES_POR_ARCHIVO);
+    if (sobrepeso.length > 0) {
+      toast(sobrepeso.length === 1 ? "Un archivo pesa más de 15 MB" : `${sobrepeso.length} archivos pesan más de 15 MB`, {
+        description: "No se adjuntaron: reduce el tamaño e inténtalo de nuevo.",
+      });
+    }
+    setArchivosAdjuntos((actuales) => {
+      const combinados = [...actuales, ...validos].filter(
+        (f, i, arr) => arr.findIndex((o) => o.name === f.name && o.size === f.size) === i,
+      );
+      if (combinados.length > MAX_ARCHIVOS_ADJUNTOS) {
+        toast(`Máximo ${MAX_ARCHIVOS_ADJUNTOS} archivos por pregunta`, { description: "Quita alguno para adjuntar otro." });
+        return combinados.slice(0, MAX_ARCHIVOS_ADJUNTOS);
+      }
+      return combinados;
+    });
+  }
+
+  function quitarArchivoAdjunto(nombre: string, tamano: number) {
+    setArchivosAdjuntos((actuales) => actuales.filter((f) => !(f.name === nombre && f.size === tamano)));
+  }
 
   // Cerrar con Escape + bloquear el scroll del fondo mientras el overlay está
   // abierto — mismo criterio de accesibilidad que cualquier diálogo modal real
@@ -94,11 +132,13 @@ export function PanelChateaConTusDatos({ onClose, nombreNegocio }: PanelChateaCo
   async function responderLocal(qInput: string) {
     const q = qInput.trim();
     if (!q || pensando) return;
+    const nombresArchivos = archivosAdjuntos.map((f) => f.name);
     setHistorialPreguntas((h) => [q, ...h.filter((x) => x !== q)].slice(0, 20));
     setMostrarHistorial(false);
     setMostrarSugerencias(false);
-    setMensajesChat((m) => [...m, { rol: "usuario", texto: q }]);
+    setMensajesChat((m) => [...m, { rol: "usuario", texto: q, archivos: nombresArchivos.length > 0 ? nombresArchivos : undefined }]);
     setPregunta("");
+    setArchivosAdjuntos([]);
     setPensando(true);
     for (const fase of FASES_PENSANDO) {
       setFasePensando(fase);
@@ -106,8 +146,14 @@ export function PanelChateaConTusDatos({ onClose, nombreNegocio }: PanelChateaCo
     }
     // NUNCA se ramifica por el contenido de `q` -- ver el comentario de cabecera
     // del archivo: sin datos de dominio reales conectados, cualquier respuesta
-    // que dependiera de `q` sería una respuesta de IA fabricada.
-    setMensajesChat((m) => [...m, { rol: "asistente", texto: RESPUESTA_HONESTA }]);
+    // que dependiera de `q` sería una respuesta de IA fabricada. El adjunto SÍ
+    // se guarda con la pregunta (mismo criterio que la referencia real), pero el
+    // aviso deja explícito que todavía no se lee ni se analiza.
+    const respuesta =
+      nombresArchivos.length > 0
+        ? `${RESPUESTA_HONESTA} Guardamos ${nombresArchivos.length === 1 ? "el archivo que adjuntaste" : "los archivos que adjuntaste"} junto con tu pregunta, pero todavía no los leemos ni los analizamos automáticamente.`
+        : RESPUESTA_HONESTA;
+    setMensajesChat((m) => [...m, { rol: "asistente", texto: respuesta }]);
     setPensando(false);
   }
 
@@ -162,7 +208,19 @@ export function PanelChateaConTusDatos({ onClose, nombreNegocio }: PanelChateaCo
                 {mensajesChat.map((m, i) =>
                   m.rol === "usuario" ? (
                     <div key={i} className="flex justify-end">
-                      <div className="max-w-[80%] bg-card border border-border rounded-2xl px-4 py-2 text-sm text-foreground shadow-sm">{m.texto}</div>
+                      <div className="max-w-[80%] bg-card border border-border rounded-2xl px-4 py-2 text-sm text-foreground shadow-sm">
+                        {m.texto}
+                        {m.archivos && m.archivos.length > 0 && (
+                          <div className="flex flex-wrap gap-1 justify-end mt-1.5">
+                            {m.archivos.map((nombre) => (
+                              <span key={nombre} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                                <Paperclip className="w-3 h-3" />
+                                {nombre}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div key={i} className="flex items-start gap-2">
@@ -208,6 +266,34 @@ export function PanelChateaConTusDatos({ onClose, nombreNegocio }: PanelChateaCo
               className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 shrink-0"
             >
               <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={TIPOS_ADJUNTO_ACEPTADOS}
+                onChange={handleFilesSeleccionados}
+                className="sr-only"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
+              {archivosAdjuntos.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-1 pb-2">
+                  {archivosAdjuntos.map((f) => (
+                    <span key={`${f.name}-${f.size}`} className="inline-flex items-center gap-1 text-[11px] text-foreground bg-muted rounded-full pl-2 pr-1 py-0.5">
+                      <Paperclip className="w-3 h-3 shrink-0" />
+                      <span className="max-w-[140px] truncate">{f.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => quitarArchivoAdjunto(f.name, f.size)}
+                        aria-label={`Quitar ${f.name}`}
+                        className="w-3.5 h-3.5 rounded-full flex items-center justify-center hover:bg-background transition-colors shrink-0"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input
                 value={pregunta}
                 onChange={(e) => setPregunta(e.target.value)}
                 placeholder="Pregunta sobre tu operación…"
@@ -223,21 +309,22 @@ export function PanelChateaConTusDatos({ onClose, nombreNegocio }: PanelChateaCo
                   Consulta
                 </button>
                 <div className="flex items-center gap-1">
-                  {/* Igual criterio que BotonChatDatos.tsx: sin `disabled` nativo
-                      (bloquearía el único aviso honesto de por qué no hace nada) —
-                      `aria-disabled` + toast al click en vez de fingir un adjunto
-                      que nada lee. */}
+                  {/* Abre el picker real del sistema -- el archivo SÍ se guarda
+                      con la pregunta (mismo criterio que la referencia real),
+                      solo que todavía no se lee/analiza automáticamente (ver el
+                      aviso agregado a la respuesta en `responderLocal`). */}
                   <button
                     type="button"
-                    aria-disabled="true"
-                    onClick={() =>
-                      toast("Adjuntar archivos también está en el roadmap", {
-                        description: "Por ahora Chatea con tus datos no lee ni analiza archivos.",
-                      })
-                    }
-                    className="p-2 rounded-full text-muted-foreground hover:bg-muted transition-colors opacity-60"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Adjuntar foto, PDF o XML"
+                    className="relative p-2 rounded-full text-muted-foreground hover:bg-muted transition-colors"
                   >
                     <Paperclip className="w-4 h-4" />
+                    {archivosAdjuntos.length > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-primary-foreground text-[9px] font-mono leading-[14px] text-center">
+                        {archivosAdjuntos.length}
+                      </span>
+                    )}
                   </button>
                   <Button type="submit" size="icon" disabled={pensando} className="rounded-full shrink-0 w-8 h-8">
                     <ArrowUp className="w-4 h-4" />
