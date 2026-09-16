@@ -10,11 +10,32 @@
 // ProviderRecord.propertyId). Agregar un selector de sucursal real es la misma
 // decisión de producto pendiente en todo el panel, no algo que esta fase deba
 // resolver a medias.
+//
+// Presentación real (Fase de diseño): los `style={{…}}` con hex se cambian por
+// Card/Input/Label/Button/Badge/Table de @atiende/ui. La sincronización real con
+// Google Calendar (apps/api/.../google-calendar-*.ts) no se toca: solo cambia
+// cómo se ve su estado.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { UserRound } from "lucide-react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { ArrowLeft, CalendarSync, Pencil, Plus, UserRound } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+} from "@atiende/ui";
 import { createProvider, fetchProviderDetail, fetchProviders, requestGoogleCalendarConnectUrl, setProviderServiceOffering, updateProvider } from "../lib/providers-client.ts";
 import type { ProviderDetail, ProviderSummary } from "../lib/providers-client.ts";
 import { fetchServices } from "../lib/services-client.ts";
@@ -22,8 +43,7 @@ import type { ServiceSummary } from "../lib/services-client.ts";
 import { formatDayOfWeek, formatHHMM } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
-const inputStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 };
-const primaryButtonStyle = { padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" };
+const CHECKBOX_CLASS = "size-4 rounded border-border accent-primary disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
@@ -62,32 +82,43 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Proveedores</h1>
+    <div className="flex flex-col gap-4">
+      <h1 className="font-display text-xl font-semibold text-foreground">Proveedores</h1>
       {error && <EstadoError mensaje={error} />}
 
-      <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-        <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Nuevo proveedor</p>
-        <form onSubmit={handleCreate} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input placeholder="Nombre (ej. Dra. Ana Ruiz)" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} style={inputStyle} />
-          <input placeholder="Rol (ej. Dentista, Barbero)" value={newRoleLabel} onChange={(e) => setNewRoleLabel(e.target.value)} style={inputStyle} />
-          <button type="submit" disabled={creating} style={primaryButtonStyle}>
-            {creating ? "Creando…" : "Crear proveedor"}
-          </button>
-        </form>
-      </section>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Nuevo proveedor</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-3">
+            <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+              <Label htmlFor="citas-nuevo-proveedor-nombre">Nombre</Label>
+              <Input id="citas-nuevo-proveedor-nombre" placeholder="Nombre (ej. Dra. Ana Ruiz)" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} />
+            </div>
+            <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+              <Label htmlFor="citas-nuevo-proveedor-rol">Rol</Label>
+              <Input id="citas-nuevo-proveedor-rol" placeholder="Rol (ej. Dentista, Barbero)" value={newRoleLabel} onChange={(e) => setNewRoleLabel(e.target.value)} />
+            </div>
+            <Button type="submit" disabled={creating}>
+              <Plus aria-hidden />
+              {creating ? "Creando…" : "Crear proveedor"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {!providers && !error && <EstadoCargando etiqueta="Cargando proveedores…" />}
       {providers && providers.length === 0 && <EstadoVacio icon={UserRound} mensaje="Este negocio todavía no tiene proveedores activos." />}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {providers?.map((p) => (
-          <Link
-            key={p.id}
-            to={`/citas/${orgSlug}/proveedores/${p.id}`}
-            style={{ display: "block", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, textDecoration: "none", color: "inherit" }}
-          >
-            <p style={{ margin: 0, fontWeight: 600 }}>{p.displayName}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>{p.roleLabel}</p>
+          <Link key={p.id} to={`/citas/${orgSlug}/proveedores/${p.id}`} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Card className="h-full transition-colors hover:border-foreground/20 hover:bg-muted/40">
+              <CardContent className="p-4">
+                <p className="font-semibold text-foreground">{p.displayName}</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">{p.roleLabel}</p>
+              </CardContent>
+            </Card>
           </Link>
         ))}
       </div>
@@ -175,10 +206,13 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
-      <Link to={`/citas/${orgSlug}/proveedores`} style={{ fontSize: 13, color: "#6b7280" }}>
-        ← Volver a proveedores
-      </Link>
+    <div className="flex max-w-2xl flex-col gap-4">
+      <Button asChild variant="ghost" size="sm" className="w-fit px-2 text-muted-foreground">
+        <Link to={`/citas/${orgSlug}/proveedores`}>
+          <ArrowLeft aria-hidden />
+          Volver a proveedores
+        </Link>
+      </Button>
 
       {error && <EstadoError mensaje={error} />}
 
@@ -186,106 +220,138 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
 
       {detail && (
         <>
-          <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <header className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 style={{ fontSize: 20, margin: 0 }}>{detail.provider.displayName}</h1>
-              <p style={{ margin: "4px 0 0", color: "#6b7280" }}>
-                {detail.provider.roleLabel} {!detail.provider.isActive && "· Inactivo"}
+              <h1 className="font-display text-xl font-semibold text-foreground">{detail.provider.displayName}</h1>
+              <p className="mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
+                {detail.provider.roleLabel} {!detail.provider.isActive && <Badge variant="outline">Inactivo</Badge>}
               </p>
             </div>
             {!editing && (
-              <button onClick={() => setEditing(true)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 13, cursor: "pointer" }}>
+              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                <Pencil aria-hidden />
                 Editar proveedor
-              </button>
+              </Button>
             )}
           </header>
 
           {editing && (
-            <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-              <form onSubmit={handleSaveEdit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6b7280" }}>
-                  Nombre
-                  <input value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} style={inputStyle} />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6b7280" }}>
-                  Rol / etiqueta
-                  <input value={editRoleLabel} onChange={(e) => setEditRoleLabel(e.target.value)} style={inputStyle} />
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                  <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} />
-                  Activo
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button type="submit" disabled={saving} style={primaryButtonStyle}>
-                    {saving ? "Guardando…" : "Guardar cambios"}
-                  </button>
-                  <button type="button" onClick={() => setEditing(false)} disabled={saving} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 13, cursor: "pointer" }}>
-                    Cancelar
-                  </button>
-                </div>
-              </form>
-            </section>
+            <Card>
+              <CardContent className="p-6">
+                <form onSubmit={handleSaveEdit} className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="citas-proveedor-nombre">Nombre</Label>
+                    <Input id="citas-proveedor-nombre" value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="citas-proveedor-rol">Rol / etiqueta</Label>
+                    <Input id="citas-proveedor-rol" value={editRoleLabel} onChange={(e) => setEditRoleLabel(e.target.value)} />
+                  </div>
+                  <label className="flex items-center gap-2 text-[13px] text-foreground">
+                    <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} className={CHECKBOX_CLASS} />
+                    Activo
+                  </label>
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Guardando…" : "Guardar cambios"}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setEditing(false)} disabled={saving}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
           )}
 
-          <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-            <p style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6b7280" }}>Google Calendar</p>
-            {detail.googleCalendar.connected ? (
-              <p style={{ margin: 0, color: detail.googleCalendar.syncStatus === "error" ? "#b91c1c" : "#166534" }}>
-                {detail.googleCalendar.syncStatus === "error" ? `Conectado, con un error de sincronización: ${detail.googleCalendar.syncError ?? "desconocido"}` : "Conectado — las citas de este proveedor se sincronizan automáticamente."}
-              </p>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <p style={{ margin: 0, color: "#6b7280" }}>Este proveedor todavía no conecta su Google Calendar.</p>
-                <button onClick={() => void handleConnectGoogleCalendar()} disabled={connecting} style={primaryButtonStyle}>
-                  {connecting ? "Conectando…" : "Conectar Google Calendar"}
-                </button>
-              </div>
-            )}
-          </section>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Google Calendar</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {detail.googleCalendar.connected ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Badge variant={detail.googleCalendar.syncStatus === "error" ? "destructive" : "secondary"}>
+                    {detail.googleCalendar.syncStatus === "error" ? "Conectado (con error)" : "Conectado"}
+                  </Badge>
+                  <p className={detail.googleCalendar.syncStatus === "error" ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}>
+                    {detail.googleCalendar.syncStatus === "error"
+                      ? `Error de sincronización: ${detail.googleCalendar.syncError ?? "desconocido"}`
+                      : "Las citas de este proveedor se sincronizan automáticamente."}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-[13px] text-muted-foreground">Este proveedor todavía no conecta su Google Calendar.</p>
+                  <Button onClick={() => void handleConnectGoogleCalendar()} disabled={connecting}>
+                    <CalendarSync aria-hidden />
+                    {connecting ? "Conectando…" : "Conectar Google Calendar"}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-            <p style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6b7280" }}>Servicios que ofrece</p>
-            {!services ? (
-              <p style={{ margin: 0, color: "#6b7280" }}>Cargando…</p>
-            ) : services.length === 0 ? (
-              <p style={{ margin: 0, color: "#6b7280" }}>Este negocio todavía no tiene servicios configurados.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {services.map((s) => {
-                  const offered = detail.offeredServiceIds.includes(s.id);
-                  return (
-                    <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "4px 0" }}>
-                      <input type="checkbox" checked={offered} disabled={togglingServiceId === s.id} onChange={(e) => void handleToggleService(s.id, e.target.checked)} />
-                      {s.name}
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Servicios que ofrece</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!services ? (
+                <EstadoCargando lineas={2} etiqueta="Cargando servicios…" />
+              ) : services.length === 0 ? (
+                <EstadoVacio mensaje="Este negocio todavía no tiene servicios configurados." />
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {services.map((s) => {
+                    const offered = detail.offeredServiceIds.includes(s.id);
+                    return (
+                      <label key={s.id} className="flex items-center gap-2 py-1 text-[13px] text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={offered}
+                          disabled={togglingServiceId === s.id}
+                          onChange={(e) => void handleToggleService(s.id, e.target.checked)}
+                          className={CHECKBOX_CLASS}
+                        />
+                        {s.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-            <p style={{ margin: "0 0 8px", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6b7280" }}>Horario semanal</p>
-            {detail.availabilityRules.length === 0 ? (
-              <p style={{ margin: 0, color: "#6b7280" }}>Sin reglas de disponibilidad configuradas todavía.</p>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <tbody>
-                  {[...detail.availabilityRules]
-                    .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
-                    .map((rule) => (
-                      <tr key={rule.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "6px 0" }}>{formatDayOfWeek(rule.dayOfWeek)}</td>
-                        <td style={{ padding: "6px 0", color: rule.isActive ? "#111827" : "#9ca3af" }}>
-                          {formatHHMM(rule.startTime)} – {formatHHMM(rule.endTime)} {!rule.isActive && "(inactivo)"}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            )}
-            <p style={{ margin: "10px 0 0", fontSize: 12, color: "#9ca3af" }}>Solo lectura — editar el horario todavía no está disponible desde el panel.</p>
-          </section>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Horario semanal</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {detail.availabilityRules.length === 0 ? (
+                <EstadoVacio mensaje="Sin reglas de disponibilidad configuradas todavía." />
+              ) : (
+                <Table>
+                  <TableBody>
+                    {[...detail.availabilityRules]
+                      .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
+                      .map((rule) => (
+                        <TableRow key={rule.id}>
+                          <TableCell className="py-2 font-medium text-foreground">{formatDayOfWeek(rule.dayOfWeek)}</TableCell>
+                          <TableCell className={rule.isActive ? "py-2 text-foreground" : "py-2 text-muted-foreground"}>
+                            <span className="inline-flex items-center gap-2">
+                              {formatHHMM(rule.startTime)} – {formatHHMM(rule.endTime)}
+                              {!rule.isActive && <Badge variant="outline">inactivo</Badge>}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              )}
+              <p className="mt-3 text-[12px] text-muted-foreground">Solo lectura — editar el horario todavía no está disponible desde el panel.</p>
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

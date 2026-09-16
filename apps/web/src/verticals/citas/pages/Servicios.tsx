@@ -2,18 +2,38 @@
 // de paridad con el origen (ServiciosSection.tsx): alta/edición real de un
 // servicio (ver services-client.ts). `citas.services` no tiene columnas
 // `description`/`requirements` como el origen — quedan fuera de esta fase.
+//
+// Presentación real (Fase de diseño): los `style={{…}}` con hex (inputStyle/
+// primaryButtonStyle/tarjetas artesanales) se cambian por Card/Input/Label/
+// Button/Badge/Table de @atiende/ui. El estado, las llamadas y las ramas
+// condicionales de arriba no cambian.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Scissors } from "lucide-react";
-import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
+import { ArrowLeft, Pencil, Plus, Scissors } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+} from "@atiende/ui";
 import { createService, fetchServiceDetail, fetchServices, updateService } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
 import { formatMoneyFromCents } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
-const inputStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13 };
-const primaryButtonStyle = { padding: "6px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer" };
+const CHECKBOX_CLASS = "size-4 rounded border-border accent-primary disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
   const [services, setServices] = useState<readonly ServiceSummary[] | null>(null);
@@ -56,31 +76,57 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h1 style={{ fontSize: 20, margin: 0 }}>Servicios</h1>
+    <div className="flex flex-col gap-4">
+      <h1 className="font-display text-xl font-semibold text-foreground">Servicios</h1>
       {error && <EstadoError mensaje={error} />}
 
-      <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-        <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Nuevo servicio</p>
-        <form onSubmit={handleCreate} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input placeholder="Nombre (ej. Consulta general)" value={newName} onChange={(e) => setNewName(e.target.value)} style={inputStyle} />
-          <input placeholder="Duración (min)" type="number" min={1} value={newDuration} onChange={(e) => setNewDuration(e.target.value)} style={{ ...inputStyle, width: 110 }} />
-          <input placeholder="Precio (opcional)" type="number" min={0} step="0.01" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} style={{ ...inputStyle, width: 130 }} />
-          <button type="submit" disabled={creating} style={primaryButtonStyle}>
-            {creating ? "Creando…" : "Crear servicio"}
-          </button>
-        </form>
-      </section>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Nuevo servicio</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-3">
+            <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+              <Label htmlFor="citas-nuevo-servicio-nombre">Nombre</Label>
+              <Input id="citas-nuevo-servicio-nombre" placeholder="Nombre (ej. Consulta general)" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            </div>
+            <div className="flex w-28 flex-col gap-1.5">
+              <Label htmlFor="citas-nuevo-servicio-duracion">Duración (min)</Label>
+              <Input id="citas-nuevo-servicio-duracion" placeholder="Duración (min)" type="number" min={1} value={newDuration} onChange={(e) => setNewDuration(e.target.value)} />
+            </div>
+            <div className="flex w-36 flex-col gap-1.5">
+              <Label htmlFor="citas-nuevo-servicio-precio">Precio (opcional)</Label>
+              <Input
+                id="citas-nuevo-servicio-precio"
+                placeholder="Precio (opcional)"
+                type="number"
+                min={0}
+                step="0.01"
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+              />
+            </div>
+            <Button type="submit" disabled={creating}>
+              <Plus aria-hidden />
+              {creating ? "Creando…" : "Crear servicio"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {!services && !error && <EstadoCargando etiqueta="Cargando servicios…" />}
       {services && services.length === 0 && <EstadoVacio icon={Scissors} mensaje="Este negocio todavía no tiene servicios activos." />}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {services?.map((s) => (
-          <Link key={s.id} to={`/citas/${orgSlug}/servicios/${s.id}`} style={{ display: "block", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, textDecoration: "none", color: "inherit" }}>
-            <p style={{ margin: 0, fontWeight: 600 }}>{s.name}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>
-              {s.durationMinutes} min · {formatMoneyFromCents(s.priceCents)}
-            </p>
+          <Link key={s.id} to={`/citas/${orgSlug}/servicios/${s.id}`} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Card className="h-full transition-colors hover:border-foreground/20 hover:bg-muted/40">
+              <CardContent className="p-4">
+                <p className="font-semibold text-foreground">{s.name}</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">
+                  {s.durationMinutes} min · {formatMoneyFromCents(s.priceCents)}
+                </p>
+              </CardContent>
+            </Card>
           </Link>
         ))}
       </div>
@@ -149,73 +195,97 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 480 }}>
-      <Link to={`/citas/${orgSlug}/servicios`} style={{ fontSize: 13, color: "#6b7280" }}>
-        ← Volver a servicios
-      </Link>
+    <div className="flex max-w-xl flex-col gap-4">
+      <Button asChild variant="ghost" size="sm" className="w-fit px-2 text-muted-foreground">
+        <Link to={`/citas/${orgSlug}/servicios`}>
+          <ArrowLeft aria-hidden />
+          Volver a servicios
+        </Link>
+      </Button>
       {error && <EstadoError mensaje={error} />}
       {!service && !error && <EstadoCargando etiqueta="Cargando servicio…" />}
       {service && !editing && (
         <>
-          <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <h1 style={{ fontSize: 20, margin: 0 }}>{service.name}</h1>
-            <button onClick={() => setEditing(true)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 13, cursor: "pointer" }}>
+          <header className="flex flex-wrap items-start justify-between gap-3">
+            <h1 className="font-display text-xl font-semibold text-foreground">{service.name}</h1>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Pencil aria-hidden />
               Editar servicio
-            </button>
+            </Button>
           </header>
-          <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", rowGap: 8, columnGap: 12, fontSize: 14 }}>
-            <dt style={{ color: "#6b7280" }}>Duración</dt>
-            <dd style={{ margin: 0 }}>{service.durationMinutes} min</dd>
-            <dt style={{ color: "#6b7280" }}>Colchón antes</dt>
-            <dd style={{ margin: 0 }}>{service.bufferMinutesBefore} min</dd>
-            <dt style={{ color: "#6b7280" }}>Colchón después</dt>
-            <dd style={{ margin: 0 }}>{service.bufferMinutesAfter} min</dd>
-            <dt style={{ color: "#6b7280" }}>Precio</dt>
-            <dd style={{ margin: 0 }}>{formatMoneyFromCents(service.priceCents)}</dd>
-            <dt style={{ color: "#6b7280" }}>Estado</dt>
-            <dd style={{ margin: 0 }}>{service.isActive ? "Activo" : "Inactivo"}</dd>
-          </dl>
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableBody>
+                  <TableRow>
+                    <TableCell className="w-40 text-muted-foreground">Duración</TableCell>
+                    <TableCell className="text-foreground">{service.durationMinutes} min</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">Colchón antes</TableCell>
+                    <TableCell className="text-foreground">{service.bufferMinutesBefore} min</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">Colchón después</TableCell>
+                    <TableCell className="text-foreground">{service.bufferMinutesAfter} min</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">Precio</TableCell>
+                    <TableCell className="text-foreground">{formatMoneyFromCents(service.priceCents)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">Estado</TableCell>
+                    <TableCell>
+                      <Badge variant={service.isActive ? "secondary" : "outline"}>{service.isActive ? "Activo" : "Inactivo"}</Badge>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </>
       )}
       {service && editing && (
-        <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-          <form onSubmit={handleSaveEdit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6b7280" }}>
-              Nombre
-              <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} />
-            </label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6b7280", flex: 1 }}>
-                Duración (min)
-                <input type="number" min={1} value={editDuration} onChange={(e) => setEditDuration(e.target.value)} style={inputStyle} />
+        <Card>
+          <CardContent className="p-6">
+            <form onSubmit={handleSaveEdit} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="citas-servicio-nombre">Nombre</Label>
+                <Input id="citas-servicio-nombre" value={editName} onChange={(e) => setEditName(e.target.value)} />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <div className="flex min-w-[120px] flex-1 flex-col gap-1.5">
+                  <Label htmlFor="citas-servicio-duracion">Duración (min)</Label>
+                  <Input id="citas-servicio-duracion" type="number" min={1} value={editDuration} onChange={(e) => setEditDuration(e.target.value)} />
+                </div>
+                <div className="flex min-w-[120px] flex-1 flex-col gap-1.5">
+                  <Label htmlFor="citas-servicio-colchon-antes">Colchón antes</Label>
+                  <Input id="citas-servicio-colchon-antes" type="number" min={0} value={editBufferBefore} onChange={(e) => setEditBufferBefore(e.target.value)} />
+                </div>
+                <div className="flex min-w-[120px] flex-1 flex-col gap-1.5">
+                  <Label htmlFor="citas-servicio-colchon-despues">Colchón después</Label>
+                  <Input id="citas-servicio-colchon-despues" type="number" min={0} value={editBufferAfter} onChange={(e) => setEditBufferAfter(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="citas-servicio-precio">Precio (vacío = sin precio fijo)</Label>
+                <Input id="citas-servicio-precio" type="number" min={0} step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+              </div>
+              <label className="flex items-center gap-2 text-[13px] text-foreground">
+                <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} className={CHECKBOX_CLASS} />
+                Activo
               </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6b7280", flex: 1 }}>
-                Colchón antes
-                <input type="number" min={0} value={editBufferBefore} onChange={(e) => setEditBufferBefore(e.target.value)} style={inputStyle} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6b7280", flex: 1 }}>
-                Colchón después
-                <input type="number" min={0} value={editBufferAfter} onChange={(e) => setEditBufferAfter(e.target.value)} style={inputStyle} />
-              </label>
-            </div>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#6b7280" }}>
-              Precio (vacío = sin precio fijo)
-              <input type="number" min={0} step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} style={inputStyle} />
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-              <input type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} />
-              Activo
-            </label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="submit" disabled={saving} style={primaryButtonStyle}>
-                {saving ? "Guardando…" : "Guardar cambios"}
-              </button>
-              <button type="button" onClick={() => setEditing(false)} disabled={saving} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 13, cursor: "pointer" }}>
-                Cancelar
-              </button>
-            </div>
-          </form>
-        </section>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={saving}>
+                  {saving ? "Guardando…" : "Guardar cambios"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setEditing(false)} disabled={saving}>
+                  Cancelar
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
