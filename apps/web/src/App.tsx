@@ -22,6 +22,7 @@ import { TerminosPage } from "./pages/Terminos.tsx";
 import { PrivacidadPage } from "./pages/Privacidad.tsx";
 import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
 import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
+import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { Toaster } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -198,6 +199,15 @@ function SuperAdminRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminDashboardPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminProspectosRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminProspectosPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -545,6 +555,7 @@ export function App() {
         <Route path="/terminos" element={<TerminosPage />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
         <Route path="/superadmin" element={<SuperAdminRoute />} />
+        <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
