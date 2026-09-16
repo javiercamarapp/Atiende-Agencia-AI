@@ -21,6 +21,7 @@
 import { Hono, type Context } from "hono";
 import { generateInviteToken, hashInviteToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { botonPildoraHtml, escapeHtml, renderCorreo } from "@atiende/core-email";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
@@ -68,6 +69,19 @@ async function enviarCorreoMagicLink(deps: AppDeps, c: Context<CoreAuthHonoEnv>,
     return;
   }
   const nombre = NOMBRE_VERTICAL[vertical];
+  const html = renderCorreo({
+    titulo: `Tu enlace para entrar a ${nombre}`,
+    preheader: "Expira en 15 minutos y solo funciona una vez.",
+    etiqueta: { texto: "Acceso sin contraseña", color: "#1D4ED8" },
+    parrafosHtml: [
+      `Toca el botón para entrar a <strong>${escapeHtml(nombre)}</strong>. El enlace expira en 15 minutos y solo funciona una vez.`,
+      botonPildoraHtml(verifyUrl, `Entrar a ${nombre}`),
+      `Si el botón no funciona, copia y pega este enlace en tu navegador:<br><span style="word-break:break-all;color:#1D4ED8;">${escapeHtml(verifyUrl)}</span>`,
+    ],
+    nota: "Si tú no pediste este enlace, ignora este correo — nadie puede entrar a tu cuenta sin darle clic.",
+    piePorQueLlego: `Recibes este correo porque pediste un enlace de acceso a ${nombre} con la dirección ${to}.`,
+  });
+  const text = `Toca este enlace para entrar a ${nombre} (expira en 15 minutos, un solo uso):\n${verifyUrl}\n\nSi tú no pediste este enlace, ignora este correo.`;
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -76,7 +90,8 @@ async function enviarCorreoMagicLink(deps: AppDeps, c: Context<CoreAuthHonoEnv>,
         from: deps.env.resend.from,
         to: [to],
         subject: `Tu enlace para entrar a ${nombre}`,
-        html: `<p>Toca el siguiente enlace para entrar a ${nombre}. Expira en 15 minutos y solo funciona una vez.</p><p><a href="${verifyUrl}">Entrar a ${nombre}</a></p><p>Si tú no pediste este enlace, ignora este correo.</p>`,
+        html,
+        text,
       }),
     });
     if (!res.ok) {
