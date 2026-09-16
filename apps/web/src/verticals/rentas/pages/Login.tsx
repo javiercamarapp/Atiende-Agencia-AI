@@ -1,8 +1,15 @@
 // Pantalla real de login del panel de rentas — SOLO Google o "Continuar con
 // correo" (magic link, sin contraseña), mismo criterio de UX que Likida:
-// Google arriba, un solo campo de correo abajo. `POST /auth/login` (email+
-// password) sigue existiendo en el backend, pero esta pantalla nunca lo expone
-// — instrucción explícita: el login es exclusivamente passwordless.
+// Google arriba, un solo campo de correo abajo. Sin formulario de contraseña
+// en absoluto — instrucción explícita: el login es exclusivamente passwordless
+// (Google + enlace mágico). `POST /auth/login` (email+password) sigue
+// existiendo en el backend (lo sigue usando `accept-invite`/tests), pero esta
+// pantalla nunca lo expone.
+//
+// Visual: mismo layout split-screen que el resto de verticales (login.css
+// compartido) — kicker mono, titular serif grande, píldoras de 999px, lámina
+// con foto real (propia de rentas) + Ken Burns. Rentas es la única vertical con
+// alta autoservicio (`/rentas/registro`), así que conserva ese enlace.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -13,8 +20,9 @@ import "../../../pages/login.css";
 
 export interface RentasLoginPageProps {
   readonly apiBaseUrl: string;
-  /** Nunca se llama desde aquí (login 100% passwordless) — se conserva porque
-   *  `App.tsx` sigue pasándolo. */
+  /** Nunca se llama desde aquí (login es 100% passwordless: Google/magic link
+   *  redirigen la página completa vía `GoogleCallbackPage`, no una navegación de
+   *  React Router) — se conserva en el tipo porque `App.tsx` sigue pasándolo. */
   readonly onLoggedIn: (session: LoginSession, landingPath: string) => void;
 }
 
@@ -22,6 +30,7 @@ export function RentasLoginPage({ apiBaseUrl }: RentasLoginPageProps) {
   const [correoMagicLink, setCorreoMagicLink] = useState("");
   const [enviandoMagicLink, setEnviandoMagicLink] = useState(false);
   const [magicLinkEnviado, setMagicLinkEnviado] = useState<string | null>(null);
+
   const [searchParams] = useSearchParams();
   const [googleConfigurado, setGoogleConfigurado] = useState(false);
   const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
@@ -60,130 +69,145 @@ export function RentasLoginPage({ apiBaseUrl }: RentasLoginPageProps) {
   }
 
   return (
-    <div className="login min-h-screen w-full flex flex-col md:flex-row">
-      {/* Columna izquierda: formulario real */}
-      <div className="w-full md:w-[46%] flex flex-col justify-center px-6 sm:px-10 lg:px-16 py-12">
-        <div className="mx-auto w-full max-w-sm flex flex-col gap-7">
-          <div className="login-entra" style={{ animationDelay: "0s" }}>
-            <AtiendeWordmark className="h-7 w-auto" />
-          </div>
+    <main className="login min-h-screen lg:grid lg:grid-cols-2">
+      <section className="flex min-h-screen flex-col px-6 py-7 sm:px-10 lg:px-14 lg:py-10">
+        <div className="mx-auto flex w-full max-w-[420px] flex-col pt-10 lg:pt-16">
+          <header className="login-entra flex items-center">
+            <AtiendeWordmark />
+          </header>
 
-          <div className="login-entra flex flex-col gap-2" style={{ animationDelay: "0.05s" }}>
-            <span className="login-kicker">Acceso al panel</span>
-            <h1 className="login-serif text-foreground text-[42px] sm:text-[50px] leading-[1.02]">
-              Bienvenido
-              <br />a atiende rentas
-            </h1>
-            <p className="text-[14px] text-muted-foreground leading-snug">Entra con Google o con un enlace a tu correo — sin contraseña.</p>
-          </div>
-
-          {googleError && (
-            <p role="alert" className="login-entra text-[13px] text-destructive m-0" style={{ animationDelay: "0.08s" }}>
-              {mensajeGoogleError(googleError)}
-            </p>
-          )}
-          {magicLinkError && !googleError && (
-            <p role="alert" className="login-entra text-[13px] text-destructive m-0" style={{ animationDelay: "0.08s" }}>
-              {mensajeMagicLinkError(magicLinkError)}
-            </p>
-          )}
-
-          <button
-            type="button"
-            onClick={irAGoogle}
-            disabled={!googleHabilitado}
-            title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
-            className="login-entra login-btn login-btn-borde"
-            style={{ animationDelay: "0.1s" }}
-          >
-            <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" aria-hidden="true">
-              <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.54-5.17 3.54-8.87z" />
-              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.07.72-2.45 1.15-4.05 1.15-3.11 0-5.75-2.1-6.69-4.93H1.3v3.09A12 12 0 0 0 12 24z" />
-              <path fill="#FBBC05" d="M5.31 14.31A7.2 7.2 0 0 1 4.93 12c0-.8.14-1.58.38-2.31V6.6H1.3A12 12 0 0 0 0 12c0 1.94.46 3.77 1.3 5.4z" />
-              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.94 1.19 15.24 0 12 0 7.31 0 3.26 2.69 1.3 6.6l4.01 3.09C6.25 6.85 8.89 4.75 12 4.75z" />
-            </svg>
-            Continuar con Google
-          </button>
-          {!googleHabilitado && (
-            <p className="login-entra text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "0.12s" }}>
-              {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
-            </p>
-          )}
-
-          <div className="login-entra flex items-center gap-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground" style={{ animationDelay: "0.14s" }}>
-            <span className="h-px flex-1 bg-border" aria-hidden="true" />
-            o
-            <span className="h-px flex-1 bg-border" aria-hidden="true" />
-          </div>
-
-          {magicLinkEnviado ? (
-            <div className="login-entra rounded-[18px] p-5 bg-primary/5 border border-primary/20" style={{ animationDelay: "0.16s" }}>
-              <p className="text-[14px] leading-relaxed text-foreground">
-                Te enviamos un enlace a <span className="font-semibold">{magicLinkEnviado}</span>. Ábrelo desde este mismo dispositivo — expira en 15 minutos.
+          <div className="mt-10">
+            <div className="w-full">
+              <p className="login-entra login-kicker" style={{ animationDelay: "40ms" }}>
+                Acceso al panel
               </p>
-              <button type="button" onClick={() => setMagicLinkEnviado(null)} className="mt-3 text-[13px] font-semibold text-foreground underline underline-offset-2">
-                Usar otro correo
+              <h1 className="login-entra login-serif mt-3 text-[38px] sm:text-[46px] leading-[1.05] text-foreground" style={{ animationDelay: "90ms" }}>
+                Bienvenido
+                <br />a atiende rentas
+              </h1>
+              <p className="login-entra mt-2 text-[15px] leading-[1.6] text-muted-foreground" style={{ animationDelay: "140ms" }}>
+                El panel de operación de tus propiedades.
+              </p>
+
+              <div className="login-entra mt-5 h-px bg-border" style={{ animationDelay: "160ms" }} />
+
+              {googleError && (
+                <div role="alert" className="login-entra mt-7 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
+                  <p className="text-[14px] leading-relaxed text-foreground">{mensajeGoogleError(googleError)}</p>
+                </div>
+              )}
+              {magicLinkError && !googleError && (
+                <div role="alert" className="login-entra mt-7 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
+                  <p className="text-[14px] leading-relaxed text-foreground">{mensajeMagicLinkError(magicLinkError)}</p>
+                </div>
+              )}
+
+              {/* Google primero — mismo criterio que Likida: el método más rápido va arriba. */}
+              <button
+                type="button"
+                onClick={irAGoogle}
+                disabled={!googleHabilitado}
+                title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
+                className="login-entra mt-5 login-btn login-btn-borde"
+                style={{ animationDelay: "200ms" }}
+              >
+                <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true">
+                  <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z" />
+                  <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
+                  <path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
+                  <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
+                </svg>
+                Continuar con Google
               </button>
+              {!googleHabilitado && (
+                <p className="login-entra mt-2 text-[12px] leading-relaxed text-muted-foreground" style={{ animationDelay: "210ms" }}>
+                  {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
+                </p>
+              )}
+
+              <div className="login-entra my-4 flex items-center gap-4" style={{ animationDelay: "230ms" }}>
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[13px] lowercase text-muted-foreground">o</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              {/* "Continuar con correo" -- magic link, sin contraseña. Único segundo método. */}
+              {magicLinkEnviado ? (
+                <div className="login-entra rounded-[18px] p-5 bg-primary/5 border border-primary/20" style={{ animationDelay: "250ms" }}>
+                  <p className="text-[14px] leading-relaxed text-foreground">
+                    Te enviamos un enlace a <span className="font-semibold">{magicLinkEnviado}</span>. Ábrelo desde este mismo dispositivo para entrar — expira
+                    en 15 minutos.
+                  </p>
+                  <button type="button" onClick={() => setMagicLinkEnviado(null)} className="mt-3 text-[13px] font-semibold text-foreground underline underline-offset-2">
+                    Usar otro correo
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleMagicLinkSubmit} className="login-entra flex flex-col gap-3" style={{ animationDelay: "250ms" }} noValidate>
+                  <label htmlFor="login-email-magic" className="sr-only">
+                    Tu correo
+                  </label>
+                  <input
+                    id="login-email-magic"
+                    type="email"
+                    required
+                    placeholder="tu@propiedad.com"
+                    autoComplete="email"
+                    value={correoMagicLink}
+                    onChange={(e) => setCorreoMagicLink(e.target.value)}
+                    className="login-campo"
+                  />
+                  <button type="submit" disabled={enviandoMagicLink} className="login-btn login-btn-tinta">
+                    <span aria-hidden className="login-glifo">
+                      <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
+                    </span>
+                    <span>{enviandoMagicLink ? "Enviando…" : "Continuar con correo"}</span>
+                  </button>
+                </form>
+              )}
+
+              <p className="login-entra mt-5 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
+                ¿No tienes cuenta?{" "}
+                <Link to="/rentas/registro" className="font-semibold text-foreground underline underline-offset-2">
+                  Créala aquí
+                </Link>
+                .
+              </p>
+
+              <p className="login-entra mt-6 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "340ms" }}>
+                Al continuar, aceptas los{" "}
+                <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                  Términos de Servicio
+                </a>{" "}
+                y el{" "}
+                <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
+                  Aviso de Privacidad
+                </a>{" "}
+                de atiende.ai.
+              </p>
             </div>
-          ) : (
-            <form onSubmit={handleMagicLinkSubmit} noValidate className="login-entra flex flex-col gap-3" style={{ animationDelay: "0.16s" }}>
-              <label htmlFor="email" className="flex flex-col gap-1.5 text-[13px] font-medium text-foreground">
-                Correo
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={correoMagicLink}
-                  onChange={(e) => setCorreoMagicLink(e.target.value)}
-                  required
-                  className="login-campo"
-                />
-              </label>
-              <button type="submit" disabled={enviandoMagicLink} className="login-btn login-btn-tinta mt-1">
-                <span aria-hidden className="login-glifo">
-                  <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
-                </span>
-                <span>{enviandoMagicLink ? "Enviando…" : "Continuar con correo"}</span>
-              </button>
-            </form>
-          )}
-
-          <p className="login-entra text-center text-[13px] text-muted-foreground m-0" style={{ animationDelay: "0.2s" }}>
-            ¿No tienes cuenta?{" "}
-            <Link to="/rentas/registro" className="text-foreground font-medium underline underline-offset-2">
-              Créala aquí
-            </Link>
-          </p>
-
-          <p className="login-entra text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "0.24s" }}>
-            Al continuar, aceptas los{" "}
-            <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
-              Términos de Servicio
-            </a>{" "}
-            y el{" "}
-            <a href="/privacidad" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
-              Aviso de Privacidad
-            </a>{" "}
-            de atiende.ai.
-          </p>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Columna derecha: lámina con foto real (Ken Burns) -- oculta en mobile */}
-      <aside className="login-lamina hidden md:block md:w-[54%] relative m-3 rounded-[22px] overflow-hidden">
-        <img
-          src={`${import.meta.env.BASE_URL}images/login-hero-rentas.png`}
-          alt="Rooftops de una costa de rentas vacacionales en la hora azul."
-          className="login-foto-marca absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="login-velo" />
-        <div className="absolute inset-x-0 bottom-0 p-10 lg:p-14 text-white">
-          <p className="login-kicker text-white/70 mb-3">Operación multi-propiedad</p>
-          <p className="login-serif text-2xl lg:text-3xl leading-snug max-w-md">
-            Calendarios de varias unidades, sincronía con Booking, Airbnb y Vrbo, y toda tu operación de rentas vacacionales en un solo panel.
-          </p>
-        </div>
+      <aside className="hidden lg:flex lg:flex-col lg:py-3 lg:pr-3">
+        <figure className="login-lamina min-h-0 flex-1 flex items-end">
+          <img
+            src={`${import.meta.env.BASE_URL}images/login-hero-rentas.png`}
+            alt="Casas victorianas de San Francisco al atardecer."
+            className="login-foto-marca absolute inset-0 w-full h-full object-cover"
+          />
+          <div className="login-velo" />
+          <figcaption className="p-9 z-10">
+            <p className="login-kicker" style={{ color: "color-mix(in srgb, white 78%, transparent)" }}>
+              Operación multi-propiedad
+            </p>
+            <p className="login-serif mt-3.5 text-white" style={{ fontSize: "clamp(20px, 1.9vw, 27px)" }}>
+              Sincronía con Booking, Airbnb y Vrbo, en un solo panel.
+            </p>
+          </figcaption>
+        </figure>
       </aside>
-    </div>
+    </main>
   );
 }

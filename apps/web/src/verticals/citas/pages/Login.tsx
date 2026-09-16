@@ -65,25 +65,25 @@ export function CitasLoginPage({ apiBaseUrl }: CitasLoginPageProps) {
   return (
     <main className="login min-h-screen lg:grid lg:grid-cols-2">
       <section className="flex min-h-screen flex-col px-6 py-7 sm:px-10 lg:px-14 lg:py-10">
-        <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col">
+        <div className="mx-auto flex w-full max-w-[420px] flex-col pt-10 lg:pt-16">
           <header className="login-entra flex items-center">
             <AtiendeWordmark />
           </header>
 
-          <div className="flex flex-1 items-center py-12">
+          <div className="mt-10">
             <div className="w-full">
               <p className="login-entra login-kicker" style={{ animationDelay: "40ms" }}>
                 Acceso al panel
               </p>
-              <h1 className="login-entra login-serif mt-5 text-[46px] sm:text-[58px] leading-[1.02] text-foreground" style={{ animationDelay: "90ms" }}>
+              <h1 className="login-entra login-serif mt-3 text-[38px] sm:text-[46px] leading-[1.05] text-foreground" style={{ animationDelay: "90ms" }}>
                 Bienvenido
                 <br />a atiende citas
               </h1>
-              <p className="login-entra mt-4 text-[15px] leading-[1.6] text-muted-foreground" style={{ animationDelay: "140ms" }}>
+              <p className="login-entra mt-2 text-[15px] leading-[1.6] text-muted-foreground" style={{ animationDelay: "140ms" }}>
                 El panel de operación de tu negocio de citas.
               </p>
 
-              <div className="login-entra mt-7 h-px bg-border" style={{ animationDelay: "160ms" }} />
+              <div className="login-entra mt-5 h-px bg-border" style={{ animationDelay: "160ms" }} />
 
               {googleError && (
                 <div role="alert" className="login-entra mt-7 rounded-[18px] p-5 bg-destructive/5 border border-destructive/30" style={{ animationDelay: "180ms" }}>
@@ -101,7 +101,7 @@ export function CitasLoginPage({ apiBaseUrl }: CitasLoginPageProps) {
                 onClick={irAGoogle}
                 disabled={!googleHabilitado}
                 title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
-                className="login-entra mt-7 login-btn login-btn-borde"
+                className="login-entra mt-5 login-btn login-btn-borde"
                 style={{ animationDelay: "200ms" }}
               >
                 <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true">
@@ -118,7 +118,7 @@ export function CitasLoginPage({ apiBaseUrl }: CitasLoginPageProps) {
                 </p>
               )}
 
-              <div className="login-entra my-6 flex items-center gap-4" style={{ animationDelay: "230ms" }}>
+              <div className="login-entra my-4 flex items-center gap-4" style={{ animationDelay: "230ms" }}>
                 <span className="h-px flex-1 bg-border" />
                 <span className="text-[13px] lowercase text-muted-foreground">o</span>
                 <span className="h-px flex-1 bg-border" />
@@ -158,12 +158,12 @@ export function CitasLoginPage({ apiBaseUrl }: CitasLoginPageProps) {
                 </form>
               )}
 
-              <p className="login-entra mt-7 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
-                ¿No tienes acceso?{" "}
-                <span className="font-semibold text-foreground">Pídele a quien administra tu negocio que te dé de alta.</span>
+              <p className="login-entra mt-5 text-pretty text-[14px] leading-relaxed text-muted-foreground" style={{ animationDelay: "320ms" }}>
+                ¿Tu correo no tiene acceso?{" "}
+                <span className="font-semibold text-foreground">Pídele a tu negocio que te dé de alta.</span>
               </p>
 
-              <p className="login-entra mt-10 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "340ms" }}>
+              <p className="login-entra mt-6 text-pretty text-[12px] leading-[1.7] text-muted-foreground" style={{ animationDelay: "340ms" }}>
                 Al continuar, aceptas los{" "}
                 <a href="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
                   Términos de Servicio
@@ -179,7 +179,7 @@ export function CitasLoginPage({ apiBaseUrl }: CitasLoginPageProps) {
         </div>
       </section>
 
-      <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
+      <aside className="hidden lg:flex lg:flex-col lg:py-3 lg:pr-3">
         <figure className="login-lamina min-h-0 flex-1 flex items-end">
           <img
             src={`${import.meta.env.BASE_URL}images/login-hero-citas.png`}
