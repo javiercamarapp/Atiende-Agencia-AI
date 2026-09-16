@@ -134,10 +134,17 @@ function mapStaffInvite(row: StaffInviteRawRow): StaffInviteRow {
 export class PostgresCoreRepository implements CoreRepository, CoreStaffRepository {
   constructor(private readonly db: TenantDbSession) {}
 
+  // `core.staff_user` tiene RLS con una sola policy (`id = auth.uid()`) y sin
+  // GRANT directo al rol `authenticated` (mismo criterio que
+  // `core.staff_google_identity`) -- login ocurre ANTES de que exista un
+  // `auth.uid()` real, así que una query cruda aquí siempre regresaba cero
+  // filas en producción (hallazgo crítico, ver 0011_login_lookup_security_
+  // definer.sql). `core.find_staff_by_email` es `security definer`, mismo
+  // patrón exacto que `core.find_staff_by_google_sub` (0008).
   async findStaffByEmail(email: string): Promise<StaffUserRow | null> {
     const { rows } = await this.db.query<StaffUserRawRow>(
       `select id, email, full_name, password_hash, created_via, email_verified_at, sessions_revoked_at
-       from core.staff_user where email = $1;`,
+       from core.find_staff_by_email($1);`,
       [email],
     );
     return rows[0] ? mapStaff(rows[0]) : null;
@@ -146,7 +153,7 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   async findStaffById(id: string): Promise<StaffUserRow | null> {
     const { rows } = await this.db.query<StaffUserRawRow>(
       `select id, email, full_name, password_hash, created_via, email_verified_at, sessions_revoked_at
-       from core.staff_user where id = $1;`,
+       from core.find_staff_by_id($1);`,
       [id],
     );
     return rows[0] ? mapStaff(rows[0]) : null;
@@ -154,11 +161,8 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   async findMembershipsByUserId(userId: string): Promise<readonly MembershipRow[]> {
     const { rows } = await this.db.query<MembershipRawRow>(
-      `select m.organization_id, o.slug, o.name, o.vertical, m.platform_role, m.vertical_role, m.property_ids
-       from core.membership m
-       join core.organization o on o.id = m.organization_id
-       where m.user_id = $1
-       order by o.name asc;`,
+      `select organization_id, slug, name, vertical, platform_role, vertical_role, property_ids
+       from core.find_memberships_by_user_id($1);`,
       [userId],
     );
     return rows.map((row) => ({
