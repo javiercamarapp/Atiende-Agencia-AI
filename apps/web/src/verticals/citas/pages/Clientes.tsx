@@ -4,6 +4,8 @@
 // un cliente directamente.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Users } from "lucide-react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { fetchCustomerDetail, fetchCustomers } from "../lib/customers-client.ts";
 import type { CustomerDetail, CustomerSummary } from "../lib/customers-client.ts";
 import { formatDateTime } from "../lib/format.ts";
@@ -49,13 +51,11 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
         />
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
+      {error && <EstadoError mensaje={error} />}
+      {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
+      {customers && customers.length === 0 && (
+        <EstadoVacio icon={Users} mensaje={search ? "Ningún cliente coincide con esa búsqueda." : "Este negocio todavía no tiene clientes."} />
       )}
-      {!customers && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {customers && customers.length === 0 && <p style={{ color: "#6b7280" }}>{search ? "Ningún cliente coincide con esa búsqueda." : "Este negocio todavía no tiene clientes."}</p>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {customers?.map((c) => (
@@ -111,12 +111,8 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
       <Link to={`/citas/${orgSlug}/clientes`} style={{ fontSize: 13, color: "#6b7280" }}>
         ← Volver a clientes
       </Link>
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!detail && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!detail && !error && <EstadoCargando etiqueta="Cargando cliente…" />}
       {detail && (
         <>
           <header>

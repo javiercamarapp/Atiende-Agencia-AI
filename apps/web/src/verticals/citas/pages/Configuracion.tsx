@@ -10,6 +10,8 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { UserRound } from "lucide-react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { fetchProviderDetail, fetchProviders, requestGoogleCalendarConnectUrl } from "../lib/providers-client.ts";
 import type { GoogleCalendarStatus, ProviderSummary } from "../lib/providers-client.ts";
 import { fetchTenantConfig, RUBRO_OPTIONS, updateTenantConfig } from "../lib/tenant-config-client.ts";
@@ -113,11 +115,11 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
         <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Datos del negocio</p>
 
         {tenantConfigError && (
-          <p role="alert" style={{ color: "#b91c1c", margin: "0 0 12px" }}>
-            {tenantConfigError}
-          </p>
+          <div className="mb-3">
+            <EstadoError mensaje={tenantConfigError} />
+          </div>
         )}
-        {!tenantConfig && !tenantConfigError && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+        {!tenantConfig && !tenantConfigError && <EstadoCargando etiqueta="Cargando datos del negocio…" />}
 
         {tenantConfig && (
           <form onSubmit={handleSaveTenantConfig} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -154,18 +156,14 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
         )}
       </section>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
       <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
         <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Conexión con Google Calendar</p>
         <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280" }}>Cada proveedor conecta su propio calendario — un calendario de Google es personal, nunca compartido por todo el negocio.</p>
 
-        {!rows && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-        {rows && rows.length === 0 && <p style={{ color: "#6b7280" }}>Este negocio todavía no tiene proveedores activos.</p>}
+        {!rows && !error && <EstadoCargando etiqueta="Cargando proveedores…" />}
+        {rows && rows.length === 0 && <EstadoVacio icon={UserRound} mensaje="Este negocio todavía no tiene proveedores activos." />}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {rows?.map(({ provider, googleCalendar }) => (

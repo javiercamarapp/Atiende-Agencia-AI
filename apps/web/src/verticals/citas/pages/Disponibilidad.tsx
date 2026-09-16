@@ -8,6 +8,8 @@
 // .../availability-rules[/:ruleId] y .../availability-overrides[/:date]).
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { UserRound } from "lucide-react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import {
   createAvailabilityRule,
   deleteAvailabilityOverride,
@@ -207,13 +209,9 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
       <h1 style={{ fontSize: 20, margin: 0 }}>Disponibilidad</h1>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
-      {providers && providers.length === 0 && <p style={{ color: "#6b7280" }}>Este negocio todavía no tiene proveedores activos.</p>}
+      {providers && providers.length === 0 && <EstadoVacio icon={UserRound} mensaje="Este negocio todavía no tiene proveedores activos." />}
 
       {providers && providers.length > 0 && (
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: "#374151" }}>
@@ -228,7 +226,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
         </label>
       )}
 
-      {!detail && selectedProviderId && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {!detail && selectedProviderId && !error && <EstadoCargando etiqueta="Cargando disponibilidad…" />}
 
       {detail && (
         <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>

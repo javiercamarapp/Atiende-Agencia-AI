@@ -27,6 +27,8 @@
 // agenda para no duplicar el selector de proveedor.
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { CalendarX2 } from "lucide-react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
@@ -401,15 +403,11 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId }: CitasShellC
         </section>
       )}
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
-      {loading && !appointments && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {loading && !appointments && <EstadoCargando etiqueta="Cargando citas…" />}
 
-      {appointments && appointments.length === 0 && !loading && <p style={{ color: "#6b7280" }}>No hay citas en este rango.</p>}
+      {appointments && appointments.length === 0 && !loading && <EstadoVacio icon={CalendarX2} mensaje="No hay citas en este rango." />}
 
       {groups.map(([day, dayAppointments]) => (
         <section key={day} style={{ display: "flex", flexDirection: "column", gap: 8 }}>

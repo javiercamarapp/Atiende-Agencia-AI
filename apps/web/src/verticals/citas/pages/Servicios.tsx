@@ -5,6 +5,8 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { Scissors } from "lucide-react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { createService, fetchServiceDetail, fetchServices, updateService } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
 import { formatMoneyFromCents } from "../lib/format.ts";
@@ -56,11 +58,7 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <h1 style={{ fontSize: 20, margin: 0 }}>Servicios</h1>
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
       <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
         <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Nuevo servicio</p>
@@ -74,8 +72,8 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
         </form>
       </section>
 
-      {!services && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {services && services.length === 0 && <p style={{ color: "#6b7280" }}>Este negocio todavía no tiene servicios activos.</p>}
+      {!services && !error && <EstadoCargando etiqueta="Cargando servicios…" />}
+      {services && services.length === 0 && <EstadoVacio icon={Scissors} mensaje="Este negocio todavía no tiene servicios activos." />}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
         {services?.map((s) => (
           <Link key={s.id} to={`/citas/${orgSlug}/servicios/${s.id}`} style={{ display: "block", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, textDecoration: "none", color: "inherit" }}>
@@ -155,12 +153,8 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
       <Link to={`/citas/${orgSlug}/servicios`} style={{ fontSize: 13, color: "#6b7280" }}>
         ← Volver a servicios
       </Link>
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!service && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!service && !error && <EstadoCargando etiqueta="Cargando servicio…" />}
       {service && !editing && (
         <>
           <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
