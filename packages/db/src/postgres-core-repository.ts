@@ -18,18 +18,20 @@ import type {
   AcceptStaffInviteResult,
   CoreRepository,
   CoreStaffRepository,
+  CreateProspectoInput,
   CreateStaffInviteInput,
   MembershipRow,
   NotificationRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
+  ProspectoRow,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffInviteStatus,
   StaffUserRow,
   SuperadminOrganizationRow,
 } from "./core-repository.ts";
-import { MembershipRoleUpdateError, NotificationNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
+import { MembershipRoleUpdateError, NotificationNotFoundError, ProspectoNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
 
 interface StaffUserRawRow {
   readonly id: string;
@@ -114,6 +116,44 @@ function mapNotification(row: NotificationRawRow): NotificationRow {
     entidadId: row.entidad_id,
     createdAt: row.created_at,
     readAt: row.read_at,
+  };
+}
+
+// core.prospecto: `list`/`create`/`update_prospecto_for_superadmin` devuelven la
+// fila REAL de la tabla (`returns setof core.prospecto`/`returns core.prospecto`,
+// ver la migración 0012) -- mismas columnas snake_case que la tabla, nunca una
+// forma distinta por función.
+interface ProspectoRawRow {
+  readonly id: string;
+  readonly empresa: string;
+  readonly vertical: string;
+  readonly ciudad: string | null;
+  readonly contacto_nombre: string | null;
+  readonly telefono: string | null;
+  readonly correo: string | null;
+  readonly estado: string;
+  readonly fuente: string | null;
+  readonly notas: string | null;
+  readonly creado_por: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+function mapProspecto(row: ProspectoRawRow): ProspectoRow {
+  return {
+    id: row.id,
+    empresa: row.empresa,
+    vertical: row.vertical,
+    ciudad: row.ciudad,
+    contactoNombre: row.contacto_nombre,
+    telefono: row.telefono,
+    correo: row.correo,
+    estado: row.estado,
+    fuente: row.fuente,
+    notas: row.notas,
+    creadoPor: row.creado_por,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -460,5 +500,47 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       [staffId],
     );
     return rows[0]?.mark_all_notifications_read ?? 0;
+  }
+
+  // ---- "Cerebro de ventas" — ver el comentario de cabecera de
+  // `supabase/migrations/20240101000114_0012_superadmin_prospectos.sql`: las 3
+  // funciones son `security definer`, validan `is_platform_superadmin(p_caller_id)`
+  // DENTRO de la función SQL. ----
+
+  async listProspectosForSuperadmin(callerId: string): Promise<readonly ProspectoRow[]> {
+    const { rows } = await this.db.query<ProspectoRawRow>(
+      `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+       from core.list_prospectos_for_superadmin($1);`,
+      [callerId],
+    );
+    return rows.map(mapProspecto);
+  }
+
+  async createProspectoForSuperadmin(callerId: string, input: CreateProspectoInput): Promise<ProspectoRow> {
+    const { rows } = await this.db.query<ProspectoRawRow>(
+      `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+       from core.create_prospecto_for_superadmin($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+      [callerId, input.empresa, input.vertical, input.ciudad, input.contactoNombre, input.telefono, input.correo, input.fuente, input.notas],
+    );
+    const row = rows[0];
+    if (!row) throw new Error("create_prospecto_for_superadmin no devolvió ninguna fila.");
+    return mapProspecto(row);
+  }
+
+  async updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow> {
+    try {
+      const { rows } = await this.db.query<ProspectoRawRow>(
+        `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+         from core.update_prospecto_for_superadmin($1, $2, $3, $4);`,
+        [callerId, prospectoId, estado, notas],
+      );
+      const row = rows[0];
+      if (!row) throw new ProspectoNotFoundError();
+      return mapProspecto(row);
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "P0002") throw new ProspectoNotFoundError();
+      throw err;
+    }
   }
 }

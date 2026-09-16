@@ -10,7 +10,7 @@
 // (nunca reutiliza una conexión entre requests, correcto para el `pg.Pool` de
 // `ManagedPostgresEngine`) y delega en un `PostgresCoreRepository` construido sobre esa
 // sesión efímera.
-import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, MembershipRow, NotificationRow, RevokeRefreshTokenInput, StaffInviteRow, StaffUserRow, SuperadminOrganizationRow } from "@atiende/db";
+import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, CreateProspectoInput, MembershipRow, NotificationRow, ProspectoRow, RevokeRefreshTokenInput, StaffInviteRow, StaffUserRow, SuperadminOrganizationRow } from "@atiende/db";
 import { PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -120,5 +120,20 @@ export class ProductionCoreRepository implements CoreRepository {
 
   markAllNotificationsRead(staffId: string): Promise<number> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).markAllNotificationsRead(staffId));
+  }
+
+  // ---- "Cerebro de ventas" — sesión de sistema igual que el resto de este archivo:
+  // las 3 funciones SQL son `security definer` con `p_caller_id` explícito. ----
+
+  listProspectosForSuperadmin(callerId: string): Promise<readonly ProspectoRow[]> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).listProspectosForSuperadmin(callerId));
+  }
+
+  createProspectoForSuperadmin(callerId: string, input: CreateProspectoInput): Promise<ProspectoRow> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).createProspectoForSuperadmin(callerId, input));
+  }
+
+  updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).updateProspectoForSuperadmin(callerId, prospectoId, estado, notas));
   }
 }

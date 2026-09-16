@@ -300,6 +300,51 @@ export interface CoreRepository {
    *  INSERT masivo evaluado en Postgres, nunca N llamadas del cliente). Devuelve
    *  cuántas quedaron marcadas leídas en ESTA llamada. */
   markAllNotificationsRead(staffId: string): Promise<number>;
+  /** "Cerebro de ventas" (ver `supabase/migrations/20240101000114_0012_superadmin_
+   *  prospectos.sql`) — mismo patrón de autorización que el resto del back office de
+   *  plataforma: `core.list_prospectos_for_superadmin` valida `is_platform_superadmin`
+   *  DENTRO de la función SQL, `callerId` nunca decide nada del lado TS. Más recientes
+   *  primero (por `updated_at`). */
+  listProspectosForSuperadmin(callerId: string): Promise<readonly ProspectoRow[]>;
+  /** Alta real de un prospecto — `callerId` queda como `creado_por` dentro de la
+   *  función SQL (nunca un id ajeno pasado por el cliente). */
+  createProspectoForSuperadmin(callerId: string, input: CreateProspectoInput): Promise<ProspectoRow>;
+  /** Mueve `estado` y/o `notas` de un prospecto ya existente — ambos campos son
+   *  `coalesce` dentro de la función SQL (pasar `null` en uno deja ese campo tal
+   *  cual). Lanza `ProspectoNotFoundError` si el id no existe (SQLSTATE P0002, ver
+   *  `core.update_prospecto_for_superadmin`). */
+  updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow>;
+}
+
+/** Fila real de `core.prospecto` — ver el comentario de cabecera de la migración
+ *  0012 para el porqué de cada campo (adaptado del "cerebro de ventas" real de
+ *  Likida, con `vertical` como columna real ya que aquí un prospecto puede
+ *  comprar cualquiera de las 6 soluciones, no siempre una flota). */
+export interface ProspectoRow {
+  readonly id: string;
+  readonly empresa: string;
+  readonly vertical: string;
+  readonly ciudad: string | null;
+  readonly contactoNombre: string | null;
+  readonly telefono: string | null;
+  readonly correo: string | null;
+  readonly estado: string;
+  readonly fuente: string | null;
+  readonly notas: string | null;
+  readonly creadoPor: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface CreateProspectoInput {
+  readonly empresa: string;
+  readonly vertical: string;
+  readonly ciudad: string | null;
+  readonly contactoNombre: string | null;
+  readonly telefono: string | null;
+  readonly correo: string | null;
+  readonly fuente: string | null;
+  readonly notas: string | null;
 }
 
 /** Fila de `core.organization`, tal cual la ve el back office de plataforma —
@@ -402,5 +447,14 @@ export class NotificationNotFoundError extends Error {
   constructor() {
     super("La notificación no existe o no pertenece a este staff.");
     this.name = "NotificationNotFoundError";
+  }
+}
+
+/** Lanzado por `updateProspectoForSuperadmin` cuando el id no existe
+ *  (`core.update_prospecto_for_superadmin`, SQLSTATE P0002). */
+export class ProspectoNotFoundError extends Error {
+  constructor() {
+    super("El prospecto no existe.");
+    this.name = "ProspectoNotFoundError";
   }
 }

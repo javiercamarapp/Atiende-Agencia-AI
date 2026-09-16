@@ -19,17 +19,19 @@ import type {
   AcceptStaffInviteResult,
   CoreRepository,
   CoreStaffRepository,
+  CreateProspectoInput,
   CreateStaffInviteInput,
   MembershipRow,
   NotificationRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
+  ProspectoRow,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
   SuperadminOrganizationRow,
 } from "./core-repository.ts";
-import { MembershipRoleUpdateError, NotificationNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
+import { MembershipRoleUpdateError, NotificationNotFoundError, ProspectoNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
 
 export interface SeedOrganization {
   readonly id: string;
@@ -96,6 +98,8 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   // separación de mapas que `sessionsRevokedAtByUserId` arriba (nunca mutar la fila
   // guardada en `this.notifications`, mezclar solo al leer).
   private readonly readAtByKey = new Map<string, string>();
+  // "Cerebro de ventas" — mismo dato que `core.prospecto`.
+  private readonly prospectos = new Map<string, ProspectoRow>();
 
   /** Solo para fixtures de prueba (`apps/api/tests/fixtures.ts`) — agrega una
    *  notificación ya creada (mismo criterio que `addStaff`/`addMembership`: nunca
@@ -458,5 +462,45 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
       affected += 1;
     }
     return affected;
+  }
+
+  // ---- "Cerebro de ventas" — ver el contrato completo en `core-repository.ts`. En
+  // memoria, el chequeo de autorización espeja el `where core.is_platform_superadmin
+  // (p_caller_id)` real: `list` devuelve vacío, `create`/`update` lanzan. ----
+
+  async listProspectosForSuperadmin(callerId: string): Promise<readonly ProspectoRow[]> {
+    if (!this.platformSuperadmins.has(callerId)) return [];
+    return [...this.prospectos.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async createProspectoForSuperadmin(callerId: string, input: CreateProspectoInput): Promise<ProspectoRow> {
+    if (!this.platformSuperadmins.has(callerId)) throw new Error("forbidden");
+    const now = new Date().toISOString();
+    const row: ProspectoRow = {
+      id: randomUUID(),
+      empresa: input.empresa,
+      vertical: input.vertical,
+      ciudad: input.ciudad,
+      contactoNombre: input.contactoNombre,
+      telefono: input.telefono,
+      correo: input.correo,
+      estado: "nuevo",
+      fuente: input.fuente,
+      notas: input.notas,
+      creadoPor: callerId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.prospectos.set(row.id, row);
+    return row;
+  }
+
+  async updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow> {
+    if (!this.platformSuperadmins.has(callerId)) throw new Error("forbidden");
+    const current = this.prospectos.get(prospectoId);
+    if (!current) throw new ProspectoNotFoundError();
+    const updated: ProspectoRow = { ...current, estado: estado ?? current.estado, notas: notas ?? current.notas, updatedAt: new Date().toISOString() };
+    this.prospectos.set(prospectoId, updated);
+    return updated;
   }
 }
