@@ -12,20 +12,15 @@
 
 const FUENTE = `Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
 const FUENTE_TITULO = `'Inter Tight',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
-const LOGO_DATA_URI = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjIwIDQwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxnPgogICAgPHJlY3QgeD0iMCIgeT0iMTAiIHdpZHRoPSIxMyIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iIzdERDNGQyIgLz4KICAgIDxyZWN0IHg9IjQiIHk9IjE4IiB3aWR0aD0iMTMiIGhlaWdodD0iNCIgcng9IjIiIGZpbGw9IiM3REQzRkMiIC8+CiAgICA8cmVjdCB4PSIwIiB5PSIyNiIgd2lkdGg9IjEzIiBoZWlnaHQ9IjQiIHJ4PSIyIiBmaWxsPSIjN0REM0ZDIiAvPgogICAgPGNpcmNsZSBjeD0iMjYiIGN5PSIxMiIgcj0iNSIgZmlsbD0iIzM4QkRGOCIgLz4KICAgIDxwYXRoCiAgICAgIGQ9Ik0xNCAzOCBMMjAgMjYgUTIyIDIyIDI3IDIyIEwzMSAyMiBRMzQgMjIgMzYgMTkgTDM4IDE2IgogICAgICBzdHJva2U9IiMxRDRFRDgiCiAgICAgIHN0cm9rZS13aWR0aD0iNyIKICAgICAgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIgogICAgICBzdHJva2UtbGluZWpvaW49InJvdW5kIgogICAgICBmaWxsPSJub25lIgogICAgLz4KICA8L2c+CiAgPHRleHQgeD0iNTIiIHk9IjMwIiBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzFENEVEOCIgbGV0dGVyLXNwYWNpbmc9Ii0wLjUiPmF0aWVuZGU8L3RleHQ+Cjwvc3ZnPgo=";
+const LOGO_URL = "https://app.useatiende.ai/email/atiende-wordmark.png";
 
-// Hallazgo de auditoría (rubro 12/18, MEDIO, "logo de correo sin fallback — no
-// renderiza en Gmail/Outlook de escritorio"): el <img> de arriba usaba un data URI
-// de SVG — formato que Outlook de escritorio (el motor de renderizado es Word, no
-// un navegador) NUNCA soporta, con o sin data URI, y que Gmail/otros clientes con
-// "no mostrar imágenes" activado tampoco muestran hasta que el usuario da clic en
-// "mostrar imágenes". El único fallback que tenía era `alt="atiende"` en texto
-// plano del navegador, sin ningún estilo — se veía roto. Patrón estándar de email
-// HTML aplicado en el <img> de abajo: comentarios condicionales `[if mso]` /
-// `[if !mso]` (Outlook de escritorio nunca ve el <img>, ve un <div> de texto real
-// con la tipografía/color de marca) + estilos de fuente en el propio <img> (varios
-// clientes, notablemente Gmail, aplican esos estilos al alt-text cuando la imagen
-// está bloqueada/no cargó).
+// Hallazgo real (2026-09-16, primer correo real entregado a una bandeja real):
+// el logo se veía roto en Gmail -- el <img> de arriba usaba un data URI de SVG,
+// formato que Gmail no renderiza en absoluto (a diferencia de Outlook, donde al
+// menos existía un fallback [if mso]). Corregido con un PNG real HOSPEDADO (no
+// data URI) en apps/web/public/email/atiende-wordmark.png, servido por la app en
+// ${APP_BASE_URL}/email/atiende-wordmark.png -- soporte universal (Gmail, Outlook
+// web/desktop, Apple Mail) sin necesitar ningún condicional MSO.
 
 export function escapeHtml(t: string): string {
   return t
@@ -74,12 +69,7 @@ export function renderCorreo(s: SeccionPlantilla): string {
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:100%;border-collapse:collapse;">
 
       <tr><td align="left" style="padding:0 0 26px 2px;">
-        <!--[if mso]>
-        <div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:20px;font-weight:700;color:#1D4ED8;letter-spacing:-0.3px;">atiende</div>
-        <![endif]-->
-        <!--[if !mso]><!-->
-        <img src="${LOGO_DATA_URI}" width="96" height="17" alt="atiende" style="display:block;border:0;outline:none;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:20px;font-weight:700;color:#1D4ED8;">
-        <!--<![endif]-->
+        <img src="${LOGO_URL}" width="96" height="17" alt="atiende" style="display:block;border:0;outline:none;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:20px;font-weight:700;color:#1D4ED8;">
       </td></tr>
 
       <tr><td bgcolor="#ffffff" style="padding:42px 44px 38px 44px;border:1px solid #e2e8f0;border-radius:16px;">
