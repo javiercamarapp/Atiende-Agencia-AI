@@ -33,9 +33,31 @@
 // para no duplicar el mismo mecanismo dos veces en la misma SPA) en vez de dejar
 // el título estático de index.html ("Atiende — Restaurantes") sin importar qué
 // vertical estuviera abierta.
+//
+// Visual (ronda de integración del design system real, @atiende/ui): reemplaza el
+// `<nav>` de estilos inline por el `Sidebar` real ya portado desde atiende-hoteles
+// (acordeón por sección, colapso, bloque de cuenta hundido) — misma anatomía que
+// AppShell.tsx del repo standalone (leído primero como plantilla). El selector de
+// hotel se pasa vía `hotelSelector` (prop de Sidebar), y el resto del header
+// (fecha real, `BotonChatDatos` honesto, correo/rol de la sesión) vive en la barra
+// superior, igual que ese AppShell. Ningún cambio de lógica de sesión/property/
+// ruteo: solo el envoltorio visual.
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import type { ReactNode } from "react";
+import {
+  CalendarCheck,
+  ClipboardCheck,
+  LayoutDashboard,
+  Receipt,
+  ShieldAlert,
+  Tags,
+  TrendingUp,
+  UtensilsCrossed,
+  Wrench,
+} from "lucide-react";
+import { AtiendeWordmark, EstadoCargando, EstadoError, MobileHeader, Sidebar } from "@atiende/ui";
+import type { SidebarSection } from "@atiende/ui";
+import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { clearHotelesSession, logout, readPersistedHotelesSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
@@ -44,7 +66,6 @@ import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selec
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
-import { ATIENDE_LOGO_DATA_URI } from "../../lib/atiende-logo.ts";
 
 export interface HotelesShellContext {
   readonly apiBaseUrl: string;
@@ -68,14 +89,6 @@ export interface HotelesShellProps {
   readonly children: (ctx: HotelesShellContext) => ReactNode;
 }
 
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "reservas", label: "Reservas" },
-  { to: "mantenimiento", label: "Mantenimiento" },
-  { to: "asistencia", label: "Asistencia" },
-  { to: "fraude", label: "Fraude" },
-  { to: "cfdi", label: "CFDI" },
-];
-
 // Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con guardia de
 // alergias: backend real sin pantalla"): mismo `TOMAR_PEDIDO_ROLES` que
 // domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de
@@ -96,51 +109,6 @@ const PL_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "accountant"])
 // `role` arriba) — solo oculta el link "Catálogo" del nav para quien el servidor
 // rechazaría de todas formas (403 en admin-catalogo.ts, `hoteles.can_manage_catalog()`).
 const CATALOGO_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
-
-const linkStyle = (isActive: boolean): CSSProperties => ({
-  display: "block",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textDecoration: "none",
-  color: isActive ? "#fff" : "#111827",
-  background: isActive ? "#111827" : "transparent",
-});
-
-const logoImgStyle: CSSProperties = { height: 20, display: "block", margin: "0 0 12px" };
-
-const selectLabelStyle: CSSProperties = {
-  display: "block",
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  color: "#6b7280",
-  margin: "0 0 4px",
-};
-
-const selectStyle: CSSProperties = {
-  display: "block",
-  width: "100%",
-  padding: "6px 8px",
-  borderRadius: 8,
-  border: "1px solid #d1d5db",
-  fontSize: 13,
-  color: "#111827",
-  background: "#fff",
-  boxSizing: "border-box",
-};
-
-const logoutButtonStyle: CSSProperties = {
-  marginTop: "auto",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textAlign: "left",
-  color: "#b91c1c",
-  background: "transparent",
-  border: "1px solid #fecaca",
-  cursor: "pointer",
-};
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   useDocumentTitle("Hoteles");
@@ -235,28 +203,30 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
 
   if (error) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          {error}
-        </p>
+      <main className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <EstadoError mensaje={error} />
+        </div>
       </main>
     );
   }
 
   if (!properties) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
+      <main className="min-h-screen bg-background p-6">
+        <div className="max-w-md mx-auto">
+          <EstadoCargando etiqueta="Cargando propiedades…" />
+        </div>
       </main>
     );
   }
 
   if (properties.length === 0) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          Esta organización todavía no tiene ningún hotel (property) configurado.
-        </p>
+      <main className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <EstadoError titulo="Sin hoteles configurados" mensaje="Esta organización todavía no tiene ningún hotel (property) configurado." />
+        </div>
       </main>
     );
   }
@@ -283,81 +253,89 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
     persistPropertyId(window.localStorage, orgSlug, nextPropertyId);
   }
 
+  const base = `/hoteles/${orgSlug}`;
+
+  // Mapeo real de NAV_ITEMS (antes un `<nav>` de estilos inline) a las secciones
+  // del Sidebar compartido — mismas rutas y mismas etiquetas exactas, agrupadas por
+  // función (misma anatomía que AppShell.tsx del repo standalone atiende-hoteles,
+  // leído primero como plantilla): "Panel" fijo arriba (siempre abierto), luego
+  // "Operación" (día a día del hotel) y "Administración" (P&L/Catálogo, solo para
+  // los roles que ya podían verlos antes — ver *_NAV_ROLES arriba). Ningún ítem
+  // nuevo, ninguna ruta renombrada.
+  const sections: SidebarSection[] = [
+    {
+      title: "Panel",
+      siempreAbierto: true,
+      items: [{ to: base, label: "Dashboard", icon: LayoutDashboard }],
+    },
+    {
+      title: "Operación",
+      items: [
+        { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
+        { to: `${base}/mantenimiento`, label: "Mantenimiento", icon: Wrench },
+        { to: `${base}/asistencia`, label: "Asistencia", icon: ClipboardCheck },
+        { to: `${base}/fraude`, label: "Fraude", icon: ShieldAlert },
+        { to: `${base}/cfdi`, label: "CFDI", icon: Receipt },
+        ...(PEDIDOS_FNB_NAV_ROLES.has(role) ? [{ to: `${base}/pedidos-fnb`, label: "Pedidos F&B", icon: UtensilsCrossed }] : []),
+      ],
+    },
+    {
+      title: "Administración",
+      items: [
+        ...(PL_NAV_ROLES.has(role) ? [{ to: `${base}/pl`, label: "P&L", icon: TrendingUp }] : []),
+        ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : []),
+      ],
+    },
+    // "Administración" se omite por completo si el rol activo no puede ver P&L ni
+    // Catálogo (frontdesk/reservations/housekeeping/maintenance/fnb) — un acordeón
+    // vacío no aporta nada y confundiría más que ayudar.
+  ].filter((s) => s.items.length > 0);
+
+  const hotelSelector =
+    properties.length > 1 ? (
+      <div>
+        <label htmlFor="hoteles-hotel-activo" className="block mb-1 font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+          Hotel activo
+        </label>
+        <select
+          id="hoteles-hotel-activo"
+          value={propertyId}
+          onChange={(e) => handleSelectProperty(e.target.value)}
+          className="block w-full rounded-lg border border-border bg-card px-2 py-1.5 text-[13px] text-foreground"
+        >
+          {properties.map((p) => (
+            <option key={p.propertyId} value={p.propertyId}>
+              {p.nombre}
+            </option>
+          ))}
+        </select>
+      </div>
+    ) : (
+      <p className="text-[12px] text-muted-foreground truncate">{activeProperty.nombre}</p>
+    );
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
-        <img src={ATIENDE_LOGO_DATA_URI} alt="Atiende" style={logoImgStyle} />
-        <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 4px" }}>Hoteles · {orgSlug}</p>
-        {properties.length > 1 ? (
-          <div style={{ margin: "0 0 8px" }}>
-            <label htmlFor="hoteles-hotel-activo" style={selectLabelStyle}>
-              Hotel activo
-            </label>
-            <select id="hoteles-hotel-activo" value={propertyId} onChange={(e) => handleSelectProperty(e.target.value)} style={selectStyle}>
-              {properties.map((p) => (
-                <option key={p.propertyId} value={p.propertyId}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
+    <div className="min-h-screen bg-background flex w-full gap-3 p-3">
+      <Sidebar sections={sections} user={{ email: session.email, rol: role }} onLogout={handleLogout} hotelSelector={hotelSelector} />
+
+      <MobileHeader title={<AtiendeWordmark className="scale-90 origin-left" />} action={hotelSelector} />
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="hidden md:flex items-center justify-between gap-3 px-3 py-2">
+          <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+            Hoteles · {orgSlug}
+          </p>
+          <div className="flex items-center gap-3">
+            <BotonChatDatos />
+            <span className="text-sm text-muted-foreground truncate max-w-[220px]">{session.email}</span>
+            {loggingOut && <span className="text-xs text-muted-foreground">Cerrando sesión…</span>}
           </div>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 8px" }}>{activeProperty.nombre}</p>
-        )}
-        {/* Fase 16 — hallazgo de auditoría (severidad ALTA, "No hay dashboard por
-            tipo de usuario"): landing real del panel, ver comentario de cabecera de
-            pages/Dashboard.tsx. `end` evita que este link quede marcado activo en
-            cualquier subruta (mismo criterio que "Panel (KPIs)" en
-            RestaurantesShell.tsx). */}
-        <NavLink to={`/hoteles/${orgSlug}`} end style={({ isActive }) => linkStyle(isActive)}>
-          Dashboard
-        </NavLink>
-        <div style={{ height: 1, background: "#f3f4f6", margin: "6px 0" }} />
-        {NAV_ITEMS.map((item) => (
-          <NavLink key={item.to} to={`/hoteles/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
-            {item.label}
-          </NavLink>
-        ))}
-        {/* Hallazgo de auditoría (severidad ALTA, "P&L USALI (P0)... sin UI",
-            porción restante): ver PL_NAV_ROLES arriba. */}
-        {PL_NAV_ROLES.has(role) && (
-          <NavLink to={`/hoteles/${orgSlug}/pl`} style={({ isActive }) => linkStyle(isActive)}>
-            P&amp;L
-          </NavLink>
-        )}
-        {/* Fase 15 — hallazgo de auditoría (severidad ALTA, "Pedidos F&B con
-            guardia de alergias: backend real sin pantalla"): ver
-            PEDIDOS_FNB_NAV_ROLES arriba. */}
-        {PEDIDOS_FNB_NAV_ROLES.has(role) && (
-          <NavLink to={`/hoteles/${orgSlug}/pedidos-fnb`} style={({ isActive }) => linkStyle(isActive)}>
-            Pedidos F&amp;B
-          </NavLink>
-        )}
-        {/* Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-
-            habitación/tarifas/huéspedes imposible sin SQL directo"): ver
-            CATALOGO_NAV_ROLES arriba. */}
-        {CATALOGO_NAV_ROLES.has(role) && (
-          <NavLink to={`/hoteles/${orgSlug}/catalogo`} style={({ isActive }) => linkStyle(isActive)}>
-            Catálogo
-          </NavLink>
-        )}
-        <p style={{ fontSize: 11, color: "#9ca3af", margin: "16px 0 0" }}>Rol: {role}</p>
-        <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
-          {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
-        </button>
-      </nav>
-      {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
-          cuando el hotel activo cambia DENTRO de la misma instancia de Shell
-          (selector, sin navegar) — mismo criterio que DespachosShell.tsx: cualquier
-          página que cachee en su propio useState un resultado calculado para la
-          property anterior (ninguna lo hace hoy en hoteles, pero páginas futuras sí
-          podrían) queda cubierta sin tener que auditarlas una por una. Páginas que
-          ya refetchean por `useEffect` con `propertyId` en sus dependencias
-          (Reservas/Mantenimiento/Fraude/etc.) no cambian de comportamiento: un
-          remount con las mismas dependencias dispara el mismo fetch que ya
-          disparaban. */}
-      <div key={propertyId} style={{ flex: 1, padding: 24, overflow: "auto" }}>
-        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+        </header>
+        <main className="flex-1 overflow-auto px-4 pt-20 pb-6 md:pt-4 md:px-6">
+          <div key={propertyId} className="max-w-6xl mx-auto w-full">
+            {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}
+          </div>
+        </main>
       </div>
     </div>
   );

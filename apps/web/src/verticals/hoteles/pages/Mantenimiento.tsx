@@ -3,6 +3,7 @@
 // (REQ-HK-008, LFT) no están en esta página — ver housekeeping-client.ts.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { closeTicket, createTicket, fetchTickets, TICKET_SEVERITY_LABELS, TICKET_STATUS_LABELS } from "../lib/housekeeping-client.ts";
 import type { MaintenanceTicketSeverity, MaintenanceTicketStatus, MaintenanceTicketSummary } from "../lib/housekeeping-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
@@ -136,13 +137,9 @@ export function MantenimientoPage({ apiBaseUrl, token, propertyId }: HotelesShel
         ))}
       </div>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!tickets && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {tickets && tickets.length === 0 && <p style={{ color: "#6b7280" }}>No hay tickets en este filtro.</p>}
+      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+      {!tickets && !error && <EstadoCargando etiqueta="Cargando tickets…" />}
+      {tickets && tickets.length === 0 && <EstadoVacio mensaje="No hay tickets en este filtro." />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {tickets?.map((t) => (

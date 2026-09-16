@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { cancelarCfdi, fetchCfdisByProperty, MOTIVO_CANCELACION_LABELS } from "../lib/cfdi-client.ts";
 import type { CfdiEmisionSummary, MotivoCancelacionSat } from "../lib/cfdi-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
@@ -90,13 +91,9 @@ export function CfdiListadoPage({ apiBaseUrl, token, propertyId, orgSlug }: Hote
         </button>
       </form>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!cfdis && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {cfdis && cfdis.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Este hotel todavía no tiene ningún CFDI timbrado.</p>}
+      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+      {!cfdis && !error && <EstadoCargando etiqueta="Cargando CFDI…" />}
+      {cfdis && cfdis.length === 0 && <EstadoVacio mensaje="Este hotel todavía no tiene ningún CFDI timbrado." />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {cfdis?.map((c) => (

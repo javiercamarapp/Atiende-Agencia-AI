@@ -3,6 +3,7 @@
 // El escaneo nunca usa un LLM (ver fraude.ts) — solo los 2 patrones deterministas
 // portados a @atiende/domain-hoteles.
 import { useEffect, useState } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { fetchFraudAlerts, resolveFraudAlert, runFraudScan, FRAUD_ALERT_STATUS_LABELS } from "../lib/fraude-client.ts";
 import type { FraudAlertStatus, FraudAlertSummary } from "../lib/fraude-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
@@ -92,13 +93,9 @@ export function FraudePage({ apiBaseUrl, token, propertyId }: HotelesShellContex
         ))}
       </div>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!alerts && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {alerts && alerts.length === 0 && <p style={{ color: "#6b7280" }}>No hay alertas en este filtro.</p>}
+      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+      {!alerts && !error && <EstadoCargando etiqueta="Cargando alertas…" />}
+      {alerts && alerts.length === 0 && <EstadoVacio mensaje="No hay alertas en este filtro." />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {alerts?.map((a) => (
