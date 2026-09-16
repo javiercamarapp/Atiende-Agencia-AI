@@ -59,8 +59,8 @@ export function GoogleCallbackPage({ apiBaseUrl }: { readonly apiBaseUrl: string
       try {
         const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/me`, { headers: { authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error("no se pudo resolver la sesión");
-        const body = (await res.json()) as { email: string; organizations: LoginSession["organizations"]; isPlatformSuperadmin?: boolean };
-        const session: LoginSession = { token, refreshToken, email: body.email, organizations: body.organizations };
+        const body = (await res.json()) as { email: string; fullName?: string; organizations: LoginSession["organizations"]; isPlatformSuperadmin?: boolean };
+        const session: LoginSession = { token, refreshToken, email: body.email, fullName: body.fullName ?? "", organizations: body.organizations };
         // Back office de plataforma — sin importar por cuál de las 6
         // verticales entró (Google/magic link no distinguen), un superadmin
         // real SIEMPRE aterriza en /superadmin, nunca en el landing normal de

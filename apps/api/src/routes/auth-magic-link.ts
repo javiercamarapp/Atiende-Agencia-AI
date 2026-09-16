@@ -154,7 +154,7 @@ export function authMagicLinkRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.redirect(url.toString(), 302);
     }
 
-    const session = await issueSession(deps, staff.id, staff.email);
+    const session = await issueSession(deps, staff.id, staff.email, staff.fullName);
     const url = new URL(`/${vertical}/auth/google/callback`, deps.env.appBaseUrl);
     url.searchParams.set("token", session.token);
     url.searchParams.set("refreshToken", session.refreshToken);
