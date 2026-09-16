@@ -107,7 +107,7 @@
   overflow: hidden;
   border-radius: 22px;
   border: 1px solid hsl(var(--border));
-  background: linear-gradient(135deg, #1D4ED8 0%, #0EA5E9 100%);
+  background: hsl(var(--muted));
 }
 .login-velo {
   position: absolute;
@@ -131,8 +131,15 @@
   }
 
   .login-foto-marca {
-    animation: login-kenburns 30s ease-in-out infinite alternate, login-revela 1.1s ease-out both;
+    animation: login-kenburns 30s ease-in-out infinite alternate;
     transform-origin: 45% 60%;
+  }
+
+  /* La lámina completa (foto + velo + texto) entra deslizándose desde el
+     lado -- no la foto sola, así no compite con el transform del Ken Burns
+     de arriba, que corre en un elemento distinto. */
+  .login-lamina {
+    animation: login-lamina-entra 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .login-entra {
@@ -145,9 +152,9 @@
   from { transform: scale(1); }
   to { transform: scale(1.08); }
 }
-@keyframes login-revela {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes login-lamina-entra {
+  from { opacity: 0; transform: translateX(32px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes login-sube {

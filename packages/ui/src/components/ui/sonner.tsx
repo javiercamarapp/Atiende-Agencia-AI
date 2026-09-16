@@ -25,7 +25,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
           description: "group-[.toast]:font-body group-[.toast]:text-[12.5px] group-[.toast]:leading-snug group-[.toast]:opacity-75",
           actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
-          error: "group-[.toaster]:border-destructive/30 group-[.toaster]:bg-destructive group-[.toaster]:text-destructive-foreground",
+          // Sonner define su propio color de texto por defecto en [data-title]/
+          // [data-description] (sobrevive a heredar el `text-destructive-foreground`
+          // del contenedor) -- se fuerza aquí con selectores de descendiente.
+          error:
+            "group-[.toaster]:border-destructive/30 group-[.toaster]:bg-destructive group-[.toaster]:text-destructive-foreground [&_[data-title]]:!text-destructive-foreground [&_[data-description]]:!text-destructive-foreground [&_[data-description]]:!opacity-85",
         },
       }}
       {...props}

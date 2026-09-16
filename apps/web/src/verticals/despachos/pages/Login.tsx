@@ -193,7 +193,7 @@ export function DespachosLoginPage({ apiBaseUrl }: DespachosLoginPageProps) {
       <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
         <figure className="login-lamina min-h-0 flex-1 flex items-center justify-center">
           <img
-            src={`${import.meta.env.BASE_URL}images/login-hero-despachos.png`}
+            src={`${import.meta.env.BASE_URL}images/login-hero-despachos.jpg`}
             alt="Oficina contable al atardecer."
             className="login-foto-marca absolute inset-0 w-full h-full object-cover"
           />
