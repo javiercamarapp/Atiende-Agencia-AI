@@ -14,16 +14,19 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   BottomNav,
+  DashboardHeader,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   MobileHeader,
+  NotificationBell,
   Sidebar,
   AtiendeWordmark,
 } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import {
   CalendarCheck,
+  CalendarClock,
   CalendarRange,
   Scissors,
   Settings,
@@ -32,6 +35,8 @@ import {
   Users,
 } from "lucide-react";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { useNotifications } from "../../lib/useNotifications.ts";
+import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
@@ -58,6 +63,12 @@ export interface CitasShellContext {
    * invitar cuando el rol no alcanza), el enforcement real sigue siendo SIEMPRE el
    * servidor (admin-staff.ts::assertVerticalRole + canInviteStaff). */
   readonly role: string;
+  /** Nombre completo y correo del staff en sesión — expuestos a las páginas hijas
+   * (Fase de header compartido) solo para pintar el saludo real
+   * (`saludoConNombre`, ver Agenda.tsx); antes este contexto no exponía nada de
+   * identidad del staff más allá de lo que ya necesitaba `role`. */
+  readonly staffFullName: string | undefined;
+  readonly staffEmail: string;
 }
 
 export interface CitasShellProps {
@@ -192,6 +203,14 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
     };
   }, [session, apiBaseUrl, orgSlug]);
 
+  // Campana de notificaciones (header compartido) — llamada AQUÍ, antes de los
+  // returns condicionales de abajo (reglas de hooks: un hook no puede vivir
+  // después de un return condicional). `session?.token ?? ""` deja que el hook
+  // se monte igual mientras la sesión resuelve/no existe; ya maneja bien un
+  // token vacío (ver cabecera de useNotifications.ts) y en esas ramas el header
+  // ni siquiera llega a pintarse.
+  const notif = useNotifications(apiBaseUrl, session?.token ?? "");
+
   if (session === undefined) return null; // resolviendo sesión persistida
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
@@ -283,21 +302,34 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="hidden md:flex items-center justify-between gap-3 px-6 py-3 border-b border-border">
-          <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Citas</p>
-            <p className="text-sm font-medium text-foreground">{orgSlug}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <BotonChatDatos />
-            <span className="text-sm text-muted-foreground">{session.email}</span>
-          </div>
-        </header>
+        <div className="hidden md:block">
+          <DashboardHeader
+            variant="vertical"
+            icon={<CalendarClock className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+            title={`Citas · ${orgSlug}`}
+            fecha={fechaCortaEsMx()}
+            notificationBell={
+              <NotificationBell
+                items={notif.items}
+                unreadCount={notif.unreadCount}
+                loading={notif.loading}
+                onOpenChange={(open) => {
+                  if (open) notif.refetch();
+                }}
+                onMarkRead={notif.onMarkRead}
+                onMarkAllRead={notif.onMarkAllRead}
+              />
+            }
+            chatButton={<BotonChatDatos />}
+          />
+        </div>
         {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
             cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
             (selector, sin navegar) — mismo criterio que HotelesShell.tsx. */}
         <main key={propertyId} className="flex-1 px-4 py-4 pt-20 pb-24 md:pt-4 md:pb-8 md:px-6 overflow-auto">
-          <div className="max-w-6xl mx-auto w-full">{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role })}</div>
+          <div className="max-w-6xl mx-auto w-full">
+            {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role, staffFullName: session.fullName, staffEmail: session.email })}
+          </div>
         </main>
       </div>
 

@@ -84,15 +84,18 @@ import type { ReactNode } from "react";
 import {
   CalendarDays,
   ClipboardList,
+  Home,
   Inbox,
   LayoutDashboard,
   RefreshCcw,
   Tag,
   Wallet,
 } from "lucide-react";
-import { EstadoCargando, EstadoError, EstadoVacio, Sidebar } from "@atiende/ui";
+import { DashboardHeader, EstadoCargando, EstadoError, EstadoVacio, NotificationBell, Sidebar } from "@atiende/ui";
 import type { SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
+import { useNotifications } from "../../lib/useNotifications.ts";
 import { clearRentasSession, logout, readPersistedRentasSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
@@ -243,6 +246,12 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
     persistPropertyId(window.localStorage, orgSlug, nextPropertyId);
   }
 
+  // Campana de notificaciones del header (DashboardHeader/NotificationBell, ver
+  // ambos comentarios de cabecera) -- se llama SIEMPRE, antes de los early return
+  // de sesión de abajo, para no violar las reglas de hooks; `session?.token ?? ""`
+  // deja que el propio hook maneje un token vacío mientras la sesión resuelve.
+  const notif = useNotifications(apiBaseUrl, session?.token ?? "");
+
   if (session === undefined) return null; // resolviendo sesión persistida
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
@@ -323,13 +332,25 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
         hotelSelector={hotelSelector}
       />
       <div className="flex-1 min-w-0 flex flex-col gap-3">
-        <header className="shrink-0 h-14 px-4 rounded-2xl border border-border bg-card flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Rentas</p>
-            <p className="text-[13px] font-medium text-foreground truncate">{org?.nombre ?? orgSlug}</p>
-          </div>
-          <BotonChatDatos />
-        </header>
+        <DashboardHeader
+          variant="vertical"
+          icon={<Home className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+          title={org?.nombre ?? orgSlug}
+          fecha={fechaCortaEsMx()}
+          notificationBell={
+            <NotificationBell
+              items={notif.items}
+              unreadCount={notif.unreadCount}
+              loading={notif.loading}
+              onOpenChange={(open) => {
+                if (open) notif.refetch();
+              }}
+              onMarkRead={notif.onMarkRead}
+              onMarkAllRead={notif.onMarkAllRead}
+            />
+          }
+          chatButton={<BotonChatDatos />}
+        />
         <main className="flex-1 min-w-0 rounded-2xl border border-border bg-card p-6 overflow-auto">
           {children({ apiBaseUrl, token: session.token, propertyId, setPropertyId: handleSelectProperty, properties, orgSlug, session })}
         </main>
