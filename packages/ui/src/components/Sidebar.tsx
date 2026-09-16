@@ -91,20 +91,20 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
         collapsed ? "w-16" : "w-64",
       )}
     >
-      <div className="h-14 px-3.5 flex items-center justify-between shrink-0">
-        {!collapsed ? <AtiendeWordmark className="scale-90 origin-left" /> : <AtiendeMark className="h-6 w-auto" />}
+      <div className="px-3 py-3 flex items-center justify-between shrink-0">
+        {!collapsed ? <AtiendeWordmark className="h-[18px] w-auto origin-left" /> : <AtiendeMark className="h-[18px] w-auto" />}
         <button
           onClick={alternarColapso}
           aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
-          className="w-8 h-8 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+          className="w-7 h-7 rounded-md border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
         >
           {collapsed ? <PanelLeftOpen className="w-3.5 h-3.5" strokeWidth={1.75} /> : <PanelLeftClose className="w-3.5 h-3.5" strokeWidth={1.75} />}
         </button>
       </div>
 
-      {!collapsed && hotelSelector && <div className="px-3 pb-2">{hotelSelector}</div>}
+      {!collapsed && hotelSelector && <div className="px-2 pb-2">{hotelSelector}</div>}
 
-      <nav className="flex-1 px-3 py-2 space-y-3 overflow-y-auto">
+      <nav className="flex-1 px-2 space-y-2 overflow-y-auto pb-3">
         {sections.map((section) => {
           const abierta = section.siempreAbierto || grupoAbierto === section.title;
           return (
@@ -132,7 +132,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
                       onClick={(e) => item.disabled && e.preventDefault()}
                       className={({ isActive }) =>
                         cn(
-                          "w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg text-[13px] transition-colors min-h-11",
+                          "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors",
                           item.disabled
                             ? "text-muted-foreground/50 cursor-not-allowed"
                             : isActive
@@ -159,14 +159,14 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
         })}
       </nav>
 
-      {/* Bloque de cuenta — mismo patrón de dos capas que dashboard/chrome.tsx
-          de Likida: zona hundida (bg-muted, a todo lo ancho, sombra
-          interior) + tarjeta de usuario SOBREPUESTA (margen negativo, fondo
-          y sombra propios) en vez de solo separada por un borde. */}
+      {/* Bloque de cuenta — mismo patrón EXACTO (medidas incluidas) que
+          admin/chrome.tsx de Likida: zona plana con fondo propio + separador
+          de 1px, tarjeta de usuario simple abajo (sin el hack de superponer
+          con margen negativo que tenía la versión anterior). */}
       <div className="shrink-0 border-t border-border">
         {!collapsed && (
-          <div className="bg-muted px-2 pt-2 pb-5 space-y-0.5 shadow-[inset_0_2px_5px_-2px_rgba(0,0,0,0.08)]">
-            <button className="w-full flex items-center gap-2 px-3 py-2.5 mb-1 rounded-full text-[13px] border border-border bg-card hover:bg-background transition-colors min-h-11">
+          <div className="bg-muted px-2 pt-2 pb-1.5 space-y-0.5">
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] border border-border bg-card hover:bg-background transition-colors">
               <HelpCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
               <span className="truncate">Centro de ayuda</span>
             </button>
@@ -177,7 +177,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
               type="button"
               disabled
               title="Notificaciones: todavía no existe una sección propia en Atiende Hoteles."
-              className="w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-full text-[13px] text-muted-foreground/50 cursor-not-allowed min-h-11"
+              className="w-full flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] text-muted-foreground/50 cursor-not-allowed"
             >
               <span className="flex items-center gap-2.5">
                 <Bell className="w-4 h-4 shrink-0" strokeWidth={1.75} />
@@ -189,7 +189,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
               type="button"
               disabled
               title="Mi perfil: todavía no existe esta pantalla en Atiende Hoteles."
-              className="w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-full text-[13px] text-muted-foreground/50 cursor-not-allowed min-h-11"
+              className="w-full flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] text-muted-foreground/50 cursor-not-allowed"
             >
               <span className="flex items-center gap-2.5">
                 <UserRound className="w-4 h-4 shrink-0" strokeWidth={1.75} />
@@ -201,7 +201,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
               type="button"
               disabled
               title="Plan y facturación: todavía no existe esta pantalla en Atiende Hoteles."
-              className="w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-full text-[13px] text-muted-foreground/50 cursor-not-allowed min-h-11"
+              className="w-full flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] text-muted-foreground/50 cursor-not-allowed"
             >
               <span className="flex items-center gap-2.5">
                 <CreditCard className="w-4 h-4 shrink-0" strokeWidth={1.75} />
@@ -213,7 +213,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
               to="/configuracion"
               className={({ isActive }) =>
                 cn(
-                  "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-full text-[13px] transition-colors min-h-11",
+                  "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] transition-colors",
                   isActive ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-background",
                 )
               }
@@ -227,23 +227,23 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
           </div>
         )}
 
-        <div className={cn("relative px-2 pb-2", collapsed ? "-mt-1" : "-mt-3.5")}>
+        <div className="px-2 pt-2 pb-2">
           {!collapsed ? (
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-2 shadow-sm">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium shrink-0">
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-2">
+              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[11px] font-semibold shrink-0">
                 {user?.email?.charAt(0).toUpperCase() || "A"}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] text-foreground truncate">{user?.email ?? "Sin sesión"}</p>
+                <p className="text-[13px] text-foreground truncate leading-tight">{user?.email ?? "Sin sesión"}</p>
                 <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">{user?.rol ?? "—"}</p>
               </div>
-              <button onClick={onLogout} aria-label="Cerrar sesión" className="text-destructive hover:opacity-70 shrink-0 w-11 h-11 flex items-center justify-center">
-                <LogOut className="w-4 h-4" />
+              <button onClick={onLogout} aria-label="Cerrar sesión" className="text-destructive hover:opacity-70 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors">
+                <LogOut className="w-3.5 h-3.5" strokeWidth={1.75} />
               </button>
             </div>
           ) : (
-            <Button onClick={onLogout} variant="ghost" size="icon" className="w-full rounded-xl border border-border bg-card shadow-sm" aria-label="Cerrar sesión">
-              <LogOut className="w-5 h-5" />
+            <Button onClick={onLogout} variant="ghost" size="icon" className="w-full rounded-xl border border-border bg-card" aria-label="Cerrar sesión">
+              <LogOut className="w-4 h-4" strokeWidth={1.75} />
             </Button>
           )}
         </div>
