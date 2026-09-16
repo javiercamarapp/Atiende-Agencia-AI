@@ -3,6 +3,7 @@
 // admin-customers.ts. Nunca inventa campos nuevos.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { fetchCustomerDetail, fetchCustomers } from "../lib/customers-client.ts";
 import type { CustomerDetail, CustomerSummary, CustomerTier } from "../lib/customers-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -39,13 +40,9 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Res
         style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, maxWidth: 320 }}
       />
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!customers && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {customers && customers.length === 0 && <p style={{ color: "#6b7280" }}>No se encontraron clientes.</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
+      {customers && customers.length === 0 && <EstadoVacio mensaje="No se encontraron clientes." />}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
         {customers?.map((c) => (
@@ -85,13 +82,9 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
         ← Volver a clientes
       </Link>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!detail && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {detail?.isNew && <p style={{ color: "#6b7280" }}>Este cliente todavía no tiene ningún pedido registrado.</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!detail && !error && <EstadoCargando etiqueta="Cargando cliente…" />}
+      {detail?.isNew && <EstadoVacio mensaje="Este cliente todavía no tiene ningún pedido registrado." />}
 
       {detail && !detail.isNew && (
         <>

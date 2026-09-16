@@ -17,6 +17,7 @@
 // el enforcement real, ver el comentario de `role` en HotelesShell.tsx.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import {
   asegurarSeguridadFnb,
   confirmarCocinaFnb,
@@ -221,13 +222,9 @@ export function PedidosFnbPage({ apiBaseUrl, token, propertyId, role }: HotelesS
         </form>
       )}
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!pedidos && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {pedidos && pedidos.length === 0 && <p style={{ color: "#6b7280" }}>Todavía no hay pedidos de F&amp;B.</p>}
+      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+      {!pedidos && !error && <EstadoCargando etiqueta="Cargando pedidos…" />}
+      {pedidos && pedidos.length === 0 && <EstadoVacio mensaje="Todavía no hay pedidos de F&B." />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {pedidos?.map((p) => {

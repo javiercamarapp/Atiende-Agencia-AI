@@ -12,6 +12,7 @@
 // refleja lo que la ruta ya serializa.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { cancelarCfdi, consultarEstadoCfdi, emitirCfdiHospedaje, emitirCfdiPago, fetchCfdisByFolio, MOTIVO_CANCELACION_LABELS } from "../lib/cfdi-client.ts";
 import type { CfdiEmisionSummary, MotivoCancelacionSat } from "../lib/cfdi-client.ts";
 import { fetchFolio } from "../lib/folios-client.ts";
@@ -134,12 +135,16 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
   if (!folio || !cfdis) {
     if (error) {
       return (
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          {error}
-        </p>
+        <div className="max-w-md">
+          <EstadoError mensaje={error} onReintentar={() => void load()} />
+        </div>
       );
     }
-    return <p style={{ color: "#6b7280" }}>Cargando…</p>;
+    return (
+      <div className="max-w-md">
+        <EstadoCargando etiqueta="Cargando CFDI del folio…" />
+      </div>
+    );
   }
 
   // Fix hallazgo auditoría — un CFDI de hospedaje "cancelado" SÍ debe poder
@@ -170,16 +175,12 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, folioId }: CfdiPagePro
         </p>
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} />}
 
       <section>
         <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Comprobantes emitidos</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {cfdis.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Este folio todavía no tiene ningún CFDI timbrado.</p>}
+          {cfdis.length === 0 && <EstadoVacio mensaje="Este folio todavía no tiene ningún CFDI timbrado." />}
           {cfdis.map((c) => (
             <div key={c.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>

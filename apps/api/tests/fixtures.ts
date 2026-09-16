@@ -27,6 +27,16 @@ export const TEST_ENV: ApiEnv = {
   internalSecret: "test-internal-secret",
   allowedOrigins: ["http://localhost:5173"],
   googleOAuth: { clientId: "test-google-client-id", clientSecret: "test-google-client-secret", redirectBaseUrl: "https://api.test.invalid" },
+  // Igual criterio que `googleOAuth` de arriba -- URLs de Google reales por defecto,
+  // nunca contactadas en pruebas normales; `auth-google.spec.ts` construye su propio
+  // `AppDeps` con estas 4 apuntando al servidor OAuth falso local (ver
+  // `tests/support/fakeGoogleOAuth.ts`).
+  googleStaffAuth: {
+    authBaseUrl: "https://accounts.google.com",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    jwksUrl: "https://www.googleapis.com/oauth2/v3/certs",
+    issuer: "https://accounts.google.com",
+  },
   // Fase 6 §3 — sin RESEND_API_KEY en tests por defecto (fail-closed real, ver
   // domain-citas/src/email-dispatch.ts); las pruebas que sí necesitan un envío
   // exitoso construyen su propio AppDeps con `resend.apiKey` fijo.

@@ -41,6 +41,7 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { EstadoCargando, EstadoError } from "@atiende/ui";
 import { fetchPlSummary } from "../lib/pl-client.ts";
 import type { PlSummaryResponse } from "../lib/pl-client.ts";
 import { fetchReservations } from "../lib/reservas-client.ts";
@@ -154,12 +155,8 @@ function ExecutiveSummary({ apiBaseUrl, token, propertyId, orgSlug }: HotelesShe
         </div>
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!data && !error && <p style={{ color: "#6b7280", margin: 0 }}>Cargando…</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!data && !error && <EstadoCargando etiqueta="Cargando resumen financiero…" />}
 
       {data && (
         <>

@@ -13,6 +13,7 @@
 // existente y muestra su resultado.
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import {
   calcularVencimientos,
   completarVencimiento,
@@ -197,11 +198,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
         </form>
       )}
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151" }}>
         Filtrar por estado
@@ -214,9 +211,11 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
         </select>
       </label>
 
-      {loading && !vencimientos && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {loading && !vencimientos && <EstadoCargando etiqueta="Cargando vencimientos…" />}
 
-      {vencimientos && vencimientos.length === 0 && !loading && <p style={{ color: "#6b7280" }}>No hay vencimientos fiscales registrados{filtroEstado ? " con ese estado" : ""} todavía.</p>}
+      {vencimientos && vencimientos.length === 0 && !loading && (
+        <EstadoVacio mensaje={`No hay vencimientos fiscales registrados${filtroEstado ? " con ese estado" : ""} todavía.`} />
+      )}
 
       {vencimientos && vencimientos.length > 0 && (
         <div style={{ overflowX: "auto" }}>

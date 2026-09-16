@@ -18,6 +18,7 @@
 // Mantenimiento.tsx/Fraude.tsx con sus propios roles).
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import {
   createPlExpense,
   fetchPlExpenses,
@@ -301,13 +302,9 @@ function ExpenseHistory({ expenses, error }: { expenses: readonly PlExpenseEntry
   return (
     <div style={cardStyle}>
       <p style={sectionLabelStyle}>Historial de gastos del periodo</p>
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-          {error}
-        </p>
-      )}
-      {!expenses && !error && <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Cargando…</p>}
-      {expenses && expenses.length === 0 && <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Sin gastos registrados en este periodo.</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!expenses && !error && <EstadoCargando lineas={2} etiqueta="Cargando historial de gastos…" />}
+      {expenses && expenses.length === 0 && <EstadoVacio mensaje="Sin gastos registrados en este periodo." />}
       {expenses && expenses.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
@@ -414,12 +411,8 @@ export function PlPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
         </div>
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!data && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!data && !error && <EstadoCargando etiqueta="Cargando P&L…" />}
 
       {data && (
         <>

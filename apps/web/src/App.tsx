@@ -16,6 +16,8 @@ import { RepartidorPedidosPage } from "./verticals/restaurantes/pages/Repartidor
 import { StaffPage } from "./verticals/restaurantes/pages/Staff.tsx";
 import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
+import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
+import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
 import { DashboardPage as HotelesDashboardPage } from "./verticals/hoteles/pages/Dashboard.tsx";
@@ -174,6 +176,14 @@ function AceptarInvitacionRoute() {
       onAccepted={(session, landingPath) => navigate(landingPath, { state: { session, vertical: session.organizations[0]?.vertical, email: session.email } })}
     />
   );
+}
+
+/** Puente genérico de retorno de "Sign in with Google" (ver
+ * `apps/api/src/routes/auth-google.ts` + `shell/GoogleCallback.tsx`) — una sola ruta
+ * para las 6 verticales, `:vertical` viene del propio path que el backend arma al
+ * redirigir de vuelta. */
+function GoogleCallbackRoute() {
+  return <GoogleCallbackPage apiBaseUrl={API_BASE_URL} />;
 }
 
 function HotelesLoginRoute() {
@@ -509,6 +519,7 @@ export function App() {
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
+        <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
         <Route path="/hoteles/:orgSlug/reservas" element={<HotelesReservasRoute />} />
@@ -582,7 +593,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />
         <Route path="/despachos/:orgSlug/contabilidad-electronica" element={<DespachosContabilidadElectronicaRoute />} />
         <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
-        <Route path="/" element={<Navigate to="/restaurantes/login" replace />} />
+        <Route path="/" element={<SeleccionarVerticalPage />} />
       </Routes>
     </BrowserRouter>
   );

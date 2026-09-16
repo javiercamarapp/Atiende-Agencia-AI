@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import {
   assignRoom,
   cancelReservation,
@@ -417,13 +418,9 @@ export function ReservasPage({ apiBaseUrl, token, propertyId, orgSlug }: Hoteles
         ))}
       </div>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!visible && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {visible && visible.length === 0 && <p style={{ color: "#6b7280" }}>No hay reservas en este filtro.</p>}
+      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={() => void load()} />}
+      {!visible && !error && <EstadoCargando etiqueta="Cargando reservas…" />}
+      {visible && visible.length === 0 && <EstadoVacio mensaje="No hay reservas en este filtro." />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {visible?.map((r) => {

@@ -73,4 +73,12 @@ export class ProductionCoreRepository implements CoreRepository {
   revokeAllRefreshTokens(userId: string): Promise<void> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).revokeAllRefreshTokens(userId));
   }
+
+  findStaffByGoogleSub(sub: string): Promise<StaffUserRow | null> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).findStaffByGoogleSub(sub));
+  }
+
+  linkGoogleIdentity(input: { readonly staffId: string; readonly sub: string; readonly email: string }): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).linkGoogleIdentity(input));
+  }
 }

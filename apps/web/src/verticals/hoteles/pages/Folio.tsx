@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { EstadoCargando, EstadoError } from "@atiende/ui";
 import { addCharge, addDiscount, addPayment, closeFolio, fetchFolio, reverseCharge, CHARGE_CONCEPT_LABELS } from "../lib/folios-client.ts";
 import type { AddChargeInput, FolioSummary } from "../lib/folios-client.ts";
 import { newIdempotencyKey } from "../lib/admin-client.ts";
@@ -130,12 +131,17 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
     }
   }
 
-  if (!folio && !error) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
+  if (!folio && !error)
+    return (
+      <div className="max-w-md">
+        <EstadoCargando etiqueta="Cargando folio…" />
+      </div>
+    );
   if (!folio) {
     return (
-      <p role="alert" style={{ color: "#b91c1c" }}>
-        {error}
-      </p>
+      <div className="max-w-md">
+        <EstadoError mensaje={error ?? undefined} onReintentar={() => void load()} />
+      </div>
     );
   }
 
@@ -157,11 +163,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
         <p style={{ fontSize: 24, fontWeight: 700, margin: "10px 0 0" }}>Saldo: {formatMoney(folio.saldo)}</p>
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} />}
 
       <section>
         <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Cargos</h2>

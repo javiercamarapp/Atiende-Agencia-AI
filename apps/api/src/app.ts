@@ -8,6 +8,7 @@ import { ApiError, requestId } from "@atiende/core-auth";
 import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { authGoogleRoutes } from "./routes/auth-google.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
 import { restaurantesVoiceToolsRoutes } from "./routes/verticals/restaurantes/voice-tools.ts";
 import { restaurantesWhatsAppRoutes } from "./routes/verticals/restaurantes/whatsapp.ts";
@@ -47,6 +48,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.get("/health", (c) => c.json({ ok: true }));
 
   app.route("/", authRoutes(deps));
+  app.route("/", authGoogleRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
   app.route("/", restaurantesVoiceToolsRoutes(deps));
   app.route("/", restaurantesWhatsAppRoutes(deps));

@@ -9,6 +9,7 @@
 // mismo patrón que el resto de páginas de este vertical.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { EstadoCargando, EstadoError } from "@atiende/ui";
 import { fetchDashboardData, formatDays, formatInt, formatMoney, formatPct, formatSignedPct, PERIOD_OPTIONS } from "../dashboard-client.ts";
 import type { DashboardData, StatsPeriod } from "../dashboard-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -115,13 +116,9 @@ export function RestaurantesDashboardPage({ apiBaseUrl, token, propertyId, orgSl
         </div>
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void loadKpis(period)} />}
 
-      {!data && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {!data && !error && <EstadoCargando etiqueta="Cargando panel…" />}
 
       {data && (
         <>

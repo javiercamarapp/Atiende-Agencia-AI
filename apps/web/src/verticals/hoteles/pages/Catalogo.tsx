@@ -15,6 +15,7 @@
 // catálogo administrativo).
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
+import { EstadoError } from "@atiende/ui";
 import { createRateRange, createRoom, createRoomType, fetchAllRooms } from "../lib/catalogo-client.ts";
 import { fetchRoomTypes } from "../lib/reservas-client.ts";
 import type { RoomOption, RoomTypeOption } from "../lib/reservas-client.ts";
@@ -137,11 +138,7 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
           {mensaje}
         </p>
       )}
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void reload()} />}
 
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 15, margin: 0 }}>Tipos de habitación</h2>

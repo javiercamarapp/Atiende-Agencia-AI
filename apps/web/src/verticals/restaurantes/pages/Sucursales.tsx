@@ -2,6 +2,7 @@
 // coordenadas/slug). Deliberadamente sin "crear sucursal" ni "activar/desactivar":
 // ver comentario de cabecera de admin-branches.ts.
 import { useEffect, useState } from "react";
+import { EstadoCargando, EstadoError } from "@atiende/ui";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -52,12 +53,8 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId }: RestaurantesSh
         Crear una sucursal nueva o activar/desactivarla todavía no está disponible desde el panel — requiere un cambio de plataforma compartido por todas las verticales (ver README de este vertical).
       </p>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!branches && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
+      {!branches && !error && <EstadoCargando etiqueta="Cargando sucursales…" />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {branches?.map((b) => (

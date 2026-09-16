@@ -13,6 +13,8 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { UserRound } from "lucide-react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { createProvider, fetchProviderDetail, fetchProviders, requestGoogleCalendarConnectUrl, setProviderServiceOffering, updateProvider } from "../lib/providers-client.ts";
 import type { ProviderDetail, ProviderSummary } from "../lib/providers-client.ts";
 import { fetchServices } from "../lib/services-client.ts";
@@ -62,11 +64,7 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <h1 style={{ fontSize: 20, margin: 0 }}>Proveedores</h1>
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
       <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
         <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Nuevo proveedor</p>
@@ -79,8 +77,8 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
         </form>
       </section>
 
-      {!providers && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {providers && providers.length === 0 && <p style={{ color: "#6b7280" }}>Este negocio todavía no tiene proveedores activos.</p>}
+      {!providers && !error && <EstadoCargando etiqueta="Cargando proveedores…" />}
+      {providers && providers.length === 0 && <EstadoVacio icon={UserRound} mensaje="Este negocio todavía no tiene proveedores activos." />}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
         {providers?.map((p) => (
           <Link
@@ -182,13 +180,9 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
         ← Volver a proveedores
       </Link>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
-      {!detail && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {!detail && !error && <EstadoCargando etiqueta="Cargando proveedor…" />}
 
       {detail && (
         <>

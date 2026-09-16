@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { createOrUpdateTender, fetchTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
 import { fetchMatchingList } from "../lib/matching-client.ts";
@@ -166,15 +167,13 @@ export function ConvocatoriasPage({ apiBaseUrl, token, propertyId, orgSlug, role
         </form>
       )}
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
+      {error && <EstadoError mensaje={error} />}
+
+      {loading && !tenders && <EstadoCargando etiqueta="Cargando convocatorias…" />}
+
+      {tenders && tenders.length === 0 && !loading && (
+        <EstadoVacio mensaje="Todavía no hay ninguna convocatoria dada de alta." />
       )}
-
-      {loading && !tenders && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-
-      {tenders && tenders.length === 0 && !loading && <p style={{ color: "#6b7280" }}>Todavía no hay ninguna convocatoria dada de alta.</p>}
 
       {sorted.length > 0 && (
         <div style={{ overflowX: "auto" }}>

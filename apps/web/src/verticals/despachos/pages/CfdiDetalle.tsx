@@ -3,6 +3,7 @@
 // el resumen de la lista.
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { EstadoCargando, EstadoError } from "@atiende/ui";
 import { fetchInvoice } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
@@ -107,8 +108,8 @@ export function CfdiDetallePage({ apiBaseUrl, token, propertyId, orgSlug, role }
   }
 
   if (!invoiceId) return <p role="alert">CFDI no especificado.</p>;
-  if (loading && !invoice) return <p style={{ color: "#6b7280" }}>Cargando…</p>;
-  if (error) return <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>;
+  if (loading && !invoice) return <EstadoCargando etiqueta="Cargando CFDI…" />;
+  if (error) return <EstadoError mensaje={error} />;
   if (!invoice) return null;
 
   return (

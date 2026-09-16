@@ -26,6 +26,7 @@
 // esta página unas líneas abajo.
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { fetchBranches } from "../dashboard-client.ts";
@@ -117,13 +118,9 @@ function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBaseUrl: 
     <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: 24, fontFamily: "system-ui, sans-serif", maxWidth: 720, margin: "0 auto" }}>
       <h1 style={{ fontSize: 20, margin: 0 }}>Mis entregas</h1>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
-      {!orders && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {orders && orders.length === 0 && <p style={{ color: "#6b7280" }}>No tienes ningún pedido asignado por ahora.</p>}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
+      {!orders && !error && <EstadoCargando etiqueta="Cargando tus entregas…" />}
+      {orders && orders.length === 0 && <EstadoVacio mensaje="No tienes ningún pedido asignado por ahora." />}
 
       {[...activos, ...resto].map((o) => {
         const nextLabel = NEXT_STATUS_LABEL[o.status];
@@ -258,9 +255,7 @@ export function RepartidorPedidosPage() {
   if (error) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          {error}
-        </p>
+        <EstadoError mensaje={error} />
       </main>
     );
   }
@@ -268,7 +263,7 @@ export function RepartidorPedidosPage() {
   if (!propertyId) {
     return (
       <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
+        <EstadoCargando etiqueta="Cargando…" />
       </main>
     );
   }

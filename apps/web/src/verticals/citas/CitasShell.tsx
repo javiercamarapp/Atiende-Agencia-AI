@@ -3,12 +3,35 @@
 // restaurantes/pages/Dashboard.tsx: la sesión de login nunca trae un propertyId,
 // solo se resuelve al entrar al panel) y le da a las 6 páginas
 // (Agenda/Proveedores/Servicios/Clientes/Disponibilidad/Configuración) la misma
-// nav lateral. Estilos inline, sin design system nuevo — mismo criterio que el
-// resto de este vertical (ver README): esta fase es de CRUD de UI sobre lógica ya
-// existente, no de rediseño visual.
+// nav lateral.
+//
+// Presentación real (Fase de diseño): la nav lateral ahora es el `Sidebar` real de
+// @atiende/ui (mismo componente/anatomía que AppShell.tsx de atiende-hoteles:
+// acordeón por sección, colapso, bloque de cuenta hundido) en vez del `<nav>`
+// artesanal de antes. Toda la lógica de sesión/propertyId/realtime de abajo es
+// exactamente la misma — solo cambia el chrome visual.
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import type { ReactNode } from "react";
+import {
+  BottomNav,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  MobileHeader,
+  Sidebar,
+  AtiendeWordmark,
+} from "@atiende/ui";
+import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import {
+  CalendarCheck,
+  CalendarRange,
+  Scissors,
+  Settings,
+  ShieldCheck,
+  UserRound,
+  Users,
+} from "lucide-react";
+import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { clearCitasSession, logout, readPersistedCitasSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches, resolveActivePropertyId } from "./lib/admin-client.ts";
@@ -44,58 +67,61 @@ export interface CitasShellProps {
   readonly children: (ctx: CitasShellContext) => ReactNode;
 }
 
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "agenda", label: "Agenda" },
-  { to: "proveedores", label: "Proveedores" },
-  { to: "servicios", label: "Servicios" },
-  { to: "clientes", label: "Clientes" },
-  { to: "disponibilidad", label: "Disponibilidad" },
-  { to: "configuracion", label: "Configuración" },
-  { to: "staff", label: "Staff" },
-];
+/** Mapa de navegación de citas — misma anatomía de acordeón que AppShell.tsx de
+ * atiende-hoteles, agrupada por lo que ya documenta README.md de este vertical
+ * (agenda operativa primero, catálogo/operación del negocio después,
+ * administración al final). `to` construido con `orgSlug` porque `Sidebar` usa
+ * `NavLink` con rutas reales, no un callback de sección. */
+function buildSections(orgSlug: string): SidebarSection[] {
+  const base = `/citas/${orgSlug}`;
+  return [
+    {
+      title: "AGENDA",
+      siempreAbierto: true,
+      items: [{ to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck }],
+    },
+    {
+      title: "NEGOCIO",
+      items: [
+        { to: `${base}/proveedores`, label: "Proveedores", icon: UserRound },
+        { to: `${base}/servicios`, label: "Servicios", icon: Scissors },
+        { to: `${base}/clientes`, label: "Clientes", icon: Users },
+        { to: `${base}/disponibilidad`, label: "Disponibilidad", icon: CalendarRange },
+      ],
+    },
+    {
+      title: "ADMINISTRAR",
+      items: [
+        { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
+        { to: `${base}/staff`, label: "Staff", icon: ShieldCheck },
+      ],
+    },
+  ];
+}
 
-const linkStyle = (isActive: boolean): CSSProperties => ({
-  display: "block",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textDecoration: "none",
-  color: isActive ? "#fff" : "#111827",
-  background: isActive ? "#111827" : "transparent",
-});
+/** Bottom-nav móvil real — subconjunto operativo (≤5 ítems, mismo criterio que
+ * AppShell.tsx de atiende-hoteles: más de 5 deja de ser usable con el pulgar). */
+function buildMobileItems(orgSlug: string): BottomNavItem[] {
+  const base = `/citas/${orgSlug}`;
+  return [
+    { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
+    { to: `${base}/proveedores`, label: "Proveedores", icon: UserRound },
+    { to: `${base}/servicios`, label: "Servicios", icon: Scissors },
+    { to: `${base}/clientes`, label: "Clientes", icon: Users },
+    { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
+  ];
+}
 
-const logoutButtonStyle: CSSProperties = {
-  marginTop: "auto",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textAlign: "left",
-  color: "#b91c1c",
-  background: "transparent",
-  border: "1px solid #fecaca",
-  cursor: "pointer",
-};
-
-const selectLabelStyle: CSSProperties = {
-  display: "block",
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  color: "#6b7280",
-  margin: "0 0 4px",
-};
-
-const selectStyle: CSSProperties = {
-  display: "block",
-  width: "100%",
-  padding: "6px 8px",
-  borderRadius: 8,
-  border: "1px solid #d1d5db",
-  fontSize: 13,
-  color: "#111827",
-  background: "#fff",
-  boxSizing: "border-box",
-};
+/** Centrado a pantalla completa — mismo contenedor para los 3 estados que
+ * corren ANTES de que exista sesión/sucursal resuelta (sin Sidebar todavía que
+ * envolver). */
+function EstadoPantallaCompleta({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="w-full max-w-sm">{children}</div>
+    </div>
+  );
+}
 
 export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: CitasShellProps) {
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
@@ -107,9 +133,6 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   // este Shell al navegar a otra ruta del panel.
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(() => readPersistedPropertyId(window.localStorage, orgSlug));
   const [error, setError] = useState<string | null>(null);
-  // Mismo hallazgo de auditoría que hoteles/restaurantes: /auth/logout ya existe en
-  // el backend (compartido entre verticales), solo faltaba el botón.
-  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const s = readPersistedCitasSession(window.localStorage);
@@ -139,7 +162,11 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
 
   async function handleLogout() {
     if (!session) return;
-    setLoggingOut(true);
+    // Nota: el botón de logout real (Sidebar de @atiende/ui, compartido, no se
+    // modifica aquí) no expone un estado "deshabilitado/cargando" propio —
+    // mismo criterio ya aceptado en AppShell.tsx de atiende-hoteles. La llamada
+    // real a /auth/logout, la limpieza de sesión y la redirección son las mismas
+    // de siempre.
     try {
       await logout(fetch, apiBaseUrl, session.refreshToken);
     } finally {
@@ -170,29 +197,25 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
 
   if (error) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          {error}
-        </p>
-      </main>
+      <EstadoPantallaCompleta>
+        <EstadoError mensaje={error} />
+      </EstadoPantallaCompleta>
     );
   }
 
   if (!branches) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
-      </main>
+      <EstadoPantallaCompleta>
+        <EstadoCargando etiqueta="Cargando sucursales…" />
+      </EstadoPantallaCompleta>
     );
   }
 
   if (branches.length === 0) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          Este negocio todavía no tiene ninguna sucursal configurada.
-        </p>
-      </main>
+      <EstadoPantallaCompleta>
+        <EstadoVacio mensaje="Este negocio todavía no tiene ninguna sucursal configurada." />
+      </EstadoPantallaCompleta>
     );
   }
 
@@ -216,44 +239,69 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
     persistPropertyId(window.localStorage, orgSlug, nextPropertyId);
   }
 
-  return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
-        <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Citas · {orgSlug}</p>
-        {/* Hallazgo de auditoría (rubro 19, multi-organización, severidad MEDIA):
-            selector real, visible solo cuando hay más de una sucursal — mismo
-            criterio que "Hotel activo" en HotelesShell.tsx. */}
-        {branches.length > 1 ? (
-          <div style={{ margin: "0 0 8px" }}>
-            <label htmlFor="citas-sucursal-activa" style={selectLabelStyle}>
-              Sucursal activa
-            </label>
-            <select id="citas-sucursal-activa" value={propertyId} onChange={(e) => handleSelectBranch(e.target.value)} style={selectStyle}>
-              {branches.map((b) => (
-                <option key={b.propertyId} value={b.propertyId}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 8px" }}>{activeBranch.name}</p>
-        )}
-        {NAV_ITEMS.map((item) => (
-          <NavLink key={item.to} to={`/citas/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
-            {item.label}
-          </NavLink>
-        ))}
-        <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
-          {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
-        </button>
-      </nav>
-      {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
-          cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
-          (selector, sin navegar) — mismo criterio que HotelesShell.tsx. */}
-      <div key={propertyId} style={{ flex: 1, padding: 24, overflow: "auto" }}>
-        {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role })}
+  // Selector real, visible solo cuando hay más de una sucursal — mismo criterio
+  // que "Hotel activo" de HotelesShell.tsx. Se ofrece tanto en el bloque de cuenta
+  // del Sidebar (desktop) como en el MobileHeader (abajo), para no perder la
+  // función en viewport angosto solo porque el Sidebar es `hidden md:flex`.
+  const branchSelector =
+    branches.length > 1 ? (
+      <div>
+        <label htmlFor="citas-sucursal-activa" className="block mb-1 font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+          Sucursal activa
+        </label>
+        <select
+          id="citas-sucursal-activa"
+          value={propertyId}
+          onChange={(e) => handleSelectBranch(e.target.value)}
+          className="block w-full rounded-lg border border-border bg-card px-2 py-1.5 text-[13px] text-foreground"
+        >
+          {branches.map((b) => (
+            <option key={b.propertyId} value={b.propertyId}>
+              {b.name}
+            </option>
+          ))}
+        </select>
       </div>
+    ) : (
+      <p className="text-[12px] text-muted-foreground truncate">{activeBranch.name}</p>
+    );
+
+  return (
+    <div className="min-h-screen bg-background flex w-full">
+      <div className="hidden md:block p-3">
+        <Sidebar
+          sections={buildSections(orgSlug)}
+          user={{ email: session.email, rol: role }}
+          onLogout={() => void handleLogout()}
+          hotelSelector={branchSelector}
+        />
+      </div>
+
+      <MobileHeader
+        title={<AtiendeWordmark className="scale-90 origin-left" />}
+        action={<div className="flex items-center gap-2">{branches.length > 1 ? branchSelector : null}</div>}
+      />
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="hidden md:flex items-center justify-between gap-3 px-6 py-3 border-b border-border">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Citas</p>
+            <p className="text-sm font-medium text-foreground">{orgSlug}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <BotonChatDatos />
+            <span className="text-sm text-muted-foreground">{session.email}</span>
+          </div>
+        </header>
+        {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
+            cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
+            (selector, sin navegar) — mismo criterio que HotelesShell.tsx. */}
+        <main key={propertyId} className="flex-1 px-4 py-4 pt-20 pb-24 md:pt-4 md:pb-8 md:px-6 overflow-auto">
+          <div className="max-w-6xl mx-auto w-full">{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role })}</div>
+        </main>
+      </div>
+
+      <BottomNav items={buildMobileItems(orgSlug)} />
     </div>
   );
 }

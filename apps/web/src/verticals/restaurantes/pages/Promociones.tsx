@@ -11,6 +11,7 @@
 // servidor sigue siendo el enforcement — 403 si algún día cambia).
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import {
   createPromotion,
   fetchPromotions,
@@ -145,11 +146,7 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 860 }}>
       <h1 style={{ fontSize: 20, margin: 0 }}>Promociones</h1>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <section style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
         <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Crear un código nuevo</p>
@@ -235,8 +232,8 @@ export function PromocionesPage({ apiBaseUrl, token, propertyId }: RestaurantesS
 
       <section>
         <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Códigos existentes</p>
-        {!promotions && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-        {promotions && promotions.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Todavía no hay ninguna promoción creada.</p>}
+        {!promotions && !error && <EstadoCargando etiqueta="Cargando promociones…" />}
+        {promotions && promotions.length === 0 && <EstadoVacio mensaje="Todavía no hay ninguna promoción creada." />}
         {promotions && promotions.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {promotions.map((p) => (

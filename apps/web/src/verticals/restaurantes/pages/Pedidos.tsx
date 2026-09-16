@@ -3,6 +3,7 @@
 // transición; los botones ofrecidos aquí son solo un espejo de NEXT_STATUSES para
 // no mostrar una acción que el servidor rechazaría).
 import { useEffect, useState } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { assignRepartidor, fetchOrders, NEXT_STATUSES, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
 import { fetchRepartidores } from "../lib/staff-client.ts";
@@ -129,18 +130,14 @@ export function PedidosPage({ apiBaseUrl, token, propertyId }: RestaurantesShell
         </div>
       </header>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
       {repartidoresError && (
         <p role="alert" style={{ color: "#b91c1c", margin: 0, fontSize: 12 }}>
           No se pudo cargar la lista de repartidores: {repartidoresError}
         </p>
       )}
-      {!orders && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {orders && orders.length === 0 && <p style={{ color: "#6b7280" }}>No hay pedidos en este filtro.</p>}
+      {!orders && !error && <EstadoCargando etiqueta="Cargando pedidos…" />}
+      {orders && orders.length === 0 && <EstadoVacio mensaje="No hay pedidos en este filtro." />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {orders?.map((o) => (

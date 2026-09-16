@@ -18,6 +18,7 @@
 // reservas-client.ts/folios-client.ts).
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoVacio } from "@atiende/ui";
 import {
   checkIn,
   fetchAttendance,
@@ -149,8 +150,8 @@ export function AsistenciaPage({ apiBaseUrl, token, propertyId, role }: HotelesS
 
       <section>
         <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Tus últimos 7 días</h2>
-        {!misEventos && !errorPropio && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-        {misEventos && misEventos.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Sin registros en este rango.</p>}
+        {!misEventos && !errorPropio && <EstadoCargando lineas={2} etiqueta="Cargando tu historial…" />}
+        {misEventos && misEventos.length === 0 && <EstadoVacio mensaje="Sin registros en este rango." />}
         {misEventos && misEventos.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {[...misEventos].reverse().map((e) => (

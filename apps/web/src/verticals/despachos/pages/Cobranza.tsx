@@ -14,6 +14,7 @@
 // cobranza-client.ts).
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { fetchInvoices } from "../lib/cfdi-client.ts";
 import type { InvoiceSummary } from "../lib/cfdi-client.ts";
 import {
@@ -269,13 +270,9 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
         </form>
       )}
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      {loading && !resumen && <p style={{ color: "#6b7280" }}>Cargando…</p>}
+      {loading && !resumen && <EstadoCargando etiqueta="Cargando cobranza…" />}
 
       {resumen && <ResumenCards resumen={resumen} />}
 
@@ -284,7 +281,9 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
         Solo cuentas pendientes de cobro
       </label>
 
-      {cuentas && cuentas.length === 0 && !loading && <p style={{ color: "#6b7280" }}>{soloPendientes ? "No hay cuentas por cobrar pendientes." : "Todavía no hay ninguna cuenta por cobrar registrada."}</p>}
+      {cuentas && cuentas.length === 0 && !loading && (
+        <EstadoVacio mensaje={soloPendientes ? "No hay cuentas por cobrar pendientes." : "Todavía no hay ninguna cuenta por cobrar registrada."} />
+      )}
 
       {cuentas && cuentas.length > 0 && (
         <div style={{ overflowX: "auto" }}>

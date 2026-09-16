@@ -9,6 +9,8 @@
 // es SIEMPRE el enforcement real, con la jerarquía fina de `canInviteStaff` encima.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { ShieldCheck, Users } from "lucide-react";
+import { EstadoCargando, EstadoError, EstadoVacio } from "@atiende/ui";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
@@ -112,11 +114,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 720 }}>
       <h1 style={{ fontSize: 20, margin: 0 }}>Staff</h1>
 
-      {error && (
-        <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
       {!canManage && (
         <p style={{ margin: 0, fontSize: 13, color: "#6b7280", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 12 }}>
@@ -168,8 +166,8 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
       {canManage && (
         <section>
           <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Invitaciones pendientes</p>
-          {!invites && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-          {invites && invites.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>No hay ninguna invitación pendiente.</p>}
+          {!invites && !error && <EstadoCargando lineas={2} etiqueta="Cargando invitaciones…" />}
+          {invites && invites.length === 0 && <EstadoVacio icon={ShieldCheck} mensaje="No hay ninguna invitación pendiente." />}
           {invites && invites.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {invites.map((inv) => (
@@ -205,8 +203,8 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
             Cambia el rol de un staff ya aceptado. No puedes tocar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo, ni cambiar tu propio rol
             — el servidor lo rechaza aunque el rol aparezca en esta lista.
           </p>
-          {!members && !error && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-          {members && members.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Todavía no hay ningún staff aceptado en este negocio.</p>}
+          {!members && !error && <EstadoCargando lineas={2} etiqueta="Cargando staff…" />}
+          {members && members.length === 0 && <EstadoVacio icon={Users} mensaje="Todavía no hay ningún staff aceptado en este negocio." />}
           {members && members.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {members.map((m) => (

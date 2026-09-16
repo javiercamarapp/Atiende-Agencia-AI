@@ -6,11 +6,23 @@
 // sesión de otra vertical abierta en el mismo navegador. Real, no un stub:
 // maneja error real, loading real, y redirección real según cuántas
 // organizaciones tiene el staff.
+//
+// Fase "sistema de diseño real" — reemplaza el formulario inline mínimo por
+// la lámina split-screen real (apps/web/src/pages/login.css, ya portada
+// byte-a-byte de atiende-restaurantes) y el logo real (AtiendeMark/
+// AtiendeWordmark de @atiende/ui) en vez del data-URI duplicado de
+// lib/brand.ts. Cero cambios de lógica: mismo estado, misma llamada a
+// login()/persistLicitacionesSession()/decideLicitacionesLandingPath(), mismo
+// manejo de error/loading.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
+import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
 import { decideLicitacionesLandingPath, login, LoginError, persistLicitacionesSession } from "../lib/auth-client.ts";
 import type { LoginSession } from "../lib/auth-client.ts";
-import { ATIENDE_LOGO_DATA_URI, LICITACIONES_TAB_TITLE } from "../lib/brand.ts";
+import { LICITACIONES_TAB_TITLE } from "../lib/brand.ts";
+import { mensajeGoogleError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
+import "../../../pages/login.css";
 
 export interface LicitacionesLoginPageProps {
   readonly apiBaseUrl: string;
@@ -22,12 +34,31 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [googleConfigurado, setGoogleConfigurado] = useState(false);
+  const [comprobandoGoogle, setComprobandoGoogle] = useState(true);
 
   // Hallazgo de auditoría ("título de pestaña fijo en 'Restaurantes'") — ver
   // el comentario de `LICITACIONES_TAB_TITLE` en lib/brand.ts.
   useEffect(() => {
     document.title = LICITACIONES_TAB_TITLE;
   }, []);
+
+  useEffect(() => {
+    let vivo = true;
+    verificarGoogleConfigurado(apiBaseUrl).then((ok) => {
+      if (vivo) {
+        setGoogleConfigurado(ok);
+        setComprobandoGoogle(false);
+      }
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [apiBaseUrl]);
+
+  const googleError = searchParams.get("google_error");
+  const googleHabilitado = googleConfigurado && !comprobandoGoogle;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,44 +75,113 @@ export function LicitacionesLoginPage({ apiBaseUrl, onLoggedIn }: LicitacionesLo
     }
   }
 
+  function irAGoogle() {
+    if (!googleHabilitado) return;
+    window.location.href = urlIniciarGoogleLogin(apiBaseUrl, "licitaciones");
+  }
+
   return (
-    <main style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" }}>
-      <form onSubmit={handleSubmit} style={{ width: "min(360px, 90vw)", display: "flex", flexDirection: "column", gap: 12 }} noValidate>
-        <img src={ATIENDE_LOGO_DATA_URI} alt="atiende" width={96} height={17} style={{ display: "block", marginBottom: 8 }} />
-        <h1 style={{ fontSize: 20, marginBottom: 4 }}>Entrar a tu expediente</h1>
-        <label htmlFor="email">
-          Correo
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-          />
-        </label>
-        <label htmlFor="password">
-          Contraseña
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-          />
-        </label>
-        {error && (
-          <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-            {error}
+    <div className="login grid min-h-screen lg:grid-cols-2">
+      <main className="flex items-center justify-center px-6 py-16 sm:px-10 lg:px-16 bg-background">
+        <form onSubmit={handleSubmit} noValidate className="w-full max-w-[380px] flex flex-col gap-7">
+          <div className="login-entra" style={{ animationDelay: "0ms" }}>
+            <AtiendeWordmark className="h-7 w-auto" />
+          </div>
+
+          <div className="login-entra flex flex-col gap-2" style={{ animationDelay: "70ms" }}>
+            <p className="login-kicker">Acceso al panel</p>
+            <h1 className="login-serif text-[32px] sm:text-[36px] text-foreground">Bienvenido a atiende licitaciones</h1>
+            <p className="text-[14px] text-muted-foreground leading-relaxed">
+              Da seguimiento a cada convocatoria pública, evalúa tu matching y no pierdas ninguna fecha límite de presentación.
+            </p>
+          </div>
+
+          <div className="login-entra flex flex-col gap-3" style={{ animationDelay: "140ms" }}>
+            <label htmlFor="email" className="flex flex-col gap-1.5 text-[13px] font-medium text-foreground">
+              Correo
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="tu@empresa.com"
+                className="login-campo"
+              />
+            </label>
+            <label htmlFor="password" className="flex flex-col gap-1.5 text-[13px] font-medium text-foreground">
+              Contraseña
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                className="login-campo"
+              />
+            </label>
+
+            {googleError && !error && (
+              <p role="alert" className="text-[13px] text-destructive">
+                {mensajeGoogleError(googleError)}
+              </p>
+            )}
+
+            {error && (
+              <p role="alert" className="text-[13px] text-destructive">
+                {error}
+              </p>
+            )}
+
+            <button type="submit" disabled={submitting} className="login-btn login-btn-tinta">
+              {submitting ? "Entrando…" : "Entrar"}
+              <span className="login-glifo" aria-hidden="true">
+                →
+              </span>
+            </button>
+          </div>
+
+          <div className="login-entra flex flex-col gap-3" style={{ animationDelay: "210ms" }}>
+            <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />o<span className="h-px flex-1 bg-border" />
+            </div>
+            <button
+              type="button"
+              onClick={irAGoogle}
+              disabled={!googleHabilitado}
+              title={!googleHabilitado ? (comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno.") : undefined}
+              className="login-btn login-btn-borde"
+            >
+              Continuar con Google
+              <span className="login-glifo" aria-hidden="true">
+                G
+              </span>
+            </button>
+            {!googleHabilitado && (
+              <p className="text-[12px] leading-relaxed text-muted-foreground">
+                {comprobandoGoogle ? "Comprobando Google…" : "Google: pendiente de configurar en este entorno."}
+              </p>
+            )}
+          </div>
+        </form>
+      </main>
+
+      <aside className="login-lamina hidden lg:block relative m-3">
+        <img src="/images/login-hero.png" alt="" className="login-foto-marca absolute inset-0 h-full w-full object-cover" />
+        <div className="login-velo" />
+        <div className="relative z-10 flex h-full flex-col justify-end p-10">
+          <AtiendeMark className="h-8 w-auto mb-6" />
+          <p className="login-serif text-white text-[26px] leading-tight max-w-md">
+            Convocatorias públicas rastreadas, evaluadas y respondidas a tiempo.
           </p>
-        )}
-        <button type="submit" disabled={submitting} style={{ padding: 10, fontWeight: 600 }}>
-          {submitting ? "Entrando…" : "Entrar"}
-        </button>
-      </form>
-    </main>
+          <p className="text-white/70 text-[13px] mt-3 max-w-sm leading-relaxed">
+            Matching automático contra tu perfil, checklist de integridad documental y control de cada fecha límite, en un solo panel.
+          </p>
+        </div>
+      </aside>
+    </div>
   );
 }

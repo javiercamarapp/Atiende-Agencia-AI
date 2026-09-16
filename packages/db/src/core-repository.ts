@@ -217,6 +217,21 @@ export interface CoreRepository {
    *  del body — revocar las sesiones de OTRO usuario (ej. un admin forzando el cierre
    *  de sesión de un empleado) queda fuera de esta pasada. */
   revokeAllRefreshTokens(userId: string): Promise<void>;
+  /** "Sign in with Google" (ver `apps/api/src/routes/auth-google.ts`) — busca un
+   *  staff YA vinculado a esta cuenta de Google por su `sub` (subject id del
+   *  id_token, ver `core.staff_google_identity`). `null` si esta cuenta de Google
+   *  nunca se vinculó a ningún staff todavía (el caller decide si intentar
+   *  vincular por correo o rechazar, ver `linkGoogleIdentity`/lógica de la ruta). */
+  findStaffByGoogleSub(sub: string): Promise<StaffUserRow | null>;
+  /** Vincula una cuenta de Google (`sub`+`email`) a un `core.staff_user` YA
+   *  existente — idempotente por `sub` único (`on conflict` en el adaptador
+   *  Postgres): un mismo `sub` vinculado dos veces al mismo staff no falla ni
+   *  duplica fila, solo actualiza el correo si Google lo reporta distinto. Nunca
+   *  crea un `core.staff_user` nuevo (eso es responsabilidad exclusiva del alta
+   *  por invitación/registro, no de este puerto) — el caller es responsable de
+   *  confirmar que `staffId` corresponde a un correo verificado que YA hizo match
+   *  contra un staff existente antes de llamar esto. */
+  linkGoogleIdentity(input: { readonly staffId: string; readonly sub: string; readonly email: string }): Promise<void>;
 }
 
 /** Ver el comentario de cabecera del archivo para por qué esta interfaz vive
