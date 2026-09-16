@@ -27,8 +27,17 @@
 //     nosotros. Es una URL 100% determinística (construirUrlFeedExportacion, sin
 //     red) -- se muestra siempre que se puede leer la página, nunca gateada por
 //     escritura, exactamente igual que "ver el detalle de un payout" en Finanzas.
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Badge/Input/
+// Label/EstadoCargando/EstadoError + clases de token en vez de los `style={{...}}`
+// hechos a mano. El formulario de "conectar feed" pasa a <ModalFormularioLateral>
+// (el shell de modal ya existente del repo), conservando EXACTAMENTE su submit, su
+// validación local ("La URL del feed a importar es requerida.") y su recarga
+// (`onCambio`). CERO cambios de lógica ni de gates de rol.
 import { useEffect, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import { Copy, Link2, Plug, Unplug } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, Input, Label } from "@atiende/ui";
+import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import {
   CANALES_CON_MARKUP,
   conectarFeed,
@@ -48,17 +57,13 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 const SYNC_CALENDARIO_LECTURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario"]);
 const SYNC_CALENDARIO_ESCRITURA_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 
-const inputStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
-const labelStyle: CSSProperties = { fontSize: 13 };
-const sectionStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 };
-const formRowStyle: CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap" };
-const primaryButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 600 };
-const dangerButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 13, cursor: "pointer", fontWeight: 600 };
-const secondaryButtonStyle: CSSProperties = { padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" };
-const errorStyle: CSSProperties = { color: "#b91c1c", margin: 0, fontSize: 13 };
-const badgeOkStyle: CSSProperties = { fontSize: 11, color: "#065f46", background: "#d1fae5", padding: "2px 8px", borderRadius: 999 };
-const badgeWarnStyle: CSSProperties = { fontSize: 11, color: "#92400e", background: "#fef3c7", padding: "2px 8px", borderRadius: 999 };
-const badgeOffStyle: CSSProperties = { fontSize: 11, color: "#6b7280", background: "#f3f4f6", padding: "2px 8px", borderRadius: 999 };
+/** Mismos tokens que el <Input> de @atiende/ui aplicados al <select> nativo de
+ * unidades: es un dropdown de datos reales con su estado `<option>Cargando…</option>`,
+ * se queda nativo y solo se re-estila. */
+const SELECT_CLASES =
+  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const RUBRO_CLASES = "m-0 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 
 function formatearFecha(iso: string | null): string {
   if (!iso) return "nunca";
@@ -94,11 +99,12 @@ export function IcalSyncPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   if (!puedeLeer) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Sincronización de calendario (iCal)</h1>
-        <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
-          Tu rol actual{org ? <> (<strong>{org.rol}</strong>)</> : ""} no tiene acceso de lectura a la sincronización de calendario. Roles con acceso:{" "}
-          <strong>admin_gestora</strong>, <strong>operador:acceso_total</strong>, <strong>operador:calendario_mensajeria</strong> y <strong>operador:solo_calendario</strong>.
+      <div className="flex flex-col gap-4 max-w-[640px]">
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Sincronización de calendario (iCal)</h1>
+        <p className="m-0 text-[13px] text-muted-foreground">
+          Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no tiene acceso de lectura a la sincronización de calendario. Roles con acceso:{" "}
+          <strong className="text-foreground">admin_gestora</strong>, <strong className="text-foreground">operador:acceso_total</strong>,{" "}
+          <strong className="text-foreground">operador:calendario_mensajeria</strong> y <strong className="text-foreground">operador:solo_calendario</strong>.
         </p>
       </div>
     );
@@ -106,35 +112,34 @@ export function IcalSyncPage({ apiBaseUrl, token, propertyId, orgSlug, session }
 
   if (unidades && unidades.length === 0) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Sincronización de calendario (iCal)</h1>
-        <p role="alert" style={errorStyle}>
-          Esta propiedad todavía no tiene ninguna unidad configurada.
-        </p>
+      <div className="flex flex-col gap-4">
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Sincronización de calendario (iCal)</h1>
+        <EstadoError titulo="Sin unidades" mensaje="Esta propiedad todavía no tiene ninguna unidad configurada." />
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 760 }}>
+    <div className="flex flex-col gap-5 max-w-[760px]">
       <header>
-        <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Sincronización de calendario (iCal)</h1>
-        <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>
+        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Sincronización de calendario (iCal)</h1>
+        <p className="m-0 text-[13px] text-muted-foreground">
           Conecta el feed iCal de cada canal externo para importar su disponibilidad y evitar doble reserva, y copia la URL del feed de exportación de esta unidad para pegarla
           en el canal.
           {!puedeEscribir && (
             <>
               {" "}
-              Tu rol (<strong>{org?.rol}</strong>) es de solo lectura — conectar/desconectar es exclusivo de <strong>admin_gestora</strong>, <strong>operador:acceso_total</strong> y{" "}
-              <strong>operador:calendario_mensajeria</strong>.
+              Tu rol (<strong className="text-foreground">{org?.rol}</strong>) es de solo lectura — conectar/desconectar es exclusivo de{" "}
+              <strong className="text-foreground">admin_gestora</strong>, <strong className="text-foreground">operador:acceso_total</strong> y{" "}
+              <strong className="text-foreground">operador:calendario_mensajeria</strong>.
             </>
           )}
         </p>
       </header>
 
-      <label style={{ ...labelStyle, maxWidth: 320 }}>
+      <Label className={`${LABEL_CLASES} max-w-[320px]`}>
         Unidad
-        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} style={inputStyle} disabled={!unidades}>
+        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
           {!unidades && <option>Cargando…</option>}
           {unidades?.map((u) => (
             <option key={u.id} value={u.id}>
@@ -142,13 +147,9 @@ export function IcalSyncPage({ apiBaseUrl, token, propertyId, orgSlug, session }
             </option>
           ))}
         </select>
-      </label>
+      </Label>
 
-      {error && (
-        <p role="alert" style={errorStyle}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
       {unidadId && <CanalesSync apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} puedeEscribir={puedeEscribir} />}
     </div>
@@ -194,21 +195,17 @@ function CanalesSync({ apiBaseUrl, token, propertyId, unidadId, puedeEscribir }:
   }, [apiBaseUrl, token, propertyId, unidadId]);
 
   if (error) {
-    return (
-      <p role="alert" style={errorStyle}>
-        {error}
-      </p>
-    );
+    return <EstadoError mensaje={error} />;
   }
 
   if (!feeds) {
-    return <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>;
+    return <EstadoCargando lineas={2} />;
   }
 
   const feedPorCanal = new Map(feeds.map((f) => [f.canal, f] as const));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="flex flex-col gap-4">
       {CANALES_CON_MARKUP.map((canal) => (
         <CanalCard
           key={canal.codigo}
@@ -241,6 +238,7 @@ interface CanalCardProps {
 
 function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canalNombre, feed, puedeEscribir, onCambio }: CanalCardProps) {
   const [urlImportacion, setUrlImportacion] = useState("");
+  const [modalAbierto, setModalAbierto] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
   const [copiado, setCopiado] = useState(false);
@@ -248,14 +246,14 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
 
   const urlExportacion = construirUrlFeedExportacion(apiBaseUrl, propertyId, unidadId, canalCodigo);
 
-  async function handleConectar(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleConectar() {
     setError(null);
     if (!urlImportacion.trim()) return setError("La URL del feed a importar es requerida.");
     setGuardando(true);
     try {
       await conectarFeed(fetch, apiBaseUrl, token, propertyId, unidadId, canalCodigo, urlImportacion.trim());
       setUrlImportacion("");
+      setModalAbierto(false);
       onCambio();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo conectar el feed.");
@@ -289,77 +287,103 @@ function CanalCard({ apiBaseUrl, token, propertyId, unidadId, canalCodigo, canal
   }
 
   return (
-    <section style={sectionStyle}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>{canalNombre}</h2>
+    <Card>
+      <CardHeader className="p-4 pb-2 flex-row items-center justify-between gap-2 space-y-0">
+        <CardTitle className="text-[15px] font-semibold">{canalNombre}</CardTitle>
         {feed && (
-          <span style={feed.enCuarentenaDesde ? badgeWarnStyle : feed.activo ? badgeOkStyle : badgeOffStyle}>
+          <Badge variant={feed.enCuarentenaDesde ? "destructive" : feed.activo ? "default" : "outline"}>
             {feed.enCuarentenaDesde ? "En cuarentena" : feed.activo ? "Conectado" : "Inactivo"}
-          </span>
+          </Badge>
         )}
-      </div>
+      </CardHeader>
 
-      {error && (
-        <p role="alert" style={errorStyle}>
-          {error}
-        </p>
-      )}
+      <CardContent className="p-4 pt-0 flex flex-col gap-3">
+        {error && (
+          <p role="alert" className="m-0 text-[13px] text-destructive">
+            {error}
+          </p>
+        )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <p style={{ margin: 0, fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Importar desde {canalNombre}</p>
-        {feed ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-            <p style={{ margin: 0, wordBreak: "break-all" }}>{feed.urlImportacion}</p>
-            <p style={{ margin: 0, color: "#6b7280", fontSize: 12 }}>Última sincronización exitosa: {formatearFecha(feed.ultimaSincronizacionExitosaEn)}</p>
-            {feed.intentosFallidosConsecutivos > 0 && (
-              <p style={{ margin: 0, color: "#92400e", fontSize: 12 }}>
-                {feed.intentosFallidosConsecutivos} intento{feed.intentosFallidosConsecutivos === 1 ? "" : "s"} fallido{feed.intentosFallidosConsecutivos === 1 ? "" : "s"} consecutivo
-                {feed.intentosFallidosConsecutivos === 1 ? "" : "s"}
-                {feed.motivoCuarentena ? ` — ${feed.motivoCuarentena}` : ""}
-              </p>
-            )}
-            {puedeEscribir && (
-              <button type="button" onClick={handleDesconectar} disabled={desconectando} style={{ ...dangerButtonStyle, alignSelf: "flex-start" }}>
-                {desconectando ? "Desconectando…" : "Desconectar"}
-              </button>
-            )}
-          </div>
-        ) : puedeEscribir ? (
-          <form onSubmit={handleConectar} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={formRowStyle}>
-              <label style={{ ...labelStyle, flex: 1, minWidth: 260 }}>
-                URL del feed de {canalNombre} (.ics)
-                <input
-                  type="url"
-                  value={urlImportacion}
-                  onChange={(e) => setUrlImportacion(e.target.value)}
-                  required
-                  style={inputStyle}
-                  placeholder={`https://www.${canalCodigo}.com/calendar/ical/....ics`}
-                />
-              </label>
+        <div className="flex flex-col gap-1.5">
+          <p className={RUBRO_CLASES}>Importar desde {canalNombre}</p>
+          {feed ? (
+            <div className="flex flex-col gap-1.5 text-[13px]">
+              <p className="m-0 break-all text-foreground">{feed.urlImportacion}</p>
+              <p className="m-0 text-xs text-muted-foreground">Última sincronización exitosa: {formatearFecha(feed.ultimaSincronizacionExitosaEn)}</p>
+              {feed.intentosFallidosConsecutivos > 0 && (
+                <p className="m-0 text-xs text-destructive">
+                  {feed.intentosFallidosConsecutivos} intento{feed.intentosFallidosConsecutivos === 1 ? "" : "s"} fallido{feed.intentosFallidosConsecutivos === 1 ? "" : "s"} consecutivo
+                  {feed.intentosFallidosConsecutivos === 1 ? "" : "s"}
+                  {feed.motivoCuarentena ? ` — ${feed.motivoCuarentena}` : ""}
+                </p>
+              )}
+              {puedeEscribir && (
+                <Button type="button" variant="destructive" size="sm" onClick={handleDesconectar} disabled={desconectando} className="self-start">
+                  <Unplug className="w-4 h-4" strokeWidth={1.75} />
+                  {desconectando ? "Desconectando…" : "Desconectar"}
+                </Button>
+              )}
             </div>
-            <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
-              {guardando ? "Conectando…" : "Conectar"}
-            </button>
-          </form>
-        ) : (
-          <p style={{ margin: 0, color: "#9ca3af", fontSize: 12 }}>Ningún feed conectado todavía.</p>
-        )}
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
-        <p style={{ margin: 0, fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-          Exportar hacia {canalNombre}
-        </p>
-        <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Pega esta URL como feed de importación dentro de {canalNombre} para que reciba nuestra disponibilidad.</p>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <input readOnly value={urlExportacion} onFocus={(e) => e.currentTarget.select()} style={{ ...inputStyle, flex: 1, minWidth: 260, margin: 0, fontSize: 12 }} />
-          <button type="button" onClick={handleCopiarExport} style={secondaryButtonStyle}>
-            {copiado ? "¡Copiada!" : "Copiar"}
-          </button>
+          ) : puedeEscribir ? (
+            <Button type="button" size="sm" onClick={() => setModalAbierto(true)} className="self-start">
+              <Plug className="w-4 h-4" strokeWidth={1.75} />
+              Conectar
+            </Button>
+          ) : (
+            <p className="m-0 text-xs text-muted-foreground">Ningún feed conectado todavía.</p>
+          )}
         </div>
-      </div>
-    </section>
+
+        <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+          <p className={RUBRO_CLASES}>Exportar hacia {canalNombre}</p>
+          <p className="m-0 text-xs text-muted-foreground">Pega esta URL como feed de importación dentro de {canalNombre} para que reciba nuestra disponibilidad.</p>
+          <div className="flex gap-2 items-center flex-wrap">
+            <Input readOnly value={urlExportacion} onFocus={(e) => e.currentTarget.select()} className="flex-1 min-w-[260px] text-xs" />
+            <Button type="button" variant="outline" size="sm" onClick={handleCopiarExport}>
+              <Copy className="w-4 h-4" strokeWidth={1.75} />
+              {copiado ? "¡Copiada!" : "Copiar"}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+
+      {/* Conectar feed: mismo submit exacto que el <form> inline previo, ahora en el
+          shell de modal del repo. */}
+      <ModalFormularioLateral
+        open={modalAbierto}
+        onOpenChange={(abierto) => {
+          setModalAbierto(abierto);
+          if (!abierto) setError(null);
+        }}
+        titulo={`Conectar ${canalNombre}`}
+        subtitulo="Importa la disponibilidad de este canal para evitar doble reserva en esta unidad."
+        anchoClase="max-w-2xl"
+        onGuardar={() => void handleConectar()}
+        guardando={guardando}
+        textoBotonGuardar="Conectar"
+      >
+        <div className="flex flex-col gap-3">
+          <Label className={LABEL_CLASES}>
+            URL del feed de {canalNombre} (.ics)
+            <Input
+              type="url"
+              value={urlImportacion}
+              onChange={(e) => setUrlImportacion(e.target.value)}
+              required
+              placeholder={`https://www.${canalCodigo}.com/calendar/ical/....ics`}
+            />
+          </Label>
+          <p className="m-0 flex items-start gap-2 text-xs text-muted-foreground">
+            <Link2 className="w-3.5 h-3.5 mt-0.5 shrink-0" strokeWidth={1.75} />
+            La encuentras en la configuración de calendario de {canalNombre}, como "exportar calendario".
+          </p>
+          {error && (
+            <p role="alert" className="m-0 text-[13px] text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+      </ModalFormularioLateral>
+    </Card>
   );
 }

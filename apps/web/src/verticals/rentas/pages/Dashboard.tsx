@@ -22,75 +22,67 @@
 // property activa del Shell (RentasShellContext.setPropertyId, ver el selector real
 // del nav en RentasShell.tsx -- esta lista es un segundo punto de entrada al mismo
 // estado, no un selector paralelo) y la property activa queda resaltada.
-import type { CSSProperties } from "react";
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui, mismo criterio que
+// RentasShell.tsx): reemplaza los `style={{...}}` hechos a mano por Card/Button/
+// Badge/EstadoVacio y clases de token (bg-card, text-muted-foreground, ...). CERO
+// cambios de lógica: mismas props, mismo estado, mismo onClick/aria-pressed.
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@atiende/ui";
 import type { RentasShellContext } from "../RentasShell.tsx";
-
-const cardStyle: CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  padding: 16,
-};
-
-const propertyButtonBaseStyle: CSSProperties = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  cursor: "pointer",
-  border: "1px solid transparent",
-};
 
 export function RentasDashboardPage({ orgSlug, properties, propertyId, setPropertyId, session }: RentasShellContext) {
   const org = session.organizations.find((o) => o.slug === orgSlug);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
+    <div className="flex flex-col gap-4 max-w-[640px]">
       <div>
-        <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>{org?.nombre ?? orgSlug}</h1>
-        <p style={{ color: "#6b7280", margin: 0 }}>
-          Sesión iniciada como <strong>{session.email}</strong>
+        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">{org?.nombre ?? orgSlug}</h1>
+        <p className="text-sm text-muted-foreground m-0">
+          Sesión iniciada como <strong className="text-foreground font-medium">{session.email}</strong>
           {org ? (
             <>
               {" "}
-              · rol <strong>{org.rol}</strong>
+              · rol <strong className="text-foreground font-medium">{org.rol}</strong>
             </>
           ) : null}
         </p>
       </div>
 
-      <div style={cardStyle}>
-        <h2 style={{ fontSize: 14, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6b7280", margin: "0 0 12px" }}>
-          Propiedades ({properties.length})
-        </h2>
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-          {properties.map((p) => {
-            const activa = p.propertyId === propertyId;
-            return (
-              <li key={p.propertyId}>
-                <button
-                  type="button"
-                  onClick={() => setPropertyId(p.propertyId)}
-                  aria-pressed={activa}
-                  style={{
-                    ...propertyButtonBaseStyle,
-                    background: activa ? "#111827" : "#f9fafb",
-                    color: activa ? "#fff" : "#111827",
-                    borderColor: activa ? "#111827" : "transparent",
-                    fontWeight: activa ? 600 : 400,
-                  }}
-                >
-                  {p.nombre}
-                  {activa ? " · activa" : ""}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-medium">
+            Propiedades ({properties.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          <ul className="list-none m-0 p-0 flex flex-col gap-2">
+            {properties.map((p) => {
+              const activa = p.propertyId === propertyId;
+              return (
+                <li key={p.propertyId}>
+                  <Button
+                    type="button"
+                    variant={activa ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPropertyId(p.propertyId)}
+                    aria-pressed={activa}
+                    className={activa ? "w-full justify-between rounded-lg" : "w-full justify-between rounded-lg font-normal"}
+                  >
+                    <span className="truncate">{p.nombre}</span>
+                    {activa && (
+                      <Badge variant="secondary" className="shrink-0">
+                        activa
+                      </Badge>
+                    )}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </CardContent>
+      </Card>
 
-      <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
+      <p className="text-[13px] text-muted-foreground m-0">
         Elige una propiedad arriba (o desde el selector del panel lateral) para que Calendario, Precios, Aprobaciones, Finanzas y Mis tareas operen sobre ella. El calendario de reservas y bloqueos está disponible en "Calendario", y el cotizador con la configuración de pricing en "Precios".
       </p>
     </div>

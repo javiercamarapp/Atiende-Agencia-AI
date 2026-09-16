@@ -23,8 +23,30 @@
 // eso cada sub-formulario muestra "Configurado en esta sesión" en vez de un
 // historial persistente; recargar la página pierde esa lista local (los datos en
 // el servidor NO se pierden, solo la vista de "qué acabo de crear").
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Input/
+// Label/Badge/Table/EstadoError + clases de token en vez de los `style={{...}}`
+// hechos a mano. CERO cambios de lógica: mismos submits, mismas validaciones
+// locales, mismas ramas de render, mismos gates de rol.
 import { useEffect, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import type { FormEvent } from "react";
+import { AlertTriangle, Calculator } from "lucide-react";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EstadoError,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@atiende/ui";
 import {
   basisPointsAPorcentaje,
   CANALES_CON_MARKUP,
@@ -53,14 +75,14 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 
 const PRICING_ESCRITURA_ROLES = new Set(["admin_gestora"]);
 
-const inputStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
-const labelStyle: CSSProperties = { fontSize: 13 };
-const sectionStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 };
-const formRowStyle: CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap" };
-const primaryButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 600 };
-const noticeStyle: CSSProperties = { margin: 0, fontSize: 12, color: "#065f46", background: "#d1fae5", padding: "6px 10px", borderRadius: 8 };
-const errorStyle: CSSProperties = { color: "#b91c1c", margin: 0, fontSize: 13 };
-const creadoListStyle: CSSProperties = { margin: "4px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#374151" };
+/** Mismos tokens que el <Input> de @atiende/ui aplicados al <select> nativo: todos
+ * los selectores de esta pantalla son dropdowns de datos reales (unidad con su
+ * estado `<option>Cargando…</option>`, canal, día de la semana) -- se quedan nativos
+ * y solo se re-estilan. */
+const SELECT_CLASES =
+  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
+const NOTA_CLASES = "m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground";
 
 const DIA_SEMANA_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -91,25 +113,23 @@ export function PreciosPage({ apiBaseUrl, token, propertyId, orgSlug, session }:
 
   if (unidades && unidades.length === 0) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Precios</h1>
-        <p role="alert" style={errorStyle}>
-          Esta propiedad todavía no tiene ninguna unidad configurada.
-        </p>
+      <div className="flex flex-col gap-4">
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Precios</h1>
+        <EstadoError titulo="Sin unidades" mensaje="Esta propiedad todavía no tiene ninguna unidad configurada." />
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 640 }}>
+    <div className="flex flex-col gap-5 max-w-[640px]">
       <header>
-        <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Precios</h1>
-        <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Cotiza una estadía y, si tu rol lo permite, configura la tarifa de la unidad.</p>
+        <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Precios</h1>
+        <p className="m-0 text-[13px] text-muted-foreground">Cotiza una estadía y, si tu rol lo permite, configura la tarifa de la unidad.</p>
       </header>
 
-      <label style={{ ...labelStyle, maxWidth: 320 }}>
+      <Label className={`${LABEL_CLASES} max-w-[320px]`}>
         Unidad
-        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} style={inputStyle} disabled={!unidades}>
+        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
           {!unidades && <option>Cargando…</option>}
           {unidades?.map((u) => (
             <option key={u.id} value={u.id}>
@@ -117,22 +137,25 @@ export function PreciosPage({ apiBaseUrl, token, propertyId, orgSlug, session }:
             </option>
           ))}
         </select>
-      </label>
+      </Label>
 
-      {error && (
-        <p role="alert" style={errorStyle}>
-          {error}
-        </p>
-      )}
+      {error && <EstadoError mensaje={error} />}
 
       {unidadId && <Cotizador apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />}
 
       {unidadId && puedeEscribir && <ConfiguracionPricing apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />}
 
       {unidadId && !puedeEscribir && (
-        <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
-          Solo el rol <strong>admin_gestora</strong> puede configurar tarifa base, temporadas, descuentos por duración, estancia mínima y reglas por canal
-          {org ? <> — tu rol actual es <strong>{org.rol}</strong>.</> : "."}
+        <p className="m-0 text-[13px] text-muted-foreground">
+          Solo el rol <strong className="text-foreground">admin_gestora</strong> puede configurar tarifa base, temporadas, descuentos por duración, estancia mínima y reglas por canal
+          {org ? (
+            <>
+              {" "}
+              — tu rol actual es <strong className="text-foreground">{org.rol}</strong>.
+            </>
+          ) : (
+            "."
+          )}
         </p>
       )}
     </div>
@@ -171,99 +194,108 @@ function Cotizador({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelProps
   }
 
   return (
-    <section style={sectionStyle}>
-      <h2 style={{ fontSize: 15, margin: 0 }}>Cotizador</h2>
-      <form onSubmit={handleCotizar} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={formRowStyle}>
-          <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
-            Check-in
-            <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} required style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
-            Check-out
-            <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} required style={inputStyle} />
-          </label>
-          <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>
-            Canal (opcional)
-            <select value={canal} onChange={(e) => setCanal(e.target.value)} style={inputStyle}>
-              <option value="">Reserva directa (sin canal)</option>
-              {TODOS_LOS_CANALES.map((c) => (
-                <option key={c.codigo} value={c.codigo}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {error && (
-          <p role="alert" style={errorStyle}>
-            {error}
-          </p>
-        )}
-        <button type="submit" disabled={cotizando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
-          {cotizando ? "Cotizando…" : "Cotizar"}
-        </button>
-      </form>
-
-      {resultado && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={{ padding: "4px 0" }}>Noche</th>
-                <th style={{ padding: "4px 0" }}>Origen</th>
-                <th style={{ padding: "4px 0", textAlign: "right" }}>Precio</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resultado.desgloseNoches.map((n) => (
-                <tr key={n.fecha} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "4px 0" }}>{n.fecha}</td>
-                  <td style={{ padding: "4px 0", color: "#6b7280" }}>{n.origen === "temporada" ? `Temporada: ${n.temporadaNombre}` : "Base"}</td>
-                  <td style={{ padding: "4px 0", textAlign: "right" }}>
-                    {centavosAPesos(n.precioCentavos)} {resultado.moneda}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-            <Linea label={`Subtotal (${resultado.noches} noche${resultado.noches === 1 ? "" : "s"})`} valorCentavos={resultado.subtotalAntesDescuentoCentavos} moneda={resultado.moneda} />
-            {resultado.descuentoAplicado && (
-              <Linea
-                label={`Descuento (${resultado.descuentoAplicado.nochesMinimas}+ noches, ${basisPointsAPorcentaje(resultado.descuentoAplicado.porcentajeDescuentoBasisPoints)}% — ${resultado.descuentoAplicado.fuente})`}
-                valorCentavos={-resultado.descuentoAplicado.montoCentavos}
-                moneda={resultado.moneda}
-              />
-            )}
-            {resultado.markupCanalCentavos > 0 && <Linea label="Markup de canal" valorCentavos={resultado.markupCanalCentavos} moneda={resultado.moneda} />}
-            <Linea label="Total" valorCentavos={resultado.totalCentavos} moneda={resultado.moneda} fuerte />
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-[15px] font-semibold">Cotizador</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 flex flex-col gap-3">
+        <form onSubmit={handleCotizar} className="flex flex-col gap-2.5">
+          <div className="flex gap-2.5 flex-wrap">
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
+              Check-in
+              <Input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} required />
+            </Label>
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
+              Check-out
+              <Input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} required />
+            </Label>
+            <Label className={`${LABEL_CLASES} flex-1 min-w-[160px]`}>
+              Canal (opcional)
+              <select value={canal} onChange={(e) => setCanal(e.target.value)} className={SELECT_CLASES}>
+                <option value="">Reserva directa (sin canal)</option>
+                {TODOS_LOS_CANALES.map((c) => (
+                  <option key={c.codigo} value={c.codigo}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </Label>
           </div>
-
-          {resultado.violacionesMinStay.length > 0 && (
-            <div style={{ fontSize: 12, color: "#92400e", background: "#fef3c7", padding: "8px 12px", borderRadius: 8 }}>
-              {resultado.violacionesMinStay.map((v, i) => (
-                <p key={i} style={{ margin: i === 0 ? 0 : "4px 0 0" }}>
-                  No cumple la estancia mínima de {v.regla.nochesMinimas} noches
-                  {v.regla.diaSemanaCheckIn !== null ? ` para check-in en ${DIA_SEMANA_LABELS[v.regla.diaSemanaCheckIn]}` : ""} ({v.regla.rango.inicio}..{v.regla.rango.fin}) — se solicitaron{" "}
-                  {v.nochesSolicitadas}. Esto es informativo: el precio de arriba SÍ es el precio real, la decisión de bloquear la reserva es del calendario, no del cotizador.
-                </p>
-              ))}
-            </div>
+          {error && (
+            <p role="alert" className="m-0 text-[13px] text-destructive">
+              {error}
+            </p>
           )}
-        </div>
-      )}
-    </section>
+          <Button type="submit" size="sm" disabled={cotizando} className="self-start">
+            <Calculator className="w-4 h-4" strokeWidth={1.75} />
+            {cotizando ? "Cotizando…" : "Cotizar"}
+          </Button>
+        </form>
+
+        {resultado && (
+          <div className="flex flex-col gap-2.5 border-t border-border pt-3">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9 px-2">Noche</TableHead>
+                  <TableHead className="h-9 px-2">Origen</TableHead>
+                  <TableHead className="h-9 px-2 text-right">Precio</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {resultado.desgloseNoches.map((n) => (
+                  <TableRow key={n.fecha}>
+                    <TableCell className="p-2">{n.fecha}</TableCell>
+                    <TableCell className="p-2 text-muted-foreground">{n.origen === "temporada" ? `Temporada: ${n.temporadaNombre}` : "Base"}</TableCell>
+                    <TableCell className="p-2 text-right tabular-nums">
+                      {centavosAPesos(n.precioCentavos)} {resultado.moneda}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            <div className="flex flex-col gap-1 text-[13px]">
+              <Linea label={`Subtotal (${resultado.noches} noche${resultado.noches === 1 ? "" : "s"})`} valorCentavos={resultado.subtotalAntesDescuentoCentavos} moneda={resultado.moneda} />
+              {resultado.descuentoAplicado && (
+                <Linea
+                  label={`Descuento (${resultado.descuentoAplicado.nochesMinimas}+ noches, ${basisPointsAPorcentaje(resultado.descuentoAplicado.porcentajeDescuentoBasisPoints)}% — ${resultado.descuentoAplicado.fuente})`}
+                  valorCentavos={-resultado.descuentoAplicado.montoCentavos}
+                  moneda={resultado.moneda}
+                />
+              )}
+              {resultado.markupCanalCentavos > 0 && <Linea label="Markup de canal" valorCentavos={resultado.markupCanalCentavos} moneda={resultado.moneda} />}
+              <Linea label="Total" valorCentavos={resultado.totalCentavos} moneda={resultado.moneda} fuerte />
+            </div>
+
+            {resultado.violacionesMinStay.length > 0 && (
+              <div className="flex gap-2 rounded-lg border border-dashed border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" strokeWidth={1.75} />
+                <div>
+                  {resultado.violacionesMinStay.map((v, i) => (
+                    <p key={i} className={i === 0 ? "m-0" : "mt-1 mb-0"}>
+                      No cumple la estancia mínima de {v.regla.nochesMinimas} noches
+                      {v.regla.diaSemanaCheckIn !== null ? ` para check-in en ${DIA_SEMANA_LABELS[v.regla.diaSemanaCheckIn]}` : ""} ({v.regla.rango.inicio}..{v.regla.rango.fin}) — se
+                      solicitaron {v.nochesSolicitadas}. Esto es informativo: el precio de arriba SÍ es el precio real, la decisión de bloquear la reserva es del calendario, no del
+                      cotizador.
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function Linea({ label, valorCentavos, moneda, fuerte }: { label: string; valorCentavos: number; moneda: string; fuerte?: boolean }) {
   const signo = valorCentavos < 0 ? "-" : "";
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: fuerte ? 700 : 400 }}>
+    <div className={fuerte ? "flex justify-between font-bold text-foreground" : "flex justify-between text-foreground"}>
       <span>{label}</span>
-      <span>
+      <span className="tabular-nums">
         {signo}
         {centavosAPesos(Math.abs(valorCentavos))} {moneda}
       </span>
@@ -273,14 +305,31 @@ function Linea({ label, valorCentavos, moneda, fuerte }: { label: string; valorC
 
 function ConfiguracionPricing({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelProps) {
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ fontSize: 15, margin: 0 }}>Configuración de pricing</h2>
+    <section className="flex flex-col gap-4">
+      <h2 className="font-display text-[15px] font-semibold text-foreground m-0">Configuración de pricing</h2>
       <TarifaBaseForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />
       <TemporadaForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />
       <DescuentoDuracionForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />
       <MinStayForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />
       <ReglaCanalForm apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} unidadId={unidadId} />
     </section>
+  );
+}
+
+/** Envoltura común de los 5 sub-formularios de configuración: <Card> con título y un
+ * <form> dentro, misma anatomía que tenía el `sectionStyle` inline previo. */
+function BloqueConfig({ titulo, onSubmit, children }: { titulo: string; onSubmit: (e: FormEvent<HTMLFormElement>) => void; children: React.ReactNode }) {
+  return (
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-semibold">{titulo}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <form onSubmit={onSubmit} className="flex flex-col gap-3">
+          {children}
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -316,30 +365,33 @@ function TarifaBaseForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanel
   }
 
   return (
-    <form onSubmit={handleSubmit} style={sectionStyle}>
-      <h3 style={{ fontSize: 14, margin: 0 }}>Tarifa base</h3>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 140 }}>
+    <BloqueConfig titulo="Tarifa base" onSubmit={handleSubmit}>
+      <div className="flex gap-2.5 flex-wrap">
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[140px]`}>
           Precio por noche
-          <input type="number" min="0" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} required style={inputStyle} placeholder="1000.00" />
-        </label>
-        <label style={{ ...labelStyle, width: 90 }}>
+          <Input type="number" min="0" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} required placeholder="1000.00" />
+        </Label>
+        <Label className={`${LABEL_CLASES} w-[90px]`}>
           Moneda
-          <input value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())} maxLength={3} required style={inputStyle} placeholder="MXN" />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 140 }}>
+          <Input value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())} maxLength={3} required placeholder="MXN" />
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[140px]`}>
           Vigente desde (opcional, hoy si se deja vacío)
-          <input type="date" value={vigenteDesde} onChange={(e) => setVigenteDesde(e.target.value)} style={inputStyle} />
-        </label>
+          <Input type="date" value={vigenteDesde} onChange={(e) => setVigenteDesde(e.target.value)} />
+        </Label>
       </div>
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-      <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
+      {error && (
+        <p role="alert" className="m-0 text-[13px] text-destructive">
+          {error}
+        </p>
+      )}
+      <Button type="submit" size="sm" disabled={guardando} className="self-start">
         {guardando ? "Guardando…" : "Guardar tarifa base"}
-      </button>
+      </Button>
       {creadas.length > 0 && (
         <div>
-          <p style={noticeStyle}>Configurado en esta sesión (no hay lectura persistente todavía — ver comentario en pricing-client.ts):</p>
-          <ul style={creadoListStyle}>
+          <p className={NOTA_CLASES}>Configurado en esta sesión (no hay lectura persistente todavía — ver comentario en pricing-client.ts):</p>
+          <ul className="mt-1 mb-0 p-0 list-none flex flex-col gap-1 text-xs text-muted-foreground">
             {creadas.map((c) => (
               <li key={c.id}>
                 {centavosAPesos(c.precioNocheCentavos)} {c.moneda} · vigente desde {c.vigenteDesde}
@@ -348,7 +400,7 @@ function TarifaBaseForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanel
           </ul>
         </div>
       )}
-    </form>
+    </BloqueConfig>
   );
 }
 
@@ -391,40 +443,43 @@ function TemporadaForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelP
   }
 
   return (
-    <form onSubmit={handleSubmit} style={sectionStyle}>
-      <h3 style={{ fontSize: 14, margin: 0 }}>Temporadas</h3>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>
+    <BloqueConfig titulo="Temporadas" onSubmit={handleSubmit}>
+      <div className="flex gap-2.5 flex-wrap">
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[160px]`}>
           Nombre
-          <input value={nombre} onChange={(e) => setNombre(e.target.value)} required style={inputStyle} placeholder="Semana Santa" />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
+          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} required placeholder="Semana Santa" />
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
           Inicio
-          <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} required style={inputStyle} />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
+          <Input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} required />
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
           Fin (exclusivo)
-          <input type="date" value={fin} onChange={(e) => setFin(e.target.value)} required style={inputStyle} />
-        </label>
+          <Input type="date" value={fin} onChange={(e) => setFin(e.target.value)} required />
+        </Label>
       </div>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 140 }}>
+      <div className="flex gap-2.5 flex-wrap">
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[140px]`}>
           Precio por noche
-          <input type="number" min="0" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} required style={inputStyle} placeholder="1500.00" />
-        </label>
-        <label style={{ ...labelStyle, width: 90 }}>
+          <Input type="number" min="0" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} required placeholder="1500.00" />
+        </Label>
+        <Label className={`${LABEL_CLASES} w-[90px]`}>
           Moneda
-          <input value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())} maxLength={3} required style={inputStyle} placeholder="MXN" />
-        </label>
+          <Input value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())} maxLength={3} required placeholder="MXN" />
+        </Label>
       </div>
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-      <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
+      {error && (
+        <p role="alert" className="m-0 text-[13px] text-destructive">
+          {error}
+        </p>
+      )}
+      <Button type="submit" size="sm" disabled={guardando} className="self-start">
         {guardando ? "Guardando…" : "Agregar temporada"}
-      </button>
+      </Button>
       {creadas.length > 0 && (
         <div>
-          <p style={noticeStyle}>Configurado en esta sesión:</p>
-          <ul style={creadoListStyle}>
+          <p className={NOTA_CLASES}>Configurado en esta sesión:</p>
+          <ul className="mt-1 mb-0 p-0 list-none flex flex-col gap-1 text-xs text-muted-foreground">
             {creadas.map((c) => (
               <li key={c.id}>
                 {c.nombre}: {c.rango.inicio} → {c.rango.fin} · {centavosAPesos(c.precioNocheCentavos)} {c.moneda}
@@ -433,7 +488,7 @@ function TemporadaForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelP
           </ul>
         </div>
       )}
-    </form>
+    </BloqueConfig>
   );
 }
 
@@ -472,30 +527,33 @@ function DescuentoDuracionForm({ apiBaseUrl, token, propertyId, unidadId }: Unid
   }
 
   return (
-    <form onSubmit={handleSubmit} style={sectionStyle}>
-      <h3 style={{ fontSize: 14, margin: 0 }}>Descuentos por duración</h3>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 140 }}>
+    <BloqueConfig titulo="Descuentos por duración" onSubmit={handleSubmit}>
+      <div className="flex gap-2.5 flex-wrap">
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[140px]`}>
           Noches mínimas
-          <input type="number" min="1" step="1" value={nochesMinimas} onChange={(e) => setNochesMinimas(e.target.value)} required style={inputStyle} placeholder="7" />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 140 }}>
+          <Input type="number" min="1" step="1" value={nochesMinimas} onChange={(e) => setNochesMinimas(e.target.value)} required placeholder="7" />
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[140px]`}>
           Descuento (%)
-          <input type="number" min="0" max="100" step="0.01" value={porcentaje} onChange={(e) => setPorcentaje(e.target.value)} required style={inputStyle} placeholder="10" />
-        </label>
-        <label style={{ ...labelStyle, flex: 2, minWidth: 200 }}>
+          <Input type="number" min="0" max="100" step="0.01" value={porcentaje} onChange={(e) => setPorcentaje(e.target.value)} required placeholder="10" />
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-[2] min-w-[200px]`}>
           Fuente
-          <input value={fuente} onChange={(e) => setFuente(e.target.value)} required style={inputStyle} placeholder="Promoción semanal" />
-        </label>
+          <Input value={fuente} onChange={(e) => setFuente(e.target.value)} required placeholder="Promoción semanal" />
+        </Label>
       </div>
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-      <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
+      {error && (
+        <p role="alert" className="m-0 text-[13px] text-destructive">
+          {error}
+        </p>
+      )}
+      <Button type="submit" size="sm" disabled={guardando} className="self-start">
         {guardando ? "Guardando…" : "Agregar descuento"}
-      </button>
+      </Button>
       {creados.length > 0 && (
         <div>
-          <p style={noticeStyle}>Configurado en esta sesión:</p>
-          <ul style={creadoListStyle}>
+          <p className={NOTA_CLASES}>Configurado en esta sesión:</p>
+          <ul className="mt-1 mb-0 p-0 list-none flex flex-col gap-1 text-xs text-muted-foreground">
             {creados.map((c) => (
               <li key={c.id}>
                 {c.nochesMinimas}+ noches: {basisPointsAPorcentaje(c.porcentajeDescuentoBasisPoints)}% ({c.fuente})
@@ -504,7 +562,7 @@ function DescuentoDuracionForm({ apiBaseUrl, token, propertyId, unidadId }: Unid
           </ul>
         </div>
       )}
-    </form>
+    </BloqueConfig>
   );
 }
 
@@ -543,20 +601,19 @@ function MinStayForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelPro
   }
 
   return (
-    <form onSubmit={handleSubmit} style={sectionStyle}>
-      <h3 style={{ fontSize: 14, margin: 0 }}>Estancia mínima (min-stay)</h3>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
+    <BloqueConfig titulo="Estancia mínima (min-stay)" onSubmit={handleSubmit}>
+      <div className="flex gap-2.5 flex-wrap">
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
           Inicio
-          <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} required style={inputStyle} />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
+          <Input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} required />
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
           Fin (exclusivo)
-          <input type="date" value={fin} onChange={(e) => setFin(e.target.value)} required style={inputStyle} />
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 150 }}>
+          <Input type="date" value={fin} onChange={(e) => setFin(e.target.value)} required />
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[150px]`}>
           Día de check-in
-          <select value={diaSemana} onChange={(e) => setDiaSemana(e.target.value)} style={inputStyle}>
+          <select value={diaSemana} onChange={(e) => setDiaSemana(e.target.value)} className={SELECT_CLASES}>
             <option value="">Todos los días</option>
             {DIA_SEMANA_LABELS.map((label, i) => (
               <option key={i} value={i}>
@@ -564,29 +621,34 @@ function MinStayForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanelPro
               </option>
             ))}
           </select>
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 130 }}>
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[130px]`}>
           Noches mínimas
-          <input type="number" min="1" step="1" value={nochesMinimas} onChange={(e) => setNochesMinimas(e.target.value)} required style={inputStyle} placeholder="3" />
-        </label>
+          <Input type="number" min="1" step="1" value={nochesMinimas} onChange={(e) => setNochesMinimas(e.target.value)} required placeholder="3" />
+        </Label>
       </div>
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-      <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
+      {error && (
+        <p role="alert" className="m-0 text-[13px] text-destructive">
+          {error}
+        </p>
+      )}
+      <Button type="submit" size="sm" disabled={guardando} className="self-start">
         {guardando ? "Guardando…" : "Agregar regla"}
-      </button>
+      </Button>
       {creadas.length > 0 && (
         <div>
-          <p style={noticeStyle}>Configurado en esta sesión:</p>
-          <ul style={creadoListStyle}>
+          <p className={NOTA_CLASES}>Configurado en esta sesión:</p>
+          <ul className="mt-1 mb-0 p-0 list-none flex flex-col gap-1 text-xs text-muted-foreground">
             {creadas.map((c) => (
               <li key={c.id}>
-                {c.rango.inicio} → {c.rango.fin}{c.diaSemanaCheckIn !== null ? ` (${DIA_SEMANA_LABELS[c.diaSemanaCheckIn]})` : ""}: mínimo {c.nochesMinimas} noches
+                {c.rango.inicio} → {c.rango.fin}
+                {c.diaSemanaCheckIn !== null ? ` (${DIA_SEMANA_LABELS[c.diaSemanaCheckIn]})` : ""}: mínimo {c.nochesMinimas} noches
               </li>
             ))}
           </ul>
         </div>
       )}
-    </form>
+    </BloqueConfig>
   );
 }
 
@@ -621,36 +683,39 @@ function ReglaCanalForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanel
   }
 
   return (
-    <form onSubmit={handleSubmit} style={sectionStyle}>
-      <h3 style={{ fontSize: 14, margin: 0 }}>Reglas por canal</h3>
-      <div style={formRowStyle}>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 150 }}>
+    <BloqueConfig titulo="Reglas por canal" onSubmit={handleSubmit}>
+      <div className="flex gap-2.5 flex-wrap">
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[150px]`}>
           Canal
-          <select value={canalCodigo} onChange={(e) => setCanalCodigo(e.target.value)} style={inputStyle}>
+          <select value={canalCodigo} onChange={(e) => setCanalCodigo(e.target.value)} className={SELECT_CLASES}>
             {CANALES_CON_MARKUP.map((c) => (
               <option key={c.codigo} value={c.codigo}>
                 {c.nombre}
               </option>
             ))}
           </select>
-        </label>
-        <label style={{ ...labelStyle, flex: 1, minWidth: 140 }}>
+        </Label>
+        <Label className={`${LABEL_CLASES} flex-1 min-w-[140px]`}>
           Markup (%)
-          <input type="number" min="0" max="100" step="0.01" value={markup} onChange={(e) => setMarkup(e.target.value)} required style={inputStyle} placeholder="15" />
-        </label>
-        <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6, marginTop: 20 }}>
-          <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
+          <Input type="number" min="0" max="100" step="0.01" value={markup} onChange={(e) => setMarkup(e.target.value)} required placeholder="15" />
+        </Label>
+        <Label className="flex flex-row items-center gap-2 mt-5 text-[13px] text-foreground">
+          <input type="checkbox" className="h-4 w-4 rounded border-border accent-[hsl(var(--primary))]" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
           Activa (aplica al cotizar para este canal)
-        </label>
+        </Label>
       </div>
-      {error && <p role="alert" style={errorStyle}>{error}</p>}
-      <button type="submit" disabled={guardando} style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}>
+      {error && (
+        <p role="alert" className="m-0 text-[13px] text-destructive">
+          {error}
+        </p>
+      )}
+      <Button type="submit" size="sm" disabled={guardando} className="self-start">
         {guardando ? "Guardando…" : "Guardar regla de canal"}
-      </button>
+      </Button>
       {creadas.length > 0 && (
         <div>
-          <p style={noticeStyle}>Configurado en esta sesión:</p>
-          <ul style={creadoListStyle}>
+          <p className={NOTA_CLASES}>Configurado en esta sesión:</p>
+          <ul className="mt-1 mb-0 p-0 list-none flex flex-col gap-1 text-xs text-muted-foreground">
             {creadas.map((c) => (
               <li key={c.id}>
                 {c.canalCodigo}: {basisPointsAPorcentaje(c.markupBasisPoints)}% markup — {c.activo ? "activa" : "inactiva"}
@@ -659,6 +724,6 @@ function ReglaCanalForm({ apiBaseUrl, token, propertyId, unidadId }: UnidadPanel
           </ul>
         </div>
       )}
-    </form>
+    </BloqueConfig>
   );
 }

@@ -13,8 +13,19 @@
 // nav, el contenido real solo tiene sentido para quien puede operar el módulo
 // (LIMPIEZA_OPERACION_ROLES: admin_gestora/operador:acceso_total/
 // operador:calendario_mensajeria/limpieza).
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Badge/Input/
+// Label/EstadoCargando/EstadoVacio/EstadoError + clases de token en vez de los
+// `style={{...}}` hechos a mano. El formulario "Nueva tarea manual" pasa a
+// <ModalFormularioLateral> (mismo submit, mismas validaciones locales, mismo
+// `handleSeleccionar` tras crear). CERO cambios de lógica ni de gates de rol; la
+// tarjeta de tarea conserva su accesibilidad de teclado exacta (role=button +
+// tabIndex + onKeyDown con el guardia `e.target !== e.currentTarget`).
 import { useCallback, useEffect, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import type { FormEvent } from "react";
+import { AlertTriangle, ClipboardList, Plus } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoVacio, Input, Label, cn } from "@atiende/ui";
+import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
 import {
   asignarTarea,
   completarChecklistItem,
@@ -40,24 +51,15 @@ const LIMPIEZA_OPERACION_ROLES = new Set(["admin_gestora", "operador:acceso_tota
 // cliente solo por UX" que el resto del archivo: el servidor siempre re-valida.
 const LIMPIEZA_CREACION_MANUAL_ROLES = new Set(["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria"]);
 
-const sectionStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 };
-const inputStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
-const labelStyle: CSSProperties = { fontSize: 13 };
-const primaryButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 600 };
-const secondaryButtonStyle: CSSProperties = { padding: "6px 10px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontSize: 12, cursor: "pointer" };
-const noticeStyle: CSSProperties = { margin: 0, fontSize: 12, color: "#065f46", background: "#d1fae5", padding: "6px 10px", borderRadius: 8 };
-const warnStyle: CSSProperties = { margin: 0, fontSize: 12, color: "#92400e", background: "#fef3c7", padding: "6px 10px", borderRadius: 8 };
-const errorStyle: CSSProperties = { color: "#b91c1c", margin: 0, fontSize: 13 };
-const cardStyle = (activo: boolean): CSSProperties => ({
-  border: activo ? "2px solid #111827" : "1px solid #e5e7eb",
-  borderRadius: 8,
-  padding: 10,
-  cursor: "pointer",
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  background: "#fff",
-});
+/** Mismos tokens que el <Input> de @atiende/ui aplicados a los controles nativos que
+ * siguen siendo nativos a propósito: <select> de datos reales (unidad, tipo,
+ * prioridad, severidad, ítem de inventario) y <textarea> (no hay primitivo de
+ * textarea en packages/ui). */
+const SELECT_CLASES =
+  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const TEXTAREA_CLASES =
+  "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
 
 function formatFecha(iso: string | null): string {
   if (!iso) return "—";
@@ -82,7 +84,10 @@ function TareaCard({ tarea, activo, onClick, accion }: { tarea: TareaOperativa; 
       tabIndex={0}
       aria-pressed={activo}
       aria-label={`${TIPO_TAREA_LABELS[tarea.tipo]} — ${tarea.unidadNombre}`}
-      style={cardStyle(activo)}
+      className={cn(
+        "flex flex-col gap-1 rounded-lg border bg-card p-2.5 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        activo ? "border-2 border-primary" : "border-border hover:bg-muted/50",
+      )}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
@@ -92,13 +97,13 @@ function TareaCard({ tarea, activo, onClick, accion }: { tarea: TareaOperativa; 
         }
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>
+      <div className="flex justify-between gap-2">
+        <strong className="text-[13px] text-foreground">
           {TIPO_TAREA_LABELS[tarea.tipo]} — {tarea.unidadNombre}
         </strong>
-        <span style={{ fontSize: 11, color: vencida ? "#b91c1c" : "#6b7280", fontWeight: vencida ? 700 : 400 }}>{vencida ? "SLA vencido" : ESTADO_TAREA_LABELS[tarea.estado]}</span>
+        {vencida ? <Badge variant="destructive">SLA vencido</Badge> : <Badge variant="outline">{ESTADO_TAREA_LABELS[tarea.estado]}</Badge>}
       </div>
-      <span style={{ fontSize: 12, color: "#6b7280" }}>
+      <span className="text-xs text-muted-foreground">
         Programada: {tarea.programadaPara} · Prioridad: {PRIORIDAD_LABELS[tarea.prioridad]}
       </span>
       {accion}
@@ -257,8 +262,7 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
     }
   }
 
-  async function handleCrearTareaManual(e: FormEvent) {
-    e.preventDefault();
+  async function handleCrearTareaManual() {
     setNuevaError(null);
     if (!nuevaUnidadId) {
       setNuevaError("Elige una unidad.");
@@ -323,11 +327,12 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
 
   if (!puedeOperar) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Mis tareas</h1>
-        <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>
-          Tu rol actual{org ? <> (<strong>{org.rol}</strong>)</> : ""} no opera el módulo de limpieza/mantenimiento. Roles con acceso: <strong>admin_gestora</strong>,{" "}
-          <strong>operador:acceso_total</strong>, <strong>operador:calendario_mensajeria</strong> y <strong>limpieza</strong>.
+      <div className="flex flex-col gap-4 max-w-[640px]">
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Mis tareas</h1>
+        <p className="m-0 text-[13px] text-muted-foreground">
+          Tu rol actual{org ? <> (<strong className="text-foreground">{org.rol}</strong>)</> : ""} no opera el módulo de limpieza/mantenimiento. Roles con acceso:{" "}
+          <strong className="text-foreground">admin_gestora</strong>, <strong className="text-foreground">operador:acceso_total</strong>,{" "}
+          <strong className="text-foreground">operador:calendario_mensajeria</strong> y <strong className="text-foreground">limpieza</strong>.
         </p>
       </div>
     );
@@ -336,32 +341,49 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
   const checklistCompleto = detalle ? detalle.checklist.every((c) => c.completado) : true;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 960 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+    <div className="flex flex-col gap-6 max-w-[960px]">
+      <header className="flex justify-between items-start gap-3 flex-wrap">
         <div>
-          <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Mis tareas</h1>
-          <p style={{ color: "#6b7280", margin: 0, fontSize: 13 }}>Tareas de limpieza/mantenimiento asignadas a ti, cola de tareas sin asignar, y reporte de incidencias.</p>
+          <h1 className="font-display text-xl font-semibold text-foreground m-0 mb-1">Mis tareas</h1>
+          <p className="m-0 text-[13px] text-muted-foreground">Tareas de limpieza/mantenimiento asignadas a ti, cola de tareas sin asignar, y reporte de incidencias.</p>
         </div>
         {puedeCrearManual && (
-          <button type="button" onClick={() => setMostrarFormNueva((v) => !v)} style={primaryButtonStyle}>
+          <Button type="button" size="sm" onClick={() => setMostrarFormNueva((v) => !v)}>
+            <Plus className="w-4 h-4" strokeWidth={1.75} />
             {mostrarFormNueva ? "Cancelar" : "+ Nueva tarea"}
-          </button>
+          </Button>
         )}
       </header>
 
-      {listaError && <p style={errorStyle} role="alert">{listaError}</p>}
+      {listaError && (
+        <p role="alert" className="m-0 text-[13px] text-destructive">
+          {listaError}
+        </p>
+      )}
 
-      {puedeCrearManual && mostrarFormNueva && (
-        <section style={sectionStyle}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Nueva tarea manual</h2>
-          <p style={{ color: "#6b7280", margin: 0, fontSize: 12 }}>
-            Fuera del sweep automático de checkout -- para dar de alta una tarea de limpieza/mantenimiento/inspección ad-hoc (nace sin ocupación ni bloqueo de calendario).
-          </p>
-          {nuevaError && <p style={errorStyle} role="alert">{nuevaError}</p>}
-          <form onSubmit={(e) => void handleCrearTareaManual(e)} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <label style={labelStyle}>
+      {puedeCrearManual && (
+        <ModalFormularioLateral
+          open={mostrarFormNueva}
+          onOpenChange={(abierto) => {
+            setMostrarFormNueva(abierto);
+            if (!abierto) setNuevaError(null);
+          }}
+          titulo="Nueva tarea manual"
+          subtitulo="Fuera del sweep automático de checkout — para dar de alta una tarea de limpieza/mantenimiento/inspección ad-hoc (nace sin ocupación ni bloqueo de calendario)."
+          anchoClase="max-w-2xl"
+          onGuardar={() => void handleCrearTareaManual()}
+          guardando={nuevaEnviando}
+          textoBotonGuardar="Crear tarea"
+        >
+          <div className="flex flex-col gap-2.5">
+            {nuevaError && (
+              <p role="alert" className="m-0 text-[13px] text-destructive">
+                {nuevaError}
+              </p>
+            )}
+            <Label className={LABEL_CLASES}>
               Unidad
-              <select value={nuevaUnidadId} onChange={(e) => setNuevaUnidadId(e.target.value)} style={inputStyle}>
+              <select value={nuevaUnidadId} onChange={(e) => setNuevaUnidadId(e.target.value)} className={SELECT_CLASES}>
                 <option value="">Selecciona una unidad…</option>
                 {unidades.map((u) => (
                   <option key={u.id} value={u.id}>
@@ -369,190 +391,223 @@ export function MisTareasPage({ apiBaseUrl, token, propertyId, orgSlug, session 
                   </option>
                 ))}
               </select>
-            </label>
-            <label style={labelStyle}>
+            </Label>
+            <Label className={LABEL_CLASES}>
               Tipo
-              <select value={nuevaTipo} onChange={(e) => setNuevaTipo(e.target.value as TipoTareaOperativa)} style={inputStyle}>
+              <select value={nuevaTipo} onChange={(e) => setNuevaTipo(e.target.value as TipoTareaOperativa)} className={SELECT_CLASES}>
                 {(Object.keys(TIPO_TAREA_LABELS) as TipoTareaOperativa[]).map((t) => (
                   <option key={t} value={t}>
                     {TIPO_TAREA_LABELS[t]}
                   </option>
                 ))}
               </select>
-            </label>
-            <label style={labelStyle}>
+            </Label>
+            <Label className={LABEL_CLASES}>
               Prioridad
-              <select value={nuevaPrioridad} onChange={(e) => setNuevaPrioridad(e.target.value as PrioridadTareaOperativa)} style={inputStyle}>
+              <select value={nuevaPrioridad} onChange={(e) => setNuevaPrioridad(e.target.value as PrioridadTareaOperativa)} className={SELECT_CLASES}>
                 {(Object.keys(PRIORIDAD_LABELS) as PrioridadTareaOperativa[]).map((p) => (
                   <option key={p} value={p}>
                     {PRIORIDAD_LABELS[p]}
                   </option>
                 ))}
               </select>
-            </label>
-            <label style={labelStyle}>
+            </Label>
+            <Label className={LABEL_CLASES}>
               Programada para
-              <input type="date" value={nuevaProgramadaPara} onChange={(e) => setNuevaProgramadaPara(e.target.value)} style={inputStyle} />
-            </label>
-            <button type="submit" disabled={nuevaEnviando} style={primaryButtonStyle}>
-              {nuevaEnviando ? "Creando…" : "Crear tarea"}
-            </button>
-          </form>
-        </section>
+              <Input type="date" value={nuevaProgramadaPara} onChange={(e) => setNuevaProgramadaPara(e.target.value)} />
+            </Label>
+          </div>
+        </ModalFormularioLateral>
       )}
 
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <section style={{ ...sectionStyle, flex: "1 1 320px" }}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Mis tareas de hoy</h2>
-          {misTareas === null && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-          {misTareas !== null && misTareas.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>No tienes tareas asignadas.</p>}
-          {misTareas?.map((t) => <TareaCard key={t.id} tarea={t} activo={t.id === tareaSeleccionadaId} onClick={() => handleSeleccionar(t.id)} />)}
-        </section>
+      <div className="flex gap-4 flex-wrap">
+        <Card className="flex-[1_1_320px]">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-[15px] font-semibold">Mis tareas de hoy</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 flex flex-col gap-3">
+            {misTareas === null && <EstadoCargando lineas={2} />}
+            {misTareas !== null && misTareas.length === 0 && <EstadoVacio icon={ClipboardList} titulo="Nada asignado" mensaje="No tienes tareas asignadas." />}
+            {misTareas?.map((t) => <TareaCard key={t.id} tarea={t} activo={t.id === tareaSeleccionadaId} onClick={() => handleSeleccionar(t.id)} />)}
+          </CardContent>
+        </Card>
 
-        <section style={{ ...sectionStyle, flex: "1 1 320px" }}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Sin asignar (tómala)</h2>
-          {sinAsignar === null && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-          {sinAsignar !== null && sinAsignar.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>No hay tareas pendientes de asignar.</p>}
-          {sinAsignar?.map((t) => (
-            <TareaCard
-              key={t.id}
-              tarea={t}
-              activo={t.id === tareaSeleccionadaId}
-              onClick={() => handleSeleccionar(t.id)}
-              accion={
-                <button
-                  type="button"
-                  disabled={accionEnCurso}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleAsignarme(t.id);
-                  }}
-                  style={secondaryButtonStyle}
-                >
-                  Asignarme
-                </button>
-              }
-            />
-          ))}
-        </section>
+        <Card className="flex-[1_1_320px]">
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-[15px] font-semibold">Sin asignar (tómala)</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 flex flex-col gap-3">
+            {sinAsignar === null && <EstadoCargando lineas={2} />}
+            {sinAsignar !== null && sinAsignar.length === 0 && <EstadoVacio icon={ClipboardList} titulo="Cola vacía" mensaje="No hay tareas pendientes de asignar." />}
+            {sinAsignar?.map((t) => (
+              <TareaCard
+                key={t.id}
+                tarea={t}
+                activo={t.id === tareaSeleccionadaId}
+                onClick={() => handleSeleccionar(t.id)}
+                accion={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start h-8 px-3 text-xs"
+                    disabled={accionEnCurso}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleAsignarme(t.id);
+                    }}
+                  >
+                    Asignarme
+                  </Button>
+                }
+              />
+            ))}
+          </CardContent>
+        </Card>
       </div>
 
       {tareaSeleccionadaId && (
-        <section style={sectionStyle}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>Detalle de la tarea</h2>
-          {detalleError && <p style={errorStyle} role="alert">{detalleError}</p>}
-          {aviso && <p style={noticeStyle}>{aviso}</p>}
-          {!detalle && !detalleError && <p style={{ color: "#6b7280", fontSize: 13 }}>Cargando…</p>}
-          {detalle && (
-            <>
-              <p style={{ margin: 0, fontSize: 13 }}>
-                <strong>{detalle.unidadNombre}</strong> · {TIPO_TAREA_LABELS[detalle.tipo]} · Programada: {detalle.programadaPara} · SLA vence: {formatFecha(detalle.slaVenceEn)}
+        <Card>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-[15px] font-semibold">Detalle de la tarea</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 flex flex-col gap-3">
+            {detalleError && (
+              <p role="alert" className="m-0 text-[13px] text-destructive">
+                {detalleError}
               </p>
-              <p style={{ margin: 0, fontSize: 13 }}>
-                Estado: <strong>{ESTADO_TAREA_LABELS[detalle.estado]}</strong>
-              </p>
+            )}
+            {aviso && <p className="m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground">{aviso}</p>}
+            {!detalle && !detalleError && <EstadoCargando lineas={2} />}
+            {detalle && (
+              <>
+                <p className="m-0 text-[13px] text-foreground">
+                  <strong>{detalle.unidadNombre}</strong> · {TIPO_TAREA_LABELS[detalle.tipo]} · Programada: {detalle.programadaPara} · SLA vence: {formatFecha(detalle.slaVenceEn)}
+                </p>
+                <p className="m-0 text-[13px] text-foreground">
+                  Estado: <strong>{ESTADO_TAREA_LABELS[detalle.estado]}</strong>
+                </p>
 
-              <div>
-                <h3 style={{ fontSize: 13, margin: "0 0 8px" }}>Checklist</h3>
-                {detalle.checklist.length === 0 && <p style={{ color: "#6b7280", fontSize: 13 }}>Esta tarea no tiene checklist.</p>}
-                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                  {detalle.checklist.map((item) => (
-                    <li key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                      <input
-                        type="checkbox"
-                        checked={item.completado}
-                        disabled={item.completado || accionEnCurso || detalle.estado === "completada" || detalle.estado === "cancelada"}
-                        onChange={() => void handleToggleChecklistItem(item.id)}
-                      />
-                      <span style={{ textDecoration: item.completado ? "line-through" : "none", color: item.completado ? "#6b7280" : "#111827" }}>{item.descripcion}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {detalle.estado !== "completada" && detalle.estado !== "cancelada" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <h3 style={{ fontSize: 13, margin: 0 }}>Consumo de inventario al completar (opcional)</h3>
-                  {consumos.map((c, i) => (
-                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <select
-                        value={c.itemInventarioId}
-                        onChange={(e) => setConsumos((prev) => prev.map((x, xi) => (xi === i ? { ...x, itemInventarioId: e.target.value } : x)))}
-                        style={{ ...inputStyle, marginTop: 0, flex: 2 }}
-                      >
-                        {inventario.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.nombre} ({item.cantidadActual} {item.unidadMedida})
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min={1}
-                        value={c.cantidad}
-                        onChange={(e) => setConsumos((prev) => prev.map((x, xi) => (xi === i ? { ...x, cantidad: e.target.value } : x)))}
-                        style={{ ...inputStyle, marginTop: 0, flex: 1 }}
-                      />
-                      <button type="button" onClick={() => handleQuitarConsumo(i)} style={secondaryButtonStyle}>
-                        Quitar
-                      </button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={handleAgregarConsumo} disabled={inventario.length === 0} style={secondaryButtonStyle}>
-                    {inventario.length === 0 ? "Esta unidad no tiene inventario configurado" : "+ Agregar consumo"}
-                  </button>
-
-                  {!checklistCompleto && <p style={warnStyle}>El checklist tiene ítems pendientes — completar la tarea la bloqueará hasta que termines el checklist.</p>}
-                  <button type="button" onClick={() => void handleCompletarTarea()} disabled={accionEnCurso} style={primaryButtonStyle}>
-                    Completar tarea
-                  </button>
+                <div>
+                  <h3 className="text-[13px] font-semibold text-foreground mt-0 mb-2">Checklist</h3>
+                  {detalle.checklist.length === 0 && <p className="m-0 text-[13px] text-muted-foreground">Esta tarea no tiene checklist.</p>}
+                  <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
+                    {detalle.checklist.map((item) => (
+                      <li key={item.id} className="flex items-center gap-2 text-[13px]">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-border accent-[hsl(var(--primary))]"
+                          checked={item.completado}
+                          disabled={item.completado || accionEnCurso || detalle.estado === "completada" || detalle.estado === "cancelada"}
+                          onChange={() => void handleToggleChecklistItem(item.id)}
+                        />
+                        <span className={item.completado ? "line-through text-muted-foreground" : "text-foreground"}>{item.descripcion}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              )}
-            </>
-          )}
-        </section>
+
+                {detalle.estado !== "completada" && detalle.estado !== "cancelada" && (
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-[13px] font-semibold text-foreground m-0">Consumo de inventario al completar (opcional)</h3>
+                    {consumos.map((c, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <select
+                          value={c.itemInventarioId}
+                          onChange={(e) => setConsumos((prev) => prev.map((x, xi) => (xi === i ? { ...x, itemInventarioId: e.target.value } : x)))}
+                          className={`${SELECT_CLASES} flex-[2]`}
+                        >
+                          {inventario.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.nombre} ({item.cantidadActual} {item.unidadMedida})
+                            </option>
+                          ))}
+                        </select>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={c.cantidad}
+                          onChange={(e) => setConsumos((prev) => prev.map((x, xi) => (xi === i ? { ...x, cantidad: e.target.value } : x)))}
+                          className="flex-1"
+                        />
+                        <Button type="button" variant="outline" size="sm" onClick={() => handleQuitarConsumo(i)}>
+                          Quitar
+                        </Button>
+                      </div>
+                    ))}
+                    <Button type="button" variant="outline" size="sm" onClick={handleAgregarConsumo} disabled={inventario.length === 0} className="self-start">
+                      {inventario.length === 0 ? "Esta unidad no tiene inventario configurado" : "+ Agregar consumo"}
+                    </Button>
+
+                    {!checklistCompleto && (
+                      <p className="m-0 flex items-start gap-2 rounded-lg border border-dashed border-border bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">
+                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" strokeWidth={1.75} />
+                        El checklist tiene ítems pendientes — completar la tarea la bloqueará hasta que termines el checklist.
+                      </p>
+                    )}
+                    <Button type="button" size="sm" onClick={() => void handleCompletarTarea()} disabled={accionEnCurso} className="self-start">
+                      Completar tarea
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Reportar incidencia</h2>
-        {unidadesError && <p style={errorStyle} role="alert">{unidadesError}</p>}
-        {incError && <p style={errorStyle} role="alert">{incError}</p>}
-        {incAviso && <p style={noticeStyle}>{incAviso}</p>}
-        <form onSubmit={handleReportarIncidencia} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <label style={labelStyle}>
-            Unidad
-            <select value={incUnidadId} onChange={(e) => setIncUnidadId(e.target.value)} style={inputStyle}>
-              <option value="">Selecciona una unidad…</option>
-              {unidades.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={labelStyle}>
-            Severidad
-            <select value={incSeveridad} onChange={(e) => setIncSeveridad(e.target.value as SeveridadIncidencia)} style={inputStyle}>
-              {(Object.keys(SEVERIDAD_LABELS) as SeveridadIncidencia[]).map((s) => (
-                <option key={s} value={s}>
-                  {SEVERIDAD_LABELS[s]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={labelStyle}>
-            Título
-            <input type="text" value={incTitulo} onChange={(e) => setIncTitulo(e.target.value)} maxLength={200} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            Descripción (opcional)
-            <textarea value={incDescripcion} onChange={(e) => setIncDescripcion(e.target.value)} maxLength={4000} rows={3} style={inputStyle} />
-          </label>
-          <button type="submit" disabled={incEnviando} style={primaryButtonStyle}>
-            {incEnviando ? "Enviando…" : "Reportar incidencia"}
-          </button>
-        </form>
-      </section>
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-[15px] font-semibold">Reportar incidencia</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 flex flex-col gap-3">
+          {unidadesError && (
+            <p role="alert" className="m-0 text-[13px] text-destructive">
+              {unidadesError}
+            </p>
+          )}
+          {incError && (
+            <p role="alert" className="m-0 text-[13px] text-destructive">
+              {incError}
+            </p>
+          )}
+          {incAviso && <p className="m-0 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground">{incAviso}</p>}
+          <form onSubmit={handleReportarIncidencia} className="flex flex-col gap-2.5">
+            <Label className={LABEL_CLASES}>
+              Unidad
+              <select value={incUnidadId} onChange={(e) => setIncUnidadId(e.target.value)} className={SELECT_CLASES}>
+                <option value="">Selecciona una unidad…</option>
+                {unidades.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nombre}
+                  </option>
+                ))}
+              </select>
+            </Label>
+            <Label className={LABEL_CLASES}>
+              Severidad
+              <select value={incSeveridad} onChange={(e) => setIncSeveridad(e.target.value as SeveridadIncidencia)} className={SELECT_CLASES}>
+                {(Object.keys(SEVERIDAD_LABELS) as SeveridadIncidencia[]).map((s) => (
+                  <option key={s} value={s}>
+                    {SEVERIDAD_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </Label>
+            <Label className={LABEL_CLASES}>
+              Título
+              <Input type="text" value={incTitulo} onChange={(e) => setIncTitulo(e.target.value)} maxLength={200} />
+            </Label>
+            <Label className={LABEL_CLASES}>
+              Descripción (opcional)
+              <textarea value={incDescripcion} onChange={(e) => setIncDescripcion(e.target.value)} maxLength={4000} rows={3} className={TEXTAREA_CLASES} />
+            </Label>
+            <Button type="submit" size="sm" disabled={incEnviando} className="self-start">
+              {incEnviando ? "Enviando…" : "Reportar incidencia"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

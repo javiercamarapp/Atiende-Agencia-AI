@@ -31,8 +31,35 @@
 // staff. Sigue siendo, honestamente, un registro MANUAL -- no hay adaptador real de
 // canal conectado (mismo aviso que ya tenía esta página para SimuladorCanalMensajeria,
 // ver más abajo).
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui): Card/Button/Badge/Input/
+// Label/EstadoCargando/EstadoVacio/EstadoError y clases de token en lugar de los
+// `style={{...}}` hechos a mano. El rechazo conserva EXACTAMENTE sus dos pasos
+// (revelar textarea de motivo -> "Confirmar rechazo") y el motivo sigue siendo
+// obligatorio; el paso de confirmación pasa a <Dialog> real. CERO cambios de lógica.
 import { useCallback, useEffect, useState } from "react";
-import type { CSSProperties, FormEvent } from "react";
+import type { FormEvent } from "react";
+import { Check, Inbox, MessageSquarePlus, X } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EstadoCargando,
+  EstadoError,
+  EstadoVacio,
+  Input,
+  Label,
+} from "@atiende/ui";
 import { aprobarBorrador, CANAL_LABELS, CANALES_MENSAJERIA, fetchBandejaAprobacion, fetchConversaciones, fetchUnidades, rechazarBorrador } from "../lib/mensajeria-client.ts";
 import type { BorradorRecord, CanalMensajeriaCodigo, ConversacionRecord, ItemBandeja, UnidadOption } from "../lib/mensajeria-client.ts";
 import { crearConversacion, generarBorrador, registrarMensajeEntrante } from "../lib/mensajeria-conversaciones-client.ts";
@@ -42,15 +69,15 @@ const MENSAJERIA_ESCRITURA_ROLES = new Set(["admin_gestora", "operador:acceso_to
 
 const NUEVA_CONVERSACION = "__nueva__";
 
-const cardStyle: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 };
-const primaryButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #111827", background: "#111827", color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 600 };
-const secondaryButtonStyle: CSSProperties = { padding: "5px 12px", borderRadius: 8, border: "1px solid #6b7280", background: "#fff", color: "#374151", fontSize: 12, cursor: "pointer" };
-const dangerButtonStyle: CSSProperties = { padding: "8px 14px", borderRadius: 8, border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", fontSize: 13, cursor: "pointer", fontWeight: 600 };
-const textareaStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box", fontFamily: "inherit", fontSize: 13 };
-const inputStyle: CSSProperties = { display: "block", width: "100%", padding: 8, marginTop: 4, boxSizing: "border-box" };
-const noticeStyle: CSSProperties = { margin: 0, fontSize: 13, color: "#065f46", background: "#d1fae5", padding: "8px 12px", borderRadius: 8 };
-const errorStyle: CSSProperties = { color: "#b91c1c", margin: 0, fontSize: 13 };
-const badgeStyle = (bg: string, fg: string): CSSProperties => ({ fontSize: 11, padding: "3px 9px", borderRadius: 999, background: bg, color: fg, whiteSpace: "nowrap" });
+/** Mismos tokens que el <Input> de @atiende/ui aplicados a los controles nativos que
+ * siguen siendo nativos a propósito: <select> de datos reales (unidad, conversación,
+ * canal) con su estado `<option>Cargando…</option>`, y <textarea> (no hay primitivo
+ * de textarea en packages/ui). */
+const SELECT_CLASES =
+  "flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const TEXTAREA_CLASES =
+  "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const LABEL_CLASES = "flex flex-col gap-1.5 text-[13px] text-foreground";
 
 function contextoLinea(item: ItemBandeja): string {
   const partes: string[] = [item.unidad.nombre, CANAL_LABELS[item.conversacion.canal]];
@@ -62,10 +89,12 @@ function contextoLinea(item: ItemBandeja): string {
   return partes.join(" · ");
 }
 
-function historialBadge(b: BorradorRecord): { bg: string; fg: string; label: string } {
-  if (b.estado === "enviado") return { bg: "#dbeafe", fg: "#1e40af", label: "Enviado" };
-  if (b.estado === "rechazado") return { bg: "#fee2e2", fg: "#b91c1c", label: "Rechazado" };
-  return { bg: "#f3f4f6", fg: "#6b7280", label: "Aprobado" };
+/** Mismo criterio que la versión previa (enviado = principal, rechazado = destructivo,
+ * resto = apagado), ahora sobre las variantes reales de <Badge>. */
+function historialBadge(b: BorradorRecord): { variante: "default" | "destructive" | "outline"; label: string } {
+  if (b.estado === "enviado") return { variante: "default", label: "Enviado" };
+  if (b.estado === "rechazado") return { variante: "destructive", label: "Rechazado" };
+  return { variante: "outline", label: "Aprobado" };
 }
 
 interface BorradorCardProps {
@@ -91,67 +120,91 @@ function BorradorPendienteCard({ item, borrador, puedeEscribir, busy, onAprobar,
   }
 
   return (
-    <div style={{ border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, color: "#92400e" }}>
-          {borrador.generadoPor === "agente_llm" ? "Generado por agente IA" : "Generado por motor de plantillas"} · {new Date(borrador.creadoEn).toLocaleString("es-MX")}
-        </span>
-        <span style={badgeStyle("#fef3c7", "#92400e")}>Pendiente de aprobación</span>
-      </div>
-      <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap" }}>{borrador.texto}</p>
-      {puedeEscribir ? (
-        rechazando ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 12 }}>
-              Motivo del rechazo
-              <textarea
-                value={motivo}
-                onChange={(e) => {
-                  setMotivo(e.target.value);
-                  setMotivoError(null);
-                }}
-                rows={2}
-                style={textareaStyle}
-                placeholder="Por qué se rechaza este borrador"
-              />
-            </label>
-            {motivoError && (
-              <p role="alert" style={{ ...errorStyle, fontSize: 12 }}>
-                {motivoError}
-              </p>
-            )}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={confirmarRechazo} disabled={busy} style={dangerButtonStyle}>
-                {busy ? "Rechazando…" : "Confirmar rechazo"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
+    <Card className="border-dashed bg-muted/40">
+      <CardContent className="p-3 flex flex-col gap-2">
+        <div className="flex justify-between gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">
+            {borrador.generadoPor === "agente_llm" ? "Generado por agente IA" : "Generado por motor de plantillas"} · {new Date(borrador.creadoEn).toLocaleString("es-MX")}
+          </span>
+          <Badge variant="secondary">Pendiente de aprobación</Badge>
+        </div>
+        <p className="m-0 text-sm text-foreground whitespace-pre-wrap">{borrador.texto}</p>
+        {puedeEscribir ? (
+          <>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" onClick={() => onAprobar(borrador.id)} disabled={busy}>
+                <Check className="w-4 h-4" strokeWidth={1.75} />
+                {busy ? "Aprobando…" : "Aprobar y enviar"}
+              </Button>
+              <Button type="button" variant="destructive" size="sm" onClick={() => setRechazando(true)} disabled={busy}>
+                <X className="w-4 h-4" strokeWidth={1.75} />
+                Rechazar
+              </Button>
+            </div>
+
+            {/* Paso 2 del rechazo: el motivo sigue siendo obligatorio y la llamada al
+                servidor solo sale de "Confirmar rechazo", igual que antes. */}
+            <Dialog
+              open={rechazando}
+              onOpenChange={(abierto) => {
+                if (!abierto) {
                   setRechazando(false);
                   setMotivo("");
                   setMotivoError(null);
-                }}
-                disabled={busy}
-                style={secondaryButtonStyle}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
+                }
+              }}
+            >
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Rechazar este borrador</DialogTitle>
+                  <DialogDescription>El motivo queda registrado en el historial de la conversación y es obligatorio.</DialogDescription>
+                </DialogHeader>
+                <Label className={LABEL_CLASES}>
+                  Motivo del rechazo
+                  <textarea
+                    value={motivo}
+                    onChange={(e) => {
+                      setMotivo(e.target.value);
+                      setMotivoError(null);
+                    }}
+                    rows={3}
+                    className={TEXTAREA_CLASES}
+                    placeholder="Por qué se rechaza este borrador"
+                  />
+                </Label>
+                {motivoError && (
+                  <p role="alert" className="m-0 text-xs text-destructive">
+                    {motivoError}
+                  </p>
+                )}
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setRechazando(false);
+                      setMotivo("");
+                      setMotivoError(null);
+                    }}
+                    disabled={busy}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="button" variant="destructive" size="sm" onClick={confirmarRechazo} disabled={busy}>
+                    {busy ? "Rechazando…" : "Confirmar rechazo"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </>
         ) : (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={() => onAprobar(borrador.id)} disabled={busy} style={primaryButtonStyle}>
-              {busy ? "Aprobando…" : "Aprobar y enviar"}
-            </button>
-            <button type="button" onClick={() => setRechazando(true)} disabled={busy} style={dangerButtonStyle}>
-              Rechazar
-            </button>
-          </div>
-        )
-      ) : (
-        <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>Tu rol no puede aprobar ni rechazar mensajería. Contacta a un admin_gestora u operador con acceso a calendario/mensajería. (Conversación: {item.conversacion.id})</p>
-      )}
-    </div>
+          <p className="m-0 text-xs text-muted-foreground">
+            Tu rol no puede aprobar ni rechazar mensajería. Contacta a un admin_gestora u operador con acceso a calendario/mensajería. (Conversación: {item.conversacion.id})
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -271,83 +324,93 @@ function SimuladorMensajeEntrante({ apiBaseUrl, token, propertyId, puedeEscribir
 
   if (!puedeEscribir) {
     return (
-      <div style={cardStyle}>
-        <h2 style={{ margin: 0, fontSize: 15 }}>Simular mensaje entrante de huésped</h2>
-        <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>Tu rol no puede registrar mensajes ni pedir borradores. Contacta a un admin_gestora u operador con acceso a calendario/mensajería.</p>
-      </div>
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-[15px] font-semibold">Simular mensaje entrante de huésped</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          <p className="m-0 text-xs text-muted-foreground">
+            Tu rol no puede registrar mensajes ni pedir borradores. Contacta a un admin_gestora u operador con acceso a calendario/mensajería.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} style={cardStyle}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 15 }}>Simular mensaje entrante de huésped</h2>
-        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#92400e" }}>
-          Registro <strong>manual</strong>: no hay adaptador real de WhatsApp, Airbnb ni Vrbo conectado todavía. Usa esto para transcribir un mensaje que el huésped mandó por fuera de este panel y
-          pedirle al agente un borrador de respuesta.
-        </p>
-      </div>
-
-      <label style={{ fontSize: 13 }}>
-        Unidad
-        <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} style={inputStyle} disabled={!unidades}>
-          {!unidades && <option value="">Cargando…</option>}
-          {unidades?.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.nombre}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label style={{ fontSize: 13 }}>
-        Conversación
-        <select value={conversacionId} onChange={(e) => setConversacionId(e.target.value)} style={inputStyle} disabled={!conversaciones}>
-          <option value={NUEVA_CONVERSACION}>+ Nueva conversación</option>
-          {conversaciones?.map((c) => (
-            <option key={c.id} value={c.id}>
-              {CANAL_LABELS[c.canal]} · {c.huespedNombre ?? "sin nombre de huésped"} ({c.id})
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {conversacionId === NUEVA_CONVERSACION && (
-        <>
-          <label style={{ fontSize: 13 }}>
-            Canal
-            <select value={canal} onChange={(e) => setCanal(e.target.value as CanalMensajeriaCodigo)} style={inputStyle}>
-              {CANALES_MENSAJERIA.map((c) => (
-                <option key={c} value={c}>
-                  {CANAL_LABELS[c]}
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-[15px] font-semibold">Simular mensaje entrante de huésped</CardTitle>
+        <CardDescription className="text-xs">
+          Registro <strong>manual</strong>: no hay adaptador real de WhatsApp, Airbnb ni Vrbo conectado todavía. Usa esto para transcribir un mensaje que el huésped mandó por fuera
+          de este panel y pedirle al agente un borrador de respuesta.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
+          <Label className={LABEL_CLASES}>
+            Unidad
+            <select value={unidadId} onChange={(e) => setUnidadId(e.target.value)} className={SELECT_CLASES} disabled={!unidades}>
+              {!unidades && <option value="">Cargando…</option>}
+              {unidades?.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.nombre}
                 </option>
               ))}
             </select>
-          </label>
-          <label style={{ fontSize: 13 }}>
-            Nombre de la propiedad (para las plantillas del borrador)
-            <input type="text" value={propiedadNombre} onChange={(e) => setPropiedadNombre(e.target.value)} style={inputStyle} maxLength={200} />
-          </label>
-        </>
-      )}
+          </Label>
 
-      <label style={{ fontSize: 13 }}>
-        Mensaje del huésped
-        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} style={textareaStyle} placeholder="Ej. ¿Cuál es la clave del wifi?" />
-      </label>
+          <Label className={LABEL_CLASES}>
+            Conversación
+            <select value={conversacionId} onChange={(e) => setConversacionId(e.target.value)} className={SELECT_CLASES} disabled={!conversaciones}>
+              <option value={NUEVA_CONVERSACION}>+ Nueva conversación</option>
+              {conversaciones?.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {CANAL_LABELS[c.canal]} · {c.huespedNombre ?? "sin nombre de huésped"} ({c.id})
+                </option>
+              ))}
+            </select>
+          </Label>
 
-      {formError && (
-        <p role="alert" style={errorStyle}>
-          {formError}
-        </p>
-      )}
+          {conversacionId === NUEVA_CONVERSACION && (
+            <>
+              <Label className={LABEL_CLASES}>
+                Canal
+                <select value={canal} onChange={(e) => setCanal(e.target.value as CanalMensajeriaCodigo)} className={SELECT_CLASES}>
+                  {CANALES_MENSAJERIA.map((c) => (
+                    <option key={c} value={c}>
+                      {CANAL_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
+              </Label>
+              <Label className={LABEL_CLASES}>
+                Nombre de la propiedad (para las plantillas del borrador)
+                <Input type="text" value={propiedadNombre} onChange={(e) => setPropiedadNombre(e.target.value)} maxLength={200} />
+              </Label>
+            </>
+          )}
 
-      <div>
-        <button type="submit" disabled={busy || !unidadId} style={primaryButtonStyle}>
-          {busy ? "Registrando…" : "Registrar mensaje y generar borrador"}
-        </button>
-      </div>
-    </form>
+          <Label className={LABEL_CLASES}>
+            Mensaje del huésped
+            <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className={TEXTAREA_CLASES} placeholder="Ej. ¿Cuál es la clave del wifi?" />
+          </Label>
+
+          {formError && (
+            <p role="alert" className="m-0 text-[13px] text-destructive">
+              {formError}
+            </p>
+          )}
+
+          <div>
+            <Button type="submit" size="sm" disabled={busy || !unidadId}>
+              <MessageSquarePlus className="w-4 h-4" strokeWidth={1.75} />
+              {busy ? "Registrando…" : "Registrar mensaje y generar borrador"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -407,18 +470,18 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
   const totalPendientes = items?.reduce((acc, item) => acc + item.pendientes.length, 0) ?? 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="flex flex-col gap-4">
       <header>
-        <h1 style={{ fontSize: 20, margin: 0 }}>Bandeja de aprobación de mensajería</h1>
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6b7280" }}>
-          Todo borrador generado para un huésped queda en <strong>pendiente_aprobacion</strong> hasta que alguien lo aprueba o lo rechaza aquí — ningún proceso automático puede enviarlo (ver
-          POST .../intento-automatico, que siempre es rechazado).
+        <h1 className="font-display text-xl font-semibold text-foreground m-0">Bandeja de aprobación de mensajería</h1>
+        <p className="mt-1 mb-0 text-[13px] text-muted-foreground">
+          Todo borrador generado para un huésped queda en <strong className="text-foreground">pendiente_aprobacion</strong> hasta que alguien lo aprueba o lo rechaza aquí — ningún
+          proceso automático puede enviarlo (ver POST .../intento-automatico, que siempre es rechazado).
         </p>
       </header>
 
-      <p style={{ margin: 0, fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px" }}>
-        Nota honesta: aprobar un borrador aquí lo envía a través de un <strong>simulador de canal</strong> (SimuladorCanalMensajeria) — todavía no hay un adaptador real de WhatsApp, Airbnb ni
-        Vrbo conectado en este vertical. El mensaje queda registrado como enviado en este panel, pero el huésped real no lo recibe.
+      <p className="m-0 rounded-lg border border-dashed border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+        Nota honesta: aprobar un borrador aquí lo envía a través de un <strong className="text-foreground">simulador de canal</strong> (SimuladorCanalMensajeria) — todavía no hay un
+        adaptador real de WhatsApp, Airbnb ni Vrbo conectado en este vertical. El mensaje queda registrado como enviado en este panel, pero el huésped real no lo recibe.
       </p>
 
       <SimuladorMensajeEntrante
@@ -432,71 +495,73 @@ export function AprobacionesPage({ apiBaseUrl, token, propertyId, orgSlug, sessi
         }}
       />
 
-      {notice && <p style={noticeStyle}>{notice}</p>}
-      {error && (
-        <p role="alert" style={errorStyle}>
-          {error}
-        </p>
+      {notice && <p className="m-0 rounded-lg border border-border bg-muted px-3 py-2 text-[13px] text-foreground">{notice}</p>}
+      {error && <EstadoError mensaje={error} />}
+      {!items && !error && <EstadoCargando lineas={2} />}
+      {items && items.length === 0 && (
+        <EstadoVacio icon={Inbox} titulo="Sin conversaciones" mensaje="No hay ninguna conversación con mensajería en esta propiedad todavía." />
       )}
-      {!items && !error && <p style={{ color: "#6b7280" }}>Cargando…</p>}
-      {items && items.length === 0 && <p style={{ color: "#6b7280" }}>No hay ninguna conversación con mensajería en esta propiedad todavía.</p>}
       {items && items.length > 0 && (
-        <p style={{ margin: 0, fontSize: 13, color: totalPendientes > 0 ? "#92400e" : "#065f46" }}>
+        <p className={totalPendientes > 0 ? "m-0 text-[13px] font-medium text-foreground" : "m-0 text-[13px] text-muted-foreground"}>
           {totalPendientes > 0 ? `${totalPendientes} borrador(es) esperando aprobación.` : "No hay ningún borrador pendiente de aprobación en este momento."}
         </p>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="flex flex-col gap-3">
         {items?.map((item) => (
-          <div key={item.conversacion.id} style={cardStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>{contextoLinea(item)}</p>
-              {item.pendientes.length === 0 && <span style={badgeStyle("#f3f4f6", "#6b7280")}>Sin pendientes</span>}
-            </div>
-
-            {item.pendientes.map((borrador) => (
-              <BorradorPendienteCard
-                key={borrador.id}
-                item={item}
-                borrador={borrador}
-                puedeEscribir={puedeEscribir}
-                busy={busyId === borrador.id}
-                onAprobar={handleAprobar}
-                onRechazar={handleRechazar}
-              />
-            ))}
-
-            {item.historial.length > 0 && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setExpandidoHistorial((prev) => ({ ...prev, [item.conversacion.id]: !prev[item.conversacion.id] }))}
-                  style={{ ...secondaryButtonStyle, padding: "3px 8px" }}
-                >
-                  {expandidoHistorial[item.conversacion.id] ? "Ocultar historial" : `Ver historial (${item.historial.length})`}
-                </button>
-                {expandidoHistorial[item.conversacion.id] && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-                    {item.historial.map((b) => {
-                      const badge = historialBadge(b);
-                      return (
-                        <div key={b.id} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 10 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 11, color: "#6b7280" }}>{new Date(b.creadoEn).toLocaleString("es-MX")}</span>
-                            <span style={badgeStyle(badge.bg, badge.fg)}>{badge.label}</span>
-                          </div>
-                          <p style={{ margin: "4px 0 0", fontSize: 13, whiteSpace: "pre-wrap" }}>{b.texto}</p>
-                          {b.estado === "rechazado" && b.motivoRechazo && (
-                            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#b91c1c" }}>Motivo: {b.motivoRechazo}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+          <Card key={item.conversacion.id}>
+            <CardContent className="p-4 flex flex-col gap-2.5">
+              <div className="flex justify-between flex-wrap gap-2">
+                <p className="m-0 text-sm font-semibold text-foreground">{contextoLinea(item)}</p>
+                {item.pendientes.length === 0 && <Badge variant="outline">Sin pendientes</Badge>}
               </div>
-            )}
-          </div>
+
+              {item.pendientes.map((borrador) => (
+                <BorradorPendienteCard
+                  key={borrador.id}
+                  item={item}
+                  borrador={borrador}
+                  puedeEscribir={puedeEscribir}
+                  busy={busyId === borrador.id}
+                  onAprobar={handleAprobar}
+                  onRechazar={handleRechazar}
+                />
+              ))}
+
+              {item.historial.length > 0 && (
+                <div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setExpandidoHistorial((prev) => ({ ...prev, [item.conversacion.id]: !prev[item.conversacion.id] }))}
+                  >
+                    {expandidoHistorial[item.conversacion.id] ? "Ocultar historial" : `Ver historial (${item.historial.length})`}
+                  </Button>
+                  {expandidoHistorial[item.conversacion.id] && (
+                    <div className="flex flex-col gap-1.5 mt-2">
+                      {item.historial.map((b) => {
+                        const badge = historialBadge(b);
+                        return (
+                          <Card key={b.id}>
+                            <CardContent className="p-2.5">
+                              <div className="flex justify-between gap-2 flex-wrap">
+                                <span className="text-[11px] text-muted-foreground">{new Date(b.creadoEn).toLocaleString("es-MX")}</span>
+                                <Badge variant={badge.variante}>{badge.label}</Badge>
+                              </div>
+                              <p className="mt-1 mb-0 text-[13px] text-foreground whitespace-pre-wrap">{b.texto}</p>
+                              {b.estado === "rechazado" && b.motivoRechazo && <p className="mt-1 mb-0 text-xs text-destructive">Motivo: {b.motivoRechazo}</p>}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>
