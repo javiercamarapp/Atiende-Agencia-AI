@@ -4,8 +4,7 @@
 // pantalla en blanco). Mismo patrón exacto que HotelesShell.tsx/CitasShell.tsx:
 // resuelve sesión + property UNA vez (vía discovery-client.ts, plumbing nuevo de
 // esta fase — ver su comentario de cabecera) y le da a las páginas hijas los datos
-// ya resueltos. Estilos inline, sin design system nuevo — mismo criterio que el
-// resto del panel de staff de este repo.
+// ya resueltos.
 //
 // A diferencia de HotelesShell (que solo expone la PRIMERA property, porque todas
 // sus páginas hijas ya reciben un propertyId concreto), este shell expone también
@@ -46,9 +45,9 @@
 // (una gestora que administra propiedades de más de un anfitrión), así que ese
 // atajo dejaba inoperable el caso real más común de la vertical.
 //
-// Selector real en el header del nav (dropdown si hay 2+ properties; mismo renglón
-// que antes mostraba solo el nombre cuando hay exactamente 1) + persistencia vía
-// lib/property-selection.ts (ver su comentario de cabecera para el porqué: cada
+// Selector real bajo el logo del Sidebar (dropdown si hay 2+ properties; mismo
+// renglón que antes mostraba solo el nombre cuando hay exactamente 1) + persistencia
+// vía lib/property-selection.ts (ver su comentario de cabecera para el porqué: cada
 // ruta de App.tsx monta una instancia NUEVA de este Shell, así que el `useState` de
 // abajo por sí solo NO sobrevive a navegar entre páginas del panel).
 // `propertyId`/`setPropertyId` ahora viajan en RentasShellContext para que
@@ -68,9 +67,32 @@
 // patrón, un renglón más en NAV_ITEMS; IcalSyncPage gatea su propio contenido por
 // SYNC_CALENDARIO_LECTURA_ROLES/SYNC_CALENDARIO_ESCRITURA_ROLES, igual que
 // FinanzasPage/PreciosPage.
+//
+// Ronda de portado del sistema de diseño real (@atiende/ui, ver
+// packages/ui/src/components/Sidebar.tsx): reemplaza el <nav> con estilos inline +
+// NAV_ITEMS plano por <Sidebar> real -- acordeón por sección (agrupación inspirada en
+// el AdminSidebar de atiende-rentas-vacacionales standalone: ANÁLISIS/OPERACIÓN/
+// NEGOCIO), selector de property real bajo el logo (`hotelSelector`, nombre genérico
+// pese al prop), y bloque de cuenta/logout ya resuelto por el propio Sidebar. Se
+// agrega también <BotonChatDatos /> (honesto, deshabilitado: ver su comentario de
+// cabecera) en la barra superior, y los tres estados intermedios (cargando sesión,
+// error de red, organización sin properties) pasan de <p> con estilos inline a
+// EstadoCargando/EstadoError/EstadoVacio reales. CERO cambios de lógica de negocio:
+// mismos efectos, mismo manejo de sesión/expiración, mismas rutas.
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import type { ReactNode } from "react";
+import {
+  CalendarDays,
+  ClipboardList,
+  Inbox,
+  LayoutDashboard,
+  RefreshCcw,
+  Tag,
+  Wallet,
+} from "lucide-react";
+import { EstadoCargando, EstadoError, EstadoVacio, Sidebar } from "@atiende/ui";
+import type { SidebarSection } from "@atiende/ui";
+import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { clearRentasSession, logout, readPersistedRentasSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
@@ -79,46 +101,49 @@ import { persistPropertyId, readPersistedPropertyId, resolveActivePropertyId } f
 import { SESSION_EXPIRED_EVENT } from "../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../lib/authed-fetch.ts";
 
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "", label: "Resumen" },
-  { to: "calendario", label: "Calendario" },
-  { to: "precios", label: "Precios" },
-  { to: "aprobaciones", label: "Aprobaciones" },
-  { to: "finanzas", label: "Finanzas" },
-  { to: "mis-tareas", label: "Mis tareas" },
-  { to: "ical-sync", label: "Sincronización iCal" },
-];
-
-const linkStyle = (isActive: boolean): CSSProperties => ({
-  display: "block",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textDecoration: "none",
-  color: isActive ? "#fff" : "#111827",
-  background: isActive ? "#111827" : "transparent",
-});
-
-const logoutButtonStyle: CSSProperties = {
-  marginTop: "auto",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textAlign: "left",
-  color: "#b91c1c",
-  background: "transparent",
-  border: "1px solid #fecaca",
-  cursor: "pointer",
-};
+/** Agrupación inspirada en el AdminSidebar real de atiende-rentas-vacacionales
+ * standalone (ANÁLISIS/CALENDARIO/OPERACIÓN/NEGOCIO/PLATAFORMA) -- mismas rutas y
+ * etiquetas exactas que las NAV_ITEMS previas de este Shell, solo agrupadas.
+ * "Plataforma" se omite: los únicos ítems de ese tipo (notificaciones, perfil, plan
+ * y facturación, configuración) ya vienen resueltos por el propio <Sidebar> en su
+ * bloque de cuenta inferior -- no hay página de plataforma propia de rentas todavía. */
+function buildSections(orgSlug: string): SidebarSection[] {
+  const ruta = (sufijo: string) => `/rentas/${orgSlug}${sufijo ? `/${sufijo}` : ""}`;
+  return [
+    {
+      title: "Análisis",
+      siempreAbierto: true,
+      items: [
+        { to: ruta(""), label: "Resumen", icon: LayoutDashboard },
+        { to: ruta("calendario"), label: "Calendario", icon: CalendarDays },
+      ],
+    },
+    {
+      title: "Operación",
+      items: [
+        { to: ruta("aprobaciones"), label: "Aprobaciones", icon: Inbox },
+        { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
+        { to: ruta("ical-sync"), label: "Sincronización iCal", icon: RefreshCcw },
+      ],
+    },
+    {
+      title: "Negocio",
+      items: [
+        { to: ruta("precios"), label: "Precios", icon: Tag },
+        { to: ruta("finanzas"), label: "Finanzas", icon: Wallet },
+      ],
+    },
+  ];
+}
 
 export interface RentasShellContext {
   readonly apiBaseUrl: string;
   readonly token: string;
   readonly propertyId: string;
-  /** Cambia la property activa del Shell (selector del nav, o cualquier página hija
-   * -- Dashboard.tsx la usa para hacer clicables las properties listadas). Persiste
-   * la selección vía lib/property-selection.ts para que sobreviva tanto a un
-   * refresh de página como a navegar a otra ruta del panel (ver el comentario de
+  /** Cambia la property activa del Shell (selector bajo el logo, o cualquier página
+   * hija -- Dashboard.tsx la usa para hacer clicables las properties listadas).
+   * Persiste la selección vía lib/property-selection.ts para que sobreviva tanto a
+   * un refresh de página como a navegar a otra ruta del panel (ver el comentario de
    * cabecera de este archivo). */
   readonly setPropertyId: (propertyId: string) => void;
   readonly properties: readonly PropertyOption[];
@@ -208,7 +233,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
     };
   }, [session, apiBaseUrl, orgSlug]);
 
-  // Fase 18 -- handler real del selector (nav del Shell y RentasDashboardPage, vía
+  // Fase 18 -- handler real del selector (ahora bajo el logo del Sidebar, vía
   // RentasShellContext.setPropertyId): actualiza el estado de React (recalcula
   // `children(ctx)` con el nuevo propertyId de inmediato) y persiste la selección
   // best-effort (ver lib/property-selection.ts) para que sobreviva a navegar a otra
@@ -223,28 +248,30 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
 
   if (error) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          {error}
-        </p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-sm">
+          <EstadoError mensaje={error} />
+        </div>
       </main>
     );
   }
 
   if (!properties) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-sm">
+          <EstadoCargando lineas={2} />
+        </div>
       </main>
     );
   }
 
   if (properties.length === 0) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          Esta organización todavía no tiene ninguna propiedad configurada.
-        </p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-sm">
+          <EstadoVacio titulo="Sin propiedades" mensaje="Esta organización todavía no tiene ninguna propiedad configurada." />
+        </div>
       </main>
     );
   }
@@ -254,50 +281,60 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
   // `setState`, nunca un estado persistente con `properties` ya no vacío.
   if (!propertyId) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-sm">
+          <EstadoCargando lineas={2} />
+        </div>
       </main>
     );
   }
 
+  const org = session.organizations.find((o) => o.slug === orgSlug);
+
+  // Selector real de property: dropdown solo cuando hay 2+ (el caso base de este
+  // vertical, ver comentario de cabecera), mismo renglón que antes solo mostraba el
+  // nombre cuando había exactamente 1.
+  const hotelSelector =
+    properties.length > 1 ? (
+      <label className="flex flex-col gap-1 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+        Propiedad
+        <select
+          value={propertyId}
+          onChange={(e) => handleSelectProperty(e.target.value)}
+          className="w-full rounded-lg border border-border bg-background px-2 py-1.5 font-sans text-[13px] normal-case tracking-normal text-foreground"
+        >
+          {properties.map((p) => (
+            <option key={p.propertyId} value={p.propertyId}>
+              {p.nombre}
+            </option>
+          ))}
+        </select>
+      </label>
+    ) : (
+      <p className="px-0.5 truncate text-[12px] text-muted-foreground">{properties[0]!.nombre}</p>
+    );
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
-        <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Rentas · {orgSlug}</p>
-        {/* Fase 18 -- selector real de property: dropdown solo cuando hay 2+ (el
-            caso base de este vertical, ver comentario de cabecera), mismo renglón
-            que antes solo mostraba el nombre cuando había exactamente 1 (mismo
-            criterio visual que HotelesShell.tsx muestra `properties[0].nombre`). */}
-        {properties.length > 1 ? (
-          <label style={{ fontSize: 12, color: "#374151", margin: "0 0 8px", display: "block" }}>
-            Propiedad
-            <select
-              value={propertyId}
-              onChange={(e) => handleSelectProperty(e.target.value)}
-              style={{ display: "block", width: "100%", padding: "6px 8px", marginTop: 4, borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, boxSizing: "border-box" }}
-            >
-              {properties.map((p) => (
-                <option key={p.propertyId} value={p.propertyId}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 8px" }}>{properties[0]!.nombre}</p>
-        )}
-        {NAV_ITEMS.map((item) => (
-          <NavLink key={item.to} to={`/rentas/${orgSlug}${item.to ? `/${item.to}` : ""}`} end={item.to === ""} style={({ isActive }) => linkStyle(isActive)}>
-            {item.label}
-          </NavLink>
-        ))}
-        <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
-          {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
-        </button>
-      </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>
-        {children({ apiBaseUrl, token: session.token, propertyId, setPropertyId: handleSelectProperty, properties, orgSlug, session })}
+    <div className="min-h-screen bg-background flex gap-3 p-3">
+      <Sidebar
+        sections={buildSections(orgSlug)}
+        user={{ email: session.email, rol: org?.rol }}
+        onLogout={handleLogout}
+        hotelSelector={hotelSelector}
+      />
+      <div className="flex-1 min-w-0 flex flex-col gap-3">
+        <header className="shrink-0 h-14 px-4 rounded-2xl border border-border bg-card flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Rentas</p>
+            <p className="text-[13px] font-medium text-foreground truncate">{org?.nombre ?? orgSlug}</p>
+          </div>
+          <BotonChatDatos />
+        </header>
+        <main className="flex-1 min-w-0 rounded-2xl border border-border bg-card p-6 overflow-auto">
+          {children({ apiBaseUrl, token: session.token, propertyId, setPropertyId: handleSelectProperty, properties, orgSlug, session })}
+        </main>
       </div>
+      {loggingOut && <span className="sr-only" role="status">Cerrando sesión…</span>}
     </div>
   );
 }
