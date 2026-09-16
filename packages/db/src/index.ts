@@ -12,6 +12,7 @@ export type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
   RevokeRefreshTokenInput,
+  SuperadminOrganizationRow,
 } from "./core-repository.ts";
 export { StaffInviteInvalidError, MembershipRoleUpdateError } from "./core-repository.ts";
 export { InMemoryCoreRepository } from "./in-memory-core-repository.ts";

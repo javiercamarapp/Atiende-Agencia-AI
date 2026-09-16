@@ -10,7 +10,7 @@
 // (nunca reutiliza una conexión entre requests, correcto para el `pg.Pool` de
 // `ManagedPostgresEngine`) y delega en un `PostgresCoreRepository` construido sobre esa
 // sesión efímera.
-import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, MembershipRow, RevokeRefreshTokenInput, StaffInviteRow, StaffUserRow } from "@atiende/db";
+import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, MembershipRow, RevokeRefreshTokenInput, StaffInviteRow, StaffUserRow, SuperadminOrganizationRow } from "@atiende/db";
 import { PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -88,5 +88,17 @@ export class ProductionCoreRepository implements CoreRepository {
 
   consumeMagicLinkToken(tokenHash: string): Promise<StaffUserRow | null> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).consumeMagicLinkToken(tokenHash));
+  }
+
+  isPlatformSuperadmin(staffId: string): Promise<boolean> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).isPlatformSuperadmin(staffId));
+  }
+
+  listAllOrganizationsForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationRow[]> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).listAllOrganizationsForSuperadmin(callerId));
+  }
+
+  countStaffByOrganizationForSuperadmin(callerId: string): Promise<ReadonlyMap<string, number>> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).countStaffByOrganizationForSuperadmin(callerId));
   }
 }

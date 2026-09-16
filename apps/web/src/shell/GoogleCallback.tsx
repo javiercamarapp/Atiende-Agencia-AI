@@ -16,6 +16,7 @@ import { decideCitasLandingPath, persistCitasSession } from "../verticals/citas/
 import { decideLicitacionesLandingPath, persistLicitacionesSession } from "../verticals/licitaciones/lib/auth-client.ts";
 import { decideDespachosLandingPath, persistDespachosSession } from "../verticals/despachos/lib/auth-client.ts";
 import { decideRentasLandingPath, persistRentasSession } from "../verticals/rentas/lib/auth-client.ts";
+import { persistSuperadminSession } from "../superadmin/lib/auth-client.ts";
 
 const POR_VERTICAL: Record<string, { decide: (s: LoginSession) => string; persist: (storage: Storage, s: LoginSession) => void }> = {
   restaurantes: { decide: decideLandingPath, persist: persistSession },
@@ -58,8 +59,17 @@ export function GoogleCallbackPage({ apiBaseUrl }: { readonly apiBaseUrl: string
       try {
         const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/me`, { headers: { authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error("no se pudo resolver la sesión");
-        const body = (await res.json()) as { email: string; organizations: LoginSession["organizations"] };
+        const body = (await res.json()) as { email: string; organizations: LoginSession["organizations"]; isPlatformSuperadmin?: boolean };
         const session: LoginSession = { token, refreshToken, email: body.email, organizations: body.organizations };
+        // Back office de plataforma — sin importar por cuál de las 6
+        // verticales entró (Google/magic link no distinguen), un superadmin
+        // real SIEMPRE aterriza en /superadmin, nunca en el landing normal de
+        // esa vertical.
+        if (body.isPlatformSuperadmin) {
+          persistSuperadminSession(window.localStorage, session);
+          navigate("/superadmin", { replace: true });
+          return;
+        }
         config.persist(window.localStorage, session);
         navigate(config.decide(session), { replace: true });
       } catch {

@@ -20,6 +20,8 @@ import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
 import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
 import { TerminosPage } from "./pages/Terminos.tsx";
 import { PrivacidadPage } from "./pages/Privacidad.tsx";
+import { SuperAdminShell } from "./superadmin/SuperAdminShell.tsx";
+import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
 import { Toaster } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -187,6 +189,17 @@ function AceptarInvitacionRoute() {
  * redirigir de vuelta. */
 function GoogleCallbackRoute() {
   return <GoogleCallbackPage apiBaseUrl={API_BASE_URL} />;
+}
+
+/** Back office de plataforma — igual patrón de shell+ruta que cada vertical,
+ * pero sin `orgSlug` (el superadmin no está dentro de ninguna organización). */
+function SuperAdminRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminDashboardPage {...ctx} />}
+    </SuperAdminShell>
+  );
 }
 
 function HotelesLoginRoute() {
@@ -531,6 +544,7 @@ export function App() {
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />
         <Route path="/terminos" element={<TerminosPage />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
+        <Route path="/superadmin" element={<SuperAdminRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />

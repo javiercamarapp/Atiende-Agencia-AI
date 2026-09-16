@@ -26,6 +26,7 @@ import type {
   StaffInviteRow,
   StaffInviteStatus,
   StaffUserRow,
+  SuperadminOrganizationRow,
 } from "./core-repository.ts";
 import { MembershipRoleUpdateError, StaffInviteInvalidError } from "./core-repository.ts";
 
@@ -369,5 +370,26 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       [tokenHash],
     );
     return rows[0] ? mapStaff(rows[0]) : null;
+  }
+
+  async isPlatformSuperadmin(staffId: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ is_platform_superadmin: boolean }>(`select core.is_platform_superadmin($1) as is_platform_superadmin;`, [staffId]);
+    return rows[0]?.is_platform_superadmin ?? false;
+  }
+
+  async listAllOrganizationsForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationRow[]> {
+    const { rows } = await this.db.query<{ id: string; vertical: string; name: string; slug: string; status: "trial" | "active" | "suspended"; created_at: string }>(
+      `select id, vertical, name, slug, status, created_at from core.list_all_organizations_for_superadmin($1);`,
+      [callerId],
+    );
+    return rows.map((r) => ({ id: r.id, vertical: r.vertical, name: r.name, slug: r.slug, status: r.status, createdAt: r.created_at }));
+  }
+
+  async countStaffByOrganizationForSuperadmin(callerId: string): Promise<ReadonlyMap<string, number>> {
+    const { rows } = await this.db.query<{ organization_id: string; staff_count: string }>(
+      `select organization_id, staff_count from core.count_staff_by_organization_for_superadmin($1);`,
+      [callerId],
+    );
+    return new Map(rows.map((r) => [r.organization_id, Number(r.staff_count)]));
   }
 }
