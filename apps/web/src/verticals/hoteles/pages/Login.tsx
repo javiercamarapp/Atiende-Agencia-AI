@@ -193,7 +193,7 @@ export function HotelesLoginPage({ apiBaseUrl }: HotelesLoginPageProps) {
       <aside className="hidden lg:flex lg:flex-col lg:py-10 lg:pl-6 lg:pr-10">
         <figure className="login-lamina min-h-0 flex-1 flex items-center justify-center">
           <img
-            src={`${import.meta.env.BASE_URL}images/login-hero-hoteles.png`}
+            src={`${import.meta.env.BASE_URL}images/login-hero-hoteles.jpg`}
             alt="Hotel de playa en Cancún al atardecer."
             className="login-foto-marca absolute inset-0 w-full h-full object-cover"
           />
