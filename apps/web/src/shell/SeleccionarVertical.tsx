@@ -6,36 +6,35 @@
 // cuenta) elige aquí, en vez de aterrizar siempre en restaurantes. Ninguna
 // vertical arbitrariamente "primero" -- las 6 en igualdad, orden alfabético.
 //
+// Rejilla de fotos (pedido real: "imagenes representativas minimalistas
+// elegantes... cuando pases el cursor una mini descripcion") -- reutiliza las
+// MISMAS fotos reales (Higgsfield) ya usadas en la lámina de login de cada
+// vertical, en vez de generar un set nuevo: misma marca, un solo lugar donde
+// cambiarlas si hace falta. La descripción vive siempre en el DOM (accesible a
+// lector de pantalla / teclado vía :focus-within) y se revela con opacidad +
+// max-height en hover/focus -- sin JS, solo CSS.
+//
 // Deliberadamente SIN lógica de sesión propia: si el visitante ya tiene una
 // sesión persistida de alguna vertical, su propio Shell (via `AppDeps`/rutas
 // protegidas) lo redirige de cualquier forma al entrar a esa vertical -- esta
 // página es solo el punto de entrada para quien todavía no eligió ninguna.
 import { Link } from "react-router-dom";
-import { AtiendeWordmark, Card, CardContent } from "@atiende/ui";
-import {
-  BedDouble,
-  Building2,
-  CalendarCheck,
-  Gavel,
-  Home,
-  UtensilsCrossed,
-} from "lucide-react";
+import { AtiendeWordmark } from "@atiende/ui";
 import "../pages/login.css";
 
 interface VerticalEntry {
   readonly slug: string;
   readonly nombre: string;
   readonly descripcion: string;
-  readonly Icono: typeof BedDouble;
 }
 
 const VERTICALES: readonly VerticalEntry[] = [
-  { slug: "despachos", nombre: "Despachos", descripcion: "CFDI, nómina, conciliación y cierres mensuales para tu despacho contable.", Icono: Building2 },
-  { slug: "citas", nombre: "Citas", descripcion: "Reservas y turnos sincronizados con Google Calendar, por WhatsApp.", Icono: CalendarCheck },
-  { slug: "hoteles", nombre: "Hoteles", descripcion: "Reservas y operación de tu hotel boutique, por WhatsApp.", Icono: BedDouble },
-  { slug: "licitaciones", nombre: "Licitaciones", descripcion: "Convocatorias públicas rastreadas, evaluadas y respondidas a tiempo.", Icono: Gavel },
-  { slug: "rentas", nombre: "Rentas vacacionales", descripcion: "Calendarios multi-unidad, sincronía con Booking, Airbnb y Vrbo.", Icono: Home },
-  { slug: "restaurantes", nombre: "Restaurantes", descripcion: "Tus meseros y tu agente de IA, tomando el mismo pedido.", Icono: UtensilsCrossed },
+  { slug: "despachos", nombre: "Despachos", descripcion: "CFDI, nómina, conciliación y cierres mensuales para tu despacho contable." },
+  { slug: "citas", nombre: "Citas", descripcion: "Reservas y turnos sincronizados con Google Calendar, por WhatsApp." },
+  { slug: "hoteles", nombre: "Hoteles", descripcion: "Reservas y operación de tu hotel boutique, por WhatsApp." },
+  { slug: "licitaciones", nombre: "Licitaciones", descripcion: "Convocatorias públicas rastreadas, evaluadas y respondidas a tiempo." },
+  { slug: "rentas", nombre: "Rentas vacacionales", descripcion: "Calendarios multi-unidad, sincronía con Booking, Airbnb y Vrbo." },
+  { slug: "restaurantes", nombre: "Restaurantes", descripcion: "Tus meseros y tu agente de IA, tomando el mismo pedido." },
 ];
 
 export function SeleccionarVerticalPage() {
@@ -45,7 +44,7 @@ export function SeleccionarVerticalPage() {
         <AtiendeWordmark />
       </header>
 
-      <div className="login-entra w-full max-w-3xl text-center" style={{ animationDelay: "60ms" }}>
+      <div className="login-entra w-full max-w-4xl text-center" style={{ animationDelay: "60ms" }}>
         <p className="login-kicker">Bienvenido a atiende.ai</p>
         <h1 className="login-serif mt-4 text-[32px] sm:text-[40px] text-foreground">¿A qué negocio quieres entrar?</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
@@ -53,20 +52,25 @@ export function SeleccionarVerticalPage() {
         </p>
       </div>
 
-      <div className="login-entra grid w-full max-w-3xl grid-cols-1 gap-3 mt-10 sm:grid-cols-2" style={{ animationDelay: "120ms" }}>
-        {VERTICALES.map(({ slug, nombre, descripcion, Icono }) => (
-          <Link key={slug} to={`/${slug}/login`} className="block no-underline">
-            <Card className="h-full transition-colors hover:border-primary/50 hover:bg-muted/40">
-              <CardContent className="flex items-start gap-3 p-5">
-                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Icono className="h-[18px] w-[18px]" />
-                </span>
-                <span className="text-left">
-                  <span className="block text-[15px] font-semibold text-foreground">{nombre}</span>
-                  <span className="mt-0.5 block text-[13px] leading-snug text-muted-foreground">{descripcion}</span>
-                </span>
-              </CardContent>
-            </Card>
+      <div className="login-entra grid w-full max-w-4xl grid-cols-2 gap-3 mt-10 sm:grid-cols-3" style={{ animationDelay: "120ms" }}>
+        {VERTICALES.map(({ slug, nombre, descripcion }) => (
+          <Link
+            key={slug}
+            to={`/${slug}/login`}
+            className="group relative block aspect-[3/4] overflow-hidden rounded-2xl border border-border/60 no-underline shadow-[0_10px_30px_-8px_rgb(0,0,0,0.12)]"
+          >
+            <img
+              src={`${import.meta.env.BASE_URL}images/login-hero-${slug}.jpg`}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105 group-focus-visible:scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
+              <span className="block text-[14px] sm:text-[15px] font-semibold text-white">{nombre}</span>
+              <span className="mt-0 grid grid-rows-[0fr] text-[12px] leading-snug text-white/80 opacity-0 transition-all duration-300 ease-out group-hover:mt-1.5 group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-visible:mt-1.5 group-focus-visible:grid-rows-[1fr] group-focus-visible:opacity-100">
+                <span className="overflow-hidden">{descripcion}</span>
+              </span>
+            </div>
           </Link>
         ))}
       </div>

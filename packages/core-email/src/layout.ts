@@ -1,27 +1,27 @@
 // Marco visual compartido de los correos transaccionales que NO pertenecen a un
 // solo dominio vertical (magic link, y cualquier futuro correo cross-vertical) —
-// mismo patrón EXACTO que packages/domain-*/src/emails/layout.ts (idénticos en
-// las 6 verticales: tabla HTML compatible Outlook/Gmail/Apple Mail, tarjeta
-// blanca, botón píldora, preheader oculto, logo real embebido como SVG data URI
-// con fallback [if mso] para Outlook de escritorio) -- extraído aquí como paquete
-// compartido para que código que no vive dentro de un dominio vertical (como
-// apps/api/src/routes/auth-magic-link.ts) también pueda mandar un correo con la
-// misma calidad de marca, sin duplicar el layout una séptima vez.
+// mismo patrón que packages/domain-*/src/emails/layout.ts (tabla HTML
+// compatible Outlook/Gmail/Apple Mail, tarjeta blanca, botón píldora, preheader
+// oculto) -- extraído aquí como paquete compartido para que código que no vive
+// dentro de un dominio vertical (como apps/api/src/routes/auth-magic-link.ts)
+// también pueda mandar un correo con la misma calidad de marca, sin duplicar el
+// layout una séptima vez.
 //
-// Los 6 paquetes domain-* NO se migraron a importar de aquí en este cambio —
-// ya estaban consistentes entre sí (mismo logo, mismo layout), así que
-// consolidarlos es una limpieza de hygiene sin urgencia, no un fix de un bug
-// visible. Este paquete es la base para que el próximo correo cross-vertical no
-// tenga que duplicar por séptima vez.
+// Hallazgo real (2026-09-16, primer correo real entregado a una bandeja real):
+// el logo se veía roto en Gmail -- el patrón que los 6 domain-*/emails/layout.ts
+// ya usaban (SVG embebido como data URI + fallback `[if mso]` solo para Outlook
+// de escritorio) NUNCA cubrió Gmail, que no renderiza `<img src="data:image/svg+xml...">`
+// en absoluto (a diferencia de Outlook, donde al menos existía el fallback
+// condicional). Aquí se corrige con un PNG real HOSPEDADO (no data URI) en
+// `apps/web/public/email/atiende-wordmark.png`, servido por la misma app en
+// `${APP_BASE_URL}/email/atiende-wordmark.png` -- soporte universal (Gmail,
+// Outlook web/desktop, Apple Mail) sin necesitar el condicional MSO. Los 6
+// domain-*/emails/layout.ts tienen el MISMO bug -- ver PR de este cambio para
+// el resto.
+const LOGO_URL_DEFAULT = "https://app.useatiende.ai/email/atiende-wordmark.png";
 
 const FUENTE = `Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
 const FUENTE_TITULO = `'Inter Tight',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
-
-// Logo real de la marca "atiende" — mismo SVG exacto (base64 data URI) ya
-// embebido en los 6 packages/domain-*/src/emails/layout.ts. NUNCA reemplazar
-// por otro logo ni otro color de marca.
-const LOGO_DATA_URI =
-  "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjIwIDQwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxnPgogICAgPHJlY3QgeD0iMCIgeT0iMTAiIHdpZHRoPSIxMyIgaGVpZ2h0PSI0IiByeD0iMiIgZmlsbD0iIzdERDNGQyIgLz4KICAgIDxyZWN0IHg9IjQiIHk9IjE4IiB3aWR0aD0iMTMiIGhlaWdodD0iNCIgcng9IjIiIGZpbGw9IiM3REQzRkMiIC8+CiAgICA8cmVjdCB4PSIwIiB5PSIyNiIgd2lkdGg9IjEzIiBoZWlnaHQ9IjQiIHJ4PSIyIiBmaWxsPSIjN0REM0ZDIiAvPgogICAgPGNpcmNsZSBjeD0iMjYiIGN5PSIxMiIgcj0iNSIgZmlsbD0iIzM4QkRGOCIgLz4KICAgIDxwYXRoCiAgICAgIGQ9Ik0xNCAzOCBMMjAgMjYgUTIyIDIyIDI3IDIyIEwzMSAyMiBRMzQgMjIgMzYgMTkgTDM4IDE2IgogICAgICBzdHJva2U9IiMxRDRFRDgiCiAgICAgIHN0cm9rZS13aWR0aD0iNyIKICAgICAgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIgogICAgICBzdHJva2UtbGluZWpvaW49InJvdW5kIgogICAgICBmaWxsPSJub25lIgogICAgLz4KICA8L2c+CiAgPHRleHQgeD0iNTIiIHk9IjMwIiBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzFENEVEOCIgbGV0dGVyLXNwYWNpbmc9Ii0wLjUiPmF0aWVuZGU8L3RleHQ+Cjwvc3ZnPgo=";
 
 export function escapeHtml(t: string): string {
   return t
@@ -83,12 +83,7 @@ export function renderCorreo(s: SeccionPlantilla): string {
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:100%;border-collapse:collapse;">
 
       <tr><td align="left" style="padding:0 0 26px 2px;">
-        <!--[if mso]>
-        <div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:20px;font-weight:700;color:#1D4ED8;letter-spacing:-0.3px;">atiende</div>
-        <![endif]-->
-        <!--[if !mso]><!-->
-        <img src="${LOGO_DATA_URI}" width="96" height="17" alt="atiende" style="display:block;border:0;outline:none;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:20px;font-weight:700;color:#1D4ED8;">
-        <!--<![endif]-->
+        <img src="${LOGO_URL_DEFAULT}" width="96" height="17" alt="atiende" style="display:block;border:0;outline:none;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:20px;font-weight:700;color:#1D4ED8;">
       </td></tr>
 
       <tr><td bgcolor="#ffffff" style="padding:42px 44px 38px 44px;border:1px solid #e2e8f0;border-radius:16px;">
