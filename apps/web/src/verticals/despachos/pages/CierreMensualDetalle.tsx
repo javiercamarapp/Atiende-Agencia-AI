@@ -11,16 +11,18 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, FileBarChart, Lock } from "lucide-react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
   CardContent,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   EstadoCargando,
   EstadoError,
   Input,
@@ -183,11 +185,13 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
           cierra nada -- hay que teclear el período exacto que se ve en pantalla y
           dar un segundo clic. El servidor exige el mismo texto de todas formas
           (cierre-mensual.ts), así que esto no es solo un candado cosmético.
-          Presentación: el panel inline pasó al `Dialog` real (la forma de este
-          bloque siempre fue la de un confirm modal); el estado `confirmando` y
-          las mismas condiciones de render no cambian. */}
+          Presentación: el panel inline pasó a `AlertDialog` real (no `Dialog`/
+          `ModalFormularioLateral` -- mismo criterio que la referencia real,
+          atiende-restaurantes/PedidosSection.tsx: una confirmación no es un
+          formulario); el estado `confirmando` y las mismas condiciones de render
+          no cambian. */}
       {periodo.status !== "closed" && CERRAR_ROLES.has(role) && confirmando && (
-        <Dialog
+        <AlertDialog
           open
           onOpenChange={(abierto) => {
             if (abierto || cerrando) return;
@@ -195,17 +199,17 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
             setTextoConfirmacion("");
           }}
         >
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-destructive">
+          <AlertDialogContent className="max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
                 <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
                 Confirmar cierre de {formatPeriodo(periodo.year, periodo.month)}
-              </DialogTitle>
-              <DialogDescription>
+              </AlertDialogTitle>
+              <AlertDialogDescription>
                 Esta acción es <strong className="text-destructive">irreversible</strong> — no hay forma de reabrir el período desde el producto. Bloquea la edición de todos los movimientos de{" "}
                 {formatPeriodo(periodo.year, periodo.month)}.
-              </DialogDescription>
-            </DialogHeader>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="confirmar-cierre">
@@ -221,9 +225,8 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
               />
             </div>
 
-            <DialogFooter>
-              <Button
-                variant="outline"
+            <AlertDialogFooter>
+              <AlertDialogCancel
                 onClick={() => {
                   setConfirmando(false);
                   setTextoConfirmacion("");
@@ -231,13 +234,23 @@ export function CierreMensualDetallePage({ apiBaseUrl, token, propertyId, orgSlu
                 disabled={cerrando}
               >
                 Cancelar
-              </Button>
-              <Button variant="destructive" onClick={handleCerrar} disabled={cerrando || textoConfirmacion.trim() !== periodoTexto}>
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                // preventDefault: solo cierra en éxito (setConfirmando(false) dentro del
+                // try de handleCerrar) -- en error el modal debe seguir abierto mostrando
+                // actionError, nunca cerrarse solo porque se hizo clic.
+                onClick={(e) => {
+                  e.preventDefault();
+                  void handleCerrar();
+                }}
+                disabled={cerrando || textoConfirmacion.trim() !== periodoTexto}
+              >
                 {cerrando ? "Cerrando…" : "Confirmar cierre irreversible"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
 
       <Card>
