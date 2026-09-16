@@ -12,7 +12,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
+import { AtiendeMark, AtiendeWordmark, toast } from "@atiende/ui";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { useDocumentTitle } from "../../../shell/use-document-title.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
@@ -62,7 +62,11 @@ export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
     event.preventDefault();
     setEnviandoMagicLink(true);
     try {
-      await iniciarMagicLink(apiBaseUrl, correoMagicLink, "restaurantes");
+      const resultado = await iniciarMagicLink(apiBaseUrl, correoMagicLink, "restaurantes");
+      if (!resultado.ok) {
+        toast.error("No se pudo enviar el enlace", { description: resultado.error ?? "Intenta de nuevo." });
+        return;
+      }
       setMagicLinkEnviado(correoMagicLink);
     } finally {
       setEnviandoMagicLink(false);

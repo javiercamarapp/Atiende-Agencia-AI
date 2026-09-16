@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AtiendeMark, AtiendeWordmark } from "@atiende/ui";
+import { AtiendeMark, AtiendeWordmark, toast } from "@atiende/ui";
 import type { LoginSession } from "../lib/auth-client.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../../../lib/google-auth.ts";
 import "../../../pages/login.css";
@@ -55,7 +55,11 @@ export function CitasLoginPage({ apiBaseUrl }: CitasLoginPageProps) {
     event.preventDefault();
     setEnviandoMagicLink(true);
     try {
-      await iniciarMagicLink(apiBaseUrl, correoMagicLink, "citas");
+      const resultado = await iniciarMagicLink(apiBaseUrl, correoMagicLink, "citas");
+      if (!resultado.ok) {
+        toast.error("No se pudo enviar el enlace", { description: resultado.error ?? "Intenta de nuevo." });
+        return;
+      }
       setMagicLinkEnviado(correoMagicLink);
     } finally {
       setEnviandoMagicLink(false);

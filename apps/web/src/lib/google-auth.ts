@@ -43,16 +43,16 @@ export function mensajeGoogleError(codigo: string): string {
 // `{ok:true}` si el request llegó (anti-enumeración: el backend responde el
 // mismo 200 exista o no ese correo) — el único caso de error real que expone es
 // "no se pudo contactar al servidor", nunca "ese correo no existe".
-export async function iniciarMagicLink(apiBaseUrl: string, email: string, vertical: string): Promise<{ ok: boolean }> {
+export async function iniciarMagicLink(apiBaseUrl: string, email: string, vertical: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/magic-link/iniciar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, vertical }),
     });
-    return { ok: res.ok };
-  } catch {
-    return { ok: false };
+    return { ok: res.ok, error: res.ok ? undefined : `El servidor respondió ${res.status}.` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "No se pudo contactar al servidor." };
   }
 }
 
