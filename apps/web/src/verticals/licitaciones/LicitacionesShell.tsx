@@ -5,11 +5,20 @@
 // del panel (Convocatorias/detalle) la misma nav lateral y el mismo `role` del
 // staff (para ocultar acciones que el servidor rechazaría igual, cosmético — el
 // enforcement real es SIEMPRE server-side, ver WRITE_ROLES/GO_NO_GO_ROLES).
-// Estilos inline, sin design system nuevo — mismo criterio que el resto de este
-// monorepo (ver README de este vertical).
+//
+// Fase "sistema de diseño real" — reemplaza el `<nav>` inline-styled y sus
+// `NAV_ITEMS` por el `Sidebar` real de @atiende/ui (mismo patrón "sidebar
+// bottom hundido gris" que ya consumen Convocatorias/etc. de otras
+// verticales), mapeando los mismos 4 ítems + Staff (gateado por rol, igual
+// que antes) a `SidebarSection[]`. Cero cambios de sesión/routing/lógica de
+// negocio: mismo fetch de branches, mismo manejo de error, mismo logout,
+// mismo listener de SESSION_EXPIRED_EVENT.
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Building2, Gavel, Radar, Target, Users } from "lucide-react";
+import { Sidebar, EstadoError, EstadoVacio, MobileHeader, BottomNav } from "@atiende/ui";
+import type { SidebarSection } from "@atiende/ui";
+import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchBranches } from "./lib/admin-client.ts";
@@ -36,13 +45,6 @@ export interface LicitacionesShellProps {
   readonly children: (ctx: LicitacionesShellContext) => ReactNode;
 }
 
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "convocatorias", label: "Convocatorias" },
-  { to: "radar-renovaciones", label: "Radar de renovaciones" },
-  { to: "perfil-matching", label: "Perfil de matching" },
-  { to: "datos-empresa", label: "Datos de la empresa" },
-];
-
 // Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
 // restaurantes permite gestionar roles desde el producto"): mismo `STAFF_INVITE_ROLES`
 // que domain-licitaciones/src/roles.ts (duplicado aquí a propósito, ver el
@@ -50,28 +52,6 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
 // "Staff" del nav para quien el servidor rechazaría de todas formas (403 en
 // admin-staff.ts), nunca la única barrera.
 const STAFF_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
-
-const linkStyle = (isActive: boolean): CSSProperties => ({
-  display: "block",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textDecoration: "none",
-  color: isActive ? "#fff" : "#111827",
-  background: isActive ? "#111827" : "transparent",
-});
-
-const logoutButtonStyle: CSSProperties = {
-  marginTop: "auto",
-  padding: "8px 12px",
-  borderRadius: 8,
-  fontSize: 14,
-  textAlign: "left",
-  color: "#b91c1c",
-  background: "transparent",
-  border: "1px solid #fecaca",
-  cursor: "pointer",
-};
 
 export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: LicitacionesShellProps) {
   const [session, setSession] = useState<LoginSession | null | undefined>(undefined);
@@ -145,28 +125,28 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
 
   if (error) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          {error}
-        </p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-md">
+          <EstadoError mensaje={error} />
+        </div>
       </main>
     );
   }
 
   if (!branches) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p style={{ color: "#6b7280" }}>Cargando…</p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <p className="text-sm text-muted-foreground">Cargando…</p>
       </main>
     );
   }
 
   if (branches.length === 0) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          Esta organización todavía no tiene ninguna property configurada.
-        </p>
+      <main className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="w-full max-w-md">
+          <EstadoVacio mensaje="Esta organización todavía no tiene ninguna property configurada." />
+        </div>
       </main>
     );
   }
@@ -176,31 +156,75 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // panel usa la primera property, mismo criterio que CitasShell.tsx.
   const propertyId = branches[0]!.propertyId;
   const role = session.organizations.find((o) => o.slug === orgSlug)?.rol ?? "viewer";
+  const puedeVerStaff = STAFF_NAV_ROLES.has(role);
+
+  const base = `/licitaciones/${orgSlug}`;
+  const sections: SidebarSection[] = [
+    {
+      title: "Licitaciones",
+      siempreAbierto: true,
+      items: [
+        { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
+        { to: `${base}/radar-renovaciones`, label: "Radar de renovaciones", icon: Radar },
+      ],
+    },
+    {
+      title: "Organización",
+      items: [
+        { to: `${base}/perfil-matching`, label: "Perfil de matching", icon: Target },
+        { to: `${base}/datos-empresa`, label: "Datos de la empresa", icon: Building2 },
+        ...(puedeVerStaff ? [{ to: `${base}/staff`, label: "Staff", icon: Users }] : []),
+      ],
+    },
+  ];
+
+  const contexto: LicitacionesShellContext = { apiBaseUrl, token: session.token, propertyId, orgSlug, role };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <nav style={{ width: 200, flexShrink: 0, borderRight: "1px solid #e5e7eb", padding: 16, display: "flex", flexDirection: "column", gap: 4 }}>
-        <img src={ATIENDE_LOGO_DATA_URI} alt="atiende" width={88} height={16} style={{ display: "block", marginBottom: 10 }} />
-        <p style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6b7280", margin: "0 0 8px" }}>Licitaciones · {orgSlug}</p>
-        {NAV_ITEMS.map((item) => (
-          <NavLink key={item.to} to={`/licitaciones/${orgSlug}/${item.to}`} style={({ isActive }) => linkStyle(isActive)}>
-            {item.label}
-          </NavLink>
-        ))}
-        {/* Hallazgo de auditoría (rubro 15, roles/permisos, severidad MEDIA, "solo
-            restaurantes permite gestionar roles desde el producto"): ver
-            STAFF_NAV_ROLES arriba. */}
-        {STAFF_NAV_ROLES.has(role) && (
-          <NavLink to={`/licitaciones/${orgSlug}/staff`} style={({ isActive }) => linkStyle(isActive)}>
-            Staff
-          </NavLink>
-        )}
-        <p style={{ fontSize: 11, color: "#9ca3af", margin: "16px 0 0" }}>Rol: {role}</p>
-        <button type="button" onClick={handleLogout} disabled={loggingOut} style={logoutButtonStyle}>
-          {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
-        </button>
-      </nav>
-      <div style={{ flex: 1, padding: 24, overflow: "auto" }}>{children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role })}</div>
+    <div className="min-h-screen bg-muted/30 flex gap-3 p-3">
+      <Sidebar sections={sections} user={{ email: session.email, rol: role }} onLogout={handleLogout} />
+
+      <MobileHeader
+        title={
+          <span className="flex items-center gap-2 min-w-0">
+            <img src={ATIENDE_LOGO_DATA_URI} alt="atiende" width={80} height={14} />
+            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Licitaciones · {orgSlug}</span>
+          </span>
+        }
+        action={
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="text-[12px] text-destructive font-medium min-h-11 px-2"
+          >
+            {loggingOut ? "Saliendo…" : "Salir"}
+          </button>
+        }
+      />
+
+      <div className="flex-1 min-w-0 flex flex-col gap-3 pt-16 pb-20 md:pt-0 md:pb-0">
+        <header className="hidden md:flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 shrink-0">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Licitaciones · {orgSlug}</p>
+            <p className="text-[13px] text-foreground">
+              Rol: <span className="text-muted-foreground">{role}</span>
+            </p>
+          </div>
+          <BotonChatDatos />
+        </header>
+
+        <main className="flex-1 min-w-0 overflow-auto rounded-2xl border border-border bg-card p-4 sm:p-6">{children(contexto)}</main>
+      </div>
+
+      <BottomNav
+        items={[
+          { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
+          { to: `${base}/radar-renovaciones`, label: "Radar", icon: Radar },
+          { to: `${base}/perfil-matching`, label: "Matching", icon: Target },
+          { to: `${base}/datos-empresa`, label: "Empresa", icon: Building2 },
+        ]}
+      />
     </div>
   );
 }
