@@ -161,6 +161,30 @@ export async function runNightAuditForProperty(repo: HotelesRepository, params: 
   return summary;
 }
 
+/**
+ * r4-fix-crons-transaccion-por-unidad (auditoría a1b #1, ALTA): runner de sesión
+ * inyectado -- CADA llamada abre (o reutiliza, en tests) su PROPIA transacción de
+ * Postgres, nunca una compartida para todo el barrido. Antes de este fix,
+ * `runNightAuditSweep` recibía un `HotelesRepository` YA ligado a una única
+ * transacción abierta por la ruta para TODAS las properties -- un error SQL real
+ * en una property (carrera con un check-out de staff, timeout, deadlock de
+ * no-show) dejaba esa transacción ABORTADA (Postgres 25P02); las properties
+ * siguientes fallaban en cascada con ese mismo error engañoso, y el COMMIT final
+ * de la ruta -- sobre una transacción abortada -- devolvía el tag `ROLLBACK`
+ * SIN lanzar (comportamiento documentado de Postgres/node-pg), revirtiendo en
+ * silencio TODAS las properties de esa corrida, incluidas las que ya habían
+ * cerrado bien. Con `withRepo`, cada `try`/`catch` de la property SÍ aísla de
+ * verdad: su propio `ROLLBACK` nunca toca las transacciones ya comprometidas
+ * (`COMMIT` real) de las properties anteriores.
+ *
+ * En producción la ruta pasa `(fn) => deps.engine.withAppSession({ userId: null },
+ * (db) => fn(deps.hotelesRepo(db)))`; los tests pasan `(fn) => fn(repo)` (el
+ * `InMemoryHotelesRepository` no es transaccional, así que ahí `withRepo` es
+ * transparente -- ver `apps/worker/tests/night-audit-job.spec.ts` para el test
+ * que SÍ reproduce el aislamiento real con un engine fake transaccional).
+ */
+export type WithHotelesRepo = <T>(fn: (repo: HotelesRepository) => Promise<T>) => Promise<T>;
+
 export interface NightAuditSweepOptions {
   /** Hora local (0-23) a partir de la cual se considera "ya se puede cerrar el día
    *  anterior". Default 3 (03:00), mismo umbral que el origen. */
@@ -188,11 +212,16 @@ export interface NightAuditSweepResult {
  * detiene el resto (mismo criterio que `citasRemindersRoutes`/
  * `NightAuditScheduler.tick` del origen): se captura y se reporta en `error`, la
  * corrida de las demás continúa.
+ *
+ * r4-fix-crons-transaccion-por-unidad: `listActiveHotelProperties()` corre en su
+ * propia transacción corta (vía `withRepo`), y CADA property corre la suya --
+ * ver el comentario de `WithHotelesRepo` arriba para la razón exacta (COMMIT
+ * silencioso->ROLLBACK sobre una transacción abortada compartida).
  */
-export async function runNightAuditSweep(repo: HotelesRepository, options: NightAuditSweepOptions = {}): Promise<NightAuditSweepResult[]> {
+export async function runNightAuditSweep(withRepo: WithHotelesRepo, options: NightAuditSweepOptions = {}): Promise<NightAuditSweepResult[]> {
   const runHourLocal = options.runHourLocal ?? 3;
   const now = (options.now ?? (() => new Date()))();
-  const properties = await repo.listActiveHotelProperties();
+  const properties = await withRepo((repo) => repo.listActiveHotelProperties());
   const results: NightAuditSweepResult[] = [];
 
   for (const property of properties) {
@@ -205,12 +234,14 @@ export async function runNightAuditSweep(repo: HotelesRepository, options: Night
     }
     const businessDate = businessDateToClose(now, DEFAULT_PROPERTY_TIMEZONE);
     try {
-      const summary = await runNightAuditForProperty(repo, {
-        organizationId: property.organizationId,
-        propertyId: property.propertyId,
-        businessDate,
-        session: "sistema",
-      });
+      const summary = await withRepo((repo) =>
+        runNightAuditForProperty(repo, {
+          organizationId: property.organizationId,
+          propertyId: property.propertyId,
+          businessDate,
+          session: "sistema",
+        }),
+      );
       results.push({ organizationId: property.organizationId, propertyId: property.propertyId, ran: true, businessDate, summary });
     } catch (err) {
       results.push({

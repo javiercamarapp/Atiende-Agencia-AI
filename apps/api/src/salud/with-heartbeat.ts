@@ -19,9 +19,36 @@
 // escritura. Un UPSERT de una sola fila (`core.record_cron_heartbeat`) es
 // rápido; esperarlo no agrega latencia significativa al cron real, y
 // garantiza que el latido sobreviva pase lo que pase con la respuesta.
+//
+// `CronPartialFailureError` (r4-fix-crons-transaccion-por-unidad) -- cierra el
+// hallazgo de auditoría a1b #1/#2 punto (5): con el barrido corregido a
+// "una transacción POR unidad" (property/organización, ver
+// `../routes/verticals/hoteles/night-audit.ts` y hermanos), cada unidad que
+// falla YA aísla su propio ROLLBACK real -- pero el handler HTTP seguía sin
+// lanzar cuando `failures.length > 0` (el body ya reportaba `ok:false` con el
+// detalle, pero nunca llegaba a `catch` de este wrapper), así que el latido
+// quedaba "ok" limpio aunque una unidad real hubiera fallado -- el panel de
+// salud no podía distinguir "corrió perfecto" de "corrió parcial". Un handler
+// que YA construyó la `Response` de 200 con el detalle completo (failures[])
+// la envuelve en este error en vez de devolverla directo; este wrapper
+// registra el latido como "error" (con el mensaje del error, visible en el
+// panel de salud) pero **devuelve la Response original al caller HTTP** --
+// nunca un 500: Vercel Cron no debe reintentar un barrido que ya corrió (las
+// unidades que sí funcionaron ya persistieron, aislado por unidad), solo el
+// latido debe dejar de mentir.
 import type { AppDeps } from "../deps.ts";
 
 const MAX_ERROR_LENGTH = 500;
+
+export class CronPartialFailureError extends Error {
+  constructor(
+    message: string,
+    readonly response: Response,
+  ) {
+    super(message);
+    this.name = "CronPartialFailureError";
+  }
+}
 
 function truncarError(err: unknown): string {
   const mensaje = err instanceof Error ? err.message : String(err);
@@ -66,6 +93,11 @@ export function withHeartbeat(deps: AppDeps, cronName: string, handler: () => Pr
       return response;
     } catch (err) {
       await registrarLatidoBestEffort(deps, cronName, "error", truncarError(err), startedAt, new Date());
+      // `CronPartialFailureError`: el handler YA construyó la Response real (200
+      // + detalle de failures[]) -- se devuelve tal cual al caller HTTP, el
+      // latido ya quedó registrado como "error" arriba (ver comentario de
+      // cabecera). Cualquier otra excepción sigue relanzándose sin cambios.
+      if (err instanceof CronPartialFailureError) return err.response;
       throw err;
     }
   };

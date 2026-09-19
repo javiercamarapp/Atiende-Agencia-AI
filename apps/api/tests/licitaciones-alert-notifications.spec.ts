@@ -32,7 +32,7 @@ describe("POST /internal/licitaciones/alert-notifications", () => {
 
     // Convocatoria con vencimiento próximo -- relativo a "ahora" (nunca una fecha
     // fija hardcoded, mismo criterio que licitaciones-discover.spec.ts para que el
-    // test no envejezca): la ruta usa `runAlertNotificationSweep(repo)` SIN
+    // test no envejezca): la ruta usa `runAlertNotificationSweep(withRepo)` SIN
     // `now`/`todayIsoDate` inyectado (misma firma real que un scheduler externo
     // invocaría en producción), así que la ventana de anticipación se evalúa contra
     // el reloj real del proceso.
