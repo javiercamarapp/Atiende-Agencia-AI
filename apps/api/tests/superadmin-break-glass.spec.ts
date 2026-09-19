@@ -361,13 +361,30 @@ describe("superadmin-break-glass", () => {
       expect(res.status).toBe(400);
     });
 
-    it.each([["1.5"], ["-1"], ["abc"]])("offset=%s -- 400", async (offset) => {
+    // "2147483648"/"3000000000"/400 dígitos -- hallazgo de revisión real (ronda
+    // r5, no-bloqueante 1 del PR #167): `^\d+$` los acepta todos (son enteros
+    // sin signo válidos como TEXTO), pero exceden el máximo de `integer` de
+    // Postgres (2147483647, `p_offset` en las 7 funciones de
+    // `020_break_glass_lectores.sql`) -- sin este límite, Postgres real
+    // respondería SQLSTATE 22003/22P02 (el 400 dígitos desborda `Number` a
+    // `Infinity`), el mismo 500 genérico que esta ronda de validación existe
+    // para eliminar.
+    it.each([["1.5"], ["-1"], ["abc"], ["2147483648"], ["3000000000"], ["9".repeat(400)]])("offset=%s -- 400", async (offset) => {
       const base = await buildTestDeps();
       const token = await tokenSuperadmin(base.deps);
       const app = buildApp(base.deps);
 
       const res = await app.request(`/superadmin/break-glass/organizaciones/${randomUUID()}/reservas?offset=${offset}`, { headers: { authorization: `Bearer ${token}` } });
       expect(res.status).toBe(400);
+    });
+
+    it("offset=2147483647 (justo el máximo de integer de Postgres) -- válido, llega al gate normal de sesión (403, nunca 400)", async () => {
+      const base = await buildTestDeps();
+      const token = await tokenSuperadmin(base.deps);
+      const app = buildApp(base.deps);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${randomUUID()}/reservas?offset=2147483647`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(403);
     });
 
     it("limit/offset/propertyId válidos siguen llegando al gate normal de sesión (403 sin sesión, nunca 400)", async () => {
