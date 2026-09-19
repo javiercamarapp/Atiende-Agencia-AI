@@ -18,6 +18,7 @@
 //      autorizado, no.
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
+import { hashPassword, InMemoryCoreRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildHotelesTestContext } from "./hoteles-fixtures.ts";
 import type { HotelesTestContext } from "./hoteles-fixtures.ts";
@@ -190,6 +191,48 @@ describe("GET /hoteles/:propertyId/asistencia/cruce y /exportar-stps (REQ-BO-024
       authedJson(ctx.staff.housekeeping.token),
     );
     expect(csv.status).toBe(403);
+  });
+
+  // Hallazgo de seguridad (revisión real de PR #149, Fase 3 caller-binding):
+  // `staffUserId` llega por query param sin verificar que pertenezca a la
+  // organización del admin autenticado -- un admin de la organización A podía
+  // exportar (nombre/correo incluidos) el CSV de asistencia de un empleado de la
+  // organización B. `assertStaffBelongsToOrg` (asistencia.ts) lo cierra.
+  it("(c) un owner de esta organización pidiendo el cruce/CSV de un empleado de OTRA organización -> 404, sin filtrar su nombre ni correo", async () => {
+    const app = buildApp(ctx.deps);
+    const coreRepo = ctx.deps.coreRepo as InMemoryCoreRepository;
+
+    const otraOrgId = randomUUID();
+    const outsiderId = randomUUID();
+    const outsiderEmail = "outsider@otro-hotel.mx";
+    coreRepo.addOrganization({ id: otraOrgId, slug: "otro-hotel", name: "Otro Hotel", vertical: "hoteles" });
+    coreRepo.addStaff({
+      id: outsiderId,
+      email: outsiderEmail,
+      fullName: "Empleado De Otro Hotel",
+      passwordHash: await hashPassword("correcto-caballo-batería"),
+      createdVia: "seed",
+      emailVerifiedAt: new Date().toISOString(),
+    });
+    coreRepo.addMembership({ userId: outsiderId, organizationId: otraOrgId, platformRole: "member", verticalRole: "frontdesk", propertyIds: null });
+
+    const cruce = await app.request(
+      `/hoteles/${ctx.propertyId}/asistencia/cruce?staffUserId=${outsiderId}&desde=2026-10-05&hasta=2026-10-05`,
+      authedJson(ctx.staff.owner.token),
+    );
+    expect(cruce.status).toBe(404);
+    const cruceBody = await cruce.text();
+    expect(cruceBody).not.toContain(outsiderEmail);
+    expect(cruceBody).not.toContain("Empleado De Otro Hotel");
+
+    const csv = await app.request(
+      `/hoteles/${ctx.propertyId}/asistencia/exportar-stps?staffUserId=${outsiderId}&desde=2026-10-05&hasta=2026-10-05`,
+      authedJson(ctx.staff.owner.token),
+    );
+    expect(csv.status).toBe(404);
+    const csvBody = await csv.text();
+    expect(csvBody).not.toContain(outsiderEmail);
+    expect(csvBody).not.toContain("Empleado De Otro Hotel");
   });
 
   it("(d) horas extra dentro del margen autorizado no alertan; el excedente real sí, y solo por el excedente", async () => {

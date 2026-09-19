@@ -115,6 +115,24 @@ function parseCrossCheckQuery(c: Context<CoreAuthHonoEnv>): { staffUserId: strin
   return { staffUserId, fromDate, toDate };
 }
 
+/** Hallazgo de seguridad (revisión real de PR #149, Fase 3 caller-binding): `/cruce`
+ *  y `/exportar-stps` reciben `staffUserId` como query param (`parseCrossCheckQuery`)
+ *  sin verificar que ese empleado pertenezca a la MISMA organización que el admin
+ *  autenticado (`requirePropertyMembership` ya verificó al CALLER, nunca al TARGET).
+ *  Reutiliza `core.is_staff_org_member_for_org_admin` (ver `packages/db/migrations/
+ *  0017_caller_binding_fase3.sql`) vía `deps.coreStaffRepo(c.get("db"))` -- MISMO
+ *  umbral de autoridad que ya exige `ATTENDANCE_ADMIN_ROLES` (owner/gm ->
+ *  platform_role owner/admin, ver `PLATFORM_ROLE_BY_VERTICAL_ROLE` en
+ *  `@atiende/domain-hoteles`), así que el `assertVerticalRole` de cada ruta ya
+ *  garantiza que este chequeo no se rechace por rango insuficiente del CALLER --
+ *  solo puede rechazar por que el TARGET sea de otra organización. 404 genérico
+ *  (nunca 403 "existe pero no es tuyo"): mismo criterio de no confirmar/negar
+ *  existencia que el resto del monorepo (ver `StaffInviteInvalidError`). */
+async function assertStaffBelongsToOrg(deps: AppDeps, c: Context<CoreAuthHonoEnv>, organizationId: string, staffUserId: string): Promise<void> {
+  const belongs = await deps.coreStaffRepo(c.get("db")).isStaffOrgMember(organizationId, staffUserId);
+  if (!belongs) throw Errors.notFound("Ese empleado no pertenece a esta organización.");
+}
+
 export function hotelesAsistenciaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -237,8 +255,10 @@ export function hotelesAsistenciaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.get("/hoteles/:propertyId/asistencia/cruce", async (c) => {
     assertVerticalRole(c, ATTENDANCE_ADMIN_ROLES);
+    const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const { staffUserId, fromDate, toDate } = parseCrossCheckQuery(c);
+    await assertStaffBelongsToOrg(deps, c, organizationId, staffUserId);
     const repo = deps.hotelesRepo(c.get("db"));
     const rows = await computeCrossCheckRows(repo, propertyId, staffUserId, fromDate, toDate);
     return c.json(rows.map((r) => serializeCrossCheck(r.workDate, r.result)));
@@ -248,8 +268,20 @@ export function hotelesAsistenciaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.get("/hoteles/:propertyId/asistencia/exportar-stps", async (c) => {
     assertVerticalRole(c, ATTENDANCE_ADMIN_ROLES);
+    const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const { staffUserId, fromDate, toDate } = parseCrossCheckQuery(c);
+    // Hallazgo de seguridad (revisión real de PR #149): esta ruta exportaba nombre/
+    // correo de CUALQUIER `staffUserId` (query param, sin validar) vía `findStaffById`
+    // -- un admin de la organización A podía exportar el CSV de asistencia de un
+    // empleado de la organización B (name/email incluidos), aunque `computeCrossCheckRows`
+    // ya limitaba las HORAS a esta property (un `staffUserId` ajeno no tiene eventos/
+    // horario aquí, así que esa parte ya salía vacía -- el leak real era la identidad).
+    // `assertStaffBelongsToOrg` (mismo criterio que `ATTENDANCE_ADMIN_ROLES` =
+    // owner/gm = platform_role owner/admin, ver `PLATFORM_ROLE_BY_VERTICAL_ROLE` en
+    // `@atiende/domain-hoteles`) cierra el hueco: 404 genérico, sin distinguir "no
+    // existe" de "es de otra organización", antes de tocar `core.staff_user`.
+    await assertStaffBelongsToOrg(deps, c, organizationId, staffUserId);
     const repo = deps.hotelesRepo(c.get("db"));
 
     let rfcEmisor = "SIN_RFC";
@@ -267,7 +299,10 @@ export function hotelesAsistenciaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // Identidad del empleado -- `core.staff_user`, NUNCA domain-hoteles (que no posee
     // esa tabla, mismo criterio ya documentado por `HotelOrganizationSummary`/
     // `PropertySummary`: es un espejo de solo-lectura, no una copia). `deps.coreRepo`
-    // es el mismo puerto que ya usa `POST /auth/login`.
+    // es el mismo puerto que ya usa `POST /auth/login` -- `assertStaffBelongsToOrg` de
+    // arriba ya confirmó que `staffUserId` es miembro de ESTA organización antes de
+    // llegar aquí, así que esta lectura ya no puede devolver la identidad de un
+    // empleado ajeno.
     const staffProfile = await deps.coreRepo.findStaffById(staffUserId);
     const fullName = staffProfile?.fullName ?? staffUserId;
     const email = staffProfile?.email ?? "";
