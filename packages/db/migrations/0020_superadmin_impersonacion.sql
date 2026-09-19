@@ -366,8 +366,21 @@ grant execute on function core.end_impersonation_session(uuid, uuid) to authenti
 -- cookie de `packages/core-authz/src/impersonation/cookie.ts`, que sigue
 -- siendo TTL de aplicación -- esta función es la verificación en SQL que
 -- exige la tarea).
+-- `setof`, NUNCA un `core.impersonation_session` escalar -- hallazgo real
+-- verificado contra Postgres real al escribir `scripts/verify-superadmin-
+-- impersonacion/` (escenario "superadmin sin sesión propia"): una función SQL
+-- que declara `returns <tipo fila>` (sin `setof`) devuelve, cuando su SELECT
+-- interno no matchea NINGUNA fila, UNA fila con TODAS las columnas NULL (no
+-- cero filas) -- el comportamiento estándar de Postgres para "column/composite
+-- functions" fuera de un contexto de agregación. Con `count(*) from
+-- core.get_active_impersonation_session_for_superadmin(...)` eso daba `1`
+-- (una fila de puros NULL) en vez de `0` para un superadmin SIN sesión activa
+-- -- y el adaptador TS (`getActiveSession`) habría tratado esa fila-de-NULL
+-- como una sesión real (`rows[0]` truthy), mostrando el banner de
+-- impersonación activa con datos basura. `setof` corrige esto: cero filas
+-- coincidentes = cero filas devueltas, siempre.
 create or replace function core.get_active_impersonation_session_for_superadmin(p_caller_id uuid)
-returns core.impersonation_session
+returns setof core.impersonation_session
 language sql stable security definer set search_path = core, pg_temp
 as $$
   select s.*
