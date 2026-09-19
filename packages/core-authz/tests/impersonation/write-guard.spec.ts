@@ -55,6 +55,28 @@ describe("isWriteAllowedWhileImpersonating (regla pura)", () => {
       }),
     ).toBe(false);
   });
+
+  it("permite una escritura EXENTA por PATRÓN (segmento dinámico) aunque haya impersonación activa", () => {
+    expect(
+      isWriteAllowedWhileImpersonating({
+        method: "POST",
+        path: "/superadmin/impersonacion/sesiones/abc-123/terminar",
+        isImpersonating: true,
+        exemptPathPatterns: [/^\/superadmin\/impersonacion\/sesiones\/[^/]+\/terminar$/],
+      }),
+    ).toBe(true);
+  });
+
+  it("una ruta que NO matchea ningún exemptPathPatterns sigue bloqueada", () => {
+    expect(
+      isWriteAllowedWhileImpersonating({
+        method: "POST",
+        path: "/superadmin/prospectos",
+        isImpersonating: true,
+        exemptPathPatterns: [/^\/superadmin\/impersonacion\/sesiones\/[^/]+\/terminar$/],
+      }),
+    ).toBe(false);
+  });
 });
 
 interface TestEnv {
@@ -111,5 +133,28 @@ describe("blockWritesWhileImpersonating (middleware Hono)", () => {
     });
     const res = await app.request("/superadmin/impersonacion/s1/terminar", { method: "POST" });
     expect(res.status).toBe(200);
+  });
+
+  it("deja pasar una ruta EXENTA por patrón dinámico (:id real) mientras bloquea el resto", async () => {
+    const app = new Hono<TestEnv>();
+    app.onError((err, c) => {
+      if (err instanceof ImpersonationWriteBlockedError) return c.json({ code: err.code }, 403);
+      throw err;
+    });
+    app.use(
+      "*",
+      blockWritesWhileImpersonating<TestEnv>({
+        isImpersonating: () => true,
+        exemptPathPatterns: [/^\/superadmin\/impersonacion\/sesiones\/[^/]+\/terminar$/],
+      }),
+    );
+    app.post("/superadmin/impersonacion/sesiones/:id/terminar", (c) => c.json({ terminado: true }));
+    app.post("/superadmin/prospectos", (c) => c.json({ creado: true }));
+
+    const resTerminar = await app.request("/superadmin/impersonacion/sesiones/abc-123/terminar", { method: "POST" });
+    expect(resTerminar.status).toBe(200);
+
+    const resProspecto = await app.request("/superadmin/prospectos", { method: "POST" });
+    expect(resProspecto.status).toBe(403);
   });
 });

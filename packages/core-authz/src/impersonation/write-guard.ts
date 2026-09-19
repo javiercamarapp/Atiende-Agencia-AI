@@ -35,13 +35,15 @@ export function isWriteAllowedWhileImpersonating(input: {
   readonly path: string;
   readonly isImpersonating: boolean;
   readonly exemptPaths?: ReadonlySet<string>;
+  readonly exemptPathPatterns?: readonly RegExp[];
 }): boolean {
   if (!isMutatingMethod(input.method)) return true;
   if (!input.isImpersonating) return true;
-  return input.exemptPaths?.has(input.path) ?? false;
+  if (input.exemptPaths?.has(input.path)) return true;
+  return input.exemptPathPatterns?.some((re) => re.test(input.path)) ?? false;
 }
 
-export interface BlockWritesWhileImpersonatingOptions<TEnv extends { Variables: Record<string, unknown> }> {
+export interface BlockWritesWhileImpersonatingOptions<TEnv extends { Variables?: object }> {
   /** Resuelve si ESTE request (ya autenticado, con `userId`/`db` ya en
    *  contexto) corresponde a un superadmin con una sesión de impersonación
    *  activa VIGENTE — debe consultar la fuente de verdad real (SQL), nunca
@@ -53,6 +55,16 @@ export interface BlockWritesWhileImpersonatingOptions<TEnv extends { Variables: 
    *  ej. el propio endpoint de "terminar mi sesión". Vacío por default: sin
    *  excepciones, coherente con "por defecto SOLO LECTURA". */
   readonly exemptPaths?: ReadonlySet<string>;
+  /** Igual que `exemptPaths`, pero para rutas con segmentos dinámicos
+   *  (`:id`) — un `Set<string>` de rutas exactas no puede expresar "termina
+   *  en `/terminar` sin importar el id" cuando este guard se monta de forma
+   *  GENÉRICA sobre `/superadmin/*` (una sola vez, cubriendo TODA la
+   *  superficie por diseño fail-closed) en vez de sobre cada patrón de ruta
+   *  concreto uno por uno — ver `apps/api/src/routes/superadmin.ts` para el
+   *  caso real (`/superadmin/impersonacion/sesiones/:id/terminar`). `c.req.path`
+   *  ya trae el id real resuelto, nunca el patrón `:id` — de ahí la necesidad
+   *  de un regex en vez de comparación exacta. Vacío por default. */
+  readonly exemptPathPatterns?: readonly RegExp[];
 }
 
 /**
@@ -62,14 +74,18 @@ export interface BlockWritesWhileImpersonatingOptions<TEnv extends { Variables: 
  * (necesita `userId`/sesión ya resueltos para que `isImpersonating` pueda
  * consultar la sesión real del caller).
  */
-export function blockWritesWhileImpersonating<TEnv extends { Variables: Record<string, unknown> }>(
+export function blockWritesWhileImpersonating<TEnv extends { Variables?: object }>(
   options: BlockWritesWhileImpersonatingOptions<TEnv>,
 ): MiddlewareHandler<TEnv> {
   return async (c: Context<TEnv>, next: Next) => {
     const method = c.req.method;
     const path = c.req.path;
 
-    if (!isMutatingMethod(method) || options.exemptPaths?.has(path)) {
+    if (
+      !isMutatingMethod(method) ||
+      options.exemptPaths?.has(path) ||
+      options.exemptPathPatterns?.some((re) => re.test(path))
+    ) {
       await next();
       return;
     }
