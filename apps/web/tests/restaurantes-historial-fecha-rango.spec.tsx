@@ -27,6 +27,8 @@ const CTX: RestaurantesShellContext = {
   propertyId: "prop-1",
   orgSlug: "demo",
   role: "owner",
+  staffFullName: "Staff Demo",
+  staffEmail: "staff@example.com",
 };
 
 beforeEach(() => {
