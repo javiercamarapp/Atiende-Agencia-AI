@@ -270,7 +270,7 @@ describe("Resumen diario -- migración 0015 sin aplicar (SQLSTATE 42883), nunca 
     expect(body.motivo).toBe("migracion_pendiente");
   });
 
-  it("un código de error que NO es 42883 se repropaga tal cual -- nunca se confunde con 'migración pendiente'", async () => {
+  it("un código de error que NO es 42883 en el SONDEO no se confunde con 'migración pendiente' -- el cron sigue adelante", async () => {
     const base = await buildTestDeps();
     (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setFallando(true);
     const app = buildApp(base.deps);
@@ -280,10 +280,33 @@ describe("Resumen diario -- migración 0015 sin aplicar (SQLSTATE 42883), nunca 
     // genérico SIN `.code = "42883"`, así que el sondeo debe tratarlo como "sigue
     // adelante" (no como migración pendiente), y el cron debe completar con éxito
     // usando el "vacío honesto" ya existente para cada sección.
+    //
+    // NOTA (hallazgo no-bloqueante #2 de la auditoría a1): este test NO cubre la
+    // rama de repropagación real (`if (!isUndefinedFunctionError(err)) throw err`
+    // del UPSERT en agregador.ts) -- el título anterior de este test ("se
+    // repropaga tal cual") afirmaba eso incorrectamente. Ese caso lo cubre el
+    // siguiente test, que sí hace que el UPSERT lance un error genérico.
     const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean };
     expect(body.ok).toBe(true);
+  });
+
+  it("un código de error que NO es 42883 en el UPSERT SÍ se repropaga tal cual -- el cron responde 500 real, nunca se confunde con 'migración pendiente'", async () => {
+    const base = await buildTestDeps();
+    const repo = base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository;
+    // A diferencia de `setFallando`/`setUpsertMigracionPendiente` (ambos simulan
+    // 42883), esto sobreescribe el método directamente con un Error genérico SIN
+    // `.code = "42883"` -- el sondeo pasa normal, pero el UPSERT final lanza algo
+    // que NO es "migración pendiente" y debe repropagarse tal cual (mismo patrón
+    // que ya usa `superadmin-mantenimiento-cron.spec.ts` para el mismo caso).
+    repo.upsertDailyOpsSummary = async () => {
+      throw new Error("conexión perdida con Postgres");
+    };
+    const app = buildApp(base.deps);
+
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(500);
   });
 });
 
