@@ -60,8 +60,12 @@ import type {
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
+  RevenueGateRecord,
+  RevenueBacktestRunRecord,
+  NewRevenueBacktestRunInput,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
+import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
 import type { UsaliRevenueDepartment } from "./pl/usaliPL.ts";
 
 // Ventana de protección contra reintento de un Idempotency-Key — mismo criterio que
@@ -1962,4 +1966,165 @@ export class PostgresHotelesRepository implements HotelesRepository {
   async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
     await this.db.query(`select hoteles.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
   }
+
+  // ============================================================================
+  // Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management: wiring de
+  // hoteles.revenue_engine_gate/hoteles.revenue_backtest_run (migrations/
+  // 011_revenue_engine_gate.sql). La autoridad real de la máquina de estados es el
+  // trigger `revenue_engine_gate_transition_guard_trg` — este adaptador solo
+  // ejecuta el INSERT/UPDATE y traduce las filas, nunca reimplementa las reglas.
+  // ============================================================================
+
+  private readonly REVENUE_GATE_COLUMNS =
+    `id, organization_id, property_id, gate, shadow_started_at, propone_started_at, autopilot_started_at,
+     propone_max_variation_pct::text as propone_max_variation_pct, owner_approved_autopilot_at, updated_by, updated_at, created_at`;
+
+  private toRevenueGateRecord(r: RevenueGateRow): RevenueGateRecord {
+    return {
+      id: r.id,
+      organizationId: r.organization_id,
+      propertyId: r.property_id,
+      gate: r.gate,
+      shadowStartedAt: r.shadow_started_at,
+      proponeStartedAt: r.propone_started_at,
+      autopilotStartedAt: r.autopilot_started_at,
+      proponeMaxVariationPct: Number(r.propone_max_variation_pct),
+      ownerApprovedAutopilotAt: r.owner_approved_autopilot_at,
+      updatedBy: r.updated_by,
+      updatedAt: r.updated_at,
+      createdAt: r.created_at,
+    };
+  }
+
+  async findRevenueGate(propertyId: string): Promise<RevenueGateRecord | null> {
+    const { rows } = await this.db.query<RevenueGateRow>(
+      `select ${this.REVENUE_GATE_COLUMNS} from hoteles.revenue_engine_gate where property_id = $1;`,
+      [propertyId],
+    );
+    return rows[0] ? this.toRevenueGateRecord(rows[0]) : null;
+  }
+
+  async ensureRevenueGate(propertyId: string, organizationId: string, actorUserId: string): Promise<RevenueGateRecord> {
+    void actorUserId; // el trigger fija updated_by = auth.uid() por su cuenta, ver migrations/011.
+    const existing = await this.findRevenueGate(propertyId);
+    if (existing) return existing;
+    const { rows } = await this.db.query<RevenueGateRow>(
+      `insert into hoteles.revenue_engine_gate (organization_id, property_id, gate) values ($1, $2, 'shadow')
+       returning ${this.REVENUE_GATE_COLUMNS};`,
+      [organizationId, propertyId],
+    );
+    return this.toRevenueGateRecord(rows[0]!);
+  }
+
+  async updateRevenueGateState(propertyId: string, to: RevenueGateState, actorUserId: string): Promise<RevenueGateRecord> {
+    void actorUserId; // el trigger fija updated_by = auth.uid(), no confía en este parámetro.
+    const { rows } = await this.db.query<RevenueGateRow>(
+      `update hoteles.revenue_engine_gate set gate = $2 where property_id = $1 returning ${this.REVENUE_GATE_COLUMNS};`,
+      [propertyId, to],
+    );
+    if (!rows[0]) throw new Error(`revenue_gate_no_encontrado: la property ${propertyId} no tiene un gate de revenue inicializado todavía.`);
+    return this.toRevenueGateRecord(rows[0]);
+  }
+
+  async setRevenueGateOwnerApproval(propertyId: string, granted: boolean, actorUserId: string): Promise<RevenueGateRecord> {
+    void actorUserId; // el trigger exige que quien escribe esta columna sea "owner" (can_approve_revenue_autopilot).
+    const { rows } = await this.db.query<RevenueGateRow>(
+      `update hoteles.revenue_engine_gate set owner_approved_autopilot_at = case when $2 then now() else null end
+       where property_id = $1 returning ${this.REVENUE_GATE_COLUMNS};`,
+      [propertyId, granted],
+    );
+    if (!rows[0]) throw new Error(`revenue_gate_no_encontrado: la property ${propertyId} no tiene un gate de revenue inicializado todavía.`);
+    return this.toRevenueGateRecord(rows[0]);
+  }
+
+  private toRevenueBacktestRunRecord(r: RevenueBacktestRunRow): RevenueBacktestRunRecord {
+    return {
+      id: r.id,
+      organizationId: r.organization_id,
+      propertyId: r.property_id,
+      counterfactualMethod: r.counterfactual_method,
+      windowsEvaluated: r.windows_evaluated,
+      windowsEngineWon: r.windows_engine_won,
+      engineTotalRevenue: Number(r.engine_total_revenue),
+      baselineTotalRevenue: Number(r.baseline_total_revenue),
+      improvementPct: Number(r.improvement_pct),
+      passes: r.passes,
+      failureReasons: r.failure_reasons ?? [],
+      detail: r.detail ?? {},
+      runBy: r.run_by,
+      runAt: r.run_at,
+      createdAt: r.created_at,
+    };
+  }
+
+  async listRevenueBacktestRuns(propertyId: string): Promise<readonly RevenueBacktestRunRecord[]> {
+    const { rows } = await this.db.query<RevenueBacktestRunRow>(
+      `select id, organization_id, property_id, counterfactual_method, windows_evaluated, windows_engine_won,
+              engine_total_revenue::text as engine_total_revenue, baseline_total_revenue::text as baseline_total_revenue,
+              improvement_pct::text as improvement_pct, passes, failure_reasons, detail, run_by, run_at, created_at
+       from hoteles.revenue_backtest_run where property_id = $1 order by run_at desc;`,
+      [propertyId],
+    );
+    return rows.map((r) => this.toRevenueBacktestRunRecord(r));
+  }
+
+  async insertRevenueBacktestRun(input: NewRevenueBacktestRunInput): Promise<RevenueBacktestRunRecord> {
+    const { rows } = await this.db.query<RevenueBacktestRunRow>(
+      `insert into hoteles.revenue_backtest_run
+         (organization_id, property_id, counterfactual_method, windows_evaluated, windows_engine_won,
+          engine_total_revenue, baseline_total_revenue, improvement_pct, passes, failure_reasons, detail, run_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12)
+       returning id, organization_id, property_id, counterfactual_method, windows_evaluated, windows_engine_won,
+                 engine_total_revenue::text as engine_total_revenue, baseline_total_revenue::text as baseline_total_revenue,
+                 improvement_pct::text as improvement_pct, passes, failure_reasons, detail, run_by, run_at, created_at;`,
+      [
+        input.organizationId,
+        input.propertyId,
+        input.counterfactualMethod,
+        input.windowsEvaluated,
+        input.windowsEngineWon,
+        input.engineTotalRevenue,
+        input.baselineTotalRevenue,
+        input.improvementPct,
+        input.passes,
+        JSON.stringify(input.failureReasons),
+        JSON.stringify(input.detail),
+        input.runBy,
+      ],
+    );
+    return this.toRevenueBacktestRunRecord(rows[0]!);
+  }
+}
+
+interface RevenueGateRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  gate: RevenueGateState;
+  shadow_started_at: string;
+  propone_started_at: string | null;
+  autopilot_started_at: string | null;
+  propone_max_variation_pct: string;
+  owner_approved_autopilot_at: string | null;
+  updated_by: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+interface RevenueBacktestRunRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  counterfactual_method: NewRevenueBacktestRunInput["counterfactualMethod"];
+  windows_evaluated: number;
+  windows_engine_won: number;
+  engine_total_revenue: string;
+  baseline_total_revenue: string;
+  improvement_pct: string;
+  passes: boolean;
+  failure_reasons: readonly string[];
+  detail: Readonly<Record<string, unknown>>;
+  run_by: string | null;
+  run_at: string;
+  created_at: string;
 }

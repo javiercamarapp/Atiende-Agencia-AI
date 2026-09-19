@@ -6,6 +6,8 @@ import type { AllergyDeclaredVia } from "./fnbAllergyGuard.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import type { FraudPattern } from "./fraude/deteccion.ts";
 import type { UsaliDepartment, UsaliExpenseCategory, UsaliRevenueDepartment } from "./pl/usaliPL.ts";
+import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
+import type { CounterfactualMethod } from "./revenue/walkForwardBacktest.ts";
 
 export type FolioStatus = "abierto" | "cerrado";
 export type FolioCloseReason = "saldo_cero" | "cuenta_por_cobrar";
@@ -863,4 +865,68 @@ export interface NewGuestReviewActionInput {
   readonly ticketId: string | null;
   readonly detail: Readonly<Record<string, unknown>>;
   readonly reason: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 9 — REQ-REV-003/004/005/007: motor de revenue management (pricing).
+// Espejo de aplicación de `migrations/011_revenue_engine_gate.sql`
+// (`hoteles.revenue_engine_gate`/`hoteles.revenue_backtest_run`) -- gap real
+// verificado contra el código de main antes de esta fase de wiring: el dominio puro
+// (`revenue/revenueEngineGate.ts`/`walkForwardBacktest.ts`) y la migración SQL ya
+// existían (Fase 9), pero `HotelesRepository` no tenía NINGÚN método para las dos
+// tablas -- ninguna ruta HTTP podía funcionar sin ellos. La autoridad real de la
+// máquina de estados sigue siendo el trigger de Postgres
+// (`revenue_engine_gate_transition_guard`); estos tipos son solo el espejo de
+// aplicación de las columnas reales de la tabla, mismo criterio que el resto de este
+// archivo.
+// ─────────────────────────────────────────────────────────────────────────
+export interface RevenueGateRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly gate: RevenueGateState;
+  readonly shadowStartedAt: string;
+  readonly proponeStartedAt: string | null;
+  readonly autopilotStartedAt: string | null;
+  readonly proponeMaxVariationPct: number;
+  /** `null` = sin aprobación vigente -- ver comentario de cabecera de
+   *  `migrations/011_revenue_engine_gate.sql` sobre por qué solo "owner" puede
+   *  escribir este campo y por qué nunca sobrevive a una democión. */
+  readonly ownerApprovedAutopilotAt: string | null;
+  readonly updatedBy: string | null;
+  readonly updatedAt: string;
+  readonly createdAt: string;
+}
+
+export interface RevenueBacktestRunRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly counterfactualMethod: CounterfactualMethod;
+  readonly windowsEvaluated: number;
+  readonly windowsEngineWon: number;
+  readonly engineTotalRevenue: number;
+  readonly baselineTotalRevenue: number;
+  readonly improvementPct: number;
+  readonly passes: boolean;
+  readonly failureReasons: readonly string[];
+  readonly detail: Readonly<Record<string, unknown>>;
+  readonly runBy: string | null;
+  readonly runAt: string;
+  readonly createdAt: string;
+}
+
+export interface NewRevenueBacktestRunInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly counterfactualMethod: CounterfactualMethod;
+  readonly windowsEvaluated: number;
+  readonly windowsEngineWon: number;
+  readonly engineTotalRevenue: number;
+  readonly baselineTotalRevenue: number;
+  readonly improvementPct: number;
+  readonly passes: boolean;
+  readonly failureReasons: readonly string[];
+  readonly detail: Readonly<Record<string, unknown>>;
+  readonly runBy: string | null;
 }
