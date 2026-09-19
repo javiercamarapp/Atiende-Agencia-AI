@@ -1291,17 +1291,32 @@ export class PostgresCitasRepository implements CitasRepository {
     await this.db.query(`update citas.provider_calcom_accounts set sync_status = 'disconnected', sync_error = null, updated_at = now() where provider_id = $1;`, [providerId]);
   }
 
+  /** No-bloqueante de re-revisión (PR #158, r3) — sitio hermano IDÉNTICO de
+   * `resolveProviderCalendarRefreshToken` (ver su comentario de cabecera para el
+   * diseño completo): este `try/catch` atrapaba CUALQUIER error de
+   * `citas.get_provider_calendar_refresh_token` SIN `SAVEPOINT`, dentro de la MISMA
+   * sesión que `createCalendarSyncPortResolver` reutiliza para 3-6 consultas
+   * (Google, Cal.com, CalDAV — ver `calendar-sync-resolver-factory.ts`). Sin
+   * SAVEPOINT, un Vault no disponible aquí dejaba la sesión abortada para la
+   * SIGUIENTE cuenta que ese mismo resolver intente resolver en la misma corrida
+   * (ej. si Cal.com falla, la búsqueda de CalDAV que sigue daría 25P02 en vez de
+   * intentar su propio camino). */
   async resolveProviderCalComApiKey(providerId: string): Promise<string | null> {
     const { rows: accountRows } = await this.db.query<{ calcom_api_key_secret_id: string | null }>(`select calcom_api_key_secret_id from citas.provider_calcom_accounts where provider_id = $1;`, [providerId]);
     const secretId = accountRows[0]?.calcom_api_key_secret_id ?? null;
     if (!secretId) return null;
-    try {
-      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
-      return rows[0]?.get_provider_calendar_refresh_token ?? null;
-    } catch (err) {
-      console.warn("resolveProviderCalComApiKey: Vault no disponible todavía:", err instanceof Error ? err.message : err);
-      return null;
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+        return rows[0]?.get_provider_calendar_refresh_token ?? null;
+      },
+      isRecoverable: () => true,
+      fallback: (err) => {
+        console.warn("resolveProviderCalComApiKey: Vault no disponible todavía:", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
   }
 
   async setProviderCalComAccountSyncError(providerId: string, error: string): Promise<void> {
@@ -1360,17 +1375,27 @@ export class PostgresCitasRepository implements CitasRepository {
     await this.db.query(`update citas.provider_caldav_accounts set sync_status = 'disconnected', sync_error = null, updated_at = now() where provider_id = $1;`, [providerId]);
   }
 
+  /** No-bloqueante de re-revisión (PR #158, r3) — mismo sitio hermano que
+   * `resolveProviderCalComApiKey` de arriba (ver su comentario para el diseño
+   * completo): idéntico riesgo de dejar la sesión compartida de
+   * `createCalendarSyncPortResolver` abortada para la siguiente cuenta de la misma
+   * corrida si Vault falla aquí sin SAVEPOINT. */
   async resolveProviderCalDavPassword(providerId: string): Promise<string | null> {
     const { rows: accountRows } = await this.db.query<{ caldav_password_secret_id: string | null }>(`select caldav_password_secret_id from citas.provider_caldav_accounts where provider_id = $1;`, [providerId]);
     const secretId = accountRows[0]?.caldav_password_secret_id ?? null;
     if (!secretId) return null;
-    try {
-      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
-      return rows[0]?.get_provider_calendar_refresh_token ?? null;
-    } catch (err) {
-      console.warn("resolveProviderCalDavPassword: Vault no disponible todavía:", err instanceof Error ? err.message : err);
-      return null;
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+        return rows[0]?.get_provider_calendar_refresh_token ?? null;
+      },
+      isRecoverable: () => true,
+      fallback: (err) => {
+        console.warn("resolveProviderCalDavPassword: Vault no disponible todavía:", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
   }
 
   async setProviderCalDavAccountSyncError(providerId: string, error: string): Promise<void> {
