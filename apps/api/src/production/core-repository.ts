@@ -34,12 +34,15 @@ import type {
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
   BillingWebhookEventSummaryRow,
+  BillingWebhookLogFilters,
+  BillingWebhookLogPage,
   CoreRepository,
   CreateProspectoInput,
   MembershipRow,
   NotificationRow,
   OrganizationBillingRow,
   ProspectoRow,
+  RecordBillingWebhookEventInput,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
@@ -236,6 +239,20 @@ export class ProductionCoreRepository implements CoreRepository {
 
   sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).sealBillingEntityOrder(entityId, createdUnix));
+  }
+
+  // Bitácora de webhooks (`0018_billing_webhook_registro.sql`) — escritura en
+  // sesión de SISTEMA (mismo criterio que el resto de los adaptadores del
+  // ledger arriba: `POST /billing/webhook` nunca tiene un `auth.uid()` real
+  // que pasar), lectura COMO el caller (mismo criterio que
+  // `listOrganizationBillingForSuperadmin`/etc. abajo: la función SQL exige
+  // `auth.uid() = p_caller_id`).
+  recordBillingWebhookEvent(input: RecordBillingWebhookEventInput): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).recordBillingWebhookEvent(input));
+  }
+
+  listBillingWebhookLogForSuperadmin(callerId: string, filters: BillingWebhookLogFilters): Promise<BillingWebhookLogPage> {
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).listBillingWebhookLogForSuperadmin(callerId, filters));
   }
 
   // /superadmin/facturacion (ver `packages/db/migrations/0013_superadmin_

@@ -428,3 +428,290 @@ describe("POST /billing/webhook", () => {
     expect(await deps.coreRepo.getOrganizationBillingForWebhook(base.organizationId)).toMatchObject({ status: "sin_suscripcion" });
   });
 });
+
+// Bitácora completa de `POST /billing/webhook` (`core.billing_webhook_log`,
+// `packages/db/migrations/0018_billing_webhook_registro.sql`) -- registra CADA
+// intento, con o sin éxito, para que un cobro que no se reflejó sea
+// diagnosticable sin leer logs de la instancia. Cada caso de abajo reusa un
+// escenario YA cubierto arriba (nunca inventa uno nuevo) y solo agrega la
+// aserción sobre la bitácora -- confirma que la escritura NUEVA nunca cambia
+// el comportamiento YA probado del webhook (mismo body/status en cada caso).
+async function ultimaFilaDeBitacora(deps: Awaited<ReturnType<typeof buildTestDeps>>["deps"], superId: string) {
+  const pagina = await deps.coreRepo.listBillingWebhookLogForSuperadmin(superId, { limit: 1, offset: 0 });
+  return pagina.rows[0];
+}
+
+describe("POST /billing/webhook — bitácora (core.billing_webhook_log)", () => {
+  async function conSuperadmin(deps: Awaited<ReturnType<typeof buildTestDeps>>["deps"]) {
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    const superId = randomUUID();
+    coreRepo.addStaff({ id: superId, email: `super-${superId}@atiende.ai`, fullName: "Super", passwordHash: null, createdVia: "seed", emailVerifiedAt: null });
+    coreRepo.addPlatformSuperadmin(superId);
+    return superId;
+  }
+
+  it("firma inválida queda 'rechazado'/'firma_invalida', sin id/tipo/organización (nunca se guarda la cabecera de firma)", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const superId = await conSuperadmin(deps);
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_1", created: Math.floor(Date.now() / 1000), customer: "cus_1", tenantId: base.organizationId });
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": "t=1700000000,v1=firmaquenocoincide00000000000000000000000000000000000000000000" }));
+    expect(res.status).toBe(401);
+
+    const fila = await ultimaFilaDeBitacora(deps, superId);
+    expect(fila).toMatchObject({ result: "rechazado", reason: "firma_invalida", providerEventId: null, eventType: null, organizationId: null });
+  });
+
+  it("sin STRIPE_WEBHOOK_SECRET configurado (503) NO escribe ninguna fila -- no hay evento real que registrar todavía", async () => {
+    const base = await buildTestDeps();
+    const deps = base.deps; // sin saasBillingWebhookSecret
+    const superId = await conSuperadmin(deps);
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_1", created: Math.floor(Date.now() / 1000), customer: "cus_1", tenantId: base.organizationId });
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": "t=1,v1=deadbeef" }));
+    expect(res.status).toBe(503);
+
+    const pagina = await deps.coreRepo.listBillingWebhookLogForSuperadmin(superId, { limit: 10, offset: 0 });
+    expect(pagina.total).toBe(0);
+  });
+
+  it("JSON inválido (con firma real) queda 'rechazado'/'json_invalido'", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const superId = await conSuperadmin(deps);
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = "{esto no es json valido";
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+    expect(res.status).toBe(400);
+
+    const fila = await ultimaFilaDeBitacora(deps, superId);
+    expect(fila).toMatchObject({ result: "rechazado", reason: "json_invalido", organizationId: null });
+  });
+
+  it("un tipo de evento no manejado queda 'ignorado'/'evento_no_reconocido', con id/tipo capturados", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const superId = await conSuperadmin(deps);
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = JSON.stringify({ id: "evt_no_manejado", object: "event", type: "invoice.created", created: now, data: { object: { customer: "cus_x", metadata: { tenant_id: base.organizationId } } } });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+    expect(res.status).toBe(200);
+
+    const fila = await ultimaFilaDeBitacora(deps, superId);
+    expect(fila).toMatchObject({ result: "ignorado", reason: "evento_no_reconocido", providerEventId: "evt_no_manejado", eventType: "invoice.created", organizationId: null });
+  });
+
+  it("un tenant_id falseado (customer no coincide) queda 'rechazado' con el motivo real y la organización SÍ resuelta (el tenant existe, solo el customer no cruzó)", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const superId = await conSuperadmin(deps);
+    const app = buildApp(deps);
+    await deps.coreRepo.upsertOrganizationBilling({
+      organizationId: base.organizationId,
+      stripeCustomerId: "cus_real_del_tenant",
+      stripeSubscriptionId: "sub_real",
+      priceId: "price_viejo",
+      seats: 2,
+      status: "activa",
+      currentPeriodEnd: null,
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildSubscriptionEvent({
+      id: "evt_ataque",
+      type: "customer.subscription.updated",
+      created: now,
+      customer: "cus_del_atacante",
+      subscriptionId: "sub_del_atacante",
+      status: "active",
+      quantity: 999,
+      priceId: "price_599",
+      currentPeriodEndUnix: now + 1000,
+      tenantId: base.organizationId,
+    });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+    expect(res.status).toBe(409);
+
+    const fila = await ultimaFilaDeBitacora(deps, superId);
+    expect(fila).toMatchObject({ result: "rechazado", reason: "customer_no_coincide", providerEventId: "evt_ataque", organizationId: base.organizationId });
+  });
+
+  it("un evento aplicado con éxito queda 'procesado'/'aplicado', con la organización real resuelta", async () => {
+    const base = await buildTestDeps();
+    const deps = {
+      ...base.deps,
+      saasBillingWebhookSecret: WEBHOOK_SECRET,
+      saasBillingCustomerLookup: new FakeCustomerLookup({ cus_nuevo: base.ownerEmail }),
+    };
+    const superId = await conSuperadmin(deps);
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_checkout_1", created: now, customer: "cus_nuevo", subscription: "sub_nuevo", tenantId: base.organizationId });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+    expect(res.status).toBe(200);
+
+    const fila = await ultimaFilaDeBitacora(deps, superId);
+    expect(fila).toMatchObject({ result: "procesado", reason: "aplicado", providerEventId: "evt_checkout_1", organizationId: base.organizationId });
+  });
+
+  it("el mismo evento reenviado (dedupe) queda 'ignorado'/'duplicado' la segunda vez -- primero sigue 'procesado'/'aplicado'", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const superId = await conSuperadmin(deps);
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildSubscriptionEvent({
+      id: "evt_reintento",
+      type: "customer.subscription.created",
+      created: now,
+      customer: "cus_dedupe",
+      subscriptionId: "sub_dedupe",
+      status: "active",
+      quantity: 4,
+      priceId: "price_1",
+      currentPeriodEndUnix: now + 1000,
+      tenantId: base.organizationId,
+    });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+    const segundo = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+    expect(segundo.status).toBe(200);
+
+    const pagina = await deps.coreRepo.listBillingWebhookLogForSuperadmin(superId, { limit: 10, offset: 0 });
+    expect(pagina.total).toBe(2);
+    expect(pagina.rows[0]).toMatchObject({ result: "ignorado", reason: "duplicado" });
+    expect(pagina.rows[1]).toMatchObject({ result: "procesado", reason: "aplicado" });
+  });
+
+  it("filtra por result y por organizationId -- mismos filtros que expone GET /superadmin/facturacion/webhooks-bitacora", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const superId = await conSuperadmin(deps);
+    const app = buildApp(deps);
+
+    // Una fila 'rechazado' (firma inválida, sin organización) y una
+    // 'procesado' (con organización real) -- 2 resultados distintos para que
+    // el filtro por `result` (y por `organizationId`, que solo matchea la
+    // segunda) tenga algo real que distinguir.
+    await app.request(
+      "/billing/webhook",
+      rawRequestInit(buildCheckoutCompletedEvent({ id: "evt_x", created: 1, customer: "cus_x", tenantId: base.organizationId }), {
+        "stripe-signature": "t=1,v1=invalida000000000000000000000000000000000000000000000000000000",
+      }),
+    );
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_ok", created: now, customer: "cus_ok", subscription: "sub_ok", tenantId: base.organizationId });
+    await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": firmarStripe(WEBHOOK_SECRET, now, payload) }));
+
+    const soloRechazados = await deps.coreRepo.listBillingWebhookLogForSuperadmin(superId, { result: "rechazado", limit: 10, offset: 0 });
+    expect(soloRechazados.total).toBe(1);
+    expect(soloRechazados.rows[0]).toMatchObject({ reason: "firma_invalida" });
+
+    const porOrganizacion = await deps.coreRepo.listBillingWebhookLogForSuperadmin(superId, { organizationId: base.organizationId, limit: 10, offset: 0 });
+    expect(porOrganizacion.total).toBe(1);
+    expect(porOrganizacion.rows[0]).toMatchObject({ result: "procesado" });
+  });
+
+  it("un staff normal (no superadmin) obtiene una página vacía -- nunca la bitácora real de otra organización", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_1", created: Math.floor(Date.now() / 1000), customer: "cus_1", tenantId: base.organizationId });
+    await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": "t=1,v1=deadbeef" }));
+
+    const memberId = randomUUID();
+    coreRepo.addStaff({ id: memberId, email: "miembro-bitacora@lostaquitos.mx", fullName: "Miembro", passwordHash: null, createdVia: "seed", emailVerifiedAt: null });
+    coreRepo.addMembership({ userId: memberId, organizationId: base.organizationId, platformRole: "member", verticalRole: "staff", propertyIds: null });
+
+    const pagina = await deps.coreRepo.listBillingWebhookLogForSuperadmin(memberId, { limit: 10, offset: 0 });
+    expect(pagina).toEqual({ disponible: true, rows: [], total: 0 });
+  });
+
+  // Revisión de PR #153 (bloqueante 2): el commit caa938c dice "cubre cada
+  // resultado del handler" pero ningún test forzaba el resultado 'error' --
+  // grep error_interno en apps/api/tests daba 0 resultados. Este ejercita el
+  // catch real de billing.ts (L392-399): `aplicar()` (el upsert real) falla,
+  // se registra 'error'/'error_interno', y el error original se REPROPAGA
+  // sin cambios (mismo 500 que ya producía este catch antes de que existiera
+  // la bitácora).
+  it("un error real al aplicar el evento (el upsert falla) responde 500, registra 'error'/'error_interno', y el error original se repropaga sin cambios", async () => {
+    const base = await buildTestDeps();
+    const deps = {
+      ...base.deps,
+      saasBillingWebhookSecret: WEBHOOK_SECRET,
+      saasBillingCustomerLookup: new FakeCustomerLookup({ cus_boom: base.ownerEmail }),
+    };
+    const superId = await conSuperadmin(deps);
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    coreRepo.upsertOrganizationBilling = async () => {
+      throw new Error("fallo real de Postgres en el upsert (simulado)");
+    };
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_boom", created: now, customer: "cus_boom", subscription: "sub_boom", tenantId: base.organizationId });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+
+    expect(res.status).toBe(500);
+    const fila = await ultimaFilaDeBitacora(deps, superId);
+    expect(fila).toMatchObject({ result: "error", reason: "error_interno", providerEventId: "evt_boom", organizationId: base.organizationId });
+  });
+
+  // Revisión de PR #153 (bloqueante 2): `registrarWebhook` es una "segunda
+  // red" -- `deps.coreRepo.recordBillingWebhookEvent` YA nunca lanza por
+  // contrato, pero nada probaba que si LO HICIERA de todos modos, la
+  // respuesta HTTP real del webhook (la que Stripe usa para decidir si
+  // reintenta) se quedara intacta. Ejercita el camino de éxito (200) y el de
+  // firma inválida (401) con la escritura de bitácora rota.
+  it("si recordBillingWebhookEvent lanza (violando su propio contrato), la respuesta HTTP del webhook no cambia -- éxito sigue 200", async () => {
+    const base = await buildTestDeps();
+    const deps = {
+      ...base.deps,
+      saasBillingWebhookSecret: WEBHOOK_SECRET,
+      saasBillingCustomerLookup: new FakeCustomerLookup({ cus_segunda_red: base.ownerEmail }),
+    };
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    coreRepo.recordBillingWebhookEvent = async () => {
+      throw new Error("bitácora rota (simulado) -- registrarWebhook debe atraparlo igual");
+    };
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_segunda_red", created: now, customer: "cus_segunda_red", subscription: "sub_segunda_red", tenantId: base.organizationId });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, procesado: true, estado: "aplicado" });
+  });
+
+  it("si recordBillingWebhookEvent lanza, el rechazo por firma inválida se sigue respondiendo 401 sin cambios", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    coreRepo.recordBillingWebhookEvent = async () => {
+      throw new Error("bitácora rota (simulado)");
+    };
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_1", created: Math.floor(Date.now() / 1000), customer: "cus_1", tenantId: base.organizationId });
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": "t=1,v1=deadbeef" }));
+
+    expect(res.status).toBe(401);
+  });
+});

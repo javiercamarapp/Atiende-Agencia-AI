@@ -19,6 +19,9 @@ import type {
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
   BillingWebhookEventSummaryRow,
+  BillingWebhookLogFilters,
+  BillingWebhookLogPage,
+  BillingWebhookLogRow,
   CoreRepository,
   CoreStaffRepository,
   CreateProspectoInput,
@@ -30,6 +33,7 @@ import type {
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
   ProspectoRow,
+  RecordBillingWebhookEventInput,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffInviteStatus,
@@ -277,6 +281,53 @@ function mapOrganizationBillingSuperadmin(row: OrganizationBillingSuperadminRawR
     currentPeriodEnd: row.current_period_end,
     lastAppliedEventUnix: row.last_applied_event_unix === null || row.last_applied_event_unix === undefined ? null : Number(row.last_applied_event_unix),
   };
+}
+
+// `core.list_billing_webhook_log_for_superadmin` — ver
+// `packages/db/migrations/0018_billing_webhook_registro.sql`.
+interface BillingWebhookLogRawRow {
+  readonly id: string;
+  readonly provider_event_id: string | null;
+  readonly event_type: string | null;
+  readonly organization_id: string | null;
+  readonly organization_name: string | null;
+  readonly organization_slug: string | null;
+  readonly result: BillingWebhookLogRow["result"];
+  readonly reason: string;
+  readonly created_at: string;
+  readonly total_count: string;
+}
+
+function mapBillingWebhookLog(row: BillingWebhookLogRawRow): BillingWebhookLogRow {
+  return {
+    id: row.id,
+    providerEventId: row.provider_event_id,
+    eventType: row.event_type,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    organizationSlug: row.organization_slug,
+    result: row.result,
+    reason: row.reason,
+    createdAt: row.created_at,
+  };
+}
+
+// Fase de compatibilidad `0018_billing_webhook_registro.sql` — ver el
+// comentario de cabecera de `isUndefinedFunctionError`/`findStaffForOrgAdmin`
+// arriba para el patrón completo (mergear a `main` despliega el código de
+// inmediato; la migración se aplica después, a mano). Advertencia una sola
+// vez por proceso, separada de `warnedAboutMissingOrgAdminFunctions` (son 2
+// migraciones distintas, cada una con su propia bandera).
+let warnedAboutMissingBillingWebhookLog = false;
+function warnMissingBillingWebhookLogOnce(): void {
+  if (warnedAboutMissingBillingWebhookLog) return;
+  warnedAboutMissingBillingWebhookLog = true;
+  console.warn(
+    "PostgresCoreRepository: core.record_billing_webhook_event/core.list_billing_webhook_log_for_superadmin " +
+      "no existen todavía (SQLSTATE 42883) -- degradando a un no-op best-effort (escritura) / 'no disponible " +
+      "aún' (lectura). Aplica packages/db/migrations/0018_billing_webhook_registro.sql (o su espejo en " +
+      "supabase/migrations/) para habilitar la bitácora de webhooks de billing.",
+  );
 }
 
 // Fase 3 caller-binding — SQLSTATE 42883 (`undefined_function`) es lo que Postgres
@@ -863,6 +914,58 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   async sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     await this.db.query(`select core.seal_billing_entity_order($1, $2);`, [entityId, createdUnix]);
+  }
+
+  // ---- Bitácora de webhooks (`0018_billing_webhook_registro.sql`) — ver el
+  // contrato completo (best-effort en escritura, "vacío honesto" en lectura
+  // ante SQLSTATE 42883) en `core-repository.ts`. ----
+
+  async recordBillingWebhookEvent(input: RecordBillingWebhookEventInput): Promise<void> {
+    try {
+      await this.db.query(`select core.record_billing_webhook_event($1, $2, $3, $4, $5);`, [
+        input.providerEventId,
+        input.eventType,
+        input.organizationId,
+        input.result,
+        input.reason,
+      ]);
+    } catch (err) {
+      if (isUndefinedFunctionError(err)) {
+        warnMissingBillingWebhookLogOnce();
+        return;
+      }
+      // Best-effort por contrato (ver el comentario de cabecera de
+      // `CoreRepository.recordBillingWebhookEvent` en `core-repository.ts`):
+      // CUALQUIER otro error (p.ej. una desconexión transitoria) se registra
+      // en stderr para diagnóstico, pero NUNCA se repropaga -- esta escritura
+      // jamás debe tumbar la respuesta real de `POST /billing/webhook`.
+      console.error("PostgresCoreRepository.recordBillingWebhookEvent: escritura best-effort falló (no bloquea el webhook):", err);
+    }
+  }
+
+  async listBillingWebhookLogForSuperadmin(callerId: string, filters: BillingWebhookLogFilters): Promise<BillingWebhookLogPage> {
+    try {
+      const { rows } = await this.db.query<BillingWebhookLogRawRow>(
+        `select id, provider_event_id, event_type, organization_id, organization_name, organization_slug, result, reason, created_at, total_count
+         from core.list_billing_webhook_log_for_superadmin($1, $2, $3, $4, $5, $6, $7, $8);`,
+        [
+          callerId,
+          filters.result ?? null,
+          filters.eventType ?? null,
+          filters.organizationId ?? null,
+          filters.desde ?? null,
+          filters.hasta ?? null,
+          Math.trunc(filters.limit),
+          Math.trunc(filters.offset),
+        ],
+      );
+      const total = rows[0] ? Number(rows[0].total_count) : 0;
+      return { disponible: true, rows: rows.map(mapBillingWebhookLog), total };
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      warnMissingBillingWebhookLogOnce();
+      return { disponible: false, rows: [], total: 0 };
+    }
   }
 
   // ---- /superadmin/facturacion — ver el contrato completo (y el límite honesto

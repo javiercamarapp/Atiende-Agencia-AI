@@ -31,6 +31,25 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 | **rentas** | Reservas, bloqueos, pricing, sincronización iCal con Airbnb/Booking/VRBO, finanzas y payouts a propietario, limpieza, onboarding self-service, portal de propietario, break-glass de superadmin (**solo lectura**). | Mensajería con huésped tiene aprobación humana real, pero **ningún cliente HTTP real de partner** (Airbnb/Vrbo/Booking.com) existe todavía — enviar un mensaje aprobado siempre falla hasta que se construya. |
 | **despachos** | CFDI/facturación, conciliación bancaria, migración de catálogo contable, cierre mensual, devolución de IVA, nómina, bookkeeping, declaraciones, cobranza, staff — panel completo. Correo real con disparo inline (además del cron diario) desde una acción real de staff, p.ej. `POST .../vencimientos/:id/escalar`. | Sin agente de WhatsApp/voz (es el único vertical solo-correo). Ver "Problemas conocidos" abajo. |
 
+## Voz (patrón oficial)
+
+Las 3 verticales con agente de voz (restaurantes, hoteles, citas) exponen
+Server Tools HTTP entrantes (`apps/api/src/routes/verticals/<vertical>/
+voice-tools.ts`) que ElevenLabs invoca por webhook durante una llamada en
+curso, autenticadas con un secreto dedicado (`x-atiende-tool-secret`,
+compartido de plataforma en restaurantes/citas, por-property en hoteles) —
+nunca `authMiddleware`/`Origin`, porque ElevenLabs no los manda. Este es el
+patrón oficial: **no requiere ninguna API key saliente de ElevenLabs**, el
+repo nunca inicia una llamada, solo la recibe.
+
+Existió un paquete `packages/voice-gateway` para la dirección saliente
+(signed URL de sesión, listado de voces, config de agente) — se retiró del
+árbol por falta de cualquier consumidor real (cero imports fuera de
+comentarios, ningún endpoint ni UI que lo llamara) y porque conectarlo de
+verdad exigía inventar esas superficies desde cero, fuera del alcance
+mecánico de una migración. Detalle completo y evidencia en
+`docs/CREDENCIALES.md` §"Voz (ElevenLabs) — patrón oficial".
+
 ## Problemas conocidos
 
 **Sesión de sistema sin acceso a `core.property` (verificado contra Postgres
@@ -50,6 +69,16 @@ datos de otro tenant) — invisible para los tests en memoria de este repo
 (nunca aplican RLS real), por eso pasó sin detectarse hasta correr contra
 Postgres real.
 
+## Servidores MCP (`packages/mcp-servers/`)
+
+Único con código real: **`@atiende/mcp-cfdi`** (timbrado/cancelación de CFDI
+de hospedaje, dual-PAC Finkok/SW Sapien). Las 9 carpetas reservadas que había
+para otros servidores MCP (`billing`, `channel-manager`, `energy`,
+`expediente`, `locks`, `pms`, `pos`, `scheduling`, `shared` — cada una solo
+con un `README.md`, sin código ni `package.json`) se retiraron el 19-sep-2026:
+ningún flujo real las invocaba y su sola presencia en el árbol sugería
+capacidades que el repo no tiene. Detalle en `packages/mcp-servers/README.md`.
+
 ## Superadmin (back office de plataforma)
 
 Dashboard, prospectos, "entrar a un panel" con sesión propia sin datos de
@@ -57,7 +86,11 @@ cliente real, Gasto de API (tope de LLM por organización/plataforma),
 Integraciones (`GET /superadmin/integraciones`, qué credencial falta pegar),
 Break-glass (acceso auditado y de solo lectura a datos de un tenant, hoy solo
 para rentas), Facturación (MRR/reconciliación de la suscripción SaaS propia de
-Atiende vía Stripe) y Salud operativa (`/superadmin/salud`,
+Atiende vía Stripe, con bitácora completa y filtrable de CADA intento de
+`POST /billing/webhook` — procesado/ignorado/rechazado/error, incluidos los
+rechazos por firma inválida que antes no quedaban registrados en ningún
+lado — ver `packages/db/migrations/0018_billing_webhook_registro.sql`) y
+Salud operativa (`/superadmin/salud`,
 `apps/api/src/routes/superadmin-salud.ts`: latidos de los 17 crons de
 `vercel.json` vía `withHeartbeat`, salud de las 6 colas `messaging_outbox`
 —citas/hoteles/restaurantes/despachos/rentas/licitaciones— y última corrida

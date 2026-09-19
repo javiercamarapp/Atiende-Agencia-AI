@@ -40,13 +40,6 @@ const EXCLUSIONS: ReadonlySet<string> = new Set([
   // plataforma que no es una credencial de integración" — se excluye a propósito
   // por si algún día se lee.
   "NODE_ENV",
-  // Solo mencionada dentro de un COMENTARIO (packages/voice-gateway/src/providers/
-  // elevenlabs-provider.ts) como ejemplo de "un script o entorno de desarrollo
-  // podría leerla así" -- ningún código ejecutable de este repo hace
-  // `process.env.ELEVENLABS_API_KEY` (verificado: el provider recibe la key vía
-  // `apiKeyProvider` inyectado, pensado para Supabase Vault en producción). Ver
-  // docs/CREDENCIALES.md, sección "Voz (ElevenLabs)".
-  "ELEVENLABS_API_KEY",
 ]);
 
 const SOURCE_ROOTS = ["apps/api/src", "apps/api/tests", "apps/worker/src", "apps/web/src", "packages"];

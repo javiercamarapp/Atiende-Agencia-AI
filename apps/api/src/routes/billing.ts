@@ -30,10 +30,50 @@ import {
   type LedgerStore,
   type TenantLookup,
 } from "@atiende/billing";
-import { OrganizationBillingAccessDeniedError, OrganizationNotFoundError, type OrganizationBillingRow } from "@atiende/db";
+import { OrganizationBillingAccessDeniedError, OrganizationNotFoundError, type OrganizationBillingRow, type RecordBillingWebhookEventInput } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, readTextCapped } from "../http-security.ts";
 import type { AppDeps } from "../deps.ts";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** `organizationId`/`tenantIdDelPayload` puede venir de metadata que el propio
+ *  caller del checkout escribió (ver `tenant-verification.ts`) -- nunca se
+ *  asume que es un UUID válido antes de pasarlo a `core.record_billing_
+ *  webhook_event` (`p_organization_id uuid`): un valor no-UUID haría fallar
+ *  el cast en Postgres. `null` cuando no lo es -- la bitácora simplemente
+ *  queda sin organización resuelta para esa fila, nunca lanza. */
+function organizationIdCandidate(value: string | null): string | null {
+  return value !== null && UUID_RE.test(value) ? value : null;
+}
+
+/** Best-effort por diseño (ver el comentario de cabecera de `packages/db/
+ *  migrations/0018_billing_webhook_registro.sql` y de `CoreRepository.
+ *  recordBillingWebhookEvent`): `deps.coreRepo.recordBillingWebhookEvent` YA
+ *  nunca lanza (atrapa todo internamente, incluida la migración sin aplicar
+ *  todavía -- SQLSTATE 42883) -- este `try/catch` es una segunda red, no la
+ *  primera. La escritura de la bitácora JAMÁS debe cambiar la respuesta real
+ *  del webhook: un proveedor de pagos reintenta según el código HTTP que
+ *  `POST /billing/webhook` responda, y esa respuesta tiene que seguir
+ *  reflejando SOLO el resultado real de procesar el evento. */
+async function registrarWebhook(deps: AppDeps, input: RecordBillingWebhookEventInput): Promise<void> {
+  try {
+    await deps.coreRepo.recordBillingWebhookEvent(input);
+  } catch (err) {
+    console.error("POST /billing/webhook: registrarWebhook (best-effort) falló:", err);
+  }
+}
+
+/** Extrae `id`/`type` de un payload que NI SIQUIERA tiene la forma mínima que
+ *  `normalizeStripeEvent` exige (devolvió `null`) -- solo para que la bitácora
+ *  de un evento "no reconocido" no quede totalmente vacía cuando esos 2
+ *  campos SÍ vinieron como texto plano, aunque el resto de la forma no sirva.
+ *  Nunca lanza, nunca expone nada del resto del payload. */
+function looseStringField(payload: unknown, field: "id" | "type"): string | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const value = (payload as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : null;
+}
 
 const MAX_CHECKOUT_BODY_BYTES = 2 * 1024;
 // Stripe puede mandar payloads grandes en eventos con muchos line items/mucha
@@ -241,6 +281,12 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const rawBody = await readTextCapped(c.req.raw, MAX_WEBHOOK_BODY_BYTES);
 
     if (!verificarFirmaWebhookStripe({ payload: rawBody, signatureHeader: c.req.header("stripe-signature") ?? null, secret: deps.saasBillingWebhookSecret })) {
+      // Rechazo SIN payload/cabecera de firma guardados (ver el comentario de
+      // cabecera de `0018_billing_webhook_registro.sql`) -- este es el ÚNICO
+      // `reason` de rechazo alcanzable por cualquiera en internet sin conocer
+      // el secreto del webhook, por eso el tope anti-inflado de la migración
+      // se acota justo a `result = 'rechazado'`.
+      await registrarWebhook(deps, { providerEventId: null, eventType: null, organizationId: null, result: "rechazado", reason: "firma_invalida" });
       throw Errors.unauthorized("Firma de webhook inválida.");
     }
 
@@ -248,6 +294,7 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     try {
       payload = JSON.parse(rawBody);
     } catch {
+      await registrarWebhook(deps, { providerEventId: null, eventType: null, organizationId: null, result: "rechazado", reason: "json_invalido" });
       throw Errors.validation("JSON inválido.");
     }
 
@@ -257,6 +304,13 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // (Stripe manda decenas de tipos que no nos interesan) -- ack silencioso,
       // NUNCA un reintento: ninguno de los dos casos se va a resolver
       // reintentando.
+      await registrarWebhook(deps, {
+        providerEventId: evento?.id ?? looseStringField(payload, "id"),
+        eventType: evento?.tipo ?? looseStringField(payload, "type"),
+        organizationId: null,
+        result: "ignorado",
+        reason: "evento_no_reconocido",
+      });
       return c.json({ ok: true, procesado: false });
     }
 
@@ -287,10 +341,28 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // `tenant-verification.ts`) que un reintento de Stripe no va a resolver
       // por sí solo, pero que tampoco se quiere silenciar con un ack -- queda
       // visible en el log de webhooks fallidos de Stripe.
+      //
+      // `verificacion.motivo` (`@atiende/billing::MotivoRechazo`) es LITERALMENTE
+      // el mismo vocabulario que `BillingWebhookLogReason` para estos 4 casos
+      // (ver `packages/db/migrations/0018_billing_webhook_registro.sql`) --
+      // nunca se traduce/reformula entre el motivo real y lo que queda guardado.
+      // `organizationIdCandidate` resuelve a `null` para 'tenant_id_ausente'
+      // (no hay id) y 'tenant_no_existe' (existe pero no es un id real -- la
+      // propia función SQL de todos modos lo descartaría si no fuera válido),
+      // y al id real para 'customer_no_coincide'/'email_no_coincide' (el
+      // tenant SÍ existe, solo el customer/email no cruzó).
+      await registrarWebhook(deps, {
+        providerEventId: evento.id,
+        eventType: evento.tipo,
+        organizationId: organizationIdCandidate(evento.tenantIdDelPayload),
+        result: "rechazado",
+        reason: verificacion.motivo,
+      });
       throw Errors.conflict(`Webhook rechazado (${verificacion.motivo}): ${verificacion.detalle}`);
     }
 
     const tenantId = evento.tenantIdDelPayload!; // ya no puede ser null: `verificarTenantDelWebhook` lo hubiera rechazado arriba.
+    const organizationId = organizationIdCandidate(tenantId);
 
     const ledger: LedgerStore = {
       marcarVisto: (eventId) => deps.coreRepo.markBillingWebhookEventSeen(eventId),
@@ -298,22 +370,40 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       sellarOrden: (entidadId, creadoUnix) => deps.coreRepo.sealBillingEntityOrder(entidadId, creadoUnix),
     };
 
-    const resultado = await aplicarConLedger(ledger, {
-      eventId: evento.id,
-      // La ENTIDAD que el ledger ordena es el customer de Stripe (mismo criterio
-      // que `webhook-integration.spec.ts`: "la 'entidad' para el orden es la
-      // suscripción/customer") -- dos eventos del mismo customer se comparan
-      // entre sí aunque uno sea `checkout.session.completed` y el otro
-      // `customer.subscription.updated`.
-      entidadId: evento.proveedorCustomerId,
-      creadoUnix: evento.creadoUnix,
-      aplicar: async () => {
-        const estado =
-          evento.tipo === "checkout.session.completed"
-            ? derivarEstadoDeCheckoutCompleted(evento.datos, await deps.coreRepo.getOrganizationBillingForWebhook(tenantId))
-            : derivarEstadoDeSubscription(evento.datos);
-        return deps.coreRepo.upsertOrganizationBilling({ organizationId: tenantId, ...estado });
-      },
+    let resultado: Awaited<ReturnType<typeof aplicarConLedger<OrganizationBillingRow>>>;
+    try {
+      resultado = await aplicarConLedger(ledger, {
+        eventId: evento.id,
+        // La ENTIDAD que el ledger ordena es el customer de Stripe (mismo criterio
+        // que `webhook-integration.spec.ts`: "la 'entidad' para el orden es la
+        // suscripción/customer") -- dos eventos del mismo customer se comparan
+        // entre sí aunque uno sea `checkout.session.completed` y el otro
+        // `customer.subscription.updated`.
+        entidadId: evento.proveedorCustomerId,
+        creadoUnix: evento.creadoUnix,
+        aplicar: async () => {
+          const estado =
+            evento.tipo === "checkout.session.completed"
+              ? derivarEstadoDeCheckoutCompleted(evento.datos, await deps.coreRepo.getOrganizationBillingForWebhook(tenantId))
+              : derivarEstadoDeSubscription(evento.datos);
+          return deps.coreRepo.upsertOrganizationBilling({ organizationId: tenantId, ...estado });
+        },
+      });
+    } catch (err) {
+      // El propio `aplicar()` de arriba puede lanzar (p.ej. un error real de
+      // Postgres al hacer el upsert) -- se registra como 'error' y se
+      // RELANZA tal cual (nunca se cambia el 500/comportamiento real que ya
+      // producía este catch antes de que existiera esta bitácora).
+      await registrarWebhook(deps, { providerEventId: evento.id, eventType: evento.tipo, organizationId, result: "error", reason: "error_interno" });
+      throw err;
+    }
+
+    await registrarWebhook(deps, {
+      providerEventId: evento.id,
+      eventType: evento.tipo,
+      organizationId,
+      result: resultado.estado === "aplicado" ? "procesado" : "ignorado",
+      reason: resultado.estado,
     });
 
     return c.json({ ok: true, procesado: true, estado: resultado.estado });

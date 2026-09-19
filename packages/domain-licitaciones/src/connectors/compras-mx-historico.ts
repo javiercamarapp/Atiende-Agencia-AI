@@ -87,7 +87,7 @@ export interface ComprasMxHistoricoConnectorConfig {
   readonly csvUrl?: string;
   /** Nombre a usar como `contractingBody` -- el CSV NO trae columna de dependencia/entidad convocante (limitación del dataset, no de este conector), así que se usa el nombre documentado de la entidad publicadora como mejor aproximación disponible (mismo criterio que el origen). */
   readonly publishingEntity?: string;
-  /** Inyectable para pruebas (mismo patrón que `MetaGraphClient.fetchImpl`/proveedores de voice-gateway, ver `packages/whatsapp-gateway/src/providers/meta-graph-client.ts`) -- default `globalThis.fetch` real. */
+  /** Inyectable para pruebas (mismo patrón que `MetaGraphClient.fetchImpl`, ver `packages/whatsapp-gateway/src/providers/meta-graph-client.ts`) -- default `globalThis.fetch` real. */
   readonly fetchImpl?: typeof fetch;
 }
 

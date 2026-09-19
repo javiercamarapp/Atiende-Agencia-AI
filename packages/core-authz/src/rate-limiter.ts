@@ -51,8 +51,8 @@ interface Bucket {
 /**
  * Un `TokenBucketRateLimiter` independiente por llave (`Map<string, Bucket>`).
  * Mismo algoritmo exacto de refill que `TokenBucketRateLimiter` en
- * mcp-servers/shared/src/rate-limiter.ts — ver ese archivo para el derivado
- * de un solo bucket.
+ * hoteles/packages/mcp-servers/shared/src/rate-limiter.ts (repo origen externo,
+ * no este monorepo) — ver ese archivo para el derivado de un solo bucket.
  */
 export class InMemoryRateLimiter implements RateLimiter {
   private readonly buckets = new Map<string, Bucket>();
