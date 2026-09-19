@@ -21,7 +21,8 @@
     "db:migrate": "node packages/db/src/cli.ts migrate",
     "db:seed": "node packages/db/src/cli.ts seed",
     "audit:deps": "npm audit --audit-level=high",
-    "verify:migration-versions": "node --experimental-strip-types scripts/verify-migration-versions/check-migration-versions.ts"
+    "verify:migration-versions": "node --experimental-strip-types scripts/verify-migration-versions/check-migration-versions.ts",
+    "verify:env": "node --experimental-strip-types scripts/verify-env/verify-env.ts"
   },
   "devDependencies": {
     "@atiende/core-ratelimit": "*",
