@@ -63,7 +63,9 @@ const ORG_HOTELES = {
   mrrMxn: 890,
 };
 
-function stubFetch(handlers: { resumen?: unknown; organizaciones?: unknown; webhooks?: unknown; post?: (url: string, body: unknown) => Response | undefined }) {
+const BITACORA_VACIA = { disponible: true, rows: [], total: 0 };
+
+function stubFetch(handlers: { resumen?: unknown; organizaciones?: unknown; webhooks?: unknown; bitacora?: unknown; post?: (url: string, body: unknown) => Response | undefined }) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
       const body = init.body ? JSON.parse(String(init.body)) : null;
@@ -72,6 +74,7 @@ function stubFetch(handlers: { resumen?: unknown; organizaciones?: unknown; webh
       return jsonResponse({ url: "https://checkout.stripe.com/test/abc" });
     }
     if (url.includes("/superadmin/facturacion/resumen")) return jsonResponse(handlers.resumen ?? RESUMEN_VACIO);
+    if (url.includes("/superadmin/facturacion/webhooks-bitacora")) return jsonResponse(handlers.bitacora ?? BITACORA_VACIA);
     if (url.includes("/superadmin/facturacion/organizaciones")) return jsonResponse(handlers.organizaciones ?? { organizaciones: [] });
     if (url.includes("/superadmin/facturacion/webhooks-recientes")) return jsonResponse(handlers.webhooks ?? { eventos: [], total: 0 });
     throw new Error(`fetch inesperado en el test: ${url}`);
@@ -190,5 +193,52 @@ describe("SuperAdminFacturacionPage", () => {
 
     expect(document.body.textContent).toContain("Stripe no está configurado en este entorno");
     expect(document.body.querySelector('a[href="/superadmin/integraciones"]')).not.toBeNull();
+  });
+});
+
+describe("SuperAdminFacturacionPage — bitácora completa de webhooks", () => {
+  it("renderiza filas reales, incluido un rechazo sin organización resuelta", async () => {
+    stubFetch({
+      bitacora: {
+        disponible: true,
+        total: 2,
+        rows: [
+          { id: "2", providerEventId: "evt_ok", eventType: "checkout.session.completed", organizationId: "org-1", organizationName: "Hotel Test", organizationSlug: "hotel-test", result: "procesado", reason: "aplicado", createdAt: "2026-02-01T00:00:00.000Z" },
+          { id: "1", providerEventId: null, eventType: null, organizationId: null, organizationName: null, organizationSlug: null, result: "rechazado", reason: "firma_invalida", createdAt: "2026-01-31T00:00:00.000Z" },
+        ],
+      },
+    });
+    rendered = renderPage();
+    await esperarCarga();
+
+    expect(rendered.container.textContent).toContain("Bitácora completa de webhooks");
+    expect(rendered.container.textContent).toContain("Procesado");
+    expect(rendered.container.textContent).toContain("Rechazado");
+    expect(rendered.container.textContent).toContain("Firma inválida");
+    expect(rendered.container.textContent).toContain("Hotel Test");
+    expect(rendered.container.textContent).toContain("Sin resolver");
+  });
+
+  it("cuando la migración todavía no se aplicó (disponible: false), muestra el vacío honesto, nunca un error", async () => {
+    stubFetch({ bitacora: { disponible: false, rows: [], total: 0 } });
+    rendered = renderPage();
+    await esperarCarga();
+
+    expect(rendered.container.textContent).toContain("no está disponible todavía en este ambiente");
+    expect(rendered.container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("filtrar por resultado arma el query param correcto y resetea la página", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+
+    const select = rendered.container.querySelector('select[aria-label="Filtrar por resultado"]') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    changeValue(select, "rechazado");
+    await esperarCarga();
+
+    const ultimaLlamada = fetchMock.mock.calls.map((c) => String(c[0])).find((u) => u.includes("/webhooks-bitacora") && u.includes("result="));
+    expect(ultimaLlamada).toContain("result=rechazado");
   });
 });

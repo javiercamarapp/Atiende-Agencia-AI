@@ -12,7 +12,7 @@
 // disponible sin precio configurado") -- este archivo NUNCA calcula ni
 // inventa un número, solo formatea lo que la API ya resolvió.
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { AlertTriangle, Building2, Calendar, Copy, ExternalLink, Link2, RefreshCw, ScaleIcon, TrendingDown, Webhook } from "lucide-react";
+import { AlertTriangle, Building2, Calendar, ChevronLeft, ChevronRight, Copy, ExternalLink, History, Link2, RefreshCw, ScaleIcon, TrendingDown, Webhook } from "lucide-react";
 import {
   Badge,
   Button,
@@ -80,6 +80,58 @@ interface EventoWebhook {
   readonly processedAt: string;
 }
 
+// Bitácora completa de `POST /billing/webhook` (`core.billing_webhook_log`,
+// `GET /superadmin/facturacion/webhooks-bitacora`) -- a diferencia del feed
+// ligero de arriba (`EventoWebhook`), esta incluye TODO intento (con o sin
+// éxito), organización resuelta, y es filtrable/paginada.
+type ResultadoBitacora = "procesado" | "ignorado" | "rechazado" | "error";
+
+interface FilaBitacora {
+  readonly id: string;
+  readonly providerEventId: string | null;
+  readonly eventType: string | null;
+  readonly organizationId: string | null;
+  readonly organizationName: string | null;
+  readonly organizationSlug: string | null;
+  readonly result: ResultadoBitacora;
+  readonly reason: string;
+  readonly createdAt: string;
+}
+
+interface PaginaBitacora {
+  readonly disponible: boolean;
+  readonly rows: readonly FilaBitacora[];
+  readonly total: number;
+}
+
+const BITACORA_LIMIT = 20;
+
+const NOMBRE_RESULTADO_BITACORA: Record<ResultadoBitacora, string> = {
+  procesado: "Procesado",
+  ignorado: "Ignorado",
+  rechazado: "Rechazado",
+  error: "Error",
+};
+
+const NOMBRE_MOTIVO_BITACORA: Record<string, string> = {
+  aplicado: "Aplicado",
+  duplicado: "Duplicado (reintento)",
+  fuera_de_orden: "Fuera de orden (descartado)",
+  evento_no_reconocido: "Tipo de evento no manejado",
+  firma_invalida: "Firma inválida",
+  json_invalido: "JSON inválido",
+  tenant_id_ausente: "Sin tenant_id en la metadata",
+  tenant_no_existe: "tenant_id no corresponde a ninguna organización",
+  customer_no_coincide: "Customer no coincide (posible replay)",
+  email_no_coincide: "Email no coincide (posible replay)",
+  error_interno: "Error interno al procesar",
+};
+
+function badgeResultadoBitacora(result: ResultadoBitacora) {
+  const variant = result === "procesado" ? "default" : result === "rechazado" || result === "error" ? "destructive" : "secondary";
+  return <Badge variant={variant}>{NOMBRE_RESULTADO_BITACORA[result]}</Badge>;
+}
+
 const NOMBRE_VERTICAL: Record<string, string> = {
   hoteles: "Hoteles",
   restaurantes: "Restaurantes",
@@ -97,6 +149,12 @@ const NOMBRE_ESTADO: Record<EstadoBilling, string> = {
 };
 
 const FILTROS: readonly FiltroEstado[] = ["todos", "activa", "pago_pendiente", "sin_suscripcion", "cancelada"];
+
+// Mismo estilo que `SELECT_CLASES` de `Prospectos.tsx` -- no hay componente
+// `Select` en `@atiende/ui` todavía, así que los filtros nativos de esta
+// pantalla siguen el mismo patrón que el resto del back office.
+const SELECT_CLASES =
+  "h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 function mxn(monto: number | null): string {
   return monto === null ? "No disponible" : `$${formatMoney(monto, 2)} MXN`;
@@ -275,6 +333,36 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
   const [cargando, setCargando] = useState(false);
   const [detalle, setDetalle] = useState<OrganizacionFacturacion | null>(null);
 
+  // Bitácora completa de webhooks — estado/carga separados del resto de la
+  // pantalla a propósito: cambiar un filtro de la bitácora nunca debe volver
+  // a pedir resumen/organizaciones/feed ligero (y viceversa).
+  const [bitacora, setBitacora] = useState<PaginaBitacora | null>(null);
+  const [bitacoraError, setBitacoraError] = useState<string | null>(null);
+  const [bitacoraCargando, setBitacoraCargando] = useState(false);
+  const [filtroResultado, setFiltroResultado] = useState<ResultadoBitacora | "todos">("todos");
+  const [filtroOrganizationId, setFiltroOrganizationId] = useState("");
+  const [bitacoraOffset, setBitacoraOffset] = useState(0);
+
+  async function cargarBitacora() {
+    setBitacoraError(null);
+    setBitacoraCargando(true);
+    try {
+      const params = new URLSearchParams({ limit: String(BITACORA_LIMIT), offset: String(bitacoraOffset) });
+      if (filtroResultado !== "todos") params.set("result", filtroResultado);
+      if (filtroOrganizationId.trim()) params.set("organizationId", filtroOrganizationId.trim());
+      const pagina = await fetchJson<PaginaBitacora>(apiBaseUrl, token, `/superadmin/facturacion/webhooks-bitacora?${params.toString()}`);
+      setBitacora(pagina);
+    } catch {
+      setBitacoraError("No se pudo cargar la bitácora de webhooks.");
+    } finally {
+      setBitacoraCargando(false);
+    }
+  }
+
+  useEffect(() => {
+    void cargarBitacora();
+  }, [apiBaseUrl, token, filtroResultado, filtroOrganizationId, bitacoraOffset]);
+
   async function cargar() {
     setError(null);
     setCargando(true);
@@ -369,8 +457,8 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
             Últimos eventos de webhook (feed de plataforma)
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            No está ligado a una organización específica ni incluye eventos rechazados — `core.billing_webhook_event` hoy solo guarda el id y la hora de cada evento ya aplicado con éxito. Úsalo para confirmar
-            "¿sigue vivo el webhook?", no como bitácora por organización.
+            Feed ligero (`core.billing_webhook_event`, solo id y hora de cada evento ya aplicado con éxito) — úsalo para confirmar "¿sigue vivo el webhook?". Para diagnosticar un cobro que no se reflejó,
+            incluidos los webhooks rechazados, usa la bitácora completa de abajo.
           </p>
         </CardHeader>
         <CardContent>
@@ -384,6 +472,108 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
                   <span className="text-muted-foreground">{new Date(e.processedAt).toLocaleString("es-MX")}</span>
                 </div>
               ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-3">
+          <CardTitle className="flex items-center gap-2">
+            <History className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />
+            Bitácora completa de webhooks
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Cada intento de <code className="font-mono">POST /billing/webhook</code>, con o sin éxito — procesados, ignorados, y RECHAZADOS (firma inválida, evento desconocido, organización no resuelta, error al
+            procesar), sin datos de tarjeta ni payload crudo.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={filtroResultado}
+              onChange={(e) => {
+                setFiltroResultado(e.target.value as ResultadoBitacora | "todos");
+                setBitacoraOffset(0);
+              }}
+              className={SELECT_CLASES}
+              aria-label="Filtrar por resultado"
+            >
+              <option value="todos">Todos los resultados</option>
+              {(Object.keys(NOMBRE_RESULTADO_BITACORA) as ResultadoBitacora[]).map((r) => (
+                <option key={r} value={r}>
+                  {NOMBRE_RESULTADO_BITACORA[r]}
+                </option>
+              ))}
+            </select>
+            <Input
+              value={filtroOrganizationId}
+              onChange={(e) => {
+                setFiltroOrganizationId(e.target.value);
+                setBitacoraOffset(0);
+              }}
+              placeholder="Filtrar por id de organización…"
+              className="h-8 w-64 text-xs"
+              aria-label="Filtrar por id de organización"
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {bitacoraError && !bitacora ? (
+            <EstadoError mensaje={bitacoraError} onReintentar={() => void cargarBitacora()} />
+          ) : bitacoraCargando && !bitacora ? (
+            <EstadoCargando etiqueta="Cargando bitácora…" />
+          ) : !bitacora ? null : !bitacora.disponible ? (
+            <EstadoVacio mensaje="La bitácora completa no está disponible todavía en este ambiente (la migración 0018_billing_webhook_registro.sql no se ha aplicado a esta base real)." />
+          ) : bitacora.rows.length === 0 ? (
+            <EstadoVacio mensaje="Ningún webhook coincide con este filtro todavía." />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cuándo</TableHead>
+                      <TableHead>Resultado</TableHead>
+                      <TableHead>Motivo</TableHead>
+                      <TableHead>Tipo de evento</TableHead>
+                      <TableHead>Organización</TableHead>
+                      <TableHead>Id de evento</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {bitacora.rows.map((f) => (
+                      <TableRow key={f.id}>
+                        <TableCell className="text-muted-foreground whitespace-nowrap">{new Date(f.createdAt).toLocaleString("es-MX")}</TableCell>
+                        <TableCell>{badgeResultadoBitacora(f.result)}</TableCell>
+                        <TableCell>{NOMBRE_MOTIVO_BITACORA[f.reason] ?? f.reason}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{f.eventType ?? "—"}</TableCell>
+                        <TableCell>{f.organizationName ? `${f.organizationName} (${f.organizationSlug})` : <span className="text-muted-foreground">Sin resolver</span>}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{f.providerEventId ?? "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span>
+                  {bitacoraOffset + 1}–{Math.min(bitacoraOffset + BITACORA_LIMIT, bitacora.total)} de {bitacora.total}
+                </span>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" disabled={bitacoraOffset === 0 || bitacoraCargando} onClick={() => setBitacoraOffset(Math.max(0, bitacoraOffset - BITACORA_LIMIT))}>
+                    <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
+                    Anterior
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={bitacoraOffset + BITACORA_LIMIT >= bitacora.total || bitacoraCargando}
+                    onClick={() => setBitacoraOffset(bitacoraOffset + BITACORA_LIMIT)}
+                  >
+                    Siguiente
+                    <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
