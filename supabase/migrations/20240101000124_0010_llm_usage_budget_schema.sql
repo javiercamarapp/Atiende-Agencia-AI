@@ -57,9 +57,26 @@
 -- `hoteles.record_fraude_audit_log`: `security definer` para poder escribir
 -- pese a que no hay `service_role` aprovisionado en este monorepo, GRANT a
 -- `authenticated` (nunca solo a `service_role`, que no existe aquí -- bug ya
--- corregido 7 veces en este repo), sin chequeo de caller porque no hay ningún
--- caller de negocio que autorizar (la autoridad real es "solo el backend las
--- invoca", igual que el resto de las funciones internas de este monorepo).
+-- corregido 7 veces en este repo). Reciben `p_organization_id` como parámetro
+-- plano (sin `p_caller_id` que autorizar, a diferencia de las funciones del
+-- back office de abajo) — así que, a diferencia de
+-- `hoteles.record_fraude_audit_log` (auditoría append-only, de bajo impacto si
+-- se abusa), SÍ EXIGEN por dentro `auth.uid() is null` (hallazgo real de
+-- revisión de PR: `core` está expuesto por PostgREST vía
+-- `supabase/config.toml::api.schemas`, y estas 3 funciones controlan gasto y
+-- topes reales — sin el guard, cualquier sesión `authenticated` de cualquier
+-- tenant podía invocarlas por RPC directo con la `organization_id` de OTRO
+-- tenant y agotar su tope mensual, o el de plataforma completa, por DoS).
+-- Mismo patrón EXACTO que las 6 funciones de
+-- `packages/domain-hoteles/migrations/004_voz_whatsapp_fase2.sql`
+-- (endurecidas en `017_rpc_anti_duplicado_authenticated_grants.sql`) y
+-- `hoteles.apply_cfdi_webhook_status`: `if auth.uid() is not null then raise
+-- exception ... using errcode = '42501'; end if;` como primera línea del
+-- cuerpo. Verificado (no asumido): las 3 SIEMPRE se invocan dentro de
+-- `engine.withAppSession({ userId: null }, ...)` — ver
+-- `apps/api/src/production/llm-usage-gateway-adapters.ts`/
+-- `llm-usage-repository.ts`, únicos call sites de `PostgresLlmUsageRepository`
+-- en todo el repo — así que el guard nunca frena una llamada real del gateway.
 
 create table core.llm_usage_daily (
   id uuid primary key default gen_random_uuid(),
@@ -159,11 +176,34 @@ as $$
 $$;
 
 -- ── Funciones INTERNAS (solo el backend las invoca, sesión de sistema, sin
--- `p_caller_id` -- ver el comentario de cabecera de esta migración) ──────────
+-- `p_caller_id` -- ver el comentario de cabecera de esta migración). Las 3
+-- EXIGEN `auth.uid() is null` (revisión de PR -- antes solo lo decía el
+-- comentario, ahora lo hace cumplir la propia función, mismo patrón que
+-- `004_voz_whatsapp_fase2.sql`/`017_rpc_anti_duplicado_authenticated_grants.sql`
+-- de domain-hoteles) ──────────
 
 -- Registro de uso best-effort -- UPSERT que ACUMULA sobre el agregado del día
 -- (nunca reemplaza). `p_fallback_used`: true si el proveedor que respondió no
 -- era el primero de la escalera (ver `GatewayCallResult.fallbackUsed`).
+--
+-- Guard `auth.uid() is not null -> 42501`: MISMO patrón EXACTO que las 6
+-- funciones de `packages/domain-hoteles/migrations/004_voz_whatsapp_fase2.sql`
+-- (endurecidas en `017_rpc_anti_duplicado_authenticated_grants.sql`) y
+-- `hoteles.apply_cfdi_webhook_status`
+-- (`020_cfdi_webhook_status_security_definer.sql`). Hallazgo real (revisión de
+-- PR): esta función es `security definer` + GRANT a `authenticated` y recibe
+-- `p_organization_id` como parámetro plano, SIN este guard -- cualquier sesión
+-- autenticada (staff de CUALQUIER tenant, o cualquier cliente con un JWT
+-- `authenticated` de Supabase, ver `supabase/config.toml::api.schemas` que
+-- expone `core` por PostgREST) podía invocarla por RPC directo para inflar
+-- `llm_usage_daily` de una organización ajena -- el comentario de cabecera de
+-- esta migración YA decía "solo el backend las invoca, sesión de sistema" pero
+-- nada lo hacía cumplir. Verificado (`apps/api/src/production/llm-usage-
+-- gateway-adapters.ts`/`llm-usage-repository.ts`): las tres funciones internas
+-- de esta migración SIEMPRE se llaman dentro de
+-- `engine.withAppSession({ userId: null }, ...)` -- nunca dentro de una sesión
+-- de staff -- así que el guard es seguro (nunca frena una llamada real del
+-- gateway, solo bloquea un RPC directo con `auth.uid()` real).
 create or replace function core.record_llm_usage(
   p_organization_id uuid,
   p_vertical text,
@@ -182,6 +222,10 @@ security definer
 set search_path = core, pg_temp
 as $$
 begin
+  if auth.uid() is not null then
+    raise exception 'record_llm_usage es solo para la sesión de sistema' using errcode = '42501';
+  end if;
+
   insert into core.llm_usage_daily (
     organization_id, usage_date, vertical, role, provider_id, model, lane,
     tokens_in, tokens_out, cost_micro_usd, call_count, fallback_call_count
@@ -223,6 +267,13 @@ grant execute on function core.record_llm_usage(uuid, text, text, text, text, te
 -- la optimización natural es un lock por-organización más un contador
 -- agregado de plataforma actualizado con `for update`, no una reescritura de
 -- este contrato.
+-- Guard `auth.uid() is not null -> 42501`: ver el comentario de
+-- `core.record_llm_usage` arriba -- mismo hallazgo, mismo remedio. Sin este
+-- guard, cualquier sesión autenticada podía llamar
+-- `reserve_llm_monthly_budget(<organización ajena>, <id>, <monto enorme>)` por
+-- RPC directo y agotar el tope MENSUAL de otra organización (o el de
+-- plataforma completa, que es compartido entre todas) -- denegación de
+-- servicio real del LLM para el resto de las organizaciones.
 create or replace function core.reserve_llm_monthly_budget(
   p_organization_id uuid,
   p_reservation_id text,
@@ -240,6 +291,10 @@ declare
   v_org_total bigint;
   v_platform_total bigint;
 begin
+  if auth.uid() is not null then
+    raise exception 'reserve_llm_monthly_budget es solo para la sesión de sistema' using errcode = '42501';
+  end if;
+
   if p_amount_micro_usd <= 0 then
     raise exception 'reserve_llm_monthly_budget: el monto a reservar debe ser positivo' using errcode = '22023';
   end if;
@@ -285,18 +340,29 @@ grant execute on function core.reserve_llm_monthly_budget(uuid, text, bigint) to
 -- Liquida una reserva ya hecha al costo real -- no-op (idempotente) si
 -- `p_reservation_id` no existe, mismo criterio que
 -- `InMemoryBudgetLedgerStore.settle`/`InMemoryOrgMonthlyBudgetStore.settle`.
+--
+-- Guard `auth.uid() is not null -> 42501`: ver el comentario de
+-- `core.record_llm_usage` más arriba -- mismo hallazgo, mismo remedio. Pasa de
+-- `language sql` a `language plpgsql` únicamente para poder expresar el `if`
+-- del guard (un solo `update`, sin cambio de comportamiento del UPDATE en sí).
 create or replace function core.settle_llm_monthly_budget(
   p_reservation_id text,
   p_actual_micro_usd bigint
 )
 returns void
-language sql
+language plpgsql
 security definer
 set search_path = core, pg_temp
 as $$
+begin
+  if auth.uid() is not null then
+    raise exception 'settle_llm_monthly_budget es solo para la sesión de sistema' using errcode = '42501';
+  end if;
+
   update core.llm_monthly_reservation
   set amount_micro_usd = greatest(0, coalesce(p_actual_micro_usd, amount_micro_usd))
   where id = p_reservation_id;
+end;
 $$;
 
 revoke all on function core.settle_llm_monthly_budget(text, bigint) from public;
