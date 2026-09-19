@@ -120,7 +120,7 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     id: "resend-correo",
     nombre: "Resend (correo transaccional)",
     habilita:
-      "Envío real de correo — drena el canal 'email' de messaging_outbox de citas/hoteles/restaurantes/despachos/licitaciones/rentas. Sin RESEND_API_KEY, cada job de correo falla explícito (nunca se marca 'sent' sin que Resend lo haya aceptado de verdad).",
+      "Envío real de correo — drena el canal 'email' de messaging_outbox de citas/hoteles/restaurantes/despachos/licitaciones/rentas. Sin RESEND_API_KEY, ningún job se reclama (queda 'pending' intacto, cero intentos quemados, ver fix a2b); con la key configurada, cada job falla explícito si Resend lo rechaza (nunca se marca 'sent' sin que Resend lo haya aceptado de verdad).",
     variables: ["RESEND_API_KEY"],
   },
 

@@ -19,7 +19,7 @@ import type { RangoFechas } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { runRentasEmailDispatch, triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
+import { INLINE_BATCH_SIZE, runRentasEmailDispatch, triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -164,7 +164,7 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
       // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
       // sistema (runRentasEmailDispatch ya pasa el guard auth.uid() is null).
-      c.get("postCommitTasks").push(() => runRentasEmailDispatch(deps).then(() => undefined));
+      c.get("postCommitTasks").push(() => runRentasEmailDispatch(deps, INLINE_BATCH_SIZE).then(() => undefined));
 
       return c.json({ id: resultado.ocupacionId, conflictosCapaCruzada: resultado.conflictosCapaCruzada.length }, 201);
     } catch (err) {

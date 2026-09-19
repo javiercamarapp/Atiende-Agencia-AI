@@ -48,16 +48,23 @@ import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-hear
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
-const INLINE_BATCH_SIZE = 5;
+export const INLINE_BATCH_SIZE = 5;
 
 /** Cuerpo real de la ruta de cron — extraído para que
  *  `triggerLicitacionesEmailDispatchInline` no duplique la llamada a
  *  `dispatchPendingEmailJobs`; a diferencia del disparo inline, ESTA función
- *  abre su propia sesión de sistema (correcto para el cron). */
-export async function runLicitacionesEmailDispatch(deps: AppDeps): Promise<LicitacionesEmailDispatchSummary> {
+ *  abre su propia sesión de sistema (correcto para el cron).
+ *
+ * Fix a2b (parte B) -- `batchSize` opcional, mismo criterio que
+ * `runHotelesEmailDispatch`. El único call site real de este cron hoy es la
+ * ruta `/internal/licitaciones/email-dispatch` de abajo (SIN argumento, batch
+ * completo); licitaciones no encola este drenado en `postCommitTasks` (su
+ * único disparo inline, `triggerLicitacionesEmailDispatchInline`, ya corre en
+ * sesión de sistema propia, ver comentario de esa función). */
+export async function runLicitacionesEmailDispatch(deps: AppDeps, batchSize?: number): Promise<LicitacionesEmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const repo = deps.licitacionesRepo(db);
-    return dispatchPendingEmailJobs(repo, deps.env.resend);
+    return dispatchPendingEmailJobs(repo, deps.env.resend, { batchSize });
   });
 }
 
@@ -80,16 +87,43 @@ export async function runLicitacionesEmailDispatch(deps: AppDeps): Promise<Licit
  * es defensa en profundidad (misma función que las otras 5 verticales,
  * protegida igual por si un futuro call site la invoca desde sesión de staff),
  * no la corrección de un bug activo en licitaciones.
+ *
+ * Fix a2b (parte C) — el `exec("SAVEPOINT ...")` ahora corre DENTRO del
+ * `try` (antes corría antes, sin protección): si la transacción YA venía
+ * abortada por una causa ANTERIOR a este trigger, ese `exec` en sí lanza
+ * 25P02 -- sin el `try` alrededor, esa excepción se propagaba tal cual al
+ * caller, contradiciendo el "nunca se propaga" de este docstring.
+ *
+ * Corrección (revisión independiente PR #168) — la versión anterior de este
+ * fix tragaba SIEMPRE ese 25P02, incluso cuando la transacción YA venía
+ * abortada por una causa AJENA a este trigger. Eso convertía un 500 honesto
+ * (el `exec` se propagaba sin el `try`, el `catch` de `withAppSession` hacía
+ * el ROLLBACK real) en un 2xx con el barrido de ESTE MISMO request perdido:
+ * sin savepoint que recuperar, el `commit;` final de
+ * `managed-postgres-engine.ts` sobre la transacción abortada se convierte en
+ * un ROLLBACK silencioso. Ahora se distingue con `savepointTaken`: si el
+ * SAVEPOINT mismo falla (nunca llegó a tomarse), no hay nada que este
+ * trigger pueda proteger con un `ROLLBACK TO SAVEPOINT` -- se RELANZA, para
+ * que el caller reciba el 5xx honesto. Solo cuando el SAVEPOINT SÍ se tomó
+ * (la transacción estaba sana al entrar) y el fallo ocurre DESPUÉS se hace
+ * el `ROLLBACK TO SAVEPOINT` best-effort sin relanzar -- ese es el único
+ * caso que este SAVEPOINT existe para aislar.
  */
 export async function triggerLicitacionesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, licitacionesRepo: LicitacionesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  await db.exec("SAVEPOINT sp_inline_email_dispatch");
+  let savepointTaken = false;
   try {
+    await db.exec("SAVEPOINT sp_inline_email_dispatch");
+    savepointTaken = true;
     const summary = await dispatchPendingEmailJobs(licitacionesRepo, deps.env.resend, { batchSize });
     await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
       console.error(`licitaciones email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    if (!savepointTaken) {
+      console.error("licitaciones email-dispatch inline: la transacción ya venía abortada antes de este trigger, relanzando:", err);
+      throw err;
+    }
     try {
       await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
       await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
@@ -163,8 +197,12 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
     // organización), misma sesión de sistema que las demás rutas internas.
     return withHeartbeat(deps, "/internal/licitaciones/email-dispatch", async () => {
       const summary = await runLicitacionesEmailDispatch(deps);
+      // Fix a2b (parte A) -- sin RESEND_API_KEY, `summary.notConfigured` es
+      // true y `failed`/`dead` quedan en 0 (nunca se reclamó nada): estado
+      // esperado, reflejado explícito en `status`.
       return c.json({
         ok: true,
+        status: summary.notConfigured ? "not_configured" : "ok",
         processed: summary.processed,
         sent: summary.sent,
         failed: summary.failed,
