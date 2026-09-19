@@ -1697,6 +1697,14 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     return { evaluatedContracts: candidates.length, alertsCreated: created.length, alerts: created };
   }
 
+  /** El repositorio en memoria no modela RLS/sesión de sistema -- misma lógica
+   * exacta que `scanRenewalAlerts` (ver `PostgresLicitacionesRepository.
+   * systemScanRenewalAlerts` para el porqué de este método aparte contra
+   * Postgres real). */
+  async systemScanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
+    return this.scanRenewalAlerts(organizationId, input);
+  }
+
   async listRenewalAlerts(organizationId: string): Promise<readonly RenewalAlertRecord[]> {
     return [...(this.renewalAlerts.get(organizationId) ?? [])].reverse();
   }

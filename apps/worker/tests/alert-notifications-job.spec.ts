@@ -74,9 +74,9 @@ describe("runRenewalAlertSweep", () => {
       async listActiveOrganizations() {
         return repo.listActiveOrganizations();
       },
-      async scanRenewalAlerts(orgId: string, input?: Parameters<LicitacionesRepository["scanRenewalAlerts"]>[1]) {
+      async systemScanRenewalAlerts(orgId: string, input?: Parameters<LicitacionesRepository["systemScanRenewalAlerts"]>[1]) {
         if (orgId === organizationId) throw new Error("fallo simulado");
-        return repo.scanRenewalAlerts(orgId, input ?? {});
+        return repo.systemScanRenewalAlerts(orgId, input ?? {});
       },
     } as unknown as LicitacionesRepository;
 
@@ -176,7 +176,7 @@ describe("runAlertNotificationSweep", () => {
         if (orgId === organizationId) throw new Error("fallo simulado");
         return repo.scanUpcomingDeadlineReminders(orgId, input);
       },
-      scanRenewalAlerts: repo.scanRenewalAlerts.bind(repo),
+      systemScanRenewalAlerts: repo.systemScanRenewalAlerts.bind(repo),
       listOverdueContractInvoices: repo.listOverdueContractInvoices.bind(repo),
       listOrganizationNotificationRecipients: repo.listOrganizationNotificationRecipients.bind(repo),
       enqueueMessagingOutbox: repo.enqueueMessagingOutbox.bind(repo),

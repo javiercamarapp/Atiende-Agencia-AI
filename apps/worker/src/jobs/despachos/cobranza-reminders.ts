@@ -13,15 +13,30 @@
 // plantilla): por cada organización activa (`repo.listActiveOrganizations`),
 // por cada property de esa organización (`repo.listPropertiesForOrganization`
 // -- despachos SÍ particiona por property, a diferencia de licitaciones),
-// escanea la cartera pendiente (`repo.listReceivables(propertyId,
-// {pendiente:true})`), decide con el motor puro
+// escanea la cartera pendiente, decide con el motor puro
 // (`etapaRecordatorioCobranzaHoy`/`diasVencidoCartera`, ambos ya verificados
 // en `cobranza/engine.ts`) si HOY toca recordatorio para cada cuenta, y si
 // toca, encola el correo real + dedupe_key vía
-// `cobranza/email-notifications.ts::tryEnqueueCollectionReminderEmail` --
-// best-effort real: una cuenta/property/organización con datos raros nunca
+// `cobranza/email-notifications.ts::tryEnqueueCollectionReminderEmailForSystem`
+// -- best-effort real: una cuenta/property/organización con datos raros nunca
 // tumba el barrido de las demás.
-import { diasVencidoCartera, etapaRecordatorioCobranzaHoy, tryEnqueueCollectionReminderEmail } from "@atiende/domain-despachos";
+//
+// Hallazgo de auditoría cerrado por esta versión del archivo (severidad ALTA,
+// "flujos de sistema bloqueados en escritura", ver
+// `packages/domain-despachos/migrations/009_despachos_sistema_cobranza_
+// escritura.sql`): este job corre bajo `deps.engine.withAppSession({ userId:
+// null })` (ver `apps/api/src/routes/verticals/despachos/notifications.ts`),
+// pero `repo.listReceivables`/`repo.findInvoice`/`repo.insertCollectionEvent`
+// (usados antes por este archivo) son código COMPARTIDO con el staff
+// autenticado (panel de cartera + `POST .../recordatorio`, ver
+// `apps/api/src/routes/verticals/despachos/cobranza.ts`) -- policies
+// `core.has_property_access`/`hoteles.can_access_money`-like, sin escape
+// hatch, SIEMPRE bloqueadas bajo sesión de sistema. Se sustituyen aquí, y
+// SOLO aquí, por `repo.systemListPendingReceivablesForReminders`/
+// `tryEnqueueCollectionReminderEmailForSystem` -- exclusivas de este barrido,
+// respaldadas por funciones `security definer` de solo-sistema (ver esa
+// migración) -- el panel/`/recordatorio` de staff siguen sin cambios.
+import { diasVencidoCartera, etapaRecordatorioCobranzaHoy, tryEnqueueCollectionReminderEmailForSystem } from "@atiende/domain-despachos";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 
 export interface RunCobranzaReminderSweepOptions {
@@ -43,7 +58,10 @@ export interface CobranzaReminderSweepResult {
 }
 
 async function sweepProperty(repo: DespachosRepository, propertyId: string, todayIso: string): Promise<CobranzaReminderPropertyResult> {
-  const pendientes = await repo.listReceivables(propertyId, { pendiente: true });
+  // `systemListPendingReceivablesForReminders` ya trae el folio fiscal/total del
+  // invoice asociado (join interno, security definer) -- ya no hace falta un
+  // `findInvoice` aparte por cuenta (antes bloqueado igual bajo sesión de sistema).
+  const pendientes = await repo.systemListPendingReceivablesForReminders(propertyId);
   let remindersDue = 0;
   let emailsEnqueued = 0;
 
@@ -52,14 +70,8 @@ async function sweepProperty(repo: DespachosRepository, propertyId: string, toda
     if (!etapa) continue;
     remindersDue += 1;
 
-    const invoice = await repo.findInvoice(propertyId, receivable.invoiceId);
-    // Un receivable siempre nace de un invoice ya ingerido (`registerReceivable`
-    // exige `invoiceId` real) -- si ya no se encuentra, es un dato inconsistente
-    // de ESTA cuenta puntual; se salta sin tumbar el resto de la cartera.
-    if (!invoice) continue;
-
     const diasVencido = diasVencidoCartera(receivable.fechaVencimiento, todayIso);
-    const resultado = await tryEnqueueCollectionReminderEmail(repo, receivable, { facturaId: invoice.folioFiscal, monto: invoice.total }, etapa, diasVencido);
+    const resultado = await tryEnqueueCollectionReminderEmailForSystem(repo, receivable, etapa, diasVencido, todayIso);
     if (resultado?.enqueued) emailsEnqueued += 1;
   }
 

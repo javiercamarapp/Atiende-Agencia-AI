@@ -18,7 +18,9 @@ import type {
   NewInvoiceInput,
   NewInvoiceReviewInput,
   NewReceivableInput,
+  NewSystemCollectionEventInput,
   ReceivableRecord,
+  ReceivableReminderRow,
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
@@ -477,6 +479,37 @@ export class InMemoryDespachosRepository implements DespachosRepository {
       }
     }
     return resultado;
+  }
+
+  // ---- Flujos de sistema (cron `cobranza-reminders`) -- ver DespachosRepository. ----
+
+  async systemListPendingReceivablesForReminders(propertyId: string): Promise<readonly ReceivableReminderRow[]> {
+    const pendientes = await this.listReceivables(propertyId, { pendiente: true });
+    const rows: ReceivableReminderRow[] = [];
+    for (const r of pendientes) {
+      const invoice = this.invoices.get(r.invoiceId);
+      if (!invoice) continue; // mismo criterio "honesto" que el INNER JOIN real -- dato inconsistente, se salta.
+      rows.push({
+        id: r.id,
+        organizationId: r.organizationId,
+        propertyId: r.propertyId,
+        invoiceId: r.invoiceId,
+        fechaVencimiento: r.fechaVencimiento,
+        clienteNombre: r.clienteNombre,
+        clienteEmail: r.clienteEmail,
+        facturaFolioFiscal: invoice.folioFiscal,
+        facturaTotal: invoice.total,
+      });
+    }
+    return rows;
+  }
+
+  async systemRecordCollectionEvent(input: NewSystemCollectionEventInput): Promise<CollectionEventRecord | null> {
+    const yaRegistrado = (this.collectionEvents.get(input.receivableId) ?? []).some(
+      (e) => e.etapa === input.etapa && e.createdAt.slice(0, 10) === input.eventDate,
+    );
+    if (yaRegistrado) return null; // dedupe -- mismo criterio best-effort que la función real.
+    return this.insertCollectionEvent(input);
   }
 
   // ============================================================================
