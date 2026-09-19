@@ -227,21 +227,35 @@ futura de `apps/api`):
 - **Ingesta automática real** desde Google/Booking/TripAdvisor — requiere
   credenciales de esas plataformas que este repo no tiene; `source`/`external_id`
   quedan listos en el modelo de datos para cuando exista ese conector, pero no se
-  fabrica ni se simula aquí.
-- **La ruta HTTP de `apps/api`** que capturaría una reseña, correría
-  `clasificarResena()`, y persistiría el resultado (el original sí la tenía,
-  `apps/api/src/routes/reputacion.ts`) — esta fase deja el dominio y el esquema
-  listos, sin exponer el endpoint todavía.
-- **La orquestación que EJECUTA cada acción**: crear de verdad el ticket contra
-  `hoteles.maintenance_ticket` (el original sí lo hacía de inmediato, reusando su
-  tool de mantenimiento), enviar el mensaje proactivo (requiere una plantilla
-  aprobada de WhatsApp/Meta, mismo límite que ya documenta `whatsapp/
-  llm-turn-handler.ts` de Fase 2), o aplicar la compensación reglada (mueve dinero,
-  exige aprobación humana explícita, mismo criterio que `REVENUE_AUTOPILOT_
-  APPROVAL_ROLES`). `guest_review_action.ticket_id` por eso queda siempre `null` en
-  esta fase — el modelo de datos ya lo contempla, ninguna inserción lo puebla
-  todavía.
-- **Panel/UI de `apps/web`** para el inbox unificado y el tablero del índice
-  agregado.
+  fabrica ni se simula aquí. Esto SIGUE fuera de alcance hoy.
 
-Migración nueva: `migrations/013_reputacion.sql`.
+**Los siguientes 3 puntos describían el estado al cerrar la Fase 11 — ya NO son
+ciertos, cerrados en la Fase 13 (barrido de documentación, 19-sep-2026, se
+conservan tachados en espíritu, no en forma, como registro histórico):**
+
+- ~~La ruta HTTP de `apps/api` que capturaría una reseña, correría
+  `clasificarResena()`, y persistiría el resultado — sin exponer el endpoint
+  todavía.~~ **Ya existe**: `apps/api/src/routes/verticals/hoteles/reputacion.ts`
+  (`POST`/`GET .../reputacion/resenas`, `GET .../resenas/:reviewId`,
+  `POST`/`GET .../respuestas`, `POST .../acciones/:actionId/resolver`,
+  `GET .../indice`).
+- ~~La orquestación que EJECUTA cada acción: crear de verdad el ticket contra
+  `hoteles.maintenance_ticket`... `guest_review_action.ticket_id` por eso queda
+  siempre `null`.~~ **Parcialmente cerrado**: resolver una acción tipo
+  `ticket_mantenimiento` SÍ inserta un ticket real hoy
+  (`reputacion.ts::insertMaintenanceTicket`). Siguen sin ejecutarse de verdad
+  `mensaje_proactivo` (falta plantilla aprobada de WhatsApp/Meta) y
+  `compensacion_reglada` (mueve dinero, exige aprobación humana explícita) —
+  esas dos SÍ siguen pendientes.
+- ~~Panel/UI de `apps/web` para el inbox unificado y el tablero del índice
+  agregado.~~ **Ya existe**: `apps/web/src/verticals/hoteles/pages/Reputacion.tsx`,
+  ruteada y en el nav de `HotelesShell.tsx`.
+
+Ni `apps/api/src/routes/verticals/hoteles/README.md` ni
+`apps/web/src/verticals/hoteles/README.md` mencionan reputación (ni revenue,
+ver Fase 9 arriba) todavía — ver esos dos archivos para el resto de fases del
+vertical.
+
+Migración nueva: `migrations/013_reputacion.sql` (Fase 11) +
+`migrations/021_reputacion_respuestas.sql` (Fase 13, columna/tabla de
+respuesta del staff a una reseña, la pieza que faltaba para "responder").
