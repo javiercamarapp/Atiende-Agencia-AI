@@ -167,7 +167,15 @@ jobs:
           # script ya corren tal cual localmente. Se agrega a GITHUB_PATH (no solo
           # a este step) para que el siguiente step también los vea.
           if ! command -v initdb >/dev/null 2>&1; then
-            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 2 -name initdb -print -quit)")"
+            # /usr/lib/postgresql/<version>/bin/initdb -- 3 niveles bajo
+            # /usr/lib/postgresql (<version>/bin/initdb), no 2 (esa profundidad
+            # es el directorio bin/, no el binario).
+            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 3 -name initdb -print -quit)")"
+            if [ -z "$PG_BIN" ] || [ "$PG_BIN" = "." ]; then
+              echo "verify-fallback-savepoint (CI): no se encontró initdb bajo /usr/lib/postgresql tras instalar el paquete postgresql -- ¿cambió el layout del paquete?" >&2
+              find /usr/lib/postgresql -maxdepth 3 >&2 || true
+              exit 1
+            fi
             echo "$PG_BIN" >> "$GITHUB_PATH"
             export PATH="$PG_BIN:$PATH"
           fi
