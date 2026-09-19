@@ -277,6 +277,13 @@ export interface ProviderCalComAccountRecord {
   readonly organizationId: string;
   readonly providerId: string;
   readonly calcomEventTypeId: string;
+  /** URL base de una instancia Cal.com self-hosted (sin `/v2` final — ver
+   * calcom-port.ts::CalComPortConfig.baseUrl), o `null` para el SaaS oficial
+   * (`https://api.cal.com/v2`, el default de `RealCalComPort`). Igual que
+   * `calendar_collection_url` de CalDAV, pasa por la MISMA validación SSRF real
+   * antes de guardarse (ver apps/api/.../citas/calendar-providers.ts) — nunca solo
+   * un chequeo de string. */
+  readonly baseUrl: string | null;
   readonly syncStatus: CalendarProviderSyncStatus;
   readonly syncError: string | null;
   readonly createdAt: string;
@@ -291,6 +298,8 @@ export interface ConnectProviderCalComAccountInput {
    * inmediato en Supabase Vault (misma función genérica que Fase 3), nunca queda en
    * una columna en claro. El adaptador en memoria (tests) lo guarda tal cual. */
   readonly apiKey: string;
+  /** Ver `ProviderCalComAccountRecord.baseUrl` — `undefined`/`null` = SaaS oficial. */
+  readonly baseUrl?: string | null;
 }
 
 export interface ProviderCalDavAccountRecord {
@@ -588,10 +597,30 @@ export interface CitasRepository {
   connectProviderCalComAccount(input: ConnectProviderCalComAccountInput): Promise<ProviderCalComAccountRecord>;
   disconnectProviderCalComAccount(providerId: string): Promise<void>;
   resolveProviderCalComApiKey(providerId: string): Promise<string | null>;
+  /** Falla PERMANENTE de credencial (401/403 real de Cal.com) — mismo criterio que
+   * `setProviderCalendarAccountSyncError` (Google/invalid_grant): marca la cuenta en
+   * error de una vez, en vez de quemar reintentos de backoff contra una API key que
+   * ya sabemos que no sirve. También la usa la ruta de prueba de conexión
+   * (`POST .../calcom/test-connection`) cuando la comprobación en vivo falla. */
+  setProviderCalComAccountSyncError(providerId: string, error: string): Promise<void>;
+  /** Contrario de `setProviderCalComAccountSyncError`: una comprobación en vivo
+   * (prueba de conexión, o una sincronización real que sí tuvo éxito) confirma que
+   * la cuenta vuelve a estar sana — limpia `sync_error` y regresa `sync_status` a
+   * `'connected'` SIN tocar la credencial guardada (a diferencia de
+   * `connectProviderCalComAccount`, que sí la reemplaza). No-op si la cuenta no
+   * existe o ya está `'disconnected'` (una comprobación en vivo nunca reconecta
+   * sola una cuenta que el staff desconectó a propósito). */
+  markProviderCalComAccountSyncOk(providerId: string): Promise<void>;
   findProviderCalDavAccount(providerId: string): Promise<ProviderCalDavAccountRecord | null>;
   connectProviderCalDavAccount(input: ConnectProviderCalDavAccountInput): Promise<ProviderCalDavAccountRecord>;
   disconnectProviderCalDavAccount(providerId: string): Promise<void>;
   resolveProviderCalDavPassword(providerId: string): Promise<string | null>;
+  /** Ver `setProviderCalComAccountSyncError` — mismo criterio para CalDAV (401/403
+   * real del servidor, o un `CalendarConflictError` persistente no aplica aquí:
+   * esto es solo para fallas de credencial). */
+  setProviderCalDavAccountSyncError(providerId: string, error: string): Promise<void>;
+  /** Ver `markProviderCalComAccountSyncOk` — mismo criterio para CalDAV. */
+  markProviderCalDavAccountSyncOk(providerId: string): Promise<void>;
 
   // ---- Fase 6 §3 — dispatcher de correo ----
   claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;

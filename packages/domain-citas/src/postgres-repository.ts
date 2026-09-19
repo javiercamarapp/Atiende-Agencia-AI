@@ -1116,13 +1116,13 @@ export class PostgresCitasRepository implements CitasRepository {
   // citas.get_provider_calendar_refresh_token), ver comentario de esa migración.
   // ============================================================================
 
-  private mapCalComAccount(row: { id: string; organization_id: string; provider_id: string; calcom_event_type_id: string; sync_status: CalendarProviderSyncStatus; sync_error: string | null; created_at: string; updated_at: string }): ProviderCalComAccountRecord {
-    return { id: row.id, organizationId: row.organization_id, providerId: row.provider_id, calcomEventTypeId: row.calcom_event_type_id, syncStatus: row.sync_status, syncError: row.sync_error, createdAt: row.created_at, updatedAt: row.updated_at };
+  private mapCalComAccount(row: { id: string; organization_id: string; provider_id: string; calcom_event_type_id: string; calcom_base_url: string | null; sync_status: CalendarProviderSyncStatus; sync_error: string | null; created_at: string; updated_at: string }): ProviderCalComAccountRecord {
+    return { id: row.id, organizationId: row.organization_id, providerId: row.provider_id, calcomEventTypeId: row.calcom_event_type_id, baseUrl: row.calcom_base_url, syncStatus: row.sync_status, syncError: row.sync_error, createdAt: row.created_at, updatedAt: row.updated_at };
   }
 
   async findProviderCalComAccount(providerId: string): Promise<ProviderCalComAccountRecord | null> {
     const { rows } = await this.db.query<Parameters<PostgresCitasRepository["mapCalComAccount"]>[0]>(
-      `select id, organization_id, provider_id, calcom_event_type_id, sync_status, sync_error, created_at, updated_at from citas.provider_calcom_accounts where provider_id = $1;`,
+      `select id, organization_id, provider_id, calcom_event_type_id, calcom_base_url, sync_status, sync_error, created_at, updated_at from citas.provider_calcom_accounts where provider_id = $1;`,
       [providerId],
     );
     return rows[0] ? this.mapCalComAccount(rows[0]) : null;
@@ -1135,16 +1135,17 @@ export class PostgresCitasRepository implements CitasRepository {
     const secretId = secretRows[0]!.set_provider_calendar_refresh_token;
 
     const { rows } = await this.db.query<Parameters<PostgresCitasRepository["mapCalComAccount"]>[0]>(
-      `insert into citas.provider_calcom_accounts (organization_id, provider_id, calcom_event_type_id, calcom_api_key_secret_id, sync_status, sync_error)
-       values ($1, $2, $3, $4, 'connected', null)
+      `insert into citas.provider_calcom_accounts (organization_id, provider_id, calcom_event_type_id, calcom_base_url, calcom_api_key_secret_id, sync_status, sync_error)
+       values ($1, $2, $3, $4, $5, 'connected', null)
        on conflict (provider_id) do update set
          calcom_event_type_id = excluded.calcom_event_type_id,
+         calcom_base_url = excluded.calcom_base_url,
          calcom_api_key_secret_id = excluded.calcom_api_key_secret_id,
          sync_status = 'connected',
          sync_error = null,
          updated_at = now()
-       returning id, organization_id, provider_id, calcom_event_type_id, sync_status, sync_error, created_at, updated_at;`,
-      [input.organizationId, input.providerId, input.calcomEventTypeId, secretId],
+       returning id, organization_id, provider_id, calcom_event_type_id, calcom_base_url, sync_status, sync_error, created_at, updated_at;`,
+      [input.organizationId, input.providerId, input.calcomEventTypeId, input.baseUrl ?? null, secretId],
     );
     return this.mapCalComAccount(rows[0]!);
   }
@@ -1164,6 +1165,14 @@ export class PostgresCitasRepository implements CitasRepository {
       console.warn("resolveProviderCalComApiKey: Vault no disponible todavía:", err instanceof Error ? err.message : err);
       return null;
     }
+  }
+
+  async setProviderCalComAccountSyncError(providerId: string, error: string): Promise<void> {
+    await this.db.query(`update citas.provider_calcom_accounts set sync_status = 'error', sync_error = left($2, 500), updated_at = now() where provider_id = $1;`, [providerId, error]);
+  }
+
+  async markProviderCalComAccountSyncOk(providerId: string): Promise<void> {
+    await this.db.query(`update citas.provider_calcom_accounts set sync_status = 'connected', sync_error = null, updated_at = now() where provider_id = $1 and sync_status <> 'disconnected';`, [providerId]);
   }
 
   private mapCalDavAccount(row: { id: string; organization_id: string; provider_id: string; caldav_calendar_collection_url: string; caldav_username: string; sync_status: CalendarProviderSyncStatus; sync_error: string | null; created_at: string; updated_at: string }): ProviderCalDavAccountRecord {
@@ -1225,6 +1234,14 @@ export class PostgresCitasRepository implements CitasRepository {
       console.warn("resolveProviderCalDavPassword: Vault no disponible todavía:", err instanceof Error ? err.message : err);
       return null;
     }
+  }
+
+  async setProviderCalDavAccountSyncError(providerId: string, error: string): Promise<void> {
+    await this.db.query(`update citas.provider_caldav_accounts set sync_status = 'error', sync_error = left($2, 500), updated_at = now() where provider_id = $1;`, [providerId, error]);
+  }
+
+  async markProviderCalDavAccountSyncOk(providerId: string): Promise<void> {
+    await this.db.query(`update citas.provider_caldav_accounts set sync_status = 'connected', sync_error = null, updated_at = now() where provider_id = $1 and sync_status <> 'disconnected';`, [providerId]);
   }
 
   // ============================================================================

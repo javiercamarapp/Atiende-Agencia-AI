@@ -31,7 +31,7 @@ import {
   runListaEsperaCore,
   sortWaitlistByPosition,
   tryEnqueueAppointmentEmail,
-  tryTriggerGoogleSync,
+  tryTriggerCalendarSync,
 } from "@atiende/domain-citas";
 import type {
   AppointmentRecord,
@@ -481,9 +481,16 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // un `select *`, pero domain-citas no expone "listar TODOS los servicios,
     // activos o no" todavía; agregar ese método es una decisión de producto
     // separada de "cerrar el gap de que no se puede ni asignar un servicio").
-    const [rules, calendarAccount, services] = await Promise.all([
+    // Fase 6 §2 (seguimiento) — igual que `calendarAccount` (Google): la ficha del
+    // proveedor trae el estado de las TRES plataformas en la misma respuesta (la
+    // sección "Calendarios conectados" del panel las pinta juntas, un solo round
+    // trip) — el secreto (api_key/contraseña de aplicación) nunca viaja aquí, solo
+    // `sync_status`/`sync_error`/metadata pública de la conexión.
+    const [rules, calendarAccount, calcomAccount, caldavAccount, services] = await Promise.all([
       citasRepo.loadAvailabilityRules(providerId),
       citasRepo.findProviderCalendarAccount(providerId),
+      citasRepo.findProviderCalComAccount(providerId),
+      citasRepo.findProviderCalDavAccount(providerId),
       citasRepo.listActiveServices(organizationId),
     ]);
     const offeredServiceIds = (
@@ -494,6 +501,12 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       provider: serializeProvider(provider),
       availability_rules: rules.map((r) => ({ id: r.id, day_of_week: r.dayOfWeek, start_time: r.startTime, end_time: r.endTime, is_active: r.isActive })),
       google_calendar: calendarAccount ? { connected: true, sync_status: calendarAccount.syncStatus, sync_error: calendarAccount.syncError } : { connected: false, sync_status: "disconnected" as const, sync_error: null },
+      calcom: calcomAccount
+        ? { connected: calcomAccount.syncStatus !== "disconnected", sync_status: calcomAccount.syncStatus, sync_error: calcomAccount.syncError, calcom_event_type_id: calcomAccount.calcomEventTypeId, calcom_base_url: calcomAccount.baseUrl }
+        : { connected: false, sync_status: "disconnected" as const, sync_error: null, calcom_event_type_id: null, calcom_base_url: null },
+      caldav: caldavAccount
+        ? { connected: caldavAccount.syncStatus !== "disconnected", sync_status: caldavAccount.syncStatus, sync_error: caldavAccount.syncError, calendar_collection_url: caldavAccount.calendarCollectionUrl, username: caldavAccount.username }
+        : { connected: false, sync_status: "disconnected" as const, sync_error: null, calendar_collection_url: null, username: null },
       offered_service_ids: offeredServiceIds,
     });
   });
@@ -856,7 +869,7 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // Mismo best-effort que el resto de este vertical (nunca convierte la
       // respuesta 201 en un error, ver appointments.ts/appointments-lifecycle.ts).
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.created", appointment.id);
-      await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+      await tryTriggerCalendarSync(citasRepo, deps.citasCalendarSyncPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) }, 201);
     } catch (err) {
       if (err instanceof AppointmentForbiddenError) throw Errors.forbidden(err.message);

@@ -94,4 +94,19 @@ export const Errors = {
     new ApiError(409, "revenue_gate_transicion_bloqueada", razones.join(" | ")),
   revenueGateNoInicializado: () =>
     new ApiError(404, "revenue_gate_no_inicializado", 'El gate de revenue de esta property no está inicializado -- primero POST .../revenue/gate.'),
+  // ---- citas (Fase 6 §2 seguimiento -- prueba de conexión real de Cal.com/
+  // CalDAV, ver calendar-providers.ts::POST .../{calcom,caldav}/test-connection):
+  // un error honesto por causa, nunca un 500 genérico envolviendo un fallo de red
+  // o de credencial de un proveedor externo. ----
+  citasCalendarProviderNoConectado: (plataforma: "calcom" | "caldav") =>
+    new ApiError(409, "calendar_provider_no_conectado", `Este proveedor todavía no conectó ${plataforma === "calcom" ? "Cal.com" : "CalDAV"} -- conéctalo antes de probar la conexión.`),
+  /** La credencial guardada (API key de Cal.com / contraseña de aplicación de
+   * CalDAV) fue rechazada por el proveedor -- 401/403 real, o una referencia mal
+   * configurada (404, ej. eventTypeId/colección que ya no existe). Un 4xx claro,
+   * nunca un 500 -- el staff debe reconectar con credenciales/URL correctas. */
+  citasCalendarProviderCredencialInvalida: (message: string) => new ApiError(422, "calendar_provider_credencial_invalida", message),
+  /** El proveedor externo (Cal.com/el servidor CalDAV) no respondió o respondió con
+   * un error del lado de ellos (5xx/timeout/red) -- 502, nunca un 500 genérico:
+   * distingue "tu credencial está mal" de "el proveedor está caído ahora mismo". */
+  citasCalendarProviderNoDisponible: (message: string) => new ApiError(502, "calendar_provider_no_disponible", message),
 };

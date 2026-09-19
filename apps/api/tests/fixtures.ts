@@ -3,7 +3,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMem
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -148,6 +148,9 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     // (no relacionado con citas): el resolver real ya devuelve `null` siempre
     // (config: null), y el exchange nunca debería llamarse aquí.
     citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepo, null),
+    citasCalendarSyncPortResolver: createCalendarSyncPortResolver(citasRepo, null),
+    citasCalComPortFactory: (cfg) => new RealCalComPort(cfg),
+    citasCalDavPortFactory: (cfg) => new RealCalDavPort(cfg),
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture de pruebas genérico.");
     },
