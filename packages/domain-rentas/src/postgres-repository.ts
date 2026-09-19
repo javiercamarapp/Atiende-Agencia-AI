@@ -37,9 +37,14 @@ import type {
   OwnerStatementDetalle,
   OwnerStatementSummary,
   PayoutDetalle,
+  RegistrarAuditoriaInput,
   ReglaCanal,
   ReglaMinStay,
   ReglaMinStayRecord,
+  RentasAuditLogFiltro,
+  RentasAuditLogPagina,
+  RentasAuditLogPaginacion,
+  RentasAuditLogRow,
   RentasOrganizationSummary,
   RentasPropertySummary,
   ReservaParaStatement,
@@ -123,6 +128,78 @@ function mapReservaFinanciero(row: ReservaFinancieroRow): MovimientoFinancieroRe
     gastosCentavos: Number(row.gastos_centavos),
     impuestosCentavos: Number(row.impuestos_centavos),
     netoCentavos: Number(row.neto_centavos),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// r5 -- bitácora de auditoría del staff (ver migrations/021_rentas_audit_log.sql).
+//
+// COMPATIBILIDAD CON LA BASE SIN MIGRAR (regla dura de la fase, ver AGENTS.md):
+// mergear a main despliega este código al instante, pero la base Supabase real va
+// migraciones atrás y nadie las aplica al mergear -- `rentas.record_audit_log`/
+// `rentas.audit_log` no existen todavía en ese estado, y Postgres real lanza
+// SQLSTATE 42883 (`undefined_function`)/42P01 (`undefined_table`)/42703
+// (`undefined_column`) en ese caso, MISMO código que
+// `break-glass/postgres-data-repository.ts::isUndefinedFunctionError` ya detecta
+// para su propio fallback (replicado aquí porque este archivo no importa ese
+// módulo).
+// ---------------------------------------------------------------------------
+const RENTAS_AUDIT_LOG_SAVEPOINT = "sp_rentas_audit_log_write";
+const RENTAS_AUDIT_LOG_READ_SAVEPOINT = "sp_rentas_audit_log_read";
+
+function esErrorCompatibilidadBaseSinMigrar(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42883" || code === "42P01" || code === "42703";
+}
+
+let auditLogAdvertidoEscritura = false;
+function advertirAuditLogEscrituraNoDisponible(err: unknown): void {
+  if (auditLogAdvertidoEscritura) return;
+  auditLogAdvertidoEscritura = true;
+  console.warn(
+    "PostgresRentasRepository.registrarAuditoria: rentas.record_audit_log no existe todavía en esta base " +
+      "(SQLSTATE 42883/42P01/42703) -- la acción de negocio YA se completó y no se revierte, esta fila de " +
+      "bitácora se omitió. Aplica packages/domain-rentas/migrations/021_rentas_audit_log.sql (o su espejo en " +
+      "supabase/migrations/) para habilitarla.",
+    err,
+  );
+}
+
+let auditLogAdvertidoLectura = false;
+function advertirAuditLogLecturaNoDisponible(err: unknown): void {
+  if (auditLogAdvertidoLectura) return;
+  auditLogAdvertidoLectura = true;
+  console.warn(
+    "PostgresRentasRepository.listAuditoria: rentas.audit_log no existe todavía en esta base (SQLSTATE " +
+      "42883/42P01/42703) -- devolviendo disponible:false (nunca una lista vacía real, ver RentasAuditLogPagina). " +
+      "Aplica packages/domain-rentas/migrations/021_rentas_audit_log.sql (o su espejo en supabase/migrations/).",
+    err,
+  );
+}
+
+interface RentasAuditLogRowSql {
+  id: string;
+  actor_user_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  campo: string | null;
+  antes: string | null;
+  despues: string | null;
+  created_at: string;
+}
+
+function mapRentasAuditLogRow(row: RentasAuditLogRowSql): RentasAuditLogRow {
+  return {
+    id: row.id,
+    actorUserId: row.actor_user_id,
+    action: row.action,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    campo: row.campo,
+    antes: row.antes,
+    despues: row.despues,
+    createdAtMs: new Date(row.created_at).getTime(),
   };
 }
 
@@ -1070,5 +1147,122 @@ export class PostgresRentasRepository implements RentasRepository {
       reportadoPor: r.reportado_por,
       creadoEn: r.creado_en,
     }));
+  }
+
+  // ---- r5 — bitácora de auditoría del staff ----
+
+  /**
+   * Registra una fila en `rentas.audit_log` llamando a `rentas.record_audit_log`
+   * (security definer) DENTRO de la transacción compartida del request (nunca abre
+   * su propia transacción) -- `input.actorUserId` se ignora deliberadamente al
+   * armar esta llamada: el actor real lo captura la función vía `auth.uid()`, nunca
+   * un parámetro (ver migrations/021_rentas_audit_log.sql).
+   *
+   * REGLA DURA DE COMPATIBILIDAD (ver AGENTS.md de esta fase): esta escritura NUNCA
+   * debe romper ni revertir la acción de negocio que ya se hizo en la MISMA
+   * transacción -- por eso corre bajo su propio SAVEPOINT y CUALQUIER error de este
+   * bloque (no solo 42883/42P01/42703, aunque son los únicos esperados contra un
+   * despliegue real) se traga aquí mismo, nunca se propaga al llamador. Sin el
+   * SAVEPOINT, un error aquí dejaría la transacción del request ABORTADA (25P02) y
+   * el `commit` final de `ManagedPostgresEngine.withAppSession` fallaría, revirtiendo
+   * la escritura de negocio que ya había corrido -- exactamente lo que esta regla
+   * prohíbe. Mismo patrón de SAVEPOINT que
+   * `break-glass/postgres-data-repository.ts`, adaptado a "nunca lanzar" (esta
+   * bitácora no tiene un "camino anterior" al que caer).
+   */
+  async registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void> {
+    try {
+      await this.db.exec(`SAVEPOINT ${RENTAS_AUDIT_LOG_SAVEPOINT}`);
+    } catch (err) {
+      // Ni siquiera pudo abrirse el SAVEPOINT (sesión que no soporta SAVEPOINT,
+      // p.ej. un doble de prueba angosto) -- se registra y se sale sin tocar nada
+      // más, la acción de negocio sigue intacta.
+      console.error("PostgresRentasRepository.registrarAuditoria: no se pudo abrir el SAVEPOINT -- se omite el registro de bitácora.", err);
+      return;
+    }
+    try {
+      await this.db.query(`select rentas.record_audit_log($1, $2, $3, $4, $5, $6, $7);`, [
+        input.organizationId,
+        input.action,
+        input.entityType,
+        input.entityId,
+        input.campo ?? null,
+        input.antes ?? null,
+        input.despues ?? null,
+      ]);
+      await this.db.exec(`RELEASE SAVEPOINT ${RENTAS_AUDIT_LOG_SAVEPOINT}`);
+    } catch (err) {
+      try {
+        await this.db.exec(`ROLLBACK TO SAVEPOINT ${RENTAS_AUDIT_LOG_SAVEPOINT}`);
+        await this.db.exec(`RELEASE SAVEPOINT ${RENTAS_AUDIT_LOG_SAVEPOINT}`);
+      } catch (recoveryErr) {
+        console.error("PostgresRentasRepository.registrarAuditoria: fallo al recuperar el SAVEPOINT tras un error de bitácora.", recoveryErr);
+      }
+      if (esErrorCompatibilidadBaseSinMigrar(err)) {
+        advertirAuditLogEscrituraNoDisponible(err);
+        return;
+      }
+      // Error inesperado (no de compatibilidad) -- se registra para diagnóstico pero
+      // TAMPOCO se propaga: la regla dura de arriba no distingue "por qué" falló la
+      // bitácora, solo que nunca puede tumbar ni revertir la acción de negocio ya
+      // hecha.
+      console.error("PostgresRentasRepository.registrarAuditoria: fallo inesperado al escribir en rentas.audit_log (la acción de negocio ya se completó y NO se revierte).", err);
+    }
+  }
+
+  async listAuditoria(organizationId: string, filtro: RentasAuditLogFiltro, paginacion: RentasAuditLogPaginacion): Promise<RentasAuditLogPagina> {
+    const limit = Math.min(200, Math.max(1, paginacion.limit ?? 50));
+    const offset = Math.max(0, paginacion.offset ?? 0);
+
+    const params: unknown[] = [organizationId];
+    const condiciones = ["organization_id = $1"];
+    if (filtro.entityType) {
+      params.push(filtro.entityType);
+      condiciones.push(`entity_type = $${params.length}`);
+    }
+    // No bloqueante #10 de revisión r5: `created_at >= $n::date` comparaba usando la
+    // zona horaria de la SESIÓN de Postgres (UTC) -- el admin elige `desde`/`hasta`
+    // en hora local de México, así que una acción de las 18:00 a las 23:59 hora de
+    // México caía en el día SIGUIENTE del filtro (UTC ya cruzó medianoche). Se ancla
+    // explícitamente a America/Mexico_City con offset fijo `-06:00` (México no tiene
+    // horario de verano nacional desde 2022) -- mismo criterio EXACTO que
+    // domain-licitaciones/src/dates.ts (`MEXICO_CITY_OFFSET`), replicado aquí en vez
+    // de importado porque los paquetes de dominio no se importan entre sí.
+    if (filtro.desde) {
+      params.push(`${filtro.desde}T00:00:00-06:00`);
+      condiciones.push(`created_at >= $${params.length}::timestamptz`);
+    }
+    if (filtro.hasta) {
+      // Extremo inclusivo -- `hasta` es una fecha (sin hora), así que compara contra
+      // el INICIO del día siguiente en vez de `<=` (que excluiría cualquier hora
+      // después de medianoche del propio día `hasta`), ambos anclados a la misma
+      // zona de arriba.
+      params.push(`${filtro.hasta}T00:00:00-06:00`);
+      condiciones.push(`created_at < ($${params.length}::timestamptz + interval '1 day')`);
+    }
+    const where = condiciones.join(" and ");
+
+    await this.db.exec(`SAVEPOINT ${RENTAS_AUDIT_LOG_READ_SAVEPOINT}`);
+    try {
+      const totalResult = await this.db.query<{ total: string }>(`select count(*)::text as total from rentas.audit_log where ${where};`, params);
+      const total = Number(totalResult.rows[0]?.total ?? 0);
+
+      const limitOffsetParams = [...params, limit, offset];
+      const { rows } = await this.db.query<RentasAuditLogRowSql>(
+        `select id, actor_user_id, action, entity_type, entity_id, campo, antes, despues, created_at::text as created_at
+         from rentas.audit_log where ${where} order by created_at desc limit $${limitOffsetParams.length - 1} offset $${limitOffsetParams.length};`,
+        limitOffsetParams,
+      );
+      await this.db.exec(`RELEASE SAVEPOINT ${RENTAS_AUDIT_LOG_READ_SAVEPOINT}`);
+
+      const items = rows.map(mapRentasAuditLogRow);
+      return { disponible: true, items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
+    } catch (err) {
+      await this.db.exec(`ROLLBACK TO SAVEPOINT ${RENTAS_AUDIT_LOG_READ_SAVEPOINT}`);
+      await this.db.exec(`RELEASE SAVEPOINT ${RENTAS_AUDIT_LOG_READ_SAVEPOINT}`);
+      if (!esErrorCompatibilidadBaseSinMigrar(err)) throw err;
+      advertirAuditLogLecturaNoDisponible(err);
+      return { disponible: false, items: [], total: 0, nextOffset: null };
+    }
   }
 }

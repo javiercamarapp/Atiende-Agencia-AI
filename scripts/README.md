@@ -25,7 +25,7 @@ Ver su propio `README.md`.
 variables de entorno reales hacen falta en ESTE entorno, sin imprimir valores.
 Ver `docs/CREDENCIALES.md` y su propio `README.md`.
 
-## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-correo-inline-sesion-staff/`
+## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-correo-inline-sesion-staff/`, `verify-rentas-bitacora-auditoria/`
 
 `verify-correo-inline-sesion-staff/` (auditoría a2, CRÍTICO) es distinto de los
 demás de esta lista: no verifica un GRANT/policy puntual aislado en su propio
