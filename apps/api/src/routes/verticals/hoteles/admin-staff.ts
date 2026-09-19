@@ -86,7 +86,7 @@ export function hotelesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // invitación fantasma que nunca podría "vincularse" dos veces al mismo membership.
     //
     // Hallazgo de seguridad (Fase 3 caller-binding, ver `packages/db/migrations/
-    // 0016_caller_binding_fase3.sql`): ANTES, este lookup por correo pasaba por
+    // 0017_caller_binding_fase3.sql`): ANTES, este lookup por correo pasaba por
     // `deps.coreRepo` (sesión de sistema fija, `core.find_staff_by_email`/
     // `find_memberships_by_user_id` sin atar a `auth.uid()`) -- ahora esas dos
     // funciones son de solo-sistema, así que aquí se usa `deps.coreStaffRepo(c.get

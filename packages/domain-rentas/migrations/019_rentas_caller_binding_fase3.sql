@@ -1,5 +1,5 @@
 -- Fase 3 del hallazgo de seguridad "caller binding" (ver `packages/db/migrations/
--- 0016_caller_binding_fase3.sql` para el resumen completo de la clase de hallazgo, y
+-- 0017_caller_binding_fase3.sql` para el resumen completo de la clase de hallazgo, y
 -- `scripts/verify-caller-binding-fase2/README.md` -- sección "Fuera de alcance" --
 -- donde quedaron documentados estos dos hallazgos en la Fase 2).
 --
@@ -16,7 +16,7 @@
 --    NULL, el mismo momento pre-autenticación que `core.find_staff_by_email` para
 --    login de staff. Clase A (pre-auth, solo sistema): MISMO guard/patrón que
 --    `core.find_staff_by_email` (`packages/db/migrations/
---    0016_caller_binding_fase3.sql`)/`core.create_magic_link_token`
+--    0017_caller_binding_fase3.sql`)/`core.create_magic_link_token`
 --    (`0012_caller_binding_fase2.sql`). Sin cambio de TypeScript: el único call
 --    site ya corre así hoy.
 --

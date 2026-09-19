@@ -1,5 +1,5 @@
 -- Fase 3 del hallazgo de seguridad "caller binding" (ver `packages/db/migrations/
--- 0016_caller_binding_fase3.sql` para el resumen completo de la clase de hallazgo, y
+-- 0017_caller_binding_fase3.sql` para el resumen completo de la clase de hallazgo, y
 -- `scripts/verify-caller-binding-fase2/README.md` -- sección "Fuera de alcance" --
 -- donde quedó documentado este hallazgo concreto en la Fase 2, con un call-site-audit
 -- que resultó INCOMPLETO para la primera de las dos funciones de abajo -- ver el

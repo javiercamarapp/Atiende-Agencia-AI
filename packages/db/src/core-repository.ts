@@ -95,7 +95,7 @@ export interface StaffInviteRow {
   readonly createdAt: string;
 }
 
-/** Fase 3 caller-binding (ver `packages/db/migrations/0016_caller_binding_fase3.sql`)
+/** Fase 3 caller-binding (ver `packages/db/migrations/0017_caller_binding_fase3.sql`)
  *  — fila mínima que devuelve `core.find_staff_for_org_admin`: un admin YA
  *  autenticado busca a OTRO usuario por correo (para invitarlo o detectar que ya es
  *  staff de su organización). Deliberadamente SIN `passwordHash`/`createdVia`/
@@ -644,7 +644,7 @@ export interface CoreStaffRepository {
     newVerticalRole: string,
   ): Promise<OrganizationMemberWithRoleRow>;
   /** Fase 3 caller-binding (hallazgo de seguridad, ver `packages/db/migrations/
-   *  0016_caller_binding_fase3.sql`) — reemplaza el uso "administración" de
+   *  0017_caller_binding_fase3.sql`) — reemplaza el uso "administración" de
    *  `CoreRepository.findStaffByEmail` (sesión de sistema, ahora bloqueada para
    *  cualquier `auth.uid()` real): `admin-staff.ts` de las 5 verticales con alta de
    *  staff busca aquí a un usuario por correo ANTES de invitarlo, para detectar una

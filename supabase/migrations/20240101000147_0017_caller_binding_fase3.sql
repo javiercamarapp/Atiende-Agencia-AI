@@ -51,16 +51,25 @@
 --      `deps.coreStaffRepo(c.get("db"))` (sesión real por-request, `auth.uid()` =
 --      el admin real) en vez de `deps.coreRepo` (sesión de sistema).
 --
--- Orden de despliegue: código de API primero, migración después. Los nuevos
--- métodos de `CoreStaffRepository` (`findStaffForOrgAdmin`/`isStaffOrgMember`)
--- llaman a `core.find_staff_for_org_admin`/`core.is_staff_org_member_for_org_admin`
--- — si el código nuevo se desplegara ANTES de esta migración, esas dos llamadas
--- fallarían (función inexistente) en vez de degradar; por eso la migración debe
--- aplicarse ANTES o EN EL MISMO despliegue que el código de `admin-staff.ts`. El
--- guard nuevo de `find_staff_by_email`/`find_staff_by_id`/`find_memberships_by_
--- user_id`, en cambio, es compatible con el código VIEJO Y el nuevo (ambos siguen
--- llamándolas siempre desde sesión de sistema) — puede aplicarse en cualquier orden
--- relativo a ese código.
+-- Orden de despliegue: CUALQUIER ORDEN (hallazgo de revisión real: mergear a `main`
+-- despliega el código de inmediato, pero la base de datos REAL va detrás — las
+-- migraciones se aplican después, a mano — así que "código antes que migración" es
+-- el caso normal, no la excepción). Los métodos `PostgresCoreRepository.
+-- findStaffForOrgAdmin`/`isStaffOrgMember` (ver `packages/db/src/postgres-core-
+-- repository.ts`) llaman primero a `core.find_staff_for_org_admin`/`core.is_staff_
+-- org_member_for_org_admin`; si esta migración TODAVÍA no se aplicó, Postgres
+-- responde SQLSTATE 42883 (`undefined_function`) y esos métodos degradan
+-- automáticamente al camino anterior a esta fase (`core.find_staff_by_email`/
+-- `core.find_memberships_by_user_id`, todavía sin el guard de solo-sistema en ese
+-- escenario — misma migración, ambos cambios llegan juntos), aplicando en
+-- TypeScript la MISMA restricción de autorización que exigiría la función nueva
+-- (`auth.uid()` owner/admin de la organización) antes de tocar esas funciones
+-- viejas — nunca un camino más ancho que el que esta migración habría impuesto. El
+-- guard de `find_staff_by_email`/`find_staff_by_id`/`find_memberships_by_user_id`
+-- (una vez aplicada la migración) sigue siendo compatible con el código VIEJO y el
+-- nuevo (ambos llaman siempre desde sesión de sistema). Ver el comentario de
+-- cabecera de `findStaffForOrgAdmin`/`isStaffOrgMember` en `postgres-core-
+-- repository.ts` para el detalle completo del fallback.
 
 create or replace function core.find_staff_by_email(p_email text)
 returns setof core.staff_user
