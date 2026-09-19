@@ -484,9 +484,25 @@ grant execute on function rentas.list_limpieza_for_break_glass(uuid, uuid, uuid,
 --    `url_importacion` puede llevar un token de un solo uso embebido en el
 --    path/query en la práctica real de una OTA (Airbnb en particular), aunque
 --    el diseño de esta tabla documente que "no debería" llevar credenciales.
---    `regexp_replace` deja solo esquema+host (ej. "https://www.airbnb.com/***"),
---    nunca el path/query completo -- mandato explícito de esta fase ("nunca
---    tokens de iCal/OTA... enmascara").
+--    Deja solo esquema+host (ej. "https://www.airbnb.com/***"), nunca el
+--    path/query completo -- mandato explícito de esta fase ("nunca tokens de
+--    iCal/OTA... enmascara").
+--
+--    FIX hallazgo de revisión real (ronda 1 del PR #155, bloqueante 5) --
+--    FAIL-CLOSED, no `regexp_replace` directo. `regexp_replace` con un patrón
+--    que no matchea devuelve la cadena ORIGINAL COMPLETA sin tocar -- eso es
+--    fail-OPEN: `008_ical_sync_schema.sql` solo exige `url_importacion <> ''`
+--    (la validación de esquema/credenciales ocurre al FETCH, en
+--    `fetch-ics-seguro.ts`, nunca al INSERT), así que cualquier valor que no
+--    matcheara el patrón anterior -- `webcal://...` (formato habitual de
+--    enlaces iCal), `HTTPS://...` (el patrón anterior era sensible a
+--    mayúsculas), una URL con espacio inicial, o `https://host?s=TOKEN` sin
+--    '/' tras el host -- se habría devuelto INTACTA, token incluido. El
+--    patrón anterior tampoco quitaba `user:pass@` de la autoridad (mismo caso
+--    que `sync/net/ssrf.ts::redactarUrlParaLog` ya reconoce y redacta en TS).
+--    Aquí: `regexp_match` (case-insensitive, sobre la URL con espacios ya
+--    recortados) captura esquema + host SIN userinfo; si no matchea (URL
+--    irreconocible), `coalesce` cae a `'***'` -- nunca a la URL original.
 -- ═══════════════════════════════════════════════════════════════════════════
 create or replace function rentas.list_sync_ical_for_break_glass(
   p_caller_id uuid,
@@ -535,16 +551,31 @@ begin
   end if;
 
   return query
-    select f.id, f.property_id, f.unidad_id, f.canal_id,
-           regexp_replace(f.url_importacion, '^(https?://[^/]+).*$', '\1/***') as url_importacion_enmascarada,
-           f.activo, f.ultima_sincronizacion_exitosa_en, f.en_cuarentena_desde,
-           f.intentos_fallidos_consecutivos, f.motivo_cuarentena
-    from rentas.canal_feed_externo f
-    where f.organization_id = p_organization_id
-      and (p_property_id is null or f.property_id = p_property_id)
-    order by f.updated_at desc
-    limit least(coalesce(p_limit, 100), 200)
-    offset greatest(coalesce(p_offset, 0), 0);
+    with base as (
+      select f.id, f.property_id, f.unidad_id, f.canal_id,
+             f.activo, f.ultima_sincronizacion_exitosa_en, f.en_cuarentena_desde,
+             f.intentos_fallidos_consecutivos, f.motivo_cuarentena,
+             -- Captura (esquema, host) SIN userinfo -- `(?:[^/@]*@)?` consume
+             -- `user:pass@` sin capturarlo si está presente, opcional si no lo
+             -- está. `[^/?#]+` para el host se detiene en el primer '/', '?' o
+             -- '#' -- funciona tanto si hay un path después del host como si
+             -- la query cuelga directo del host (`https://host?s=TOKEN`).
+             -- `'i'` = case-insensitive (matchea "HTTPS://" igual que
+             -- "https://"). NULL si la URL no matchea el patrón esquema://host
+             -- -- fail-closed, nunca la URL original.
+             regexp_match(btrim(f.url_importacion), '^([a-zA-Z][a-zA-Z0-9+.-]*)://(?:[^/@]*@)?([^/?#]+)', 'i') as partes_url
+      from rentas.canal_feed_externo f
+      where f.organization_id = p_organization_id
+        and (p_property_id is null or f.property_id = p_property_id)
+      order by f.updated_at desc
+      limit least(coalesce(p_limit, 100), 200)
+      offset greatest(coalesce(p_offset, 0), 0)
+    )
+    select b.id, b.property_id, b.unidad_id, b.canal_id,
+           coalesce(b.partes_url[1] || '://' || b.partes_url[2] || '/***', '***') as url_importacion_enmascarada,
+           b.activo, b.ultima_sincronizacion_exitosa_en, b.en_cuarentena_desde,
+           b.intentos_fallidos_consecutivos, b.motivo_cuarentena
+    from base b;
 end;
 $$;
 
