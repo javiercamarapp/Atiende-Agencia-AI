@@ -147,3 +147,16 @@ orden interno de cada una tal como está numerado en su propia carpeta.
    nunca dejes una colisión sin resolver.
 3. No edites el contenido SQL al copiarlo: debe ser una copia exacta del original.
 4. Actualiza este README si cambia el conteo total o el orden de una vertical.
+
+`supabase/migrations/20240101000120_0008_auth_exchange_code.sql` — hallazgo de
+auditoría (P2, "tokens de sesión completos en query params de URL, riesgo de
+filtración vía Referer/historial/logs"): `GET /auth/google/callback` y
+`GET /auth/magic-link/verify` ponían el JWT de acceso y el refresh token REALES en
+la URL del redirect 302 hacia el frontend. Agrega `core.auth_exchange_code`
+(mismo mecanismo de un solo uso que `core.magic_link_token`, ver la cabecera del
+propio archivo SQL para el detalle) — ambos callbacks ahora redirigen con un
+código opaco de 60s de vida, y `POST /auth/exchange-code` (nuevo, en
+`apps/api/src/routes/auth.ts`) lo canjea por `{token, refreshToken}` en el BODY de
+una respuesta JSON, nunca en otra URL. `GoogleCallback.tsx` (compartido por las 6
+verticales, también usado por magic-link) actualizado para llamar a ese endpoint
+al montar antes de persistir sesión.

@@ -81,6 +81,9 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   // "Continuar con correo" sin contraseña — tokenHash -> {staffId, expiresAt,
   // used}, mismo dato que `core.magic_link_token` en Postgres.
   private readonly magicLinkTokens = new Map<string, { staffId: string; expiresAt: string; used: boolean }>();
+  // Código de intercambio de un solo uso (hallazgo P2, tokens en URL) — codeHash ->
+  // {staffId, expiresAt, used}, mismo dato que `core.auth_exchange_code` en Postgres.
+  private readonly authExchangeCodes = new Map<string, { staffId: string; expiresAt: string; used: boolean }>();
   // Back office de plataforma — mismo dato que `core.platform_superadmin`.
   private readonly platformSuperadmins = new Set<string>();
   // Infraestructura de notificaciones — mismo dato que `core.notification`, con
@@ -374,6 +377,22 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
 
   async consumeMagicLinkToken(tokenHash: string): Promise<StaffUserRow | null> {
     const entry = this.magicLinkTokens.get(tokenHash);
+    if (!entry || entry.used || new Date(entry.expiresAt).getTime() <= Date.now()) return null;
+    entry.used = true;
+    const staff = this.staffById.get(entry.staffId);
+    return staff ? this.withSessionsRevokedAt(staff) : null;
+  }
+
+  // ---- Código de intercambio de un solo uso (hallazgo P2, tokens en URL) — ver
+  // el contrato completo en `core-repository.ts::createAuthExchangeCode`/
+  // `consumeAuthExchangeCode`. ----
+
+  async createAuthExchangeCode(input: { readonly staffId: string; readonly codeHash: string; readonly expiresAt: string }): Promise<void> {
+    this.authExchangeCodes.set(input.codeHash, { staffId: input.staffId, expiresAt: input.expiresAt, used: false });
+  }
+
+  async consumeAuthExchangeCode(codeHash: string): Promise<StaffUserRow | null> {
+    const entry = this.authExchangeCodes.get(codeHash);
     if (!entry || entry.used || new Date(entry.expiresAt).getTime() <= Date.now()) return null;
     entry.used = true;
     const staff = this.staffById.get(entry.staffId);

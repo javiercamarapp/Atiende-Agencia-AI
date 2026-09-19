@@ -37,6 +37,19 @@ import type { AppDeps } from "../deps.ts";
 const LOGIN_RATE_LIMIT = { max: 10, windowMs: 5 * 60_000 } as const;
 const REFRESH_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 const ACCEPT_INVITE_RATE_LIMIT = { max: 10, windowMs: 5 * 60_000 } as const;
+// Hallazgo de auditoría (P2, "tokens de sesión completos en query params de URL")
+// — ver el comentario de cabecera de `packages/db/migrations/0008_auth_exchange_
+// code.sql`. Límite generoso (mismo orden que REFRESH_RATE_LIMIT): un login
+// legítimo canjea el código UNA vez al montar `GoogleCallback.tsx`; React
+// StrictMode puede montar el efecto dos veces en desarrollo, y una pestaña
+// duplicada/doble clic no debe verse como fuerza bruta.
+const EXCHANGE_CODE_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
+// Vida corta a propósito (segundos, no minutos como `MAGIC_LINK_TTL_MS`): el
+// código viaja en la URL del redirect y el frontend lo canjea de inmediato al
+// montar -- una ventana de 60s es más que suficiente para ese round-trip
+// mientras mantiene mínima la superficie de un código interceptado (ej. en un
+// log de acceso) antes de que expire por sí solo.
+export const EXCHANGE_CODE_TTL_MS = 60_000;
 
 interface LoginBody {
   readonly email?: unknown;
@@ -195,6 +208,42 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // `core.revoked_refresh_token` y es rechazado por el chequeo de arriba, igual que
     // si el staff hubiera hecho logout explícito con él.
     await deps.coreRepo.revokeRefreshToken({ jti, userId: sub, expiresAt: new Date(exp * 1000).toISOString() });
+
+    return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName), 200);
+  });
+
+  // Hallazgo de auditoría (P2, "tokens de sesión completos en query params de
+  // URL (Google OAuth y magic-link) -- riesgo de filtración vía Referer/
+  // historial/logs") -- ver el comentario de cabecera de
+  // `packages/db/migrations/0008_auth_exchange_code.sql`. Reemplaza el
+  // contrato anterior de `auth-google.ts`/`auth-magic-link.ts` (JWT real +
+  // refreshToken directo en la query string del redirect 302) por el patrón
+  // "authorization code": ambos callbacks ahora ponen aquí un código opaco de
+  // un solo uso y 60s de vida (`EXCHANGE_CODE_TTL_MS`), y ESTE endpoint es el
+  // ÚNICO lugar donde el token/refreshToken reales viajan -- siempre en el BODY
+  // de una respuesta JSON, nunca en una URL. `GoogleCallback.tsx` (compartido
+  // por las 6 verticales y por magic-link) lo llama de inmediato al montar.
+  //
+  // Sin `authMiddleware` (todavía no hay sesión -- mismo momento que /auth/
+  // login): el código en sí es la credencial de un solo uso, exactamente igual
+  // que un `refreshToken` en /auth/refresh o un `token` de magic-link en
+  // /verify.
+  app.post("/auth/exchange-code", async (c) => {
+    const raw = (await c.req.json().catch(() => ({}))) as { code?: unknown };
+    if (typeof raw.code !== "string" || raw.code.length === 0) throw Errors.validation("code requerido");
+
+    // Mismo criterio que /auth/refresh -- sin identidad todavía disponible antes
+    // de consumir el código, la llave es solo IP.
+    const exchangeAllowed = await rateLimit(`auth:exchange-code:${requestActor(c.req.raw)}`, EXCHANGE_CODE_RATE_LIMIT.max, EXCHANGE_CODE_RATE_LIMIT.windowMs, {
+      category: "auth:token-issue",
+    });
+    if (!exchangeAllowed) throw Errors.tooManyRequests("Demasiados intentos. Intenta de nuevo en unos minutos.");
+
+    // Consumo atómico (`core.consume_auth_exchange_code`, ver la migración) --
+    // `null` si el código no existe, ya se usó, o venció; nunca se distingue
+    // cuál de los tres casos fue (mismo criterio que magic-link/refresh).
+    const staff = await deps.coreRepo.consumeAuthExchangeCode(hashInviteToken(raw.code));
+    if (!staff) throw Errors.unauthorized("Código de intercambio inválido, ya usado, o expirado.");
 
     return c.json(await issueSession(deps, staff.id, staff.email, staff.fullName), 200);
   });
