@@ -57,8 +57,17 @@ const PROMO_1: Promotion = {
   type: "percentage",
   value: 10,
   minOrderTotal: 200,
+  // Valores REALES que produciría `dateInputToIso` para "vigente del 1 al 30 de
+  // septiembre" en CDMX (`new Date("2026-09-01T00:00:00")`/
+  // `new Date("2026-09-30T23:59:59")`, ambos interpretados en zona LOCAL) --
+  // nunca un valor que la página misma jamás generaría. Antes de la corrección de
+  // esta ronda, `endsAt` aquí era "2026-09-30T05:59:59.000Z" (29-sep 23:59:59
+  // CDMX): un valor que `dateInputToIso` no produce para "hasta 30-sep", que
+  // ocultaba el bug real de fecha corrida (ver comentario de `formatDateInput` en
+  // Promociones.tsx) porque coincidía por casualidad con lo que el `.slice(0, 10)`
+  // buggy devolvía.
   startsAt: "2026-09-01T06:00:00.000Z",
-  endsAt: "2026-09-30T05:59:59.000Z",
+  endsAt: "2026-10-01T05:59:59.000Z",
   daysOfWeek: [1, 2, 3],
   startTime: "12:00",
   endTime: "18:00",
@@ -131,6 +140,30 @@ describe("PromocionesPage (restaurantes)", () => {
     expect(rendered.container.textContent).toContain("No se pudo cargar https://api.test/v1/restaurantes/prop-1/admin/promotions (500).");
   });
 
+  it("reintentar tras un error vuelve a pedir las promociones", async () => {
+    let ok = false;
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET" && url === "https://api.test/v1/restaurantes/prop-1/admin/promotions") {
+        return jsonResponse({ promotions: [PROMO_1] }, ok);
+      }
+      throw new Error(`fetch inesperado en el test: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("No se pudo cargar https://api.test/v1/restaurantes/prop-1/admin/promotions (500).");
+
+    ok = true;
+    const retryBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Reintentar")!;
+    await act(async () => {
+      click(retryBtn);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(rendered.container.textContent).toContain("BIENVENIDA10");
+  });
+
   it("renderiza la promoción real: código, valor, pedido mínimo, uso real/tope, días/horario y vigencia", async () => {
     stubFetch({});
     rendered = renderPage();
@@ -143,7 +176,9 @@ describe("PromocionesPage (restaurantes)", () => {
     expect(text).toContain("usado 37/100");
     expect(text).toContain("Lun/Mar/Mié");
     expect(text).toContain("12:00-18:00");
-    expect(text).toContain("Vigencia:");
+    // Fechas reales, no solo la etiqueta -- `new Date(...).toLocaleDateString("es-MX")`
+    // sobre startsAt/endsAt en TZ America/Mexico_City (fijada arriba).
+    expect(text).toContain("Vigencia: 1/9/2026 → 30/9/2026");
   });
 
   it("promoción inactiva muestra la etiqueta 'Inactiva' y el botón para reactivar", async () => {
@@ -184,6 +219,12 @@ describe("PromocionesPage (restaurantes)", () => {
 
     const desdeInput = document.body.querySelector("#promocion-edit-desde") as HTMLInputElement;
     const hastaInput = document.body.querySelector("#promocion-edit-hasta") as HTMLInputElement;
+    // Regresión del bug de "fecha corrida" (revisión de PR #170): `endsAt` real es
+    // "2026-10-01T05:59:59.000Z" (30-sep 23:59:59 CDMX). Con el bug viejo
+    // (`.slice(0, 10)` sobre el ISO, día UTC) esto precargaba "2026-10-01" -- un día
+    // DESPUÉS del real -- y cada "Guardar" sin tocar nada corría `endsAt` un día más
+    // en cada edición, dejando el descuento vigente días extra para todo usuario en
+    // CDMX. Con el fix (getters locales de `Date`) precarga el día real.
     expect(desdeInput.value).toBe("2026-09-01");
     expect(hastaInput.value).toBe("2026-09-30");
 
@@ -198,8 +239,11 @@ describe("PromocionesPage (restaurantes)", () => {
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/restaurantes/prop-1/admin/promotions/promo-1" && init?.method === "PATCH");
     expect(call).toBeDefined();
     const body = JSON.parse(call![1].body as string);
-    expect(body.startsAt).toBe(new Date("2026-09-01T00:00:00").toISOString());
-    expect(body.endsAt).toBe(new Date("2026-10-15T23:59:59").toISOString());
+    // Literales, no `new Date(...).toISOString()` (sería tautológico: reproduciría
+    // el mismo constructor local que usa la implementación). 2026-09-01T00:00:00 y
+    // 2026-10-15T23:59:59 en CDMX (UTC-6) son estos instantes UTC.
+    expect(body.startsAt).toBe("2026-09-01T06:00:00.000Z");
+    expect(body.endsAt).toBe("2026-10-16T05:59:59.000Z");
   });
 
   it("crear código nuevo: valida código/nombre/valor y NUNCA llama a la API con datos inválidos", async () => {
@@ -249,6 +293,8 @@ describe("PromocionesPage (restaurantes)", () => {
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/restaurantes/prop-1/admin/promotions" && init?.method === "POST");
     expect(call).toBeDefined();
     const body = JSON.parse(call![1].body as string);
+    // Literales (ver comentario del test de "editar vigencia" de arriba): 2026-10-01T00:00:00
+    // y 2026-10-31T23:59:59 en CDMX (UTC-6) son estos instantes UTC.
     expect(body).toEqual({
       code: "VERANO25",
       name: "Promo de verano",
@@ -256,8 +302,8 @@ describe("PromocionesPage (restaurantes)", () => {
       value: 50,
       minOrderTotal: 300,
       maxUses: 20,
-      startsAt: new Date("2026-10-01T00:00:00").toISOString(),
-      endsAt: new Date("2026-10-31T23:59:59").toISOString(),
+      startsAt: "2026-10-01T06:00:00.000Z",
+      endsAt: "2026-11-01T05:59:59.000Z",
     });
     // El modal se cierra y la promoción nueva ya aparece en la lista.
     expect(document.body.querySelector("#promocion-codigo")).toBeNull();
