@@ -78,7 +78,7 @@ import {
   PostgresRentasMensajeriaRepository,
   RealIcalFeedPort,
 } from "@atiende/domain-rentas";
-import { openManagedPostgres, PostgresCoreRepository } from "@atiende/db";
+import { openManagedPostgres, PostgresCoreRepository, PostgresImpersonationRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import { loadApiEnv } from "../env.ts";
@@ -410,6 +410,13 @@ export function buildProductionDeps(): AppDeps {
     rentasBreakGlassSessionRepo: (db) => new PostgresBreakGlassSessionRepository(db),
     rentasBreakGlassAuditRepo: (db) => new PostgresBreakGlassAuditRepository(db),
     rentasBreakGlassDataRepo: (db) => new PostgresBreakGlassRentasDataRepository(db),
+    // Bloque C -- impersonación de superadmin con bitácora (ver
+    // packages/db/migrations/0020_superadmin_impersonacion.sql). Misma fábrica
+    // por-request que las 3 de arriba: la sesión SIEMPRE debe abrirse como el
+    // superadmin real (`engine.withAppSession({ userId: callerId }, ...)`, ver
+    // routes/superadmin-impersonacion.ts) -- las funciones `security definer`
+    // exigen `auth.uid() = p_caller_id`.
+    impersonationRepo: (db) => new PostgresImpersonationRepository(db),
     llmGateway,
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
     // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.

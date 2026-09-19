@@ -31,6 +31,10 @@ export type {
 export {
   ImpersonationError,
   ImpersonationSigningKeyMissingError,
+  ImpersonationWriteBlockedError,
   InvalidOrganizationIdError,
   NoOrganizationSelectedError,
 } from "./errors.ts";
+
+export { blockWritesWhileImpersonating, isMutatingMethod, isWriteAllowedWhileImpersonating } from "./write-guard.ts";
+export type { BlockWritesWhileImpersonatingOptions } from "./write-guard.ts";

@@ -61,7 +61,7 @@ done
 echo "==> otorgando USAGE de schema a authenticated/anon (lo haría la plataforma Supabase, ver post-migrations.sql)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/post-migrations.sql" >/dev/null
 
-echo "==> corriendo fixtures + escenarios de autorización (25 escenarios, ver assertions.sql)"
+echo "==> corriendo fixtures + escenarios de autorización (53 escenarios, ver assertions.sql)"
 echo ""
 "${PSQL_DB[@]}" -f "$HERE/assertions.sql"
 

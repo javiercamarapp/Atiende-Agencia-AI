@@ -41,7 +41,8 @@ import {
   fetchVencimientos,
 } from "../lib/vencimientos-client.ts";
 import type { EstadoVencimiento, FiscalDeadline } from "../lib/vencimientos-client.ts";
-import { formatDate, formatEstadoVencimiento, formatPrioridadVencimiento } from "../lib/format.ts";
+import { formatEstadoVencimiento, formatPrioridadVencimiento } from "../lib/format.ts";
+import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
@@ -292,7 +293,11 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                       <TableCell className="font-semibold text-foreground">{d.tipo}</TableCell>
                       <TableCell className="text-muted-foreground">{d.periodo}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {formatDate(d.fechaLimite)}
+                        {/* `fechaLimite`/`fechaPresentacion` son columnas `date` (solo día,
+                            001_despachos_schema.sql) -- `formatFechaSolo` evita que se
+                            pinten un día antes en America/Mexico_City (mismo bug real
+                            corregido en Cobranza.tsx, ver apps/web/src/lib/formato-fecha.ts). */}
+                        {formatFechaSolo(d.fechaLimite)}
                         <div className="text-[11px] text-muted-foreground">{d.diasRestantes < 0 ? `${-d.diasRestantes} día(s) de atraso` : d.diasRestantes === 0 ? "vence hoy" : `vence en ${d.diasRestantes} día(s)`}</div>
                       </TableCell>
                       <TableCell>
@@ -300,7 +305,7 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
                       </TableCell>
                       <TableCell>
                         <EstadoBadge estado={d.estado} />
-                        {finalizado && d.fechaPresentacion && <div className="mt-1 text-[11px] text-muted-foreground">Presentado {formatDate(d.fechaPresentacion)}</div>}
+                        {finalizado && d.fechaPresentacion && <div className="mt-1 text-[11px] text-muted-foreground">Presentado {formatFechaSolo(d.fechaPresentacion)}</div>}
                         {finalizado && d.comprobanteUrl && (
                           <div className="mt-0.5 text-[11px]">
                             <a href={d.comprobanteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline underline-offset-2">

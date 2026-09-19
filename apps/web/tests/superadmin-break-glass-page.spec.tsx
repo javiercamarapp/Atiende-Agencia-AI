@@ -34,6 +34,7 @@ function stubFetch(handlers: {
   bitacora?: unknown;
   post?: (url: string, body: unknown) => void;
   reservas?: unknown;
+  finanzas?: unknown;
 }) {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
@@ -42,6 +43,7 @@ function stubFetch(handlers: {
     }
     if (url.includes("/superadmin/break-glass/sesiones")) return jsonResponse(handlers.sesiones ?? { sessions: [] });
     if (url.includes("/superadmin/break-glass/bitacora")) return jsonResponse(handlers.bitacora ?? { entries: [] });
+    if (url.includes("/finanzas")) return jsonResponse(handlers.finanzas ?? { finanzas: [] });
     if (url.includes("/reservas")) return jsonResponse(handlers.reservas ?? { reservas: [] });
     throw new Error(`fetch inesperado en el test: ${url}`);
   });
@@ -178,5 +180,97 @@ describe("SuperAdminBreakGlassPage", () => {
 
     expect(capturedBody).toMatchObject({ organizationId: "org-1", durationMinutes: 30 });
     expect((capturedBody as { reason: string }).reason).toContain("SOP-4821");
+  });
+
+  // Fase 10c -- el panel de "Ver datos del tenant" reemplaza el "Ver reservas"
+  // de PR #132: abre en la pestaña de reservas (primer recurso de RECURSOS) y
+  // cambia de pestaña a otro recurso (finanzas) sin recargar reservas.
+  it("panel de datos del tenant: abre en reservas, muestra filas reales, y cambia a otra pestaña sin perder la anterior", async () => {
+    const ahora = Date.now();
+    stubFetch({
+      sesiones: {
+        sessions: [
+          {
+            id: "s1",
+            organizationId: "org-1",
+            reason: "Ticket SOP-4821: investigar cobro duplicado.",
+            openedAtMs: ahora,
+            expiresAtMs: ahora + 30 * 60_000,
+            closedAtMs: null,
+            closedBy: null,
+            activa: true,
+            remainingMs: 30 * 60_000,
+          },
+        ],
+      },
+      reservas: { reservas: [{ ocupacionId: "oc-1", propertyId: "p1", unidadId: "u1", checkIn: "2026-10-01", checkOut: "2026-10-05", estado: "confirmado", huespedNombre: "Ana", huespedContacto: null }] },
+      finanzas: { finanzas: [{ id: "rf-1", ocupacionId: "oc-1", propertyId: "p1", moneda: "MXN", montoBrutoCentavos: 500000, netoCentavos: 400000, createdAtMs: ahora }] },
+    });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const verDatosBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Ver datos del tenant"));
+    expect(verDatosBtn).toBeDefined();
+    click(verDatosBtn!);
+    await esperarCarga();
+
+    expect(rendered.container.textContent).toContain("2026-10-01");
+    expect(rendered.container.textContent).toContain("Ana");
+
+    const tabFinanzas = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Finanzas");
+    expect(tabFinanzas).toBeDefined();
+    // Radix Tabs activa la pestaña en `onMouseDown` (button===0), NO en `onClick`
+    // (ver @radix-ui/react-tabs) -- `click()` de test-utils/render.tsx solo
+    // dispara el evento "click", así que aquí hace falta el "mousedown" real
+    // que Radix escucha.
+    await act(async () => {
+      tabFinanzas!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await esperarCarga();
+
+    expect(fetchMock.mock.calls.some((call: unknown[]) => String(call[0]).includes("/organizaciones/org-1/finanzas"))).toBe(true);
+    expect(rendered.container.textContent).toContain("MXN");
+  });
+
+  // Fix hallazgo de revisión real (bloqueante 3): `disponible: false`
+  // (migración 020 pendiente de aplicar) debe mostrar un mensaje DISTINTO de
+  // "el tenant no tiene finanzas registradas" -- un operador investigando una
+  // emergencia necesita distinguir "sin datos" de "lector no disponible".
+  it("lector no disponible (disponible:false): muestra el aviso de 'no disponible', NUNCA el mensaje de vacío real", async () => {
+    const ahora = Date.now();
+    stubFetch({
+      sesiones: {
+        sessions: [
+          {
+            id: "s1",
+            organizationId: "org-1",
+            reason: "Ticket SOP-4821: investigar cobro duplicado.",
+            openedAtMs: ahora,
+            expiresAtMs: ahora + 30 * 60_000,
+            closedAtMs: null,
+            closedBy: null,
+            activa: true,
+            remainingMs: 30 * 60_000,
+          },
+        ],
+      },
+      reservas: { reservas: [], disponible: true },
+      finanzas: { finanzas: [], disponible: false },
+    });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const verDatosBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Ver datos del tenant"));
+    click(verDatosBtn!);
+    await esperarCarga();
+
+    const tabFinanzas = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Finanzas");
+    await act(async () => {
+      tabFinanzas!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await esperarCarga();
+
+    expect(rendered.container.textContent).toContain("todavía no está disponible");
+    expect(rendered.container.textContent).not.toContain("El tenant no tiene movimiento financiero");
   });
 });

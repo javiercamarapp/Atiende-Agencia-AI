@@ -77,6 +77,52 @@ insert into rentas.ocupacion (id, organization_id, property_id, unidad_id, rango
   ('00000000-0000-0000-0000-0000000b6040', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6020', daterange('2026-10-01', '2026-10-05', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true, '00000000-0000-0000-0000-0000000b6030')
 on conflict do nothing;
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Fase 10c -- fixtures de los 6 lectores restantes (ver
+-- ../../packages/domain-rentas/migrations/020_break_glass_lectores.sql), todas
+-- sobre org-break-glass (b6001) / Property Break-Glass (b6010) / Unidad
+-- Break-Glass (b6020) -- MISMAS filas que ya usa el bloque de reservas de
+-- arriba, para no multiplicar fixtures sin necesidad. `org-break-glass-otra`
+-- (b6004) / `property-otra-org` (b6011) son SOLO para el escenario de
+-- "propiedad que no pertenece a la organización" (P0002) de cada función.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+insert into core.organization (id, vertical, name, slug) values
+  ('00000000-0000-0000-0000-0000000b6004', 'rentas', 'Org Break-Glass (otra, solo para property mismatch)', 'org-break-glass-otra')
+on conflict do nothing;
+
+insert into core.property (id, organization_id, vertical, name) values
+  ('00000000-0000-0000-0000-0000000b6011', '00000000-0000-0000-0000-0000000b6004', 'rentas', 'Property de otra organización')
+on conflict do nothing;
+
+insert into rentas.reserva_financiero (id, organization_id, property_id, ocupacion_id, moneda, monto_bruto_centavos, neto_centavos) values
+  ('00000000-0000-0000-0000-0000000b6050', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6040', 'MXN', 500000, 450000)
+on conflict do nothing;
+
+insert into rentas.payout_canal (id, organization_id, property_id, canal_id, moneda, monto_total_centavos, fecha_payout) values
+  ('00000000-0000-0000-0000-0000000b6060', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', (select id from rentas.canal where codigo = 'airbnb'), 'MXN', 100000, '2026-09-01')
+on conflict do nothing;
+
+insert into rentas.tarifa_base (id, organization_id, property_id, unidad_id, precio_noche_centavos, moneda) values
+  ('00000000-0000-0000-0000-0000000b6070', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6020', 150000, 'MXN')
+on conflict do nothing;
+
+insert into rentas.conversacion (id, organization_id, property_id, unidad_id, canal_codigo, huesped_nombre, propiedad_nombre) values
+  ('00000000-0000-0000-0000-0000000b6080', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6020', 'airbnb', 'Huésped Break-Glass', 'Property Break-Glass')
+on conflict do nothing;
+
+insert into rentas.tarea_operativa (id, organization_id, property_id, unidad_id, tipo, programada_para) values
+  ('00000000-0000-0000-0000-0000000b6090', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6020', 'limpieza', '2026-09-22')
+on conflict do nothing;
+
+-- URL con un token de un solo uso embebido en el query string -- exactamente el
+-- caso real que el enmascarado de 020_break_glass_lectores.sql debe cubrir
+-- (el escenario 45 de abajo verifica que la función NUNCA devuelve este query
+-- string completo).
+insert into rentas.canal_feed_externo (id, organization_id, property_id, unidad_id, canal_id, url_importacion) values
+  ('00000000-0000-0000-0000-0000000b6095', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6020', (select id from rentas.canal where codigo = 'airbnb'), 'https://www.airbnb.com/calendar/ical/12345.ics?s=tok_secreto_de_un_solo_uso_9f8e7d6c')
+on conflict do nothing;
+
 -- Tres ventanas de acceso, insertadas DIRECTO (como el superusuario que corre
 -- este script -- bypassa RLS/el trigger de INSERT no aplica, solo bloquea
 -- UPDATE) para poder ejercitar los 3 estados sin depender de que
@@ -304,4 +350,318 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6103', true);
 select count(*) as deberia_ser_1 from rentas.break_glass_access_log where organization_id = '00000000-0000-0000-0000-0000000b6001';
+rollback;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 7) Fase 10c -- los 6 lectores restantes (020_break_glass_lectores.sql).
+--    Mismo criterio de autorización EXACTO que list_reservas_for_break_glass
+--    (bloque 3 de arriba, escenarios 11-15) -- se repite aquí por función
+--    porque cada una es su propio cuerpo `security definer`, no una sola pieza
+--    de código compartida; los 4 escenarios "core" (sin sesión / sesión
+--    vencida / sesión activa real / staff con membership real) se prueban
+--    para las 6, `anon`/filtro-por-propiedad-ajena se prueban una vez
+--    (representativo, sobre `list_finanzas_for_break_glass` -- la lógica de
+--    ambos chequeos es idéntica letra por letra en las otras 5).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+\echo '=== 26. list_finanzas_for_break_glass: sin NINGÚN acceso para esta organización -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_finanzas_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6003', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 27. list_finanzas_for_break_glass: acceso VENCIDO (fixture bg-vencida) -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_finanzas_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6002', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 28. list_finanzas_for_break_glass: acceso ACTIVO real -- SÍ devuelve la fila real de reserva_financiero ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select count(*) as deberia_ser_1 from rentas.list_finanzas_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null);
+rollback;
+
+\echo '=== 29. list_finanzas_for_break_glass: staff CON membership real (no superadmin) es RECHAZADO, aunque exista ventana activa de OTRO actor ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6103', true);
+select * from rentas.list_finanzas_for_break_glass('00000000-0000-0000-0000-0000000b6103', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 30. list_finanzas_for_break_glass: anon no puede ni ejecutar la función ==='
+begin;
+set local role anon;
+select * from rentas.list_finanzas_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 31. list_finanzas_for_break_glass: property_id que NO pertenece a la organización -- RECHAZADO (P0002) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_finanzas_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6011', null, null) as should_fail;
+rollback;
+
+\echo '=== 32. list_payouts_for_break_glass: sin NINGÚN acceso -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_payouts_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6003', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 33. list_payouts_for_break_glass: acceso VENCIDO -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_payouts_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6002', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 34. list_payouts_for_break_glass: acceso ACTIVO real -- SÍ devuelve el payout real ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select count(*) as deberia_ser_1 from rentas.list_payouts_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null);
+rollback;
+
+\echo '=== 35. list_payouts_for_break_glass: staff CON membership real (no superadmin) es RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6103', true);
+select * from rentas.list_payouts_for_break_glass('00000000-0000-0000-0000-0000000b6103', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 36. list_pricing_for_break_glass: sin NINGÚN acceso -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_pricing_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6003', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 37. list_pricing_for_break_glass: acceso VENCIDO -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_pricing_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6002', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 38. list_pricing_for_break_glass: acceso ACTIVO real -- SÍ devuelve la tarifa base real ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select count(*) as deberia_ser_1 from rentas.list_pricing_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null);
+rollback;
+
+\echo '=== 39. list_pricing_for_break_glass: staff CON membership real (no superadmin) es RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6103', true);
+select * from rentas.list_pricing_for_break_glass('00000000-0000-0000-0000-0000000b6103', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 40. list_mensajeria_for_break_glass: sin NINGÚN acceso -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_mensajeria_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6003', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 41. list_mensajeria_for_break_glass: acceso VENCIDO -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_mensajeria_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6002', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 42. list_mensajeria_for_break_glass: acceso ACTIVO real -- SÍ devuelve la conversación real ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select count(*) as deberia_ser_1 from rentas.list_mensajeria_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null);
+rollback;
+
+\echo '=== 43. list_mensajeria_for_break_glass: staff CON membership real (no superadmin) es RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6103', true);
+select * from rentas.list_mensajeria_for_break_glass('00000000-0000-0000-0000-0000000b6103', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 44. list_limpieza_for_break_glass: sin NINGÚN acceso -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_limpieza_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6003', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 45. list_limpieza_for_break_glass: acceso VENCIDO -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_limpieza_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6002', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 46. list_limpieza_for_break_glass: acceso ACTIVO real -- SÍ devuelve la tarea operativa real ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select count(*) as deberia_ser_1 from rentas.list_limpieza_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null);
+rollback;
+
+\echo '=== 47. list_limpieza_for_break_glass: staff CON membership real (no superadmin) es RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6103', true);
+select * from rentas.list_limpieza_for_break_glass('00000000-0000-0000-0000-0000000b6103', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 48. list_sync_ical_for_break_glass: sin NINGÚN acceso -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6003', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 49. list_sync_ical_for_break_glass: acceso VENCIDO -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6002', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 50. list_sync_ical_for_break_glass: acceso ACTIVO real -- SÍ devuelve el feed real, con la URL ENMASCARADA (nunca el token de la query string de fixture) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select (url_importacion_enmascarada not like '%tok_secreto%' and url_importacion_enmascarada = 'https://www.airbnb.com/***')::int as deberia_ser_1
+from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null);
+rollback;
+
+\echo '=== 51. list_sync_ical_for_break_glass: staff CON membership real (no superadmin) es RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6103', true);
+select * from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-0000000b6103', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 52. list_reservas_for_break_glass (sobrecarga de 5 parámetros, Fase 10c): filtro por propiedad -- SOLO la reserva de la propiedad pedida (aquí la única propiedad del fixture, filtra correctamente por igualdad) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select count(*) as deberia_ser_1 from rentas.list_reservas_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', null, null);
+rollback;
+
+\echo '=== 53. list_reservas_for_break_glass (sobrecarga de 5 parámetros): property_id que NO pertenece a la organización -- RECHAZADO (P0002) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select * from rentas.list_reservas_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6011', null, null) as should_fail;
+rollback;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Fix hallazgo de revisión real (ronda 1 del PR #155, bloqueante 4) --
+-- "sesión de OTRO superadmin -> denegado" por lector. Los escenarios negativos
+-- 29/35/39/43/47/51 (staff CON membership real, b6103) se rechazan ANTES en
+-- `rentas.is_platform_superadmin` -- nunca ejercitan la cláusula central
+-- `s.actor_user_id = p_caller_id` de las 7 funciones nuevas de
+-- 020_break_glass_lectores.sql. Los 7 escenarios de abajo sí la ejercitan: b6101
+-- es un superadmin REAL (`core.platform_superadmin`, pasa el primer chequeo),
+-- pero NUNCA abrió una `break_glass_session` sobre org-break-glass (b6001) --
+-- solo b6100 la tiene (fixture b6200). Si esa cláusula se borrara, los 53
+-- escenarios de arriba seguirían en verde (ninguno la ejercita) pero estos 7
+-- fallarían -- exactamente el hueco que señaló la revisión.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+\echo '=== 54. list_reservas_for_break_glass (5 parámetros): OTRO superadmin real (b6101, sin sesión propia sobre esta organización) -- RECHAZADO aunque exista una sesión vigente de OTRO actor (b6100) sobre la misma organización ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6101', true);
+select * from rentas.list_reservas_for_break_glass('00000000-0000-0000-0000-0000000b6101', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 55. list_finanzas_for_break_glass: OTRO superadmin real (b6101, sin sesión propia) -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6101', true);
+select * from rentas.list_finanzas_for_break_glass('00000000-0000-0000-0000-0000000b6101', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 56. list_payouts_for_break_glass: OTRO superadmin real (b6101, sin sesión propia) -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6101', true);
+select * from rentas.list_payouts_for_break_glass('00000000-0000-0000-0000-0000000b6101', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 57. list_pricing_for_break_glass: OTRO superadmin real (b6101, sin sesión propia) -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6101', true);
+select * from rentas.list_pricing_for_break_glass('00000000-0000-0000-0000-0000000b6101', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 58. list_mensajeria_for_break_glass: OTRO superadmin real (b6101, sin sesión propia) -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6101', true);
+select * from rentas.list_mensajeria_for_break_glass('00000000-0000-0000-0000-0000000b6101', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 59. list_limpieza_for_break_glass: OTRO superadmin real (b6101, sin sesión propia) -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6101', true);
+select * from rentas.list_limpieza_for_break_glass('00000000-0000-0000-0000-0000000b6101', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+\echo '=== 60. list_sync_ical_for_break_glass: OTRO superadmin real (b6101, sin sesión propia) -- RECHAZADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6101', true);
+select * from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-0000000b6101', '00000000-0000-0000-0000-0000000b6001', null, null, null) as should_fail;
+rollback;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Fix hallazgo de revisión real (ronda 1 del PR #155, bloqueante 5) --
+-- enmascarado fail-closed de url_importacion. El escenario 50 (arriba) solo
+-- prueba el caso feliz `https://host/path?query`. Los escenarios de abajo
+-- prueban los casos concretos que el `regexp_replace` original (fail-open)
+-- habría devuelto INTACTOS: webcal:// (formato habitual de un enlace de
+-- importación iCal), esquema en MAYÚSCULAS, y userinfo (`user:pass@host`) --
+-- ninguno debe filtrar el token/credencial ni la URL completa.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+insert into rentas.canal_feed_externo (id, organization_id, property_id, unidad_id, canal_id, url_importacion) values
+  ('00000000-0000-0000-0000-0000000b6096', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6020', (select id from rentas.canal where codigo = 'vrbo'), 'webcal://www.airbnb.com/calendar/ical/67890.ics?s=tok_webcal_9a8b7c6d'),
+  ('00000000-0000-0000-0000-0000000b6097', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6020', (select id from rentas.canal where codigo = 'booking'), 'HTTPS://Booking.example.com/ical/feed.ics?s=TOK_MAYUS_1234'),
+  ('00000000-0000-0000-0000-0000000b6098', '00000000-0000-0000-0000-0000000b6001', '00000000-0000-0000-0000-0000000b6010', '00000000-0000-0000-0000-0000000b6020', (select id from rentas.canal where codigo = 'manual'), 'https://svc_user:svc_pass_secreto@sync.example.com/feed.ics')
+on conflict do nothing;
+
+\echo '=== 61. list_sync_ical_for_break_glass: URL webcal:// -- enmascarada correctamente (el regexp_replace original, sensible a esquema http(s), la habría devuelto intacta) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select (url_importacion_enmascarada not like '%tok_webcal%' and url_importacion_enmascarada = 'webcal://www.airbnb.com/***')::int as deberia_ser_1
+  from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null)
+  where id = '00000000-0000-0000-0000-0000000b6096';
+rollback;
+
+\echo '=== 62. list_sync_ical_for_break_glass: esquema en MAYÚSCULAS -- enmascarada correctamente (el regexp_replace original era sensible a mayúsculas y la habría devuelto intacta) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select (url_importacion_enmascarada not like '%TOK_MAYUS%' and url_importacion_enmascarada = 'HTTPS://Booking.example.com/***')::int as deberia_ser_1
+  from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null)
+  where id = '00000000-0000-0000-0000-0000000b6097';
+rollback;
+
+\echo '=== 63. list_sync_ical_for_break_glass: URL con userinfo (user:pass@host) -- SIN credenciales en el resultado enmascarado ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6100', true);
+select (url_importacion_enmascarada not like '%svc_user%' and url_importacion_enmascarada not like '%svc_pass_secreto%' and url_importacion_enmascarada = 'https://sync.example.com/***')::int as deberia_ser_1
+  from rentas.list_sync_ical_for_break_glass('00000000-0000-0000-0000-0000000b6100', '00000000-0000-0000-0000-0000000b6001', null, null, null)
+  where id = '00000000-0000-0000-0000-0000000b6098';
 rollback;

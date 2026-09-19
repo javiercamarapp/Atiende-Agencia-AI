@@ -1,4 +1,12 @@
-import type { CoreRepository, CoreStaffRepository, LlmUsageRepository, ResumenDiarioRepository, SaludRepository, SuperadminAccionesRepository } from "@atiende/db";
+import type {
+  CoreRepository,
+  CoreStaffRepository,
+  ImpersonationRepository,
+  LlmUsageRepository,
+  ResumenDiarioRepository,
+  SaludRepository,
+  SuperadminAccionesRepository,
+} from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -267,6 +275,15 @@ export interface AppDeps {
   readonly rentasBreakGlassSessionRepo: (db: TenantDbSession) => BreakGlassSessionRepository;
   readonly rentasBreakGlassAuditRepo: (db: TenantDbSession) => BreakGlassAuditRepository;
   readonly rentasBreakGlassDataRepo: (db: TenantDbSession) => BreakGlassRentasDataRepository;
+  /** Impersonación de superadmin con bitácora (Bloque C, ver
+   *  packages/db/migrations/0020_superadmin_impersonacion.sql +
+   *  routes/superadmin-impersonacion.ts). MISMO criterio que
+   *  `rentasBreakGlassSessionRepo` arriba: fábrica por-request, nunca una
+   *  instancia fija -- `core.start_impersonation_session`/`end_*`/`get_active_*`
+   *  exigen `auth.uid() = p_caller_id`, así que SIEMPRE debe construirse sobre
+   *  `engine.withAppSession({ userId: callerId }, ...)`, jamás sobre `coreRepo`
+   *  (ese sí es de sesión de sistema). */
+  readonly impersonationRepo: (db: TenantDbSession) => ImpersonationRepository;
   /** Gateway LLM real compartido (packages/agent-core::LlmGateway), construido por
    * `production/llm-gateway.ts::buildProductionLlmGateway` SOLO SI al menos un
    * proveedor (Anthropic/OpenAI/OpenRouter) tiene API key configurada -- ver ese

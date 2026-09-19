@@ -5,13 +5,14 @@
 // `BotonChatDatos` (no aplica a un panel de plataforma, no de negocio).
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertOctagon, Building2, CalendarDays, DollarSign, ExternalLink, LayoutGrid, ListChecks, Newspaper, Plug, Receipt, TrendingUp } from "lucide-react";
+import { Activity, AlertOctagon, Building2, CalendarDays, DollarSign, ExternalLink, LayoutGrid, ListChecks, Newspaper, Plug, Receipt, ShieldAlert, TrendingUp } from "lucide-react";
 import { DashboardHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
+import { ImpersonacionBanner } from "./components/ImpersonacionBanner.tsx";
 
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
@@ -32,6 +33,7 @@ const SECTIONS = [
       { to: "/superadmin/gasto-api", label: "Gasto de API de LLM", icon: DollarSign },
       { to: "/superadmin/facturacion", label: "Facturación", icon: Receipt },
       { to: "/superadmin/break-glass", label: "Romper cristal", icon: AlertOctagon },
+      { to: "/superadmin/impersonacion", label: "Impersonación", icon: ShieldAlert },
       { to: "/superadmin/integraciones", label: "Integraciones", icon: Plug },
       { to: "/superadmin/paneles", label: "Entrar a los otros paneles", icon: ExternalLink },
     ],
@@ -94,6 +96,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
             />
           }
         />
+        <ImpersonacionBanner apiBaseUrl={apiBaseUrl} token={session.token} />
         {children({ apiBaseUrl, token: session.token })}
       </main>
     </div>

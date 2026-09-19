@@ -410,6 +410,7 @@ export interface ProveedorFichaPageProps extends CitasShellContext {
 export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, providerId }: ProveedorFichaPageProps) {
   const [detail, setDetail] = useState<ProviderDetail | null>(null);
   const [services, setServices] = useState<readonly ServiceSummary[] | null>(null);
+  const [servicesError, setServicesError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [togglingServiceId, setTogglingServiceId] = useState<string | null>(null);
@@ -432,13 +433,22 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "No se pudo cargar el proveedor."));
   }
 
-  useEffect(() => {
-    load();
+  function cargarServicios() {
+    setServicesError(null);
     fetchServices(fetch, apiBaseUrl, token, propertyId)
       .then(setServices)
-      .catch(() => {
-        /* la sección de servicios se degrada a "no se pudieron cargar" sin tronar la ficha completa */
+      .catch((err: unknown) => {
+        // La sección de servicios se degrada a un estado de error propio
+        // (con reintento) sin tronar la ficha completa -- antes de este fix
+        // el catch quedaba vacío y `services` se quedaba en `null` para
+        // siempre, dejando "Cargando servicios…" en carga infinita.
+        setServicesError(err instanceof Error ? err.message : "No se pudieron cargar los servicios.");
       });
+  }
+
+  useEffect(() => {
+    load();
+    cargarServicios();
   }, [apiBaseUrl, token, propertyId, providerId]);
 
   async function handleConnectGoogleCalendar() {
@@ -601,7 +611,9 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
               <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Servicios que ofrece</CardTitle>
             </CardHeader>
             <CardContent>
-              {!services ? (
+              {servicesError ? (
+                <EstadoError mensaje={servicesError} onReintentar={cargarServicios} />
+              ) : !services ? (
                 <EstadoCargando lineas={2} etiqueta="Cargando servicios…" />
               ) : services.length === 0 ? (
                 <EstadoVacio mensaje="Este negocio todavía no tiene servicios configurados." />

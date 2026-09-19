@@ -458,3 +458,78 @@ select id as intent_id into temp t44 from core.crear_superadmin_action_intent_fo
 select core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t44));
 select core._reencolar_mensaje_muerto((select intent_id from t44), 'hoteles', '00000000-0000-0000-0000-000000000224') as should_fail;
 rollback;
+
+-- ═══ cerrar_prospecto: re-validación del estado ACTUAL del prospecto antes de
+--    ejecutar (`packages/db/migrations/0019_cerrar_prospecto_revalida_estado.sql`,
+--    corrige el lost-update: ANTES de esta migración, esta rama era la ÚNICA de
+--    las tres que nunca revisaba de nuevo el mundo real antes de escribir). `now()`
+--    es constante dentro de una misma transacción en Postgres, así que estos
+--    escenarios usan el mismo truco de `update ... set creado_en = now() -
+--    interval ...` que el escenario 19 (intent vencido) en vez de esperar reloj
+--    real. ═══
+
+-- NOTA sobre el patrón de aserción de 45-48: el gate de CI
+-- (`scripts/verify-real-postgres-ci/run-gate.mjs`, `deriveExpectation`) solo
+-- reconoce `as should_fail`, `deberia_ser_<DIGITOS>` (numérico) o
+-- `deberia_fallar` -- CUALQUIER OTRO alias (`deberia_ser_executed`,
+-- `deberia_ser_demo`, etc.) no matchea nada y el escenario cae en kind
+-- "success" = el gate solo comprueba que NO hubo excepción, sin mirar el
+-- valor. Además el gate corta el bloque en la PRIMERA aparición de
+-- `deberia_ser_<DIGITOS>` y descarta todo lo que viene después -- por eso
+-- cada escenario termina en UN SOLO `select count(*) ... as
+-- <descripcion>_deberia_ser_N` que combina TODAS las condiciones que hacen
+-- al escenario válido (estado del intent, `error`, estado del prospecto) en
+-- una sola fila, y ningún alias `deberia_ser_<digitos>` aparece antes de ese
+-- select final dentro del mismo bloque.
+\echo '=== 45. cerrar_prospecto: camino feliz SIN cambios en el prospecto -- sigue ejecutando normal tras el fix (regresión) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select id as intent_id into temp t45 from core.crear_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', 'cerrar_prospecto', jsonb_build_object('prospectoId', '00000000-0000-0000-0000-000000000210', 'estado', 'perdido'), 'x', 5);
+select core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t45));
+reset role;
+select count(*) as intent_executed_y_prospecto_perdido_deberia_ser_1 from core.superadmin_action_intent i join core.prospecto p on p.id = '00000000-0000-0000-0000-000000000210' where i.id = (select intent_id from t45) and i.estado = 'executed' and p.estado = 'perdido';
+rollback;
+
+\echo '=== 46. cerrar_prospecto: el prospecto fue MODIFICADO por OTRO superadmin despues de crear el intent -- confirmacion RECHAZADA (failed con motivo), el estado nuevo NO se pisa ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select id as intent_id into temp t46 from core.crear_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', 'cerrar_prospecto', jsonb_build_object('prospectoId', '00000000-0000-0000-0000-000000000210', 'estado', 'perdido'), 'x', 5);
+reset role;
+-- Retrocede `creado_en` del intent (mismo truco que el escenario 19) -- simula
+-- que pasaron varios minutos desde que se creó, sin depender del reloj real.
+update core.superadmin_action_intent set creado_en = now() - interval '10 minutes' where id = (select intent_id from t46);
+-- Otro superadmin edita el MISMO prospecto por el editor normal mientras el
+-- primer intent seguía pendiente de confirmar.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000203', true);
+select core.update_prospecto_for_superadmin('00000000-0000-0000-0000-000000000203', '00000000-0000-0000-0000-000000000210', 'demo', 'editado por otro superadmin');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t46));
+reset role;
+select count(*) as intent_failed_con_error_y_prospecto_intacto_deberia_ser_1 from core.superadmin_action_intent i join core.prospecto p on p.id = '00000000-0000-0000-0000-000000000210' where i.id = (select intent_id from t46) and i.estado = 'failed' and i.error is not null and p.estado = 'demo';
+rollback;
+
+\echo '=== 47. cerrar_prospecto: el prospecto YA esta en un estado terminal cuando se confirma -- confirmacion RECHAZADA (failed con motivo), no se re-ejecuta encima ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select id as intent_id into temp t47 from core.crear_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', 'cerrar_prospecto', jsonb_build_object('prospectoId', '00000000-0000-0000-0000-000000000210', 'estado', 'descartado'), 'x', 5);
+-- El prospecto ya se cerro por otro camino ANTES de que el creador del intent
+-- llegara a confirmarlo.
+select core.update_prospecto_for_superadmin('00000000-0000-0000-0000-000000000202', '00000000-0000-0000-0000-000000000210', 'perdido', null);
+select core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t47));
+reset role;
+select count(*) as intent_failed_con_error_y_prospecto_intacto_deberia_ser_1 from core.superadmin_action_intent i join core.prospecto p on p.id = '00000000-0000-0000-0000-000000000210' where i.id = (select intent_id from t47) and i.estado = 'failed' and i.error is not null and p.estado = 'perdido';
+rollback;
+
+\echo '=== 48. cerrar_prospecto: el prospecto YA NO EXISTE cuando se confirma -- confirmacion RECHAZADA (failed con motivo), tercera rama de la re-validacion (ninguno de 45-47 la cubre) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select id as intent_id into temp t48 from core.crear_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', 'cerrar_prospecto', jsonb_build_object('prospectoId', '00000000-0000-0000-0000-000000000299', 'estado', 'perdido'), 'x', 5);
+select core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t48));
+reset role;
+select count(*) as intent_failed_con_error_deberia_ser_1 from core.superadmin_action_intent where id = (select intent_id from t48) and estado = 'failed' and error is not null;
+rollback;

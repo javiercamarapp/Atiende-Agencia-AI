@@ -164,3 +164,143 @@ export interface NewBreakGlassSessionInput {
 export function esSesionBreakGlassActiva(session: BreakGlassSession, nowMs: number = Date.now()): boolean {
   return session.closedAtMs === null && session.expiresAtMs > nowMs;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lectores restantes (Fase 10c -- ver ../../migrations/020_break_glass_lectores.sql):
+// las 6 categorías de dato de rentas que `BreakGlassReservaResumen` (arriba) dejó
+// documentadas como pendientes -- `finanzas`, `payouts`, `pricing`, `mensajeria`,
+// `limpieza` (cubre limpieza Y mantenimiento, ver `rentas.tarea_operativa.tipo`) y
+// `sync_ical`. Mismo criterio de "resumen deliberadamente mínimo" que
+// `BreakGlassReservaResumen` -- cada tipo trae solo lo que su propia función SQL
+// devuelve, todos con un campo `id` (para que `acceso.ts::crearLectorTenantBreakGlass`
+// pueda describir el resultado de forma genérica, mismo patrón que
+// `leerReservasTenantBreakGlass` describe con `ocupacionIds`).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Alcance opcional de paginado + filtro por propiedad, compartido por los 7
+ *  lectores de tenant (reservas + los 6 de esta fase). `propertyId` viaja tal
+ *  cual a `resourceScope.propertyId` de la bitácora (ver acceso.ts). */
+export interface BreakGlassLectorPaginacion {
+  readonly propertyId?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/** Página por defecto cuando el llamador no pide una explícita -- mismo valor
+ *  que el DEFAULT de `p_limit` en las funciones SQL de
+ *  `020_break_glass_lectores.sql`. */
+export const BREAK_GLASS_LECTOR_LIMIT_DEFAULT = 100;
+
+/** Tope DURO de página -- mismo valor que `least(coalesce(p_limit, 100), 200)`
+ *  en las funciones SQL; reforzado también aquí (defensa en profundidad, nunca
+ *  la única barrera) para que la ruta HTTP nunca le pida a Postgres una página
+ *  más grande que la que la propia función ya limitaría. */
+export const BREAK_GLASS_LECTOR_LIMIT_MAX = 200;
+
+/**
+ * FIX hallazgo de revisión real (ronda 1 del PR #155, bloqueante 3) --
+ * "vacío honesto" real para los 6 lectores nuevos: antes de este fix,
+ * `PostgresBreakGlassRentasDataRepository` prometía en su comentario de
+ * cabecera un vacío honesto (`disponible: false` + lista vacía) que NUNCA
+ * existió en el código -- los 6 métodos devolvían `readonly T[]` sin forma de
+ * distinguir "el tenant de verdad no tiene datos de este tipo" de "la función
+ * SQL de la migración 020 todavía no está aplicada" (SQLSTATE 42883). Ambos
+ * casos se veían IDÉNTICOS a la ruta HTTP y a la pestaña web -- un operador de
+ * romper-cristal viendo "El tenant no tiene payouts registrados" durante una
+ * investigación de emergencia no tenía forma de saber si eso era cierto o si
+ * el lector simplemente no estaba disponible todavía.
+ *
+ * `disponible: false` viaja hasta la ruta (`c.json({ ..., disponible })`) y
+ * hasta `BreakGlass.tsx` (mensaje explícito "lector no disponible todavía"
+ * distinto de "el tenant no tiene datos"). También evita que
+ * `acceso.ts::crearLectorTenantBreakGlass` audite una lectura que nunca
+ * ocurrió de verdad -- ver ese archivo.
+ *
+ * `listReservasTenant` (el lector original de PR #132) NO usa este wrapper:
+ * su fallback real a la sobrecarga de 2 parámetros de
+ * `018_break_glass_wiring.sql` SIEMPRE produce datos reales (solo pierde el
+ * filtro/paginado del lado de Postgres) -- nunca hay un estado "no disponible"
+ * genuino para reservas, a diferencia de los 6 recursos que nunca tuvieron un
+ * lector antes de esta fase.
+ */
+export interface BreakGlassLectorResultado<T> {
+  /** `false` SOLO cuando la función SQL de `020_break_glass_lectores.sql` que
+   *  sirve este recurso todavía no existe en la base real (SQLSTATE 42883) --
+   *  nunca cuando la consulta corrió con éxito y de verdad no encontró filas. */
+  readonly disponible: boolean;
+  readonly datos: readonly T[];
+}
+
+export interface BreakGlassFinanzasResumen {
+  readonly id: string;
+  readonly ocupacionId: string;
+  readonly propertyId: string;
+  readonly moneda: string;
+  readonly montoBrutoCentavos: number;
+  readonly comisionCanalCentavos: number;
+  readonly comisionGestorCentavos: number;
+  readonly gastosCentavos: number;
+  readonly impuestosCentavos: number;
+  readonly netoCentavos: number;
+  readonly createdAtMs: number;
+}
+
+export interface BreakGlassPayoutResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly canalId: string;
+  readonly referenciaExterna: string | null;
+  readonly moneda: string;
+  readonly montoTotalCentavos: number;
+  readonly fechaPayout: string; // YYYY-MM-DD
+  readonly creadoEnMs: number;
+}
+
+export interface BreakGlassPricingResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly precioNocheCentavos: number;
+  readonly moneda: string;
+  readonly vigenteDesde: string; // YYYY-MM-DD
+}
+
+export interface BreakGlassMensajeriaResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly canalCodigo: string;
+  readonly huespedNombre: string | null;
+  readonly fechaCheckIn: string | null; // YYYY-MM-DD
+  readonly fechaCheckOut: string | null; // YYYY-MM-DD
+  readonly reservaConfirmada: boolean;
+  readonly creadoEnMs: number;
+}
+
+export interface BreakGlassLimpiezaResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly tipo: string; // 'limpieza' | 'mantenimiento' | 'inspeccion'
+  readonly estado: string;
+  readonly prioridad: string;
+  readonly programadaPara: string; // YYYY-MM-DD
+  readonly completadaEnMs: number | null;
+  readonly creadoEnMs: number;
+}
+
+/** `urlImportacionEnmascarada` -- NUNCA la URL completa (mandato de esta fase:
+ *  "nunca tokens de iCal/OTA... enmascara"): solo esquema+host, ver el
+ *  `regexp_replace` de `rentas.list_sync_ical_for_break_glass`. */
+export interface BreakGlassSyncIcalResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly canalId: string;
+  readonly urlImportacionEnmascarada: string;
+  readonly activo: boolean;
+  readonly ultimaSincronizacionExitosaEnMs: number | null;
+  readonly enCuarentenaDesdeMs: number | null;
+  readonly intentosFallidosConsecutivos: number;
+  readonly motivoCuarentena: string | null;
+}
