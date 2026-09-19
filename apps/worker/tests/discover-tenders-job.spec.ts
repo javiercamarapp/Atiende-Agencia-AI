@@ -238,12 +238,13 @@ describe("r4-fix-crons-transaccion-por-unidad -- transacción por FUENTE (reprod
     // sesión ya potencialmente abortada -- ver el defecto tal como vivía en este
     // archivo antes de este fix.
     const results = await runDiscoverTendersForOrganization((fn) => fn(proxy), organizationId);
-    if (isAborted()) {
-      // COMMIT sobre una transacción abortada devuelve ROLLBACK sin lanzar -- ningún
-      // `recordSourceRun` de esta corrida (ok o error) sobrevivió de verdad, sin
-      // importar lo que `results` (en memoria, nunca lanzó) reporte.
-      expect(await repo.listSourceRuns(organizationId, {})).toHaveLength(0);
-    }
+    // La sesión SÍ debe haber quedado abortada -- si no, este test no reconstruyó
+    // el escenario que dice reconstruir (revisión r4, no bloqueante #7).
+    expect(isAborted()).toBe(true);
+    // COMMIT sobre una transacción abortada devuelve ROLLBACK sin lanzar -- ningún
+    // `recordSourceRun` de esta corrida (ok o error) sobrevivió de verdad, sin
+    // importar lo que `results` (en memoria, nunca lanzó) reporte.
+    expect(await repo.listSourceRuns(organizationId, {})).toHaveLength(0);
     expect(results.find((r) => r.source === "compras_mx_historico")!.state).not.toBe("ok");
   });
 
