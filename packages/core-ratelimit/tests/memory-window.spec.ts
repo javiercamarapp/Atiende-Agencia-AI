@@ -23,14 +23,12 @@ describe('InMemoryWindowStore', () => {
   it('sliding real: los sellos fuera de la ventana no cuentan (no es ventana fija)', async () => {
     // Reloj falso en vez de setTimeout(real) + Date.now()(real): antes, este
     // test dependía de que el wall-clock real cumpliera los 25ms/40ms exactos
-    // que asume cada aserción — bajo carga de máquina (varios `vitest run`
-    // en paralelo compitiendo por CPU, como en esta Mac con varios
-    // constructores a la vez) el scheduler de Node puede atrasar el
+    // que asume cada aserción — bajo carga de CPU (varios `vitest run` en
+    // paralelo compitiendo por CPU) el scheduler de Node puede atrasar el
     // setTimeout lo suficiente para que un sello que "debía" seguir vivo ya
-    // no lo esté (o viceversa), hasta desde el hallazgo original: flaky
-    // conocido, ver progreso-r4-ci-typecheck-lint-tests.md. `vi.useFakeTimers()`
-    // fija tanto `Date.now()` como el scheduler de timers a un reloj virtual
-    // que solo avanza cuando el test se lo pide explícitamente
+    // no lo esté (o viceversa): flaky conocido. `vi.useFakeTimers()` fija
+    // tanto `Date.now()` como el scheduler de timers a un reloj virtual que
+    // solo avanza cuando el test se lo pide explícitamente
     // (`vi.advanceTimersByTimeAsync`) — los 25ms/40ms dejan de ser una
     // promesa sobre el wall-clock real y pasan a ser exactos siempre, sin
     // importar cuánta CPU tenga libre la máquina en ese instante.
