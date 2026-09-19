@@ -6,10 +6,17 @@
 // `postgres-core-repository.ts` es "se abre siempre vía
 // `TenancyEngine.withAppSession({ userId: null }, ...)` (sesión de sistema, sin
 // `auth.uid()`) porque login ocurre ANTES de que exista una sesión autenticada" — este
-// wrapper es exactamente eso: abre una transacción de sistema nueva en CADA llamada
-// (nunca reutiliza una conexión entre requests, correcto para el `pg.Pool` de
-// `ManagedPostgresEngine`) y delega en un `PostgresCoreRepository` construido sobre esa
-// sesión efímera.
+// wrapper es exactamente eso para la mayoría de los métodos: abre una transacción de
+// sistema nueva en CADA llamada (nunca reutiliza una conexión entre requests, correcto
+// para el `pg.Pool` de `ManagedPostgresEngine`) y delega en un `PostgresCoreRepository`
+// construido sobre esa sesión efímera.
+//
+// EXCEPCIÓN (hallazgo de seguridad, ver `packages/db/migrations/0011_superadmin_
+// caller_binding.sql`): los métodos `*ForSuperadmin` de más abajo llaman funciones
+// SQL con `p_caller_id` explícito que ahora EXIGEN `auth.uid() = p_caller_id` — para
+// esos, la sesión se abre COMO el caller autenticado (`{ userId: callerId }`), nunca
+// de sistema. Cada uno sigue siendo una sola consulta por sesión, así que esto no
+// afecta el aislamiento de ningún otro método de este archivo.
 import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
@@ -117,12 +124,20 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).isPlatformSuperadmin(staffId));
   }
 
+  // Hallazgo de seguridad (ver `packages/db/migrations/0011_superadmin_caller_
+  // binding.sql`): estas funciones SQL ahora exigen `auth.uid() = p_caller_id`
+  // -- abrir sesión de SISTEMA (`userId: null`) aquí las habría bloqueado
+  // SIEMPRE, incluso para el superadmin real. La sesión se abre COMO el
+  // caller autenticado (`callerId`, ya verificado por `authMiddleware` antes
+  // de llegar aquí, ver `apps/api/src/routes/superadmin.ts`), una sola
+  // consulta por sesión (nunca se comparte con ninguna otra query), así que
+  // esto no cambia el aislamiento de ninguna otra llamada.
   listAllOrganizationsForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationRow[]> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).listAllOrganizationsForSuperadmin(callerId));
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).listAllOrganizationsForSuperadmin(callerId));
   }
 
   countStaffByOrganizationForSuperadmin(callerId: string): Promise<ReadonlyMap<string, number>> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).countStaffByOrganizationForSuperadmin(callerId));
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).countStaffByOrganizationForSuperadmin(callerId));
   }
 
   // ---- Infraestructura de notificaciones — sesión de sistema igual que el resto de
@@ -145,26 +160,29 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).markAllNotificationsRead(staffId));
   }
 
-  // ---- "Cerebro de ventas" — sesión de sistema igual que el resto de este archivo:
-  // las 3 funciones SQL son `security definer` con `p_caller_id` explícito. ----
+  // ---- "Cerebro de ventas" — las 3 funciones SQL son `security definer` con
+  // `p_caller_id` explícito y (desde `0011_superadmin_caller_binding.sql`)
+  // exigen `auth.uid() = p_caller_id` -- sesión abierta COMO el caller
+  // autenticado, mismo motivo que `listAllOrganizationsForSuperadmin` arriba. ----
 
   listProspectosForSuperadmin(callerId: string): Promise<readonly ProspectoRow[]> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).listProspectosForSuperadmin(callerId));
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).listProspectosForSuperadmin(callerId));
   }
 
   createProspectoForSuperadmin(callerId: string, input: CreateProspectoInput): Promise<ProspectoRow> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).createProspectoForSuperadmin(callerId, input));
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).createProspectoForSuperadmin(callerId, input));
   }
 
   updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).updateProspectoForSuperadmin(callerId, prospectoId, estado, notas));
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).updateProspectoForSuperadmin(callerId, prospectoId, estado, notas));
   }
 
-  // "Entrar a los otros paneles" — sesión de sistema igual que el resto de este
-  // archivo: `core.ensure_demo_access_for_superadmin` es `security definer` con
-  // `p_caller_id` explícito (ver migración 0014).
+  // "Entrar a los otros paneles" — `core.ensure_demo_access_for_superadmin` es
+  // `security definer` con `p_caller_id` explícito (ver migración 0014) y
+  // (desde `0011_superadmin_caller_binding.sql`) exige `auth.uid() =
+  // p_caller_id` -- mismo motivo que arriba.
   ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).ensureDemoAccessForSuperadmin(callerId, vertical));
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).ensureDemoAccessForSuperadmin(callerId, vertical));
   }
 
   // Suscripción SaaS propia de Atiende — sesión de sistema igual que el resto de
