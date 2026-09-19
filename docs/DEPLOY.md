@@ -154,7 +154,7 @@ Project → Settings → Environment Variables. Vercel nunca lee tu `.env` local
 que pegarlas a mano o con `vercel env add`.
 
 **Además, agrega `CRON_SECRET` con el MISMO valor que `INTERNAL_SECRET`.**
-`vercel.json::crons` (17 crons diarios a la fecha, uno por cada dispatcher/reminder
+`vercel.json::crons` (18 crons diarios a la fecha, uno por cada dispatcher/reminder
 interno de cada vertical — citas, hoteles, restaurantes, despachos, rentas,
 licitaciones, más el dispatcher de WhatsApp de plataforma; corre
 `python3 -c "import json;print(len(json.load(open('vercel.json'))['crons']))"` para
@@ -164,7 +164,7 @@ sin esa variable configurada, el cron sigue disparándose pero la ruta responde 
 (fail-closed, nunca despacha nada sin autenticarse).
 
 **ADVERTENCIA sin verificar desde este repo — revisar en el dashboard antes de
-confiar en que estos 17 crons realmente corran:** la documentación pública de
+confiar en que estos 18 crons realmente corran:** la documentación pública de
 Vercel para el plan Hobby (gratis) históricamente limita no solo la frecuencia
 (máximo una vez al día por cron, que aquí sí se cumple — cada entrada usa un
 horario fijo diario) sino también el **número total de cron jobs por proyecto**
