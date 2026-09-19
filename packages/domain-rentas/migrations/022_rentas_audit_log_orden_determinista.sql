@@ -1,0 +1,90 @@
+-- r6 -- desempate estable y monótono para el orden "más reciente primero" de
+-- `rentas.audit_log` (021_rentas_audit_log.sql). Bug real + test flaky que tumbó
+-- el CI de otros PRs dos veces el 19-sep-2026 al re-correr (#163, #158) --
+-- síntoma en apps/api/tests/rentas-auditoria.spec.ts, caso "admin_gestora lee la
+-- bitácora paginada, más reciente primero".
+--
+-- CAUSA RAÍZ (verificada contra Postgres real, no solo por inspección): `created_at
+-- timestamptz not null default now()` (021) usa `now()`, que dentro de UNA
+-- transacción de Postgres es CONSTANTE (el instante de INICIO de la transacción,
+-- no el del statement individual -- ver "Date/Time Functions and Operators" en la
+-- documentación oficial de Postgres). Cualquier acción de staff que audite más de
+-- un cambio en la MISMA transacción (p.ej. un batch, o una futura acción
+-- compuesta) deja dos filas con el MISMO `created_at` -- `order by created_at
+-- desc` entre esas filas queda decidido por el orden físico en el heap, no por el
+-- orden real de escritura, y es NO DETERMINISTA. Peor aún: la paginación por
+-- OFFSET sobre un orden que no es TOTAL es INESTABLE -- una fila empatada puede
+-- aparecer en dos páginas consecutivas o desaparecer entre ellas si Postgres
+-- decide leer los empates en otro orden en la segunda consulta (nada en el
+-- `order by` se lo impide). En una bitácora de auditoría eso significa que quien
+-- investiga puede terminar sin ver un evento real.
+--
+-- DOS OPCIONES evaluadas (mandato explícito de la tarea, ver AGENTS.md de esta
+-- fase) -- se elige (a):
+--
+--   (a) ELEGIDA -- columna secuencial `seq bigint generated always as identity`
+--       (respaldada por una secuencia de Postgres propia, asignada vía
+--       `nextval()` en el momento exacto de CADA INSERT individual) + `order by
+--       created_at desc, seq desc`. Da un ORDEN TOTAL estricto: dos filas NUNCA
+--       pueden empatar en `seq` -- a diferencia de `created_at`, que si puede
+--       repetirse dentro de una transacción.
+--   (b) DESCARTADA -- `created_at default clock_timestamp()` (en vez de `now()`,
+--       SÍ avanza fila a fila dentro de una misma transacción) + desempate por
+--       otra columna única. Resuelve el empate DENTRO de una transacción, pero
+--       NO da un orden total seguro ENTRE transacciones concurrentes: dos
+--       transacciones distintas pueden pedir su `clock_timestamp()` casi al
+--       mismo instante y luego hacer COMMIT en el orden CONTRARIO -- seguiría
+--       existiendo una ventana sin un desempate estrictamente monótono. Cambiar
+--       la semántica de `created_at` (la columna que la UI de Auditoría muestra
+--       como "cuándo pasó esto") habría sido además un cambio innecesario -- (a)
+--       deja `created_at` intacto y agrega `seq` solo como desempate interno de
+--       orden, nunca expuesto como "el momento" de la acción.
+--
+-- VERIFICADO CONTRA POSTGRES REAL (requisito explícito de la tarea -- la tabla es
+-- append-only con triggers `rentas_audit_log_block_update_trg`/
+-- `_block_delete_trg` que rechazan INCONDICIONALMENTE cualquier UPDATE/DELETE,
+-- ver 021, incluso para el superusuario): `ALTER TABLE ... ADD COLUMN ...
+-- GENERATED ALWAYS AS IDENTITY` sobre una tabla CON FILAS EXISTENTES sí requiere
+-- una reescritura física completa de la tabla para poblar el valor de cada fila
+-- (a diferencia de una columna con un DEFAULT constante, que desde Postgres 11 es
+-- solo metadata) -- pero esa reescritura la hace el propio `ALTER TABLE` a nivel
+-- de heap, NUNCA pasa por el executor de SQL normal ni dispara ningún trigger
+-- `BEFORE UPDATE`/`BEFORE DELETE` definido por el usuario. Confirmado a mano
+-- contra un Postgres 16 real antes de escribir esta migración: una tabla con 3
+-- filas preexistentes y los MISMOS dos triggers de bloqueo incondicional que 021
+-- aceptó este mismo `ALTER TABLE ... ADD COLUMN ... GENERATED ALWAYS AS IDENTITY`
+-- sin ningún error, y las 3 filas quedaron con `seq` 1/2/3 -- ningún trigger de
+-- bloqueo se disparó. Por eso este `ALTER TABLE` es compatible con el
+-- append-only real de la tabla el día que se aplique en producción (que para
+-- entonces ya tendrá filas reales).
+--
+-- COMPATIBILIDAD CON LA BASE SIN MIGRAR (regla dura de esta fase, ver AGENTS.md):
+-- el caso "021 tampoco aplicada todavía" ya lo cubre
+-- `postgres-repository.ts::esErrorCompatibilidadBaseSinMigrar` (SQLSTATE
+-- 42883/42P01/42703), sin cambios en esta migración. El caso NUEVO que esta fase
+-- agrega es el intermedio -- 021 SÍ aplicada (la tabla y la función ya existen)
+-- pero 022 (esta) NO -- `seq` no existe todavía y `order by ..., seq desc`
+-- lanzaría 42703 (`undefined_column`). `PostgresRentasRepository.listAuditoria`
+-- cae al `order by created_at desc` de antes de esta migración vía
+-- `runWithSavepointFallback` (`@atiende/db`, ver ese archivo), nunca revienta ni
+-- revierte el resto de la transacción compartida del request.
+--
+-- Réplica del MISMO desempate en `InMemoryRentasRepository` (un contador
+-- monótono en vez de una secuencia de Postgres) -- ver ese archivo -- para que
+-- memoria y Postgres ordenen exactamente IGUAL y el spec de
+-- apps/api/tests/rentas-auditoria.spec.ts (que corre contra el repositorio en
+-- memoria) deje de ser flaky sin sleeps ni reintentos.
+alter table rentas.audit_log add column seq bigint generated always as identity;
+
+-- Los dos índices de 021 servían `order by created_at desc` -- se recrean para
+-- que Postgres pueda seguir resolviendo `order by created_at desc, seq desc` (el
+-- nuevo orden total, ver arriba) con un index scan y no un sort adicional en
+-- memoria. `drop index` + `create index` (nunca `create index concurrently`,
+-- fuera de una transacción): esta migración corre dentro de la transacción
+-- normal del runner de migraciones, mismo criterio que el resto de
+-- packages/domain-rentas/migrations/*.sql.
+drop index rentas.rentas_audit_log_org_created_idx;
+create index rentas_audit_log_org_created_idx on rentas.audit_log (organization_id, created_at desc, seq desc);
+
+drop index rentas.rentas_audit_log_org_type_created_idx;
+create index rentas_audit_log_org_type_created_idx on rentas.audit_log (organization_id, entity_type, created_at desc, seq desc);
