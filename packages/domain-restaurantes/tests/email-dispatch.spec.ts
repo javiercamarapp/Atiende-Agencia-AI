@@ -54,6 +54,10 @@ describe("sendEmailOutboxJob", () => {
     expect(body.to).toBe("cliente@example.com");
     expect(body.subject).toBe("Asunto");
     expect(body.html).toBe("<p>hola</p>");
+    // No bloqueante (revisión independiente PR #168): confirma que el fetch
+    // a Resend SÍ va cableado con AbortSignal.timeout(RESEND_FETCH_TIMEOUT_MS)
+    // (mismo patrón de test que llm-requirement-extractor.spec.ts).
+    expect(capturedInit!.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("Resend respondiendo error HTTP lanza con el detalle real (nunca finge éxito)", async () => {

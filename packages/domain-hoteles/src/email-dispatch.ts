@@ -31,11 +31,15 @@ export const MAX_EMAIL_DISPATCH_ATTEMPTS = 5;
  * drenado post-commit que corre con `await` antes de que la respuesta HTTP
  * del staff se transmita (ver comentario de `dbSession` en
  * `packages/core-auth/src/middleware.ts`), acercando cada vez más el request
- * al límite de 30s de una función de Vercel. No garantiza por sí solo que el
- * lote completo quede bajo 30s (ver knownGaps del PR), pero acota cada
+ * al límite de 30s de una función de Vercel. Bajado de 8s a 4s (no
+ * bloqueante de revisión independiente PR #168): con INLINE_BATCH_SIZE=5
+ * envíos secuenciales, el peor caso pasa de 40s (por encima del límite de
+ * 30s de `vercel.json::functions.maxDuration`) a 20s -- sigue sin
+ * garantizar por sí solo que el lote completo quede bajo 30s (ver
+ * knownGaps del PR: falta un presupuesto global del lote), pero acota cada
  * intento individual y dispara el mismo camino de reintento/backoff que
  * cualquier otro fallo de Resend. */
-export const RESEND_FETCH_TIMEOUT_MS = 8_000;
+export const RESEND_FETCH_TIMEOUT_MS = 4_000;
 
 export interface ResendConfig {
   readonly apiKey: string | null;
