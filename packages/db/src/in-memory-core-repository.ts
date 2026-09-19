@@ -17,12 +17,14 @@ import { randomUUID } from "node:crypto";
 import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
+  BillingWebhookEventMark,
   CoreRepository,
   CoreStaffRepository,
   CreateProspectoInput,
   CreateStaffInviteInput,
   MembershipRow,
   NotificationRow,
+  OrganizationBillingRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
   ProspectoRow,
@@ -30,8 +32,16 @@ import type {
   StaffInviteRow,
   StaffUserRow,
   SuperadminOrganizationRow,
+  UpsertOrganizationBillingInput,
 } from "./core-repository.ts";
-import { MembershipRoleUpdateError, NotificationNotFoundError, ProspectoNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
+import {
+  MembershipRoleUpdateError,
+  NotificationNotFoundError,
+  OrganizationBillingAccessDeniedError,
+  OrganizationNotFoundError,
+  ProspectoNotFoundError,
+  StaffInviteInvalidError,
+} from "./core-repository.ts";
 
 export interface SeedOrganization {
   readonly id: string;
@@ -100,6 +110,16 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   private readonly readAtByKey = new Map<string, string>();
   // "Cerebro de ventas" — mismo dato que `core.prospecto`.
   private readonly prospectos = new Map<string, ProspectoRow>();
+  // Suscripción SaaS propia de Atiende — mismo dato que `core.organization_billing`
+  // (una fila por organización, ausente = nunca inició un checkout).
+  private readonly organizationBilling = new Map<
+    string,
+    Omit<OrganizationBillingRow, "organizationId" | "vertical" | "ownerEmail">
+  >();
+  // Ledger anti-duplicado — mismo dato que `core.billing_webhook_event`.
+  private readonly seenBillingWebhookEventIds = new Set<string>();
+  // Ledger anti-reordenamiento — mismo dato que `core.billing_entity_order`.
+  private readonly billingEntityOrder = new Map<string, number>();
 
   /** Solo para fixtures de prueba (`apps/api/tests/fixtures.ts`) — agrega una
    *  notificación ya creada (mismo criterio que `addStaff`/`addMembership`: nunca
@@ -534,5 +554,81 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     }
 
     return { organizationId: org.id, slug: org.slug };
+  }
+
+  // ---- Suscripción SaaS propia de Atiende — ver el contrato completo (y el
+  // porqué de cada método) en `core-repository.ts`. En memoria no hay ninguna
+  // sesión/RLS que emular (mismo criterio que el resto de este archivo): solo
+  // espeja la autorización que `core.get_organization_billing_for_checkout`
+  // aplica DENTRO de la función SQL real. ----
+
+  /** Primer 'owner' por antigüedad de membership — en memoria `this.memberships`
+   *  ya está en orden de inserción (nunca se reordena), mismo criterio que
+   *  `order by m.created_at asc limit 1` de la función SQL real. */
+  private resolveOrganizationOwnerEmail(organizationId: string): string | null {
+    const ownerMembership = this.memberships.find((m) => m.organizationId === organizationId && m.platformRole === "owner");
+    if (!ownerMembership) return null;
+    return this.staffById.get(ownerMembership.userId)?.email ?? null;
+  }
+
+  private buildOrganizationBillingRow(organizationId: string): OrganizationBillingRow {
+    const org = this.organizations.get(organizationId);
+    if (!org) throw new Error(`buildOrganizationBillingRow: organización inexistente "${organizationId}" (el caller debe chequear existencia antes de llamar esto).`);
+    const billing = this.organizationBilling.get(organizationId);
+    return {
+      organizationId,
+      vertical: org.vertical,
+      ownerEmail: this.resolveOrganizationOwnerEmail(organizationId),
+      stripeCustomerId: billing?.stripeCustomerId ?? null,
+      stripeSubscriptionId: billing?.stripeSubscriptionId ?? null,
+      priceId: billing?.priceId ?? null,
+      seats: billing?.seats ?? 0,
+      status: billing?.status ?? "sin_suscripcion",
+      currentPeriodEnd: billing?.currentPeriodEnd ?? null,
+    };
+  }
+
+  async getOrganizationBillingForCheckout(callerId: string, organizationId: string): Promise<OrganizationBillingRow> {
+    if (!this.organizations.has(organizationId)) throw new OrganizationNotFoundError();
+    const isOrgAdmin = this.memberships.some(
+      (m) => m.organizationId === organizationId && m.userId === callerId && (m.platformRole === "owner" || m.platformRole === "admin"),
+    );
+    if (!isOrgAdmin && !this.platformSuperadmins.has(callerId)) throw new OrganizationBillingAccessDeniedError();
+    return this.buildOrganizationBillingRow(organizationId);
+  }
+
+  async getOrganizationBillingForWebhook(organizationId: string): Promise<OrganizationBillingRow | null> {
+    if (!this.organizations.has(organizationId)) return null;
+    return this.buildOrganizationBillingRow(organizationId);
+  }
+
+  async upsertOrganizationBilling(input: UpsertOrganizationBillingInput): Promise<OrganizationBillingRow> {
+    // Mismo candado que el `foreign key` real de `core.organization_billing.
+    // organization_id` (ver la migración) -- nunca se inserta una fila de
+    // billing huérfana.
+    if (!this.organizations.has(input.organizationId)) throw new OrganizationNotFoundError();
+    this.organizationBilling.set(input.organizationId, {
+      stripeCustomerId: input.stripeCustomerId,
+      stripeSubscriptionId: input.stripeSubscriptionId,
+      priceId: input.priceId,
+      seats: input.seats,
+      status: input.status,
+      currentPeriodEnd: input.currentPeriodEnd,
+    });
+    return this.buildOrganizationBillingRow(input.organizationId);
+  }
+
+  async markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark> {
+    if (this.seenBillingWebhookEventIds.has(eventId)) return "duplicado";
+    this.seenBillingWebhookEventIds.add(eventId);
+    return "nuevo";
+  }
+
+  async getBillingEntityOrder(entityId: string): Promise<number | null> {
+    return this.billingEntityOrder.has(entityId) ? this.billingEntityOrder.get(entityId)! : null;
+  }
+
+  async sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
+    this.billingEntityOrder.set(entityId, createdUnix);
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryCoreRepository } from "../src/in-memory-core-repository.ts";
-import { MembershipRoleUpdateError, StaffInviteInvalidError } from "../src/core-repository.ts";
+import { MembershipRoleUpdateError, OrganizationBillingAccessDeniedError, OrganizationNotFoundError, StaffInviteInvalidError } from "../src/core-repository.ts";
 
 describe("InMemoryCoreRepository", () => {
   it("resuelve staff por email y por id, null si no existe", async () => {
@@ -323,5 +323,103 @@ describe("InMemoryCoreRepository — invitación de staff (Fase 10)", () => {
     expect(await repo.revokeStaffInvite(invite.id, "org-1")).toBe(true);
     expect(await repo.listPendingStaffInvites("org-1")).toHaveLength(0);
     expect(await repo.revokeStaffInvite(invite.id, "org-1")).toBe(false);
+  });
+});
+
+// Suscripción SaaS propia de Atiende (auditoría, hallazgo P1 #6) — ver el
+// contrato completo en `core-repository.ts` y el esquema real en
+// `packages/db/migrations/0009_billing_saas_schema.sql`.
+describe("InMemoryCoreRepository — suscripción SaaS propia (checkout/webhook)", () => {
+  function seedOrgWithOwner(repo: InMemoryCoreRepository) {
+    repo.addOrganization({ id: "org-1", slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
+    repo.addStaff({ id: "owner-1", email: "dueño@x.mx", fullName: "Dueño", passwordHash: "h", createdVia: "seed", emailVerifiedAt: "2026-01-01T00:00:00.000Z" });
+    repo.addMembership({ userId: "owner-1", organizationId: "org-1", platformRole: "owner", verticalRole: "owner", propertyIds: null });
+    repo.addStaff({ id: "member-1", email: "miembro@x.mx", fullName: "Miembro", passwordHash: "h", createdVia: "seed", emailVerifiedAt: null });
+    repo.addMembership({ userId: "member-1", organizationId: "org-1", platformRole: "member", verticalRole: "staff", propertyIds: null });
+  }
+
+  it("getOrganizationBillingForCheckout: el owner ve su propia organización, sin suscripción todavía", async () => {
+    const repo = new InMemoryCoreRepository();
+    seedOrgWithOwner(repo);
+
+    const billing = await repo.getOrganizationBillingForCheckout("owner-1", "org-1");
+    expect(billing).toMatchObject({
+      organizationId: "org-1",
+      ownerEmail: "dueño@x.mx",
+      stripeCustomerId: null,
+      status: "sin_suscripcion",
+      seats: 0,
+    });
+  });
+
+  it("getOrganizationBillingForCheckout: un 'member' (ni owner ni admin) es rechazado", async () => {
+    const repo = new InMemoryCoreRepository();
+    seedOrgWithOwner(repo);
+    await expect(repo.getOrganizationBillingForCheckout("member-1", "org-1")).rejects.toThrow(OrganizationBillingAccessDeniedError);
+  });
+
+  it("getOrganizationBillingForCheckout: un superadmin de plataforma puede administrar el billing de cualquier organización", async () => {
+    const repo = new InMemoryCoreRepository();
+    seedOrgWithOwner(repo);
+    repo.addStaff({ id: "super-1", email: "super@atiende.ai", fullName: "Superadmin", passwordHash: "h", createdVia: "seed", emailVerifiedAt: null });
+    repo.addPlatformSuperadmin("super-1");
+
+    await expect(repo.getOrganizationBillingForCheckout("super-1", "org-1")).resolves.toMatchObject({ organizationId: "org-1" });
+  });
+
+  it("getOrganizationBillingForCheckout: organización inexistente lanza OrganizationNotFoundError", async () => {
+    const repo = new InMemoryCoreRepository();
+    await expect(repo.getOrganizationBillingForCheckout("quien-sea", "no-existe")).rejects.toThrow(OrganizationNotFoundError);
+  });
+
+  it("getOrganizationBillingForWebhook: null si la organización no existe; nunca lanza (el webhook la descarta con ack)", async () => {
+    const repo = new InMemoryCoreRepository();
+    expect(await repo.getOrganizationBillingForWebhook("no-existe")).toBeNull();
+  });
+
+  it("upsertOrganizationBilling reemplaza la fila completa; getOrganizationBillingForWebhook la refleja de inmediato", async () => {
+    const repo = new InMemoryCoreRepository();
+    seedOrgWithOwner(repo);
+
+    await repo.upsertOrganizationBilling({
+      organizationId: "org-1",
+      stripeCustomerId: "cus_1",
+      stripeSubscriptionId: "sub_1",
+      priceId: "price_1",
+      seats: 5,
+      status: "activa",
+      currentPeriodEnd: "2026-02-01T00:00:00.000Z",
+    });
+
+    const billing = await repo.getOrganizationBillingForWebhook("org-1");
+    expect(billing).toMatchObject({ stripeCustomerId: "cus_1", stripeSubscriptionId: "sub_1", priceId: "price_1", seats: 5, status: "activa" });
+
+    // Un segundo upsert (p. ej. `customer.subscription.deleted`) REEMPLAZA, nunca acumula.
+    await repo.upsertOrganizationBilling({
+      organizationId: "org-1",
+      stripeCustomerId: "cus_1",
+      stripeSubscriptionId: "sub_1",
+      priceId: "price_1",
+      seats: 5,
+      status: "cancelada",
+      currentPeriodEnd: null,
+    });
+    expect((await repo.getOrganizationBillingForWebhook("org-1"))?.status).toBe("cancelada");
+  });
+
+  it("markBillingWebhookEventSeen: 'nuevo' la primera vez, 'duplicado' en reintentos (dedupe del ledger)", async () => {
+    const repo = new InMemoryCoreRepository();
+    expect(await repo.markBillingWebhookEventSeen("evt_1")).toBe("nuevo");
+    expect(await repo.markBillingWebhookEventSeen("evt_1")).toBe("duplicado");
+    expect(await repo.markBillingWebhookEventSeen("evt_2")).toBe("nuevo");
+  });
+
+  it("getBillingEntityOrder/sealBillingEntityOrder: null antes de sellar, valor real después (orden del ledger)", async () => {
+    const repo = new InMemoryCoreRepository();
+    expect(await repo.getBillingEntityOrder("cus_1")).toBeNull();
+    await repo.sealBillingEntityOrder("cus_1", 1_000);
+    expect(await repo.getBillingEntityOrder("cus_1")).toBe(1_000);
+    await repo.sealBillingEntityOrder("cus_1", 2_000);
+    expect(await repo.getBillingEntityOrder("cus_1")).toBe(2_000);
   });
 });

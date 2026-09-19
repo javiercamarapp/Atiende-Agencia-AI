@@ -191,6 +191,84 @@ export interface NotificationRow {
   readonly readAt: string | null;
 }
 
+/** Fila de `core.organization_billing` cruzada con `core.get_organization_billing_
+ *  info` (owner_email resuelto) -- ver el comentario de cabecera de
+ *  `packages/db/migrations/0009_billing_saas_schema.sql`. Consumida
+ *  tanto por el checkout (`POST /billing/checkout`, resolver si ya existe un
+ *  customer de Stripe) como por el webhook (`POST /billing/webhook`,
+ *  verificación cross-tenant vía `@atiende/billing::TenantConocido` -- ver
+ *  `apps/api/src/production/saas-billing-stripe-port.ts` para el adaptador que
+ *  mapea esta fila a esa interfaz). `null` en los campos de Stripe = la
+ *  organización nunca inició un checkout todavía (fila `organization_billing`
+ *  inexistente, `left join` en la función SQL). */
+export interface OrganizationBillingRow {
+  readonly organizationId: string;
+  /** `core.organization.vertical` -- necesario para armar la metadata
+   *  `{tenant_id, vertical}` que `@atiende/billing::crearCheckoutPerSeat` exige
+   *  siempre (ver el comentario de cabecera de `stripe-rail.ts`), sin una
+   *  segunda consulta aparte a `core.organization` desde la ruta. */
+  readonly vertical: string;
+  /** Email del primer 'owner' (por antigüedad de membership) de la
+   *  organización, o `null` si la organización no tiene ningún owner todavía
+   *  (no debería pasar en producción real, pero una organización recién creada
+   *  en un fixture de prueba puede no tenerlo). */
+  readonly ownerEmail: string | null;
+  readonly stripeCustomerId: string | null;
+  readonly stripeSubscriptionId: string | null;
+  readonly priceId: string | null;
+  readonly seats: number;
+  readonly status: "sin_suscripcion" | "activa" | "pago_pendiente" | "cancelada";
+  /** ISO 8601, o `null` si nunca hubo una suscripción. */
+  readonly currentPeriodEnd: string | null;
+}
+
+/** Input de `CoreRepository.upsertOrganizationBilling` -- llamado SOLO desde
+ *  `POST /billing/webhook` DESPUÉS de que `@atiende/billing::aplicarConLedger`
+ *  ya resolvió que el evento es nuevo y está en orden (nunca antes -- ver el
+ *  comentario de cabecera de `packages/billing/src/ledger.ts`: "los handlers de
+ *  este dominio FIJAN estado", así que esto SIEMPRE reemplaza la fila completa,
+ *  nunca hace un merge parcial). */
+export interface UpsertOrganizationBillingInput {
+  readonly organizationId: string;
+  readonly stripeCustomerId: string;
+  readonly stripeSubscriptionId: string | null;
+  readonly priceId: string | null;
+  readonly seats: number;
+  readonly status: OrganizationBillingRow["status"];
+  /** ISO 8601, o `null`. */
+  readonly currentPeriodEnd: string | null;
+}
+
+/** `'nuevo'` = primera vez que se ve este id de evento; `'duplicado'` = ya se
+ *  había marcado (reintento at-least-once del proveedor de pagos) -- mismo
+ *  vocabulario que `@atiende/billing::MarcaVisto`, del que
+ *  `CoreRepositoryLedgerStore` (`apps/api/src/production/saas-billing-stripe-
+ *  port.ts`) es el adaptador `LedgerStore` real. */
+export type BillingWebhookEventMark = "nuevo" | "duplicado";
+
+/** Lanzado por `getOrganizationBillingForCheckout` cuando `organizationId` no
+ *  existe -- mensaje real (nunca genérico): a diferencia de `StaffInviteInvalidError`,
+ *  aquí no hay ningún atacante al que ocultarle si un id existe (el caller ya
+ *  está autenticado y el id lo escribió el propio frontend de su organización). */
+export class OrganizationNotFoundError extends Error {
+  constructor(message = "La organización no existe.") {
+    super(message);
+    this.name = "OrganizationNotFoundError";
+  }
+}
+
+/** Lanzado por `getOrganizationBillingForCheckout` cuando `callerId` no es
+ *  owner/admin de la organización ni superadmin de plataforma -- ver el
+ *  comentario de cabecera de `core.get_organization_billing_for_checkout` en la
+ *  migración para la autoridad real (siempre validada DENTRO de la función SQL
+ *  en producción, esto es la traducción a un error tipado). */
+export class OrganizationBillingAccessDeniedError extends Error {
+  constructor(message = "No tienes autoridad para administrar el billing de esta organización.") {
+    super(message);
+    this.name = "OrganizationBillingAccessDeniedError";
+  }
+}
+
 export interface CoreRepository {
   findStaffByEmail(email: string): Promise<StaffUserRow | null>;
   findStaffById(id: string): Promise<StaffUserRow | null>;
@@ -323,6 +401,45 @@ export interface CoreRepository {
    *  esa vertical — cero superficie de autorización nueva, mismo modelo que protege
    *  a cualquier cliente real. */
   ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }>;
+
+  // ---- Suscripción SaaS propia de Atiende (rubro P1 #6 de la auditoría) — sesión
+  // de sistema igual que el resto de este archivo: ninguno de los 5 métodos
+  // siguientes depende de `auth.uid()` (el checkout valida autoridad con
+  // `callerId` explícito, DENTRO de la función SQL, mismo criterio que
+  // `listProspectosForSuperadmin`; el webhook no tiene ningún caller autenticado
+  // que pasar -- su autoridad real es la firma HMAC de Stripe, verificada en
+  // `apps/api/src/routes/billing.ts` ANTES de llamar aquí). Ver el comentario de
+  // cabecera de `packages/db/migrations/0009_billing_saas_schema.sql`
+  // para el esquema completo. ----
+
+  /** `POST /billing/checkout` — resuelve billing info de la organización SOLO si
+   *  `callerId` la administra (owner/admin de esa organización o superadmin de
+   *  plataforma) — la autoridad real vive DENTRO de `core.get_organization_
+   *  billing_for_checkout` (`security definer`), nunca solo en la capa TS. Lanza
+   *  `OrganizationNotFoundError`/`OrganizationBillingAccessDeniedError` (nunca
+   *  devuelve `null`: a diferencia del webhook, aquí SIEMPRE hay un caller
+   *  autenticado al que darle un mensaje real). */
+  getOrganizationBillingForCheckout(callerId: string, organizationId: string): Promise<OrganizationBillingRow>;
+  /** `POST /billing/webhook` — mismos datos que la de arriba, SIN chequeo de
+   *  autoridad (el webhook no tiene ningún `callerId` de staff que validar) — la
+   *  autoridad real es la firma HMAC ya verificada por el caller HTTP. `null` si
+   *  `organizationId` (del `tenant_id` de la metadata del evento, YA re-derivado
+   *  y verificado por `@atiende/billing::verificarTenantDelWebhook` antes de
+   *  llegar aquí) no corresponde a ninguna organización real. */
+  getOrganizationBillingForWebhook(organizationId: string): Promise<OrganizationBillingRow | null>;
+  /** Persiste el estado de billing resuelto de un evento de webhook YA procesado
+   *  por el ledger (`@atiende/billing::aplicarConLedger`) — ver el comentario de
+   *  `UpsertOrganizationBillingInput` para por qué esto SIEMPRE reemplaza la fila
+   *  completa. */
+  upsertOrganizationBilling(input: UpsertOrganizationBillingInput): Promise<OrganizationBillingRow>;
+  /** Adaptador `LedgerStore.marcarVisto` (`@atiende/billing::ledger.ts`) — dedupe
+   *  ATÓMICO por id de evento (`insert ... on conflict do nothing`, ver la
+   *  migración). */
+  markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark>;
+  /** Adaptador `LedgerStore.ordenAplicado`. */
+  getBillingEntityOrder(entityId: string): Promise<number | null>;
+  /** Adaptador `LedgerStore.sellarOrden`. */
+  sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void>;
 }
 
 /** Fila real de `core.prospecto` — ver el comentario de cabecera de la migración

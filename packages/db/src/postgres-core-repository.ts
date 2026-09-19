@@ -16,12 +16,14 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
+  BillingWebhookEventMark,
   CoreRepository,
   CoreStaffRepository,
   CreateProspectoInput,
   CreateStaffInviteInput,
   MembershipRow,
   NotificationRow,
+  OrganizationBillingRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
   ProspectoRow,
@@ -30,8 +32,16 @@ import type {
   StaffInviteStatus,
   StaffUserRow,
   SuperadminOrganizationRow,
+  UpsertOrganizationBillingInput,
 } from "./core-repository.ts";
-import { MembershipRoleUpdateError, NotificationNotFoundError, ProspectoNotFoundError, StaffInviteInvalidError } from "./core-repository.ts";
+import {
+  MembershipRoleUpdateError,
+  NotificationNotFoundError,
+  OrganizationBillingAccessDeniedError,
+  OrganizationNotFoundError,
+  ProspectoNotFoundError,
+  StaffInviteInvalidError,
+} from "./core-repository.ts";
 
 interface StaffUserRawRow {
   readonly id: string;
@@ -193,6 +203,35 @@ function mapStaffInvite(row: StaffInviteRawRow): StaffInviteRow {
     acceptedAt: row.accepted_at,
     acceptedBy: row.accepted_by,
     createdAt: row.created_at,
+  };
+}
+
+// `core.get_organization_billing_for_checkout`/`_for_webhook`/`_info` devuelven
+// TODAS la misma forma (ver la migración) -- un solo raw row + un solo mapper
+// para las 3.
+interface OrganizationBillingRawRow {
+  readonly organization_id: string;
+  readonly vertical: string;
+  readonly owner_email: string | null;
+  readonly stripe_customer_id: string | null;
+  readonly stripe_subscription_id: string | null;
+  readonly price_id: string | null;
+  readonly seats: number;
+  readonly status: OrganizationBillingRow["status"];
+  readonly current_period_end: string | null;
+}
+
+function mapOrganizationBilling(row: OrganizationBillingRawRow): OrganizationBillingRow {
+  return {
+    organizationId: row.organization_id,
+    vertical: row.vertical,
+    ownerEmail: row.owner_email,
+    stripeCustomerId: row.stripe_customer_id,
+    stripeSubscriptionId: row.stripe_subscription_id,
+    priceId: row.price_id,
+    seats: row.seats,
+    status: row.status,
+    currentPeriodEnd: row.current_period_end,
   };
 }
 
@@ -552,5 +591,86 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
     const row = rows[0];
     if (!row) throw new Error("ensure_demo_access_for_superadmin no devolvió ninguna fila.");
     return { organizationId: row.demo_organization_id, slug: row.demo_slug };
+  }
+
+  // ---- Suscripción SaaS propia de Atiende — ver el contrato completo en
+  // `core-repository.ts` y el esquema real en
+  // `packages/db/migrations/0009_billing_saas_schema.sql`. ----
+
+  async getOrganizationBillingForCheckout(callerId: string, organizationId: string): Promise<OrganizationBillingRow> {
+    try {
+      const { rows } = await this.db.query<OrganizationBillingRawRow>(
+        `select * from core.get_organization_billing_for_checkout($1, $2);`,
+        [callerId, organizationId],
+      );
+      const row = rows[0];
+      if (!row) throw new OrganizationNotFoundError();
+      return mapOrganizationBilling(row);
+    } catch (err) {
+      // `core.get_organization_billing_for_checkout` lanza SQLSTATE P0001 (`raise
+      // exception`) para los 2 casos ("la organización no existe" / "no tienes
+      // autoridad") -- se distingue por el MENSAJE (a diferencia de
+      // `StaffInviteInvalidError`, aquí ambos mensajes son reales/no sensibles, ver
+      // el comentario de cabecera de la migración) para devolver el error tipado
+      // correcto de cada caso, nunca uno genérico.
+      if (err instanceof OrganizationNotFoundError) throw err;
+      const pgErr = err as { code?: string; message?: string } | null;
+      if (pgErr?.code === "P0001") {
+        if (pgErr.message?.includes("no existe")) throw new OrganizationNotFoundError(pgErr.message);
+        throw new OrganizationBillingAccessDeniedError(pgErr.message ?? undefined);
+      }
+      throw err;
+    }
+  }
+
+  async getOrganizationBillingForWebhook(organizationId: string): Promise<OrganizationBillingRow | null> {
+    const { rows } = await this.db.query<OrganizationBillingRawRow>(
+      `select * from core.get_organization_billing_for_webhook($1);`,
+      [organizationId],
+    );
+    return rows[0] ? mapOrganizationBilling(rows[0]) : null;
+  }
+
+  async upsertOrganizationBilling(input: UpsertOrganizationBillingInput): Promise<OrganizationBillingRow> {
+    await this.db.query(
+      `select core.upsert_organization_billing($1, $2, $3, $4, $5, $6, $7);`,
+      [
+        input.organizationId,
+        input.stripeCustomerId,
+        input.stripeSubscriptionId,
+        input.priceId,
+        input.seats,
+        input.status,
+        input.currentPeriodEnd,
+      ],
+    );
+    const { rows } = await this.db.query<OrganizationBillingRawRow>(
+      `select * from core.get_organization_billing_for_webhook($1);`,
+      [input.organizationId],
+    );
+    const row = rows[0];
+    if (!row) throw new Error("upsertOrganizationBilling: la organización dejó de existir entre el upsert y la lectura (no debería pasar nunca).");
+    return mapOrganizationBilling(row);
+  }
+
+  async markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark> {
+    const { rows } = await this.db.query<{ mark_billing_webhook_event_seen: boolean }>(
+      `select core.mark_billing_webhook_event_seen($1) as mark_billing_webhook_event_seen;`,
+      [eventId],
+    );
+    return rows[0]?.mark_billing_webhook_event_seen ? "nuevo" : "duplicado";
+  }
+
+  async getBillingEntityOrder(entityId: string): Promise<number | null> {
+    const { rows } = await this.db.query<{ get_billing_entity_order: string | null }>(
+      `select core.get_billing_entity_order($1) as get_billing_entity_order;`,
+      [entityId],
+    );
+    const value = rows[0]?.get_billing_entity_order;
+    return value === null || value === undefined ? null : Number(value);
+  }
+
+  async sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
+    await this.db.query(`select core.seal_billing_entity_order($1, $2);`, [entityId, createdUnix]);
   }
 }
