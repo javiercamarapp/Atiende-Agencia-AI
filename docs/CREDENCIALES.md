@@ -215,6 +215,26 @@ de `.env.example`/`docs/DEPLOY.md` afirmaba "ningún nombre de variable definido
 aún", lo cual dejó de ser cierto en algún momento sin que la documentación se
 actualizara (corregido en esta pasada).
 
+## Licitaciones — agregador comercial (Fase 9, "API por pegar")
+
+| Variable | Dónde se obtiene | Secreta |
+|---|---|:-:|
+| `LICITACIONES_AGGREGATOR_API_KEY` | proveedor de agregación de licitaciones que se elija (sin elegir todavía) | Sí |
+| `LICITACIONES_AGGREGATOR_BASE_URL` | URL base de la API de ese proveedor | No |
+
+**Sin proveedor elegido todavía.** Las fuentes OCDS reales de este vertical
+(Nuevo León, CDMX) no necesitan credenciales — son APIs/recursos públicos.
+Este par de variables gatea únicamente `connectors/aggregator.ts`, la vía
+para ampliar la cobertura más allá de Nuevo León/CDMX el día que se
+contrate un agregador comercial (cobertura nacional). Sin AMBAS presentes,
+el conector lanza `SourceNotConfiguredError` de inmediato — nunca intenta
+una petición real ni finge cobertura que no existe. Ver
+`packages/domain-licitaciones/src/connectors/aggregator.ts` para el
+contrato de entrada documentado (`AggregatorTenderItem`) que espera el día
+que se conecte un proveedor real, y el `README.md` de
+`apps/worker/src/jobs/licitaciones/` para la tabla completa de estado por
+fuente.
+
 ## apps/web (Vite, build-time)
 
 | Variable | Habilita | Sin ella |
