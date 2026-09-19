@@ -106,6 +106,27 @@ nuevas.
   `despachos/revisiones.ts`. Roles: `FRAUD_SCAN_ROLES`/`FRAUD_VIEW_ROLES`/
   `FRAUD_RESOLVER_ROLES` (owner/gm/accountant).
 
+## Fase 9 — `revenue.ts` (no documentada hasta este barrido)
+
+7 rutas sobre el gate de revenue management (`hoteles.revenue_engine_gate`,
+máquina de estados shadow/propone/autopilot) y el historial de backtests:
+crear/consultar/transicionar el gate, aprobación explícita de "owner" para
+autopilot, listar/crear corridas de backtest walk-forward, explicación de
+precio y verificación de paridad/compset. **Honesto: no existe ningún motor
+que PRODUZCA una recomendación de tarifa** (pickup/compset/evento/tipo de
+cambio reales) — ver el comentario de cabecera del propio archivo y
+`packages/domain-hoteles/README.md` §Fase 9 para el detalle completo de qué sí
+y qué no hay.
+
+## Fase 11/13 — `reputacion.ts` (no documentada hasta este barrido)
+
+Rutas sobre `hoteles.guest_review`/`guest_review_action`: capturar/listar
+reseñas, ficha de una reseña, responder (Fase 13), resolver una acción
+(crea un ticket de mantenimiento real si la acción es
+`ticket_mantenimiento`; `mensaje_proactivo`/`compensacion_reglada` siguen sin
+ejecutarse de verdad) e índice de reputación agregado. Ver
+`packages/domain-hoteles/README.md` §Fase 11 para el detalle.
+
 Migraciones nuevas: `migrations/006_cfdi_hospedaje.sql` (`hoteles.cfdi_emision` +
 columnas `dsa_per_night`/`rfc_emisor` en `hoteles.tax_config`) y
 `migrations/007_fraude_alerta.sql` (`hoteles.fraud_alert`).

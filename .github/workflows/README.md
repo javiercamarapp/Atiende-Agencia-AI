@@ -18,11 +18,31 @@ aplica RLS ni GRANT. Este job:
 2. Aplica, en orden, las migraciones reales de `supabase/migrations/`.
 3. Corre `scripts/verify-real-postgres-ci/run-gate.mjs`, que ejecuta como gate
    automático (pass/fail por escenario, sin lectura humana de salida) cada
-   `scripts/verify-*/assertions.sql` existente — hoy:
+   `scripts/verify-*/assertions.sql` existente — se descubren solos (ver
+   "Agregar un `verify-*` nuevo" abajo), así que esta lista se desactualiza
+   fácil; al 19-sep-2026 son:
    - `scripts/verify-outbox-grants/` (GRANT + autorización del email outbox,
      6 verticales).
    - `scripts/verify-rentas-cron-rls/` (escape hatch de sesión-de-sistema en
      RLS para los crons de `domain-rentas`).
+   - `scripts/verify-llm-usage-budget-guard/` (control de gasto de LLM del
+     superadmin).
+   - `scripts/verify-superadmin-caller-binding/` (12 funciones
+     `*_for_superadmin` atadas a `auth.uid()`).
+   - `scripts/verify-caller-binding-fase2/` (14 funciones más de `core` con el
+     mismo patrón).
+   - `scripts/verify-rentas-break-glass/` (acceso auditado de superadmin a
+     reservas de rentas).
+   - `scripts/verify-superadmin-facturacion/` (lecturas de MRR/reconciliación
+     de la suscripción SaaS).
+   - `scripts/verify-hoteles-sql-critico/` (trigger del gate de revenue,
+     índice anti-doble-captura de night-audit, `mark_charge_reversed()`, RLS
+     de reputación).
+   - `scripts/verify-restaurantes-sql/` (RPC/reglas SQL que el repositorio
+     Postgres real de restaurantes usa, incluida la zona conocida sin
+     GRANT/policy que esta verificación encontró).
+   - `scripts/verify-superadmin-salud/` (latidos de crons, salud de colas
+     `messaging_outbox`, última corrida por fuente de licitaciones).
 
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada

@@ -50,7 +50,9 @@ scripts/verify-rentas-cron-rls/run.sh
 
 Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente, p. ej.
 `brew install postgresql@17`). El script levanta un cluster Postgres efímero en un
-directorio temporal, aplica las 94 migraciones reales de `supabase/migrations/` en
+directorio temporal, aplica todas las migraciones reales de `supabase/migrations/`
+(94 al momento de escribir este fix, más desde entonces — ver
+`supabase/migrations/README.md` para el conteo vigente) en
 orden, corre los 18 escenarios de `assertions.sql`, y apaga/borra el cluster al
 salir — no toca ningún Postgres existente ni dato real.
 

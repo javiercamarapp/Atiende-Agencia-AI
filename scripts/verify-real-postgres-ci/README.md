@@ -96,7 +96,9 @@ inspeccionar un fallo con `psql` directamente después de la corrida).
 ## Verificado
 
 Corrido de punta a punta contra un Postgres 17 local (Homebrew, vía
-`initdb`/`pg_ctl`) con las 95 migraciones reales de `supabase/migrations/`:
+`initdb`/`pg_ctl`) con las migraciones reales de `supabase/migrations/` (95 al
+momento de esta verificación — el conteo real sigue creciendo, ver
+`supabase/migrations/README.md`):
 34/34 escenarios (`verify-outbox-grants` 16/16 + `verify-rentas-cron-rls` 18/18)
 en verde, código de salida 0. Se probó además la detección de regresión real:
 al comentar temporalmente un `grant execute ... to authenticated;` de la

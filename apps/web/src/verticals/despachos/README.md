@@ -75,14 +75,16 @@ lectura para esto, no es capricho de la UI):
   `RESOLVER_REVISION_ROLES` ya existen en el dominio, pero esta fase no
   construyó la pantalla para aprobar/rechazar — `pages/Cfdi.tsx` solo señala
   qué CFDI la necesitan.
-- **Conciliación bancaria, migración de catálogo, devolución de IVA, nómina,
-  bookkeeping, declaraciones, vencimientos.** Motores completos en
-  `packages/domain-despachos` con ruta HTTP ya expuesta
-  (`apps/api/src/routes/verticals/despachos/*.ts`), sin ninguna pantalla
-  todavía — trabajo genuino de varias fases más. Esta fase deliberadamente
-  completó el tramo MÁS IMPORTANTE (cierre mensual + CFDI, las dos funciones
-  más operativas del día a día de un despacho) de forma honesta y con datos
-  reales de punta a punta, en vez de dejar seis pantallas a medias.
+- **Actualizado, fases posteriores a la 9:** conciliación bancaria, migración
+  de catálogo, devolución de IVA, nómina, bookkeeping, declaraciones,
+  vencimientos, cobranza y gestión de staff ya tienen pantalla real
+  (`pages/Conciliacion.tsx`, `MigracionCatalogo.tsx`, `DevolucionIva.tsx`,
+  `Nomina.tsx`, `Bookkeeping.tsx`, `Declaraciones.tsx`, `Vencimientos.tsx`,
+  `Cobranza.tsx`, `Staff.tsx`, además de `ContabilidadElectronica.tsx`) — esta
+  lista, escrita en la Fase 9, quedó desactualizada apenas esas pantallas se
+  agregaron. Esta sección se conserva como registro histórico de qué faltaba
+  al cerrar la Fase 9; para el estado ACTUAL de qué pantalla existe, lee
+  directamente `pages/` de esta carpeta.
 - **Selector de organización con 2+.** `decideDespachosLandingPath` ya
   contempla 2+ organizaciones (`/seleccionar-organizacion`), pero esa ruta no
   existe en `App.tsx` para NINGÚN vertical de este monorepo todavía — mismo
