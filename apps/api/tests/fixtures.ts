@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -64,6 +64,7 @@ export const TEST_ENV: ApiEnv = {
 export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo: InMemoryRestaurantesRepository; organizationId: string; propertyId: string; products: Record<string, string>; ownerEmail: string; ownerPassword: string }> {
   const coreRepo = new InMemoryCoreRepository();
   const llmUsageRepo = new InMemoryLlmUsageRepository();
+  const saludRepo = new InMemorySaludRepository();
   const restaurantesRepo = new InMemoryRestaurantesRepository();
 
   const organizationId = randomUUID();
@@ -176,6 +177,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     rentasBreakGlassDataRepo: (_db) => rentasBreakGlassDataRepo,
     llmGateway: undefined,
     llmUsageRepo,
+    saludRepo,
   };
 
   return { deps, restaurantesRepo, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

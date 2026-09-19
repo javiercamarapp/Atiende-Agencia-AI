@@ -68,6 +68,7 @@ import type { DispatchSummary, MessagingOutboxPort } from "@atiende/whatsapp-gat
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
+import { withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
 
 const DEFAULT_LIMIT = 25;
@@ -159,61 +160,69 @@ export function whatsappDispatchRoutes(deps: AppDeps): Hono {
   app.on(["GET", "POST"], "/internal/whatsapp/dispatch", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    // Fail-closed explícito: sin WHATSAPP_ACCESS_TOKEN configurado, no hay
-    // integración real que drenar — nunca se finge un envío ni se vacía silenciosamente
-    // el outbox marcándolo como procesado.
-    const dispatcher = deps.whatsAppDispatcher;
-    if (!dispatcher) {
-      return c.json({ ok: false, error: "whatsapp dispatcher no configurado (falta WHATSAPP_ACCESS_TOKEN)" }, 503);
-    }
-
-    const requestedLimit = Number(c.req.query("limit") ?? DEFAULT_LIMIT);
-    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(Math.trunc(requestedLimit), MAX_LIMIT) : DEFAULT_LIMIT;
-
-    const results: Record<string, WhatsAppVerticalDispatchResult> = {};
-    let anyFailure = false;
-    let totalDead = 0;
-    const failedVerticals: string[] = [];
-
-    // Un tenant/vertical con datos raros nunca tumba el despacho de los demás —
-    // mismo criterio que citasRemindersRoutes captura por organización y sigue.
-    for (const vertical of ["citas", "hoteles", "restaurantes"] as const) {
-      const result = await dispatchWhatsAppVertical(deps, vertical, limit);
-      results[vertical] = result;
-      if (isFailureResult(result)) {
-        anyFailure = true;
-        failedVerticals.push(vertical);
-      } else if (result.dead > 0) {
-        totalDead += result.dead;
-        // No es un fallo de la ruta (el resto del batch sí se despachó bien),
-        // pero sí vale la pena que quede en logs de la plataforma para
-        // inspección manual de mensajes muertos.
-        logEvent(c, "error", "whatsapp_dispatch_mensajes_dead", { vertical, dead: result.dead });
+    return withHeartbeat(deps, "/internal/whatsapp/dispatch", async () => {
+      // Fail-closed explícito: sin WHATSAPP_ACCESS_TOKEN configurado, no hay
+      // integración real que drenar — nunca se finge un envío ni se vacía silenciosamente
+      // el outbox marcándolo como procesado.
+      const dispatcher = deps.whatsAppDispatcher;
+      if (!dispatcher) {
+        return c.json({ ok: false, error: "whatsapp dispatcher no configurado (falta WHATSAPP_ACCESS_TOKEN)" }, 503);
       }
-    }
 
-    // HALLAZGO ALTO de la auditoría final: este handler respondía 200 HTTP
-    // aunque el lote entero fallara por dentro (p.ej. las 3 verticales
-    // arrojando excepción), así que nadie se enteraba nunca de un fallo real de
-    // la corrida diaria. DECISIÓN DOCUMENTADA: no se cambia el status code de
-    // la respuesta -- Vercel Cron únicamente entiende 200 como "el job corrió"
-    // (ver docs/DEPLOY.md#resumen-de-costo-por-plataforma); devolver un 5xx
-    // aquí convertiría cada fallo real en reintentos agresivos de Vercel sobre
-    // un job que de por sí ya aísla fallos por vertical, sin ganar visibilidad
-    // real (Vercel Cron no tiene alerta propia por status code en el plan
-    // Hobby). La corrección real es dejar esta corrida LOGUEADA estructurada
-    // con severidad `error` y el conteo de verticales fallidas/mensajes
-    // muertos -- consumible por cualquier integración de logs (Sentry,
-    // Logtail, `vercel logs`, etc.) sin tocar el contrato HTTP del cron.
-    if (anyFailure) {
-      logEvent(c, "error", "whatsapp_dispatch_cron_con_verticales_fallidas", {
-        failedVerticals,
-        failedCount: failedVerticals.length,
-        totalDead,
-      });
-    }
+      const requestedLimit = Number(c.req.query("limit") ?? DEFAULT_LIMIT);
+      const limit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(Math.trunc(requestedLimit), MAX_LIMIT) : DEFAULT_LIMIT;
 
-    return c.json({ ok: !anyFailure, results });
+      const results: Record<string, WhatsAppVerticalDispatchResult> = {};
+      let anyFailure = false;
+      let totalDead = 0;
+      const failedVerticals: string[] = [];
+
+      // Un tenant/vertical con datos raros nunca tumba el despacho de los demás —
+      // mismo criterio que citasRemindersRoutes captura por organización y sigue.
+      for (const vertical of ["citas", "hoteles", "restaurantes"] as const) {
+        const result = await dispatchWhatsAppVertical(deps, vertical, limit);
+        results[vertical] = result;
+        if (isFailureResult(result)) {
+          anyFailure = true;
+          failedVerticals.push(vertical);
+        } else if (result.dead > 0) {
+          totalDead += result.dead;
+          // No es un fallo de la ruta (el resto del batch sí se despachó bien),
+          // pero sí vale la pena que quede en logs de la plataforma para
+          // inspección manual de mensajes muertos.
+          logEvent(c, "error", "whatsapp_dispatch_mensajes_dead", { vertical, dead: result.dead });
+        }
+      }
+
+      // HALLAZGO ALTO de la auditoría final: este handler respondía 200 HTTP
+      // aunque el lote entero fallara por dentro (p.ej. las 3 verticales
+      // arrojando excepción), así que nadie se enteraba nunca de un fallo real de
+      // la corrida diaria. DECISIÓN DOCUMENTADA: no se cambia el status code de
+      // la respuesta -- Vercel Cron únicamente entiende 200 como "el job corrió"
+      // (ver docs/DEPLOY.md#resumen-de-costo-por-plataforma); devolver un 5xx
+      // aquí convertiría cada fallo real en reintentos agresivos de Vercel sobre
+      // un job que de por sí ya aísla fallos por vertical, sin ganar visibilidad
+      // real (Vercel Cron no tiene alerta propia por status code en el plan
+      // Hobby). La corrección real es dejar esta corrida LOGUEADA estructurada
+      // con severidad `error` y el conteo de verticales fallidas/mensajes
+      // muertos -- consumible por cualquier integración de logs (Sentry,
+      // Logtail, `vercel logs`, etc.) sin tocar el contrato HTTP del cron.
+      // NOTA para "Salud operativa" (ver ../../salud/motor.ts): este cron NUNCA
+      // lanza por verticales fallidas (aisladas a propósito, ver arriba) -- por
+      // eso `withHeartbeat` lo registra como latido 'ok' aunque `anyFailure` sea
+      // true; la señal de verticales fallidas/mensajes muertos vive en los logs
+      // estructurados de arriba y en `core.get_outbox_health_for_superadmin`
+      // (conteo de 'dead' real por cola), NUNCA en el estado del latido del cron.
+      if (anyFailure) {
+        logEvent(c, "error", "whatsapp_dispatch_cron_con_verticales_fallidas", {
+          failedVerticals,
+          failedCount: failedVerticals.length,
+          totalDead,
+        });
+      }
+
+      return c.json({ ok: !anyFailure, results });
+    })();
   });
 
   return app;

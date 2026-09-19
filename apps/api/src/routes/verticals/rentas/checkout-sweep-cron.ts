@@ -49,6 +49,7 @@ import { Hono } from "hono";
 import { procesarCheckoutsPendientes } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo tamaño de lote que el default de `procesarCheckoutsPendientes` -- explícito
@@ -62,10 +63,10 @@ export function rentasCheckoutSweepCronRoutes(deps: AppDeps): Hono {
   app.on(["GET", "POST"], "/internal/rentas/checkout-sweep", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    return withHeartbeat(deps, "/internal/rentas/checkout-sweep", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const resultado = await procesarCheckoutsPendientes(db, LIMITE_POR_CORRIDA);
       return c.json({ ok: true, procesados: resultado.procesados, tareasCreadas: resultado.tareasCreadas });
-    });
+    }))();
   });
 
   return app;

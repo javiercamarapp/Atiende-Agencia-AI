@@ -36,6 +36,7 @@ import type { DespachosRepository, EmailDispatchSummary as DespachosEmailDispatc
 import { runCobranzaReminderSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
@@ -78,7 +79,7 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
   app.on(["GET", "POST"], "/internal/despachos/cobranza-reminders", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    return withHeartbeat(deps, "/internal/despachos/cobranza-reminders", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.despachosRepo(db);
       const sweep = await runCobranzaReminderSweep(repo);
       // Disparo inline best-effort (ver comentario de cabecera): el barrido de
@@ -114,7 +115,7 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
         },
         200,
       );
-    });
+    }))();
   });
 
   app.on(["GET", "POST"], "/internal/despachos/email-dispatch", async (c) => {
@@ -123,15 +124,17 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por
     // organización), misma sesión de sistema que las demás rutas internas.
-    const summary = await runDespachosEmailDispatch(deps);
-    return c.json({
-      ok: true,
-      processed: summary.processed,
-      sent: summary.sent,
-      failed: summary.failed,
-      dead: summary.dead,
-      errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
-    });
+    return withHeartbeat(deps, "/internal/despachos/email-dispatch", async () => {
+      const summary = await runDespachosEmailDispatch(deps);
+      return c.json({
+        ok: true,
+        processed: summary.processed,
+        sent: summary.sent,
+        failed: summary.failed,
+        dead: summary.dead,
+        errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
+      });
+    })();
   });
 
   return app;

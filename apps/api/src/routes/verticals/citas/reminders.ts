@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { runConfirmacionCitaCore } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function citasRemindersRoutes(deps: AppDeps): Hono {
@@ -26,7 +27,7 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`) para todo el barrido, igual que documenta
     // postgres-repository.ts (ninguna de estas queries depende de un auth.uid() real).
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    return withHeartbeat(deps, "/internal/citas/confirmacion-cita", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const citasRepo = deps.citasRepo(db);
       const organizations = await citasRepo.listActiveOrganizations();
       let processed = 0;
@@ -48,7 +49,7 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
       }
 
       return c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, failures });
-    });
+    }))();
   });
 
   return app;

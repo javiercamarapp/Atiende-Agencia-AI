@@ -33,6 +33,7 @@ import type { EmailDispatchSummary, RestaurantesRepository } from "@atiende/doma
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de citas/email-dispatch.ts. */
@@ -79,28 +80,30 @@ export function restaurantesEmailDispatchRoutes(deps: AppDeps): Hono {
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por
     // organización), misma sesión de sistema que citas/google-calendar-sync.ts.
-    const summary = await runRestaurantesEmailDispatch(deps);
+    return withHeartbeat(deps, "/internal/restaurantes/email-dispatch", async () => {
+      const summary = await runRestaurantesEmailDispatch(deps);
 
-    // HALLAZGO ALTO de la auditoría final — mismo criterio documentado en
-    // citas/email-dispatch.ts: se deja el status code en 200 (contrato de Vercel
-    // Cron), la corrección real es loguear estructurado con severidad `error`.
-    if (summary.failed > 0 || summary.dead > 0) {
-      logEvent(c, "error", "restaurantes_email_dispatch_cron_con_fallos", {
+      // HALLAZGO ALTO de la auditoría final — mismo criterio documentado en
+      // citas/email-dispatch.ts: se deja el status code en 200 (contrato de Vercel
+      // Cron), la corrección real es loguear estructurado con severidad `error`.
+      if (summary.failed > 0 || summary.dead > 0) {
+        logEvent(c, "error", "restaurantes_email_dispatch_cron_con_fallos", {
+          processed: summary.processed,
+          failed: summary.failed,
+          dead: summary.dead,
+          errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
+        });
+      }
+
+      return c.json({
+        ok: true,
         processed: summary.processed,
+        sent: summary.sent,
         failed: summary.failed,
         dead: summary.dead,
         errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
       });
-    }
-
-    return c.json({
-      ok: true,
-      processed: summary.processed,
-      sent: summary.sent,
-      failed: summary.failed,
-      dead: summary.dead,
-      errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
-    });
+    })();
   });
 
   return app;
