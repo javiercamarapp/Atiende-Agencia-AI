@@ -8,6 +8,7 @@
 // tool-calling, que usan `FakeLlmProvider`, nunca los adaptadores reales).
 import { describe, expect, it } from "vitest";
 import { LlmGateway } from "@atiende/agent-core";
+import { InMemoryTenancyEngine } from "@atiende/db";
 import { buildProductionLlmGateway } from "../src/production/llm-gateway.ts";
 import { TEST_ENV } from "./fixtures.ts";
 import type { ApiEnv } from "../src/env.ts";
@@ -16,15 +17,24 @@ function envWith(llmProviders: ApiEnv["llmProviders"]): ApiEnv {
   return { ...TEST_ENV, llmProviders };
 }
 
+// `engine` solo alimenta el registro de uso/tope mensual (ver
+// ./llm-usage-gateway-adapters.ts) -- ninguna prueba de este archivo invoca
+// `.complete()`, así que un `InMemoryTenancyEngine` vacío basta: nunca se abre
+// una sesión real.
+function fakeEngine(): InMemoryTenancyEngine {
+  return new InMemoryTenancyEngine();
+}
+
 describe("buildProductionLlmGateway", () => {
   it("sin NINGUNA API key de proveedor configurada, devuelve undefined -- nunca finge un gateway funcional", () => {
-    const gateway = buildProductionLlmGateway(envWith({ anthropic: null, openai: null, openrouter: null }));
+    const gateway = buildProductionLlmGateway(envWith({ anthropic: null, openai: null, openrouter: null }), fakeEngine());
     expect(gateway).toBeUndefined();
   });
 
   it("con solo ANTHROPIC_API_KEY+ANTHROPIC_MODEL configurados, construye un LlmGateway real", () => {
     const gateway = buildProductionLlmGateway(
       envWith({ anthropic: { apiKey: "sk-ant-test", model: "claude-sonnet-5-test" }, openai: null, openrouter: null }),
+      fakeEngine(),
     );
     expect(gateway).toBeInstanceOf(LlmGateway);
   });
@@ -32,6 +42,7 @@ describe("buildProductionLlmGateway", () => {
   it("con solo OPENAI_API_KEY+OPENAI_MODEL configurados, construye un LlmGateway real", () => {
     const gateway = buildProductionLlmGateway(
       envWith({ anthropic: null, openai: { apiKey: "sk-openai-test", model: "gpt-5.6-test" }, openrouter: null }),
+      fakeEngine(),
     );
     expect(gateway).toBeInstanceOf(LlmGateway);
   });
@@ -39,6 +50,7 @@ describe("buildProductionLlmGateway", () => {
   it("con solo OPENROUTER_API_KEY+OPENROUTER_MODEL configurados, construye un LlmGateway real", () => {
     const gateway = buildProductionLlmGateway(
       envWith({ anthropic: null, openai: null, openrouter: { apiKey: "sk-or-test", model: "openai/gpt-5.6-test", countryOfResidence: null } }),
+      fakeEngine(),
     );
     expect(gateway).toBeInstanceOf(LlmGateway);
   });
@@ -50,6 +62,7 @@ describe("buildProductionLlmGateway", () => {
         openai: { apiKey: "sk-openai-test", model: "gpt-5.6-test" },
         openrouter: { apiKey: "sk-or-test", model: "openai/gpt-5.6-test", countryOfResidence: "US" },
       }),
+      fakeEngine(),
     );
     expect(gateway).toBeInstanceOf(LlmGateway);
   });
@@ -58,7 +71,7 @@ describe("buildProductionLlmGateway", () => {
     // `env.ts` ya deja `llmProviders.anthropic` en `null` si falta cualquiera de
     // los dos -- esta prueba fija el contrato de ese `null` desde el lado del
     // gateway: sigue siendo fail-closed si ningún proveedor QUEDÓ configurado.
-    const gateway = buildProductionLlmGateway(envWith({ anthropic: null, openai: null, openrouter: null }));
+    const gateway = buildProductionLlmGateway(envWith({ anthropic: null, openai: null, openrouter: null }), fakeEngine());
     expect(gateway).toBeUndefined();
   });
 });

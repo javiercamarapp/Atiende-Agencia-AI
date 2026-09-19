@@ -35,3 +35,20 @@ export { InMemoryTenancyEngine } from "./in-memory-tenancy-engine.ts";
 export type { SeedTenancyProperty, SeedTenancyMembership } from "./in-memory-tenancy-engine.ts";
 export { openManagedPostgres } from "./managed-postgres-engine.ts";
 export type { ManagedPostgresConfig, ManagedPostgresEngine } from "./managed-postgres-engine.ts";
+export type {
+  LlmUsageRepository,
+  LlmUsageEventInput,
+  LlmUsageSummaryRow,
+  LlmUsageByOrganizationRow,
+  LlmUsageByProviderModelRow,
+  LlmPlatformBudgetRow,
+} from "./llm-usage-repository.ts";
+export {
+  LlmMonthlyBudgetExceededError,
+  LlmOrganizationNotFoundError,
+  DEFAULT_LLM_ORG_MONTHLY_CAP_MICRO_USD,
+  DEFAULT_LLM_ALERT_THRESHOLD_PCT,
+  PostgresLlmUsageRepository,
+  InMemoryLlmUsageRepository,
+} from "./llm-usage-repository.ts";
+export type { InMemoryLlmUsageOrganization } from "./llm-usage-repository.ts";

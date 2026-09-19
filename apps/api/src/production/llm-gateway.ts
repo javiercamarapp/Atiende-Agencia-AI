@@ -61,6 +61,8 @@ import {
   type GatewayBudgetLimits,
   type LlmProvider,
 } from "@atiende/agent-core";
+import type { TenancyEngine } from "@atiende/core-tenancy";
+import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore } from "./llm-usage-gateway-adapters.ts";
 import type { ApiEnv } from "../env.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
@@ -155,8 +157,18 @@ function buildProviderLadder(env: ApiEnv): LlmProvider[] {
  * MISMA lista de proveedores configurados, o `undefined` si NINGÚN proveedor tiene
  * API key + modelo configurados — fail-closed explícito, nunca un gateway que finge
  * funcionar sin credenciales reales detrás.
+ *
+ * `engine` alimenta el registro de uso (control de gasto de API de LLM) + el
+ * tope MENSUAL persistente (`ProductionLlmUsageRecorder`/
+ * `ProductionOrgMonthlyBudgetStore`, ver `./llm-usage-gateway-adapters.ts`) —
+ * ambos abren su propia sesión de sistema por llamada, MISMO patrón que
+ * `hotelesFraudeAuditSink`/`despachosAuditSink` en `./deps.ts`. Se pasan
+ * SIEMPRE que hay `engine` (que siempre lo hay en producción real, ver
+ * `buildProductionDeps`) — sin `DATABASE_URL` no hay ni `engine` ni gateway
+ * real que construir (ver el `throw` explícito al inicio de
+ * `buildProductionDeps`).
  */
-export function buildProductionLlmGateway(env: ApiEnv): LlmGateway | undefined {
+export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine): LlmGateway | undefined {
   const providers = buildProviderLadder(env);
   if (providers.length === 0) return undefined;
 
@@ -164,6 +176,8 @@ export function buildProductionLlmGateway(env: ApiEnv): LlmGateway | undefined {
     breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: DEFAULT_LLM_GATEWAY_BUDGET_LIMITS,
+    usageRecorder: new ProductionLlmUsageRecorder(engine),
+    orgMonthlyBudgetStore: new ProductionOrgMonthlyBudgetStore(engine),
   });
 
   for (const role of ALL_PRODUCTION_ROLES) {

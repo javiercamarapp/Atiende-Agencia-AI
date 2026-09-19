@@ -77,6 +77,7 @@ import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-reposi
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
 import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
+import { ProductionLlmUsageRepository } from "./llm-usage-repository.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { notProductionReady } from "./not-ready.ts";
@@ -199,7 +200,7 @@ export function buildProductionDeps(): AppDeps {
   // sola vez aquí (esta función entera ya está cacheada en `cached` de arriba) y
   // se comparte entre los 3 turn handlers de WhatsApp y (vía `AppDeps.llmGateway`)
   // la ruta de extracción de requisitos de licitaciones.
-  const llmGateway = buildProductionLlmGateway(env);
+  const llmGateway = buildProductionLlmGateway(env, engine);
 
   // Dispatcher real de WhatsApp saliente — `undefined` si `WHATSAPP_ACCESS_TOKEN` no
   // está configurado (ver env.ts), mismo criterio fail-closed que `llmGateway`
@@ -338,6 +339,9 @@ export function buildProductionDeps(): AppDeps {
     // su solución real conocida).
     rentasOnboardingRepo: createProductionRentasOnboardingRepo(),
     llmGateway,
+    // Control de gasto de API de LLM (back office de plataforma) — sesión de
+    // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.
+    llmUsageRepo: new ProductionLlmUsageRepository(engine),
     whatsAppDispatcher,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en

@@ -12,7 +12,7 @@
 // restaurantes.
 import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -141,6 +141,7 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
+    llmUsageRepo: new InMemoryLlmUsageRepository(),
   };
   return { deps, hotelesRepo, organizationId, propertyId };
 }
@@ -279,6 +280,7 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
       rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
       rentasIcalFeedPort: new FakeIcalFeedPort(),
       llmGateway: undefined,
+      llmUsageRepo: new InMemoryLlmUsageRepository(),
     };
     const app = buildApp(deps);
 
