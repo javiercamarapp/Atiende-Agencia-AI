@@ -49,8 +49,20 @@ export interface InvoiceStatusInput {
  * que se creó -- una factura "pendiente" se vuelve "vencida" en cuanto pasa
  * `dueDate` sin `paidAt` registrado, se recalcula en cada lectura (nunca se
  * confía en un campo `status` persistido que pueda quedar obsoleto).
+ *
+ * `todayIsoDate` es OBLIGATORIO a propósito (bug real, revisión r6 de PR
+ * #171): esta función tenía un default `new Date().toISOString().slice(0,
+ * 10)` -- el día UTC del proceso, no el día de negocio -- y
+ * `postgres-repository.ts::mapContractInvoice` lo dejó colarse sin pasar
+ * fecha, mientras `receivablesSummary` en el MISMO archivo sí calculaba con
+ * `@atiende/core-tenancy::hoyFechaNegocio()`. Resultado: entre las 18:00 y
+ * las 23:59 CDMX, una factura que vencía HOY salía "vencida" en
+ * `invoices[]` pero `countOverdue: 0` en los totales de la misma respuesta.
+ * Quitar el default obliga a todo caller (Postgres, in-memory, tests) a
+ * declarar explícitamente qué "hoy" usa, para que este bug no se vuelva a
+ * colar en un call-site nuevo.
  */
-export function classifyInvoiceStatus(input: InvoiceStatusInput, todayIsoDate: string = new Date().toISOString().slice(0, 10)): ContractInvoiceStatus {
+export function classifyInvoiceStatus(input: InvoiceStatusInput, todayIsoDate: string): ContractInvoiceStatus {
   if (input.paidAt !== null) return "pagada";
   const today = todayIsoDate.slice(0, 10);
   return today > input.dueDate ? "vencida" : "pendiente";
@@ -73,7 +85,7 @@ export interface ReceivablesTotals {
  * facturas todavía dentro de plazo como vencidas (el total vencido es un
  * SUBCONJUNTO informativo del pendiente, nunca se restan entre sí).
  */
-export function summarizeReceivables(invoices: readonly ReceivableLineInput[], todayIsoDate: string = new Date().toISOString().slice(0, 10)): ReceivablesTotals {
+export function summarizeReceivables(invoices: readonly ReceivableLineInput[], todayIsoDate: string): ReceivablesTotals {
   const pending: bigint[] = [];
   const overdue: bigint[] = [];
   let countPending = 0;
