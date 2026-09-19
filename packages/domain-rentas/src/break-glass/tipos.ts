@@ -107,3 +107,60 @@ export interface BreakGlassReservaResumen {
   readonly huespedNombre: string | null;
   readonly huespedContacto: string | null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sesión de acceso (Fase 10b -- ver ../../migrations/018_break_glass_wiring.sql):
+// la pieza de "duración acotada" que 012_break_glass_audit.sql nunca construyó --
+// esa migración solo dejó un log por LECTURA, sin ningún concepto de "ventana de
+// acceso vigente" contra la que gatear esas lecturas. `BreakGlassSession` es esa
+// ventana: se abre con motivo + duración, se puede cerrar antes de vencer, y vence
+// sola -- `rentas.list_reservas_for_break_glass` (la única lectura de tenant que
+// este mecanismo sabe servir hoy) exige una fila vigente para el mismo
+// actor+organización antes de devolver cualquier dato.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Mínimo de minutos que puede durar un acceso de romper-cristal -- evita una
+ *  "duración acotada" de 0 o negativa que en la práctica sería "sin ventana". */
+export const BREAK_GLASS_MIN_DURATION_MINUTES = 5;
+
+/** Máximo de minutos -- mismo valor que el CHECK `expires_at <= opened_at +
+ *  interval '4 hours'` de la migración. Una ventana más larga deja de ser
+ *  "romper cristal" (emergencia puntual) y empieza a parecerse a acceso
+ *  permanente -- si algún día se necesita más, es una decisión de producto
+ *  explícita (cambiar esta constante Y el CHECK de la migración en una
+ *  migración nueva), nunca un default silencioso. */
+export const BREAK_GLASS_MAX_DURATION_MINUTES = 240;
+
+/** Fila persistida de una ventana de acceso -- lo que devuelven `open`/`close`/
+ *  `listForActor` de `BreakGlassSessionRepository`. */
+export interface BreakGlassSession {
+  readonly id: string;
+  readonly actorUserId: string;
+  readonly actorEmail: string | null;
+  readonly organizationId: string;
+  readonly reason: string;
+  readonly openedAtMs: number;
+  readonly expiresAtMs: number;
+  /** `null` mientras la ventana sigue abierta (vigente o ya vencida por tiempo --
+   *  ver `esSesionBreakGlassActiva`, que distingue "vencida" de "cerrada"). */
+  readonly closedAtMs: number | null;
+  readonly closedBy: string | null;
+}
+
+/** Lo que `BreakGlassSessionRepository.open` recibe -- todo lo de `BreakGlassSession`
+ *  MENOS lo que solo la base puede producir (id/openedAtMs/closedAtMs/closedBy). */
+export interface NewBreakGlassSessionInput {
+  readonly actor: SuperadminActor;
+  readonly organizationId: string;
+  readonly reason: string;
+  readonly durationMinutes: number;
+}
+
+/** `true` solo si la ventana sigue sin cerrarse Y todavía no venció por tiempo --
+ *  el criterio EXACTO que `rentas.list_reservas_for_break_glass` evalúa en SQL
+ *  (`closed_at is null and expires_at > now()`), replicado aquí para que la capa
+ *  de ruta pueda dar un 403 explícito y honesto ANTES de intentar la lectura real
+ *  (mejor mensaje que dejar que Postgres sea la única fuente del rechazo). */
+export function esSesionBreakGlassActiva(session: BreakGlassSession, nowMs: number = Date.now()): boolean {
+  return session.closedAtMs === null && session.expiresAtMs > nowMs;
+}
