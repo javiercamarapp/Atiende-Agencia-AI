@@ -1263,6 +1263,7 @@ export class InMemoryCitasRepository implements CitasRepository {
       organizationId: input.organizationId,
       providerId: input.providerId,
       calcomEventTypeId: input.calcomEventTypeId,
+      baseUrl: input.baseUrl ?? null,
       syncStatus: "connected",
       syncError: null,
       createdAt: existing?.createdAt ?? now,
@@ -1281,6 +1282,18 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async resolveProviderCalComApiKey(providerId: string): Promise<string | null> {
     return this.calcomApiKeys.get(providerId) ?? null;
+  }
+
+  async setProviderCalComAccountSyncError(providerId: string, error: string): Promise<void> {
+    const existing = this.calcomAccounts.get(providerId);
+    if (!existing) return;
+    this.calcomAccounts.set(providerId, { ...existing, syncStatus: "error", syncError: error, updatedAt: new Date().toISOString() });
+  }
+
+  async markProviderCalComAccountSyncOk(providerId: string): Promise<void> {
+    const existing = this.calcomAccounts.get(providerId);
+    if (!existing || existing.syncStatus === "disconnected") return;
+    this.calcomAccounts.set(providerId, { ...existing, syncStatus: "connected", syncError: null, updatedAt: new Date().toISOString() });
   }
 
   async findProviderCalDavAccount(providerId: string): Promise<ProviderCalDavAccountRecord | null> {
@@ -1314,6 +1327,18 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async resolveProviderCalDavPassword(providerId: string): Promise<string | null> {
     return this.caldavPasswords.get(providerId) ?? null;
+  }
+
+  async setProviderCalDavAccountSyncError(providerId: string, error: string): Promise<void> {
+    const existing = this.caldavAccounts.get(providerId);
+    if (!existing) return;
+    this.caldavAccounts.set(providerId, { ...existing, syncStatus: "error", syncError: error, updatedAt: new Date().toISOString() });
+  }
+
+  async markProviderCalDavAccountSyncOk(providerId: string): Promise<void> {
+    const existing = this.caldavAccounts.get(providerId);
+    if (!existing || existing.syncStatus === "disconnected") return;
+    this.caldavAccounts.set(providerId, { ...existing, syncStatus: "connected", syncError: null, updatedAt: new Date().toISOString() });
   }
 
   // ============================================================================

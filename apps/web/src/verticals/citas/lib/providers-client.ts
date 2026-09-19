@@ -4,7 +4,7 @@
 // acción que la página seguía ofreciendo antes de Fase 8 era conectar Google
 // Calendar (Fase 3, google-calendar-oauth.ts) — este archivo sigue pidiendo la
 // `authorize_url` real ahí, sin cambios.
-import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
+import { deleteJson, fetchJson, postJson, sendJson } from "./admin-client.ts";
 
 export interface ProviderSummary {
   readonly id: string;
@@ -87,10 +87,62 @@ export interface GoogleCalendarStatus {
   readonly syncError: string | null;
 }
 
+// ============================================================================
+// Fase 6 §2 (seguimiento) — Cal.com/CalDAV, "Calendarios conectados" (mismo
+// estado que Google: connected/sync_status/sync_error) más la metadata pública
+// de la conexión (event_type_id/base_url de Cal.com, calendar_collection_url/
+// username de CalDAV) — el secreto (api_key/contraseña de aplicación) NUNCA
+// viaja en ninguna de estas respuestas.
+// ============================================================================
+
+export type CalendarProviderSyncStatus = "disconnected" | "connected" | "error";
+
+export interface CalComStatus {
+  readonly connected: boolean;
+  readonly syncStatus: CalendarProviderSyncStatus;
+  readonly syncError: string | null;
+  readonly eventTypeId: string | null;
+  readonly baseUrl: string | null;
+}
+
+export interface CalDavStatus {
+  readonly connected: boolean;
+  readonly syncStatus: CalendarProviderSyncStatus;
+  readonly syncError: string | null;
+  readonly calendarCollectionUrl: string | null;
+  readonly username: string | null;
+}
+
+interface CalComStatusApiBody {
+  readonly connected: boolean;
+  readonly sync_status: CalendarProviderSyncStatus;
+  readonly sync_error: string | null;
+  readonly calcom_event_type_id: string | null;
+  readonly calcom_base_url: string | null;
+}
+
+interface CalDavStatusApiBody {
+  readonly connected: boolean;
+  readonly sync_status: CalendarProviderSyncStatus;
+  readonly sync_error: string | null;
+  readonly calendar_collection_url: string | null;
+  readonly username: string | null;
+}
+
+function mapCalComStatus(row: CalComStatusApiBody): CalComStatus {
+  return { connected: row.connected, syncStatus: row.sync_status, syncError: row.sync_error, eventTypeId: row.calcom_event_type_id, baseUrl: row.calcom_base_url };
+}
+
+function mapCalDavStatus(row: CalDavStatusApiBody): CalDavStatus {
+  return { connected: row.connected, syncStatus: row.sync_status, syncError: row.sync_error, calendarCollectionUrl: row.calendar_collection_url, username: row.username };
+}
+
 export interface ProviderDetail {
   readonly provider: ProviderSummary;
   readonly availabilityRules: readonly AvailabilityRuleSummary[];
   readonly googleCalendar: GoogleCalendarStatus;
+  readonly calcom: CalComStatus;
+  readonly caldav: CalDavStatus;
   /** Fase 8 — ids de los servicios (activos) que este proveedor ya ofrece hoy, ver
    * admin.ts::GET .../providers/:providerId. */
   readonly offeredServiceIds: readonly string[];
@@ -100,6 +152,8 @@ interface ProviderDetailApiBody {
   readonly provider: ProviderApiRow;
   readonly availability_rules: readonly { id: string; day_of_week: number; start_time: string; end_time: string; is_active: boolean }[];
   readonly google_calendar: { connected: boolean; sync_status: GoogleCalendarSyncStatus; sync_error: string | null };
+  readonly calcom: CalComStatusApiBody;
+  readonly caldav: CalDavStatusApiBody;
   readonly offered_service_ids: readonly string[];
 }
 
@@ -109,8 +163,75 @@ export async function fetchProviderDetail(fetchImpl: typeof fetch, apiBaseUrl: s
     provider: mapProvider(body.provider),
     availabilityRules: body.availability_rules.map((r) => ({ id: r.id, dayOfWeek: r.day_of_week, startTime: r.start_time, endTime: r.end_time, isActive: r.is_active })),
     googleCalendar: { connected: body.google_calendar.connected, syncStatus: body.google_calendar.sync_status, syncError: body.google_calendar.sync_error },
+    calcom: mapCalComStatus(body.calcom),
+    caldav: mapCalDavStatus(body.caldav),
     offeredServiceIds: body.offered_service_ids,
   };
+}
+
+export interface ConnectCalComInput {
+  readonly apiKey: string;
+  readonly eventTypeId: string;
+  /** URL base de una instancia Cal.com self-hosted -- vacío/omitido = SaaS oficial. */
+  readonly baseUrl?: string;
+}
+
+export async function connectCalCom(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string, input: ConnectCalComInput): Promise<CalComStatus> {
+  const body = await sendJson<{ connected: boolean; provider_id: string; calcom_event_type_id: string; calcom_base_url: string | null; sync_status: CalendarProviderSyncStatus }>(
+    fetchImpl,
+    `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/calcom/connect`,
+    token,
+    "POST",
+    { api_key: input.apiKey, event_type_id: input.eventTypeId, ...(input.baseUrl ? { base_url: input.baseUrl } : {}) },
+  );
+  return { connected: body.connected, syncStatus: body.sync_status, syncError: null, eventTypeId: body.calcom_event_type_id, baseUrl: body.calcom_base_url };
+}
+
+export async function disconnectCalCom(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<void> {
+  await sendJson(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/calcom/disconnect`, token, "POST", {});
+}
+
+export async function fetchCalComStatus(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<CalComStatus> {
+  const body = await fetchJson<CalComStatusApiBody>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/calcom/status`, token);
+  return mapCalComStatus(body);
+}
+
+/** Prueba de conexión real contra la cuenta YA conectada (nunca pide credenciales
+ * de nuevo) -- ver apps/api/.../citas/calendar-providers.ts::POST .../calcom/test-connection. */
+export async function testCalComConnection(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<{ readonly ok: boolean; readonly checkedAt: string }> {
+  const body = await postJson<{ ok: boolean; checked_at: string }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/calcom/test-connection`, token);
+  return { ok: body.ok, checkedAt: body.checked_at };
+}
+
+export interface ConnectCalDavInput {
+  readonly calendarCollectionUrl: string;
+  readonly username: string;
+  readonly password: string;
+}
+
+export async function connectCalDav(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string, input: ConnectCalDavInput): Promise<CalDavStatus> {
+  const body = await sendJson<{ connected: boolean; provider_id: string; calendar_collection_url: string; username: string; sync_status: CalendarProviderSyncStatus }>(
+    fetchImpl,
+    `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/caldav/connect`,
+    token,
+    "POST",
+    { calendar_collection_url: input.calendarCollectionUrl, username: input.username, password: input.password },
+  );
+  return { connected: body.connected, syncStatus: body.sync_status, syncError: null, calendarCollectionUrl: body.calendar_collection_url, username: body.username };
+}
+
+export async function disconnectCalDav(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<void> {
+  await sendJson(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/caldav/disconnect`, token, "POST", {});
+}
+
+export async function fetchCalDavStatus(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<CalDavStatus> {
+  const body = await fetchJson<CalDavStatusApiBody>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/caldav/status`, token);
+  return mapCalDavStatus(body);
+}
+
+export async function testCalDavConnection(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<{ readonly ok: boolean; readonly checkedAt: string }> {
+  const body = await postJson<{ ok: boolean; checked_at: string }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/providers/${providerId}/caldav/test-connection`, token);
+  return { ok: body.ok, checkedAt: body.checked_at };
 }
 
 // ============================================================================

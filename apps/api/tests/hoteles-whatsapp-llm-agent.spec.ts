@@ -17,7 +17,7 @@ import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@ati
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { HotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
-import { InMemoryCitasRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver } from "@atiende/domain-citas";
+import { InMemoryCitasRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -134,6 +134,9 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
+    citasCalendarSyncPortResolver: createCalendarSyncPortResolver(new InMemoryCitasRepository(), null),
+    citasCalComPortFactory: (cfg) => new RealCalComPort(cfg),
+    citasCalDavPortFactory: (cfg) => new RealCalDavPort(cfg),
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de hoteles).");
     },
@@ -276,6 +279,9 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
       citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
       citasConversationGuard: createDefaultConversationGuard(),
       citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
+      citasCalendarSyncPortResolver: createCalendarSyncPortResolver(new InMemoryCitasRepository(), null),
+      citasCalComPortFactory: (cfg) => new RealCalComPort(cfg),
+      citasCalDavPortFactory: (cfg) => new RealCalDavPort(cfg),
       citasGoogleTokenExchange: async () => {
         throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de hoteles).");
       },
