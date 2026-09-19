@@ -11,7 +11,20 @@ import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository } from
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, InMemoryRentasTenancyEngine, SimuladorCanalMensajeria } from "@atiende/domain-rentas";
+import {
+  FakeIcalFeedPort,
+  InMemoryBreakGlassAuditRepository,
+  InMemoryBreakGlassRentasDataRepository,
+  InMemoryBreakGlassSessionRepository,
+  InMemoryRentasCalendarStore,
+  InMemoryRentasCalendarSyncRepository,
+  InMemoryRentasMensajeriaRepository,
+  InMemoryRentasOnboardingRepository,
+  InMemoryRentasOwnerPortalRepository,
+  InMemoryRentasRepository,
+  InMemoryRentasTenancyEngine,
+  SimuladorCanalMensajeria,
+} from "@atiende/domain-rentas";
 import type { RentasVerticalRole } from "@atiende/domain-rentas";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -157,6 +170,12 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
     // de producción, que SIEMPRE lanza sin credenciales de partner).
     rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasOnboardingRepo: (_db) => rentasOnboardingRepo,
+    // Fase 10b -- "romper cristal": fuera del alcance de estos fixtures (staff con
+    // membership real, nunca superadmin) -- solo para satisfacer AppDeps. Los tests
+    // dedicados de break-glass usan apps/api/tests/fixtures.ts::buildTestDeps.
+    rentasBreakGlassSessionRepo: (_db) => new InMemoryBreakGlassSessionRepository(),
+    rentasBreakGlassAuditRepo: (_db) => new InMemoryBreakGlassAuditRepository(),
+    rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
     llmGateway: options.llmGateway,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     citasRepo: (_db) => new InMemoryCitasRepository(),

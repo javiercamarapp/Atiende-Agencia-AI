@@ -7,7 +7,19 @@ import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDe
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, SimuladorCanalMensajeria } from "@atiende/domain-rentas";
+import {
+  FakeIcalFeedPort,
+  InMemoryBreakGlassAuditRepository,
+  InMemoryBreakGlassRentasDataRepository,
+  InMemoryBreakGlassSessionRepository,
+  InMemoryRentasCalendarStore,
+  InMemoryRentasCalendarSyncRepository,
+  InMemoryRentasMensajeriaRepository,
+  InMemoryRentasOnboardingRepository,
+  InMemoryRentasOwnerPortalRepository,
+  InMemoryRentasRepository,
+  SimuladorCanalMensajeria,
+} from "@atiende/domain-rentas";
 import type { AppDeps } from "../src/deps.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -106,6 +118,14 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
   const rentasRepo = new InMemoryRentasRepository(rentasCalendarStore);
   const rentasOwnerPortalRepo = new InMemoryRentasOwnerPortalRepository();
   const rentasCalendarSyncRepo = new InMemoryRentasCalendarSyncRepository(rentasCalendarStore);
+  // Fase 10b -- una sola instancia compartida por contexto de test (NUNCA una nueva
+  // por llamada a la fábrica): la ventana abierta en un request debe seguir visible
+  // en el siguiente request del mismo test (open -> list -> close -> read son pasos
+  // separados de un mismo flujo), mismo criterio que `rentasRepo`/
+  // `rentasCalendarSyncRepo` arriba.
+  const rentasBreakGlassSessionRepo = new InMemoryBreakGlassSessionRepository();
+  const rentasBreakGlassAuditRepo = new InMemoryBreakGlassAuditRepository();
+  const rentasBreakGlassDataRepo = new InMemoryBreakGlassRentasDataRepository(new Map());
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
@@ -144,6 +164,13 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
     rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
+    // Fase 10b -- "romper cristal". Mapa vacío por defecto (sin reservas sembradas) --
+    // los tests que necesitan datos concretos construyen su propio AppDeps con
+    // `rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map([...]))`,
+    // mismo criterio que `citasGoogleCalendarPortResolver` arriba.
+    rentasBreakGlassSessionRepo: (_db) => rentasBreakGlassSessionRepo,
+    rentasBreakGlassAuditRepo: (_db) => rentasBreakGlassAuditRepo,
+    rentasBreakGlassDataRepo: (_db) => rentasBreakGlassDataRepo,
     llmGateway: undefined,
     llmUsageRepo,
   };
