@@ -5,7 +5,8 @@
 // fake-session.ts`) -- el doble que SÍ reproduce 25P02/estado abortado, a diferencia
 // del `fakeSession` plano que ya existía en este archivo hermano
 // (`postgres-core-repository-org-admin-fallback.spec.ts`).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runWithSavepointFallback } from "../src/savepoint-fallback.ts";
 import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 
@@ -142,5 +143,40 @@ describe("runWithSavepointFallback", () => {
     // RELEASE/ROLLBACK TO SAVEPOINT -- no hay nada que liberar/revertir.
     expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(false);
     expect(session.calls.some((c) => c.startsWith("release savepoint"))).toBe(false);
+  });
+
+  // No-bloqueante de revisión (PR #158, ronda 1): si la propia recuperación
+  // (ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT) falla -- ej. la conexión se cae
+  // mientras corre --, el error original de `primary` NO debe perderse detrás del
+  // error de recuperación. `AbortAwareFakeSession` no modela una conexión caída
+  // (fuera de su alcance -- solo modela el estado "transacción abortada" de
+  // Postgres), así que este test usa un `TenantDbSession` mínimo hecho a mano.
+  it("si ROLLBACK TO SAVEPOINT falla (ej. conexión caída), se repropaga el error ORIGINAL de `primary`, no el de la recuperación", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const connectionLost = pgError("57P03", "connection lost while recovering");
+    const session: TenantDbSession = {
+      query: vi.fn().mockRejectedValue(new Error("no debería llamarse en este test")),
+      exec: vi.fn(async (sql: string) => {
+        if (sql.trim().toLowerCase().startsWith("rollback to savepoint")) throw connectionLost;
+        // SAVEPOINT inicial: no-op.
+      }),
+    };
+
+    await expect(
+      runWithSavepointFallback({
+        session,
+        primary: async () => {
+          throw pgError("23514", "error original -- este es el que debe verse");
+        },
+        isRecoverable: () => true,
+        fallback: async () => "no debería correr -- la recuperación falló antes",
+      }),
+    ).rejects.toMatchObject({ code: "23514", message: "error original -- este es el que debe verse" });
+
+    // El error de recuperación SÍ se registró (para no perder el diagnóstico de
+    // por qué la recuperación falló), pero nunca reemplazó al original.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[1]).toBe(connectionLost);
+    errorSpy.mockRestore();
   });
 });

@@ -117,8 +117,23 @@ export async function runWithSavepointFallback<T>(opts: SavepointFallbackOptions
     return result;
   } catch (err) {
     if (savepointActive) {
-      await session.exec(`ROLLBACK TO SAVEPOINT ${savepointName}`);
-      await session.exec(`RELEASE SAVEPOINT ${savepointName}`);
+      try {
+        await session.exec(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+        await session.exec(`RELEASE SAVEPOINT ${savepointName}`);
+      } catch (recoveryErr) {
+        // No-bloqueante de revisión (PR #158, ronda 1) -- si la propia
+        // recuperación falla (ej. la conexión se cae mientras corre el `ROLLBACK
+        // TO SAVEPOINT`), un `throw recoveryErr` sin más perdería el error
+        // ORIGINAL de `primary` -- la causa raíz real que el caller/los logs
+        // necesitan ver. `recoveryErr` se registra para no perder el diagnóstico
+        // de por qué la recuperación también falló, pero se repropaga `err`
+        // (el original), nunca `recoveryErr`.
+        console.error(
+          "runWithSavepointFallback: ROLLBACK TO SAVEPOINT/RELEASE SAVEPOINT falló -- se repropaga el error ORIGINAL de `primary`, no este:",
+          recoveryErr,
+        );
+        throw err;
+      }
     }
     if (!isRecoverable(err)) throw err;
     return fallback(err);
