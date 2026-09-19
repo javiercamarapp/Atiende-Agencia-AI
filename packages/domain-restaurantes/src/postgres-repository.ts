@@ -10,6 +10,7 @@
 // Supabase Auth de usuario, el "service role" original se traduce aquí a una sesión
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import { OrderConflictError } from "./errors.ts";
 import type {
   Branch,
@@ -583,6 +584,23 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
        where message_id = $2 and organization_id = $1;`,
       [organizationId, messageId, errorClass],
     );
+  }
+
+  // Aislamiento por tool call del turno de WhatsApp (ver el comentario de cabecera
+  // de `runWithRowSavepoint` en `repository.ts` para el diseño completo) -- mismo
+  // `runWithSavepointFallback` que `PostgresCitasRepository`, con `isRecoverable`
+  // fijo en `true` y un `fallback` que simplemente relanza el mismo error DESPUÉS de
+  // que `ROLLBACK TO SAVEPOINT` ya dejó la transacción del turno utilizable para el
+  // resto del loop de tool-use / el commit final.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: fn,
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
   }
 
   // ---- Dispatcher real de messaging_outbox (migrations/007) ----
