@@ -202,3 +202,74 @@ describe("GET/POST /superadmin/resumen -- autorización y camino feliz", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// Hallazgo de auditoría a1 (BAJA, rubro B): en la base real SIN la migración
+// `0015_superadmin_resumen_diario.sql` aplicada (el caso NORMAL de "código
+// nuevo, base vieja" -- ver REGLA DURA de compatibilidad del repo), el
+// UPSERT final (`core.upsert_daily_ops_summary`) no existe -- antes de este
+// fix, el cron respondía 500 TODOS los días, después de gastar una llamada
+// real de LLM (las 10 lecturas de fuente ya se tragaban su propio 42883
+// dentro de `leer()`, pero el UPSERT corría sin try/catch).
+describe("Resumen diario -- migración 0015 sin aplicar (SQLSTATE 42883), nunca un 500", () => {
+  it("cron -- 200 honesto { ok:false, motivo:'migracion_pendiente' }, heartbeat sigue 'ok' (no es un fallo real)", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setMigracionPendiente(true);
+    const app = buildApp(base.deps);
+
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; motivo?: string };
+    expect(body.ok).toBe(false);
+    expect(body.motivo).toBe("migracion_pendiente");
+
+    // El heartbeat NO debe quedar en 'error' -- `withHeartbeat` solo distingue
+    // "el handler lanzó" de "el handler resolvió"; el handler resolvió con un
+    // 200, así que el latido debe registrar 'ok'.
+    const saludRepo = base.deps.saludRepo as import("@atiende/db").InMemorySaludRepository;
+    const { superadminId } = await makeSuperadmin(base);
+    saludRepo.addPlatformSuperadmin(superadminId); // registro propio de InMemorySaludRepository -- ver su comentario de cabecera
+    const heartbeats = await saludRepo.listCronHeartbeatsForSuperadmin(superadminId);
+    const latido = heartbeats.find((h) => h.cronName === CRON_PATH);
+    expect(latido?.lastStatus).toBe("ok");
+  });
+
+  it("'generar ahora' -- 503 explícito (service_unavailable), nunca un 500 ni un 200 que finja éxito", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setMigracionPendiente(true);
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+
+    const res = await app.request("/superadmin/resumen/generar", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}" });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("service_unavailable");
+  });
+
+  it("defensa en profundidad -- el sondeo pasa pero el UPSERT falla igual (42883) -> mismo resultado honesto, nunca un 500", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setUpsertMigracionPendiente(true);
+    const app = buildApp(base.deps);
+
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; motivo?: string };
+    expect(body.ok).toBe(false);
+    expect(body.motivo).toBe("migracion_pendiente");
+  });
+
+  it("un código de error que NO es 42883 se repropaga tal cual -- nunca se confunde con 'migración pendiente'", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setFallando(true);
+    const app = buildApp(base.deps);
+
+    // `setFallando` tumba las 10 lecturas de fuente (se tragan a `null`, comportamiento
+    // preexistente) Y también `listCronHeartbeatsForSystem` -- pero con un Error
+    // genérico SIN `.code = "42883"`, así que el sondeo debe tratarlo como "sigue
+    // adelante" (no como migración pendiente), y el cron debe completar con éxito
+    // usando el "vacío honesto" ya existente para cada sección.
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+});
