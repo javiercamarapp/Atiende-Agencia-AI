@@ -1,11 +1,12 @@
 // Puerto de acceso a datos de domain-restaurantes — mismo patrón dual de adaptador
-// que ya usa @atiende/core-conversation (InMemoryStateStore/PostgresStateStore
-// implementando el mismo StateStore): un puerto TS explícito, con un adaptador real
-// en memoria (tests determinísticos, sin depender de que packages/db tenga ya un
-// motor de conexión) y un adaptador real de Postgres (sobre TenantDbSession, contra
-// las migraciones de migrations/001-004). Ninguna función de negocio de
-// customers.ts/orders.ts/whatsapp/* toca SQL directamente — todas pasan por aquí,
-// así que el mismo código de negocio corre igual en tests y en producción.
+// que ya usa @atiende/core-conversation (InMemoryStateStore/RedisLockStore
+// implementando cada uno su propio puerto, StateStore/LockStore): un puerto TS
+// explícito, con un adaptador real en memoria (tests determinísticos, sin depender
+// de que packages/db tenga ya un motor de conexión) y un adaptador real de Postgres
+// (sobre TenantDbSession, contra las migraciones de migrations/001-004). Ninguna
+// función de negocio de customers.ts/orders.ts/whatsapp/* toca SQL directamente —
+// todas pasan por aquí, así que el mismo código de negocio corre igual en tests y
+// en producción.
 import type {
   Branch,
   BranchProductState,

@@ -100,7 +100,15 @@ es la fuente".
 requiriendo una tabla `conversations` con columna `metadata JSONB` que NINGUNA
 migración de este repo crea todavía (dice explícito el comentario de ese mismo
 archivo) — revisa ese gap antes de asumir que esa función en particular es
-utilizable contra el proyecto real.
+utilizable contra el proyecto real. Actualizado (fix/conversation-lock-upstash):
+el único adaptador TypeScript que llamaba a esas 2 funciones RPC
+(`PostgresStateStore`) se confirmó sin consumidor real en producción — nada en
+`apps/api` lo instanciaba, `createDefaultConversationGuard()` usa
+`InMemoryStateStore` — y se retiró del árbol para que el paquete no exporte un
+adaptador "de producción" que en realidad no tiene tabla que leer/escribir. La
+migración SQL se deja tal cual (no se borra, ver convención de
+`supabase/migrations/README.md`) por si alguien construye la tabla y el
+adaptador real más adelante.
 
 ---
 
