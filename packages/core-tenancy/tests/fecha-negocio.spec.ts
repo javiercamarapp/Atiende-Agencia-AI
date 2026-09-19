@@ -63,4 +63,15 @@ describe("resolverZonaHorariaNegocio", () => {
     expect(resolverZonaHorariaNegocio("")).toBe(ZONA_HORARIA_NEGOCIO_DEFAULT);
     expect(resolverZonaHorariaNegocio("   ")).toBe(ZONA_HORARIA_NEGOCIO_DEFAULT);
   });
+
+  // Corrección de revisión r6 de PR #171 (no bloqueante #2): sin validar, un valor
+  // corrupto/legado en la columna caía directo a `hoyFechaNegocio(...)`, que lanza
+  // `RangeError` sin capturar (`new Intl.DateTimeFormat` con timeZone inválido).
+  it("cae a America/Mexico_City (falla cerrado, nunca lanza) cuando el valor NO es un timezone IANA válido", () => {
+    expect(resolverZonaHorariaNegocio("zona-mala")).toBe(ZONA_HORARIA_NEGOCIO_DEFAULT);
+    expect(resolverZonaHorariaNegocio("America/Ciudad_Inventada")).toBe(ZONA_HORARIA_NEGOCIO_DEFAULT);
+    expect(() => resolverZonaHorariaNegocio("zona-mala")).not.toThrow();
+    // Control: el resultado sigue siendo utilizable por `hoyFechaNegocio` sin lanzar.
+    expect(() => hoyFechaNegocio(resolverZonaHorariaNegocio("zona-mala"))).not.toThrow();
+  });
 });

@@ -66,7 +66,23 @@ export function hoyFechaNegocio(zonaHoraria: string = ZONA_HORARIA_NEGOCIO_DEFAU
  * directo — todos pasan por aquí, aunque hoy el resultado sea el mismo valor,
  * para que agregar la columna real en cualquier vertical futura no obligue a
  * tocar cada ruta que hoy asume México.
+ *
+ * Valida que `zonaHorariaProperty` sea un timezone IANA real (mismo criterio
+ * que `citas/admin.ts::optionalTimeZone`, que ya valida así en escritura) --
+ * hallazgo de revisión r6 de PR #171 (no bloqueante #2): sin esta validación,
+ * `hoyFechaNegocio(zonaHorariaProperty)` lanzaría `RangeError` sin capturar
+ * en cuanto un caller futuro conectara esto a una columna de texto libre con
+ * un valor corrupto/legado. Falla CERRADO al default de plataforma (nunca
+ * lanza) -- esta función resuelve un valor ya persistido, no valida entrada
+ * de usuario en el borde de la API (eso ya lo hace `optionalTimeZone` al
+ * escribir).
  */
 export function resolverZonaHorariaNegocio(zonaHorariaProperty: string | null | undefined): string {
-  return zonaHorariaProperty && zonaHorariaProperty.trim() !== "" ? zonaHorariaProperty : ZONA_HORARIA_NEGOCIO_DEFAULT;
+  if (!zonaHorariaProperty || zonaHorariaProperty.trim() === "") return ZONA_HORARIA_NEGOCIO_DEFAULT;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: zonaHorariaProperty });
+  } catch {
+    return ZONA_HORARIA_NEGOCIO_DEFAULT;
+  }
+  return zonaHorariaProperty;
 }
