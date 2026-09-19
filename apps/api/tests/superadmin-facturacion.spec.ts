@@ -276,6 +276,73 @@ describe("GET /superadmin/facturacion/webhooks-recientes", () => {
   });
 });
 
+describe("GET /superadmin/facturacion/webhooks-bitacora", () => {
+  it("un staff normal recibe 403", async () => {
+    const base = await buildTestDeps();
+    const app = buildApp(base.deps);
+    const res = await app.request("/superadmin/facturacion/webhooks-bitacora", { headers: { authorization: `Bearer ${await staffToken(base)}` } });
+    expect(res.status).toBe(403);
+  });
+
+  it("un superadmin real lista la bitácora completa, filtrable por result/organizationId, paginada", async () => {
+    const base = await buildTestDeps();
+    const coreRepo = base.deps.coreRepo as InMemoryCoreRepository;
+    const { token } = await makeSuperadmin(base);
+
+    await coreRepo.recordBillingWebhookEvent({ providerEventId: null, eventType: null, organizationId: null, result: "rechazado", reason: "firma_invalida" });
+    await coreRepo.recordBillingWebhookEvent({ providerEventId: "evt_ok", eventType: "checkout.session.completed", organizationId: base.organizationId, result: "procesado", reason: "aplicado" });
+    await coreRepo.recordBillingWebhookEvent({ providerEventId: "evt_dup", eventType: "checkout.session.completed", organizationId: base.organizationId, result: "ignorado", reason: "duplicado" });
+
+    const app = buildApp(base.deps);
+
+    const sinFiltro = await app.request("/superadmin/facturacion/webhooks-bitacora", { headers: { authorization: `Bearer ${token}` } });
+    expect(sinFiltro.status).toBe(200);
+    const bodySinFiltro = (await sinFiltro.json()) as { disponible: boolean; rows: Array<{ result: string; reason: string }>; total: number };
+    expect(bodySinFiltro).toMatchObject({ disponible: true, total: 3 });
+    expect(bodySinFiltro.rows).toHaveLength(3);
+
+    const soloRechazados = await app.request("/superadmin/facturacion/webhooks-bitacora?result=rechazado", { headers: { authorization: `Bearer ${token}` } });
+    const bodyRechazados = (await soloRechazados.json()) as { total: number; rows: Array<{ reason: string }> };
+    expect(bodyRechazados.total).toBe(1);
+    expect(bodyRechazados.rows[0]).toMatchObject({ reason: "firma_invalida" });
+
+    const porOrganizacion = await app.request(`/superadmin/facturacion/webhooks-bitacora?organizationId=${base.organizationId}`, { headers: { authorization: `Bearer ${token}` } });
+    const bodyPorOrg = (await porOrganizacion.json()) as { total: number };
+    expect(bodyPorOrg.total).toBe(2);
+
+    const paginado = await app.request("/superadmin/facturacion/webhooks-bitacora?limit=1&offset=1", { headers: { authorization: `Bearer ${token}` } });
+    const bodyPaginado = (await paginado.json()) as { total: number; rows: unknown[] };
+    expect(bodyPaginado.total).toBe(3);
+    expect(bodyPaginado.rows).toHaveLength(1);
+  });
+
+  it("un result inválido en el filtro responde 400", async () => {
+    const base = await buildTestDeps();
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+    const res = await app.request("/superadmin/facturacion/webhooks-bitacora?result=no-es-un-resultado", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(400);
+  });
+
+  it("un rango de fechas inválido responde 400", async () => {
+    const base = await buildTestDeps();
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+    const res = await app.request("/superadmin/facturacion/webhooks-bitacora?desde=no-es-una-fecha", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(400);
+  });
+
+  it("sin ninguna fila todavía, responde vacío honesto (disponible: true, total: 0) -- nunca un error", async () => {
+    const base = await buildTestDeps();
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+    const res = await app.request("/superadmin/facturacion/webhooks-bitacora", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { disponible: boolean; rows: unknown[]; total: number };
+    expect(body).toEqual({ disponible: true, rows: [], total: 0 });
+  });
+});
+
 describe("POST /superadmin/facturacion/organizaciones/:id/checkout", () => {
   it("un staff normal (no superadmin) recibe 403", async () => {
     const base = await buildTestDeps();
