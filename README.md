@@ -50,6 +50,16 @@ datos de otro tenant) — invisible para los tests en memoria de este repo
 (nunca aplican RLS real), por eso pasó sin detectarse hasta correr contra
 Postgres real.
 
+## Servidores MCP (`packages/mcp-servers/`)
+
+Único con código real: **`@atiende/mcp-cfdi`** (timbrado/cancelación de CFDI
+de hospedaje, dual-PAC Finkok/SW Sapien). Las 9 carpetas reservadas que había
+para otros servidores MCP (`billing`, `channel-manager`, `energy`,
+`expediente`, `locks`, `pms`, `pos`, `scheduling`, `shared` — cada una solo
+con un `README.md`, sin código ni `package.json`) se retiraron el 19-sep-2026:
+ningún flujo real las invocaba y su sola presencia en el árbol sugería
+capacidades que el repo no tiene. Detalle en `packages/mcp-servers/README.md`.
+
 ## Superadmin (back office de plataforma)
 
 Dashboard, prospectos, "entrar a un panel" con sesión propia sin datos de
