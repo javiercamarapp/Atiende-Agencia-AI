@@ -10,8 +10,10 @@ Fase 1 construida — los 3 flujos elegidos (ver diseño Fase 1 citas):
   autenticación distintas (como en el origen): `x-atiende-tool-secret` para el
   agente, y `authMiddleware` + `dbSession` + `requirePropertyMembership("propertyId")`
   (sin `allowedRoles` de plataforma — el origen no restringe por rol quién cancela
-  desde el panel) para el staff. Solo cancelar existe desde el panel; solo el agente
-  reagenda hoy (igual que el origen).
+  desde el panel) para el staff. Solo cancelar existía desde el panel al escribir
+  este párrafo; solo el agente reagendaba (igual que el origen). **Desactualizado:
+  Fase 7 agregó confirmar/completar/marcar no-show desde el panel** (4 acciones
+  reales en `appointments-lifecycle.ts`) — ver más abajo.
 - `reminders.ts` — `GET`/`POST /internal/citas/confirmacion-cita`: recordatorio
   24h, interna, gateada por `internalOrCronSecretMatches` (acepta
   `x-atiende-internal-secret` o `Authorization: Bearer <CRON_SECRET>`), no un
@@ -35,12 +37,19 @@ Fase 3 agregó (ver diseño Fase 3 citas §4/§5):
 - `appointments.ts`/`appointments-lifecycle.ts` ganaron una llamada best-effort a
   `tryTriggerGoogleSync` justo después de que crear/cancelar/reagendar YA
   confirmaron el cambio real — un fallo de Google Calendar nunca puede convertir
-  esas respuestas en un error.
+  esas respuestas en un error. **Desactualizado: Fase 6 §2 generalizó esta
+  llamada a `tryTriggerCalendarSync`**, que despacha a Google, Cal.com o CalDAV
+  según lo que el proveedor tenga conectado — `tryTriggerGoogleSync` solo
+  sobrevive como wrapper Google-only interno.
 
 Toda la lógica de negocio vive en `@atiende/domain-citas` — ninguna ruta aquí toca
-SQL directamente. Cualquier proveedor de calendario que no sea Google y el receptor
-de webhooks de Google quedan reservados para una fase posterior (ver diseño Fase 3
-citas §9). `modificar-cita` (Fase 4) y el panel visual de administración (Fase 5,
+SQL directamente. **Desactualizado: "cualquier proveedor de calendario que no sea
+Google... queda reservado para una fase posterior" dejó de ser cierto en la Fase 6
+§2** (ver más abajo): `calendar-providers.ts` conecta/desconecta/prueba cuentas
+reales de Cal.com y CalDAV, con adaptadores reales (`calcom-port.ts` hace fetch
+real contra `https://api.cal.com/v2`; `caldav-port.ts` hace WebDAV real
+PUT/DELETE/REPORT). El receptor de webhooks de Google sigue sin construir.
+`modificar-cita` (Fase 4) y el panel visual de administración (Fase 5,
 ver abajo) ya se construyeron.
 
 Fase 5 agregó `admin.ts` — lecturas paginadas para el panel de administración
@@ -181,3 +190,24 @@ existían desde la Fase 1 de este vertical — el gap era puramente la ausencia 
 mecanismo de broadcast en la capa de dominio/HTTP. Fuera de alcance de esta fase:
 la UI del panel (`apps/web`) para disparar este broadcast con un botón — hoy solo
 existe el mecanismo real (dominio + endpoint HTTP), sin superficie visual todavía.
+
+## Fases 6/7/12 — no documentadas hasta este barrido, ya construidas
+
+- **Fase 6 §1** — `admin.ts` gana la guardia de crisis (`citas.emergency_escalations`).
+- **Fase 6 §2** — `calendar-providers.ts` (nuevo archivo): conectar/desconectar/
+  consultar-estado/probar-conexión reales de cuentas de Cal.com y CalDAV por
+  proveedor (credencial DEL PROVEEDOR, en Postgres — nunca una variable de
+  entorno global, ver `docs/CREDENCIALES.md`). `calcom-port.ts`/`caldav-port.ts`
+  en `packages/domain-citas` son adaptadores reales, no stubs.
+- **Fase 6 §3** — `email-dispatch.ts` (nuevo archivo): dispatcher real de correo
+  transaccional de citas (`/internal/citas/email-dispatch`), con disparo inline
+  best-effort desde `appointments.ts`/`appointments-lifecycle.ts`/`whatsapp.ts`
+  además del cron diario.
+- **Fase 7** — `appointments-lifecycle.ts` gana 3 acciones más desde el panel de
+  staff (además de cancelar, ya existente): confirmar, completar y marcar
+  no-show, cada una con su propio evento de auditoría.
+- **Fase 10** — ver la sección dedicada arriba (horarios/excepciones editables).
+- **Fase 12** — `admin-staff.ts` (nuevo archivo): alta/gestión real de staff de
+  citas (primer consumidor de `roles.ts::PLATFORM_ROLE_BY_VERTICAL_ROLE`), más
+  `POST /v1/citas/properties/:propertyId/appointments` (alta manual de una cita
+  desde el panel, sin pasar por el agente).
