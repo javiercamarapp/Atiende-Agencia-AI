@@ -58,11 +58,17 @@ import type {
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
+  RevenueGateRecord,
+  RevenueBacktestRunRecord,
+  NewRevenueBacktestRunInput,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import { isCancellable } from "./reservationStateMachine.ts";
 import { occupancyPct } from "./overbooking.ts";
 import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
+import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
+import { evaluateGateTransition, isDemotion, isPromotion } from "./revenue/revenueEngineGate.ts";
+import type { WalkForwardBacktestResult } from "./revenue/walkForwardBacktest.ts";
 import type { UsaliRevenueDepartment } from "./pl/usaliPL.ts";
 
 /** Mismo tope real que `email-dispatch.ts::MAX_EMAIL_DISPATCH_ATTEMPTS` y que el
@@ -289,6 +295,16 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   // equilibrio dinámico (lado de gastos, append-only). ----
   private readonly expenseEntries = new Map<string, ExpenseEntryRecord>();
 
+  // ---- Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management: espejo en
+  // memoria de hoteles.revenue_engine_gate/hoteles.revenue_backtest_run. A
+  // diferencia de otras tablas de este adaptador, SÍ reimplementa la máquina de
+  // estados (vía `evaluateGateTransition`, el mismo dominio puro que valida la ruta
+  // HTTP) porque no hay ningún trigger de Postgres real corriendo en tests contra
+  // este repo — sin esta réplica, un test contra el repo en memoria nunca ejercitaría
+  // las reglas de gobierno reales (90 días en shadow/backtest+aprobación de owner). ----
+  private readonly revenueGates = new Map<string, RevenueGateRecord>(); // key: propertyId
+  private readonly revenueBacktestRuns = new Map<string, RevenueBacktestRunRecord[]>(); // key: propertyId
+
   // ---- Fase 7 — descubrimiento de organización/property para el panel web de staff
   // (espejo de solo-lectura de `core.organization`/`core.property`, ver
   // types.ts::HotelOrganizationSummary — mismo patrón de duplicación deliberada que
@@ -350,6 +366,32 @@ export class InMemoryHotelesRepository implements HotelesRepository {
    *  patrón que `InMemoryCitasRepository`'s organizaciones activas). */
   seedActiveHotelProperty(organizationId: string, propertyId: string): void {
     this.activeHotelProperties.set(propertyId, { organizationId, propertyId });
+  }
+
+  /** Fase 9 (REQ-REV-003) — SOLO para pruebas: escribe directo el gate de revenue
+   *  sin pasar por `evaluateGateTransition` (que `updateRevenueGateState` SÍ aplica
+   *  siempre, igual que el trigger real de Postgres) -- necesario para poder probar
+   *  una promoción/democión legítima sin esperar 90 días reales de `Date.now()`,
+   *  mismo criterio que `seedTaxConfig`/`seedHospedajeFiscalConfig` de arriba. */
+  seedRevenueGate(propertyId: string, organizationId: string, overrides: Partial<RevenueGateRecord> = {}): RevenueGateRecord {
+    const now = new Date().toISOString();
+    const record: RevenueGateRecord = {
+      id: randomUUID(),
+      organizationId,
+      propertyId,
+      gate: "shadow",
+      shadowStartedAt: now,
+      proponeStartedAt: null,
+      autopilotStartedAt: null,
+      proponeMaxVariationPct: 15,
+      ownerApprovedAutopilotAt: null,
+      updatedBy: null,
+      updatedAt: now,
+      createdAt: now,
+      ...overrides,
+    };
+    this.revenueGates.set(propertyId, record);
+    return record;
   }
 
   /** Fase 7 — equivalente en memoria de una fila de `core.organization` con
@@ -1770,5 +1812,150 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       total += value.totalRooms;
     }
     return total;
+  }
+
+  // ============================================================================
+  // Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management.
+  // ============================================================================
+
+  async findRevenueGate(propertyId: string): Promise<RevenueGateRecord | null> {
+    return this.revenueGates.get(propertyId) ?? null;
+  }
+
+  async ensureRevenueGate(propertyId: string, organizationId: string, actorUserId: string): Promise<RevenueGateRecord> {
+    const existing = this.revenueGates.get(propertyId);
+    if (existing) return existing;
+    const now = new Date().toISOString();
+    const record: RevenueGateRecord = {
+      id: randomUUID(),
+      organizationId,
+      propertyId,
+      gate: "shadow",
+      shadowStartedAt: now,
+      proponeStartedAt: null,
+      autopilotStartedAt: null,
+      proponeMaxVariationPct: 15,
+      ownerApprovedAutopilotAt: null,
+      updatedBy: actorUserId,
+      updatedAt: now,
+      createdAt: now,
+    };
+    this.revenueGates.set(propertyId, record);
+    return record;
+  }
+
+  /** Último backtest walk-forward de la property, reconstruido al shape que
+   *  `evaluateGateTransition` espera (`WalkForwardBacktestResult`) — mismo criterio
+   *  que la consulta `order by run_at desc limit 1` del trigger real de Postgres. */
+  private latestRevenueBacktest(propertyId: string): { readonly result: WalkForwardBacktestResult; readonly runAt: string } | null {
+    const runs = this.revenueBacktestRuns.get(propertyId);
+    if (!runs || runs.length === 0) return null;
+    const latest = [...runs].sort((a, b) => (a.runAt < b.runAt ? 1 : a.runAt > b.runAt ? -1 : 0))[0]!;
+    return {
+      runAt: latest.runAt,
+      result: {
+        engineTotalRevenue: latest.engineTotalRevenue,
+        baselineTotalRevenue: latest.baselineTotalRevenue,
+        improvementPct: latest.improvementPct,
+        windowsEvaluated: latest.windowsEvaluated,
+        windowsEngineWon: latest.windowsEngineWon,
+        windowWinRatio: latest.windowsEvaluated > 0 ? latest.windowsEngineWon / latest.windowsEvaluated : 0,
+        counterfactualMethod: latest.counterfactualMethod,
+        passes: latest.passes,
+        failureReasons: latest.failureReasons,
+      },
+    };
+  }
+
+  async updateRevenueGateState(propertyId: string, to: RevenueGateState, actorUserId: string): Promise<RevenueGateRecord> {
+    const existing = this.revenueGates.get(propertyId);
+    if (!existing) {
+      throw new Error(`revenue_gate_no_encontrado: la property ${propertyId} no tiene un gate de revenue inicializado todavía.`);
+    }
+    const now = new Date();
+    const latestBacktest = this.latestRevenueBacktest(propertyId);
+    const evaluation = evaluateGateTransition(existing.gate, to, {
+      shadowStartedAt: new Date(existing.shadowStartedAt),
+      proponeStartedAt: existing.proponeStartedAt ? new Date(existing.proponeStartedAt) : undefined,
+      now,
+      backtest: latestBacktest?.result,
+      backtestRanAt: latestBacktest ? new Date(latestBacktest.runAt) : undefined,
+      ownerApprovalGranted: existing.ownerApprovedAutopilotAt != null,
+    });
+    if (!evaluation.allowed) {
+      throw new Error(evaluation.reasons.join("; "));
+    }
+    const nowIso = now.toISOString();
+    let updated: RevenueGateRecord = { ...existing, gate: to, updatedBy: actorUserId, updatedAt: nowIso };
+    if (isDemotion(existing.gate, to)) {
+      // Freno de emergencia: siempre limpia la aprobación de owner y reinicia el
+      // reloj de la fase a la que se degrada — mismo criterio exacto que el trigger
+      // real (migrations/011_revenue_engine_gate.sql, sección 3).
+      updated = {
+        ...updated,
+        ownerApprovedAutopilotAt: null,
+        shadowStartedAt: to === "shadow" ? nowIso : updated.shadowStartedAt,
+        proponeStartedAt: to === "propone" ? nowIso : null,
+        autopilotStartedAt: null,
+      };
+    } else if (isPromotion(existing.gate, to)) {
+      if (existing.gate === "shadow" && to === "propone") {
+        updated = { ...updated, proponeStartedAt: nowIso, autopilotStartedAt: null };
+      } else if (existing.gate === "propone" && to === "autopilot") {
+        updated = { ...updated, autopilotStartedAt: nowIso };
+      }
+    }
+    this.revenueGates.set(propertyId, updated);
+    return updated;
+  }
+
+  async setRevenueGateOwnerApproval(propertyId: string, granted: boolean, actorUserId: string): Promise<RevenueGateRecord> {
+    const existing = this.revenueGates.get(propertyId);
+    if (!existing) {
+      throw new Error(`revenue_gate_no_encontrado: la property ${propertyId} no tiene un gate de revenue inicializado todavía.`);
+    }
+    if (existing.gate !== "propone" && granted) {
+      // Mismo criterio que el trigger real: la aprobación de autopilot solo puede
+      // registrarse mientras el gate está en "propone".
+      throw new Error('aprobacion_fuera_de_propone: la aprobacion de autopilot solo puede registrarse mientras el gate esta en "propone"');
+    }
+    const updated: RevenueGateRecord = {
+      ...existing,
+      ownerApprovedAutopilotAt: granted ? new Date().toISOString() : null,
+      updatedBy: actorUserId,
+      updatedAt: new Date().toISOString(),
+    };
+    this.revenueGates.set(propertyId, updated);
+    return updated;
+  }
+
+  async listRevenueBacktestRuns(propertyId: string): Promise<readonly RevenueBacktestRunRecord[]> {
+    const runs = this.revenueBacktestRuns.get(propertyId) ?? [];
+    return [...runs].sort((a, b) => (a.runAt < b.runAt ? 1 : a.runAt > b.runAt ? -1 : 0));
+  }
+
+  async insertRevenueBacktestRun(input: NewRevenueBacktestRunInput): Promise<RevenueBacktestRunRecord> {
+    const now = new Date().toISOString();
+    const record: RevenueBacktestRunRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      counterfactualMethod: input.counterfactualMethod,
+      windowsEvaluated: input.windowsEvaluated,
+      windowsEngineWon: input.windowsEngineWon,
+      engineTotalRevenue: input.engineTotalRevenue,
+      baselineTotalRevenue: input.baselineTotalRevenue,
+      improvementPct: input.improvementPct,
+      passes: input.passes,
+      failureReasons: input.failureReasons,
+      detail: input.detail,
+      runBy: input.runBy,
+      runAt: now,
+      createdAt: now,
+    };
+    const list = this.revenueBacktestRuns.get(input.propertyId) ?? [];
+    list.push(record);
+    this.revenueBacktestRuns.set(input.propertyId, list);
+    return record;
   }
 }

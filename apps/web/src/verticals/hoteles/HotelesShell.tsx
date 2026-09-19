@@ -48,6 +48,7 @@ import {
   BedDouble,
   CalendarCheck,
   ClipboardCheck,
+  Gauge,
   LayoutDashboard,
   Receipt,
   ShieldAlert,
@@ -118,6 +119,15 @@ const PL_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "accountant"])
 // `role` arriba) — solo oculta el link "Catálogo" del nav para quien el servidor
 // rechazaría de todas formas (403 en admin-catalogo.ts, `hoteles.can_manage_catalog()`).
 const CATALOGO_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
+
+// Fase 9 hoteles (REQ-REV-003/004/005/007) — wiring del motor de revenue
+// management: mismo `REVENUE_GATE_MANAGE_ROLES` (owner/gm) que
+// domain-hoteles/src/roles.ts (duplicado aquí a propósito, ver el comentario de
+// `role` arriba) — solo oculta el link "Revenue" del nav para quien el servidor
+// rechazaría de todas formas transicionar el gate (403 en revenue.ts); ver
+// accountant en REVENUE_BACKTEST_ROLES puede registrar un backtest, así que
+// también ve el link (la página gatea cada acción por separado).
+const REVENUE_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "accountant"]);
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   useDocumentTitle("Hoteles");
@@ -306,6 +316,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       title: "Administración",
       items: [
         ...(PL_NAV_ROLES.has(role) ? [{ to: `${base}/pl`, label: "P&L", icon: TrendingUp }] : []),
+        ...(REVENUE_NAV_ROLES.has(role) ? [{ to: `${base}/revenue`, label: "Revenue", icon: Gauge }] : []),
         ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : []),
       ],
     },

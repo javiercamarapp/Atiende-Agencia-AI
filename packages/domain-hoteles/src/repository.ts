@@ -53,8 +53,12 @@ import type {
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
+  RevenueGateRecord,
+  RevenueBacktestRunRecord,
+  NewRevenueBacktestRunInput,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
+import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
 
 export interface IdempotencyParams {
   readonly organizationId: string;
@@ -545,6 +549,36 @@ export interface HotelesRepository {
    *  `hoteles.room`; una property puede tener más de un `room_type` con distinto
    *  inventario por noche). */
   sumAvailableRoomNightsForDateRange(propertyId: string, desde: string, hasta: string): Promise<number>;
+
+  // ---- Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management: wiring de
+  // `hoteles.revenue_engine_gate`/`hoteles.revenue_backtest_run` (migrations/
+  // 011_revenue_engine_gate.sql). Gap real verificado antes de esta fase: la
+  // migración/dominio puro (`revenue/revenueEngineGate.ts`) ya existían pero
+  // `HotelesRepository` no tenía ningún método para ninguna de las dos tablas --
+  // ver comentario de cabecera de `types.ts::RevenueGateRecord`. La autoridad real
+  // de la máquina de estados sigue siendo el trigger de Postgres
+  // (`revenue_engine_gate_transition_guard`), nunca esta capa. ----
+
+  findRevenueGate(propertyId: string): Promise<RevenueGateRecord | null>;
+  /** Idempotente (mismo criterio que `ensurePrimaryFolio`): si ya existe una fila
+   *  para `propertyId`, la devuelve sin tocarla; si no, la crea en "shadow" (única
+   *  entrada permitida por el trigger en un INSERT, ver migrations/011). */
+  ensureRevenueGate(propertyId: string, organizationId: string, actorUserId: string): Promise<RevenueGateRecord>;
+  /** Intenta la transición `to` sobre la fila YA existente -- el trigger de Postgres
+   *  es quien de verdad decide si es válida (90 días en shadow, backtest vigente +
+   *  aprobación de owner para autopilot, democión siempre permitida); esta capa solo
+   *  ejecuta el UPDATE y deja que la excepción de Postgres se propague si el trigger
+   *  la rechaza. La ruta HTTP debe validar con `evaluateGateTransition` ANTES de
+   *  llamar aquí para devolver un 409 explicado -- este método nunca debe ser la
+   *  primera línea de defensa. */
+  updateRevenueGateState(propertyId: string, to: RevenueGateState, actorUserId: string): Promise<RevenueGateRecord>;
+  /** Otorga (`granted: true`) o revoca (`granted: false`) la aprobación de "owner"
+   *  para habilitar autopilot pleno (`owner_approved_autopilot_at`) -- el trigger
+   *  reafirma que solo "owner" puede tocar esta columna
+   *  (`hoteles.can_approve_revenue_autopilot`), esta capa no lo verifica de nuevo. */
+  setRevenueGateOwnerApproval(propertyId: string, granted: boolean, actorUserId: string): Promise<RevenueGateRecord>;
+  listRevenueBacktestRuns(propertyId: string): Promise<readonly RevenueBacktestRunRecord[]>;
+  insertRevenueBacktestRun(input: NewRevenueBacktestRunInput): Promise<RevenueBacktestRunRecord>;
 }
 
 /** Fila de `hoteles.messaging_outbox` reclamada para despacho real — mismo shape
@@ -596,3 +630,4 @@ export type {
   StaffScheduleRecord,
   NewStaffScheduleInput,
 } from "./types.ts";
+export type { RevenueGateRecord, RevenueBacktestRunRecord, NewRevenueBacktestRunInput } from "./types.ts";
