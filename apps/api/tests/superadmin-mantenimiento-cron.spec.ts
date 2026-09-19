@@ -8,7 +8,7 @@
 // { ok:false, motivo:'migracion_pendiente' }, nunca lanza -- el heartbeat
 // debe seguir 'ok' porque no es un fallo real del cron.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemorySaludRepository, InMemorySuperadminAccionesRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps } from "./fixtures.ts";
@@ -60,6 +60,22 @@ describe("POST/GET /internal/superadmin/mantenimiento", () => {
     const heartbeats = await saludRepo.listCronHeartbeatsForSuperadmin(superadminId);
     const latido = heartbeats.find((h) => h.cronName === CRON_PATH);
     expect(latido?.lastStatus).toBe("ok");
+  });
+
+  it("migración 0016 sin aplicar -- deja un warn en logs (hallazgo no-bloqueante #4: antes quedaba mudo, sin señal en /superadmin/salud ni en logs)", async () => {
+    const base = await buildTestDeps();
+    (base.deps.accionesRepo as InMemorySuperadminAccionesRepository).setMigracionPendiente(true);
+    const app = buildApp(base.deps);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+      expect(res.status).toBe(200);
+      const lineas = warnSpy.mock.calls.map((call) => String(call[0]));
+      expect(lineas.some((linea) => linea.includes("superadmin_mantenimiento_migracion_pendiente"))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("un código de error que NO es 42883 se repropaga tal cual -- el cron responde 500 real, nunca se confunde con 'migración pendiente'", async () => {

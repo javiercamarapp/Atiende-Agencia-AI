@@ -18,6 +18,7 @@ import { isUndefinedFunctionError } from "@atiende/db";
 import { Hono } from "hono";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
+import { logEvent } from "../../logger.ts";
 import { withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
 
@@ -62,6 +63,12 @@ export function superadminMantenimientoRoutes(deps: AppDeps): Hono {
         // algo que no es un bug. Cualquier otro código de error se repropaga tal
         // cual.
         if (!isUndefinedFunctionError(err)) throw err;
+        // Hallazgo no-bloqueante #4 de la auditoría a1: a diferencia del cron
+        // de resumen diario (`../resumen-diario.ts`), esta rama respondía
+        // 200 { ok:false } SIN dejar ninguna señal en logs -- con el
+        // heartbeat en 'ok', este cron podía quedarse sin hacer nada
+        // indefinidamente sin avisar en ningún lado.
+        logEvent(c, "warn", "superadmin_mantenimiento_migracion_pendiente");
         return c.json({ ok: false, motivo: "migracion_pendiente" });
       }
 
