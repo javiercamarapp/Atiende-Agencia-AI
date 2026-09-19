@@ -1,8 +1,9 @@
 // Jerarquía de errores del gateway de WhatsApp saliente — mismo patrón exacto que
-// packages/agent-core/src/gateway/errors.ts (GatewayError con flag `retryable`) y
-// packages/voice-gateway/src/errors.ts (VoiceProviderError): quien atrapa un error
-// de esta jerarquía nunca tiene que adivinar si vale la pena reintentar, la clase lo
-// dice.
+// packages/agent-core/src/gateway/errors.ts (GatewayError con flag `retryable`):
+// quien atrapa un error de esta jerarquía nunca tiene que adivinar si vale la pena
+// reintentar, la clase lo dice. (El mismo patrón existía en
+// packages/voice-gateway/src/errors.ts -- VoiceProviderError -- paquete retirado del
+// árbol por falta de consumidor real, ver docs/CREDENCIALES.md §"Voz".)
 
 export class WhatsAppSendError extends Error {
   constructor(

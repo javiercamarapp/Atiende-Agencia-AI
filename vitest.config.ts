@@ -86,8 +86,6 @@ export default defineConfig({
         "packages/domain-restaurantes/src/index.ts",
         "packages/mcp-servers/cfdi/src/index.ts",
         "packages/ui/src/index.ts",
-        "packages/voice-gateway/src/index.ts",
-        "packages/voice-gateway/src/providers/index.ts",
         "packages/whatsapp-gateway/src/index.ts",
         // Tipos puros (solo `interface`/`type`, sin lógica en tiempo de
         // ejecución) -- distintos de packages/core-tenancy/src/types.ts y
@@ -96,7 +94,6 @@ export default defineConfig({
         "packages/whatsapp-gateway/src/types.ts",
         "packages/domain-despachos/src/types.ts",
         "packages/core-auth/src/types.ts",
-        "packages/voice-gateway/src/types.ts",
         "packages/domain-citas/src/types.ts",
         "packages/domain-hoteles/src/types.ts",
         "packages/billing/src/types.ts",

@@ -43,7 +43,7 @@ fuente real de cada workspace:
 
 - `apps/*/src/**` (api, web, worker)
 - `packages/*/src/**` (todo `packages/core-*`, `domain-*`, `agent-core`,
-  `billing`, `db`, `ui`, `voice-gateway`, `whatsapp-gateway`)
+  `billing`, `db`, `ui`, `whatsapp-gateway`)
 - `packages/mcp-servers/*/src/**`
 
 Se excluyen (ver el `coverage.exclude` comentado en `vitest.config.ts` para

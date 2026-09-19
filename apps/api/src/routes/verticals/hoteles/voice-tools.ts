@@ -2,9 +2,11 @@
 // Mismo patrón que apps/api/src/routes/verticals/restaurantes/voice-tools.ts: sub-Hono
 // propio, SIN `authMiddleware`/`originAllowed` para las rutas de tool — ElevenLabs no
 // manda `Origin` ni `Authorization`, solo el secreto dedicado
-// `x-atiende-tool-secret`. NO se monta sobre `@atiende/voice-gateway` (esa capa es
-// config/sesión del agente — signed URL, listVoices — una superficie distinta de
-// "recibir el webhook de tool call durante una llamada en curso", ver diseño §1).
+// `x-atiende-tool-secret`. Este patrón (Server Tools entrantes) es y siempre fue el
+// patrón OFICIAL de voz del monorepo — ver docs/CREDENCIALES.md §"Voz (ElevenLabs)".
+// (Existió un paquete `@atiende/voice-gateway` para la dirección saliente —
+// signed URL, listVoices, config de agente — nunca conectado a ningún caller real;
+// se retiró del árbol, ver historial de git y CREDENCIALES.md.)
 //
 // Divergencia deliberada de restaurantes (diseño §1/§5.1): el secreto NO es
 // compartido de plataforma, es dedicado POR PROPERTY

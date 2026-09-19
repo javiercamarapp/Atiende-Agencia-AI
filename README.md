@@ -31,6 +31,25 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 | **rentas** | Reservas, bloqueos, pricing, sincronización iCal con Airbnb/Booking/VRBO, finanzas y payouts a propietario, limpieza, onboarding self-service, portal de propietario, break-glass de superadmin (**solo lectura**). | Mensajería con huésped tiene aprobación humana real, pero **ningún cliente HTTP real de partner** (Airbnb/Vrbo/Booking.com) existe todavía — enviar un mensaje aprobado siempre falla hasta que se construya. |
 | **despachos** | CFDI/facturación, conciliación bancaria, migración de catálogo contable, cierre mensual, devolución de IVA, nómina, bookkeeping, declaraciones, cobranza, staff — panel completo. Correo real con disparo inline (además del cron diario) desde una acción real de staff, p.ej. `POST .../vencimientos/:id/escalar`. | Sin agente de WhatsApp/voz (es el único vertical solo-correo). Ver "Problemas conocidos" abajo. |
 
+## Voz (patrón oficial)
+
+Las 3 verticales con agente de voz (restaurantes, hoteles, citas) exponen
+Server Tools HTTP entrantes (`apps/api/src/routes/verticals/<vertical>/
+voice-tools.ts`) que ElevenLabs invoca por webhook durante una llamada en
+curso, autenticadas con un secreto dedicado (`x-atiende-tool-secret`,
+compartido de plataforma en restaurantes/citas, por-property en hoteles) —
+nunca `authMiddleware`/`Origin`, porque ElevenLabs no los manda. Este es el
+patrón oficial: **no requiere ninguna API key saliente de ElevenLabs**, el
+repo nunca inicia una llamada, solo la recibe.
+
+Existió un paquete `packages/voice-gateway` para la dirección saliente
+(signed URL de sesión, listado de voces, config de agente) — se retiró del
+árbol por falta de cualquier consumidor real (cero imports fuera de
+comentarios, ningún endpoint ni UI que lo llamara) y porque conectarlo de
+verdad exigía inventar esas superficies desde cero, fuera del alcance
+mecánico de una migración. Detalle completo y evidencia en
+`docs/CREDENCIALES.md` §"Voz (ElevenLabs) — patrón oficial".
+
 ## Problemas conocidos
 
 **Sesión de sistema sin acceso a `core.property` (verificado contra Postgres

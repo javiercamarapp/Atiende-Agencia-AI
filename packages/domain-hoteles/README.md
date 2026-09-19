@@ -72,13 +72,12 @@ dominio construido en atiende-fusion):
   restaurantes.
 
 Server Tools HTTP de voz en `apps/api/src/routes/verticals/hoteles/voice-tools.ts`
-(`POST .../voz/tickets-fnb`, `POST .../voz/contacto-no-operativo`) — **NO** montadas
-sobre `@atiende/voice-gateway` (esa capa es config/sesión del agente — signed URL,
-`listVoices` — una superficie distinta de recibir el webhook de tool call durante una
-llamada en curso). Divergencia deliberada de restaurantes: el secreto es **por
-property** (`hoteles.voice_agent_config`, tabla + endpoint de rotación en
-`voice-tools.ts`), no compartido de plataforma — el origen real documenta el
-aislamiento por tenant como el eje de seguridad central de este vertical.
+(`POST .../voz/tickets-fnb`, `POST .../voz/contacto-no-operativo`) — este es el
+patrón OFICIAL de voz del monorepo (ver docs/CREDENCIALES.md §"Voz (ElevenLabs)").
+Divergencia deliberada de restaurantes: el secreto es **por property**
+(`hoteles.voice_agent_config`, tabla + endpoint de rotación en `voice-tools.ts`), no
+compartido de plataforma — el origen real documenta el aislamiento por tenant como
+el eje de seguridad central de este vertical.
 
 Migración nueva: `migrations/004_voz_whatsapp_fase2.sql` (`voice_agent_config`,
 `whatsapp_channel_config`, `whatsapp_conversations`, `whatsapp_inbound_events`,
@@ -89,8 +88,10 @@ funciones atómicas `whatsapp_append_turn`/`claim_whatsapp_message`/
 Deliberadamente fuera de Fase 2 (ver diseño §5.2/§6): `registrar_evento_roi` (requiere
 una tabla `hoteles.roi_event` que no existe), housekeeping/mantenimiento (sin dominio
 construido), dinero/quotes por voz o WhatsApp (mismo límite de seguridad que el
-catálogo real del origen), panel admin de voz sobre `voice-gateway`, y el mecanismo de
-aprobación humana tipo `ApprovalQueue`/gate shadow (solo necesario si se porta
+catálogo real del origen), panel admin de sesión/config de voz saliente (existió un
+paquete `@atiende/voice-gateway` para esto, retirado del árbol por falta de
+consumidor real — ver docs/CREDENCIALES.md), y el mecanismo de aprobación humana tipo
+`ApprovalQueue`/gate shadow (solo necesario si se porta
 `enviar_mensaje_whatsapp_plantilla` en una fase futura — el `LlmGateway` fusionado no
 lo tiene todavía).
 
