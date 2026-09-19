@@ -312,7 +312,9 @@ describe("Correo del resumen -- header Idempotency-Key (hallazgo D)", () => {
 
     const claves: string[] = [];
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      claves.push((init?.headers as Record<string, string>)["Idempotency-Key"]);
+      const idempotencyKey = (init?.headers as Record<string, string> | undefined)?.["Idempotency-Key"];
+      if (!idempotencyKey) throw new Error("fetch mock: falta el header Idempotency-Key en el POST a Resend.");
+      claves.push(idempotencyKey);
       return new Response(JSON.stringify({ id: "resend-id" }), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -342,7 +344,9 @@ describe("Correo del resumen -- header Idempotency-Key (hallazgo D)", () => {
 
     const claves: string[] = [];
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      claves.push((init?.headers as Record<string, string>)["Idempotency-Key"]);
+      const idempotencyKey = (init?.headers as Record<string, string> | undefined)?.["Idempotency-Key"];
+      if (!idempotencyKey) throw new Error("fetch mock: falta el header Idempotency-Key en el POST a Resend.");
+      claves.push(idempotencyKey);
       return new Response(JSON.stringify({ id: "resend-id" }), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
