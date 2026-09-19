@@ -256,7 +256,7 @@ describe("r4-fix-crons-transaccion-por-unidad -- transacción por organización 
   });
 
   it("DESPUÉS del fix (código real): el mismo error SQL en B se aísla -- A y C SÍ encolan su recordatorio real, solo B se reporta como fallo", async () => {
-    const { proxy, isAborted, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "scanUpcomingDeadlineReminders" && args[0] === orgB, "40P01: deadlock detected (SQL real simulado)");
+    const { proxy, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "scanUpcomingDeadlineReminders" && args[0] === orgB, "40P01: deadlock detected (SQL real simulado)");
     const perCallTxn = makePerCallTransactionalWithRepo(repo);
     const withRepo = async <T>(fn: (r: LicitacionesRepository) => Promise<T>): Promise<T> => {
       try {

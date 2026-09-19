@@ -325,7 +325,7 @@ describe("r4-fix-crons-transaccion-por-unidad -- transacción por property (repr
   });
 
   it("DESPUÉS del fix (código real): el mismo error SQL en B se aísla -- A y C SÍ persisten con su cierre real, solo B se reporta como fallo", async () => {
-    const { proxy, isAborted, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "systemLoadTaxConfig" && args[0] === propB, "P0001: reserva_invalida (SQL real simulado)");
+    const { proxy, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "systemLoadTaxConfig" && args[0] === propB, "P0001: reserva_invalida (SQL real simulado)");
     const perCallTxn = makePerCallTransactionalWithRepo(repo);
     const withRepo = async <T>(fn: (r: HotelesRepository) => Promise<T>): Promise<T> => {
       try {

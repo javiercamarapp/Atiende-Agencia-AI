@@ -201,7 +201,7 @@ describe("r4-fix-crons-transaccion-por-unidad -- transacción por organización 
   });
 
   it("DESPUÉS del fix (código real): el mismo error SQL en B se aísla -- A y C SÍ encolan su recordatorio real, solo B se reporta como fallo", async () => {
-    const { proxy, isAborted, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "systemListPendingReceivablesForReminders" && args[0] === propB, "57014: statement timeout (SQL real simulado)");
+    const { proxy, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "systemListPendingReceivablesForReminders" && args[0] === propB, "57014: statement timeout (SQL real simulado)");
     const perCallTxn = makePerCallTransactionalWithRepo(repo);
     const withRepo = async <T>(fn: (r: DespachosRepository) => Promise<T>): Promise<T> => {
       try {
