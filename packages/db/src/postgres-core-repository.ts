@@ -149,6 +149,7 @@ interface ProspectoRawRow {
   readonly creado_por: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+  readonly necesita_seguimiento_desde: string | null;
 }
 
 function mapProspecto(row: ProspectoRawRow): ProspectoRow {
@@ -166,6 +167,7 @@ function mapProspecto(row: ProspectoRawRow): ProspectoRow {
     creadoPor: row.creado_por,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    necesitaSeguimientoDesde: row.necesita_seguimiento_desde,
   };
 }
 
@@ -601,7 +603,7 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   async listProspectosForSuperadmin(callerId: string): Promise<readonly ProspectoRow[]> {
     const { rows } = await this.db.query<ProspectoRawRow>(
-      `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+      `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at, necesita_seguimiento_desde
        from core.list_prospectos_for_superadmin($1);`,
       [callerId],
     );
@@ -610,7 +612,7 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   async createProspectoForSuperadmin(callerId: string, input: CreateProspectoInput): Promise<ProspectoRow> {
     const { rows } = await this.db.query<ProspectoRawRow>(
-      `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+      `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at, necesita_seguimiento_desde
        from core.create_prospecto_for_superadmin($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
       [callerId, input.empresa, input.vertical, input.ciudad, input.contactoNombre, input.telefono, input.correo, input.fuente, input.notas],
     );
@@ -622,7 +624,7 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   async updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow> {
     try {
       const { rows } = await this.db.query<ProspectoRawRow>(
-        `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at
+        `select id, empresa, vertical, ciudad, contacto_nombre, telefono, correo, estado, fuente, notas, creado_por, created_at, updated_at, necesita_seguimiento_desde
          from core.update_prospecto_for_superadmin($1, $2, $3, $4);`,
         [callerId, prospectoId, estado, notas],
       );
