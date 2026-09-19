@@ -26,21 +26,34 @@
 --      (nunca `engine.admin`/`service_role`, ver el comentario de cabecera de
 --      `postgres-data-repository.ts` para el porqué completo).
 --
--- FILTRO POR PROPIEDAD (`p_property_id`, opcional): las 7 tablas fuente
--- (`reserva_financiero`/`payout_canal`/`tarifa_base`/`conversacion`/
--- `tarea_operativa`/`canal_feed_externo`/`ocupacion`) ya tienen `property_id`
--- directo (top-level, mismo criterio documentado en cada migración de origen --
--- 003/005/002/009/010/008/001), así que el filtro es un `where` adicional, sin
--- ningún join nuevo. Si se declara `p_property_id`, se exige que pertenezca a
--- `p_organization_id` (mismo criterio de defensa en profundidad que el resto de
--- este mecanismo) -- error `P0002` explícito, nunca "cero filas" silencioso que
--- se confundiría con "sin datos".
+-- FILTRO POR PROPIEDAD (`p_property_id`, puede ser NULL = "todo el tenant"):
+-- las 7 tablas fuente (`reserva_financiero`/`payout_canal`/`tarifa_base`/
+-- `conversacion`/`tarea_operativa`/`canal_feed_externo`/`ocupacion`) ya tienen
+-- `property_id` directo (top-level, mismo criterio documentado en cada
+-- migración de origen -- 003/005/002/009/010/008/001), así que el filtro es un
+-- `where` adicional, sin ningún join nuevo. Si se declara `p_property_id`, se
+-- exige que pertenezca a `p_organization_id` (mismo criterio de defensa en
+-- profundidad que el resto de este mecanismo) -- error `P0002` explícito,
+-- nunca "cero filas" silencioso que se confundiría con "sin datos".
 --
 -- PAGINADO CON TOPE: `p_limit`/`p_offset`, mismo criterio en las 7 -- el tope
 -- real (`BREAK_GLASS_LECTOR_LIMIT_MAX` = 200 en TypeScript, ver tipos.ts) se
 -- refuerza aquí también con `least()` -- defensa en profundidad DB-side, nunca
 -- la única barrera (un caller que se saltara la capa TS -- imposible hoy, pero
 -- el criterio del resto de este mecanismo es no asumirlo -- seguiría acotado).
+--
+-- LOS 3 PARÁMETROS NUEVOS SON OBLIGATORIOS (nunca `default`), a propósito --
+-- ver el comentario de la sección 0 para el porqué exacto: un `default` aquí
+-- haría que esta función fuera invocable con solo 2 argumentos, lo mismo que
+-- la función de 2 parámetros YA EXISTENTE de `018_break_glass_wiring.sql`
+-- (`list_reservas_for_break_glass`) -- Postgres NO puede elegir entre dos
+-- funciones candidatas igual de válidas para esa llamada
+-- (`function ... is not unique`), así que CUALQUIER llamada con 2 argumentos a
+-- ese nombre (incluida la del propio fallback de compatibilidad, ver el
+-- comentario de la sección 0) se habría roto en cuanto esta migración se
+-- aplicara. `PostgresBreakGlassRentasDataRepository` siempre pasa los 5
+-- argumentos (o los 2 de la sobrecarga vieja, nunca una mezcla) -- ver ese
+-- archivo.
 --
 -- ENMASCARADO DE SECRETO: `rentas.canal_feed_externo.url_importacion` es la URL
 -- de import de un feed .ics externo -- su propia migración (008) documenta que
@@ -57,11 +70,13 @@
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 0) rentas.list_reservas_for_break_glass -- se agrega el filtro opcional por
---    propiedad + paginado con tope. Firma NUEVA (3→5 parámetros, todos los
---    agregados con DEFAULT) -- Postgres NO reemplaza la función de 2 parámetros
---    de 018_break_glass_wiring.sql (permanece intacta, otra sobrecarga válida),
---    así que el código YA desplegado contra la base vieja sigue funcionando sin
---    cambios mientras esta migración no se aplique -- ver
+--    propiedad + paginado con tope. Firma NUEVA (2→5 parámetros, LOS 3
+--    NUEVOS SIN DEFAULT -- ver el porqué exacto más abajo) -- Postgres NO
+--    reemplaza la función de 2 parámetros de 018_break_glass_wiring.sql
+--    (permanece intacta, otra sobrecarga válida, sin ambigüedad posible
+--    porque ninguna llamada puede resolver a las dos a la vez), así que el
+--    código YA desplegado contra la base vieja sigue funcionando sin cambios
+--    mientras esta migración no se aplique -- ver
 --    PostgresBreakGlassRentasDataRepository.listReservasTenant para el fallback
 --    real (SQLSTATE 42883) que usa la sobrecarga vieja + filtra/pagina en
 --    TypeScript cuando esta función nueva todavía no existe.
@@ -69,9 +84,9 @@
 create or replace function rentas.list_reservas_for_break_glass(
   p_caller_id uuid,
   p_organization_id uuid,
-  p_property_id uuid default null,
-  p_limit integer default 100,
-  p_offset integer default 0
+  p_property_id uuid,
+  p_limit integer,
+  p_offset integer
 )
 returns table (
   ocupacion_id uuid,
@@ -136,9 +151,9 @@ grant execute on function rentas.list_reservas_for_break_glass(uuid, uuid, uuid,
 create or replace function rentas.list_finanzas_for_break_glass(
   p_caller_id uuid,
   p_organization_id uuid,
-  p_property_id uuid default null,
-  p_limit integer default 100,
-  p_offset integer default 0
+  p_property_id uuid,
+  p_limit integer,
+  p_offset integer
 )
 returns table (
   id uuid,
@@ -206,9 +221,9 @@ grant execute on function rentas.list_finanzas_for_break_glass(uuid, uuid, uuid,
 create or replace function rentas.list_payouts_for_break_glass(
   p_caller_id uuid,
   p_organization_id uuid,
-  p_property_id uuid default null,
-  p_limit integer default 100,
-  p_offset integer default 0
+  p_property_id uuid,
+  p_limit integer,
+  p_offset integer
 )
 returns table (
   id uuid,
@@ -272,9 +287,9 @@ grant execute on function rentas.list_payouts_for_break_glass(uuid, uuid, uuid, 
 create or replace function rentas.list_pricing_for_break_glass(
   p_caller_id uuid,
   p_organization_id uuid,
-  p_property_id uuid default null,
-  p_limit integer default 100,
-  p_offset integer default 0
+  p_property_id uuid,
+  p_limit integer,
+  p_offset integer
 )
 returns table (
   id uuid,
@@ -338,9 +353,9 @@ grant execute on function rentas.list_pricing_for_break_glass(uuid, uuid, uuid, 
 create or replace function rentas.list_mensajeria_for_break_glass(
   p_caller_id uuid,
   p_organization_id uuid,
-  p_property_id uuid default null,
-  p_limit integer default 100,
-  p_offset integer default 0
+  p_property_id uuid,
+  p_limit integer,
+  p_offset integer
 )
 returns table (
   id uuid,
@@ -406,9 +421,9 @@ grant execute on function rentas.list_mensajeria_for_break_glass(uuid, uuid, uui
 create or replace function rentas.list_limpieza_for_break_glass(
   p_caller_id uuid,
   p_organization_id uuid,
-  p_property_id uuid default null,
-  p_limit integer default 100,
-  p_offset integer default 0
+  p_property_id uuid,
+  p_limit integer,
+  p_offset integer
 )
 returns table (
   id uuid,
@@ -476,9 +491,9 @@ grant execute on function rentas.list_limpieza_for_break_glass(uuid, uuid, uuid,
 create or replace function rentas.list_sync_ical_for_break_glass(
   p_caller_id uuid,
   p_organization_id uuid,
-  p_property_id uuid default null,
-  p_limit integer default 100,
-  p_offset integer default 0
+  p_property_id uuid,
+  p_limit integer,
+  p_offset integer
 )
 returns table (
   id uuid,
