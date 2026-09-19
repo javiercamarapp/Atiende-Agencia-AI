@@ -89,7 +89,15 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const username = typeof body.username === "string" ? body.username.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
     if (!calendarCollectionUrl || !username || !password) throw Errors.validation("calendar_collection_url, username y password son requeridos.");
-    if (!/^https:\/\//.test(calendarCollectionUrl)) throw Errors.validation("calendar_collection_url debe ser una URL https:// real de tu colección de calendario.");
+
+    // Hallazgo de auditoría (ALTO, SSRF) — un `https://` al inicio del string NO
+    // impide que el host apunte a infraestructura interna (localhost, metadata de
+    // nube, RFC1918, o un hostname que resuelve ahí vía DNS rebinding). Se resuelve
+    // el hostname de verdad y se valida la IP resultante contra la deny-list real
+    // (ver @atiende/domain-citas::crearValidadorUrlCaldav / net/ssrf.ts) ANTES de
+    // guardar la URL que `RealCalDavPort` usará después para peticiones reales.
+    const validacionUrl = await deps.citasCaldavUrlValidator(calendarCollectionUrl);
+    if (!validacionUrl.permitida) throw Errors.validation(validacionUrl.motivo ?? "calendar_collection_url no es una URL permitida.");
 
     const account = await citasRepo.connectProviderCalDavAccount({ organizationId, providerId, calendarCollectionUrl, username, password });
     return c.json({ connected: true, provider_id: account.providerId, calendar_collection_url: account.calendarCollectionUrl, username: account.username, sync_status: account.syncStatus });

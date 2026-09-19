@@ -174,6 +174,9 @@ export async function buildHotelesTestContext(buildApp: BuildAppFn): Promise<Hot
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (vertical hoteles).");
     },
+    citasCaldavUrlValidator: async () => {
+      throw new Error("citasCaldavUrlValidator no está configurado en este fixture (vertical hoteles).");
+    },
     licitacionesRepo: (_db) => licitacionesRepoUnused,
     despachosRepo: (_db) => despachosRepoUnused,
     despachosAuditSink: new InMemoryAuditSink(),

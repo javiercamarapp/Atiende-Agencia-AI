@@ -60,6 +60,7 @@ import {
   createDefaultConversationGuard,
   createGoogleCalendarPortResolver,
   createLlmWhatsAppTurnHandler as createCitasLlmWhatsAppTurnHandler,
+  crearValidadorUrlCaldav,
   exchangeGoogleAuthorizationCode,
 } from "@atiende/domain-citas";
 import { PostgresLicitacionesRepository } from "@atiende/domain-licitaciones";
@@ -278,6 +279,9 @@ export function buildProductionDeps(): AppDeps {
     // depende de citasRepo (solo llama a Google).
     citasGoogleCalendarPortResolver: buildRealGoogleCalendarPortResolver(engine, env.googleOAuth),
     citasGoogleTokenExchange: exchangeGoogleAuthorizationCode,
+    // Hallazgo de auditoría (ALTO, SSRF) — DNS real (sin resolver inyectado), ver
+    // @atiende/domain-citas::crearValidadorUrlCaldav.
+    citasCaldavUrlValidator: crearValidadorUrlCaldav(),
     licitacionesRepo: (db) => new PostgresLicitacionesRepository(db),
     despachosRepo: (db) => new PostgresDespachosRepository(db),
     // Adaptador real (ya NO `notProductionReady`) -- corrige la regresión real de

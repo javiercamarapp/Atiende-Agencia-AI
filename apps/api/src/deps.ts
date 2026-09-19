@@ -116,6 +116,16 @@ export interface AppDeps {
    * producción es `exchangeGoogleAuthorizationCode` real; en pruebas, un doble que
    * nunca toca la red. */
   readonly citasGoogleTokenExchange: (input: ExchangeAuthorizationCodeInput) => Promise<ExchangeAuthorizationCodeResult>;
+  /** Hallazgo de auditoría (ALTO, SSRF) — valida la URL de colección CalDAV que un
+   * staff pega al conectar un proveedor (routes/verticals/citas/
+   * calendar-providers.ts) resolviendo su hostname por DNS y rechazando toda IP
+   * privada/loopback/link-local/metadata de nube (ver
+   * @atiende/domain-citas::crearValidadorUrlCaldav / net/ssrf.ts) — nunca un
+   * chequeo de string sobre el prefijo de la URL. Inyectado por el mismo motivo
+   * que `citasGoogleTokenExchange`/`rentasIcalFeedPort`: en producción resuelve
+   * DNS real; en pruebas, un resolver fijo que no toca la red ni depende de que
+   * un dominio público real siga resolviendo igual mañana. */
+  readonly citasCaldavUrlValidator: (url: string) => Promise<{ readonly permitida: boolean; readonly motivo?: string }>;
   readonly licitacionesRepo: (db: TenantDbSession) => LicitacionesRepository;
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un

@@ -145,6 +145,9 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp).");
     },
+    citasCaldavUrlValidator: async () => {
+      throw new Error("citasCaldavUrlValidator no está configurado en este fixture (agente de WhatsApp).");
+    },
     licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
     despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
