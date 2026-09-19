@@ -17,3 +17,27 @@ correo (`alert-notifications.ts`/`email-dispatch.ts`). Consumido por
 `apps/api/src/routes/verticals/licitaciones/` (23 archivos de rutas) y por los jobs
 reales de `apps/worker/src/jobs/licitaciones/` (ver ese README para el detalle de
 scheduler).
+
+## Cobertura de descubrimiento de convocatorias (honesta, Fase 9)
+
+`connector-registry.ts` registra 10 fuentes; solo 4 tienen una implementación
+REAL (`connector` presente) y solo 2 están `liveVerification.verified: true`.
+Ver el `README.md` de `apps/worker/src/jobs/licitaciones/` para la tabla
+completa de estado por fuente, el contrato real descubierto de cada una
+(endpoints, paginación, volumen) y los gaps declarados. Resumen:
+
+- **SÍ cubierto (vigentes reales)**: Nuevo León (`nl_ocds`, API OCDS pública,
+  verificada) es la ÚNICA fuente que hoy produce convocatorias vigentes
+  reales. CDMX (`cdmx_ocds`) tiene una implementación real y completa pero el
+  recurso público verificado está estancado desde 2023 (gap de la FUENTE, no
+  del código) y `compras_mx_historico` es histórico (contratos ya
+  concluidos, nunca vigentes por diseño).
+- **NO cubierto**: ComprasMX en vivo / DOF / cobertura nacional amplia --
+  ver decisión ya tomada (no se evade reCAPTCHA/Akamai ni se scrapea prosa
+  libre sin API) y el conector `aggregator` (API por pegar, sin proveedor
+  elegido) como única vía realista a esa cobertura.
+- **Cómo se amplía**: configurar `LICITACIONES_AGGREGATOR_API_KEY` +
+  `LICITACIONES_AGGREGATOR_BASE_URL` (ver `docs/CREDENCIALES.md`) contra un
+  proveedor de agregación elegido, sustituyendo `connectors/aggregator.ts`
+  únicamente en su mapeador (`mapAggregatorItem`) si el contrato real del
+  proveedor difiere del documentado en `AggregatorTenderItem`.
