@@ -16,12 +16,18 @@
 //
 // Snapshot de packages/apps al escribir esta tabla (11-sep-2026): `apps/api`
 // es todavía un esqueleto de Fase 0 (solo README, sin rutas reales) — así que
-// esta tabla no cataloga rutas HTTP existentes, cataloga las CAPACIDADES de
-// negocio que ya existen como paquete (core-auth, agent-core/gateway,
-// billing, mcp-servers/*) y que un endpoint futuro para esa capacidad debe
-// heredar. Cuando `apps/api` tenga rutas reales, cada handler debe pasar la
-// categoría que le corresponda de aquí — o añadir una fila nueva si ninguna
-// aplica, nunca omitir `category` para "que tome el default".
+// esta tabla no cataloga rutas HTTP existentes, cataloga CAPACIDADES de
+// negocio para endpoints futuros. Algunas ya existen como paquete real
+// (core-auth, agent-core/gateway, billing, mcp-servers/cfdi); las categorías
+// `mcp:locks|pms|channel-manager|scheduling|pos` son reservas para verticales
+// sin código propio todavía (ver packages/mcp-servers/README.md — 9 carpetas
+// solo-README con ese mismo diseño se retiraron el 19-sep-2026 por no tener
+// código; estas categorías de política siguen vigentes como reserva porque
+// ninguna ruta ni agente las usa hoy, así que retirarlas no cambia nada real,
+// y documentan la decisión de fail-mode para cuando ese código exista).
+// Cuando `apps/api` tenga rutas reales, cada handler debe pasar la categoría
+// que le corresponda de aquí — o añadir una fila nueva si ninguna aplica,
+// nunca omitir `category` para "que tome el default".
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type FailMode = 'open' | 'closed';
@@ -71,7 +77,7 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
   'mcp:locks': {
     failMode: 'closed',
     reason:
-      'packages/mcp-servers/locks controla cerraduras físicas reales. Una ráfaga sin freno aquí no es solo cómputo de más — es una acción del mundo real repetida sin control mientras dure la avería de Redis.',
+      'Categoría reservada para un futuro servidor MCP de cerraduras físicas (sin código propio todavía — ver packages/mcp-servers/README.md). Si se construye, controlará cerraduras físicas reales: una ráfaga sin freno ahí no sería solo cómputo de más, sino una acción del mundo real repetida sin control mientras dure la avería de Redis.',
   },
   'mcp:cfdi': {
     failMode: 'closed',
@@ -96,20 +102,22 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
   'mcp:pms': {
     failMode: 'open',
     reason:
-      'Acciones operativas de un tenant autenticado (disponibilidad, reservas) vía packages/mcp-servers/pms. La integridad real la sostiene la capa de datos (constraints, locks de packages/core-conversation) — este límite es contra abuso/ráfaga, no la última defensa.',
+      'Categoría reservada para un futuro servidor MCP de PMS (sin código propio todavía — ver packages/mcp-servers/README.md), para acciones operativas de un tenant autenticado (disponibilidad, reservas). Si se construye, la integridad real la sostendría la capa de datos (constraints, locks de packages/core-conversation) — este límite sería contra abuso/ráfaga, no la última defensa.',
   },
   'mcp:channel-manager': {
     failMode: 'open',
     reason:
-      'Sincronización de un tenant autenticado con canales externos (OTAs) vía packages/mcp-servers/channel-manager. Negar por un blip de Redis puede dejar inventario desincronizado más tiempo que dejarlo pasar acotado; el proveedor externo trae su propio rate limit como defensa real.',
+      'Categoría reservada para un futuro servidor MCP de channel manager (sin código propio todavía — ver packages/mcp-servers/README.md), para sincronización de un tenant autenticado con canales externos (OTAs). Si se construye, negar por un blip de Redis podría dejar inventario desincronizado más tiempo que dejarlo pasar acotado; el proveedor externo trae su propio rate limit como defensa real.',
   },
   'mcp:scheduling': {
     failMode: 'open',
-    reason: 'Acciones de un tenant autenticado (citas) vía packages/mcp-servers/scheduling — mismo criterio que mcp:pms.',
+    reason:
+      'Categoría reservada para un futuro servidor MCP de citas (sin código propio todavía — ver packages/mcp-servers/README.md) — mismo criterio que mcp:pms.',
   },
   'mcp:pos': {
     failMode: 'open',
-    reason: 'Acciones de un tenant autenticado (punto de venta) vía packages/mcp-servers/pos — mismo criterio que mcp:pms.',
+    reason:
+      'Categoría reservada para un futuro servidor MCP de punto de venta (sin código propio todavía — ver packages/mcp-servers/README.md) — mismo criterio que mcp:pms.',
   },
   'rentas:ical-feed-publico': {
     failMode: 'open',
