@@ -969,10 +969,18 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   // ---- Fase 5 pieza 1: andamiaje de ingesta sobre fixtures/carga manual (REQ-004/005/146..150) ----
 
   async recordSourceRun(organizationId: string, input: SourceRunInput): Promise<SourceRunRecord> {
-    const { rows } = await this.db.query<{ id: string; created_at: string }>(
-      `insert into licitaciones.source_run (organization_id, source, state, started_at, finished_at, http_status, response_hash, message, coverage_expected, coverage_obtained, correlation_id)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       returning id, created_at::text as created_at;`,
+    // Fase "flujos de sistema": `recordSourceRun` SOLO se invoca hoy bajo
+    // sesión de sistema (`apps/worker/src/jobs/licitaciones/discover-
+    // tenders.ts`, sin caller de staff autenticado -- verificado con `grep
+    // -rn` sobre `apps/api/src/routes`). Un `insert` directo contra
+    // `licitaciones.source_run` queda bloqueado por la policy de INSERT
+    // (`licitaciones.can_write_org`, exige `auth.uid()` real) -- se usa la
+    // función `security definer` de solo-sistema
+    // `licitaciones.system_record_source_run` (migración
+    // `..._024_licitaciones_sistema_ingesta_escritura.sql`) en su lugar. Ver
+    // el header de esa migración para el diagnóstico completo.
+    const { rows } = await this.db.query<{ out_id: string; out_created_at: string }>(
+      `select * from licitaciones.system_record_source_run($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
       [
         organizationId,
         input.source,
@@ -987,7 +995,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
         input.correlationId,
       ],
     );
-    return { ...input, id: rows[0]!.id, organizationId, createdAt: rows[0]!.created_at };
+    return { ...input, id: rows[0]!.out_id, organizationId, createdAt: rows[0]!.out_created_at };
   }
 
   async listSourceRuns(organizationId: string, filter?: { source?: SourceConnectorId; limit?: number }): Promise<readonly SourceRunRecord[]> {
@@ -1064,32 +1072,60 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     let updated = 0;
     const tenders: TenderRecord[] = [];
 
-    // Un `insert` por registro (en vez de un `insert ... select unnest(...)` masivo): correcto y simple para el
-    // tamaño de lote real que produce esta fase (el worker SIEMPRE pasa un `limit` acotado, ver
-    // `apps/worker/src/jobs/licitaciones/discover-tenders.ts`) -- no pretende ser la forma más eficiente posible
-    // para miles de filas por corrida (gap de rendimiento declarado, no un problema de corrección).
+    // Fase "flujos de sistema": `ingestTendersFromSource` SOLO se invoca hoy
+    // bajo sesión de sistema (`apps/worker/src/jobs/licitaciones/discover-
+    // tenders.ts`, sin caller de staff autenticado). Un `insert` directo
+    // contra `licitaciones.tender` queda bloqueado por las policies de
+    // INSERT/UPDATE (`licitaciones.can_write_org`, exige `auth.uid()` real)
+    // -- se usa la función `security definer` de solo-sistema
+    // `licitaciones.system_ingest_tender` (migración
+    // `..._024_licitaciones_sistema_ingesta_escritura.sql`) en su lugar. Ver
+    // el header de esa migración para el diagnóstico completo. Un `insert`
+    // por registro (en vez de un `insert ... select unnest(...)` masivo):
+    // correcto y simple para el tamaño de lote real que produce esta fase (el
+    // worker SIEMPRE pasa un `limit` acotado) -- no pretende ser la forma más
+    // eficiente posible para miles de filas por corrida (gap de rendimiento
+    // declarado, no un problema de corrección).
     for (const rec of records) {
-      const { rows } = await this.db.query<TenderRow & { inserted: boolean }>(
-        `insert into licitaciones.tender (organization_id, title, submission_deadline, source, external_id, contracting_body, cpv_codes, budget_amount, currency, state, procedure_type_raw, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11, null)
-         on conflict (organization_id, source, external_id) where external_id is not null
-         do update set
-           title = excluded.title,
-           submission_deadline = excluded.submission_deadline,
-           contracting_body = excluded.contracting_body,
-           cpv_codes = excluded.cpv_codes,
-           budget_amount = excluded.budget_amount,
-           currency = excluded.currency,
-           state = excluded.state,
-           procedure_type_raw = excluded.procedure_type_raw,
-           updated_at = now()
-         returning ${TENDER_COLUMNS}, (xmax = 0) as inserted;`,
+      const { rows } = await this.db.query<{
+        out_id: string;
+        out_organization_id: string;
+        out_title: string;
+        out_submission_deadline: string | null;
+        out_updated_at: string;
+        out_source: string;
+        out_external_id: string | null;
+        out_contracting_body: string | null;
+        out_cpv_codes: string[];
+        out_budget_amount: string | null;
+        out_currency: string;
+        out_state: string | null;
+        out_procedure_type_raw: string | null;
+        out_status: TenderStatus;
+        out_inserted: boolean;
+      }>(
+        `select * from licitaciones.system_ingest_tender($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10, $11);`,
         [organizationId, rec.title, rec.submissionDeadline, source, rec.externalId, rec.contractingBody, rec.cpvCodes, rec.budgetAmount, rec.currency, rec.state, rec.procedureTypeRaw],
       );
       const row = rows[0]!;
-      const tender = mapTender(row);
+      const tender = mapTender({
+        id: row.out_id,
+        organization_id: row.out_organization_id,
+        title: row.out_title,
+        submission_deadline: row.out_submission_deadline,
+        updated_at: row.out_updated_at,
+        source: row.out_source,
+        external_id: row.out_external_id,
+        contracting_body: row.out_contracting_body,
+        cpv_codes: row.out_cpv_codes,
+        budget_amount: row.out_budget_amount,
+        currency: row.out_currency,
+        state: row.out_state,
+        procedure_type_raw: row.out_procedure_type_raw,
+        status: row.out_status,
+      });
       tenders.push(tender);
-      if (row.inserted) created += 1;
+      if (row.out_inserted) created += 1;
       else updated += 1;
     }
 
@@ -1106,42 +1142,49 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     const now = input.nowIso ? new Date(input.nowIso) : new Date();
     const windowEnd = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
 
-    const { rows } = await this.db.query<{ id: string; title: string; submission_deadline: string }>(
-      `select id, title, submission_deadline::text as submission_deadline
-       from licitaciones.tender
-       where organization_id = $1
-         and submission_deadline is not null
-         and submission_deadline > $2
-         and submission_deadline <= $3
-         and status not in ('cancelled', 'lost', 'won', 'submitted')
-       order by submission_deadline asc;`,
+    // Fase "flujos de sistema": `scanUpcomingDeadlineReminders` SOLO se
+    // invoca hoy bajo sesión de sistema (`apps/worker/src/jobs/licitaciones/
+    // deadline-reminders.ts`/`alert-notifications.ts`, sin caller de staff
+    // autenticado). Tanto el SELECT contra `licitaciones.tender` (policy "org
+    // ve sus convocatorias", exige `auth.uid()` real -- el mismo síntoma
+    // exacto que motivó el PR #141 para `core.organization`/`core.property`:
+    // 0 filas SIEMPRE, en silencio) como el INSERT contra
+    // `licitaciones.tender_deadline_reminder` (policy de INSERT,
+    // `licitaciones.can_write_org`) quedaban bloqueados -- se usan las
+    // funciones `security definer` de solo-sistema
+    // `licitaciones.system_list_tenders_with_upcoming_deadline`/
+    // `system_record_deadline_reminder` (migración
+    // `..._024_licitaciones_sistema_ingesta_escritura.sql`) en su lugar. Ver
+    // el header de esa migración para el diagnóstico completo.
+    const { rows } = await this.db.query<{ out_id: string; out_title: string; out_submission_deadline: string }>(
+      `select * from licitaciones.system_list_tenders_with_upcoming_deadline($1, $2, $3);`,
       [organizationId, now.toISOString(), windowEnd.toISOString()],
     );
 
     let created = 0;
     const createdReminders: TenderDeadlineReminderRecord[] = [];
     for (const row of rows) {
-      const deadlineDateOnly = row.submission_deadline.slice(0, 10);
-      const daysRemaining = Math.ceil((new Date(row.submission_deadline).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
-      const message = `La convocatoria "${row.title}" vence el ${row.submission_deadline}.`;
-      const { rows: insertedRows } = await this.db.query<{ id: string; created_at: string }>(
-        `insert into licitaciones.tender_deadline_reminder (organization_id, tender_id, submission_deadline, deadline_date, days_remaining, message)
-         values ($1, $2, $3, $4::date, $5, $6)
-         on conflict (tender_id, deadline_date) do nothing
-         returning id, created_at::text as created_at;`,
-        [organizationId, row.id, row.submission_deadline, deadlineDateOnly, daysRemaining, message],
+      const submissionDeadline = row.out_submission_deadline;
+      const title = row.out_title;
+      const tenderId = row.out_id;
+      const deadlineDateOnly = submissionDeadline.slice(0, 10);
+      const daysRemaining = Math.ceil((new Date(submissionDeadline).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+      const message = `La convocatoria "${title}" vence el ${submissionDeadline}.`;
+      const { rows: insertedRows } = await this.db.query<{ out_id: string; out_created_at: string }>(
+        `select * from licitaciones.system_record_deadline_reminder($1, $2, $3, $4::date, $5, $6);`,
+        [organizationId, tenderId, submissionDeadline, deadlineDateOnly, daysRemaining, message],
       );
       const inserted = insertedRows[0];
       if (inserted) {
         created += 1;
         createdReminders.push({
-          id: inserted.id,
+          id: inserted.out_id,
           organizationId,
-          tenderId: row.id,
-          submissionDeadline: row.submission_deadline,
+          tenderId,
+          submissionDeadline,
           daysRemaining,
           message,
-          createdAt: inserted.created_at,
+          createdAt: inserted.out_created_at,
           acknowledgedAt: null,
           acknowledgedBy: null,
         });
