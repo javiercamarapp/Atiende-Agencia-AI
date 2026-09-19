@@ -32,17 +32,27 @@ import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
-/** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
-const INLINE_BATCH_SIZE = 5;
+/** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts.
+ * Exportado (fix a2b, parte B) para que el drenado post-commit de
+ * `postCommitTasks` (reservas.ts) lo use también, en vez del batch completo
+ * (25) por defecto. */
+export const INLINE_BATCH_SIZE = 5;
 
 /** Cuerpo real de la ruta de cron — extraído para que
  *  `triggerRentasEmailDispatchInline` no duplique la llamada a
  *  `dispatchPendingEmailJobs`; a diferencia del disparo inline, ESTA función
- *  abre su propia sesión de sistema (correcto para el cron). */
-export async function runRentasEmailDispatch(deps: AppDeps): Promise<RentasEmailDispatchSummary> {
+ *  abre su propia sesión de sistema (correcto para el cron).
+ *
+ * Fix a2b (parte B) -- `batchSize` opcional: el cron real sigue llamando SIN
+ * argumento (batch completo, 25), pero el drenado post-commit que
+ * `reservas.ts` encola en `postCommitTasks` (ver comentario largo de
+ * `dbSession` en `packages/core-auth/src/middleware.ts`, corre con `await`
+ * ANTES de que la respuesta del staff se transmita) ahora pasa
+ * `INLINE_BATCH_SIZE` explícito. */
+export async function runRentasEmailDispatch(deps: AppDeps, batchSize?: number): Promise<RentasEmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const rentasRepo = deps.rentasRepo(db);
-    return dispatchPendingEmailJobs(rentasRepo, deps.env.resend);
+    return dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize });
   });
 }
 
@@ -69,10 +79,16 @@ export async function runRentasEmailDispatch(deps: AppDeps): Promise<RentasEmail
  * `packages/domain-citas/src/postgres-repository.ts::upsertCustomer`. Ver
  * `scripts/verify-correo-inline-sesion-staff/` para la prueba ANTES/DESPUÉS
  * contra Postgres real.
+ *
+ * Fix a2b (parte C) — el `exec("SAVEPOINT ...")` ahora corre DENTRO del
+ * `try` (antes corría antes, sin protección): si la transacción YA venía
+ * abortada por una causa ANTERIOR a este trigger, ese `exec` en sí lanza
+ * 25P02 -- sin el `try` alrededor, esa excepción se propagaba tal cual al
+ * caller, contradiciendo el "nunca se propaga" de este docstring.
  */
 export async function triggerRentasEmailDispatchInline(deps: AppDeps, db: TenantDbSession, rentasRepo: RentasRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
+    await db.exec("SAVEPOINT sp_inline_email_dispatch");
     const summary = await dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize });
     await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
@@ -100,8 +116,12 @@ export function rentasEmailDispatchRoutes(deps: AppDeps): Hono {
     // organización), misma sesión de sistema que ical-sync-cron.ts.
     return withHeartbeat(deps, "/internal/rentas/email-dispatch", async () => {
       const summary = await runRentasEmailDispatch(deps);
+      // Fix a2b (parte A) -- sin RESEND_API_KEY, `summary.notConfigured` es
+      // true y `failed`/`dead` quedan en 0 (nunca se reclamó nada): estado
+      // esperado, reflejado explícito en `status`.
       return c.json({
         ok: true,
+        status: summary.notConfigured ? "not_configured" : "ok",
         processed: summary.processed,
         sent: summary.sent,
         failed: summary.failed,

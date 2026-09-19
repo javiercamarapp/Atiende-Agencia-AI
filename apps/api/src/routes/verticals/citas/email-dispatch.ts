@@ -39,18 +39,28 @@ import type { AppDeps } from "../../../deps.ts";
  *  INLINE_LIMIT de whatsapp-dispatch.ts: casi siempre hay 0-1 correo pendiente
  *  real (el que la acción actual acaba de encolar); cualquier remanente lo
  *  recoge el cron diario (batchSize completo por defecto de
- *  `dispatchPendingEmailJobs`). */
-const INLINE_BATCH_SIZE = 5;
+ *  `dispatchPendingEmailJobs`). Exportado (fix a2b, parte B) para que el
+ *  drenado post-commit de `postCommitTasks` (appointments-lifecycle.ts) lo
+ *  use también, en vez del batch completo (25) por defecto. */
+export const INLINE_BATCH_SIZE = 5;
 
 /** Cuerpo real de la ruta de cron — extraído para que
  *  `triggerCitasEmailDispatchInline` (disparo inline, ver abajo) no duplique la
  *  llamada a `dispatchPendingEmailJobs`; a diferencia del disparo inline, ESTA
  *  función abre su propia sesión de sistema (correcto para el cron, que no
- *  corre dentro de ninguna transacción de request). */
-export async function runCitasEmailDispatch(deps: AppDeps): Promise<EmailDispatchSummary> {
+ *  corre dentro de ninguna transacción de request).
+ *
+ * Fix a2b (parte B) -- `batchSize` opcional: el cron real sigue llamando SIN
+ * argumento (batch completo, 25), pero el drenado post-commit que
+ * `appointments-lifecycle.ts` encola en `postCommitTasks` (ver comentario
+ * largo de `dbSession` en `packages/core-auth/src/middleware.ts`, corre con
+ * `await` ANTES de que la respuesta del staff se transmita) ahora pasa
+ * `INLINE_BATCH_SIZE` explícito -- mismo criterio que ya usaba el disparo
+ * inline síncrono de abajo. */
+export async function runCitasEmailDispatch(deps: AppDeps, batchSize?: number): Promise<EmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const citasRepo = deps.citasRepo(db);
-    return dispatchPendingEmailJobs(citasRepo, deps.env.resend);
+    return dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize });
   });
 }
 
@@ -80,10 +90,20 @@ export async function runCitasEmailDispatch(deps: AppDeps): Promise<EmailDispatc
  * `packages/domain-citas/src/postgres-repository.ts::upsertCustomer`. Ver
  * `scripts/verify-correo-inline-sesion-staff/` para la prueba ANTES/DESPUÉS
  * contra Postgres real.
+ *
+ * Fix a2b (parte C) — el `exec("SAVEPOINT ...")` ahora corre DENTRO del
+ * `try` (antes corría antes, sin protección): si la transacción YA venía
+ * abortada por una causa ANTERIOR a este trigger, ese `exec` en sí lanza
+ * 25P02 -- sin el `try` alrededor, esa excepción se propagaba tal cual al
+ * caller, contradiciendo el "nunca se propaga" de este docstring. Con el
+ * `try`, cae en el mismo `catch` de abajo (que intentará
+ * `ROLLBACK TO SAVEPOINT`, fallará porque el SAVEPOINT nunca se tomó, y ese
+ * fallo secundario lo traga el `catch` interno de recuperación) y de todos
+ * modos nunca relanza.
  */
 export async function triggerCitasEmailDispatchInline(deps: AppDeps, db: TenantDbSession, citasRepo: CitasRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
+    await db.exec("SAVEPOINT sp_inline_email_dispatch");
     const summary = await dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize });
     await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
@@ -120,6 +140,10 @@ export function citasEmailDispatchRoutes(deps: AppDeps): Hono {
       // barrido ya aísla cada job fallido del resto del lote por diseño. La
       // corrección real es LOGUEAR estructurado con severidad `error` cuando hubo
       // fallos/jobs muertos -- consumible por cualquier integración de logs.
+      // Fix a2b (parte A) -- `summary.notConfigured` implica `failed === 0 &&
+      // dead === 0` (nunca se llegó a reclamar nada), así que este `if` YA no
+      // dispara una alerta falsa cuando falta RESEND_API_KEY -- ver `status`
+      // de abajo.
       if (summary.failed > 0 || summary.dead > 0) {
         logEvent(c, "error", "citas_email_dispatch_cron_con_fallos", {
           processed: summary.processed,
@@ -131,6 +155,7 @@ export function citasEmailDispatchRoutes(deps: AppDeps): Hono {
 
       return c.json({
         ok: true,
+        status: summary.notConfigured ? "not_configured" : "ok",
         processed: summary.processed,
         sent: summary.sent,
         failed: summary.failed,

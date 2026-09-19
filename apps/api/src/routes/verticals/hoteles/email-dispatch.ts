@@ -32,17 +32,33 @@ import { logEvent } from "../../../logger.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
-/** Mismo criterio que INLINE_BATCH_SIZE de citas/email-dispatch.ts. */
-const INLINE_BATCH_SIZE = 5;
+/** Mismo criterio que INLINE_BATCH_SIZE de citas/email-dispatch.ts. Exportado
+ * (fix a2b, parte B) para que el drenado post-commit de `postCommitTasks`
+ * (folios.ts/reservas.ts/cfdi.ts) lo use en vez del batch completo por
+ * defecto de `dispatchPendingEmailJobs` (25) -- ver comentario de
+ * `runHotelesEmailDispatch` de abajo. */
+export const INLINE_BATCH_SIZE = 5;
 
 /** Cuerpo real de la ruta de cron — extraído para que
  *  `triggerHotelesEmailDispatchInline` no duplique la llamada a
  *  `dispatchPendingEmailJobs`; a diferencia del disparo inline, ESTA función
- *  abre su propia sesión de sistema (correcto para el cron). */
-export async function runHotelesEmailDispatch(deps: AppDeps): Promise<HotelesEmailDispatchSummary> {
+ *  abre su propia sesión de sistema (correcto para el cron).
+ *
+ * Fix a2b (parte B) -- `batchSize` opcional: el cron real (`/internal/hoteles/
+ * email-dispatch` de abajo) sigue llamando SIN argumento (batch completo, 25,
+ * de `dispatchPendingEmailJobs`), pero el drenado post-commit que
+ * `folios.ts`/`reservas.ts`/`cfdi.ts` encolan en `postCommitTasks` (ver
+ * comentario largo de `dbSession` en `packages/core-auth/src/middleware.ts`)
+ * ahora pasa `INLINE_BATCH_SIZE` explícito -- ese drenado corre con `await`
+ * ANTES de que la respuesta HTTP del staff se transmita, así que un batch de
+ * 25 (pensado para el cron, sin presión de tiempo) ahí es exactamente la
+ * misma exposición a una función de Vercel cortada a los 30s que ya se evitó
+ * en el disparo inline síncrono (`triggerHotelesEmailDispatchInline`, que
+ * siempre usó `INLINE_BATCH_SIZE`). */
+export async function runHotelesEmailDispatch(deps: AppDeps, batchSize?: number): Promise<HotelesEmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const hotelesRepo = deps.hotelesRepo(db);
-    return dispatchPendingEmailJobs(hotelesRepo, deps.env.resend);
+    return dispatchPendingEmailJobs(hotelesRepo, deps.env.resend, { batchSize });
   });
 }
 
@@ -71,10 +87,20 @@ export async function runHotelesEmailDispatch(deps: AppDeps): Promise<HotelesEma
  * `packages/domain-citas/src/postgres-repository.ts::upsertCustomer`. Ver
  * `scripts/verify-correo-inline-sesion-staff/` para la prueba ANTES/DESPUÉS
  * contra Postgres real.
+ *
+ * Fix a2b (parte C) — el `exec("SAVEPOINT ...")` ahora corre DENTRO del
+ * `try` (antes corría antes, sin protección): si la transacción YA venía
+ * abortada por una causa ANTERIOR a este trigger, ese `exec` en sí lanza
+ * 25P02 -- sin el `try` alrededor, esa excepción se propagaba tal cual al
+ * caller, contradiciendo el "nunca se propaga" de este docstring. Con el
+ * `try`, cae en el mismo `catch` de abajo, que intenta el
+ * `ROLLBACK TO SAVEPOINT` (fallará también, porque el SAVEPOINT nunca llegó
+ * a tomarse -- lo cubre el `catch` interno de recuperación, que solo loguea)
+ * y de todos modos nunca relanza.
  */
 export async function triggerHotelesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, hotelesRepo: HotelesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
+    await db.exec("SAVEPOINT sp_inline_email_dispatch");
     const summary = await dispatchPendingEmailJobs(hotelesRepo, deps.env.resend, { batchSize });
     await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
@@ -111,6 +137,11 @@ export function hotelesEmailDispatchRoutes(deps: AppDeps): Hono {
       // HALLAZGO ALTO de la auditoría final — mismo criterio documentado en
       // citas/email-dispatch.ts: se deja el status code en 200 (contrato de Vercel
       // Cron), la corrección real es loguear estructurado con severidad `error`.
+      // Fix a2b (parte A) -- `summary.notConfigured` implica `failed === 0 &&
+      // dead === 0` (nunca se llegó a reclamar nada), así que este `if` YA no
+      // dispara una alerta falsa cuando falta RESEND_API_KEY: eso es un estado
+      // esperado ("no configurado", ver `status` de abajo), no un fallo real
+      // del cron.
       if (summary.failed > 0 || summary.dead > 0) {
         logEvent(c, "error", "hoteles_email_dispatch_cron_con_fallos", {
           processed: summary.processed,
@@ -122,6 +153,7 @@ export function hotelesEmailDispatchRoutes(deps: AppDeps): Hono {
 
       return c.json({
         ok: true,
+        status: summary.notConfigured ? "not_configured" : "ok",
         processed: summary.processed,
         sent: summary.sent,
         failed: summary.failed,

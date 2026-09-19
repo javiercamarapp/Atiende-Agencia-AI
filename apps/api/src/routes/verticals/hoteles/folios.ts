@@ -32,7 +32,7 @@ import {
 import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
-import { runHotelesEmailDispatch, triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
+import { INLINE_BATCH_SIZE, runHotelesEmailDispatch, triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const CHARGE_CONCEPT_VALUES = new Set<ChargeConcept>(["hospedaje", "ab", "extras", "ajuste", "propina", "otro"]);
@@ -590,7 +590,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // (runHotelesEmailDispatch ya existe y pasa el guard auth.uid() is null).
     // Encolar aquí una sesión nueva DENTRO de este request no sirve: no vería
     // el correo recién encolado sin commit (ver citas/email-dispatch.ts).
-    c.get("postCommitTasks").push(() => runHotelesEmailDispatch(deps).then(() => undefined));
+    c.get("postCommitTasks").push(() => runHotelesEmailDispatch(deps, INLINE_BATCH_SIZE).then(() => undefined));
 
     return c.json({ id: folioId, estado: "cerrado", motivoCierre: motivo, saldo: balance });
   });

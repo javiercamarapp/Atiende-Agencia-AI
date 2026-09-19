@@ -38,16 +38,22 @@ import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de citas/email-dispatch.ts. */
-const INLINE_BATCH_SIZE = 5;
+export const INLINE_BATCH_SIZE = 5;
 
 /** Cuerpo real de la ruta de cron — extraído para que
  *  `triggerRestaurantesEmailDispatchInline` no duplique la llamada a
  *  `dispatchPendingEmailJobs`; a diferencia del disparo inline, ESTA función
- *  abre su propia sesión de sistema (correcto para el cron). */
-export async function runRestaurantesEmailDispatch(deps: AppDeps): Promise<EmailDispatchSummary> {
+ *  abre su propia sesión de sistema (correcto para el cron).
+ *
+ * Fix a2b (parte B) -- `batchSize` opcional, mismo criterio que
+ * `runHotelesEmailDispatch`. Restaurantes no encola este drenado en
+ * `postCommitTasks` -- sus 2 call sites reales del disparo inline
+ * (`public.ts::createOrder`, `whatsapp.ts`) ya corren en sesión de sistema
+ * propia, ver comentario de `triggerRestaurantesEmailDispatchInline`. */
+export async function runRestaurantesEmailDispatch(deps: AppDeps, batchSize?: number): Promise<EmailDispatchSummary> {
   return deps.engine.withAppSession({ userId: null }, async (db) => {
     const restaurantesRepo = deps.restaurantesRepo(db);
-    return dispatchPendingEmailJobs(restaurantesRepo, deps.env.resend);
+    return dispatchPendingEmailJobs(restaurantesRepo, deps.env.resend, { batchSize });
   });
 }
 
@@ -71,10 +77,16 @@ export async function runRestaurantesEmailDispatch(deps: AppDeps): Promise<Email
  * función que las otras 5 verticales, protegida igual por si un futuro call
  * site la invoca desde sesión de staff), no la corrección de un bug activo en
  * restaurantes.
+ *
+ * Fix a2b (parte C) — el `exec("SAVEPOINT ...")` ahora corre DENTRO del
+ * `try` (antes corría antes, sin protección): si la transacción YA venía
+ * abortada por una causa ANTERIOR a este trigger, ese `exec` en sí lanza
+ * 25P02 -- sin el `try` alrededor, esa excepción se propagaba tal cual al
+ * caller, contradiciendo el "nunca se propaga" de este docstring.
  */
 export async function triggerRestaurantesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, restaurantesRepo: RestaurantesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
+    await db.exec("SAVEPOINT sp_inline_email_dispatch");
     const summary = await dispatchPendingEmailJobs(restaurantesRepo, deps.env.resend, { batchSize });
     await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
@@ -106,6 +118,10 @@ export function restaurantesEmailDispatchRoutes(deps: AppDeps): Hono {
       // HALLAZGO ALTO de la auditoría final — mismo criterio documentado en
       // citas/email-dispatch.ts: se deja el status code en 200 (contrato de Vercel
       // Cron), la corrección real es loguear estructurado con severidad `error`.
+      // Fix a2b (parte A) -- `summary.notConfigured` implica `failed === 0 &&
+      // dead === 0` (nunca se llegó a reclamar nada), así que este `if` YA no
+      // dispara una alerta falsa cuando falta RESEND_API_KEY -- ver `status`
+      // de abajo.
       if (summary.failed > 0 || summary.dead > 0) {
         logEvent(c, "error", "restaurantes_email_dispatch_cron_con_fallos", {
           processed: summary.processed,
@@ -117,6 +133,7 @@ export function restaurantesEmailDispatchRoutes(deps: AppDeps): Hono {
 
       return c.json({
         ok: true,
+        status: summary.notConfigured ? "not_configured" : "ok",
         processed: summary.processed,
         sent: summary.sent,
         failed: summary.failed,
