@@ -55,6 +55,100 @@ describe("r5 — registro de auditoría en las rutas de escritura reales", () =>
     expect(nuevas[0]!.despues).toContain("250000 MXN");
   });
 
+  // No bloqueante #5 de revisión r5: de los 5 POST de pricing solo tarifa-base tenía
+  // test de auditoría (temporadas/descuentos-duracion/min-stay/reglas-canal ya
+  // estaban instrumentados desde el commit b3d927b, pero sin cobertura). Payloads
+  // copiados literal de apps/api/tests/rentas-pricing.spec.ts (casos "happy path" de
+  // cada endpoint).
+  it("POST .../temporadas registra una fila de auditoría entityType=pricing", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const antes = ctx.rentasRepo.auditLog.length;
+
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/temporadas`,
+      authedJson(ctx.staff.adminGestora.token, { nombre: "Verano", rango: { inicio: "2026-07-01", fin: "2026-08-01" }, precioNocheCentavos: 250000, moneda: "MXN" }),
+    );
+    expect(res.status).toBe(201);
+
+    const nuevas = ctx.rentasRepo.auditLog.slice(antes);
+    expect(nuevas).toHaveLength(1);
+    expect(nuevas[0]).toMatchObject({ entityType: "pricing", action: "pricing.temporada.creada", entityId: ctx.unidadId, actorUserId: ctx.staff.adminGestora.id });
+    expect(nuevas[0]!.despues).toContain("Verano");
+  });
+
+  it("POST .../descuentos-duracion registra una fila de auditoría entityType=pricing", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const antes = ctx.rentasRepo.auditLog.length;
+
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/descuentos-duracion`,
+      authedJson(ctx.staff.adminGestora.token, { nochesMinimas: 28, porcentajeDescuentoBasisPoints: 2000, fuente: "Política mensual del gestor" }),
+    );
+    expect(res.status).toBe(201);
+
+    const nuevas = ctx.rentasRepo.auditLog.slice(antes);
+    expect(nuevas).toHaveLength(1);
+    expect(nuevas[0]).toMatchObject({ entityType: "pricing", action: "pricing.descuento_duracion.actualizado", entityId: ctx.unidadId, actorUserId: ctx.staff.adminGestora.id });
+    expect(nuevas[0]!.despues).toContain("Política mensual del gestor");
+  });
+
+  it("POST .../min-stay registra una fila de auditoría entityType=pricing", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const antes = ctx.rentasRepo.auditLog.length;
+
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/min-stay`,
+      authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-12-01", fin: "2026-12-31" }, diaSemanaCheckIn: null, nochesMinimas: 5 }),
+    );
+    expect(res.status).toBe(201);
+
+    const nuevas = ctx.rentasRepo.auditLog.slice(antes);
+    expect(nuevas).toHaveLength(1);
+    expect(nuevas[0]).toMatchObject({ entityType: "pricing", action: "pricing.min_stay.creada", entityId: ctx.unidadId, actorUserId: ctx.staff.adminGestora.id });
+    expect(nuevas[0]!.despues).toContain("5 noches");
+  });
+
+  it("POST .../reglas-canal registra una fila de auditoría entityType=pricing", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const antes = ctx.rentasRepo.auditLog.length;
+
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reglas-canal`,
+      authedJson(ctx.staff.adminGestora.token, { canalCodigo: "airbnb", markupBasisPoints: 1500 }),
+    );
+    expect(res.status).toBe(201);
+
+    const nuevas = ctx.rentasRepo.auditLog.slice(antes);
+    expect(nuevas).toHaveLength(1);
+    expect(nuevas[0]).toMatchObject({ entityType: "pricing", action: "pricing.regla_canal.actualizada", entityId: ctx.unidadId, actorUserId: ctx.staff.adminGestora.id });
+    expect(nuevas[0]!.despues).toContain("airbnb");
+  });
+
+  // No bloqueante #5 de revisión r5: PATCH de reserva (modificación de fechas)
+  // estaba instrumentado desde el commit b3d927b, pero sin ningún test de auditoría.
+  it("PATCH .../reservas/:id registra una fila de auditoría entityType=reserva con el rango nuevo", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const creada = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas`, authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-06-01", fin: "2026-06-05" } }));
+    const { id } = (await creada.json()) as { id: string };
+
+    const antes = ctx.rentasRepo.auditLog.length;
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas/${id}`,
+      authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-06-02", fin: "2026-06-06" } }, {}, "PATCH"),
+    );
+    expect(res.status).toBe(200);
+
+    const nuevas = ctx.rentasRepo.auditLog.slice(antes);
+    expect(nuevas).toHaveLength(1);
+    expect(nuevas[0]).toMatchObject({ entityType: "reserva", action: "reserva.modificada", entityId: id, campo: "rango_fechas" });
+    expect(nuevas[0]!.despues).toContain("2026-06-02");
+  });
+
   it("POST .../reservas/:id/cancelar registra una fila de auditoría entityType=reserva con antes/despues del estado", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);
