@@ -33,7 +33,7 @@
  * reserva (ver `FolioReservationStore`) ya cubre ese caso dejando que un
  * REINTENTO posterior (no la misma request) reclame la reserva abandonada.
  */
-import { InMemoryFolioReservationStore, type AdapterStatus, type FolioReservationStore } from "../shared.ts";
+import { InMemoryFolioReservationStore, WebhookReplayError, type AdapterStatus, type FolioReservationStore } from "../shared.ts";
 import { CfdiFolioStampingInProgressError, type CancelarInput, type CfdiCancelacion, type CfdiPort, type CfdiTimbrado, type CfdiWebhookEvent, type DomainCfdiStatus, type TimbrarInput } from "../port.ts";
 
 interface StampedFolio {
@@ -125,10 +125,22 @@ export class DualPacCfdiPort implements CfdiPort {
     }
   }
 
+  // Fix hallazgo (wireado del webhook HTTP del PAC, apps/api/src/routes/verticals/
+  // hoteles/cfdi-webhook.ts) — un `WebhookReplayError` que lanza el PRIMARIO es una
+  // señal AUTORITATIVA de ese mismo PAC ("ya vi este event_id"): reintentar contra
+  // el secundario no tiene sentido y además ENMASCARABA el replay como firma
+  // inválida. El secundario nunca vio ese `event_id` (es un espacio de IDs de un
+  // proveedor distinto) y verificar la MISMA firma contra SU PROPIO secreto casi
+  // siempre falla (el evento fue firmado con el secreto del primario) — un
+  // reintento real del PAC (idempotencia que el webhook exige) terminaba
+  // devolviendo "firma inválida" (401) en vez del ack idempotente esperado. El
+  // resto de la conmutación (no disponible / firma inválida de verdad / cualquier
+  // otro error del primario) sigue intentando el secundario sin cambios.
   async verifyAndNormalizeWebhook(rawBody: string, signatureHeader: string | undefined): Promise<CfdiWebhookEvent> {
     try {
       return await this.primary.verifyAndNormalizeWebhook(rawBody, signatureHeader);
-    } catch {
+    } catch (primaryError) {
+      if (primaryError instanceof WebhookReplayError) throw primaryError;
       return this.secondary.verifyAndNormalizeWebhook(rawBody, signatureHeader);
     }
   }
