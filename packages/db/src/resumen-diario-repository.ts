@@ -490,11 +490,43 @@ export class InMemoryResumenDiarioRepository implements ResumenDiarioRepository 
     this.fallando = fallando;
   }
 
+  /** Solo para tests -- simula la migración `0015_superadmin_resumen_diario.sql`
+   *  SIN APLICAR: `listCronHeartbeatsForSystem` (el sondeo barato del
+   *  agregador) y `upsertDailyOpsSummary` (el UPSERT final) lanzan con
+   *  `.code = "42883"`, exactamente como el driver `pg` real reporta
+   *  `undefined_function` -- fixture del hallazgo de auditoría a1 (rubro B:
+   *  el cron/"generar ahora" respondían 500 en vez de un vacío honesto). */
+  private migracionPendiente = false;
+  setMigracionPendiente(pendiente: boolean): void {
+    this.migracionPendiente = pendiente;
+  }
+
+  /** Solo para tests -- simula el caso de carrera de "defensa en profundidad"
+   *  donde el sondeo (`listCronHeartbeatsForSystem`) SÍ pasa pero el UPSERT
+   *  final falla igual con 42883 (p. ej. la migración se aplicó a la mitad
+   *  entre el sondeo y el UPSERT) -- independiente de `setMigracionPendiente`,
+   *  que hace fallar AMBOS. */
+  private upsertMigracionPendiente = false;
+  setUpsertMigracionPendiente(pendiente: boolean): void {
+    this.upsertMigracionPendiente = pendiente;
+  }
+
   private checarFalla(): void {
     if (this.fallando) throw new Error("InMemoryResumenDiarioRepository: lectura simulada como fallida");
   }
 
+  private lanzarUndefinedFunction(nombreFuncion: string): never {
+    const err = new Error(`function ${nombreFuncion} does not exist`) as Error & { code: string };
+    err.code = "42883";
+    throw err;
+  }
+
+  private checarMigracionPendiente(): void {
+    if (this.migracionPendiente) this.lanzarUndefinedFunction("core.list_cron_heartbeats_for_system()");
+  }
+
   async listCronHeartbeatsForSystem(): Promise<readonly CronHeartbeatSystemRow[]> {
+    this.checarMigracionPendiente();
     this.checarFalla();
     return this.cronHeartbeats;
   }
@@ -544,6 +576,7 @@ export class InMemoryResumenDiarioRepository implements ResumenDiarioRepository 
   }
 
   async upsertDailyOpsSummary(input: UpsertDailyOpsSummaryInput): Promise<void> {
+    if (this.migracionPendiente || this.upsertMigracionPendiente) this.lanzarUndefinedFunction("core.upsert_daily_ops_summary(date,jsonb,text,text,bigint,text,text)");
     const existente = this.summaries.get(input.fecha);
     const ahora = new Date().toISOString();
     this.summaries.set(input.fecha, {

@@ -321,9 +321,26 @@ export class InMemorySuperadminAccionesRepository implements SuperadminAccionesR
    *  conectar (el intent `cerrar_prospecto` queda `failed`, nunca finge un
    *  éxito). */
   private ejecutarCerrarProspecto: ((callerId: string, prospectoId: string, estado: string) => Promise<{ readonly id: string; readonly estado: string }>) | null = null;
+  /** Solo para tests -- simula la migración `0016_superadmin_acciones.sql`
+   *  SIN APLICAR: `desatascarOutboxColgadosForSystem`/`marcarProspectosSin
+   *  MovimientoForSystem` (el cron `/internal/superadmin/mantenimiento`)
+   *  lanzan con `.code = "42883"`, igual que el driver `pg` real reporta
+   *  `undefined_function` -- fixture del hallazgo de auditoría a1 (rubro C). */
+  private migracionPendiente = false;
 
   addPlatformSuperadmin(staffId: string): void {
     this.isSuperadmin.add(staffId);
+  }
+
+  setMigracionPendiente(pendiente: boolean): void {
+    this.migracionPendiente = pendiente;
+  }
+
+  private checarMigracionPendiente(nombreFuncion: string): void {
+    if (!this.migracionPendiente) return;
+    const err = new Error(`function ${nombreFuncion} does not exist`) as Error & { code: string };
+    err.code = "42883";
+    throw err;
   }
 
   /** Solo para tests -- fija el reloj que usa esta instancia (crear/vencer
@@ -348,6 +365,7 @@ export class InMemorySuperadminAccionesRepository implements SuperadminAccionesR
   }
 
   async desatascarOutboxColgadosForSystem(): Promise<readonly DesatascarOutboxResultRow[]> {
+    this.checarMigracionPendiente("core.desatascar_outbox_colgados_for_system(integer)");
     // El repo en memoria no simula las 6 tablas reales de outbox (mismo
     // criterio que `InMemorySaludRepository.getOutboxHealthForSuperadmin`) --
     // devuelve el catálogo de "qué aplica" tal cual, con 0 filas movidas
@@ -364,6 +382,7 @@ export class InMemorySuperadminAccionesRepository implements SuperadminAccionesR
   }
 
   async marcarProspectosSinMovimientoForSystem(): Promise<readonly MarcarProspectoResultRow[]> {
+    this.checarMigracionPendiente("core.marcar_prospectos_sin_movimiento_for_system(integer)");
     // Mismo criterio que `desatascarOutboxColgadosForSystem` -- este repo no
     // trae su propia copia de `core.prospecto` (eso vive en
     // `InMemoryCoreRepository`); el comportamiento real de "qué se marca" se

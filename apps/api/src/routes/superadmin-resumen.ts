@@ -96,7 +96,15 @@ export function superadminResumenRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const fecha = typeof raw.fecha === "string" && raw.fecha.length > 0 ? raw.fecha : fechaAyerMexico(new Date());
     if (!FECHA_RE.test(fecha)) throw Errors.validation("fecha debe tener formato YYYY-MM-DD.");
 
-    const { agregados, narrativa, generadoPor } = await generarYPersistirResumenDiario(deps, fecha);
+    const resultado = await generarYPersistirResumenDiario(deps, fecha);
+    // Distinto criterio que el cron (`routes/internal/resumen-diario.ts`):
+    // aquí SÍ hay un humano esperando la respuesta de un clic explícito
+    // ("generar ahora"), así que un 503 honesto es lo coherente -- mismo
+    // patrón ya usado para "Stripe no configurado" en
+    // `superadmin-facturacion.ts` (ver su test "sin Stripe configurado
+    // (503)"), nunca un 500 ni un 200 que finja que se generó algo.
+    if (!resultado.ok) throw Errors.serviceUnavailable("El resumen diario automático todavía no está disponible en este entorno -- falta aplicar una migración pendiente.");
+    const { agregados, narrativa, generadoPor } = resultado;
     // El correo NO es parte del contrato de "generar ahora" para el usuario
     // (nunca bloquea la respuesta ni la hace fallar) -- mismo criterio
     // best-effort que el resto del envío de correo de este backend; un

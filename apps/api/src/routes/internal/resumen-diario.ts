@@ -34,7 +34,22 @@ export function resumenDiarioRoutes(deps: AppDeps): Hono {
 
     return withHeartbeat(deps, RESUMEN_DIARIO_CRON_PATH, async () => {
       const fecha = fechaAyerMexico(new Date());
-      const { agregados, narrativa, generadoPor } = await generarYPersistirResumenDiario(deps, fecha);
+      const resultado = await generarYPersistirResumenDiario(deps, fecha);
+
+      // "Migración pendiente" es el caso NORMAL de "código nuevo, base
+      // vieja" (ver REGLA DURA de compatibilidad del repo) -- NUNCA un fallo
+      // real del cron. Se resuelve (no se lanza) a propósito: `withHeartbeat`
+      // solo distingue "el handler lanzó" de "el handler resolvió", así que
+      // lanzar aquí ensuciaría `core.cron_heartbeat` con `last_status =
+      // 'error'` y generaría alertas falsas en `/superadmin/salud` por algo
+      // que no es un bug -- 200 con `ok:false` es el "vacío honesto" que
+      // exige el repo, nunca un 500 (ver el comentario de cabecera de
+      // `generarYPersistirResumenDiario`).
+      if (!resultado.ok) {
+        logEvent(c, "warn", "resumen_diario_migracion_pendiente", { fecha });
+        return c.json({ ok: false, fecha, motivo: resultado.motivo });
+      }
+      const { agregados, narrativa, generadoPor } = resultado;
 
       if (agregados.salud.alertas.length > 0) {
         logEvent(c, "warn", "resumen_diario_con_alertas", { fecha, alertas: agregados.salud.alertas.length, criticas: agregados.salud.alertas.filter((a) => a.severidad === "critica").length });
