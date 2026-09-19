@@ -1,5 +1,6 @@
+import { createHmac } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
-import { validarPriceParaSeat, crearCheckoutPerSeat, PriceStripeInvalido, type StripeClient } from '../src/index.ts';
+import { validarPriceParaSeat, crearCheckoutPerSeat, verificarFirmaWebhookStripe, PriceStripeInvalido, type StripeClient } from '../src/index.ts';
 
 describe('validarPriceParaSeat', () => {
   const base = { id: 'price_1', activo: true, recurrente: true, moneda: 'mxn', montoUnitarioCentavos: 59900 };
@@ -45,5 +46,63 @@ describe('crearCheckoutPerSeat', () => {
         successUrl: 'x', cancelUrl: 'x',
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('verificarFirmaWebhookStripe', () => {
+  const secret = 'whsec_test_secreto';
+  const payload = '{"id":"evt_1","type":"checkout.session.completed"}';
+
+  function firmar(ts: number, body: string, withSecret = secret): string {
+    const hmac = createHmac('sha256', withSecret).update(`${ts}.${body}`, 'utf8').digest('hex');
+    return `t=${ts},v1=${hmac}`;
+  }
+
+  it('acepta una firma real dentro de la tolerancia de reloj', () => {
+    const now = 1_700_000_000;
+    const header = firmar(now, payload);
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: header, secret, nowUnix: now })).toBe(true);
+  });
+
+  it('acepta si CUALQUIERA de varios v1 (rotación de secreto) coincide', () => {
+    const now = 1_700_000_000;
+    const bueno = firmar(now, payload).split(',')[1];
+    const header = `t=${now},v1=deadbeef00000000000000000000000000000000000000000000000000000000,${bueno}`;
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: header, secret, nowUnix: now })).toBe(true);
+  });
+
+  it('rechaza sin secreto configurado (webhook sin credenciales)', () => {
+    const now = 1_700_000_000;
+    const header = firmar(now, payload);
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: header, secret: null, nowUnix: now })).toBe(false);
+  });
+
+  it('rechaza sin header de firma', () => {
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: null, secret })).toBe(false);
+  });
+
+  it('rechaza una firma calculada con OTRO secreto (evento falsificado)', () => {
+    const now = 1_700_000_000;
+    const header = firmar(now, payload, 'whsec_otro_secreto_distinto');
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: header, secret, nowUnix: now })).toBe(false);
+  });
+
+  it('rechaza si el payload fue alterado después de firmarse', () => {
+    const now = 1_700_000_000;
+    const header = firmar(now, payload);
+    expect(verificarFirmaWebhookStripe({ payload: payload.replace('evt_1', 'evt_2'), signatureHeader: header, secret, nowUnix: now })).toBe(false);
+  });
+
+  it('rechaza un timestamp fuera de la tolerancia (replay de un evento viejo)', () => {
+    const now = 1_700_000_000;
+    const viejo = now - 600; // 10 minutos, > default 300s
+    const header = firmar(viejo, payload);
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: header, secret, nowUnix: now })).toBe(false);
+  });
+
+  it('rechaza un header mal formado (sin t= o sin v1=)', () => {
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: 'v1=abc', secret })).toBe(false);
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: 't=123', secret })).toBe(false);
+    expect(verificarFirmaWebhookStripe({ payload, signatureHeader: 'basura-total', secret })).toBe(false);
   });
 });
