@@ -143,11 +143,17 @@ describe("AgendaPage (citas)", () => {
   });
 
   it("'Confirmar' llama POST .../appointments/apt-1/confirm (sin pedir confirmación del navegador) y recarga", async () => {
-    stubFetch({ appointments: [CITA_PENDING] });
+    // `appointments` como función (no un array fijo): lee la MISMA variable
+    // `current` en cada fetch, así que reasignarla entre el click y la
+    // aserción simula la recarga real -- criterio ya usado en
+    // despachos-cobranza-page.spec.tsx.
+    let current: readonly (typeof CITA_PENDING)[] = [CITA_PENDING];
+    stubFetch({ appointments: () => current });
     rendered = renderPage();
     await esperarCarga();
 
     const confirmarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Confirmar"))!;
+    current = [{ ...CITA_PENDING, status: "confirmed" }];
     await act(async () => {
       confirmarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
@@ -157,6 +163,11 @@ describe("AgendaPage (citas)", () => {
     expect(confirmMock).not.toHaveBeenCalled();
     const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/citas/properties/prop-1/appointments/apt-1/confirm" && init?.method === "POST");
     expect(call).toBeDefined();
+    // La recarga real: la cita ya viene con status "confirmed" -- solo las
+    // citas "pending" ofrecen "Confirmar" (CONFIRMABLE_STATUSES), así que el
+    // botón desaparece tras recargar (antes del click ya decía "Confirmar",
+    // por eso no basta con buscar ese texto en la página).
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Confirmar"))).toBe(false);
   });
 
   it("'Cancelar' pide confirmación real del navegador antes de llamar a la API; si se rechaza, NUNCA llama a la API", async () => {

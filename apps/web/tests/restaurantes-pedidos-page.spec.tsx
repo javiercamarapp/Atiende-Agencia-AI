@@ -142,11 +142,18 @@ describe("PedidosPage (restaurantes)", () => {
   });
 
   it("'Marcar Preparando' llama PATCH .../orders/ord-1/status con {status:'preparando'} y recarga", async () => {
-    stubFetch({ byStatus: { pending: [PEDIDO_PENDING] } });
+    // `byStatus` mutable (no un objeto literal fijo): `stubFetch` lee esta
+    // MISMA referencia en cada fetch, así que cambiarla entre el click y la
+    // aserción simula la recarga real -- criterio ya usado en
+    // despachos-cobranza-page.spec.tsx con `current`.
+    const byStatus: Partial<Record<string, readonly OrderSummary[]>> = { pending: [PEDIDO_PENDING] };
+    stubFetch({ byStatus });
     rendered = renderPage();
     await esperarCarga();
 
     const marcarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Marcar Preparando"))!;
+    byStatus.pending = [];
+    byStatus.preparando = [{ ...PEDIDO_PENDING, status: "preparando" }];
     await act(async () => {
       marcarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
@@ -157,6 +164,16 @@ describe("PedidosPage (restaurantes)", () => {
     expect(call).toBeDefined();
     const [, init] = call!;
     expect(JSON.parse(init.body as string)).toEqual({ status: "preparando" });
+    // La recarga real: el filtro por default es "todos" (las 4 pestañas
+    // operativas en paralelo), así que tras recargar el pedido ya viene con
+    // estado `preparando` real. OJO: "Preparando" por sí solo NO sirve de
+    // prueba -- ya aparece siempre en el label de la pestaña de filtro,
+    // exista o no un pedido en ese estado (mismo error que se corrige aquí).
+    // Lo que sí prueba la recarga: "Marcar Preparando" (label del botón que
+    // YA existía antes del click) desaparece, y aparece el de la SIGUIENTE
+    // transición real (NEXT_STATUSES.preparando incluye "en_camino").
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Marcar Preparando"))).toBe(false);
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Marcar En camino"))).toBe(true);
   });
 
   it("'Marcar Cancelado' abre el AlertDialog (no cancela de inmediato) y solo al confirmar llama la API con status:'cancelado'", async () => {

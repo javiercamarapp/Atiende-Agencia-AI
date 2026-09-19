@@ -161,7 +161,12 @@ describe("ReservasPage (hoteles)", () => {
     expect(url).toBe("https://api.test/hoteles/prop-1/reservas/res-1/transicion");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({ toStatus: "check_in" });
-    expect(rendered.container.textContent).toContain("Check-in");
+    // "Check-in" ya aparecía en el label del botón ANTES del click ("Marcar
+    // Check-in") -- lo que prueba que sí se releyó la lista es que ESE botón
+    // desaparece y el de la SIGUIENTE transición genérica lo reemplaza
+    // (NEXT_GENERIC_STATUS: check_in -> en_estancia).
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Marcar Check-in"))).toBe(false);
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Marcar En estancia"))).toBe(true);
   });
 
   it("'Marcar Check-out' (reserva en_estancia) llama PATCH .../transicion con {toStatus:'check_out'} y recarga la lista", async () => {
