@@ -69,6 +69,15 @@ function mapMapeoMigracion(row: MapeoMigracionRawRow): MapeoMigracionCuenta {
   };
 }
 
+// Mismo motivo que `FISCAL_DEADLINE_COLUMNS` de abajo: `fecha_vencimiento` es columna
+// `date`, nunca `select */returning *`. Esto también arregla, de raíz, el bug preexistente
+// de `diasVencidoCartera`/`diasHasta` (`cobranza/engine.ts`/`vencimientos.ts`) recibiendo un
+// `Date` donde esperaban un string "YYYY-MM-DD" (`.slice(0, 10)` sobre un `Date` -> TypeError
+// -> 500 en `GET /cobranza/cuentas`/`/resumen` contra Postgres real).
+const RECEIVABLE_COLUMNS =
+  "id, organization_id, property_id, invoice_id, fecha_vencimiento::text as fecha_vencimiento, " +
+  "monto_pagado, pagado_en, cliente_nombre, cliente_email, created_at";
+
 interface ReceivableRawRow {
   id: string;
   organization_id: string;
@@ -208,6 +217,20 @@ function mapReview(row: InvoiceReviewRawRow): InvoiceReviewRecord {
     createdAt: row.created_at,
   };
 }
+
+// Columnas explícitas para `fiscal_deadline`, NUNCA `select */returning *`: `fecha_limite`
+// y `fecha_presentacion` son columnas `date` de Postgres y `pg` (sin `setTypeParser`, ver
+// `managed-postgres-engine.ts`) las parsea a un objeto `Date` de JS -- serializado luego
+// por `c.json()` como timestamp ISO completo (p. ej. "2026-08-15T00:00:00.000Z" con
+// TZ=UTC, que es Vercel), no como "YYYY-MM-DD". `formatFechaSolo` (apps/web) esperaba
+// exactamente "YYYY-MM-DD" y devolvía "—" para cualquier otra cosa -- bug real reportado
+// por un revisor (Vencimientos.tsx pintando "—" en TODAS las filas tras el fix de fechas
+// de solo-día). Mismo criterio que `domain-licitaciones/postgres-repository.ts`
+// (`CONTRACT_INVOICE_COLUMNS`/`INCONFORMIDAD_DRAFT_COLUMNS`), que sí castea sus columnas
+// `date`/`numeric` a `::text` y por eso nunca tuvo este bug.
+const FISCAL_DEADLINE_COLUMNS =
+  "id, organization_id, property_id, tipo, periodo, fecha_limite::text as fecha_limite, prioridad, estado, " +
+  "fecha_presentacion::text as fecha_presentacion, comprobante_url, created_at";
 
 interface FiscalDeadlineRawRow {
   id: string;
@@ -480,7 +503,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
   async createDeadline(input: NewFiscalDeadlineInput): Promise<FiscalDeadlineRecord> {
     const { rows } = await this.db.query<FiscalDeadlineRawRow>(
       `insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad)
-       values ($1, $2, $3, $4, $5, $6) returning *;`,
+       values ($1, $2, $3, $4, $5, $6) returning ${FISCAL_DEADLINE_COLUMNS};`,
       [input.organizationId, input.propertyId, input.tipo, input.periodo, input.fechaLimite, input.prioridad],
     );
     return mapDeadline(rows[0]!);
@@ -489,17 +512,23 @@ export class PostgresDespachosRepository implements DespachosRepository {
   async listDeadlines(propertyId: string, filter?: { readonly estado?: string }): Promise<readonly FiscalDeadlineRecord[]> {
     if (filter?.estado) {
       const { rows } = await this.db.query<FiscalDeadlineRawRow>(
-        `select * from despachos.fiscal_deadline where property_id = $1 and estado = $2 order by fecha_limite asc;`,
+        `select ${FISCAL_DEADLINE_COLUMNS} from despachos.fiscal_deadline where property_id = $1 and estado = $2 order by fecha_limite asc;`,
         [propertyId, filter.estado],
       );
       return rows.map(mapDeadline);
     }
-    const { rows } = await this.db.query<FiscalDeadlineRawRow>(`select * from despachos.fiscal_deadline where property_id = $1 order by fecha_limite asc;`, [propertyId]);
+    const { rows } = await this.db.query<FiscalDeadlineRawRow>(
+      `select ${FISCAL_DEADLINE_COLUMNS} from despachos.fiscal_deadline where property_id = $1 order by fecha_limite asc;`,
+      [propertyId],
+    );
     return rows.map(mapDeadline);
   }
 
   async findDeadline(propertyId: string, deadlineId: string): Promise<FiscalDeadlineRecord | null> {
-    const { rows } = await this.db.query<FiscalDeadlineRawRow>(`select * from despachos.fiscal_deadline where id = $1 and property_id = $2;`, [deadlineId, propertyId]);
+    const { rows } = await this.db.query<FiscalDeadlineRawRow>(
+      `select ${FISCAL_DEADLINE_COLUMNS} from despachos.fiscal_deadline where id = $1 and property_id = $2;`,
+      [deadlineId, propertyId],
+    );
     return rows[0] ? mapDeadline(rows[0]) : null;
   }
 
@@ -508,7 +537,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
       `update despachos.fiscal_deadline
          set estado = 'completado', comprobante_url = coalesce($1, comprobante_url), fecha_presentacion = $2
        where id = $3
-       returning *;`,
+       returning ${FISCAL_DEADLINE_COLUMNS};`,
       [comprobanteUrl, fechaPresentacion, deadlineId],
     );
     return rows[0] ? mapDeadline(rows[0]) : null;
@@ -673,7 +702,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
     try {
       const { rows } = await this.db.query<ReceivableRawRow>(
         `insert into despachos.receivable (organization_id, property_id, invoice_id, fecha_vencimiento, cliente_nombre, cliente_email)
-         values ($1, $2, $3, $4, $5, $6) returning *;`,
+         values ($1, $2, $3, $4, $5, $6) returning ${RECEIVABLE_COLUMNS};`,
         [input.organizationId, input.propertyId, input.invoiceId, input.fechaVencimiento, input.clienteNombre ?? null, input.clienteEmail ?? null],
       );
       return mapReceivable(rows[0]!);
@@ -684,24 +713,33 @@ export class PostgresDespachosRepository implements DespachosRepository {
   }
 
   async findReceivable(propertyId: string, receivableId: string): Promise<ReceivableRecord | null> {
-    const { rows } = await this.db.query<ReceivableRawRow>(`select * from despachos.receivable where id = $1 and property_id = $2;`, [receivableId, propertyId]);
+    const { rows } = await this.db.query<ReceivableRawRow>(
+      `select ${RECEIVABLE_COLUMNS} from despachos.receivable where id = $1 and property_id = $2;`,
+      [receivableId, propertyId],
+    );
     return rows[0] ? mapReceivable(rows[0]) : null;
   }
 
   async findReceivableByInvoice(propertyId: string, invoiceId: string): Promise<ReceivableRecord | null> {
-    const { rows } = await this.db.query<ReceivableRawRow>(`select * from despachos.receivable where invoice_id = $1 and property_id = $2;`, [invoiceId, propertyId]);
+    const { rows } = await this.db.query<ReceivableRawRow>(
+      `select ${RECEIVABLE_COLUMNS} from despachos.receivable where invoice_id = $1 and property_id = $2;`,
+      [invoiceId, propertyId],
+    );
     return rows[0] ? mapReceivable(rows[0]) : null;
   }
 
   async listReceivables(propertyId: string, filter?: { readonly pendiente?: boolean }): Promise<readonly ReceivableRecord[]> {
     if (filter?.pendiente) {
       const { rows } = await this.db.query<ReceivableRawRow>(
-        `select * from despachos.receivable where property_id = $1 and pagado_en is null order by fecha_vencimiento asc;`,
+        `select ${RECEIVABLE_COLUMNS} from despachos.receivable where property_id = $1 and pagado_en is null order by fecha_vencimiento asc;`,
         [propertyId],
       );
       return rows.map(mapReceivable);
     }
-    const { rows } = await this.db.query<ReceivableRawRow>(`select * from despachos.receivable where property_id = $1 order by fecha_vencimiento asc;`, [propertyId]);
+    const { rows } = await this.db.query<ReceivableRawRow>(
+      `select ${RECEIVABLE_COLUMNS} from despachos.receivable where property_id = $1 order by fecha_vencimiento asc;`,
+      [propertyId],
+    );
     return rows.map(mapReceivable);
   }
 
@@ -709,7 +747,7 @@ export class PostgresDespachosRepository implements DespachosRepository {
     const { rows } = await this.db.query<ReceivableRawRow>(
       `update despachos.receivable set pagado_en = $1, monto_pagado = $2
        where id = $3 and property_id = $4 and pagado_en is null
-       returning *;`,
+       returning ${RECEIVABLE_COLUMNS};`,
       [paidAtIso, montoPagado, receivableId, propertyId],
     );
     if (!rows[0]) {

@@ -68,3 +68,23 @@ export class InvalidOrganizationIdError extends ImpersonationError {
     super("organizationId vacío: no se firma una selección de impersonación sin organización.", "invalid_organization_id");
   }
 }
+
+/**
+ * Se lanza cuando un request MUTANTE (POST/PUT/PATCH/DELETE) llega con una
+ * sesión de impersonación de superadmin activa — ver `write-guard.ts` para el
+ * middleware que la produce. Por diseño (requisito no negociable de "Bloque
+ * C"), toda impersonación es SOLO LECTURA por default: ningún endpoint
+ * conectado a `blockWritesWhileImpersonating` acepta una escritura mientras
+ * dure la sesión, salvo que el propio caller la excluya explícitamente
+ * (`exemptPaths`) porque SÍ define con claridad que esa ruta es parte del
+ * conjunto permitido (ej. terminar la propia sesión de impersonación).
+ */
+export class ImpersonationWriteBlockedError extends ImpersonationError {
+  constructor(method: string, path: string) {
+    super(
+      `Escritura bloqueada (${method} ${path}): hay una sesión de impersonación de superadmin activa. ` +
+        `La impersonación es de solo lectura por default — termina la sesión antes de escribir.`,
+      "impersonation_write_blocked",
+    );
+  }
+}

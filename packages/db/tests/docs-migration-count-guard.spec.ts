@@ -8,12 +8,16 @@ import { describe, expect, it } from "vitest";
 // comparaba un conteo-snapshot citado en docs/DEPLOY.md/
 // supabase/migrations/README.md contra el conteo real de
 // supabase/migrations/*.sql, y fallaba si divergían. Eso resultó ser la
-// forma equivocada de resolver el problema: CI de este repo no corre
-// `npm run test:unit` (ver .github/workflows/postgres-real-gate.yml -- solo
-// corre los `scripts/verify-*/` contra Postgres real), así que cualquier PR
-// que agregara una migración nueva sin también editar esos dos documentos
-// rompía este guard EN SILENCIO para quien corriera la suite completa
-// después -- ningún check automático lo habría atrapado antes de mergear.
+// forma equivocada de resolver el problema: EN ESE MOMENTO ningún workflow
+// de CI de este repo corría `npm run test:unit` (solo
+// .github/workflows/postgres-real-gate.yml existía, y ese corre únicamente
+// los `scripts/verify-*/` contra Postgres real) -- eso cambió el
+// 19-sep-2026 con .github/workflows/ci-checks.yml, que sí corre
+// `npm run test:unit` en CI. Pero en el momento en que se escribió el guard
+// original, cualquier PR que agregara una migración nueva sin también editar
+// esos dos documentos lo rompía EN SILENCIO para quien corriera la suite
+// completa después -- ningún check automático lo habría atrapado antes de
+// mergear.
 //
 // Ambos documentos ya se reescribieron para NO citar ningún conteo fijo,
 // solo el comando que lo calcula (`ls supabase/migrations/*.sql | wc -l`).

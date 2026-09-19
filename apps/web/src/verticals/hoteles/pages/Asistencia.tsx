@@ -50,16 +50,23 @@ import {
   upsertStaffSchedule,
 } from "../lib/asistencia-client.ts";
 import type { AttendanceEvent, CrossCheckRow } from "../lib/asistencia-client.ts";
+import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const ATTENDANCE_ADMIN_ROLES_NAV: ReadonlySet<string> = new Set(["owner", "gm"]);
 
+// `hoyFechaSolo()` (día de calendario en America/Mexico_City), NO
+// `new Date().toISOString().slice(0, 10)` (día UTC) -- ese patrón viejo
+// precargaba MAÑANA en vez de HOY entre las 18:00 y las 23:59 hora de CDMX
+// (00:00-05:59 UTC), tanto en el default del día de trabajo (`workDate`) como
+// en el rango de consulta de asistencia (`desde`/`hasta`). Ver
+// apps/web/src/lib/formato-fecha.ts.
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyFechaSolo();
 }
 
 function sevenDaysAgoIso(): string {
-  const d = new Date();
+  const d = parseFechaSolo(hoyFechaSolo());
   d.setUTCDate(d.getUTCDate() - 7);
   return d.toISOString().slice(0, 10);
 }
