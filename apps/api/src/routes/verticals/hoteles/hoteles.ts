@@ -18,6 +18,7 @@ import { hotelesPlRoutes } from "./pl.ts";
 import { hotelesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { hotelesAdminCatalogoRoutes } from "./admin-catalogo.ts";
 import { hotelesAdminStaffRoutes } from "./admin-staff.ts";
+import { hotelesRevenueRoutes } from "./revenue.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -48,5 +49,10 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // la única de las 6 verticales sin forma de invitar staff adicional, ver
   // admin-staff.ts.
   app.route("/", hotelesAdminStaffRoutes(deps));
+  // Fase 9 — REQ-REV-003/004/005/007: motor de revenue management (pricing) --
+  // wiring HTTP real del gate shadow/propone/autopilot + backtests walk-forward
+  // (dominio y migración ya existían desde Fase 9; esta rama agrega el primer
+  // invocador real, ver revenue.ts).
+  app.route("/", hotelesRevenueRoutes(deps));
   return app;
 }

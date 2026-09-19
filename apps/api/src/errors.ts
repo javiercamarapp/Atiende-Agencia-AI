@@ -85,4 +85,13 @@ export const Errors = {
   // "invitar" con "editar el rol de alguien ya aceptado" en la UI.
   staffRoleChangeRolInsuficiente: () =>
     new ApiError(403, "staff_role_change_rol_insuficiente", "No puedes cambiar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo."),
+  // ---- hoteles (motor de revenue management, Fase 9 -- REQ-REV-003/004/005/007) ----
+  // El trigger real de Postgres (`revenue_engine_gate_transition_guard`) sigue siendo
+  // la autoridad; esto solo traduce el mismo rechazo que `evaluateGateTransition`
+  // (dominio puro) ya calculó ANTES de tocar la base, para no fingir un 500 genérico
+  // cuando el gate bloquea una transición a propósito.
+  revenueGateTransicionBloqueada: (razones: readonly string[]) =>
+    new ApiError(409, "revenue_gate_transicion_bloqueada", razones.join(" | ")),
+  revenueGateNoInicializado: () =>
+    new ApiError(404, "revenue_gate_no_inicializado", 'El gate de revenue de esta property no está inicializado -- primero POST .../revenue/gate.'),
 };
