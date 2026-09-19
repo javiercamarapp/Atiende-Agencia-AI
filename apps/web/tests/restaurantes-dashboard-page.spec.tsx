@@ -141,15 +141,15 @@ describe("RestaurantesDashboardPage", () => {
     expect(text).toContain("-2.3%");
   });
 
-  it("cambio sin dato real (customersChangePct null) se pinta con guion, nunca un 0% inventado", async () => {
-    stubFetch({});
+  it("cambio sin dato real (ordersChangePct null) se pinta con guion, nunca un 0% inventado", async () => {
+    // `customersChangePct` NUNCA se renderiza en Dashboard.tsx (solo revenue/
+    // orders/avgOrder, líneas 152-164) -- el campo real que sí consume `formatSignedPct`
+    // y puede llegar en `null` desde el backend es `ordersChangePct` (nota de "Número
+    // de órdenes").
+    stubFetch({ sales: { ...SALES_30, ordersChangePct: null } });
     rendered = renderPage();
     await esperarCarga();
-    // La nota de "Número de órdenes" usa ordersChangePct (5.1), no
-    // customersChangePct -- pero el guion "—" debe aparecer en algún lado que
-    // consuma un valor null real de esta respuesta (avgDaysSinceLastOrder no
-    // aplica aquí; se verifica con el caso "sin datos" de clientes abajo).
-    expect(rendered.container.textContent).toContain("+5.1%");
+    expect(rendered.container.textContent).toContain("— vs. 30 días anteriores");
   });
 
   it("impacto de agentes IA: adopción, ingresos por canal y horas ahorradas (con su nota de estimado)", async () => {
