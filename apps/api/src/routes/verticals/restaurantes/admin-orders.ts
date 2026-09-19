@@ -152,7 +152,17 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // order-notifications.ts); disparo inline del drenado, mismo
       // `repo`/transacción (ver comentario de cabecera de
       // routes/internal/whatsapp-dispatch.ts), en vez de esperar al cron diario.
-      await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
+      //
+      // Auditoría a2b (CRÍTICO, primo de PR #166) — a diferencia de whatsapp.ts
+      // (webhook, sesión de SISTEMA), esta ruta corre en sesión de STAFF
+      // (`authMiddleware` -> `dbSession`, `auth.uid()` no nulo): `triggerInline`
+      // ahora recibe `c.get("db")` para envolver el drenado en SAVEPOINT (ver
+      // whatsapp-dispatch.ts) -- sin esto, `claim_messaging_outbox_batch` lanza
+      // 42501 SIEMPRE en esta transacción y, sin SAVEPOINT, dejaba la transacción
+      // completa abortada: el cambio de status de ESTE MISMO pedido (línea de
+      // arriba) se perdía con un 2xx pese a que `changeOrderStatus` ya había
+      // hecho commit lógico dentro de esta misma transacción.
+      await triggerRestaurantesWhatsAppDispatchInline(deps, c.get("db"), repo);
       logEvent(c, "info", "restaurantes_admin_pedido_status_cambiado", { actorUserId: c.get("userId"), organizationId, orderId, status: raw.status });
       return c.json({ order: serializeOrder(updated) });
     } catch (err) {

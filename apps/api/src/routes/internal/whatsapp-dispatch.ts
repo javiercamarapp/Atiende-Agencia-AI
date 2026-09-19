@@ -57,6 +57,30 @@
 //      aparte, no vería un INSERT todavía sin commit de la transacción del
 //      request -- ver comentario largo de dbSession en
 //      @atiende/core-auth/src/middleware.ts).
+//
+// Hotfix (auditoría a2b, CRÍTICO, primo directo del hallazgo cerrado en PR #166
+// para el drenado de correo) -- `triggerInline` recibe también `db` (el MISMO
+// `TenantDbSession` de `c.get("db")`/`withAppSession`, nunca uno nuevo) para
+// envolver `dispatcher.dispatchPending(...)` en `SAVEPOINT`. `<vertical>.
+// claim_messaging_outbox_batch` (ver migrations/007_messaging_outbox*.sql +
+// migrations/0{15,17,19}_messaging_outbox_dispatch_authenticated_grants.sql de
+// cada vertical) tiene EXACTAMENTE el mismo guard `if auth.uid() is not null
+// then raise exception ... using errcode = '42501'` que `claim_email_outbox_batch`
+// -- lanza SIEMPRE en sesión de STAFF (`auth.uid()` no nulo), guard correcto y
+// necesario (la función es cross-tenant), NO se toca. Sin este SAVEPOINT esa
+// excepción deja la transacción de negocio COMPLETA abortada (25P02) hasta un
+// `ROLLBACK TO SAVEPOINT`: el `commit;` del motor sobre una transacción abortada
+// no lanza error (Postgres responde "ROLLBACK" en silencio, ver
+// packages/db/src/managed-postgres-engine.ts), así que la escritura de negocio de
+// ESTE MISMO request (p.ej. el cambio de estado de un pedido, ver
+// verticals/restaurantes/{admin-orders,repartidor-orders}.ts) se pierde con un
+// 2xx. A diferencia del fix de correo, aquí el `SAVEPOINT` inicial vive DENTRO
+// del `try` (no antes): si la transacción YA venía abortada por otra causa
+// anterior a este trigger, emitir `SAVEPOINT` también lanza 25P02 -- afuera del
+// try eso habría convertido este disparo best-effort en una excepción nueva sin
+// capturar (no-bloqueante señalado en la revisión de PR #166, corregido aquí
+// desde el inicio). Ver `scripts/verify-whatsapp-inline-sesion-staff/` para la
+// prueba ANTES/DESPUÉS contra Postgres real.
 import { Hono } from "hono";
 import { createCitasMessagingOutboxPort } from "@atiende/domain-citas";
 import type { CitasRepository } from "@atiende/domain-citas";
@@ -65,6 +89,7 @@ import type { HotelesRepository } from "@atiende/domain-hoteles";
 import { createRestaurantesMessagingOutboxPort } from "@atiende/domain-restaurantes";
 import type { RestaurantesRepository } from "@atiende/domain-restaurantes";
 import type { DispatchSummary, MessagingOutboxPort } from "@atiende/whatsapp-gateway";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { logEvent } from "../../logger.ts";
@@ -117,19 +142,38 @@ export async function dispatchWhatsAppVertical(deps: AppDeps, vertical: WhatsApp
   }
 }
 
+const SAVEPOINT_NAME = "sp_inline_whatsapp_dispatch";
+
 /** Núcleo compartido de los 3 disparadores inline de abajo -- nunca exportado
  *  directo (cada vertical construye su propio `port` con su propio tipo de
  *  repo, ver comentario de cabecera de por qué el repo debe venir YA abierto en
- *  la transacción del caller). */
-async function triggerInline(deps: AppDeps, vertical: WhatsAppMessagingVertical, port: MessagingOutboxPort, limit: number): Promise<void> {
+ *  la transacción del caller).
+ *
+ *  `db` es el MISMO `TenantDbSession` en el que vive `port` (ver comentario de
+ *  cabecera del archivo, hotfix auditoría a2b) -- el `SAVEPOINT` inicial va
+ *  DENTRO del `try` a propósito: si `db` ya traía la transacción abortada por
+ *  otra causa, `SAVEPOINT` también lanza 25P02, y sin el `try` alrededor eso
+ *  se propagaría como una excepción NUEVA fuera de este trigger best-effort. */
+async function triggerInline(deps: AppDeps, vertical: WhatsAppMessagingVertical, db: TenantDbSession, port: MessagingOutboxPort, limit: number): Promise<void> {
   const dispatcher = deps.whatsAppDispatcher;
   if (!dispatcher) return; // Sin token configurado: nada que intentar inline, el cron ya responde 503 si se invoca directo.
   try {
+    await db.exec(`SAVEPOINT ${SAVEPOINT_NAME}`);
     const summary = await dispatcher.dispatchPending(port, { limit });
+    await db.exec(`RELEASE SAVEPOINT ${SAVEPOINT_NAME}`);
     if (summary.dead > 0) {
       console.error(`whatsapp-dispatch inline: ${summary.dead} mensaje(s) de ${vertical} quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    try {
+      await db.exec(`ROLLBACK TO SAVEPOINT ${SAVEPOINT_NAME}`);
+      await db.exec(`RELEASE SAVEPOINT ${SAVEPOINT_NAME}`);
+    } catch (recoveryErr) {
+      // Si el propio SAVEPOINT nunca llegó a crearse (transacción ya abortada
+      // de entrada, ver comentario de arriba), este ROLLBACK TO también falla
+      // -- se traga aquí a propósito, nunca se propaga (best-effort real).
+      console.error(`whatsapp-dispatch inline: fallo recuperando el SAVEPOINT para ${vertical} (no debería pasar):`, recoveryErr);
+    }
     // Nunca se propaga: el mensaje ya quedó en el outbox, el cron diario
     // (red de seguridad de respaldo) lo recoge en la siguiente corrida.
     console.error(`whatsapp-dispatch inline: fallo best-effort para ${vertical}, el cron diario lo recogerá:`, err);
@@ -138,20 +182,20 @@ async function triggerInline(deps: AppDeps, vertical: WhatsAppMessagingVertical,
 
 /** Disparo inline best-effort para citas -- llamar justo después de que
  *  `handleInboundWhatsAppMessage` (o cualquier acción del agente) encoló una
- *  respuesta en `citas.messaging_outbox`, pasando el MISMO `citasRepo` ya
- *  abierto en la transacción de ese request. */
-export async function triggerCitasWhatsAppDispatchInline(deps: AppDeps, citasRepo: CitasRepository, limit: number = INLINE_LIMIT): Promise<void> {
-  await triggerInline(deps, "citas", createCitasMessagingOutboxPort(citasRepo), limit);
+ *  respuesta en `citas.messaging_outbox`, pasando el MISMO `db`/`citasRepo` ya
+ *  abiertos en la transacción de ese request. */
+export async function triggerCitasWhatsAppDispatchInline(deps: AppDeps, db: TenantDbSession, citasRepo: CitasRepository, limit: number = INLINE_LIMIT): Promise<void> {
+  await triggerInline(deps, "citas", db, createCitasMessagingOutboxPort(citasRepo), limit);
 }
 
 /** Mismo principio que `triggerCitasWhatsAppDispatchInline`, para hoteles. */
-export async function triggerHotelesWhatsAppDispatchInline(deps: AppDeps, hotelesRepo: HotelesRepository, limit: number = INLINE_LIMIT): Promise<void> {
-  await triggerInline(deps, "hoteles", createHotelesMessagingOutboxPort(hotelesRepo), limit);
+export async function triggerHotelesWhatsAppDispatchInline(deps: AppDeps, db: TenantDbSession, hotelesRepo: HotelesRepository, limit: number = INLINE_LIMIT): Promise<void> {
+  await triggerInline(deps, "hoteles", db, createHotelesMessagingOutboxPort(hotelesRepo), limit);
 }
 
 /** Mismo principio que `triggerCitasWhatsAppDispatchInline`, para restaurantes. */
-export async function triggerRestaurantesWhatsAppDispatchInline(deps: AppDeps, restaurantesRepo: RestaurantesRepository, limit: number = INLINE_LIMIT): Promise<void> {
-  await triggerInline(deps, "restaurantes", createRestaurantesMessagingOutboxPort(restaurantesRepo), limit);
+export async function triggerRestaurantesWhatsAppDispatchInline(deps: AppDeps, db: TenantDbSession, restaurantesRepo: RestaurantesRepository, limit: number = INLINE_LIMIT): Promise<void> {
+  await triggerInline(deps, "restaurantes", db, createRestaurantesMessagingOutboxPort(restaurantesRepo), limit);
 }
 
 export function whatsappDispatchRoutes(deps: AppDeps): Hono {

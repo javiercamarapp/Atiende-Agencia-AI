@@ -117,7 +117,7 @@ export function hotelesWhatsAppRoutes(deps: AppDeps): Hono {
       // best-effort que citas/whatsapp.ts, ver comentario de cabecera de
       // whatsapp-dispatch.ts para el detalle de por qué reutiliza este mismo
       // `repo`/transacción en vez de abrir una sesión nueva.
-      await triggerHotelesWhatsAppDispatchInline(deps, repo);
+      await triggerHotelesWhatsAppDispatchInline(deps, db, repo);
 
       return c.json({ ok: !hadRetryableFailure }, hadRetryableFailure ? 500 : 200);
     });

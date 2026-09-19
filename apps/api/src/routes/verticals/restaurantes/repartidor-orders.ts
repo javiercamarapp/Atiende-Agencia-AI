@@ -103,7 +103,12 @@ export function restaurantesRepartidorOrdersRoutes(deps: AppDeps): Hono<CoreAuth
       // best-effort que admin-orders.ts::PATCH .../status (changeAssignedOrderStatus
       // también puede encolar el WhatsApp al cliente vía
       // tryNotifyCustomerOnOrderStatusChange), mismo `repo`/transacción.
-      await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
+      //
+      // Auditoría a2b (CRÍTICO, primo de PR #166) — mismo hotfix de SAVEPOINT que
+      // admin-orders.ts (ver ese comentario y whatsapp-dispatch.ts): esta ruta
+      // también corre en sesión de STAFF (repartidor autenticado), así que
+      // `claim_messaging_outbox_batch` también lanza 42501 siempre aquí.
+      await triggerRestaurantesWhatsAppDispatchInline(deps, c.get("db"), repo);
       return c.json({ order: serializeOrder(updated) });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
