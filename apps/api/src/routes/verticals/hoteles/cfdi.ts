@@ -18,6 +18,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { rateLimit } from "@atiende/core-ratelimit";
 import { CfdiFolioStampingInProgressError, PortUnavailableError } from "@atiende/mcp-cfdi";
 import {
   CFDI_HOSPEDAJE_ROLES,
@@ -32,9 +33,25 @@ import {
   type CfdiEmisionRecord,
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
-import { readJsonCapped } from "../../../http-security.ts";
+import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+// Hallazgo de auditoría (ALTO, "packages/core-ratelimit cataloga la categoría
+// 'mcp:cfdi' -- CERRADA, ver endpoint-policy.ts -- pero ningún handler real la
+// invocaba: apps/api solo conectaba auth:login/auth:token-issue/auth:accept-invite/
+// rentas:ical-feed-publico"). Cada ruta de este archivo que de verdad llama a
+// `deps.hotelesCfdiPort` (timbrar hospedaje/pago, cancelar, consultar estado) paga
+// dinero real por llamada de más al PAC (Finkok/SW Sapien) y arriesga folios/UUID
+// duplicados ante el SAT -- exactamente la razón ya documentada de 'mcp:cfdi' en
+// endpoint-policy.ts, nunca conectada hasta este fix. Límite generoso para operación
+// real de un hotel (ningún staff timbra/cancela/consulta 20 CFDI en 5 minutos desde la
+// misma IP+property en uso normal) y freno real contra un script/bug en bucle o una
+// integración mal configurada reintentando sin control. Llave por IP + propertyId
+// (mismo criterio que `rentas:ical-feed-publico`): un ataque no debe poder abrir cupo
+// nuevo por folio/cfdiId, y una IP compartida (NAT de oficina) no debe agotar el cupo
+// de otra property.
+const CFDI_PAC_RATE_LIMIT = { max: 20, windowMs: 5 * 60_000 } as const;
 
 // Hallazgo auditoría — en producción `deps.hotelesCfdiPort` es
 // `DualPacCfdiPort(FinkokAdapter, SwSapienAdapter)`, y AMBOS adaptadores son
@@ -176,6 +193,12 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const folioId = c.req.param("folioId");
+
+    const pacAllowed = await rateLimit(`mcp:cfdi:${requestActor(c.req.raw, propertyId)}`, CFDI_PAC_RATE_LIMIT.max, CFDI_PAC_RATE_LIMIT.windowMs, {
+      category: "mcp:cfdi",
+    });
+    if (!pacAllowed) throw Errors.tooManyRequests("Demasiadas solicitudes de CFDI para esta property. Intenta de nuevo en unos minutos.");
+
     const raw = await readJsonCapped<EmitirHospedajeBody>(c.req.raw, 8 * 1024);
     const body = parseEmitirHospedajeBody(raw);
 
@@ -327,6 +350,12 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const folioId = c.req.param("folioId");
+
+    const pacAllowed = await rateLimit(`mcp:cfdi:${requestActor(c.req.raw, propertyId)}`, CFDI_PAC_RATE_LIMIT.max, CFDI_PAC_RATE_LIMIT.windowMs, {
+      category: "mcp:cfdi",
+    });
+    if (!pacAllowed) throw Errors.tooManyRequests("Demasiadas solicitudes de CFDI para esta property. Intenta de nuevo en unos minutos.");
+
     const raw = await readJsonCapped<EmitirPagoBody>(c.req.raw, 2 * 1024);
     const paymentId = requireString(raw.paymentId, "paymentId");
     const relacionadoCfdiId = requireString(raw.relacionadoCfdiId, "relacionadoCfdiId");
@@ -404,6 +433,12 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const propertyId = c.req.param("propertyId");
     const cfdiId = c.req.param("cfdiId");
+
+    const pacAllowed = await rateLimit(`mcp:cfdi:${requestActor(c.req.raw, propertyId)}`, CFDI_PAC_RATE_LIMIT.max, CFDI_PAC_RATE_LIMIT.windowMs, {
+      category: "mcp:cfdi",
+    });
+    if (!pacAllowed) throw Errors.tooManyRequests("Demasiadas solicitudes de CFDI para esta property. Intenta de nuevo en unos minutos.");
+
     const raw = await readJsonCapped<CancelarBody>(c.req.raw, 2 * 1024);
     if (raw.motivo !== "01" && raw.motivo !== "02" && raw.motivo !== "03" && raw.motivo !== "04") {
       throw Errors.validation("motivo: se esperaba 01|02|03|04 (catálogo SAT c_MotivoCancelacion).");
@@ -456,6 +491,11 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     assertVerticalRole(c, CFDI_HOSPEDAJE_ROLES);
     const propertyId = c.req.param("propertyId");
     const cfdiId = c.req.param("cfdiId");
+
+    const pacAllowed = await rateLimit(`mcp:cfdi:${requestActor(c.req.raw, propertyId)}`, CFDI_PAC_RATE_LIMIT.max, CFDI_PAC_RATE_LIMIT.windowMs, {
+      category: "mcp:cfdi",
+    });
+    if (!pacAllowed) throw Errors.tooManyRequests("Demasiadas solicitudes de CFDI para esta property. Intenta de nuevo en unos minutos.");
 
     const repo = deps.hotelesRepo(c.get("db"));
     const cfdi = await repo.findCfdiEmision(propertyId, cfdiId);

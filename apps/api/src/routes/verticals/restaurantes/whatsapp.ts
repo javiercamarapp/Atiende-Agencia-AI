@@ -12,12 +12,23 @@
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
 import { extractMetaPhoneNumberId, extractMetaTextMessages, handleInboundWhatsAppMessage, verifyMetaSignature } from "@atiende/domain-restaurantes";
-import { constantTimeEqual } from "../../../http-security.ts";
+import { rateLimit } from "@atiende/core-ratelimit";
+import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
+
+// Hallazgo de auditoría (ALTO, "packages/core-ratelimit cataloga la categoría
+// 'conversation:inbound-webhook' -- ABIERTA (degrada a memoria, nunca a cero) ver
+// endpoint-policy.ts -- pero ningún webhook real la invocaba"). La firma HMAC ya
+// garantiza que el remitente es Meta real -- este límite es la segunda línea que la
+// propia fila de la tabla documenta: acotar la ráfaga de procesamiento (turn handler
+// -> LLM -> outbox) por número de WhatsApp de esta organización, nunca dejarla sin
+// tope. Ante negativa, 429 (no 200 silencioso ni 5xx) -- Meta reintenta con 429 igual
+// que con 5xx.
+const INBOUND_WEBHOOK_RATE_LIMIT = { max: 120, windowMs: 60_000 } as const;
 
 export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -54,11 +65,23 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       return c.text("Invalid JSON", 400);
     }
 
+    const phoneNumberId = extractMetaPhoneNumberId(payload);
+
+    // Hallazgo de auditoría (ALTO) — ver comentario de cabecera del archivo.
+    // Evaluado DESPUÉS de verificar la firma (para no gastar cupo en tráfico que ni
+    // siquiera prueba ser de Meta) pero ANTES de abrir sesión de base de datos.
+    const inboundAllowed = await rateLimit(
+      `conversation:inbound-webhook:${requestActor(c.req.raw, phoneNumberId ?? "sin-numero")}`,
+      INBOUND_WEBHOOK_RATE_LIMIT.max,
+      INBOUND_WEBHOOK_RATE_LIMIT.windowMs,
+      { category: "conversation:inbound-webhook" },
+    );
+    if (!inboundAllowed) return c.text("Too Many Requests", 429);
+
     // Webhook público/de sistema, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`), igual que public.ts/voice-tools.ts.
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
-      const phoneNumberId = extractMetaPhoneNumberId(payload);
       const organizationId = phoneNumberId ? await repo.resolveOrganizationByPhoneNumberId(phoneNumberId) : null;
       if (!phoneNumberId || !organizationId) {
         // Número no configurado en la plataforma: ack silencioso, no reintento.

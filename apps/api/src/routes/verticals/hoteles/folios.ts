@@ -29,12 +29,27 @@ import {
   type ChargeRecord,
   type PaymentRecord,
 } from "@atiende/domain-hoteles";
+import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../../../errors.ts";
-import { readJsonCapped } from "../../../http-security.ts";
+import { readJsonCapped, requestActor } from "../../../http-security.ts";
 import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const CHARGE_CONCEPT_VALUES = new Set<ChargeConcept>(["hospedaje", "ab", "extras", "ajuste", "propina", "otro"]);
+
+// Hallazgo de auditoría (ALTO, "packages/core-ratelimit cataloga la categoría
+// 'billing:charge' -- CERRADA, ver endpoint-policy.ts: 'disparar cargos/cobros
+// repetidos sin freno mueve dinero real' -- pero ningún handler real la invocaba").
+// `POST .../folios/:folioId/pagos` con `metodo: "tarjeta"` es el único punto real de
+// este monorepo que llama a un adaptador de cobro (`deps.hotelesPaymentsPort.charge`,
+// producción = Stripe PaymentIntents, ver production/hoteles-payments-port.ts) -- la
+// idempotency-key ya evita duplicar UN cargo ante un reintento idéntico, pero nunca
+// frenó una ráfaga de intentos DISTINTOS (tokens/montos distintos) contra el mismo
+// folio/property. Límite generoso para cobro real en un hotel (ningún staff cobra 15
+// tarjetas en 5 minutos sobre el mismo folio en operación normal) y freno real contra
+// un script de fraude probando tokens o un bug en bucle. Llave por IP + propertyId,
+// mismo criterio que `mcp:cfdi`/`rentas:ical-feed-publico`.
+const BILLING_CHARGE_RATE_LIMIT = { max: 15, windowMs: 5 * 60_000 } as const;
 
 interface ChargeBody {
   readonly descripcion?: unknown;
@@ -473,6 +488,19 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     if (metodo === "tarjeta" && !tokenPago) {
       throw Errors.validation("Un pago con tarjeta requiere tokenPago (nunca se acepta un número de tarjeta).");
+    }
+
+    // Hallazgo de auditoría (ALTO) — ver comentario de cabecera del archivo. Solo el
+    // método que de verdad dispara un cargo real (tarjeta -> PaymentsPort.charge)
+    // consume este cupo; efectivo/transferencia son registro manual sin llamada a un
+    // procesador externo, no el "cobro repetido que mueve dinero real" que cataloga
+    // 'billing:charge'. Evaluado ANTES de tocar `repo`/el folio, para que una ráfaga
+    // ni siquiera pague el costo de esa consulta.
+    if (metodo === "tarjeta") {
+      const chargeAllowed = await rateLimit(`billing:charge:${requestActor(c.req.raw, propertyId)}`, BILLING_CHARGE_RATE_LIMIT.max, BILLING_CHARGE_RATE_LIMIT.windowMs, {
+        category: "billing:charge",
+      });
+      if (!chargeAllowed) throw Errors.tooManyRequests("Demasiados intentos de cobro para esta property. Intenta de nuevo en unos minutos.");
     }
 
     const repo = deps.hotelesRepo(c.get("db"));

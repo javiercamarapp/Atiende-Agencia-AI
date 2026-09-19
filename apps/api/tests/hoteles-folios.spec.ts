@@ -230,3 +230,48 @@ describe("Cierre de folio (saldo_cero / cuenta_por_cobrar)", () => {
     expect(res.status).toBe(200);
   });
 });
+
+// Hallazgo de auditoría (ALTO, "packages/core-ratelimit cataloga la categoría
+// 'billing:charge' pero ningún handler real la invocaba" -- ver
+// packages/core-ratelimit/src/endpoint-policy.ts y el comentario de cabecera de
+// apps/api/src/routes/verticals/hoteles/folios.ts). El backend en memoria de
+// @atiende/core-ratelimit se resetea antes de cada test (ver
+// test-setup/reset-rate-limiter.ts).
+describe("rate limiting real en billing:charge (POST .../folios/:folioId/pagos, metodo=tarjeta)", () => {
+  it("más de 15 intentos de cobro con tarjeta en la misma ventana desde la misma IP+property responde 429 -- antes de este fix nunca limitaba nada", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    // folioId inexistente a propósito: el rate limit de 'billing:charge' se evalúa
+    // ANTES de tocar el repositorio, así que el conteo no depende de que el folio
+    // exista -- los primeros 15 intentos deben fallar por "folio no encontrado"
+    // (404), nunca por límite; el intento 16 debe fallar por límite (429).
+    let lastStatus = 0;
+    for (let i = 0; i < 16; i += 1) {
+      const res = await app.request(
+        `/hoteles/${ctx.propertyId}/folios/folio-inexistente/pagos`,
+        authedJson(ctx.staff.owner.token, { monto: 100, metodo: "tarjeta", tokenPago: `tok_${i}` }, { "idempotency-key": `pago-ratelimit-${i}` }),
+      );
+      lastStatus = res.status;
+      if (i < 15) expect(res.status).toBe(404);
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it("efectivo/transferencia NUNCA consumen el cupo de 'billing:charge' (no disparan un cargo real) -- más de 15 pagos en efectivo siguen sin límite", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    let lastStatus = 0;
+    for (let i = 0; i < 16; i += 1) {
+      const res = await app.request(
+        `/hoteles/${ctx.propertyId}/folios/folio-inexistente/pagos`,
+        authedJson(ctx.staff.owner.token, { monto: 100, metodo: "efectivo" }, { "idempotency-key": `pago-efectivo-ratelimit-${i}` }),
+      );
+      lastStatus = res.status;
+    }
+    // Siempre 404 (folio no encontrado) -- nunca 429, porque efectivo/transferencia
+    // no pasan por el rate limiter de 'billing:charge'.
+    expect(lastStatus).toBe(404);
+  });
+});
