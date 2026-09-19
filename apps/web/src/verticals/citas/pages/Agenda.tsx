@@ -63,6 +63,7 @@ import { broadcastWaitlist, fetchWaitlist } from "../lib/waitlist-client.ts";
 import type { WaitlistCandidate } from "../lib/waitlist-client.ts";
 import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention } from "../lib/format.ts";
 import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
+import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
@@ -148,7 +149,19 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
 
 export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName, staffEmail }: CitasShellContext) {
   const [view, setView] = useState<ViewMode>("month");
-  const [anchor, setAnchor] = useState<Date>(() => new Date());
+  // Bug real (revisión r6, punto 2 -- el fix de PR #164 solo corrigió la ETIQUETA):
+  // `anchor` alimenta `startOfWeek`/`computeRange` (ambos con getters/setters `UTC*`,
+  // porque tratan `anchor` como un valor de solo-FECHA anclado a medianoche UTC -- mismo
+  // criterio que `parseFechaSolo` de `formato-fecha.ts`). `new Date()` da el INSTANTE
+  // actual, no un día anclado a UTC -- entre las 18:00 y las 23:59 de CDMX (00:00-05:59
+  // UTC) su `getUTCDate()`/`getUTCMonth()` YA son los de MAÑANA, así que
+  // `startOfWeek`/el cálculo del día 1 del mes calculaban la semana/mes SIGUIENTE, y
+  // `fromIso`/`toIso` (mandados al servidor) pedían el rango equivocado -- aunque la
+  // ETIQUETA (ya corregida en PR #164 con `timeZone: "UTC"` en los formatters) mostrara
+  // el día/mes correcto para ESE `anchor` ya corrido. Fix: anclar `anchor` al día de
+  // CALENDARIO del negocio (`hoyFechaSolo()`), luego convertirlo al mismo tipo de Date
+  // anclado a medianoche UTC (`parseFechaSolo()`) que el resto de esta función ya espera.
+  const [anchor, setAnchor] = useState<Date>(() => parseFechaSolo(hoyFechaSolo()));
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
   const [providerFilter, setProviderFilter] = useState<string>("");
   const [appointments, setAppointments] = useState<readonly AppointmentSummary[] | null>(null);
