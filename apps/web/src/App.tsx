@@ -37,6 +37,7 @@ import { FraudePage } from "./verticals/hoteles/pages/Fraude.tsx";
 import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx";
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
 import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
+import { RevenuePage as HotelesRevenuePage } from "./verticals/hoteles/pages/Revenue.tsx";
 import { CatalogoPage as HotelesCatalogoPage } from "./verticals/hoteles/pages/Catalogo.tsx";
 import { PedidosFnbPage } from "./verticals/hoteles/pages/PedidosFnb.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
@@ -286,6 +287,13 @@ const HotelesCfdiListadoRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx)
  * en HotelesShell.tsx, no aquí; un rol sin acceso que navegue directo a esta URL ve
  * el 403 real del servidor como mensaje de error dentro de Pl.tsx). */
 const HotelesPlRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesPlPage {...ctx} />);
+
+/** Fase 9 (REQ-REV-003/004/005/007) — wiring del motor de revenue management
+ * (pages/Revenue.tsx) — mismo patrón que HotelesPlRoute/HotelesFraudeRoute (nav
+ * gateada cosméticamente por rol en HotelesShell.tsx, no aquí; un rol sin acceso
+ * que navegue directo a esta URL ve el 403 real del servidor como mensaje de
+ * error dentro de Revenue.tsx). */
+const HotelesRevenueRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesRevenuePage {...ctx} />);
 
 /** Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
  * tarifas/huéspedes imposible sin SQL directo"): pantalla de catálogo (pages/
@@ -590,6 +598,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/pedidos-fnb" element={<HotelesPedidosFnbRoute />} />
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
+        <Route path="/hoteles/:orgSlug/revenue" element={<HotelesRevenueRoute />} />
         <Route path="/hoteles/:orgSlug/catalogo" element={<HotelesCatalogoRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/rentas/registro" element={<RentasRegistroRoute />} />
