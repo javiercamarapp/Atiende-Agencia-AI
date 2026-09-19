@@ -16,9 +16,9 @@
 // Google Calendar (apps/api/.../google-calendar-*.ts) no se toca: solo cambia
 // cómo se ve su estado.
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, CalendarSync, Pencil, Plus, UserRound } from "lucide-react";
+import { ArrowLeft, CalendarSync, Pencil, Plug, Plus, UserRound } from "lucide-react";
 import {
   Badge,
   Button,
@@ -36,8 +36,21 @@ import {
   TableCell,
   TableRow,
 } from "@atiende/ui";
-import { createProvider, fetchProviderDetail, fetchProviders, requestGoogleCalendarConnectUrl, setProviderServiceOffering, updateProvider } from "../lib/providers-client.ts";
-import type { ProviderDetail, ProviderSummary } from "../lib/providers-client.ts";
+import {
+  connectCalCom,
+  connectCalDav,
+  createProvider,
+  disconnectCalCom,
+  disconnectCalDav,
+  fetchProviderDetail,
+  fetchProviders,
+  requestGoogleCalendarConnectUrl,
+  setProviderServiceOffering,
+  testCalComConnection,
+  testCalDavConnection,
+  updateProvider,
+} from "../lib/providers-client.ts";
+import type { CalComStatus, CalDavStatus, ProviderDetail, ProviderSummary } from "../lib/providers-client.ts";
 import { fetchServices } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
 import { formatDayOfWeek, formatHHMM } from "../lib/format.ts";
@@ -123,6 +136,270 @@ export function ProveedoresListPage({ apiBaseUrl, token, propertyId, orgSlug }: 
         ))}
       </div>
     </div>
+  );
+}
+
+// ============================================================================
+// Fase 6 §2 (seguimiento) — "Calendarios conectados": Cal.com y CalDAV, mismo
+// estándar visual que la tarjeta de Google Calendar de arriba (Badge de estado +
+// mensaje de error legible + acción real) — a diferencia de Google (OAuth,
+// redirección), aquí el profesional pega sus credenciales directo en un
+// formulario (mismo criterio que la ruta HTTP, ver calendar-providers.ts) y
+// puede "Probar conexión" sin tener que desconectar/reconectar para verificar
+// que sigue viva.
+// ============================================================================
+
+interface CalendarProviderCardShellProps {
+  readonly title: string;
+  readonly connected: boolean;
+  readonly syncStatus: "disconnected" | "connected" | "error";
+  readonly syncError: string | null;
+  readonly summary: string | null;
+  readonly testResult: string | null;
+  readonly localError: string | null;
+  readonly testing: boolean;
+  readonly disconnecting: boolean;
+  readonly onTest: () => void;
+  readonly onDisconnect: () => void;
+  readonly connectForm: ReactNode;
+}
+
+function CalendarProviderCardShell({ title, connected, syncStatus, syncError, summary, testResult, localError, testing, disconnecting, onTest, onDisconnect, connectForm }: CalendarProviderCardShellProps) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {localError && <EstadoError mensaje={localError} />}
+        {connected ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge variant={syncStatus === "error" ? "destructive" : "secondary"}>{syncStatus === "error" ? "Conectado (con error)" : "Conectado"}</Badge>
+              {summary && <span className="break-all text-[13px] text-muted-foreground">{summary}</span>}
+            </div>
+            {syncStatus === "error" && syncError && <p className="text-[13px] text-destructive">Error de sincronización: {syncError}</p>}
+            {testResult && <p className="text-[13px] text-muted-foreground">{testResult}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={onTest} disabled={testing}>
+                {testing ? "Probando…" : "Probar conexión"}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={onDisconnect} disabled={disconnecting}>
+                {disconnecting ? "Desconectando…" : "Desconectar"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          connectForm
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface CalComCardProps {
+  readonly apiBaseUrl: string;
+  readonly token: string;
+  readonly propertyId: string;
+  readonly providerId: string;
+  readonly status: CalComStatus;
+  readonly onChanged: () => void;
+}
+
+function CalComCard({ apiBaseUrl, token, propertyId, providerId, status, onChanged }: CalComCardProps) {
+  const [apiKey, setApiKey] = useState("");
+  const [eventTypeId, setEventTypeId] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
+
+  async function handleConnect(e: FormEvent) {
+    e.preventDefault();
+    if (!apiKey.trim() || !eventTypeId.trim()) return;
+    setConnecting(true);
+    setLocalError(null);
+    try {
+      await connectCalCom(fetch, apiBaseUrl, token, propertyId, providerId, { apiKey: apiKey.trim(), eventTypeId: eventTypeId.trim(), baseUrl: baseUrl.trim() || undefined });
+      setApiKey("");
+      setEventTypeId("");
+      setBaseUrl("");
+      onChanged();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "No se pudo conectar Cal.com.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    setDisconnecting(true);
+    setLocalError(null);
+    try {
+      await disconnectCalCom(fetch, apiBaseUrl, token, propertyId, providerId);
+      onChanged();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "No se pudo desconectar Cal.com.");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    setLocalError(null);
+    setTestResult(null);
+    try {
+      const result = await testCalComConnection(fetch, apiBaseUrl, token, propertyId, providerId);
+      setTestResult(result.ok ? "Conexión verificada correctamente." : "La prueba de conexión falló.");
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "No se pudo probar la conexión con Cal.com.");
+    } finally {
+      setTesting(false);
+      onChanged(); // la prueba puede haber cambiado sync_status/sync_error guardado
+    }
+  }
+
+  return (
+    <CalendarProviderCardShell
+      title="Cal.com"
+      connected={status.connected}
+      syncStatus={status.syncStatus}
+      syncError={status.syncError}
+      summary={status.eventTypeId ? `Event type: ${status.eventTypeId}${status.baseUrl ? ` · ${status.baseUrl}` : ""}` : null}
+      testResult={testResult}
+      localError={localError}
+      testing={testing}
+      disconnecting={disconnecting}
+      onTest={() => void handleTest()}
+      onDisconnect={() => void handleDisconnect()}
+      connectForm={
+        <form onSubmit={handleConnect} className="flex flex-col gap-3">
+          <p className="text-[13px] text-muted-foreground">Este proveedor todavía no conecta Cal.com.</p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`citas-calcom-apikey-${providerId}`}>API key</Label>
+            <Input id={`citas-calcom-apikey-${providerId}`} type="password" placeholder="cal_live_…" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`citas-calcom-eventtype-${providerId}`}>Event type ID</Label>
+            <Input id={`citas-calcom-eventtype-${providerId}`} placeholder="123" value={eventTypeId} onChange={(e) => setEventTypeId(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`citas-calcom-baseurl-${providerId}`}>URL base (solo si es self-hosted)</Label>
+            <Input id={`citas-calcom-baseurl-${providerId}`} placeholder="https://calcom.tuempresa.com/v2" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+          </div>
+          <Button type="submit" disabled={connecting} className="w-fit">
+            <Plug aria-hidden />
+            {connecting ? "Conectando…" : "Conectar Cal.com"}
+          </Button>
+        </form>
+      }
+    />
+  );
+}
+
+interface CalDavCardProps {
+  readonly apiBaseUrl: string;
+  readonly token: string;
+  readonly propertyId: string;
+  readonly providerId: string;
+  readonly status: CalDavStatus;
+  readonly onChanged: () => void;
+}
+
+function CalDavCard({ apiBaseUrl, token, propertyId, providerId, status, onChanged }: CalDavCardProps) {
+  const [calendarCollectionUrl, setCalendarCollectionUrl] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
+
+  async function handleConnect(e: FormEvent) {
+    e.preventDefault();
+    if (!calendarCollectionUrl.trim() || !username.trim() || !password) return;
+    setConnecting(true);
+    setLocalError(null);
+    try {
+      await connectCalDav(fetch, apiBaseUrl, token, propertyId, providerId, { calendarCollectionUrl: calendarCollectionUrl.trim(), username: username.trim(), password });
+      setCalendarCollectionUrl("");
+      setUsername("");
+      setPassword("");
+      onChanged();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "No se pudo conectar CalDAV.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    setDisconnecting(true);
+    setLocalError(null);
+    try {
+      await disconnectCalDav(fetch, apiBaseUrl, token, propertyId, providerId);
+      onChanged();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "No se pudo desconectar CalDAV.");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    setLocalError(null);
+    setTestResult(null);
+    try {
+      const result = await testCalDavConnection(fetch, apiBaseUrl, token, propertyId, providerId);
+      setTestResult(result.ok ? "Conexión verificada correctamente." : "La prueba de conexión falló.");
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "No se pudo probar la conexión con CalDAV.");
+    } finally {
+      setTesting(false);
+      onChanged();
+    }
+  }
+
+  return (
+    <CalendarProviderCardShell
+      title="CalDAV (Apple/iCloud, Fastmail, Nextcloud…)"
+      connected={status.connected}
+      syncStatus={status.syncStatus}
+      syncError={status.syncError}
+      summary={status.calendarCollectionUrl ? `${status.username} · ${status.calendarCollectionUrl}` : null}
+      testResult={testResult}
+      localError={localError}
+      testing={testing}
+      disconnecting={disconnecting}
+      onTest={() => void handleTest()}
+      onDisconnect={() => void handleDisconnect()}
+      connectForm={
+        <form onSubmit={handleConnect} className="flex flex-col gap-3">
+          <p className="text-[13px] text-muted-foreground">Este proveedor todavía no conecta CalDAV.</p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`citas-caldav-url-${providerId}`}>URL de la colección de calendario</Label>
+            <Input id={`citas-caldav-url-${providerId}`} placeholder="https://caldav.fastmail.com/dav/calendars/user/tu@correo.com/abc/" value={calendarCollectionUrl} onChange={(e) => setCalendarCollectionUrl(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`citas-caldav-username-${providerId}`}>Usuario</Label>
+            <Input id={`citas-caldav-username-${providerId}`} value={username} onChange={(e) => setUsername(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`citas-caldav-password-${providerId}`}>Contraseña de aplicación</Label>
+            <Input id={`citas-caldav-password-${providerId}`} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+          </div>
+          <Button type="submit" disabled={connecting} className="w-fit">
+            <Plug aria-hidden />
+            {connecting ? "Conectando…" : "Conectar CalDAV"}
+          </Button>
+        </form>
+      }
+    />
   );
 }
 
@@ -264,33 +541,41 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
             </Card>
           )}
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Google Calendar</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {detail.googleCalendar.connected ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <Badge variant={detail.googleCalendar.syncStatus === "error" ? "destructive" : "secondary"}>
-                    {detail.googleCalendar.syncStatus === "error" ? "Conectado (con error)" : "Conectado"}
-                  </Badge>
-                  <p className={detail.googleCalendar.syncStatus === "error" ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}>
-                    {detail.googleCalendar.syncStatus === "error"
-                      ? `Error de sincronización: ${detail.googleCalendar.syncError ?? "desconocido"}`
-                      : "Las citas de este proveedor se sincronizan automáticamente."}
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-[13px] text-muted-foreground">Este proveedor todavía no conecta su Google Calendar.</p>
-                  <Button onClick={() => void handleConnectGoogleCalendar()} disabled={connecting}>
-                    <CalendarSync aria-hidden />
-                    {connecting ? "Conectando…" : "Conectar Google Calendar"}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <div className="flex flex-col gap-3">
+            <h2 className="font-display text-base font-semibold text-foreground">Calendarios conectados</h2>
+            <p className="-mt-2 text-[13px] text-muted-foreground">Cada proveedor conecta su propio calendario — es personal, nunca compartido por todo el negocio.</p>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">Google Calendar</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {detail.googleCalendar.connected ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Badge variant={detail.googleCalendar.syncStatus === "error" ? "destructive" : "secondary"}>
+                      {detail.googleCalendar.syncStatus === "error" ? "Conectado (con error)" : "Conectado"}
+                    </Badge>
+                    <p className={detail.googleCalendar.syncStatus === "error" ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}>
+                      {detail.googleCalendar.syncStatus === "error"
+                        ? `Error de sincronización: ${detail.googleCalendar.syncError ?? "desconocido"}`
+                        : "Las citas de este proveedor se sincronizan automáticamente."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-[13px] text-muted-foreground">Este proveedor todavía no conecta su Google Calendar.</p>
+                    <Button onClick={() => void handleConnectGoogleCalendar()} disabled={connecting}>
+                      <CalendarSync aria-hidden />
+                      {connecting ? "Conectando…" : "Conectar Google Calendar"}
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <CalComCard apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} providerId={providerId} status={detail.calcom} onChanged={load} />
+            <CalDavCard apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} providerId={providerId} status={detail.caldav} onChanged={load} />
+          </div>
 
           <Card>
             <CardHeader className="pb-3">
