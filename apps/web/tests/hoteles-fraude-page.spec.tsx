@@ -21,7 +21,7 @@ vi.mock("sonner", () => ({ toast: toastMock, Toaster: () => null }));
 import { FraudePage } from "../src/verticals/hoteles/pages/Fraude.tsx";
 import type { HotelesShellContext } from "../src/verticals/hoteles/HotelesShell.tsx";
 import type { FraudAlertSummary } from "../src/verticals/hoteles/lib/fraude-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -52,14 +52,20 @@ const CTX: HotelesShellContext = {
   staffEmail: "gm@example.com",
 };
 
+// "descuento_fuera_de_politica" -- uno de los DOS patrones reales portados en
+// `@atiende/domain-hoteles/src/fraude/deteccion.ts::FRAUD_PATTERNS` (el otro es
+// "folio_reabierto_post_auditoria"). Antes decía "cargo_reversado_repetido", un
+// patrón que no existe en el dominio (el contrato de `patron` es `string` así que
+// no falla el typecheck, pero el fixture inventaba datos que la API real jamás
+// produce).
 const ALERTA_PENDIENTE: FraudAlertSummary = {
   id: "alert-1",
-  patron: "cargo_reversado_repetido",
+  patron: "descuento_fuera_de_politica",
   folioId: "folio-1",
   cargoId: "ch-1",
   pagoId: null,
-  razon: "3 reversos del mismo cargo en 24 horas.",
-  evidencia: { conteo: 3 },
+  razon: "El descuento 500 del cargo ch-1 supera el umbral configurado (200) y no tiene autorización de un rol administrativo.",
+  evidencia: { discountAmount: 500, thresholdAmount: 200 },
   rolesDestinatario: ["owner", "gm"],
   estado: "pendiente",
   notaDecision: null,
@@ -131,13 +137,34 @@ describe("FraudePage (hoteles)", () => {
     expect(rendered.container.textContent).toContain("Ocurrió un problema");
   });
 
+  it("reintentar tras un error vuelve a pedir las alertas", async () => {
+    let ok = false;
+    fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith("https://api.test/hoteles/prop-1/fraude/alertas")) return jsonResponse([ALERTA_PENDIENTE], ok);
+      throw new Error(`fetch inesperado en el test: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("Ocurrió un problema");
+
+    ok = true;
+    const retryBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Reintentar")!;
+    await act(async () => {
+      click(retryBtn);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(rendered.container.textContent).toContain("descuento_fuera_de_politica");
+  });
+
   it("renderiza la alerta real: patrón, razón, folio/cargo y roles destinatario", async () => {
     stubFetch({});
     rendered = renderPage();
     await esperarCarga();
     const text = rendered.container.textContent!;
-    expect(text).toContain("cargo_reversado_repetido");
-    expect(text).toContain("3 reversos del mismo cargo en 24 horas.");
+    expect(text).toContain("descuento_fuera_de_politica");
+    expect(text).toContain("El descuento 500 del cargo ch-1 supera el umbral configurado (200) y no tiene autorización de un rol administrativo.");
     expect(text).toContain("Folio: folio-1");
     expect(text).toContain("Cargo: ch-1");
     expect(text).toContain("owner, gm");
