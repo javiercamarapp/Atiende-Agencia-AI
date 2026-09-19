@@ -95,3 +95,18 @@ asumido:
   mensual por departamento, el historial de gastos (`POST/GET .../pl/gastos`) y el
   owner's report completo que el mismo endpoint ya expone no tienen página propia
   todavía — hallazgo separado.
+
+## Fase 9/11/13 — Revenue y Reputación (no documentadas hasta este barrido)
+
+- `pages/Revenue.tsx` — panel del gate de revenue management (estado
+  shadow/propone/autopilot, aprobación de owner, historial de backtests,
+  explicación de precio, verificación de paridad/compset). El propio archivo
+  advierte en su cabecera lo mismo que `apps/api/.../hoteles/revenue.ts`: no
+  hay ningún motor que produzca una recomendación de tarifa real todavía —
+  esta pantalla no la inventa.
+- `pages/Reputacion.tsx` — inbox de reseñas + índice de reputación agregado,
+  responder una reseña, resolver una acción (crea ticket de mantenimiento real
+  para `ticket_mantenimiento`; `mensaje_proactivo`/`compensacion_reglada`
+  siguen sin ejecutarse de verdad). Sin ingesta automática desde
+  Google/Booking/TripAdvisor — las reseñas se capturan manualmente hasta que
+  exista esa credencial.
