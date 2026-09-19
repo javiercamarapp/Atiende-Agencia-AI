@@ -20,6 +20,7 @@
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import {
   ALL_VERTICALS,
   AppointmentConflictError,
@@ -663,7 +664,13 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
 
-    const todayIso = new Date().toISOString().slice(0, 10);
+    // Bug real (revisión r6, misma causa raíz que `../despachos/vencimientos.ts::todayIso`
+    // -- ver su comentario de cabecera): "hoy" usaba el día UTC del proceso -- entre las
+    // 18:00 y las 23:59 de CDMX (00:00-05:59 UTC) el corte quedaba un día adelante del
+    // real, ocultando del panel la excepción de HOY (el filtro es `>= todayIso`, así que
+    // un `todayIso` de mañana excluye la fila de hoy). Ahora usa
+    // `@atiende/core-tenancy::hoyFechaNegocio()`.
+    const todayIso = hoyFechaNegocio();
     const overrides = await citasRepo.listAvailabilityOverrides(providerId, todayIso);
     return c.json({ availability_overrides: overrides.map(serializeAvailabilityOverride) });
   });
