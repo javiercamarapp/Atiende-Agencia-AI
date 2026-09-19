@@ -188,7 +188,7 @@ export { InMemoryLicitacionesRepository } from "./in-memory-repository.ts";
 export { PostgresLicitacionesRepository, dateColumnToExplicitOffsetIso } from "./postgres-repository.ts";
 
 // ---- Fase 5 pieza 1: andamiaje de ingesta (REQ-004/005/146..150) ----
-export { SOURCE_CONNECTOR_IDS, isSourceConnectorId, SOURCE_HEALTH_STATES, SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, ConnectorRegistry, LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
+export { SOURCE_CONNECTOR_IDS, isSourceConnectorId, SOURCE_HEALTH_STATES, SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, RateLimitedError, ConnectorRegistry, LICITACIONES_CONNECTOR_REGISTRY } from "./connector-registry.ts";
 export type { SourceConnectorId, SourceHealthState, SourceCadence, SourceLiveVerification, SourceConnectorKind, SourceConnectorDescriptor } from "./connector-registry.ts";
 export { isSourceHealthState, classifySourceFailure, computeStaleForMs, evaluateSourceFreshness, DEFAULT_STALE_THRESHOLD_MS } from "./source-run.ts";
 export type { SourceRunInput, SourceRunRecord, SourceRunEvidence, SourceFreshnessRecord } from "./source-run.ts";
@@ -292,9 +292,19 @@ export type {
 export { createComprasMxHistoricoConnector, mapComprasMxHistoricoRow, COMPRAS_MX_HISTORICO_ID } from "./connectors/compras-mx-historico.ts";
 export { streamCsvRows, parseCsv } from "./connectors/csv.ts";
 export type { CsvRowEvent, CsvDataRow, CsvRowError, CsvParseResult } from "./connectors/csv.ts";
-export { assertLegitimateCsvBody } from "./connectors/response-classifier.ts";
+export { assertLegitimateCsvBody, assertLegitimateJsonBody } from "./connectors/response-classifier.ts";
 export type { LicitacionesSourceConnector, TenderSourceIngestCandidate, DiscoverParams, ConnectorContext, ConnectorLogger, DroppedRowInfo } from "./connectors/types.ts";
 export type { TenderSourceIngestResult, TenderDeadlineReminderRecord, ScanDeadlineRemindersInput, ScanDeadlineRemindersResult } from "./repository.ts";
+
+// ---- Fase 9: conectores OCDS de licitaciones VIGENTES (Nuevo León / CDMX) + agregador comercial ----
+export { mapOcdsReleaseToCandidate, isVigenteTender, isDroppedResult } from "./connectors/ocds/map-ocds-release.ts";
+export type { MapOcdsReleaseResult, MapOcdsReleaseOptions } from "./connectors/ocds/map-ocds-release.ts";
+export type { OcdsRelease, OcdsRecord, OcdsReleasePackage, OcdsRecordPackage, OcdsTender, OcdsItem, OcdsClassification, OcdsAmount, OcdsPeriod, OcdsOrganizationReference } from "./connectors/ocds/types.ts";
+export { createNlOcdsConnector, NL_OCDS_ID } from "./connectors/ocds/nl-ocds-connector.ts";
+export { createCdmxOcdsConnector, CDMX_OCDS_ID } from "./connectors/ocds/cdmx-ocds-connector.ts";
+export { mapCdmxCsvRow, parsePropuestasFechaToDeadline, CDMX_CSV_HEADER } from "./connectors/ocds/map-cdmx-csv-row.ts";
+export { createAggregatorConnector, mapAggregatorItem, AGGREGATOR_ID } from "./connectors/aggregator.ts";
+export type { AggregatorTenderItem, AggregatorPageResponse, AggregatorConnectorConfig } from "./connectors/aggregator.ts";
 
 // ---- Fase 10: despacho proactivo real (correo) de alertas ----
 export type { EmailOutboxJobRow, OrganizationNotificationRecipient, OverdueContractInvoiceAlert } from "./repository.ts";

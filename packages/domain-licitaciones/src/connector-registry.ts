@@ -5,6 +5,9 @@
 // de la cadena usa el valor circular a nivel de módulo, solo dentro de
 // funciones que se invocan después de que todo el grafo terminó de cargar).
 import { createComprasMxHistoricoConnector } from "./connectors/compras-mx-historico.ts";
+import { createAggregatorConnector } from "./connectors/aggregator.ts";
+import { createCdmxOcdsConnector } from "./connectors/ocds/cdmx-ocds-connector.ts";
+import { createNlOcdsConnector } from "./connectors/ocds/nl-ocds-connector.ts";
 import type { LicitacionesSourceConnector } from "./connectors/types.ts";
 //
 // Port ADAPTADO (no literal) de `licitaciones/packages/sources/src/connectors/
@@ -54,7 +57,7 @@ import type { LicitacionesSourceConnector } from "./connectors/types.ts";
 //    abajo) está presente ÚNICAMENTE en este descriptor, ausente en los
 //    otros 5.
 
-export const SOURCE_CONNECTOR_IDS = ["manual", "comprasmx", "dof", "ocds_shcp", "pdn_s6", "state_portal", "compras_mx_historico"] as const;
+export const SOURCE_CONNECTOR_IDS = ["manual", "comprasmx", "dof", "ocds_shcp", "pdn_s6", "state_portal", "compras_mx_historico", "nl_ocds", "cdmx_ocds", "aggregator"] as const;
 export type SourceConnectorId = (typeof SOURCE_CONNECTOR_IDS)[number];
 
 export function isSourceConnectorId(value: string): value is SourceConnectorId {
@@ -77,7 +80,7 @@ export type SourceHealthState = (typeof SOURCE_HEALTH_STATES)[number];
 // de cabecera de ese archivo para el detalle completo). Se re-exportan aquí
 // tal cual para no romper ningún import existente (`source-run.ts`, tests,
 // `index.ts`).
-export { SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError } from "./connector-errors.ts";
+export { SourceNotConfiguredError, CaptchaDetectedError, InterfaceChangedError, RateLimitedError } from "./connector-errors.ts";
 
 /** Cadencia declarada de una fuente (REQ-146): nunca una cifra universal, siempre documentada contra el límite real observado/recomendado de ESA fuente. */
 export interface SourceCadence {
@@ -238,4 +241,60 @@ export const LICITACIONES_CONNECTOR_REGISTRY = new ConnectorRegistry()
         "el conector (`connectors/compras-mx-historico.ts`) SÍ es una implementación real y completa, y su propio `response-classifier.ts` detecta exactamente este tipo de bloqueo y lo reporta como corrida fallida (`state: 'captcha_detected'`), nunca como '0 registros'.",
     },
     connector: createComprasMxHistoricoConnector(),
+  })
+  // Fase 9 — cobertura de licitaciones VIGENTES (a diferencia de los 403/sin-API
+  // de ComprasMX/DOF/OCDS-SHCP/PDN-S6 de arriba, y del histórico ya concluido de
+  // `compras_mx_historico`): dos fuentes estatales/CDMX en OCDS, elegidas tras
+  // investigar fuentes reales (decisión ya tomada, ver brief de esta fase) por
+  // NO requerir evadir ninguna medida anti-bot. Ver README de la vertical para
+  // la cobertura honesta (qué SÍ/NO cubren).
+  .register({
+    id: "nl_ocds",
+    kind: "automated",
+    label: "Nuevo León — Contrataciones Abiertas (API OCDS)",
+    termsNote:
+      "API OCDS pública de la Dirección General de Adquisiciones y Servicios de Nuevo León (https://api-ocds.nl.gob.mx, ficha en catalogodatos.nl.gob.mx, licencia CC-BY). Sin reCAPTCHA/auth documentado -- solo lectura (GET).",
+    cadence: {
+      minIntervalMinutes: 24 * 60,
+      note: "24 h: la ficha del dataset declara actualización SEMANAL de la fuente -- un poll diario (alineado al cron diario existente del vertical, ver apps/worker/src/jobs/licitaciones/README.md) ya es más frecuente de lo necesario; no hay ganancia real en consultar más seguido, y así se evita insistir contra la fuente sin motivo.",
+    },
+    liveVerification: {
+      verified: true,
+      note:
+        "Verificado 2026-09-19 con peticiones GET reales: `GET https://api-ocds.nl.gob.mx/api/releases?page=1` respondió 200 con JSON real (paginación Laravel, 88 grupos de publicación / 9 páginas totales, ~10 MB/página). Se leyeron 2 páginas reales completas (1938 ocids únicos tras deduplicar por release más reciente) -- 333 convocatorias resultaron VIGENTES bajo el criterio de `isVigenteTender` (ver `connectors/ocds/map-ocds-release.ts`), todas por `tender.status === \"active\"` (ninguna de las 2 páginas leídas traía además un `tenderPeriod.endDate` futuro -- gap real documentado: hoy este conector alimenta convocatorias vigentes SIN fecha límite conocida con más frecuencia que CON ella, ver README de la vertical). Endpoints alternativos probados y descartados con evidencia real: `/`, `/api/v1/releases`, `/releases`, `/release_package`, `/record_package` -> 404; `?per_page=`/`?status=` no tuvieron efecto (paginación fija en 10, sin filtro server-side).",
+    },
+    connector: createNlOcdsConnector(),
+  })
+  .register({
+    id: "cdmx_ocds",
+    kind: "automated",
+    label: "Ciudad de México — Convocatorias de licitaciones (datos abiertos CDMX)",
+    termsNote:
+      "Recurso CSV público del portal de datos abiertos de la Ciudad de México (datos.cdmx.gob.mx, dataset `concursos-compras-publicas`, licencia CC-BY-4.0-ESP), mismo dato de origen que Tianguis Digital. Sin reCAPTCHA/auth -- solo lectura (GET). NO es el endpoint OCDS del dashboard de Tianguis Digital (ver desviación deliberada documentada en `connectors/ocds/cdmx-ocds-connector.ts`: ese endpoint es una acción Livewire gateada por sesión, sin contrato público estable, verificado con un intento real que devolvió 500).",
+    cadence: {
+      minIntervalMinutes: 24 * 60,
+      note: "24 h: mismo criterio que nl_ocds (alineado al cron diario existente) -- en la práctica el recurso real verificado no ha cambiado en casi 2 años (ver liveVerification), así que ni siquiera esta cadencia aporta datos nuevos hoy, pero se deja lista para cuando el recurso se vuelva a actualizar.",
+    },
+    liveVerification: {
+      verified: false,
+      note:
+        "No verificado como fuente ÚTIL de vigentes pese a responder correctamente: `GET` real 2026-09-19 contra la URL del CSV -> 200, 13 764 578 bytes, CSV real y bien formado (46 columnas, encabezado documentado en `connectors/ocds/map-cdmx-csv-row.ts`), 6917 filas parseadas sin error. Pero el archivo está ESTANCADO -- distribución real por año de `post_date`: 2019=1589, 2020=1160, 2021=1085, 2022=1562, 2023=1521, CERO filas 2024/2025/2026 (la fecha más reciente real es 2023-11-29), pese a que el catálogo reporta 'modificado 2026-08-28' (un refresco de metadatos, no de contenido, verificado comparando el contenido descargado). REQ-150: una fuente que responde pero no aporta ningún dato UTILIZABLE para el propósito (convocatorias vigentes) se registra `verified: false` con esta evidencia del fallo, igual que se haría ante un bloqueo -- el conector (`connectors/ocds/cdmx-ocds-connector.ts`) SÍ es una implementación real y completa (streaming, detección de bloqueo SR-14, filtro de vigencia), lista para producir resultados reales en cuanto la fuente publique datos recientes en este recurso.",
+    },
+    connector: createCdmxOcdsConnector(),
+  })
+  .register({
+    id: "aggregator",
+    kind: "automated",
+    label: "Agregador comercial de licitaciones (API por pegar)",
+    termsNote:
+      "Sin proveedor elegido todavía -- la cobertura nacional amplia de licitaciones mexicanas (más allá de las fuentes estatales OCDS de arriba) solo existe hoy vía agregadores comerciales de pago (ver README de la vertical). Este conector define el contrato de entrada mínimo (`connectors/aggregator.ts::AggregatorTenderItem`) y el mapeador aislado, gateado por `LICITACIONES_AGGREGATOR_API_KEY`/`LICITACIONES_AGGREGATOR_BASE_URL` -- sin ambas, lanza `SourceNotConfiguredError` (nunca intenta una petición real sin credenciales).",
+    cadence: {
+      minIntervalMinutes: 60,
+      note: "60 min: cadencia conservadora de resguardo mientras no hay proveedor elegido -- se ajustará al límite real del proveedor que se contrate (mismo criterio que 'state_portal', el otro placeholder con cadencia provisional).",
+    },
+    liveVerification: {
+      verified: false,
+      note: "No verificado: sin proveedor elegido, sin credenciales configuradas -- no hay ninguna fuente real contra la cual hacer una petición todavía (REQ-150: nunca se declara verificado sin evidencia real).",
+    },
+    connector: createAggregatorConnector(),
   });
