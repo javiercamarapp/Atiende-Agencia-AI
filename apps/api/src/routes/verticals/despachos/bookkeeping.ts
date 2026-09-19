@@ -8,6 +8,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import {
   BOOKKEEPING_ROLES,
   VER_BOOKKEEPING_ROLES,
@@ -140,7 +141,12 @@ export function despachosBookkeepingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     const raw = await readJsonCapped<{ readonly clasificaciones?: unknown; readonly tenantId?: unknown; readonly fecha?: unknown }>(c.req.raw, 512 * 1024);
     if (!Array.isArray(raw.clasificaciones)) throw Errors.validation("clasificaciones: se esperaba un arreglo.");
     const tenantId = typeof raw.tenantId === "string" ? raw.tenantId : "";
-    const fecha = typeof raw.fecha === "string" ? raw.fecha : new Date().toISOString().slice(0, 10);
+    // Bug real (revisión r6, misma causa raíz que `./vencimientos.ts::todayIso` -- ver su
+    // comentario de cabecera): el default de `fecha` (cuando el caller no la manda) usaba
+    // el día UTC del proceso, corrido un día adelante del real en CDMX entre las 18:00 y
+    // las 23:59 hora local -- mismo bug ya corregido del lado del navegador en
+    // `apps/web/src/verticals/despachos/pages/Bookkeeping.tsx` (PR #164, commit `056c28d`).
+    const fecha = typeof raw.fecha === "string" ? raw.fecha : hoyFechaNegocio();
 
     const resultados = (raw.clasificaciones as CfdiBody[]).map((cfdi, idx) => {
       const classification: CfdiClassification = {
