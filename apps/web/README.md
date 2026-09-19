@@ -18,7 +18,9 @@ que dejó de ser cierto hace varias fases.
 - `src/superadmin/` — back office de plataforma, fuera del árbol de las 6
   verticales: `SuperAdminShell.tsx` + `Dashboard.tsx`/`Prospectos.tsx`/
   `Paneles.tsx`/`GastoApi.tsx`/`BreakGlass.tsx`/`Integraciones.tsx`/
-  `Facturacion.tsx`, ruteadas bajo `/superadmin/*`.
+  `Facturacion.tsx`/`Salud.tsx` ("Salud operativa" — latidos de crons, salud
+  de colas de mensajería, fuentes de licitaciones), ruteadas bajo
+  `/superadmin/*`.
 - `src/lib/` — cliente HTTP compartido contra `apps/api`, y el cliente de Supabase
   Realtime (usado hoy por el panel de Agenda de citas — ver
   `src/verticals/citas/lib/realtime-client.ts`).

@@ -41,7 +41,12 @@ de ser cierto hace varias fases (Fase 1 de restaurantes/hoteles en adelante).
   las 6 verticales: `superadmin.ts` (dashboard/prospectos/paneles),
   `superadmin-llm-usage.ts` ("Gasto de API"), `superadmin-integraciones.ts`
   (`GET /superadmin/integraciones`, ver `docs/CREDENCIALES.md`),
-  `superadmin-break-glass.ts` y `superadmin-facturacion.ts`.
+  `superadmin-break-glass.ts`, `superadmin-facturacion.ts` y
+  `superadmin-salud.ts` ("Salud operativa": `GET /superadmin/salud`(`/crons`|
+  `/colas`|`/licitaciones-fuentes`) — latidos de los 17 crons de
+  `vercel.json` vía `src/salud/with-heartbeat.ts::withHeartbeat`, salud
+  agregada de las 6 colas `messaging_outbox` y última corrida por fuente de
+  licitaciones; ver `scripts/verify-superadmin-salud/README.md`).
 - `src/routes/billing.ts` — checkout/webhook de Stripe de la suscripción SaaS
   propia de Atiende a sus organizaciones clientes.
 - `src/routes/notifications.ts` — notificaciones internas genéricas (las 6

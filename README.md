@@ -56,9 +56,13 @@ Dashboard, prospectos, "entrar a un panel" con sesión propia sin datos de
 cliente real, Gasto de API (tope de LLM por organización/plataforma),
 Integraciones (`GET /superadmin/integraciones`, qué credencial falta pegar),
 Break-glass (acceso auditado y de solo lectura a datos de un tenant, hoy solo
-para rentas) y Facturación (MRR/reconciliación de la suscripción SaaS propia
-de Atiende vía Stripe). Todas las funciones `security definer` que exponen
-este back office están atadas a `auth.uid()` del caller real — ver
+para rentas), Facturación (MRR/reconciliación de la suscripción SaaS propia de
+Atiende vía Stripe) y Salud operativa (`/superadmin/salud`,
+`apps/api/src/routes/superadmin-salud.ts`: latidos de los 17 crons de
+`vercel.json` vía `withHeartbeat`, salud de las 6 colas `messaging_outbox`
+—citas/hoteles/restaurantes/despachos/rentas/licitaciones— y última corrida
+por fuente de licitaciones). Todas las funciones `security definer` que
+exponen este back office están atadas a `auth.uid()` del caller real — ver
 `docs/DEPLOY.md` para la lección de orden de despliegue que dejaron esos
 fixes.
 

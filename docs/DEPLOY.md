@@ -77,8 +77,9 @@ migraciones "todavía dispersas, ninguna copiada a `supabase/migrations/`" — e
 también quedó resuelto. `supabase/migrations/` ya contiene todas las migraciones
 reales consolidadas (orden alfabético de nombre = orden de aplicación, mismo
 criterio que documentaba esta sección) — el conteo exacto se pudre rápido con
-el ritmo de esta rama, así que no lo repitas de memoria: corre
-`ls supabase/migrations/*.sql | wc -l` (132 al 19-sep-2026) o lee
+el ritmo de esta rama, así que no lo repitas de memoria NI como snapshot fechado
+(los dos ya se desactualizaron más de una vez): corre
+`ls supabase/migrations/*.sql | wc -l` o lee
 `supabase/migrations/README.md`, que trae el detalle archivo por archivo y el
 mismo comando. Es copia de TODAS las migraciones reales de `packages/db/migrations/`,
 `packages/core-conversation/migrations/` y de los 6 `packages/domain-*/migrations/`
@@ -181,10 +182,11 @@ como parámetro plano.
   `verify-llm-usage-budget-guard`, `verify-outbox-grants`,
   `verify-rentas-break-glass`, `verify-rentas-cron-rls`,
   `verify-restaurantes-sql`, `verify-superadmin-caller-binding`,
-  `verify-superadmin-facturacion` (ver el
+  `verify-superadmin-facturacion`, `verify-superadmin-salud` (ver el
   `README.md` de cada uno). Levanta un cluster Postgres efímero real
-  (`initdb`/`pg_ctl`/`psql`), aplica las migraciones desde cero (132 al
-  19-sep-2026) y corre
+  (`initdb`/`pg_ctl`/`psql`), aplica todas las migraciones reales desde cero
+  (`ls supabase/migrations/*.sql | wc -l` para el conteo vigente, no lo
+  repitas aquí) y corre
   cada escenario como su propia aserción pass/fail — nunca contra el proyecto
   Supabase real de producción, y nunca lectura humana de la salida de `psql`.
 

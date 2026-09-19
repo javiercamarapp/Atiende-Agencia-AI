@@ -1,57 +1,52 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// Guard de documentación (barrido del 19-sep-2026): docs/DEPLOY.md y
-// supabase/migrations/README.md citaron un conteo de migraciones ("109
-// archivos", luego "112 migraciones") que se desactualizó varias veces
-// mientras el directorio real seguía creciendo -- nadie lo notó hasta una
-// auditoría manual. En vez de prohibir citar un número (a veces es útil dar
-// un snapshot con fecha), este guard falla `npm run test:unit` si el número
-// que cualquiera de los dos documentos cita como snapshot deja de coincidir
-// con `supabase/migrations/*.sql` real -- así el PR que agrega una migración
-// nueva sin actualizar el snapshot se entera aquí, no en la siguiente
-// auditoría manual.
+// Guard de documentación (barrido del 19-sep-2026, invertido el 19-sep-2026
+// tras un segundo round de revisión): la primera versión de este guard
+// comparaba un conteo-snapshot citado en docs/DEPLOY.md/
+// supabase/migrations/README.md contra el conteo real de
+// supabase/migrations/*.sql, y fallaba si divergían. Eso resultó ser la
+// forma equivocada de resolver el problema: CI de este repo no corre
+// `npm run test:unit` (ver .github/workflows/postgres-real-gate.yml -- solo
+// corre los `scripts/verify-*/` contra Postgres real), así que cualquier PR
+// que agregara una migración nueva sin también editar esos dos documentos
+// rompía este guard EN SILENCIO para quien corriera la suite completa
+// después -- ningún check automático lo habría atrapado antes de mergear.
 //
-// Si algún día se decide dejar de citar un número fijo en alguno de los dos
-// documentos (reemplazarlo por "corre `ls supabase/migrations/*.sql | wc -l`"
-// a secas, sin ningún número), borra el bloque correspondiente de este test
-// -- no hay nada que guardar si no hay número que se pudra.
+// Ambos documentos ya se reescribieron para NO citar ningún conteo fijo,
+// solo el comando que lo calcula (`ls supabase/migrations/*.sql | wc -l`).
+// Este guard ahora protege esa decisión al revés: falla si cualquiera de los
+// dos vuelve a contener un conteo-snapshot escrito a mano (los mismos 2
+// patrones de frase que el guard original extraía), para que el número no
+// pueda volver a pudrirse -- nunca compara contra el conteo real de
+// supabase/migrations/, así que agregar una migración nunca puede romper
+// este test.
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
-
-function countRealMigrations(): number {
-  return readdirSync(path.join(repoRoot, "supabase/migrations")).filter((f) => f.endsWith(".sql")).length;
-}
 
 function readDoc(relPath: string): string {
   return readFileSync(path.join(repoRoot, relPath), "utf8");
 }
 
-describe("docs migration count guard", () => {
-  it("docs/DEPLOY.md cita el mismo conteo de migraciones que el directorio real", () => {
-    const real = countRealMigrations();
+describe("docs migration count guard (sin conteos-snapshot)", () => {
+  it("docs/DEPLOY.md no vuelve a citar un conteo-snapshot de migraciones tipo '(N al DD-mmm-YYYY)'", () => {
     const doc = readDoc("docs/DEPLOY.md");
-    const match = doc.match(/\((\d+) al \d{1,2}-\w{3}-\d{4}\)/);
-    expect(match, "docs/DEPLOY.md debe traer un snapshot '(N al DD-mmm-YYYY)' del conteo de migraciones -- si se quitó el número a propósito, borra este assert").not.toBeNull();
-    const cited = Number(match?.[1]);
+    const match = doc.match(/\(\d+ al \d{1,2}-\w{3}-\d{4}\)/);
     expect(
-      cited,
-      `docs/DEPLOY.md dice ${cited} migraciones pero supabase/migrations/ tiene ${real} archivos .sql reales -- actualiza el snapshot en docs/DEPLOY.md`,
-    ).toBe(real);
+      match,
+      `docs/DEPLOY.md vuelve a citar un conteo fijo de migraciones ("${match?.[0]}") -- ese número se pudre en cuanto se agrega una migración nueva y nadie lo edita a mano. Usa "corre \`ls supabase/migrations/*.sql | wc -l\`" en vez de un número, como el resto del documento ya hace.`,
+    ).toBeNull();
   });
 
-  it("supabase/migrations/README.md cita el mismo conteo de migraciones que el directorio real", () => {
-    const real = countRealMigrations();
+  it("supabase/migrations/README.md no vuelve a citar un conteo-snapshot de migraciones tipo 'esa cuenta da **N** archivos'", () => {
     const doc = readDoc("supabase/migrations/README.md");
-    const match = doc.match(/esa cuenta da \*\*(\d+)\*\* archivos/);
-    expect(match, "supabase/migrations/README.md debe traer el snapshot '**N** archivos' -- si se quitó el número a propósito, borra este assert").not.toBeNull();
-    const cited = Number(match?.[1]);
+    const match = doc.match(/esa cuenta da \*\*\d+\*\* archivos/);
     expect(
-      cited,
-      `supabase/migrations/README.md dice ${cited} migraciones pero supabase/migrations/ tiene ${real} archivos .sql reales -- actualiza el snapshot en ese README (incluida la tabla de "113-132" si agregaste migraciones nuevas)`,
-    ).toBe(real);
+      match,
+      `supabase/migrations/README.md vuelve a citar un conteo fijo de migraciones ("${match?.[0]}") -- mismo problema que docs/DEPLOY.md, ver el comentario de cabecera de este spec.`,
+    ).toBeNull();
   });
 });

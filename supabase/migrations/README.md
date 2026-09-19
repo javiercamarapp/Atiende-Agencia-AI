@@ -33,14 +33,15 @@ Verifica siempre con:
 ls supabase/migrations/*.sql | wc -l
 ```
 
-Al 19-sep-2026 esa cuenta da **132** archivos (`20240101000001` ..
-`20240101000133`, con un hueco real en `20240101000126` — un timestamp que
-nunca se usó, no un archivo borrado; `npm run verify:migration-versions`
-confirma que no hay prefijos duplicados ni espejos divergentes). La narración
-detallada de abajo (1-112, más 120/122 con su propia nota de colisión) cubre
-las primeras fases; la sección "113-132" al final de este archivo resume, más
-brevemente, las fases más recientes sin repetir el mismo nivel de detalle
-por archivo.
+Hay un hueco real en `20240101000126` y `20240101000134` — timestamps que
+nunca se usaron (colisión evitada al renumerar en otra rama), no archivos
+borrados; `npm run verify:migration-versions` confirma que no hay prefijos
+duplicados ni espejos divergentes, sea cual sea el conteo real en el momento
+en que lo corras. La narración detallada de abajo (1-112, más 120/122 con su
+propia nota de colisión) cubre las primeras fases; la sección "113 en
+adelante" al final de este archivo resume, más brevemente, las fases más
+recientes sin repetir el mismo nivel de detalle por archivo — **deliberadamente
+sin citar un total**, ver la nota de esa sección.
 
 ## Orden narrado en detalle (fases iniciales, hasta la migración 112)
 
@@ -222,10 +223,14 @@ levantar Postgres) si dos archivos de esta carpeta vuelven a compartir
 prefijo, o si un espejo diverge en contenido de su fuente real en
 `packages/*/migrations/`.
 
-## 113-132 (resumen, sin narración por archivo)
+## 113 en adelante (resumen, sin narración por archivo)
 
-Fases más recientes (16-19 sep 2026), listadas por lo que cada una cierra —
-ver el comentario de cabecera de cada archivo SQL para el detalle completo:
+Fases más recientes (16-19 sep 2026 en adelante), listadas por lo que cada una
+cierra — ver el comentario de cabecera de cada archivo SQL para el detalle
+completo. **Sin un total citado a propósito**: esta tabla se ha quedado atrás
+del conteo real más de una vez (era "113-132" cuando el directorio ya tenía
+133+ archivos) — agrega una fila por migración nueva en vez de mantener un
+número de cierre.
 
 | Migración | Qué cierra |
 |---|---|
@@ -250,8 +255,11 @@ ver el comentario de cabecera de cada archivo SQL para el detalle completo:
 | 131 `023_ocds_connectors_source_check.sql` | Conectores OCDS reales de licitaciones (Nuevo León, CDMX) + agregador comercial gateado por credenciales — agrega `'nl_ocds'`/`'cdmx_ocds'`/`'aggregator'` al CHECK de `source_run.source`. |
 | 132 `0013_superadmin_facturacion.sql` | Lecturas de "Facturación" del superadmin: estado de suscripción por organización, asientos y reconciliación contra `core.organization_billing`. |
 | 133 `016_known_zone_authenticated_grant.sql` | Hallazgo real de `verify-restaurantes-sql` (primera vez que el repositorio Postgres de restaurantes se ejercitó contra Postgres real, no el mirror en memoria): `restaurantes.known_zone` tenía RLS habilitado pero sin policy ni GRANT a `authenticated`/`anon` — a diferencia de todas las demás tablas del paquete. |
+| 134 | Sin usar — timestamp saltado, no un archivo borrado (mismo caso que 126). |
+| 135 `0014_superadmin_salud_operativa.sql` | Primera pieza de "Salud operativa" del superadmin: latidos de los 17 crons de `vercel.json` (`withHeartbeat`), salud de las 6 colas `messaging_outbox` (WhatsApp/email) y estado de las fuentes de licitaciones — el superadmin antes no tenía forma de saber si un cron dejó de correr o una cola quedó atascada sin drenar. |
 
-Si vuelves a auditar este README y el conteo real ya no es 132, actualiza esta
-tabla con las migraciones nuevas (una fila breve por archivo basta — no hace
-falta reproducir la prosa extensa de las fases 1-112) y la cifra de la sección
-"Cuántas migraciones hay realmente" de arriba.
+Si vuelves a auditar este README, agrega una fila breve por cada migración
+nueva a esta tabla (no hace falta reproducir la prosa extensa de las fases
+1-112) — no hay ninguna cifra de total que actualizar en ningún lado de este
+archivo, a propósito: usa `ls supabase/migrations/*.sql | wc -l` cuando
+necesites el conteo real.

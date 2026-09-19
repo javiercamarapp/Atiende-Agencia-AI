@@ -41,6 +41,8 @@ aplica RLS ni GRANT. Este job:
    - `scripts/verify-restaurantes-sql/` (RPC/reglas SQL que el repositorio
      Postgres real de restaurantes usa, incluida la zona conocida sin
      GRANT/policy que esta verificación encontró).
+   - `scripts/verify-superadmin-salud/` (latidos de crons, salud de colas
+     `messaging_outbox`, última corrida por fuente de licitaciones).
 
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada
