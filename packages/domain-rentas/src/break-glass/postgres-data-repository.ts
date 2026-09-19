@@ -124,10 +124,45 @@ function advertirUnaVez(fnName: string, mensaje: string): void {
   console.warn(mensaje);
 }
 
+// Hallazgo de revisión real (ronda r5, no-bloqueante 2 del PR #167): antes de
+// esto, `P0002`/`42501` se traducían al error tipado correspondiente SIN
+// dejar ningún rastro del error ORIGINAL de Postgres -- `42501` es también el
+// SQLSTATE de "permission denied for function/schema" (un `GRANT EXECUTE`
+// faltante tras una migración a medias) y de violaciones de RLS reales, no
+// solo del caso esperado de negocio (caller/superadmin/sesión de
+// romper-cristal). Sin este log, ese fallo de CONFIGURACIÓN quedaría
+// indistinguible para siempre de un 403 legítimo -- ningún rastro en logs
+// para diagnosticarlo. Se loguea SQLSTATE + función ANTES de lanzar el error
+// tipado (nunca se manda al cliente: `BreakGlassAccessDeniedError`/
+// `BreakGlassPropertyNotFoundError` siguen con mensaje genérico, ver
+// errors.ts). Deliberadamente SIN el gate de "una vez" de `advertirUnaVez` --
+// a diferencia de 42883 (un estado binario: la migración está o no está
+// aplicada), cada P0002/42501 es una decisión de autorización real que vale
+// la pena poder correlacionar con el momento en que ocurrió.
+function advertirErrorMapeado(fnName: string, sqlstate: "P0002" | "42501"): void {
+  console.warn(
+    `PostgresBreakGlassRentasDataRepository: ${fnName} lanzó SQLSTATE ${sqlstate} -- traducido a error tipado (nunca expuesto al cliente). ` +
+      "Si esto NO corresponde a un caso esperado de negocio (propertyId de otra organización, o defensa en profundidad real de " +
+      "caller/superadmin/sesión), revisa GRANTs y policies RLS: 42501 también es el código de 'permission denied' por un GRANT " +
+      "EXECUTE faltante tras una migración a medias, o por una violación de RLS real.",
+  );
+}
+
+// Hallazgo de revisión real (ronda r5, no-bloqueante 1 del PR #167): la ruta
+// HTTP (`apps/api/src/routes/superadmin-break-glass.ts::parseOffsetQuery`) ya
+// rechaza un `offset` mayor al máximo de un `integer` de Postgres con 400 --
+// este `Math.min` es la SEGUNDA línea de defensa (defensa en profundidad,
+// mismo criterio que el resto de este archivo) para cualquier otro llamador
+// directo de este repositorio que no pase por esa validación: sin esto,
+// `p_offset` (declarado `integer` en las 7 funciones de
+// `020_break_glass_lectores.sql`) desbordaría con SQLSTATE `22003`/`22P02` --
+// el mismo 500 genérico que este PR existe para eliminar.
+const POSTGRES_INT32_MAX = 2147483647;
+
 function resolverLimite(paginacion: BreakGlassLectorPaginacion | undefined): { limit: number; offset: number } {
   return {
     limit: Math.min(BREAK_GLASS_LECTOR_LIMIT_MAX, paginacion?.limit ?? BREAK_GLASS_LECTOR_LIMIT_DEFAULT),
-    offset: Math.max(0, paginacion?.offset ?? 0),
+    offset: Math.min(POSTGRES_INT32_MAX, Math.max(0, paginacion?.offset ?? 0)),
   };
 }
 
@@ -285,10 +320,12 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       // como error tipado -- `apps/api` lo traduce a 404/403 explícitos.
       if (isPropertyNotFoundError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_reservas");
+        advertirErrorMapeado("list_reservas_for_break_glass", "P0002");
         throw new BreakGlassPropertyNotFoundError();
       }
       if (isAccessDeniedError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_reservas");
+        advertirErrorMapeado("list_reservas_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
       if (!isUndefinedFunctionError(err)) throw err;
@@ -340,10 +377,12 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     } catch (err) {
       if (isPropertyNotFoundError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_finanzas");
+        advertirErrorMapeado("list_finanzas_for_break_glass", "P0002");
         throw new BreakGlassPropertyNotFoundError();
       }
       if (isAccessDeniedError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_finanzas");
+        advertirErrorMapeado("list_finanzas_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
       if (!isUndefinedFunctionError(err)) throw err;
@@ -383,10 +422,12 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     } catch (err) {
       if (isPropertyNotFoundError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_payouts");
+        advertirErrorMapeado("list_payouts_for_break_glass", "P0002");
         throw new BreakGlassPropertyNotFoundError();
       }
       if (isAccessDeniedError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_payouts");
+        advertirErrorMapeado("list_payouts_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
       if (!isUndefinedFunctionError(err)) throw err;
@@ -424,10 +465,12 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     } catch (err) {
       if (isPropertyNotFoundError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_pricing");
+        advertirErrorMapeado("list_pricing_for_break_glass", "P0002");
         throw new BreakGlassPropertyNotFoundError();
       }
       if (isAccessDeniedError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_pricing");
+        advertirErrorMapeado("list_pricing_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
       if (!isUndefinedFunctionError(err)) throw err;
@@ -468,10 +511,12 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     } catch (err) {
       if (isPropertyNotFoundError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_mensajeria");
+        advertirErrorMapeado("list_mensajeria_for_break_glass", "P0002");
         throw new BreakGlassPropertyNotFoundError();
       }
       if (isAccessDeniedError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_mensajeria");
+        advertirErrorMapeado("list_mensajeria_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
       if (!isUndefinedFunctionError(err)) throw err;
@@ -512,10 +557,12 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     } catch (err) {
       if (isPropertyNotFoundError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_limpieza");
+        advertirErrorMapeado("list_limpieza_for_break_glass", "P0002");
         throw new BreakGlassPropertyNotFoundError();
       }
       if (isAccessDeniedError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_limpieza");
+        advertirErrorMapeado("list_limpieza_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
       if (!isUndefinedFunctionError(err)) throw err;
@@ -557,10 +604,12 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     } catch (err) {
       if (isPropertyNotFoundError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_sync_ical");
+        advertirErrorMapeado("list_sync_ical_for_break_glass", "P0002");
         throw new BreakGlassPropertyNotFoundError();
       }
       if (isAccessDeniedError(err)) {
         await recuperarSavepoint(this.db, "sp_break_glass_sync_ical");
+        advertirErrorMapeado("list_sync_ical_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
       if (!isUndefinedFunctionError(err)) throw err;

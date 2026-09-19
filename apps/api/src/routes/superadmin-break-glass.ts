@@ -93,12 +93,29 @@ function parseLimitQuery(raw: string | undefined): number {
   return Math.min(BREAK_GLASS_LECTOR_LIMIT_MAX, Number(raw));
 }
 
+// Hallazgo de revisión real (ronda r5, no-bloqueante 1 del PR #167): `offset`
+// no tenía tope superior -- `^\d+$` acepta `2147483648`, `3000000000` o un
+// número de 400 dígitos (`Number(...)` da `Infinity`), y `p_offset` es
+// `integer` en las 7 funciones de `020_break_glass_lectores.sql` -- por
+// encima de `2147483647` (el máximo de un `integer` de Postgres) Postgres
+// lanza SQLSTATE `22003` (o `22P02` si `Number` desbordó a `Infinity`), el
+// mismo 500 genérico que este PR existe para eliminar. A diferencia de
+// `limit` (que se acota en silencio -- una petición honesta de "tráeme todo
+// lo que puedas" nunca debe rechazarse), un `offset` mayor al máximo de
+// Postgres no es una petición honesta de paginado: ningún dataset real tiene
+// tantas filas, así que se rechaza explícito con 400.
+const POSTGRES_INT32_MAX = 2147483647;
+
 function parseOffsetQuery(raw: string | undefined): number {
   if (raw === undefined || raw === "") return 0;
   if (!NONNEGATIVE_INT_RE.test(raw)) {
     throw Errors.validation("offset debe ser un entero >= 0.");
   }
-  return Number(raw);
+  const value = Number(raw);
+  if (value > POSTGRES_INT32_MAX) {
+    throw Errors.validation(`offset debe ser menor o igual a ${POSTGRES_INT32_MAX}.`);
+  }
+  return value;
 }
 
 function serializeSession(s: BreakGlassSession, nowMs: number = Date.now()) {
