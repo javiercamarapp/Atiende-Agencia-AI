@@ -24,20 +24,41 @@ export function ImpersonacionBanner({ apiBaseUrl, token }: { readonly apiBaseUrl
   const [sesion, setSesion] = useState<ImpersonacionSesion | null>(null);
   const [terminando, setTerminando] = useState(false);
 
-  async function consultar() {
-    try {
-      const r = await fetchImpersonacionJson<{ available: boolean; session: ImpersonacionSesion | null }>(apiBaseUrl, token, "/superadmin/impersonacion/activa");
-      setSesion(r.available ? r.session : null);
-    } catch {
-      // Best-effort: un fallo de red al consultar el banner nunca debe tumbar
-      // el resto del panel -- simplemente no se muestra hasta el próximo poll.
-    }
-  }
-
   useEffect(() => {
+    // `available: false` (base sin migrar, ver 0020_superadmin_impersonacion.sql)
+    // es un estado ESTABLE mientras dure la sesión de la pestaña -- no depende
+    // de nada que pueda cambiar sin un redeploy (aplicar la migración sí lo
+    // cambiaría, pero eso implica de todas formas recargar la app). Seguir
+    // sondeando cada 30s en ese estado no gana nada (el panel ya mostró "no
+    // disponible" desde el primer poll) y sí genera, en la base real, un
+    // 42883 nuevo en el log de Postgres por cada intento -- ver hallazgo no
+    // bloqueante de esta revisión. `cancelado` corta el loop en cuanto el
+    // primer poll confirma `available: false`, sin esperar a un segundo poll
+    // fallido.
+    let cancelado = false;
+    let intervalId: number | undefined;
+
+    async function consultar() {
+      try {
+        const r = await fetchImpersonacionJson<{ available: boolean; session: ImpersonacionSesion | null }>(apiBaseUrl, token, "/superadmin/impersonacion/activa");
+        if (cancelado) return;
+        setSesion(r.available ? r.session : null);
+        if (!r.available && intervalId !== undefined) {
+          window.clearInterval(intervalId);
+          intervalId = undefined;
+        }
+      } catch {
+        // Best-effort: un fallo de red al consultar el banner nunca debe tumbar
+        // el resto del panel -- simplemente no se muestra hasta el próximo poll.
+      }
+    }
+
     void consultar();
-    const id = window.setInterval(() => void consultar(), POLL_MS);
-    return () => window.clearInterval(id);
+    intervalId = window.setInterval(() => void consultar(), POLL_MS);
+    return () => {
+      cancelado = true;
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+    };
   }, [apiBaseUrl, token]);
 
   async function terminar() {
