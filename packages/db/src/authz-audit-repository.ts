@@ -29,7 +29,20 @@
 // que esta clase no puede garantizar en qué sesión la use un llamador futuro,
 // protegerla contra dejar SU PROPIA transacción abortada es gratis y
 // consistente con el resto de este paquete.
+//
+// `runWithSavepointFallback` (../savepoint-fallback.ts, ya disponible en
+// este mismo paquete desde el PR #158 -- traído a esta rama con `git merge
+// origin/main`, ver progreso-*.md de esta tarea): reemplaza el
+// SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE manual que este archivo escribía a
+// mano ANTES de que ese helper existiera en `main` -- mismo mandato de la
+// tarea ("donde tu código use SAVEPOINT manual para un fallback, usa el
+// helper compartido"). `recordDenial` usa `isRecoverable: () => true` (nunca
+// relanza, ver el párrafo de arriba) y branchea DENTRO de `fallback` entre
+// "migración no aplicada" y "cualquier otro error real" -- `list` sí relanza
+// lo que no sea 42883/42P01/42703, así que su `isRecoverable` es
+// `isMigrationMissingError` tal cual.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "./savepoint-fallback.ts";
 
 export type AuthzAuditAvailability = "available" | "not_migrated";
 export type AuthzAuditDecision = "allowed" | "denied";
@@ -115,68 +128,78 @@ export class PostgresAuthzAuditRepository implements AuthzAuditRepository {
   constructor(private readonly db: TenantDbSession) {}
 
   async recordDenial(input: AuthzAuditLogEntryInput): Promise<{ availability: AuthzAuditAvailability; id: string | null }> {
-    await this.db.exec("SAVEPOINT sp_record_authz_audit_denial");
-    try {
-      const { rows } = await this.db.query<{ id: string | null }>(
-        `select core.record_authz_audit_denial($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as id;`,
-        [
-          input.actorUserId,
-          input.actorIp,
-          input.organizationId,
-          input.action,
-          input.route,
-          input.method,
-          input.decision,
-          input.reason,
-          JSON.stringify(input.metadata ?? {}),
-          new Date(input.occurredAtMs).toISOString(),
-        ],
-      );
-      await this.db.exec("RELEASE SAVEPOINT sp_record_authz_audit_denial");
-      return { availability: "available", id: rows[0]?.id ?? null };
-    } catch (err) {
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_record_authz_audit_denial");
-      await this.db.exec("RELEASE SAVEPOINT sp_record_authz_audit_denial");
-      if (isMigrationMissingError(err)) {
-        warnMissingAuthzAuditSchemaOnce();
-        return { availability: "not_migrated", id: null };
-      }
+    return runWithSavepointFallback<{ availability: AuthzAuditAvailability; id: string | null }>({
+      session: this.db,
+      // Nombre explícito (en vez del generado por default) -- los tests de
+      // este archivo verifican el nombre EXACTO del SAVEPOINT en `session.calls`
+      // (mismo criterio que el resto de este monorepo: un nombre legible en
+      // logs/tests, ver el comentario de cabecera de `SavepointFallbackOptions
+      // .savepointName`).
+      savepointName: "sp_record_authz_audit_denial",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string | null }>(
+          `select core.record_authz_audit_denial($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as id;`,
+          [
+            input.actorUserId,
+            input.actorIp,
+            input.organizationId,
+            input.action,
+            input.route,
+            input.method,
+            input.decision,
+            input.reason,
+            JSON.stringify(input.metadata ?? {}),
+            new Date(input.occurredAtMs).toISOString(),
+          ],
+        );
+        return { availability: "available" as const, id: rows[0]?.id ?? null };
+      },
       // Best-effort REAL (mandato de la tarea: "registrar la denegación NUNCA
-      // debe cambiar la respuesta ni tumbar el request") -- cualquier otro
-      // error real de Postgres (conexión, violación de FK, etc. -- el tope
-      // defensivo de la propia función SQL ya devuelve NULL sin lanzar, así
-      // que nunca llega aquí) se registra en logs y se traduce a "no se pudo
-      // escribir esta vez", NUNCA se relanza.
-      console.error("PostgresAuthzAuditRepository.recordDenial: error inesperado escribiendo la bitácora persistente (best-effort, no se relanza):", err);
-      return { availability: "available", id: null };
-    }
+      // debe cambiar la respuesta ni tumbar el request") -- CUALQUIER error
+      // de `primary` degrada aquí, nunca se relanza (a diferencia de `list`,
+      // ver abajo).
+      isRecoverable: () => true,
+      fallback: async (err) => {
+        if (isMigrationMissingError(err)) {
+          warnMissingAuthzAuditSchemaOnce();
+          return { availability: "not_migrated", id: null };
+        }
+        // Cualquier otro error real de Postgres (conexión, violación de FK,
+        // etc. -- el tope defensivo de la propia función SQL ya devuelve
+        // NULL sin lanzar, así que nunca llega aquí) se registra en logs y
+        // se traduce a "no se pudo escribir esta vez", NUNCA se relanza.
+        console.error("PostgresAuthzAuditRepository.recordDenial: error inesperado escribiendo la bitácora persistente (best-effort, no se relanza):", err);
+        return { availability: "available", id: null };
+      },
+    });
   }
 
   async list(callerId: string, limit = 50, offset = 0): Promise<{ availability: AuthzAuditAvailability; entries: readonly AuthzAuditLogRow[]; hasMore: boolean }> {
-    await this.db.exec("SAVEPOINT sp_list_authz_audit_log");
-    try {
-      // Pide una fila de más ("peek") para saber si hay más página sin un
-      // COUNT(*) aparte -- mismo criterio que el paginado de break-glass (ver
-      // packages/domain-rentas/src/break-glass/postgres-data-repository.ts).
-      // `least(..., 200)` -- nunca por encima del tope duro que la propia
-      // función SQL ya aplica (`core.list_authz_audit_log_for_superadmin`);
-      // en el caso límite `limit === 200` el "peek" queda deshabilitado (la
-      // función igual acotaría a 200), así que `hasMore` puede reportar
-      // `false` aunque exista una página 201+ -- comportamiento aceptado y
-      // documentado, mismo caso límite que el paginado de break-glass.
-      const queryLimit = Math.min(limit + 1, 200);
-      const { rows } = await this.db.query<AuthzAuditLogRawRow>(`select * from core.list_authz_audit_log_for_superadmin($1, $2, $3);`, [callerId, queryLimit, offset]);
-      await this.db.exec("RELEASE SAVEPOINT sp_list_authz_audit_log");
-      const hasMore = rows.length > limit;
-      const trimmed = hasMore ? rows.slice(0, limit) : rows;
-      return { availability: "available", entries: trimmed.map(mapRow), hasMore };
-    } catch (err) {
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_list_authz_audit_log");
-      await this.db.exec("RELEASE SAVEPOINT sp_list_authz_audit_log");
-      if (!isMigrationMissingError(err)) throw err;
-      warnMissingAuthzAuditSchemaOnce();
-      return { availability: "not_migrated", entries: [], hasMore: false };
-    }
+    return runWithSavepointFallback<{ availability: AuthzAuditAvailability; entries: readonly AuthzAuditLogRow[]; hasMore: boolean }>({
+      session: this.db,
+      savepointName: "sp_list_authz_audit_log",
+      primary: async () => {
+        // Pide una fila de más ("peek") para saber si hay más página sin un
+        // COUNT(*) aparte -- mismo criterio que el paginado de break-glass
+        // (ver packages/domain-rentas/src/break-glass/postgres-data-repository.ts).
+        // `least(..., 200)` -- nunca por encima del tope duro que la propia
+        // función SQL ya aplica (`core.list_authz_audit_log_for_superadmin`);
+        // en el caso límite `limit === 200` el "peek" queda deshabilitado (la
+        // función igual acotaría a 200), así que `hasMore` puede reportar
+        // `false` aunque exista una página 201+ -- comportamiento aceptado y
+        // documentado, mismo caso límite que el paginado de break-glass.
+        const queryLimit = Math.min(limit + 1, 200);
+        const { rows } = await this.db.query<AuthzAuditLogRawRow>(`select * from core.list_authz_audit_log_for_superadmin($1, $2, $3);`, [callerId, queryLimit, offset]);
+        const hasMore = rows.length > limit;
+        const trimmed = hasMore ? rows.slice(0, limit) : rows;
+        return { availability: "available" as const, entries: trimmed.map(mapRow), hasMore };
+      },
+      isRecoverable: isMigrationMissingError,
+      fallback: async () => {
+        warnMissingAuthzAuditSchemaOnce();
+        return { availability: "not_migrated", entries: [], hasMore: false };
+      },
+    });
   }
 }
 
