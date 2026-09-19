@@ -13,7 +13,7 @@
 // distinto nombre completo se aplican sin conflicto ahí (`psql` no tiene
 // noción de "version"), a diferencia de la CLI real de Supabase.
 //
-// Este módulo verifica dos cosas, ambas sobre archivos reales del árbol (nunca
+// Este módulo verifica TRES cosas, todas sobre archivos reales del árbol (nunca
 // modifica nada):
 //
 //   1. findDuplicateVersions: ¿dos o más archivos de `supabase/migrations/`
@@ -31,13 +31,33 @@
 //      con contenido propio de cada vertical) y esta comparación no debe
 //      producir falsos positivos por esa ambigüedad — solo le importa que el
 //      espejo siga siendo copia fiel de SU fuente real, sea cual sea.
+//   3. findDuplicateInternalNumbers/findNewInternalNumberDuplicates: colisión
+//      real del 19-sep-2026 (PR #149, Fase 3 de caller-binding) — dos agentes en
+//      paralelo calcularon "el siguiente número interno libre" de `packages/
+//      domain-hoteles/migrations/` sin verse entre sí y ambos eligieron `023`
+//      (uno para night-audit, otro para esta migración) — a diferencia de la
+//      colisión de `findDuplicateVersions` (mismo prefijo de TIMESTAMP en
+//      `supabase/migrations/`, que sí rompe `supabase db push`), esta es
+//      puramente un problema de coordinación humana/de agentes: dos archivos con
+//      nombre completo distinto (`023_night_audit_sistema_escritura.sql` vs.
+//      `023_hoteles_caller_binding_fase3.sql`) conviven sin error técnico, pero
+//      confunden al elegir "el siguiente número" para una tercera migración
+//      futura. El repo YA tenía varias de estas colisiones antes de que este
+//      guard existiera (`packages/db/migrations:0015`, `packages/domain-citas/
+//      migrations:007`/`015`, `packages/domain-hoteles/migrations:008`/`017`/
+//      `018`, `packages/domain-restaurantes/migrations:007`) — NUNCA se
+//      renumeran retroactivamente (son migraciones ya aplicadas en producción
+//      real, ver supabase/migrations/README.md), así que quedan "grandfathered"
+//      en `KNOWN_INTERNAL_NUMBER_DUPLICATES`: el guard solo falla ante una
+//      colisión NUEVA (cualquiera fuera de esa lista).
 //
 // Uso como CLI (mismo criterio que scripts/verify-real-postgres-ci/run-gate.mjs):
 //   node scripts/verify-migration-versions/check-migration-versions.ts
-// Sale con código != 0 e imprime el detalle si encuentra cualquiera de los dos
+// Sale con código != 0 e imprime el detalle si encuentra cualquiera de los tres
 // problemas. Se usa también como test unitario (ver
 // packages/db/tests/migration-versions-guard.spec.ts) contra fixtures en un
-// directorio temporal — nunca contra `supabase/migrations/` real en el test.
+// directorio temporal — nunca contra `supabase/migrations/`/`packages/` reales en
+// el test.
 
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -53,13 +73,40 @@ export interface MirrorDivergence {
   candidates: string[];
 }
 
+export interface InternalNumberDuplicate {
+  /** Directorio `migrations/` donde ocurre la colisión (tal cual lo devuelve
+   *  `findMigrationsDirs` — puede ser absoluto o relativo, según cómo se invoque). */
+  dir: string;
+  /** El número interno compartido (p. ej. "023", "0015") — SIN el timestamp de 14
+   *  dígitos que usa `supabase/migrations/`, ese es un espacio de nombres distinto. */
+  number: string;
+  files: string[];
+}
+
 export interface GuardResult {
   duplicates: DuplicateVersion[];
   divergences: MirrorDivergence[];
+  internalNumberDuplicates: InternalNumberDuplicate[];
 }
 
 const VERSION_PREFIX_RE = /^(\d+)_/;
 const MIRROR_BASENAME_RE = /^\d+_(.+\.sql)$/;
+const INTERNAL_NUMBER_RE = /^(\d+)_/;
+
+// Colisiones de número interno YA existentes en el repo antes de que este guard se
+// agregara (ver el comentario de cabecera del archivo para el porqué completo) —
+// grandfathered a propósito, nunca se renumeran retroactivamente. Clave:
+// "<ruta relativa al repo, con '/'>:<número interno>". Cualquier colisión NUEVA
+// (fuera de esta lista) hace fallar el guard.
+const KNOWN_INTERNAL_NUMBER_DUPLICATES: ReadonlySet<string> = new Set([
+  "packages/db/migrations:0015",
+  "packages/domain-citas/migrations:007",
+  "packages/domain-citas/migrations:015",
+  "packages/domain-hoteles/migrations:008",
+  "packages/domain-hoteles/migrations:017",
+  "packages/domain-hoteles/migrations:018",
+  "packages/domain-restaurantes/migrations:007",
+]);
 
 function listSqlFiles(dir: string): string[] {
   return readdirSync(dir).filter((f) => f.endsWith(".sql"));
@@ -143,15 +190,60 @@ export function findMirrorDivergences(migrationsDir: string, packageSearchRoots:
   return divergences;
 }
 
-export function runMigrationVersionGuard(migrationsDir: string, packageSearchRoots: string[]): GuardResult {
+/**
+ * Detecta, DENTRO de cada `migrations/` encontrada bajo `packageSearchRoots`
+ * (nunca a través de directorios distintos — dos paquetes pueden compartir
+ * libremente un mismo número, la ambigüedad real es DENTRO de un mismo paquete),
+ * dos o más archivos que comparten el mismo número interno (el prefijo antes del
+ * primer `_`). Puro: nunca toca disco más que leer. Sin filtrar por lo YA conocido
+ * — ver `findNewInternalNumberDuplicates` para eso.
+ */
+export function findDuplicateInternalNumbers(packageSearchRoots: string[]): InternalNumberDuplicate[] {
+  const dirs = findMigrationsDirs(packageSearchRoots);
+  const out: InternalNumberDuplicate[] = [];
+  for (const dir of dirs) {
+    const byNumber = new Map<string, string[]>();
+    for (const f of listSqlFiles(dir)) {
+      const m = f.match(INTERNAL_NUMBER_RE);
+      if (!m) continue;
+      const num = m[1] as string;
+      const list = byNumber.get(num) ?? [];
+      list.push(f);
+      byNumber.set(num, list);
+    }
+    for (const [num, files] of byNumber) {
+      if (files.length > 1) out.push({ dir, number: num, files: [...files].sort() });
+    }
+  }
+  return out.sort((a, b) => (a.dir === b.dir ? a.number.localeCompare(b.number) : a.dir.localeCompare(b.dir)));
+}
+
+/**
+ * `findDuplicateInternalNumbers` menos las colisiones YA conocidas antes de que
+ * este guard existiera (`KNOWN_INTERNAL_NUMBER_DUPLICATES`, ver el comentario de
+ * cabecera del archivo) — lo que de verdad debe hacer fallar el guard: una
+ * colisión NUEVA. `repoRoot` normaliza cada `dir` a una ruta relativa (con `/`,
+ * sea cual sea el SO) antes de comparar contra la lista, para que el resultado no
+ * dependa de si `dir` llegó absoluto o relativo.
+ */
+export function findNewInternalNumberDuplicates(duplicates: InternalNumberDuplicate[], repoRoot: string): InternalNumberDuplicate[] {
+  return duplicates.filter((d) => {
+    const rel = path.relative(repoRoot, d.dir).split(path.sep).join("/");
+    return !KNOWN_INTERNAL_NUMBER_DUPLICATES.has(`${rel}:${d.number}`);
+  });
+}
+
+export function runMigrationVersionGuard(migrationsDir: string, packageSearchRoots: string[], options?: { readonly repoRoot?: string }): GuardResult {
+  const repoRoot = options?.repoRoot ?? path.resolve(migrationsDir, "..", "..");
   return {
     duplicates: findDuplicateVersions(migrationsDir),
     divergences: findMirrorDivergences(migrationsDir, packageSearchRoots),
+    internalNumberDuplicates: findNewInternalNumberDuplicates(findDuplicateInternalNumbers(packageSearchRoots), repoRoot),
   };
 }
 
 export function hasProblems(result: GuardResult): boolean {
-  return result.duplicates.length > 0 || result.divergences.length > 0;
+  return result.duplicates.length > 0 || result.divergences.length > 0 || result.internalNumberDuplicates.length > 0;
 }
 
 export function formatGuardReport(result: GuardResult): string {
@@ -170,6 +262,14 @@ export function formatGuardReport(result: GuardResult): string {
         `    ${div.candidates.join(", ")}\n` +
         `    Actualiza el espejo o la fuente para que vuelvan a coincidir (nunca edites el SQL solo al copiarlo, ver el\n` +
         `    README de supabase/migrations/).`,
+    );
+  }
+  for (const dup of result.internalNumberDuplicates) {
+    lines.push(
+      `  - número interno duplicado "${dup.number}" en ${dup.dir}: ${dup.files.length} archivos -> ${dup.files.join(", ")}\n` +
+        `    Dos migraciones nuevas eligieron el mismo "siguiente número libre" sin verse entre sí. Renumera la más\n` +
+        `    reciente al siguiente número interno realmente libre en ESE paquete (verifica con \`ls\` justo antes de\n` +
+        `    elegirlo) y renombra su espejo en supabase/migrations/ en consecuencia.`,
     );
   }
   return lines.join("\n");
@@ -191,18 +291,19 @@ if (isMainModule()) {
   const migrationsDir = path.join(REPO_ROOT, "supabase", "migrations");
   const packagesRoot = path.join(REPO_ROOT, "packages");
 
-  const result = runMigrationVersionGuard(migrationsDir, [packagesRoot]);
+  const result = runMigrationVersionGuard(migrationsDir, [packagesRoot], { repoRoot: REPO_ROOT });
 
   if (hasProblems(result)) {
     console.error("verify-migration-versions: FALLÓ\n");
     console.error(formatGuardReport(result));
     console.error(
-      `\n${result.duplicates.length} versión(es) duplicada(s), ${result.divergences.length} espejo(s) divergente(s).`,
+      `\n${result.duplicates.length} versión(es) duplicada(s), ${result.divergences.length} espejo(s) divergente(s), ` +
+        `${result.internalNumberDuplicates.length} número(s) interno(s) duplicado(s) nuevo(s).`,
     );
     process.exit(1);
   }
 
   console.log(
-    "verify-migration-versions: OK -- ningún prefijo de versión duplicado en supabase/migrations/ y ningún espejo diverge de su fuente real en packages/*/migrations/.",
+    "verify-migration-versions: OK -- ningún prefijo de versión duplicado en supabase/migrations/, ningún espejo diverge de su fuente real en packages/*/migrations/, y ningún número interno NUEVO se repite dentro de un mismo paquete.",
   );
 }

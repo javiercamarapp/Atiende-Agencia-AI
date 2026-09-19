@@ -3,7 +3,7 @@
 -- hallazgo de seguridad "caller binding" (ver `packages/db/migrations/0016_
 -- caller_binding_fase3.sql` + las 4 migraciones de vertical hermanas —
 -- `packages/domain-despachos/migrations/010_despachos_caller_binding_fase3.sql`,
--- `packages/domain-hoteles/migrations/023_hoteles_caller_binding_fase3.sql`,
+-- `packages/domain-hoteles/migrations/024_hoteles_caller_binding_fase3.sql`,
 -- `packages/domain-restaurantes/migrations/018_restaurantes_caller_binding_
 -- fase3.sql`, `packages/domain-rentas/migrations/019_rentas_caller_binding_
 -- fase3.sql` — para el resumen completo de cada hallazgo). Un escenario
@@ -144,7 +144,7 @@ select count(*) as deberia_ser_1 from core.find_memberships_by_user_id(
 );
 rollback;
 
--- ═══ 0016_caller_binding_fase3.sql — core.find_staff_for_org_admin (uso "administración de staff") ═══
+-- ═══ 0017_caller_binding_fase3.sql — core.find_staff_for_org_admin (uso "administración de staff") ═══
 
 \echo '=== 9. find_staff_for_org_admin: staff-f3-owner-a (owner real de org-f3-a), con su propia sesion, SI encuentra al outsider por correo (1 fila, para invitarlo) ==='
 begin;
@@ -180,7 +180,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000e1
 select password_hash from core.find_staff_for_org_admin('00000000-0000-0000-0000-0000000000e9', 'outsider-f3@example.com') as should_fail;
 rollback;
 
--- ═══ 0016_caller_binding_fase3.sql — core.is_staff_org_member_for_org_admin ═══
+-- ═══ 0017_caller_binding_fase3.sql — core.is_staff_org_member_for_org_admin ═══
 
 \echo '=== 14. is_staff_org_member_for_org_admin: staff-f3-owner-a SI ve que staff-f3-member-a YA es miembro de su organizacion (true) ==='
 begin;
