@@ -92,6 +92,7 @@ import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-st
 import { ProductionLlmUsageRepository } from "./llm-usage-repository.ts";
 import { ProductionSaludRepository } from "./salud-repository.ts";
 import { ProductionResumenDiarioRepository } from "./resumen-diario-repository.ts";
+import { ProductionSuperadminAccionesRepository } from "./superadmin-acciones-repository.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { notProductionReady } from "./not-ready.ts";
@@ -401,6 +402,10 @@ export function buildProductionDeps(): AppDeps {
     // que `llmUsageRepo` de arriba, ver ./salud-repository.ts.
     saludRepo: new ProductionSaludRepository(engine),
     resumenDiarioRepo: new ProductionResumenDiarioRepository(engine),
+    // Acciones sugeridas con confirmación + automatizaciones (back office de
+    // plataforma) — mismo criterio EXACTO que `saludRepo`/`resumenDiarioRepo`
+    // de arriba, ver ./superadmin-acciones-repository.ts.
+    accionesRepo: new ProductionSuperadminAccionesRepository(engine),
     resumenDiarioLlmGateway,
     whatsAppDispatcher,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1

@@ -546,6 +546,12 @@ export interface ProspectoRow {
   readonly creadoPor: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** `null` = no necesita seguimiento ahora mismo. Lo escribe SOLO
+   *  `core.marcar_prospectos_sin_movimiento_for_system` (automatización de
+   *  `packages/db/migrations/0016_superadmin_acciones.sql`) y se limpia
+   *  SOLO — en cualquier actualización real vía `updateProspectoForSuperadmin`
+   *  (incluida la que dispara `cerrar_prospecto`). ISO 8601. */
+  readonly necesitaSeguimientoDesde: string | null;
 }
 
 export interface CreateProspectoInput {

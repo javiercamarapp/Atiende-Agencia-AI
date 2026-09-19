@@ -4,7 +4,7 @@
 // migraciones SQL reales de packages/domain-citas/migrations/.
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -223,6 +223,7 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     saludRepo: new InMemorySaludRepository(),
     resumenDiarioRepo: new InMemoryResumenDiarioRepository(),
+    accionesRepo: new InMemorySuperadminAccionesRepository(),
     resumenDiarioLlmGateway: undefined,
   };
 

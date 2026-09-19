@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -66,6 +66,14 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
   const llmUsageRepo = new InMemoryLlmUsageRepository();
   const saludRepo = new InMemorySaludRepository();
   const resumenDiarioRepo = new InMemoryResumenDiarioRepository();
+  const accionesRepo = new InMemorySuperadminAccionesRepository();
+  // `cerrar_prospecto` reutiliza `core.update_prospecto_for_superadmin` --
+  // en memoria eso vive en `coreRepo` (objeto DISTINTO), ver el comentario
+  // de `InMemorySuperadminAccionesRepository.setEjecutarCerrarProspecto`.
+  accionesRepo.setEjecutarCerrarProspecto(async (callerId, prospectoId, estado) => {
+    const prospecto = await coreRepo.updateProspectoForSuperadmin(callerId, prospectoId, estado, null);
+    return { id: prospecto.id, estado: prospecto.estado };
+  });
   const restaurantesRepo = new InMemoryRestaurantesRepository();
 
   const organizationId = randomUUID();
@@ -180,6 +188,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     llmUsageRepo,
     saludRepo,
     resumenDiarioRepo,
+    accionesRepo,
     // Sin proveedores de LLM en este fixture genérico (mismo criterio que
     // `llmGateway` de arriba) -- las pruebas que sí necesitan una narrativa
     // real por LLM construyen su propio AppDeps con un gateway fake, ver
