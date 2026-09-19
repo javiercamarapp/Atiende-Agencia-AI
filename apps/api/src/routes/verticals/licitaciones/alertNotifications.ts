@@ -20,12 +20,64 @@
 // `app.on(["GET", "POST"], ...)`: GET es lo que el cron real usa, POST sigue
 // funcionando igual que antes para curl/tests manuales — misma lógica,
 // mismo gate de secreto, sin duplicar el handler.
+//
+// Cierre del hallazgo "licitaciones no tiene disparo inline de correo, solo
+// el cron diario de vercel.json::crons -- un correo encolado puede tardar
+// hasta ~24h en salir": mismo principio EXACTO que
+// `../hoteles/email-dispatch.ts::triggerHotelesEmailDispatchInline` (leído
+// primero como plantilla) — `triggerLicitacionesEmailDispatchInline`
+// (exportada abajo) recibe el MISMO `licitacionesRepo` ya abierto en la
+// sesión del caller (nunca abre una sesión nueva) y hace un best-effort real:
+// un fallo aquí NUNCA se propaga -- el correo ya quedó en el outbox y el cron
+// diario de `/internal/licitaciones/email-dispatch` (red de seguridad de
+// respaldo) lo recoge después. Se llama justo después del barrido de
+// `runAlertNotificationSweep` de abajo (único punto del vertical que encola
+// vía `channel='email'` fuera de `admin-staff.ts::staff.invite`, que -- igual
+// que en citas/hoteles/restaurantes -- se deja fuera del disparo inline por
+// paridad con esos verticales). Ese barrido corre en un cron SEPARADO del de
+// email-dispatch (vercel.json los agenda por separado), así que sin esto una
+// alerta podía esperar hasta 24h a que corriera el OTRO cron.
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-licitaciones";
+import type { EmailDispatchSummary as LicitacionesEmailDispatchSummary, LicitacionesRepository } from "@atiende/domain-licitaciones";
 import { runAlertNotificationSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+/** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
+const INLINE_BATCH_SIZE = 5;
+
+/** Cuerpo real de la ruta de cron — extraído para que
+ *  `triggerLicitacionesEmailDispatchInline` no duplique la llamada a
+ *  `dispatchPendingEmailJobs`; a diferencia del disparo inline, ESTA función
+ *  abre su propia sesión de sistema (correcto para el cron). */
+export async function runLicitacionesEmailDispatch(deps: AppDeps): Promise<LicitacionesEmailDispatchSummary> {
+  return deps.engine.withAppSession({ userId: null }, async (db) => {
+    const repo = deps.licitacionesRepo(db);
+    return dispatchPendingEmailJobs(repo, deps.env.resend);
+  });
+}
+
+/**
+ * Disparo inline best-effort — mismo principio que
+ * `triggerHotelesEmailDispatchInline` de hoteles/email-dispatch.ts: llamar
+ * justo después de que la vertical haya encolado (o no) un correo real,
+ * pasando el MISMO `licitacionesRepo` ya abierto en la sesión de ESE request
+ * (nunca una sesión nueva). Un fallo aquí NUNCA se propaga al caller HTTP —
+ * el correo ya quedó en el outbox y el cron diario (red de seguridad de
+ * respaldo) lo recoge después.
+ */
+export async function triggerLicitacionesEmailDispatchInline(deps: AppDeps, licitacionesRepo: LicitacionesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  try {
+    const summary = await dispatchPendingEmailJobs(licitacionesRepo, deps.env.resend, { batchSize });
+    if (summary.dead > 0) {
+      console.error(`licitaciones email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
+    }
+  } catch (err) {
+    console.error("licitaciones email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+  }
+}
 
 export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -36,6 +88,10 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.licitacionesRepo(db);
       const sweep = await runAlertNotificationSweep(repo);
+      // Disparo inline best-effort (ver comentario de cabecera): el barrido de
+      // arriba pudo haber encolado recordatorios de plazo/renovación/cobranza
+      // reales vía `channel='email'`.
+      await triggerLicitacionesEmailDispatchInline(deps, repo);
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => ({
@@ -71,17 +127,14 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por
     // organización), misma sesión de sistema que las demás rutas internas.
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
-      const repo = deps.licitacionesRepo(db);
-      const summary = await dispatchPendingEmailJobs(repo, deps.env.resend);
-      return c.json({
-        ok: true,
-        processed: summary.processed,
-        sent: summary.sent,
-        failed: summary.failed,
-        dead: summary.dead,
-        errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
-      });
+    const summary = await runLicitacionesEmailDispatch(deps);
+    return c.json({
+      ok: true,
+      processed: summary.processed,
+      sent: summary.sent,
+      failed: summary.failed,
+      dead: summary.dead,
+      errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
     });
   });
 

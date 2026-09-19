@@ -11,6 +11,7 @@ import { runRecordatorioCheckInCore } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
 
 export function rentasCheckInRecordatorioRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -25,6 +26,13 @@ export function rentasCheckInRecordatorioRoutes(deps: AppDeps): Hono {
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const rentasRepo = deps.rentasRepo(db);
       const summary = await runRecordatorioCheckInCore(rentasRepo);
+      // Disparo inline best-effort (ver ./email-dispatch.ts::triggerRentasEmailDispatchInline):
+      // el barrido de arriba pudo haber encolado recordatorios reales de
+      // check-in vía `channel='email'` -- este cron es INDEPENDIENTE del cron
+      // de `/internal/rentas/email-dispatch` (vercel.json los agenda por
+      // separado), así que sin esto un correo podía esperar hasta 24h a que
+      // corriera el OTRO cron.
+      await triggerRentasEmailDispatchInline(deps, rentasRepo);
       return c.json({ ok: true, procesadas: summary.procesadas, enviados: summary.enviados, sin_correo: summary.sinCorreo, fallos: summary.fallos });
     });
   });

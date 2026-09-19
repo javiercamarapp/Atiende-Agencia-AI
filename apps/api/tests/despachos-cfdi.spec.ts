@@ -210,6 +210,34 @@ describe("vencimientos fiscales — flujo 3", () => {
     expect(outbox.some((j) => j.eventType === "vencimiento.escalado" && j.payload.to === ctx.staff.admin.email)).toBe(true);
   });
 
+  // Cierre del hallazgo "despachos no tiene disparo inline de correo, solo el
+  // cron diario -- un correo encolado puede tardar hasta ~24h en salir" (ver
+  // ../src/routes/verticals/despachos/notifications.ts::triggerDespachosEmailDispatchInline).
+  // Mismo criterio que hoteles-guest-emails.spec.ts/citas-appointments.spec.ts: se
+  // verifica el envío inline SIN llamar aparte a /internal/despachos/email-dispatch.
+  it("escalar dispara el envío inline del correo real dentro del mismo request (sin llamar aparte a /internal/despachos/email-dispatch)", async () => {
+    const app = buildApp(ctx.deps);
+    ctx.despachosRepo.seedNotificationRecipient(ctx.organizationId, { email: ctx.staff.admin.email, fullName: "admin" });
+
+    await app.request(`/despachos/${ctx.propertyId}/vencimientos/calcular`, authedJson(ctx.staff.contador.token, { year: 2020, month: 1 }));
+    const listado = await app.request(`/despachos/${ctx.propertyId}/vencimientos`, authedJson(ctx.staff.contador.token));
+    const [deadline] = (await listado.json()) as { id: string }[];
+
+    const escalar = await app.request(`/despachos/${ctx.propertyId}/vencimientos/${deadline!.id}/escalar`, authedJson(ctx.staff.contador.token, {}));
+    // La operación de negocio (el escalamiento) responde bien aunque el envío del
+    // correo falle -- best-effort real, sin RESEND_API_KEY en este fixture (ver
+    // TEST_ENV.resend.apiKey === null).
+    expect(escalar.status).toBe(201);
+
+    // Sin ningún POST/GET a /internal/despachos/email-dispatch de por medio: el
+    // disparo inline (triggerDespachosEmailDispatchInline) ya reclamó el job y
+    // marcó el intento fallido DENTRO de este mismo request -- nunca se queda en
+    // 'pending' esperando al cron diario.
+    const job = ctx.despachosRepo.getMessagingOutbox().find((j) => j.eventType === "vencimiento.escalado");
+    expect(job?.status).toBe("failed");
+    expect(job?.attempts).toBe(1);
+  });
+
   it("marcar completado un vencimiento ya completado da 409 conflict", async () => {
     const app = buildApp(ctx.deps);
     await app.request(`/despachos/${ctx.propertyId}/vencimientos/calcular`, authedJson(ctx.staff.contador.token, { year: 2026, month: 6 }));
