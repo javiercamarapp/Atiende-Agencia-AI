@@ -295,8 +295,22 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
   const [datosPanelSesionId, setDatosPanelSesionId] = useState<string | null>(null);
   const [recursoActivo, setRecursoActivo] = useState<string>(RECURSOS[0]!.key);
   const [filtroPropertyId, setFiltroPropertyId] = useState("");
+  // `filtroPropertyIdAplicado` -- el valor de `filtroPropertyId` que ya generó
+  // la última lectura de datos (fix hallazgo de revisión real, no bloqueante
+  // 8: `onBlur` disparaba una lectura nueva aunque el valor no hubiera
+  // cambiado -- cada blur sin cambios reales consumía una fila de la
+  // bitácora inalterable y una operación del rate-limit compartido
+  // BREAK_GLASS_RATE_LIMIT sin ninguna razón).
+  const [filtroPropertyIdAplicado, setFiltroPropertyIdAplicado] = useState("");
   const [datosPorRecurso, setDatosPorRecurso] = useState<Record<string, readonly Record<string, unknown>[] | null>>({});
   const [errorPorRecurso, setErrorPorRecurso] = useState<Record<string, string | null>>({});
+  // Fase 10c, fix hallazgo de revisión real (bloqueante 3) -- `disponible:
+  // false` (lector no disponible: falta aplicar packages/domain-rentas/
+  // migrations/020_break_glass_lectores.sql en la base real) es un estado
+  // DISTINTO de "el tenant no tiene datos de este tipo" (`mensajeVacio` de
+  // cada RECURSO). `undefined` = todavía no se sabe (nunca se leyó este
+  // recurso en este panel).
+  const [disponiblePorRecurso, setDisponiblePorRecurso] = useState<Record<string, boolean | undefined>>({});
   const [cargandoRecurso, setCargandoRecurso] = useState<string | null>(null);
 
   async function cargar() {
@@ -374,8 +388,10 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
     setDatosPanelSesionId(sesion.id);
     setRecursoActivo(RECURSOS[0]!.key);
     setFiltroPropertyId("");
+    setFiltroPropertyIdAplicado("");
     setDatosPorRecurso({});
     setErrorPorRecurso({});
+    setDisponiblePorRecurso({});
     void leerRecurso(sesion, RECURSOS[0]!, "");
   }
 
@@ -384,12 +400,17 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
     setErrorPorRecurso((prev) => ({ ...prev, [recurso.key]: null }));
     try {
       const qs = propertyId.trim() ? `?propertyId=${encodeURIComponent(propertyId.trim())}` : "";
-      const r = await fetchJson<Record<string, Record<string, unknown>[]>>(
+      const r = await fetchJson<Record<string, Record<string, unknown>[]> & { disponible?: boolean }>(
         apiBaseUrl,
         token,
         `/superadmin/break-glass/organizaciones/${sesion.organizationId}/${recurso.path}${qs}`,
       );
       setDatosPorRecurso((prev) => ({ ...prev, [recurso.key]: r[recurso.jsonKey] ?? [] }));
+      // `disponible` viaja en TODAS las respuestas desde el fix del bloqueante
+      // 3 -- `?? true` es solo defensa ante una API vieja/servidor no
+      // actualizado (nunca el caso normal), para no mostrar "no disponible"
+      // por error de lectura de un campo ausente.
+      setDisponiblePorRecurso((prev) => ({ ...prev, [recurso.key]: r.disponible ?? true }));
     } catch (err) {
       setErrorPorRecurso((prev) => ({ ...prev, [recurso.key]: err instanceof Error ? err.message : `No se pudo leer "${recurso.etiqueta}" del tenant.` }));
     } finally {
@@ -407,8 +428,17 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
 
   function aplicarFiltroPropiedad(sesion: Sesion, propertyId: string) {
     setFiltroPropertyId(propertyId);
+    // Fix hallazgo de revisión real (no bloqueante 8): `onBlur` disparaba una
+    // lectura nueva -- fila nueva en la bitácora inalterable + una operación
+    // del rate-limit compartido -- aunque el valor no hubiera cambiado desde
+    // la última vez que sí se aplicó (recorrer las 7 pestañas y perder el foco
+    // del input sin tocarlo ya generaba 7 lecturas de más). Si el valor
+    // (recortado) es el mismo que ya está aplicado, no se repite la lectura.
+    if (propertyId.trim() === filtroPropertyIdAplicado.trim()) return;
+    setFiltroPropertyIdAplicado(propertyId);
     setDatosPorRecurso({});
     setErrorPorRecurso({});
+    setDisponiblePorRecurso({});
     const recurso = RECURSOS.find((r) => r.key === recursoActivo) ?? RECURSOS[0]!;
     void leerRecurso(sesion, recurso, propertyId);
   }
@@ -524,6 +554,7 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
                                 {RECURSOS.map((r) => {
                                   const datos = datosPorRecurso[r.key];
                                   const err = errorPorRecurso[r.key];
+                                  const disponible = disponiblePorRecurso[r.key];
                                   return (
                                     <TabsContent key={r.key} value={r.key}>
                                       {cargandoRecurso === r.key && <p className="text-xs text-muted-foreground p-2">Leyendo {r.etiqueta.toLowerCase()} del tenant…</p>}
@@ -532,7 +563,16 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
                                           {err}
                                         </p>
                                       )}
-                                      {!err && cargandoRecurso !== r.key && datos && datos.length === 0 && <p className="text-xs text-muted-foreground p-2">{r.mensajeVacio}</p>}
+                                      {/* Fix hallazgo de revisión real (bloqueante 3): "no disponible" (falta
+                                          aplicar la migración 020 en la base real) es un estado DISTINTO de
+                                          "el tenant no tiene datos de este tipo" -- un operador investigando
+                                          una emergencia necesita saber cuál de los dos está viendo. */}
+                                      {!err && cargandoRecurso !== r.key && datos && datos.length === 0 && disponible === false && (
+                                        <p role="status" className="text-xs text-amber-600 dark:text-amber-500 p-2">
+                                          Este lector todavía no está disponible en esta base (falta aplicar la migración correspondiente) -- no se sabe si el tenant tiene datos de este tipo.
+                                        </p>
+                                      )}
+                                      {!err && cargandoRecurso !== r.key && datos && datos.length === 0 && disponible !== false && <p className="text-xs text-muted-foreground p-2">{r.mensajeVacio}</p>}
                                       {!err && datos && datos.length > 0 && (
                                         <div className="p-2 flex flex-col gap-1">
                                           {datos.map((item, idx) => (

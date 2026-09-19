@@ -231,4 +231,46 @@ describe("SuperAdminBreakGlassPage", () => {
     expect(fetchMock.mock.calls.some((call: unknown[]) => String(call[0]).includes("/organizaciones/org-1/finanzas"))).toBe(true);
     expect(rendered.container.textContent).toContain("MXN");
   });
+
+  // Fix hallazgo de revisión real (bloqueante 3): `disponible: false`
+  // (migración 020 pendiente de aplicar) debe mostrar un mensaje DISTINTO de
+  // "el tenant no tiene finanzas registradas" -- un operador investigando una
+  // emergencia necesita distinguir "sin datos" de "lector no disponible".
+  it("lector no disponible (disponible:false): muestra el aviso de 'no disponible', NUNCA el mensaje de vacío real", async () => {
+    const ahora = Date.now();
+    stubFetch({
+      sesiones: {
+        sessions: [
+          {
+            id: "s1",
+            organizationId: "org-1",
+            reason: "Ticket SOP-4821: investigar cobro duplicado.",
+            openedAtMs: ahora,
+            expiresAtMs: ahora + 30 * 60_000,
+            closedAtMs: null,
+            closedBy: null,
+            activa: true,
+            remainingMs: 30 * 60_000,
+          },
+        ],
+      },
+      reservas: { reservas: [], disponible: true },
+      finanzas: { finanzas: [], disponible: false },
+    });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const verDatosBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Ver datos del tenant"));
+    click(verDatosBtn!);
+    await esperarCarga();
+
+    const tabFinanzas = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Finanzas");
+    await act(async () => {
+      tabFinanzas!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await esperarCarga();
+
+    expect(rendered.container.textContent).toContain("todavía no está disponible");
+    expect(rendered.container.textContent).not.toContain("El tenant no tiene movimiento financiero");
+  });
 });
