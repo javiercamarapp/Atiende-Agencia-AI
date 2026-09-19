@@ -119,6 +119,21 @@ export function rentasFinanzasStatementsRoutes(deps: AppDeps): Hono<CoreAuthHono
       generadoPor: userId,
     });
 
+    // r5 -- bitácora de auditoría (ajuste/generación de estado de cuenta de
+    // propietario). No existe hoy un endpoint de "ajuste manual" separado de
+    // "generar" -- se audita cada versión nueva del statement, que es la acción
+    // sensible real que existe.
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: userId,
+      action: anterior ? "owner_statement.nueva_version" : "owner_statement.generado",
+      entityType: "owner_statement",
+      entityId: creado.id,
+      campo: "version",
+      antes: anterior ? `v${anterior.version}` : null,
+      despues: `v${version} (${resultado.totales.netoCentavos} ${moneda}${motivoVersionRaw ? `, motivo: ${motivoVersionRaw}` : ""})`,
+    });
+
     return c.json({ id: creado.id, version, creado: true, generadoEn: creado.generadoEn, totales: resultado.totales }, 201);
   });
 

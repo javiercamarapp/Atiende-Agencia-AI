@@ -78,15 +78,43 @@ export function rentasIcalSyncRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const syncRepo = deps.rentasCalendarSyncRepo(c.get("db"));
     const resultado = await syncRepo.connectFeed({ organizationId, propertyId, unidadId, canalId: canal.id, urlImportacion });
+
+    // r5 -- bitácora de auditoría (conexión de canal iCal). `deps.rentasRepo` sobre
+    // el MISMO `db` de la request -- misma transacción compartida que la escritura de
+    // negocio de arriba.
+    await deps.rentasRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "canal.ical_conectado",
+      entityType: "canal",
+      entityId: resultado.id,
+      campo: "url_importacion",
+      antes: null,
+      despues: `canal ${canal.codigo} conectado en unidad ${unidadId}`,
+    });
+
     return c.json({ id: resultado.id, canal: canal.codigo, conectado: true }, 201);
   });
 
   app.delete(feedBase, async (c) => {
     assertVerticalRole(c, SYNC_CALENDARIO_ESCRITURA_ROLES);
-    const { propertyId, unidadId, canal } = await resolverUnidadYCanal(c);
+    const { propertyId, unidadId, canal, organizationId } = await resolverUnidadYCanal(c);
     const syncRepo = deps.rentasCalendarSyncRepo(c.get("db"));
     const desconectado = await syncRepo.disconnectFeed(propertyId, unidadId, canal.id);
     if (!desconectado) throw Errors.notFound("No hay un feed conectado para esta unidad/canal.");
+
+    // r5 -- bitácora de auditoría (desconexión de canal iCal).
+    await deps.rentasRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "canal.ical_desconectado",
+      entityType: "canal",
+      entityId: null,
+      campo: "activo",
+      antes: "true",
+      despues: `canal ${canal.codigo} desconectado en unidad ${unidadId}`,
+    });
+
     return c.json({ canal: canal.codigo, conectado: false }, 200);
   });
 
