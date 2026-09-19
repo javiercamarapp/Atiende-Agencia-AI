@@ -1513,6 +1513,19 @@ export class PostgresHotelesRepository implements HotelesRepository {
     await this.db.query(`update hoteles.cfdi_emision set status = $1, canceled_at = case when $1 = 'cancelado' then now() else canceled_at end where id = $2;`, [status, cfdiId]);
   }
 
+  // Webhook entrante del PAC (sin propertyId/sesión de usuario) — la política RLS
+  // "dinero: staff con acceso ... cfdi de hospedaje" (hoteles.can_access_money())
+  // nunca la satisface una sesión de sistema (auth.uid() is null), así que un
+  // UPDATE normal aquí no tocaría ninguna fila. `hoteles.apply_cfdi_webhook_status`
+  // (security definer, ver
+  // migrations/020_cfdi_webhook_status_security_definer.sql) localiza + aplica la
+  // transición por uuid_fiscal en una sola sentencia atómica, bypassando RLS SOLO
+  // para esta operación puntual.
+  async applyCfdiWebhookStatus(uuidFiscal: string, status: CfdiEmisionRecord["status"]): Promise<CfdiEmisionRecord | null> {
+    const { rows } = await this.db.query<CfdiEmisionRawRow>(`select ${CFDI_EMISION_COLUMNS} from hoteles.apply_cfdi_webhook_status($1, $2);`, [uuidFiscal, status]);
+    return rows[0] ? mapCfdiEmision(rows[0]) : null;
+  }
+
   // ---- HotelesRepository: Fase 7 — descubrimiento de organización/property ----
 
   async findOrganizationBySlug(slug: string): Promise<HotelOrganizationSummary | null> {
