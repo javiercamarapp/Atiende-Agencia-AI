@@ -20,7 +20,8 @@
     "test:integration": "vitest run --config vitest.config.ts tests/integration --pool=forks --poolOptions.forks.singleFork",
     "db:migrate": "node packages/db/src/cli.ts migrate",
     "db:seed": "node packages/db/src/cli.ts seed",
-    "audit:deps": "npm audit --audit-level=high"
+    "audit:deps": "npm audit --audit-level=high",
+    "verify:migration-versions": "node scripts/verify-migration-versions/check-migration-versions.ts"
   },
   "devDependencies": {
     "@atiende/core-ratelimit": "*",
