@@ -6,7 +6,7 @@
 // (firma inválida rechazada, verificación cross-tenant, dedupe/orden del
 // ledger).
 import { createHmac, randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCoreRepository } from "@atiende/db";
 import { signAccessToken } from "@atiende/core-auth";
 import type { CustomerLookup, StripeClient } from "@atiende/billing";
@@ -426,6 +426,70 @@ describe("POST /billing/webhook", () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as { procesado: boolean }).procesado).toBe(false);
     expect(await deps.coreRepo.getOrganizationBillingForWebhook(base.organizationId)).toMatchObject({ status: "sin_suscripcion" });
+  });
+});
+
+// Hallazgo de revisores (ronda r5): POST /billing/webhook no tenía rate-limit.
+// Ver el comentario de cabecera de billing.ts para el criterio completo
+// (categoría 'conversation:inbound-webhook', evaluado ANTES de la firma,
+// fail-open). `resetDefaultRateLimiterForTests()` corre automáticamente antes
+// de CADA test (ver test-setup/reset-rate-limiter.ts) -- estos tests siempre
+// arrancan con el contador en cero.
+describe("POST /billing/webhook -- rate limiting real (conversation:inbound-webhook, por IP, ANTES de verificar la firma)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("dentro del límite (menos de 120 en la ventana) nunca responde 429 -- una firma inválida sigue dando 401, la verificación de firma sigue intacta", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_rl_ok", created: Math.floor(Date.now() / 1000), customer: "cus_rl", tenantId: base.organizationId });
+
+    for (let i = 0; i < 10; i += 1) {
+      const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": "t=1,v1=firmaquenocoincide00000000000000000000000000000000000000000000" }));
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it("más de 120 notificaciones en la misma ventana (misma IP) responde 429 con Retry-After -- evaluado ANTES de verificar la firma: incluso con firma siempre inválida, el corte real es el rate limit, no la firma", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_rl_exceso", created: Math.floor(Date.now() / 1000), customer: "cus_rl_exceso", tenantId: base.organizationId });
+
+    let last: Response | undefined;
+    for (let i = 0; i < 121; i += 1) {
+      last = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": `t=1,v1=firma-invalida-${i}` }));
+      if (i < 120) expect(last.status).toBe(401);
+    }
+    expect(last!.status).toBe(429);
+    expect(last!.headers.get("Retry-After")).toBe("60");
+  });
+
+  it("sin credenciales de Upstash configuradas (o con Redis caído), el webhook sigue pasando -- fail-open por diseño, nunca bloquea un webhook legítimo de Stripe por un blip del proveedor", async () => {
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://fake-redis.upstash.io");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "tok-de-prueba");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+    );
+
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_rl_failopen", created: now, customer: "cus_rl_failopen", tenantId: base.organizationId });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+    // Redis caído -- degrada al backend en memoria de esta instancia (la
+    // categoría es ABIERTA), nunca bloquea con 429 ni con 5xx: el resto del
+    // handler corre normal (firma válida -> 200 procesado).
+    expect(res.status).toBe(200);
   });
 });
 
