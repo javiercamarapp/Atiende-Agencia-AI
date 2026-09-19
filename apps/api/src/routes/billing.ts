@@ -40,23 +40,40 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // Hallazgo de revisores (ronda r5): POST /billing/webhook (Stripe) no tenía
 // NINGÚN rate-limit -- a diferencia del resto de webhooks entrantes de este
-// monorepo (CFDI del PAC, WhatsApp de Meta), que lo evalúan DESPUÉS de
-// verificar la firma, aquí se evalúa ANTES: una ráfaga no autenticada contra
-// este endpoint no debe gastar CPU verificando firmas HMAC ni leyendo el
-// cuerpo completo del request antes de que el límite la corte. Categoría
-// 'conversation:inbound-webhook' (ver packages/core-ratelimit/src/
-// endpoint-policy.ts): fail-OPEN si Upstash no está configurado o el intento
-// falla a media petición -- documentado a propósito, mismo criterio que el
-// resto de webhooks de proveedor externo ya catalogados ahí: tirar un webhook
-// LEGÍTIMO de Stripe (que reintenta un número limitado de veces con backoff)
-// es peor que dejarlo pasar degradado al backend en memoria de ESTA instancia
-// (nunca sin ningún tope). 120 req/60s por IP -- mismo límite que el resto de
-// webhooks entrantes ya catalogados (WhatsApp de Meta, PAC de CFDI), holgado
-// para las ráfagas reales de Stripe (varios eventos casi simultáneos tras una
-// sola acción del cliente: checkout.session.completed + subscription.created
-// + invoice.* suelen llegar juntos). Ante negativa, 429 con Retry-After
-// (`Errors.tooManyRequests`) -- nunca 200 silencioso ni 5xx: Stripe reintenta
-// solo ante 429/5xx, nunca ante 2xx.
+// monorepo (CFDI del PAC: 60/60s, WhatsApp de Meta: 120/60s), que lo evalúan
+// DESPUÉS de verificar la firma ("no gastar cupo real en tráfico que ni
+// siquiera prueba venir de un proveedor real", ver cfdi-webhook.ts), aquí se
+// evalúa ANTES: Stripe no manda ningún identificador de tenant en la
+// URL/headers antes de verificar la firma (a diferencia de WhatsApp, que trae
+// `phone_number_id`), así que no hay forma de acotar el límite por tenant sin
+// antes gastar CPU en HMAC -- el trade-off elegido es limitar por IP incluso
+// sin haber probado nada todavía, para que una ráfaga no autenticada no
+// llegue ni a verificar la firma. Categoría 'conversation:inbound-webhook'
+// (ver packages/core-ratelimit/src/endpoint-policy.ts): fail-OPEN si Upstash
+// no está configurado o el intento falla a media petición -- documentado a
+// propósito: tirar un webhook LEGÍTIMO de Stripe (que reintenta un número
+// limitado de veces con backoff) es peor que dejarlo pasar degradado al
+// backend en memoria de ESTA instancia (nunca sin ningún tope). 120 req/60s
+// por IP -- mismo tope que WhatsApp (NO el mismo que CFDI, que es 60/60s),
+// holgado para las ráfagas reales de Stripe (varios eventos casi simultáneos
+// tras una sola acción del cliente: checkout.session.completed +
+// subscription.created + invoice.* suelen llegar juntos). Ante negativa, 429
+// con Retry-After (`Errors.tooManyRequests`) -- nunca 200 silencioso ni 5xx:
+// Stripe reintenta solo ante 429/5xx, nunca ante 2xx.
+//
+// FIX hallazgo de revisión real (ronda r5, bloqueantes 1 y 2 del PR #167):
+// (1) `requestActor` confiaba primero en `cf-connecting-ip` (falsificable sin
+// Cloudflare real delante de Vercel, ver el comentario de cabecera de
+// `http-security.ts`) -- corregido ahí, esta ruta se beneficia sin cambios
+// propios. (2) esta clave era BYTE-IDÉNTICA a la de `cfdi-webhook.ts`
+// (`requestActor(c.req.raw)`, sin discriminador) porque
+// `packages/core-ratelimit/src/redis-backend.ts` cuenta solo por `key` (el
+// límite/ventana nunca entran a la clave) -- tráfico NO autenticado contra
+// este endpoint incrementaba el MISMO contador que `cfdi-webhook.ts` consulta
+// DESPUÉS de verificar firma con un tope menor (60), rompiendo su invariante
+// documentado. Se agrega el discriminador `"stripe-billing"` (mismo patrón
+// que `whatsapp.ts` ya usa con `phoneNumberId`) para que cada webhook tenga
+// su propio bucket, sin importar que ambos compartan la misma categoría.
 const STRIPE_WEBHOOK_RATE_LIMIT = { max: 120, windowMs: 60_000 } as const;
 
 /** `organizationId`/`tenantIdDelPayload` puede venir de metadata que el propio
@@ -295,7 +312,10 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // este punto. Solo por IP -- a diferencia de otros webhooks de este
     // monorepo (WhatsApp trae phone_number_id), Stripe no manda ningún
     // identificador de tenant en la URL/headers antes de verificar la firma.
-    const rateAllowed = await rateLimit(`conversation:inbound-webhook:${requestActor(c.req.raw)}`, STRIPE_WEBHOOK_RATE_LIMIT.max, STRIPE_WEBHOOK_RATE_LIMIT.windowMs, {
+    // Discriminador "stripe-billing" -- ver comentario de cabecera de este
+    // archivo (bloqueante 2 de la ronda r5): sin él, esta clave colisiona
+    // byte a byte con la de `cfdi-webhook.ts`.
+    const rateAllowed = await rateLimit(`conversation:inbound-webhook:${requestActor(c.req.raw, "stripe-billing")}`, STRIPE_WEBHOOK_RATE_LIMIT.max, STRIPE_WEBHOOK_RATE_LIMIT.windowMs, {
       category: "conversation:inbound-webhook",
     });
     if (!rateAllowed) throw Errors.tooManyRequests("Demasiadas notificaciones de webhook de Stripe. Intenta de nuevo en unos minutos.");
