@@ -9,7 +9,7 @@
 // reconoce esa forma exacta de query). Dos organizaciones sembradas para poder probar
 // aislamiento cross-tenant real de las rutas de KPIs.
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import type { Order, PersistedOrderItem } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
@@ -188,6 +188,11 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     rentasBreakGlassSessionRepo: (_db) => new InMemoryBreakGlassSessionRepository(),
     rentasBreakGlassAuditRepo: (_db) => new InMemoryBreakGlassAuditRepository(),
     rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
+    // Bloque C -- impersonación de superadmin con bitácora: campo requerido de
+    // AppDeps que este fixture (independiente del de fixtures.ts) todavía no
+    // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
+    // impersonación.
+    impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     saludRepo: new InMemorySaludRepository(),

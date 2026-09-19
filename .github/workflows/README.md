@@ -1,10 +1,52 @@
 # .github/workflows
 
+Dos workflows, deliberadamente separados (no se mezclan responsabilidades en
+un solo job): `postgres-real-gate.yml` (Postgres real, RLS/GRANT) y
+`ci-checks.yml` (typecheck/lint/tests en memoria/build). Ambos disparan en
+`pull_request`, en `push` a `main`, y manualmente (`workflow_dispatch`), y
+corren en paralelo — ninguno espera al otro. **No son los mismos triggers en
+el detalle:** `postgres-real-gate.yml` dispara siempre; `ci-checks.yml` tiene
+`paths` con exclusiones (ver abajo) y NO dispara para un diff que solo toca
+`**/*.md`/`docs/**` fuera de `docs/DEPLOY.md` y
+`supabase/migrations/README.md`.
+
+## ci-checks.yml
+
+Agregado 19-sep-2026, para cerrar un hueco que `postgres-real-gate.yml` (ver
+abajo) documentaba explícitamente en su propio comentario de cabecera desde
+que existe: **ningún** workflow de este repo corría `npm run typecheck`,
+`npm run lint` ni `npm run test:unit` — ese tier corría solo a mano por quien
+hacía el cambio, así que un PR con "tests en verde" era solo la palabra local
+de quien lo construyó. Corre, en un solo job sin matriz sobre `ubuntu-latest`:
+`npm ci` → `npm run typecheck` → `npm run lint` → `npm run test:unit` →
+`npm run build --workspace apps/web`. Frugal a propósito: `concurrency` con
+`cancel-in-progress` por rama (solo para `pull_request`; en `push` a `main`
+no cancela, para que dos merges seguidos no dejen el primer commit sin
+veredicto propio), `timeout-minutes: 15`, `permissions: contents: read`,
+cache de npm, `paths` con exclusiones para cambios solo de docs/markdown
+(con re-inclusiones explícitas de `docs/DEPLOY.md`,
+`supabase/migrations/README.md`, `apps/**` y `packages/**` para no burlar los
+guards de `docs-migration-count-guard.spec.ts` y `workspace-source-guard.spec.ts`
+— ver el comentario de cabecera del propio workflow), sin servicios externos
+ni secretos.
+
+**Limitación conocida si algún día se vuelve check requerido:** si este check
+("typecheck + lint + test:unit + build de apps/web") se marca como
+obligatorio en la protección de la rama `main`, un PR cuyo diff completo cae
+en la exclusión de `paths` (solo `**/*.md`/`docs/**` fuera de las
+re-inclusiones) nunca dispara el workflow, y GitHub deja ese check en estado
+"Expected"/pendiente para siempre — nunca en verde ni en rojo, bloqueando el
+merge indefinidamente. Es una limitación conocida de GitHub Actions con
+`paths`/`paths-ignore` + checks requeridos, no un bug de este repo. Hoy
+(19-sep-2026) `main` no tiene ninguna protección de rama configurada, así que
+esto no bloquea nada todavía; queda anotado aquí para quien active protección
+de rama más adelante.
+
 ## postgres-real-gate.yml
 
-Único workflow de este repo. Es **solo de tests** — no tiene ningún paso de
-build, deploy, publicación, ni integración con Vercel u otro servicio con costo
-o efectos de producción. Dispara en `pull_request`, en `push` a `main`, y
+Es **solo de tests contra Postgres real** — no tiene ningún paso de build,
+deploy, publicación, ni integración con Vercel u otro servicio con costo o
+efectos de producción. Dispara en `pull_request`, en `push` a `main`, y
 manualmente (`workflow_dispatch`).
 
 ### Qué cubre
@@ -50,12 +92,14 @@ runner deriva el resultado esperado de cada escenario, y el `README.md` de cada
 
 ### Qué NO cubre
 
-- El resto de la suite (`npm run typecheck`, `npx vitest run`, `npm run
-  test:integration`, lint) **no tiene ningún trigger de CI todavía** — sigue
-  corriéndose a mano por quien hace el cambio.
-  Agregar ese tier es una decisión de plataforma más amplia (qué runner, qué
-  triggers, cache de `node_modules`, tiempo de corrida de 4089+ specs), fuera
-  del alcance de este hallazgo puntual sobre Postgres real.
+- `npm run typecheck`, `npm run lint` y `npm run test:unit` — desde
+  19-sep-2026 corren en `ci-checks.yml` (ver arriba), workflow separado de
+  este.
+- `npm run test:integration` sigue **sin ningún trigger de CI** — ni este
+  workflow ni `ci-checks.yml` lo corren; sigue corriéndose a mano por quien
+  hace el cambio. Agregarlo es una decisión de plataforma más amplia (qué
+  runner, si necesita su propio servicio de Postgres o Redis, tiempo de
+  corrida), fuera del alcance del hallazgo que motivó `ci-checks.yml`.
 - No ejercita ninguna tabla/función/policy de las 6 verticales que no esté ya
   cubierta por un `scripts/verify-*/assertions.sql` existente. No es un fuzz ni
   un test de regresión general del esquema — es exactamente, y solamente, lo

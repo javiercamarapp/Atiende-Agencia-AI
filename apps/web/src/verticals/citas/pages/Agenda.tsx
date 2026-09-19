@@ -76,16 +76,31 @@ function startOfWeek(date: Date): Date {
   return d;
 }
 
+// Bug real (revisión de PR #164, "no bloqueante" #3): las 2 etiquetas de rango de abajo
+// ("Semana del ..."/mes) se arman sobre `from`, un valor de solo-FECHA anclado a
+// medianoche UTC (mismo patrón que `parseFechaSolo` de `formato-fecha.ts` -- por eso
+// `startOfWeek`/el cálculo del día 1 del mes usan SOLO getters/setters `UTC*`, nunca
+// locales). Formatearlo con `formatDateLong`/sin `timeZone` fijo usa la zona LOCAL DEL
+// NAVEGADOR -- en CUALQUIER zona con offset negativo (América completa) eso corre la
+// etiqueta un día/mes ANTES del real ("domingo, 13 de septiembre" para la semana del
+// LUNES 14; "agosto de 2026" viendo septiembre). El fix es forzar `timeZone: "UTC"` --
+// igual que `formatFechaSolo` -- para recuperar el día/mes que `from` en realidad
+// representa; NO se toca `formatDateLong`/`format.ts` (esa función también formatea
+// timestamps reales de citas en otro lugar de este mismo archivo, con una zona horaria
+// de negocio distinta -- un solo `timeZone` ahí serviría a un caso rompiendo el otro).
+const RANGO_LABEL_FORMATTER_LARGA = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+const RANGO_LABEL_FORMATTER_MES = new Intl.DateTimeFormat("es-MX", { month: "long", year: "numeric", timeZone: "UTC" });
+
 function computeRange(anchor: Date, view: ViewMode): { fromIso: string; toIso: string; label: string } {
   if (view === "week") {
     const from = startOfWeek(anchor);
     const to = new Date(from);
     to.setUTCDate(to.getUTCDate() + 7);
-    return { fromIso: from.toISOString(), toIso: to.toISOString(), label: `Semana del ${formatDateLong(from.toISOString())}` };
+    return { fromIso: from.toISOString(), toIso: to.toISOString(), label: `Semana del ${RANGO_LABEL_FORMATTER_LARGA.format(from)}` };
   }
   const from = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
   const to = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1));
-  const label = new Intl.DateTimeFormat("es-MX", { month: "long", year: "numeric" }).format(from);
+  const label = RANGO_LABEL_FORMATTER_MES.format(from);
   return { fromIso: from.toISOString(), toIso: to.toISOString(), label };
 }
 

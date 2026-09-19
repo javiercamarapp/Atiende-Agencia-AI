@@ -114,8 +114,11 @@ problema de configuración de cobertura.
 
 ## CI
 
-El workflow existente (`.github/workflows/postgres-real-gate.yml`) **no**
-corre `test:unit` ni `test:coverage` — solo el gate de Postgres real. Esta
-tarea no le agregó cobertura al CI actual (decisión de costo/tiempo del
-dueño del repo, fuera de alcance aquí); ver la descripción del PR que
-introdujo este documento para una propuesta concreta de job opcional.
+Desde el 19-sep-2026, `.github/workflows/ci-checks.yml` corre `test:unit` en
+CI (antes de eso, ningún workflow lo corría — solo el gate de Postgres real,
+`.github/workflows/postgres-real-gate.yml`, que sigue sin correr
+`test:unit`/`test:coverage`). `test:unit` **no** activa la instrumentación de
+cobertura (ver arriba), así que el umbral de este documento sigue sin
+evaluarse en ningún CI — eso no cambió. Agregar `test:coverage` a CI (con
+`--coverage`) es una decisión de costo/tiempo del dueño del repo, fuera de
+alcance de este documento y de `ci-checks.yml`.

@@ -9,7 +9,7 @@
 // principal (marcar cuenta pagada y enviar recordatorio) verificando método/ruta/
 // cuerpo reales.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CobranzaPage } from "../src/verticals/despachos/pages/Cobranza.tsx";
 import type { DespachosShellContext } from "../src/verticals/despachos/DespachosShell.tsx";
 import type { CuentaCobranza } from "../src/verticals/despachos/lib/cobranza-client.ts";
@@ -141,6 +141,35 @@ describe("CobranzaPage (despachos)", () => {
     expect(text).toContain("Cliente Demo SA");
     expect(text).toContain("35 días de atraso");
     expect(text).toContain("31-60 días");
+  });
+
+  describe("fechaVencimiento (columna `date`, solo día) -- REQ-r5, bug real confirmado por un revisor", () => {
+    const TZ_ORIGINAL = process.env.TZ;
+
+    beforeAll(() => {
+      // `fechaVencimiento` es "2026-08-15" (solo día, sin hora). El bug real:
+      // pasarla por `new Date(cadena)` la interpreta como medianoche UTC, y
+      // formatearla con la zona LOCAL del navegador (el default de
+      // `toLocaleDateString`, que es lo que hacía `formatDate` antes de este
+      // fix) la corre un día atrás en cualquier zona con offset negativo --
+      // America/Mexico_City (UTC-6) incluida. Fijamos ese TZ para reproducir
+      // exactamente el entorno del despacho afectado.
+      process.env.TZ = "America/Mexico_City";
+    });
+
+    afterAll(() => {
+      if (TZ_ORIGINAL === undefined) delete process.env.TZ;
+      else process.env.TZ = TZ_ORIGINAL;
+    });
+
+    it("muestra el 15, NUNCA el 14, en America/Mexico_City", async () => {
+      stubFetch({ cuentas: [CUENTA] });
+      rendered = renderPage();
+      await esperarCarga();
+      const text = rendered.container.textContent!;
+      expect(text).toContain("15 ago 2026");
+      expect(text).not.toContain("14 ago 2026");
+    });
   });
 
   it("el resumen ejecutivo muestra la cartera total y la tasa de recuperación esperada reales", async () => {

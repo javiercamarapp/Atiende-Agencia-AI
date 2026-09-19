@@ -7,6 +7,15 @@ export function formatMoneyFromCents(cents: number | null): string {
   return `$${(cents / 100).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// NOTA (revisión de PR #164, "no bloqueante" #3): `formatDateLong` la usa
+// `Agenda.tsx` para DOS cosas de naturaleza distinta -- el encabezado de un día
+// real de citas (`dayAppointments[0]!.startsAt`, un timestamp real) Y la etiqueta
+// "Semana del ..." (`from.toISOString()`, un valor de solo-FECHA anclado a
+// medianoche UTC, mismo criterio que `parseFechaSolo` de `formato-fecha.ts`).
+// Fijar aquí una sola `timeZone` serviría a un caso y rompería el otro (una fecha
+// anclada a UTC formateada en `America/Mexico_City` se corre un día, el MISMO bug
+// que se busca arreglar) -- por eso el fix real vive en el call site de Agenda.tsx
+// (`computeRange`), NO aquí: no toca estos formatters compartidos.
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("es-MX", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const DATE_FORMATTER = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long" });
 const TIME_FORMATTER = new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" });
