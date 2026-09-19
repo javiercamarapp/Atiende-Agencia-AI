@@ -8,7 +8,7 @@ contra SQL real (todos los tests corren contra el repositorio en memoria)". Corr
 mano vía `run.sh` y automáticamente en cada PR/push vía
 `.github/workflows/postgres-real-gate.yml`.
 
-## Qué demuestra (22 escenarios)
+## Qué demuestra (24 escenarios)
 
 1. **`create_order_idempotent`** (`migrations/003`, grants reales en
    `migrations/013_rpc_anti_duplicado_authenticated_grants.sql`) — escenarios 1-4:
@@ -46,6 +46,18 @@ mano vía `run.sh` y automáticamente en cada PR/push vía
    parámetro de la función.
 9. **Aislamiento cross-tenant básico** — escenarios 21-22: staff de otra
    organización no ve ni pedidos ni clientes ajenos vía RLS directa.
+10. **Recorrido público completo bajo sesión de sistema** (`buscar_sucursal_cercana`
+    -> `create_order_idempotent`) — escenarios 23-24, agregados junto con
+    `packages/db/migrations/0015_core_rls_sesion_sistema.sql` (mirror:
+    `supabase/migrations/20240101000136_...`). Reemplaza la limitación que
+    documentaba el escenario 6 (ver sección de abajo, ahora corregida): con
+    `core.property` recibiendo un escape hatch de sesión de sistema,
+    `nearest_branch_by_colonia()` ya resuelve la sucursal de punta a punta (JOIN
+    real contra `core.property`) y `create_order_idempotent()` recibe un
+    `property_id` real — el recorrido exacto de
+    `PostgresRestaurantesRepository.findBranch()` ->
+    `orders.ts::prepareCreateOrder` que este mismo README documentaba como "roto de
+    punta a punta contra Postgres real, para CUALQUIER organización".
 
 ## Bug real corregido: `restaurantes.known_zone` sin GRANT ni policy
 
@@ -65,8 +77,17 @@ usado por `014_catalogo_publico_scoped.sql` (sesión de sistema O membership rea
 la organización dueña — nunca `using (true)`, que reabriría la misma fuga
 cross-tenant que esa migración cerró).
 
-## Hallazgo conocido, verificado, NO corregido en esta rama: `core.property` sin
-## escape hatch de sesión de sistema
+## Hallazgo CORREGIDO (era "conocido, NO corregido" — ver PR de
+## `fix/core-rls-sesion-de-sistema`): `core.property` sin escape hatch de sesión de
+## sistema
+
+**Estado: corregido.** `packages/db/migrations/0015_core_rls_sesion_sistema.sql`
+(mirror `supabase/migrations/20240101000136_...`) agrega el escape hatch de sesión
+de sistema a las policies de SELECT de `core.property` y `core.organization`. Los
+escenarios 23-24 de arriba (agregados con ese mismo PR) ejercitan de punta a punta
+el recorrido que este hallazgo documentaba como roto y confirman que ya funciona.
+El resto de esta sección se deja tal cual quedó documentada originalmente (18/19-sep-2026), como evidencia histórica de qué estaba roto y por qué, y por disciplina
+del propio criterio de este script ("documenta como hallazgo, no lo disfraces").
 
 Verificado contra Postgres real (reproducible con el propio `run.sh`/`--keep-db`):
 incluso DESPUÉS del fix de `known_zone` de arriba,
@@ -116,10 +137,11 @@ core.has_property_access(...)` ya usado consistentemente en el resto del repo
 `restaurantes.known_zone` de este PR) es la corrección obviamente correcta, pero
 es una decisión de plataforma, no de este script.
 
-El escenario 6 de `assertions.sql` por eso NO ejercita
-`nearest_branch_by_colonia()` de punta a punta (seguiría fallando por esta causa
-ajena al fix de `known_zone`) — verifica en su lugar, aislado, que la pieza que SÍ
-se corrige en esta rama (GRANT+policy de `known_zone`) funciona.
+El escenario 6 de `assertions.sql` por eso NO ejercitaba (histórico, ver arriba)
+`nearest_branch_by_colonia()` de punta a punta (fallaba por esta causa ajena al fix
+de `known_zone`) — verificaba en su lugar, aislado, que la pieza que SÍ se corrige
+en esa rama (GRANT+policy de `known_zone`) funciona. Los escenarios 23-24 ahora sí
+ejercitan el recorrido completo, con el fix de `core.property` ya aplicado.
 
 ## Contraste repositorio TypeScript ↔ SQL
 
