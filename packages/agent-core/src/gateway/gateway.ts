@@ -26,6 +26,8 @@
 
 import { CircuitBreaker } from './circuit-breaker.js';
 import { type BudgetLedgerStore, type GatewayBudgetLimits, createGatewayBudget, reserveBudget, settleBudget } from './budget.js';
+import { type OrgMonthlyBudgetStore, nextOrgMonthlyReservationId } from './org-monthly-budget.js';
+import { deriveVerticalFromRole, NoopUsageRecorder, usdToMicroUsd, type UsageRecorder } from './usage.js';
 import { applyResidencyGate, DEFAULT_RESIDENCY_POLICY, type ResidencyPolicy } from './residency.js';
 import { isRetryableProviderError } from './retryable.js';
 import { AllProvidersFailedError, GatewayError } from './errors.js';
@@ -52,6 +54,20 @@ export interface LlmGatewayOptions {
   budgetLimits: GatewayBudgetLimits;
   residencyPolicy?: ResidencyPolicy;
   costEstimator?: LlmCostEstimator;
+  /** Tope MENSUAL por organización + tope GLOBAL de plataforma, persistente
+   *  entre instancias (ver `org-monthly-budget.ts`) — DISTINTO de `budgetStore`
+   *  (ese es el tope diario/de-corrida en memoria de proceso). Opcional:
+   *  `undefined` preserva el comportamiento previo a este campo (ningún
+   *  gateway/test existente que no lo pase se ve afectado). Cuando se pasa,
+   *  se consulta ANTES de `budgetStore.reserve`, en el mismo punto
+   *  "reserva-antes-de-gastar" — un tope mensual agotado nunca llega a tocar
+   *  el resto de la escalera de presupuesto ni al proveedor. */
+  orgMonthlyBudgetStore?: OrgMonthlyBudgetStore;
+  /** Puerto de registro de uso (control de gasto de API de LLM del back office
+   *  de plataforma, ver `usage.ts`) — puramente observacional, nunca decide si
+   *  una llamada procede. `NoopUsageRecorder` por defecto: ningún gateway/test
+   *  existente que no lo pase se ve afectado. */
+  usageRecorder?: UsageRecorder;
 }
 
 export interface GatewayCallOptions {
@@ -84,6 +100,8 @@ export class LlmGateway {
   private readonly budgetLimits: GatewayBudgetLimits;
   private readonly residencyPolicy: ResidencyPolicy;
   private readonly costEstimator: LlmCostEstimator;
+  private readonly orgMonthlyBudgetStore: OrgMonthlyBudgetStore | undefined;
+  private readonly usageRecorder: UsageRecorder;
   private readonly laddersByRole = new Map<string, LlmProvider[]>();
 
   constructor(opts: LlmGatewayOptions) {
@@ -92,6 +110,8 @@ export class LlmGateway {
     this.budgetLimits = opts.budgetLimits;
     this.residencyPolicy = opts.residencyPolicy ?? DEFAULT_RESIDENCY_POLICY;
     this.costEstimator = opts.costEstimator ?? defaultCostEstimator;
+    this.orgMonthlyBudgetStore = opts.orgMonthlyBudgetStore;
+    this.usageRecorder = opts.usageRecorder ?? NoopUsageRecorder;
   }
 
   /** Registra la escalera de proveedores (en orden de preferencia) para un
@@ -129,17 +149,77 @@ export class LlmGateway {
       }
 
       const estimate = this.costEstimator(provider, opts.request);
+      const estimateMicroUsd = usdToMicroUsd(estimate);
+
+      // Tope MENSUAL (organización + plataforma), persistente entre
+      // instancias — se consulta ANTES que el tope diario/de-corrida de abajo,
+      // mismo criterio "reserva-antes-de-gastar": puede lanzar
+      // `MonthlyBudgetExceededError`, que se propaga de inmediato sin probar
+      // el resto de la escalera ni tocar `budgetStore` (misma razón que el
+      // comentario de abajo: no es culpa del proveedor, es un tope de
+      // negocio del tenant/plataforma).
+      const monthlyReservationId = this.orgMonthlyBudgetStore ? nextOrgMonthlyReservationId() : undefined;
+      if (this.orgMonthlyBudgetStore && monthlyReservationId) {
+        await this.orgMonthlyBudgetStore.reserve(opts.tenantId, monthlyReservationId, estimateMicroUsd);
+      }
+
       // Puede lanzar GatewayBudgetExceededError — a diferencia de un fallo
       // de proveedor, esto NO es culpa del proveedor: se propaga de
       // inmediato sin probar el resto de la escalera, porque el presupuesto
       // es del tenant/corrida, no del proveedor (otro proveedor no libera
       // presupuesto).
-      const reservation = await reserveBudget(this.budgetStore, budget, estimate);
+      let reservation;
+      try {
+        reservation = await reserveBudget(this.budgetStore, budget, estimate);
+      } catch (err) {
+        // El tope diario/de-corrida frenó DESPUÉS de que el tope mensual ya
+        // reservó su parte — libera esa reserva mensual a 0 antes de
+        // propagar, para no dejar gasto fantasma contra un tope que nunca se
+        // llegó a usar de verdad.
+        if (this.orgMonthlyBudgetStore && monthlyReservationId) {
+          await this.orgMonthlyBudgetStore.settle(opts.tenantId, monthlyReservationId, 0).catch(() => {});
+        }
+        throw err;
+      }
 
       try {
         const result = await provider.complete(opts.request);
+        const actualMicroUsd = usdToMicroUsd(result.costUsd);
         await settleBudget(this.budgetStore, budget, reservation, result.costUsd);
+        if (this.orgMonthlyBudgetStore && monthlyReservationId) {
+          // Ajuste del tope mensual best-effort: un fallo AQUÍ (Postgres caído
+          // justo entre el reserve y el settle) deja la reserva conservadora
+          // (la estimación, sobre-reservada a propósito) en vez del costo
+          // real más bajo — seguro por diseño (nunca sub-cuenta), nunca debe
+          // tumbar una llamada al LLM que YA tuvo éxito.
+          await this.orgMonthlyBudgetStore.settle(opts.tenantId, monthlyReservationId, actualMicroUsd).catch(() => {});
+        }
         await this.breaker.reportSuccess(provider.id);
+
+        // Registro de uso — puramente observacional (control de gasto de API
+        // de LLM del back office de plataforma). Envuelto en su propio
+        // try/catch: un fallo de registro NUNCA convierte en error una
+        // llamada al LLM que sí tuvo éxito (mismo criterio best-effort que
+        // `ProductionHotelesFraudeAuditSink`/`ProductionDespachosAuditSink`
+        // en apps/api/src/production/).
+        try {
+          await this.usageRecorder.record({
+            organizationId: opts.tenantId,
+            vertical: deriveVerticalFromRole(opts.role),
+            role: opts.role,
+            lane: opts.lane,
+            providerId: provider.id,
+            model: result.model,
+            tokensIn: result.tokensIn,
+            tokensOut: result.tokensOut,
+            costMicroUsd: actualMicroUsd,
+            fallbackUsed: i > 0,
+            occurredAt: new Date().toISOString(),
+          });
+        } catch {
+          // best-effort: nunca tumba la llamada al LLM que ya tuvo éxito.
+        }
+
         return {
           ...result,
           providerId: provider.id,
@@ -152,6 +232,9 @@ export class LlmGateway {
         // `once()`/`attempt()` (BACKEND-19C2-1): no liquidar al monto
         // reservado en un error donde no hubo uso real.
         await settleBudget(this.budgetStore, budget, reservation, 0);
+        if (this.orgMonthlyBudgetStore && monthlyReservationId) {
+          await this.orgMonthlyBudgetStore.settle(opts.tenantId, monthlyReservationId, 0).catch(() => {});
+        }
         const message = err instanceof Error ? err.message : String(err);
         attempts.push({ providerId: provider.id, error: message });
 
