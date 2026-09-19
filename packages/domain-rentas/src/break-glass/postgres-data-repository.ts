@@ -43,6 +43,24 @@
 // existiendo intacta) -- cae a esa, y filtra/pagina el resultado en TypeScript
 // para no perder el comportamiento pedido por el llamador solo porque la
 // migración más reciente no se aplicó todavía.
+//
+// FIX hallazgo de revisión real (ronda 1 del PR #155, bloqueante 1) -- SAVEPOINT
+// OBLIGATORIO antes de CUALQUIER llamada a una función nueva de esta fase, con
+// `ROLLBACK TO SAVEPOINT` en el catch de 42883. La ruta que invoca a este
+// adaptador (`apps/api/src/routes/superadmin-break-glass.ts::registrarLectorTenant`)
+// envuelve TODO el handler en UN solo `deps.engine.withAppSession(...)`
+// (`begin;`...`commit;` de `managed-postgres-engine.ts`, SIN savepoint propio) --
+// sin este SAVEPOINT, un 42883 real deja la transacción COMPLETA abortada
+// (Postgres: "current transaction is aborted, commands ignored until end of
+// transaction block", SQLSTATE 25P02) y CUALQUIER sentencia posterior en la misma
+// transacción falla con 25P02, incluidas (a) la query de respaldo de 2 parámetros
+// de `listReservasTenant` y (b) el `INSERT` de la bitácora que `acceso.ts::
+// leerDatosTenantBreakGlass` ejecuta después de una lectura "exitosa" -- ambos
+// se habrían visto como un 500 genérico contra una base sin la migración 020
+// aplicada, justo el estado que producción tiene garantizado al mergear (ver
+// AGENTS.md de esta tarea). MISMO patrón ya establecido en
+// `packages/domain-rentas/src/aplicacion/reservas.ts` (`crearReservaConfirmada`)
+// y en `packages/domain-citas/src/postgres-repository.ts` (`upsertCustomer`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { BreakGlassRentasDataRepository } from "./data-repository.ts";
 import type {
@@ -179,14 +197,22 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
 
   async listReservasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassReservaResumen[]> {
     const { limit, offset } = resolverLimite(paginacion);
+    await this.db.exec("SAVEPOINT sp_break_glass_reservas");
     try {
       const { rows } = await this.db.query<ReservaRow>(
         `select * from rentas.list_reservas_for_break_glass($1, $2, $3, $4, $5);`,
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_reservas");
       return rows.map(mapReservaRow);
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
+      // 42883 real deja la transacción abortada (25P02 en cualquier query
+      // posterior) -- sin este ROLLBACK TO SAVEPOINT, la query de respaldo de
+      // abajo (y el INSERT de bitácora que ejecuta el llamador después) fallarían
+      // también. Ver comentario de cabecera de este archivo.
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_reservas");
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_reservas");
       advertirUnaVez(
         "list_reservas_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_reservas_for_break_glass(5 args) no existe todavía " +
@@ -204,11 +230,13 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
 
   async listFinanzasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassFinanzasResumen[]> {
     const { limit, offset } = resolverLimite(paginacion);
+    await this.db.exec("SAVEPOINT sp_break_glass_finanzas");
     try {
       const { rows } = await this.db.query<FinanzasRow>(
         `select * from rentas.list_finanzas_for_break_glass($1, $2, $3, $4, $5);`,
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_finanzas");
       return rows.map((r) => ({
         id: r.id,
         ocupacionId: r.ocupacion_id,
@@ -224,6 +252,8 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       }));
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_finanzas");
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_finanzas");
       advertirUnaVez(
         "list_finanzas_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_finanzas_for_break_glass no existe todavía " +
@@ -236,11 +266,13 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
 
   async listPayoutsTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPayoutResumen[]> {
     const { limit, offset } = resolverLimite(paginacion);
+    await this.db.exec("SAVEPOINT sp_break_glass_payouts");
     try {
       const { rows } = await this.db.query<PayoutRow>(
         `select * from rentas.list_payouts_for_break_glass($1, $2, $3, $4, $5);`,
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_payouts");
       return rows.map((r) => ({
         id: r.id,
         propertyId: r.property_id,
@@ -253,6 +285,8 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       }));
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_payouts");
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_payouts");
       advertirUnaVez(
         "list_payouts_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_payouts_for_break_glass no existe todavía " +
@@ -265,11 +299,13 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
 
   async listPricingTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPricingResumen[]> {
     const { limit, offset } = resolverLimite(paginacion);
+    await this.db.exec("SAVEPOINT sp_break_glass_pricing");
     try {
       const { rows } = await this.db.query<PricingRow>(
         `select * from rentas.list_pricing_for_break_glass($1, $2, $3, $4, $5);`,
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_pricing");
       return rows.map((r) => ({
         id: r.id,
         propertyId: r.property_id,
@@ -280,6 +316,8 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       }));
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_pricing");
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_pricing");
       advertirUnaVez(
         "list_pricing_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_pricing_for_break_glass no existe todavía " +
@@ -292,11 +330,13 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
 
   async listMensajeriaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassMensajeriaResumen[]> {
     const { limit, offset } = resolverLimite(paginacion);
+    await this.db.exec("SAVEPOINT sp_break_glass_mensajeria");
     try {
       const { rows } = await this.db.query<MensajeriaRow>(
         `select * from rentas.list_mensajeria_for_break_glass($1, $2, $3, $4, $5);`,
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_mensajeria");
       return rows.map((r) => ({
         id: r.id,
         propertyId: r.property_id,
@@ -310,6 +350,8 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       }));
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_mensajeria");
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_mensajeria");
       advertirUnaVez(
         "list_mensajeria_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_mensajeria_for_break_glass no existe todavía " +
@@ -322,11 +364,13 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
 
   async listLimpiezaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassLimpiezaResumen[]> {
     const { limit, offset } = resolverLimite(paginacion);
+    await this.db.exec("SAVEPOINT sp_break_glass_limpieza");
     try {
       const { rows } = await this.db.query<LimpiezaRow>(
         `select * from rentas.list_limpieza_for_break_glass($1, $2, $3, $4, $5);`,
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_limpieza");
       return rows.map((r) => ({
         id: r.id,
         propertyId: r.property_id,
@@ -340,6 +384,8 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       }));
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_limpieza");
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_limpieza");
       advertirUnaVez(
         "list_limpieza_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_limpieza_for_break_glass no existe todavía " +
@@ -352,11 +398,13 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
 
   async listSyncIcalTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassSyncIcalResumen[]> {
     const { limit, offset } = resolverLimite(paginacion);
+    await this.db.exec("SAVEPOINT sp_break_glass_sync_ical");
     try {
       const { rows } = await this.db.query<SyncIcalRow>(
         `select * from rentas.list_sync_ical_for_break_glass($1, $2, $3, $4, $5);`,
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_sync_ical");
       return rows.map((r) => ({
         id: r.id,
         propertyId: r.property_id,
@@ -371,6 +419,8 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       }));
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
+      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_sync_ical");
+      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_sync_ical");
       advertirUnaVez(
         "list_sync_ical_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_sync_ical_for_break_glass no existe todavía " +
