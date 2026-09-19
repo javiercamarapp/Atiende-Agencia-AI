@@ -17,6 +17,18 @@
 // esos, la sesión se abre COMO el caller autenticado (`{ userId: callerId }`), nunca
 // de sistema. Cada uno sigue siendo una sola consulta por sesión, así que esto no
 // afecta el aislamiento de ningún otro método de este archivo.
+//
+// EXCEPCIÓN #2, Fase 2 (hallazgo de seguridad, ver `packages/db/migrations/0012_
+// caller_binding_fase2.sql`): mismo patrón, mismo criterio, extendido a
+// `isPlatformSuperadmin`, las 4 funciones de notificaciones, `revokeAllRefreshTokens`
+// y `getOrganizationBillingForCheckout` — todas EXIGEN ahora `auth.uid() = <su
+// parámetro de identidad>`, y todas ya recibían el id del caller real verificado por
+// `authMiddleware` en su único call site — solo faltaba abrir la sesión como ese
+// caller en vez de como sistema. `revokeRefreshToken`/`getOrganizationBillingForWebhook`/
+// `upsertOrganizationBilling` (y el resto de funciones sin `p_caller_id`/`p_staff_id`
+// verificable contra una sesión autenticada) siguen en sesión de sistema sin cambio —
+// sus propios call sites (logout/refresh antes de sesión, webhook de Stripe) nunca
+// tienen un `auth.uid()` real que pasar.
 import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
@@ -86,14 +98,13 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).isRefreshTokenRevoked(jti));
   }
 
-  // Hallazgo de auditoría (rubro 2, severidad ALTA, "no hay forma de invalidar
-  // sesiones activas de un usuario") — sesión de sistema igual que el resto de este
-  // archivo: POST /auth/revoke-sessions usa `authMiddleware` (verifica el JWT Bearer
-  // por sí solo) pero nunca abre un `TenantDbSession` por-request propio, mismo
-  // criterio ya establecido por GET /auth/me (también autenticado, también resuelto
-  // sobre `deps.coreRepo` de sesión de sistema).
+  // Hallazgo de seguridad (Fase 2, ver `packages/db/migrations/0012_caller_binding_
+  // fase2.sql`): `core.revoke_all_refresh_tokens` ahora exige `auth.uid() = p_user_id`
+  // -- `POST /auth/revoke-sessions` usa `authMiddleware` y ya pasa `c.get("userId")`
+  // propio (nunca un id recibido del body), así que la sesión se abre COMO ese
+  // caller, mismo criterio que `isPlatformSuperadmin`/las 12 funciones de superadmin.
   revokeAllRefreshTokens(userId: string): Promise<void> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).revokeAllRefreshTokens(userId));
+    return this.engine.withAppSession({ userId }, (session) => new PostgresCoreRepository(session).revokeAllRefreshTokens(userId));
   }
 
   findStaffByGoogleSub(sub: string): Promise<StaffUserRow | null> {
@@ -120,8 +131,14 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).consumeAuthExchangeCode(codeHash));
   }
 
+  // Hallazgo de seguridad (Fase 2, ver `packages/db/migrations/0012_caller_
+  // binding_fase2.sql`): `core.is_platform_superadmin` ahora exige `auth.uid()
+  // = p_staff_id` -- TODOS sus call sites reales (`GET /auth/me`, las 3 rutas
+  // de superadmin) ya pasan `c.get("userId")` propio, nunca el id de otro
+  // staff -- la sesión se abre COMO ese caller, mismo criterio que
+  // `listAllOrganizationsForSuperadmin` de abajo.
   isPlatformSuperadmin(staffId: string): Promise<boolean> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).isPlatformSuperadmin(staffId));
+    return this.engine.withAppSession({ userId: staffId }, (session) => new PostgresCoreRepository(session).isPlatformSuperadmin(staffId));
   }
 
   // Hallazgo de seguridad (ver `packages/db/migrations/0011_superadmin_caller_
@@ -140,24 +157,26 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).countStaffByOrganizationForSuperadmin(callerId));
   }
 
-  // ---- Infraestructura de notificaciones — sesión de sistema igual que el resto de
-  // este archivo: las 4 funciones SQL son `security definer` con `p_staff_id`
-  // explícito (nunca `auth.uid()`), mismo motivo que `isPlatformSuperadmin`. ----
+  // ---- Infraestructura de notificaciones — Hallazgo de seguridad (Fase 2, ver
+  // `packages/db/migrations/0012_caller_binding_fase2.sql`): las 4 funciones SQL
+  // ahora exigen `auth.uid() = p_staff_id` -- `apps/api/src/routes/notifications.ts`
+  // ya pasa SIEMPRE `c.get("userId")` propio (nunca un id arbitrario), así que la
+  // sesión se abre COMO ese caller, mismo criterio que `isPlatformSuperadmin`. ----
 
   listNotificationsForStaff(staffId: string): Promise<readonly NotificationRow[]> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).listNotificationsForStaff(staffId));
+    return this.engine.withAppSession({ userId: staffId }, (session) => new PostgresCoreRepository(session).listNotificationsForStaff(staffId));
   }
 
   countUnreadNotificationsForStaff(staffId: string): Promise<number> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).countUnreadNotificationsForStaff(staffId));
+    return this.engine.withAppSession({ userId: staffId }, (session) => new PostgresCoreRepository(session).countUnreadNotificationsForStaff(staffId));
   }
 
   markNotificationRead(staffId: string, notificationId: string): Promise<void> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).markNotificationRead(staffId, notificationId));
+    return this.engine.withAppSession({ userId: staffId }, (session) => new PostgresCoreRepository(session).markNotificationRead(staffId, notificationId));
   }
 
   markAllNotificationsRead(staffId: string): Promise<number> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).markAllNotificationsRead(staffId));
+    return this.engine.withAppSession({ userId: staffId }, (session) => new PostgresCoreRepository(session).markAllNotificationsRead(staffId));
   }
 
   // ---- "Cerebro de ventas" — las 3 funciones SQL son `security definer` con
@@ -185,14 +204,16 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).ensureDemoAccessForSuperadmin(callerId, vertical));
   }
 
-  // Suscripción SaaS propia de Atiende — sesión de sistema igual que el resto de
-  // este archivo: `POST /billing/checkout` valida autoridad con `callerId`
-  // explícito DENTRO de la función SQL (mismo criterio que `isPlatformSuperadmin`
-  // de arriba); `POST /billing/webhook` no tiene ningún `callerId` de staff que
+  // Suscripción SaaS propia de Atiende — Hallazgo de seguridad (Fase 2, ver
+  // `packages/db/migrations/0012_caller_binding_fase2.sql`): `core.get_organization_
+  // billing_for_checkout` ahora exige `auth.uid() = p_caller_id` -- `POST
+  // /billing/checkout` ya pasa `c.get("userId")` propio (`callerId`), así que la
+  // sesión se abre COMO ese caller, mismo criterio que las 12 funciones de
+  // superadmin. `POST /billing/webhook` no tiene ningún `callerId` de staff que
   // pasar (su autoridad real es la firma HMAC de Stripe, ya verificada por el
-  // caller HTTP antes de llegar aquí).
+  // caller HTTP antes de llegar aquí) -- sigue en sesión de sistema, sin cambio.
   getOrganizationBillingForCheckout(callerId: string, organizationId: string): Promise<OrganizationBillingRow> {
-    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).getOrganizationBillingForCheckout(callerId, organizationId));
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).getOrganizationBillingForCheckout(callerId, organizationId));
   }
 
   getOrganizationBillingForWebhook(organizationId: string): Promise<OrganizationBillingRow | null> {
