@@ -79,7 +79,29 @@ export async function enviarCorreoResumenDiarioSiCorresponde(deps: AppDeps, fech
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${deps.env.resend.apiKey}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${deps.env.resend.apiKey}`,
+        "Content-Type": "application/json",
+        // Hallazgo de auditoría a1 (BAJA, rubro D): el marcado atómico de
+        // `correo_enviado_en` se hace DESPUÉS de enviar (check-then-act, ver
+        // el comentario de cabecera de esta función para el porqué de NO
+        // invertir el orden) -- dos corridas concurrentes del cron para la
+        // MISMA fecha (p. ej. el cron real disparándose dos veces por un
+        // reintento de la plataforma serverless) podían mandar el correo dos
+        // veces. Resend soporta idempotencia real en el servidor vía este
+        // header en `POST /emails` (confirmado contra la documentación
+        // oficial, ver el cuerpo del PR: ventana de deduplicación de 24
+        // horas, hasta 256 caracteres, debe ser única por request) -- con la
+        // MISMA clave para la MISMA fecha, un segundo POST concurrente NUNCA
+        // reenvía: si el cuerpo coincide, Resend devuelve la MISMA respuesta
+        // del primer envío sin mandar nada; si no coincide (p. ej. la
+        // narrativa del LLM salió distinta entre las dos corridas), Resend
+        // responde 409 `invalid_idempotent_request` -- en AMBOS casos el
+        // correo real se manda COMO MÁXIMO una vez. Una fecha (`YYYY-MM-DD`)
+        // es la granularidad correcta: "un solo envío por fecha" es
+        // exactamente el requisito de diseño de esta función.
+        "Idempotency-Key": `resumen-diario/${fecha}`,
+      },
       body: JSON.stringify({ from: deps.env.resend.from, to: destinatarios, subject, html, text }),
     });
     if (!res.ok) {
