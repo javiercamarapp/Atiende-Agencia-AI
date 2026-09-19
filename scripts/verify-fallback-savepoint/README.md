@@ -6,7 +6,7 @@ corrector prioritario de los hallazgos CRITICO/ALTO de la auditoría a1
 ("una fila venenosa revierte citas en silencio" / "invitar staff sigue roto
 contra la base sin migrar").
 
-## Qué demuestra (`assertions.sql`, tres escenarios)
+## Qué demuestra (`pg-scenarios.sql`, tres escenarios)
 
 1. **SIN SAVEPOINT**: un error cualquiera (`select 1/0`) dentro de un bloque
    `begin;...` deja la transacción **abortada** — cualquier consulta
@@ -42,11 +42,17 @@ demostrar son incompatibles con ese contrato:
   TODAS las migraciones de `supabase/migrations/` — no hay forma de pedirle
   que se salte una a propósito.
 
-Por eso `assertions.sql` de este directorio corre en **una sola sesión de
-psql** (para que `BEGIN`/`COMMIT` reales se vean de verdad, marcados con
+Por eso este directorio usa `pg-bootstrap.sql`/`pg-post-migrations.sql`/
+`pg-scenarios.sql` — nombres DELIBERADAMENTE distintos de `bootstrap.sql`/
+`post-migrations.sql`/`assertions.sql` (`run-gate.mjs::discoverVerifyDirs`
+detecta esos tres nombres exactos y los intentaría correr con SU parser
+genérico, que rompería contra el formato de este archivo — ya pasó una vez:
+el primer push de este PR usaba esos nombres y el job "Postgres real (gate)"
+existente lo recogió y falló). `pg-scenarios.sql` corre en **una sola sesión
+de psql** (para que `BEGIN`/`COMMIT` reales se vean de verdad, marcados con
 `\echo` antes/después de cada escenario) y `run.sh` hace su **propio**
 pass/fail: aplica `supabase/migrations/*.sql` en orden salvo el archivo
-`*_019_calendar_sync_error_visibility.sql`, corre `assertions.sql`, y
+`*_019_calendar_sync_error_visibility.sql`, corre `pg-scenarios.sql`, y
 verifica con `grep` (entre los marcadores `\echo`) que cada tag de comando/
 mensaje de error/resultado sea el esperado.
 

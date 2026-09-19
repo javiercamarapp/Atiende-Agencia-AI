@@ -16,9 +16,17 @@
 #   2. El escenario 3 (23514 de citas) necesita la base SIN la migración 019
 #      aplicada -- el framework genérico aplica SIEMPRE todas las migraciones.
 # Por eso este script hace su PROPIO pass/fail (grep sobre la salida real de psql,
-# entre marcadores \echo de assertions.sql) y se invoca como un paso APARTE del job
-# "Postgres real (gate)" en .github/workflows/postgres-real-gate.yml — ver ese
+# entre marcadores \echo de pg-scenarios.sql) y se invoca como un paso APARTE del
+# job "Postgres real (gate)" en .github/workflows/postgres-real-gate.yml — ver ese
 # archivo para cómo queda integrado al gate de CI.
+#
+# Los tres archivos SQL de este directorio se llaman pg-bootstrap.sql/
+# pg-post-migrations.sql/pg-scenarios.sql (NUNCA bootstrap.sql/post-migrations.sql/
+# assertions.sql a secas) a propósito: `run-gate.mjs::discoverVerifyDirs` detecta
+# exactamente esos tres nombres y los correría con SU parser genérico (que asume
+# begin;...rollback; en cada escenario) — ya pasó una vez con el primer push de
+# este PR, el job "Postgres real (gate)" existente recogió este directorio y
+# falló. Ver README.md de este directorio para el detalle completo.
 #
 # Uso:  scripts/verify-fallback-savepoint/run.sh
 set -uo pipefail
@@ -54,7 +62,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify_fallback_
 psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d postgres -v ON_ERROR_STOP=1 -c "create database atiende_verify_fallback_savepoint;" >/dev/null
 
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
-"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
+"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/pg-bootstrap.sql" >/dev/null
 
 echo "==> aplicando supabase/migrations/*.sql EXCEPTO la migración 019 (calendar_sync_error_visibility) -- a propósito: el escenario 3 necesita el CHECK VIEJO, la base ~30 migraciones atrás real que este PR corrige"
 skipped=0
@@ -76,15 +84,15 @@ fi
 echo "    $applied migraciones aplicadas, $skipped saltada a propósito"
 
 echo "==> otorgando USAGE de schema citas/core a authenticated/anon"
-"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/post-migrations.sql" >/dev/null
+"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/pg-post-migrations.sql" >/dev/null
 
-echo "==> corriendo assertions.sql (una sola sesión -- para que BEGIN/COMMIT reales se vean de verdad)"
-"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/assertions.sql" >"$OUT" 2>&1
+echo "==> corriendo pg-scenarios.sql (una sola sesión -- para que BEGIN/COMMIT reales se vean de verdad)"
+"${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/pg-scenarios.sql" >"$OUT" 2>&1
 # ON_ERROR_STOP=1 en la CONEXIÓN psql general (bootstrap/migraciones) pero
-# assertions.sql tiene su PROPIO `\set ON_ERROR_STOP off` en la primera línea --
+# pg-scenarios.sql tiene su PROPIO `\set ON_ERROR_STOP off` en la primera línea --
 # los ERROR de los escenarios 1/3a (deliberados) no deben tumbar el resto del
 # archivo. La bandera de arriba (-v ON_ERROR_STOP=1) solo aplica antes de que
-# assertions.sql corra su propio \set, así que queda anulada dentro del archivo --
+# pg-scenarios.sql corra su propio \set, así que queda anulada dentro del archivo --
 # psql respeta el \set MÁS RECIENTE.
 
 fail=0

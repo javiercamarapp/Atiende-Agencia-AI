@@ -160,6 +160,17 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends postgresql
           fi
+          # El paquete `postgresql` de Ubuntu/Debian NO pone initdb/pg_ctl en PATH
+          # (viven en /usr/lib/postgresql/<version>/bin/, solo psql/pg_config
+          # quedan en PATH vía los wrappers pg_wrapper) -- a diferencia de Homebrew
+          # en macOS, donde `verify-caller-binding-fase3/run.sh` y este mismo
+          # script ya corren tal cual localmente. Se agrega a GITHUB_PATH (no solo
+          # a este step) para que el siguiente step también los vea.
+          if ! command -v initdb >/dev/null 2>&1; then
+            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 2 -name initdb -print -quit)")"
+            echo "$PG_BIN" >> "$GITHUB_PATH"
+            export PATH="$PG_BIN:$PATH"
+          fi
           initdb --version
           pg_ctl --version
           psql --version
