@@ -86,8 +86,18 @@ export type {
 } from "./google-calendar-port.ts";
 export { createGoogleCalendarPortResolver } from "./google-calendar-factory.ts";
 export type { GoogleOAuthPlatformConfig } from "./google-calendar-factory.ts";
-export { MAX_SYNC_ATTEMPTS, nextSyncBackoffMs, SYNC_BATCH_SIZE, syncPendingAppointments, tryTriggerGoogleSync } from "./calendar-sync.ts";
-export type { ResolveCalendarPort, SyncSummary } from "./calendar-sync.ts";
+export {
+  MAX_SYNC_ATTEMPTS,
+  nextSyncBackoffMs,
+  SYNC_BATCH_SIZE,
+  syncPendingAppointments,
+  syncPendingAppointmentsMultiProvider,
+  tryTriggerCalendarSync,
+  tryTriggerGoogleSync,
+} from "./calendar-sync.ts";
+export type { ResolveCalendarPort, ResolveCalendarSyncPort, ResolvedCalendarSync, SyncSummary } from "./calendar-sync.ts";
+export { createCalendarSyncPortResolver } from "./calendar-sync-resolver-factory.ts";
+export type { CalendarSyncPortResolverFactories } from "./calendar-sync-resolver-factory.ts";
 export { OAUTH_STATE_TTL_MS, signGoogleCalendarOAuthState, verifyGoogleCalendarOAuthState } from "./google-calendar-oauth-state.ts";
 export type { GoogleCalendarOAuthState } from "./google-calendar-oauth-state.ts";
 
@@ -171,7 +181,7 @@ export { runCrisisGuardrail } from "./crisis-guardrail.ts";
 export type { CrisisGuardrailResult } from "./crisis-guardrail.ts";
 
 // ---- Fase 6 §2 — CalendarSyncPort genérico + adaptadores Cal.com/CalDAV ----
-export { assertAvailabilityContract, assertCalendarSyncPortContract, CalendarCapabilityUnsupportedError, CalendarConflictError, GoogleCalendarSyncAdapter, isRangeBookable, rangesOverlap } from "./calendar-sync-port.ts";
+export { assertAvailabilityContract, assertCalendarSyncPortContract, CalendarCapabilityUnsupportedError, CalendarConflictError, FakeCalendarSyncPort, GoogleCalendarSyncAdapter, isRangeBookable, rangesOverlap } from "./calendar-sync-port.ts";
 export type {
   AvailabilityInterval,
   AvailabilityKind,

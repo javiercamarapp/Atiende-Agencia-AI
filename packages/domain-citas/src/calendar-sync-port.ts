@@ -260,6 +260,105 @@ export class GoogleCalendarSyncAdapter implements CalendarSyncPort {
 }
 
 // ---------------------------------------------------------------------------
+// FakeCalendarSyncPort — adaptador simulado/capturador GENÉRICO del contrato,
+// mismo criterio que FakeGoogleCalendarPort (google-calendar-port.ts): nunca toca
+// la red, guarda en memoria cada evento creado/actualizado/borrado y expone
+// `calls`/`failNextCall` para aserciones de prueba. Sirve para probar el motor de
+// sincronización multi-proveedor (calendar-sync.ts) y las rutas HTTP de
+// conexión/prueba-de-conexión de Cal.com/CalDAV SIN levantar los simuladores HTTP
+// reales (calcom-sim.ts/caldav-sim.ts, tests/) cuando la prueba solo necesita
+// verificar QUÉ se le pidió al puerto genérico — los simuladores HTTP reales
+// siguen siendo la prueba de que RealCalComPort/RealCalDavPort hablan el
+// protocolo real; este fake prueba el DESPACHO por proveedor del motor, una capa
+// arriba.
+// ---------------------------------------------------------------------------
+
+interface FakeSyncEvent {
+  eventId: string;
+  externalCalendarRef: string;
+  summary: string;
+  description: string;
+  startTime: string;
+  endTime: string;
+  timeZone: string;
+  deleted: boolean;
+}
+
+export class FakeCalendarSyncPort implements CalendarSyncPort {
+  readonly platform: CalendarPlatform;
+  events = new Map<string, FakeSyncEvent>();
+  #nextEventId = 1;
+  /** Fuerza que la siguiente llamada falle, para probar el camino de error/reintento
+   * -- mismo patrón que FakeGoogleCalendarPort.failNextCall. */
+  failNextCall: Error | null = null;
+  /** Resultado fijo que devuelve `listAvailability` -- por defecto, vacío del
+   * `kind` real de esta plataforma (nunca inventa datos de disponibilidad). */
+  availabilityResult: AvailabilityResult;
+  calls: { method: "createEvent" | "updateEvent" | "deleteEvent" | "listAvailability"; input: unknown }[] = [];
+
+  constructor(platform: CalendarPlatform) {
+    this.platform = platform;
+    this.availabilityResult = { kind: platform === "calcom" ? "free" : "busy", intervals: [] };
+  }
+
+  #maybeFail(): void {
+    if (this.failNextCall) {
+      const err = this.failNextCall;
+      this.failNextCall = null;
+      throw err;
+    }
+  }
+
+  async createEvent(input: CreateCalendarEventInput): Promise<CalendarEventResult> {
+    this.calls.push({ method: "createEvent", input });
+    this.#maybeFail();
+    const eventId = `fake-${this.platform}-event-${this.#nextEventId++}`;
+    this.events.set(eventId, {
+      eventId,
+      externalCalendarRef: input.externalCalendarRef,
+      summary: input.summary,
+      description: input.description,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      timeZone: input.timeZone,
+      deleted: false,
+    });
+    return { eventId, htmlLink: `https://fake.${this.platform}.example/${eventId}` };
+  }
+
+  async updateEvent(input: UpdateCalendarEventInput): Promise<CalendarEventResult> {
+    this.calls.push({ method: "updateEvent", input });
+    this.#maybeFail();
+    const existing = this.events.get(input.eventId);
+    if (!existing || existing.deleted) {
+      throw new CalendarEventNotFoundError(`fake ${this.platform} event ${input.eventId} no existe`);
+    }
+    const updated: FakeSyncEvent = {
+      ...existing,
+      summary: input.summary ?? existing.summary,
+      description: input.description ?? existing.description,
+      startTime: input.startTime ?? existing.startTime,
+      endTime: input.endTime ?? existing.endTime,
+    };
+    this.events.set(input.eventId, updated);
+    return { eventId: input.eventId, htmlLink: `https://fake.${this.platform}.example/${input.eventId}` };
+  }
+
+  async deleteEvent(input: DeleteCalendarEventInput): Promise<void> {
+    this.calls.push({ method: "deleteEvent", input });
+    this.#maybeFail();
+    const existing = this.events.get(input.eventId);
+    if (existing) existing.deleted = true;
+  }
+
+  async listAvailability(query: AvailabilityQuery): Promise<AvailabilityResult> {
+    this.calls.push({ method: "listAvailability", input: query });
+    this.#maybeFail();
+    return this.availabilityResult;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Prueba de contrato — análoga a assertGoogleCalendarPortContract pero para el
 // contrato genérico. listAvailability se prueba aparte (assertAvailabilityContract)
 // porque su "kind" varía por plataforma y no todas las plataformas la soportan
