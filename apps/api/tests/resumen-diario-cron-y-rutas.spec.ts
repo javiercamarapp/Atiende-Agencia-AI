@@ -11,10 +11,12 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCoreRepository, InMemoryResumenDiarioRepository } from "@atiende/db";
 import { signAccessToken } from "@atiende/core-auth";
+import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps } from "./fixtures.ts";
 import { generarYPersistirResumenDiario, type ResultadoGeneracion } from "../src/resumen-diario/agregador.ts";
 import { enviarCorreoResumenDiarioSiCorresponde } from "../src/resumen-diario/correo.ts";
+import { RESUMEN_DIARIO_LLM_ROLE } from "../src/resumen-diario/redaccion.ts";
 import type { AppDeps } from "../src/deps.ts";
 
 const CRON_PATH = "/internal/superadmin/resumen-diario";
@@ -244,6 +246,35 @@ describe("Resumen diario -- migración 0015 sin aplicar (SQLSTATE 42883), nunca 
     const heartbeats = await saludRepo.listCronHeartbeatsForSuperadmin(superadminId);
     const latido = heartbeats.find((h) => h.cronName === CRON_PATH);
     expect(latido?.lastStatus).toBe("ok");
+  });
+
+  it("cron -- con migración pendiente, el sondeo corta ANTES del LLM: gateway.complete() nunca se llama (hallazgo no-bloqueante #1)", async () => {
+    // Los demás tests de este describe usan `resumenDiarioLlmGateway: undefined`
+    // (fixture genérico de `buildTestDeps`) -- con eso, `generarNarrativaLlm`
+    // devuelve `null` de inmediato SIN pasar por el gateway (ver
+    // `redaccion.ts::generarNarrativaLlm`), así que esos tests NO pueden detectar
+    // una regresión que quite el sondeo temprano y deje que el código llegue a
+    // intentar redactar por LLM antes de fallar en el UPSERT. Este test sí monta
+    // un gateway real con un proveedor falso registrado en el rol correcto, para
+    // afirmar sobre `callCount` (mismo patrón que `whatsapp-llm-agent.spec.ts`).
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setMigracionPendiente(true);
+    const fakeProvider = new FakeLlmProvider({ id: "resumen-diario-fake" });
+    const gateway = new LlmGateway({
+      breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
+      budgetStore: new InMemoryBudgetLedgerStore(),
+      budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 },
+    });
+    gateway.registerLadder(RESUMEN_DIARIO_LLM_ROLE, [fakeProvider]);
+    const deps: AppDeps = { ...base.deps, resumenDiarioLlmGateway: gateway };
+    const app = buildApp(deps);
+
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; motivo?: string };
+    expect(body.ok).toBe(false);
+    expect(body.motivo).toBe("migracion_pendiente");
+    expect(fakeProvider.callCount).toBe(0);
   });
 
   it("'generar ahora' -- 503 explícito (service_unavailable), nunca un 500 ni un 200 que finja éxito", async () => {
