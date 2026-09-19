@@ -104,19 +104,28 @@ export async function leerDatosTenantBreakGlass<T>(
  * tenant vía `dataRepo.listReservasTenant` y audita el resultado con los ids de
  * ocupación exactos que se devolvieron (más el conteo) -- "qué datos exactos se
  * vieron" en su forma más literal para esta categoría.
+ *
+ * `data` es `BreakGlassLectorResultado<BreakGlassReservaResumen>` (UNIFICADO
+ * con los 6 lectores de abajo desde la paginación real, hallazgo BAJA de la
+ * auditoría a2 -- antes de eso era un array plano, un caso especial que la
+ * ruta HTTP tenía que distinguir con `Array.isArray`). El resumen auditado
+ * sigue siendo `{ total, ocupacionIds }` (nunca el genérico `{ total, ids }`
+ * de `crearLectorTenantBreakGlass`, porque `BreakGlassReservaResumen` no
+ * tiene un campo `id`) -- por eso esta composición sigue separada en vez de
+ * reusar esa fábrica genérica.
  */
 export async function leerReservasTenantBreakGlass(
   auditRepo: BreakGlassAuditRepository,
   dataRepo: BreakGlassRentasDataRepository,
   input: Omit<BreakGlassAccessInput, "resourceType">,
   nowMs: number = Date.now(),
-): Promise<{ data: readonly BreakGlassReservaResumen[]; auditEntry: BreakGlassAuditEntry }> {
+): Promise<{ data: BreakGlassLectorResultado<BreakGlassReservaResumen>; auditEntry: BreakGlassAuditEntry }> {
   const paginacion = extraerPaginacionDeResourceScope(input.resourceScope);
   return leerDatosTenantBreakGlass(
     auditRepo,
     { ...input, resourceType: "reservas" },
     () => dataRepo.listReservasTenant(input.organizationId, input.actor.userId, paginacion),
-    (data) => ({ total: data.length, ocupacionIds: data.map((r) => r.ocupacionId) }),
+    (resultado) => ({ total: resultado.datos.length, ocupacionIds: resultado.datos.map((r) => r.ocupacionId) }),
     nowMs,
   );
 }
