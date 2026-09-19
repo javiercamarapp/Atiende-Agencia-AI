@@ -19,6 +19,8 @@ export type {
   OrganizationBillingRow,
   UpsertOrganizationBillingInput,
   BillingWebhookEventMark,
+  SuperadminOrganizationBillingRow,
+  BillingWebhookEventSummaryRow,
 } from "./core-repository.ts";
 export {
   StaffInviteInvalidError,

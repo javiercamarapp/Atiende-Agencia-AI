@@ -33,6 +33,7 @@ import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
+  BillingWebhookEventSummaryRow,
   CoreRepository,
   CreateProspectoInput,
   MembershipRow,
@@ -42,6 +43,7 @@ import type {
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
+  SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
   UpsertOrganizationBillingInput,
 } from "@atiende/db";
@@ -234,5 +236,22 @@ export class ProductionCoreRepository implements CoreRepository {
 
   sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).sealBillingEntityOrder(entityId, createdUnix));
+  }
+
+  // /superadmin/facturacion (ver `packages/db/migrations/0013_superadmin_
+  // facturacion.sql`) — mismo criterio que el resto del back office de
+  // plataforma: las 3 funciones SQL exigen `auth.uid() = p_caller_id`, así que
+  // la sesión se abre COMO el caller autenticado (`callerId`, ya verificado por
+  // `authMiddleware` en `routes/superadmin-facturacion.ts`), nunca de sistema.
+  listOrganizationBillingForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationBillingRow[]> {
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).listOrganizationBillingForSuperadmin(callerId));
+  }
+
+  listRecentBillingWebhookEventsForSuperadmin(callerId: string, limit: number): Promise<readonly BillingWebhookEventSummaryRow[]> {
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).listRecentBillingWebhookEventsForSuperadmin(callerId, limit));
+  }
+
+  countBillingWebhookEventsForSuperadmin(callerId: string): Promise<number> {
+    return this.engine.withAppSession({ userId: callerId }, (session) => new PostgresCoreRepository(session).countBillingWebhookEventsForSuperadmin(callerId));
   }
 }

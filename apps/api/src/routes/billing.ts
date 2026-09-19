@@ -170,6 +170,45 @@ function derivarEstadoDeCheckoutCompleted(record: Record<string, unknown>, exist
   };
 }
 
+/**
+ * Núcleo real de `POST /billing/checkout` — extraído sin cambiar su
+ * comportamiento (ver `apps/api/tests/billing.spec.ts`, que sigue verde sin
+ * modificarse) para que `POST /superadmin/facturacion/organizaciones/:id/checkout`
+ * (`routes/superadmin-facturacion.ts`) lo reutilice en vez de duplicar la
+ * llamada a `crearCheckoutPerSeat`/el mismo 503 honesto sin credenciales/el
+ * mismo mapeo de `OrganizationNotFoundError`/`OrganizationBillingAccessDeniedError`.
+ * `callerId` decide la autoridad real DENTRO de `getOrganizationBillingForCheckout`
+ * (owner/admin de la organización, o superadmin de plataforma) — el back office
+ * de superadmin pasa el id del propio superadmin, que esa función ya acepta.
+ */
+export async function crearCheckoutDeOrganizacion(deps: AppDeps, callerId: string, organizationId: string, priceId: string, seats: number): Promise<{ url: string }> {
+  if (!deps.saasBillingStripeClient) {
+    throw Errors.serviceUnavailable(
+      "El checkout de suscripción no está disponible en este entorno: no hay STRIPE_SECRET_KEY configurada. Esto es esperado sin credenciales reales de Stripe -- configúrala para habilitarlo.",
+    );
+  }
+
+  let billing: OrganizationBillingRow;
+  try {
+    billing = await deps.coreRepo.getOrganizationBillingForCheckout(callerId, organizationId);
+  } catch (err) {
+    if (err instanceof OrganizationNotFoundError) throw Errors.notFound(err.message);
+    if (err instanceof OrganizationBillingAccessDeniedError) throw Errors.forbidden(err.message);
+    throw err;
+  }
+
+  const appBaseUrl = deps.env.appBaseUrl;
+  return crearCheckoutPerSeat(deps.saasBillingStripeClient, {
+    tenantId: organizationId,
+    vertical: billing.vertical,
+    priceId,
+    cantidadSeats: seats,
+    customerId: billing.stripeCustomerId ?? undefined,
+    successUrl: `${appBaseUrl}/billing/success?organization_id=${encodeURIComponent(organizationId)}&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${appBaseUrl}/billing/cancel?organization_id=${encodeURIComponent(organizationId)}`,
+  });
+}
+
 export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -181,31 +220,7 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const priceId = requireString(raw.priceId, "priceId");
     const seats = requirePositiveInt(raw.seats, "seats");
 
-    if (!deps.saasBillingStripeClient) {
-      throw Errors.serviceUnavailable(
-        "El checkout de suscripción no está disponible en este entorno: no hay STRIPE_SECRET_KEY configurada. Esto es esperado sin credenciales reales de Stripe -- configúrala para habilitarlo.",
-      );
-    }
-
-    let billing: OrganizationBillingRow;
-    try {
-      billing = await deps.coreRepo.getOrganizationBillingForCheckout(c.get("userId"), organizationId);
-    } catch (err) {
-      if (err instanceof OrganizationNotFoundError) throw Errors.notFound(err.message);
-      if (err instanceof OrganizationBillingAccessDeniedError) throw Errors.forbidden(err.message);
-      throw err;
-    }
-
-    const appBaseUrl = deps.env.appBaseUrl;
-    const { url } = await crearCheckoutPerSeat(deps.saasBillingStripeClient, {
-      tenantId: organizationId,
-      vertical: billing.vertical,
-      priceId,
-      cantidadSeats: seats,
-      customerId: billing.stripeCustomerId ?? undefined,
-      successUrl: `${appBaseUrl}/billing/success?organization_id=${encodeURIComponent(organizationId)}&session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${appBaseUrl}/billing/cancel?organization_id=${encodeURIComponent(organizationId)}`,
-    });
+    const { url } = await crearCheckoutDeOrganizacion(deps, c.get("userId"), organizationId, priceId, seats);
 
     return c.json({ url });
   });
