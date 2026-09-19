@@ -1298,13 +1298,24 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   async findVoiceAgentConfig(propertyId: string): Promise<VoiceAgentConfig | null> {
-    const { rows } = await this.db.query<{ property_id: string; organization_id: string; tool_webhook_secret: string; enabled: boolean }>(
-      `select property_id, organization_id, tool_webhook_secret, enabled from hoteles.voice_agent_config where property_id = $1;`,
+    // Fase "flujos de sistema": `findVoiceAgentConfig` SOLO se invoca hoy
+    // bajo sesión de sistema (`POST /v1/hoteles/:propertyId/voz/tickets-fnb`
+    // y `.../voz/contacto-no-operativo`, sin caller de staff autenticado). Un
+    // SELECT directo contra `hoteles.voice_agent_config` queda bloqueado por
+    // la policy `for all` (exige `auth.uid()` real) -- se usa la función
+    // `security definer` de solo-sistema
+    // `hoteles.system_find_voice_agent_config` (migración
+    // `..._022_hoteles_sistema_voz_whatsapp_escritura.sql`) en su lugar. Ver
+    // el header de esa migración para el diagnóstico completo (incluye por
+    // qué NO se usa escape hatch de policy aquí: la tabla trae una
+    // credencial, `tool_webhook_secret`).
+    const { rows } = await this.db.query<{ out_property_id: string; out_organization_id: string; out_tool_webhook_secret: string; out_enabled: boolean }>(
+      `select * from hoteles.system_find_voice_agent_config($1);`,
       [propertyId],
     );
     const row = rows[0];
     if (!row) return null;
-    return { propertyId: row.property_id, organizationId: row.organization_id, toolWebhookSecret: row.tool_webhook_secret, enabled: row.enabled };
+    return { propertyId: row.out_property_id, organizationId: row.out_organization_id, toolWebhookSecret: row.out_tool_webhook_secret, enabled: row.out_enabled };
   }
 
   async upsertVoiceAgentConfig(propertyId: string, organizationId: string, toolWebhookSecret: string, enabled: boolean): Promise<void> {
