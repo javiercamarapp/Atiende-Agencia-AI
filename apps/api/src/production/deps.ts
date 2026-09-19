@@ -54,9 +54,12 @@ import { PostgresHotelesRepository, createLlmHotelesWhatsAppTurnHandler } from "
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { PostgresRestaurantesRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
+import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
   PostgresCitasRepository,
+  RealCalComPort,
+  RealCalDavPort,
+  createCalendarSyncPortResolver,
   createDefaultConversationGuard,
   createGoogleCalendarPortResolver,
   createLlmWhatsAppTurnHandler as createCitasLlmWhatsAppTurnHandler,
@@ -176,6 +179,21 @@ function buildRealCitasTurnHandler(engine: TenancyEngine, gateway: NonNullable<A
 function buildRealGoogleCalendarPortResolver(engine: TenancyEngine, config: GoogleOAuthPlatformConfig | null): ResolveCalendarPort {
   if (!config) return async () => null; // credenciales de plataforma pendientes -- ver env.ts::googleOAuth
   return (providerId) => engine.withAppSession({ userId: null }, (db) => createGoogleCalendarPortResolver(new PostgresCitasRepository(db), config)(providerId));
+}
+
+/**
+ * Fase 6 §2 (seguimiento) — mismo patrón EXACTO que `buildRealGoogleCalendarPortResolver`
+ * de arriba (singleton de proceso, `ResolveCalendarSyncPort` sin parámetro de
+ * sesión, cada invocación abre su PROPIA sesión de sistema), pero generalizado a
+ * las tres plataformas vía `createCalendarSyncPortResolver`
+ * (@atiende/domain-citas::calendar-sync-resolver-factory.ts). Sin
+ * `GOOGLE_CLIENT_ID/SECRET` configuradas, Google simplemente nunca resuelve
+ * (`createCalendarSyncPortResolver` ya lo trata como "sin conectar" internamente,
+ * ver ese archivo) -- Cal.com/CalDAV SÍ funcionan igual con `config: null`, porque
+ * sus credenciales son del TENANT, nunca de la plataforma.
+ */
+function buildRealCalendarSyncPortResolver(engine: TenancyEngine, config: GoogleOAuthPlatformConfig | null): ResolveCalendarSyncPort {
+  return (providerId) => engine.withAppSession({ userId: null }, (db) => createCalendarSyncPortResolver(new PostgresCitasRepository(db), config)(providerId));
 }
 
 let cached: AppDeps | undefined;
@@ -300,6 +318,15 @@ export function buildProductionDeps(): AppDeps {
     // conectar" honesto, nunca un error. El intercambio de código SÍ es real y no
     // depende de citasRepo (solo llama a Google).
     citasGoogleCalendarPortResolver: buildRealGoogleCalendarPortResolver(engine, env.googleOAuth),
+    // Fase 6 §2 (seguimiento) — el resolver que las rutas de citas usan hoy (ver
+    // buildRealCalendarSyncPortResolver arriba): cubre Google + Cal.com + CalDAV,
+    // cualquiera que el proveedor tenga conectado.
+    citasCalendarSyncPortResolver: buildRealCalendarSyncPortResolver(engine, env.googleOAuth),
+    // Fase 6 §2 (seguimiento) — ver el comentario de estos dos campos en deps.ts:
+    // construcción real, sin credenciales de plataforma que resolver (son del
+    // TENANT, ya vienen en `cfg`).
+    citasCalComPortFactory: (cfg) => new RealCalComPort(cfg),
+    citasCalDavPortFactory: (cfg) => new RealCalDavPort(cfg),
     citasGoogleTokenExchange: exchangeGoogleAuthorizationCode,
     // Hallazgo de auditoría (ALTO, SSRF) — DNS real (sin resolver inyectado), ver
     // @atiende/domain-citas::crearValidadorUrlCaldav.
