@@ -241,4 +241,70 @@ describe("SuperAdminFacturacionPage — bitácora completa de webhooks", () => {
     const ultimaLlamada = fetchMock.mock.calls.map((c) => String(c[0])).find((u) => u.includes("/webhooks-bitacora") && u.includes("result="));
     expect(ultimaLlamada).toContain("result=rechazado");
   });
+
+  // Revisión de PR #153 (bloqueante 3): un UUID incompleto (típico de estar
+  // tecleando) NO debe llegar al backend -- la ruta lo rechazaría con 400,
+  // pero mandar la request de todas formas produciría una ráfaga de errores
+  // mientras el usuario escribe. El filtro se omite hasta que el valor sea un
+  // UUID completo.
+  it("teclear un id de organización incompleto NO manda organizationId en la request", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+
+    const input = rendered.container.querySelector('input[aria-label="Filtrar por id de organización"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    changeValue(input, "00000000-0000-0000-0000");
+    await esperarCarga();
+
+    const llamadasBitacora = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes("/webhooks-bitacora"));
+    expect(llamadasBitacora.some((u) => u.includes("organizationId="))).toBe(false);
+  });
+
+  it("teclear un UUID completo SÍ manda organizationId en la request", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+
+    const input = rendered.container.querySelector('input[aria-label="Filtrar por id de organización"]') as HTMLInputElement;
+    const uuidCompleto = "00000000-0000-0000-0000-000000000001";
+    changeValue(input, uuidCompleto);
+    await esperarCarga();
+
+    const ultimaLlamada = fetchMock.mock.calls.map((c) => String(c[0])).find((u) => u.includes("/webhooks-bitacora") && u.includes("organizationId="));
+    expect(ultimaLlamada).toContain(`organizationId=${uuidCompleto}`);
+  });
+
+  // Revisión de PR #153 (bloqueante 3): antes, un error de la bitácora
+  // quedaba silencioso en cuanto ya había datos previos cargados (la tabla
+  // seguía mostrando la página vieja sin ningún aviso). Ahora el error se
+  // muestra SIEMPRE, incluso con datos previos en pantalla.
+  it("un error al recargar la bitácora se muestra aunque ya hubiera una página previa cargada", async () => {
+    stubFetch({
+      bitacora: {
+        disponible: true,
+        total: 1,
+        rows: [{ id: "1", providerEventId: "evt_ok", eventType: "checkout.session.completed", organizationId: "org-1", organizationName: "Hotel Test", organizationSlug: "hotel-test", result: "procesado", reason: "aplicado", createdAt: "2026-02-01T00:00:00.000Z" }],
+      },
+    });
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("Hotel Test");
+
+    // La siguiente recarga (disparada por cambiar el filtro de resultado) falla.
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/webhooks-bitacora")) throw new Error("network down");
+      if (url.includes("/superadmin/facturacion/resumen")) return jsonResponse(RESUMEN_VACIO);
+      if (url.includes("/superadmin/facturacion/organizaciones")) return jsonResponse({ organizaciones: [] });
+      if (url.includes("/superadmin/facturacion/webhooks-recientes")) return jsonResponse({ eventos: [], total: 0 });
+      throw new Error(`fetch inesperado: ${url}`);
+    });
+    const select = rendered.container.querySelector('select[aria-label="Filtrar por resultado"]') as HTMLSelectElement;
+    changeValue(select, "rechazado");
+    await esperarCarga();
+
+    expect(rendered.container.textContent).toContain("No se pudo cargar la bitácora de webhooks");
+    // Los datos previos de la tabla siguen visibles -- el error es un aviso, no un reemplazo silencioso.
+    expect(rendered.container.textContent).toContain("Hotel Test");
+  });
 });

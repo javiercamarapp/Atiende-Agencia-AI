@@ -106,6 +106,16 @@ interface PaginaBitacora {
 
 const BITACORA_LIMIT = 20;
 
+// Revisión de PR #153 (bloqueante 3): el filtro de organización manda el
+// texto crudo del input al backend en CADA tecla -- mientras el usuario
+// todavía está tecleando, un UUID incompleto llegaría hasta el parámetro
+// `uuid` de la función SQL y Postgres lo rechazaría (22P02). La ruta ya
+// valida esto y responde 400 en vez de 500, pero enviar la request de todas
+// formas seguiría produciendo una ráfaga de errores mientras se teclea --
+// aquí se filtra ANTES de mandar la request: solo se envía `organizationId`
+// cuando el valor es un UUID completo.
+const UUID_COMPLETO_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const NOMBRE_RESULTADO_BITACORA: Record<ResultadoBitacora, string> = {
   procesado: "Procesado",
   ignorado: "Ignorado",
@@ -349,7 +359,8 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
     try {
       const params = new URLSearchParams({ limit: String(BITACORA_LIMIT), offset: String(bitacoraOffset) });
       if (filtroResultado !== "todos") params.set("result", filtroResultado);
-      if (filtroOrganizationId.trim()) params.set("organizationId", filtroOrganizationId.trim());
+      const organizationIdCompleto = filtroOrganizationId.trim();
+      if (organizationIdCompleto && UUID_COMPLETO_REGEX.test(organizationIdCompleto)) params.set("organizationId", organizationIdCompleto);
       const pagina = await fetchJson<PaginaBitacora>(apiBaseUrl, token, `/superadmin/facturacion/webhooks-bitacora?${params.toString()}`);
       setBitacora(pagina);
     } catch {
@@ -517,6 +528,19 @@ export function SuperAdminFacturacionPage({ apiBaseUrl, token }: { readonly apiB
           </div>
         </CardHeader>
         <CardContent>
+          {/* Revisión de PR #153 (bloqueante 3): antes, un error nuevo
+             (`bitacoraError`) solo se mostraba si NUNCA se había cargado
+             ninguna página (`!bitacora`) -- una vez que había datos previos,
+             un error posterior quedaba silencioso y la tabla seguía
+             mostrando la página VIEJA sin filtrar, dato engañoso en una
+             pantalla de diagnóstico de cobros. Ahora, si YA hay datos
+             previos, el error se muestra como aviso ARRIBA de esos datos en
+             vez de desaparecer. */}
+          {bitacoraError && bitacora && (
+            <p role="alert" className="text-[13px] text-destructive mb-3">
+              {bitacoraError}
+            </p>
+          )}
           {bitacoraError && !bitacora ? (
             <EstadoError mensaje={bitacoraError} onReintentar={() => void cargarBitacora()} />
           ) : bitacoraCargando && !bitacora ? (
