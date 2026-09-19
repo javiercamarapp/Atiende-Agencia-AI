@@ -8,18 +8,19 @@ import { buildApp } from "../src/app.ts";
 import { buildLicitacionesTestContext, authedJson } from "./licitaciones-fixtures.ts";
 
 describe("GET /licitaciones/:propertyId/sources -- registro único de conectores (REQ-004/146/150)", () => {
-  it("cualquier miembro (incluido viewer) puede leer el registro -- lista las 7 fuentes conocidas", async () => {
+  it("cualquier miembro (incluido viewer) puede leer el registro -- lista las 10 fuentes conocidas", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const res = await app.request(`/licitaciones/${ctx.propertyId}/sources`, authedJson(ctx.staff.viewer.token));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { connectors: { id: string; liveVerification: { verified: boolean } }[] };
-    expect(body.connectors).toHaveLength(7);
-    expect(body.connectors.map((c) => c.id).sort()).toEqual(["compras_mx_historico", "comprasmx", "dof", "manual", "ocds_shcp", "pdn_s6", "state_portal"]);
-    // REQ-150 (tolerancia cero): ningún conector automatizado se declara verificado sin evidencia.
-    const automated = body.connectors.filter((c) => c.id !== "manual");
-    expect(automated.every((c) => c.liveVerification.verified === false)).toBe(true);
-    expect(body.connectors.find((c) => c.id === "manual")!.liveVerification.verified).toBe(true);
+    expect(body.connectors).toHaveLength(10);
+    expect(body.connectors.map((c) => c.id).sort()).toEqual(
+      ["aggregator", "cdmx_ocds", "compras_mx_historico", "comprasmx", "dof", "manual", "nl_ocds", "ocds_shcp", "pdn_s6", "state_portal"].sort(),
+    );
+    // REQ-150 (tolerancia cero): ningún conector automatizado se declara verificado sin evidencia -- 'manual' y 'nl_ocds' (Fase 9, evidencia real) lo están.
+    const verified = body.connectors.filter((c) => c.liveVerification.verified);
+    expect(verified.map((c) => c.id).sort()).toEqual(["manual", "nl_ocds"]);
   });
 
   it("sin sesión -> 401", async () => {
@@ -59,13 +60,13 @@ describe("GET /licitaciones/:propertyId/sources/runs -- historial de corridas (R
 });
 
 describe("GET /licitaciones/:propertyId/sources/freshness -- REQ-149", () => {
-  it("incluye las 7 fuentes SIEMPRE, marcando 'stale' explícito para las que nunca corrieron", async () => {
+  it("incluye las 10 fuentes SIEMPRE, marcando 'stale' explícito para las que nunca corrieron", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const res = await app.request(`/licitaciones/${ctx.propertyId}/sources/freshness`, authedJson(ctx.staff.viewer.token));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { freshness: { source: string; stale: boolean; lastSuccessAt: string | null }[] };
-    expect(body.freshness).toHaveLength(7);
+    expect(body.freshness).toHaveLength(10);
     const comprasmx = body.freshness.find((f) => f.source === "comprasmx")!;
     expect(comprasmx.stale).toBe(true);
     expect(comprasmx.lastSuccessAt).toBeNull();

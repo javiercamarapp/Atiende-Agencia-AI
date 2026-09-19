@@ -97,6 +97,86 @@ describe("runDiscoverTendersForOrganization", () => {
   });
 });
 
+describe("runDiscoverTendersForOrganization -- Fase 9: conectores OCDS nuevos (nl_ocds/cdmx_ocds/aggregator) se invocan genéricamente", () => {
+  let repo: InMemoryLicitacionesRepository;
+  let organizationId: string;
+
+  beforeEach(() => {
+    repo = new InMemoryLicitacionesRepository();
+    organizationId = randomUUID();
+    repo.seedOrganization({ id: organizationId, slug: "org-test-ocds", name: "Org de prueba OCDS" });
+  });
+
+  it("invoca nl_ocds (registro único, sin comparar ids a mano) y una licitación con fecha límite real alimenta scanUpcomingDeadlineReminders", async () => {
+    const now = new Date("2026-09-19T12:00:00Z");
+    // Forma real observada de la API OCDS de Nuevo León (ver evidencia en connector-registry.ts):
+    // paginación Laravel, `data: [{numberPublication, releases}]`. `tenderPeriod` presente en
+    // combinación con `status: "active"` no se vio simultáneamente en las páginas reales leídas en
+    // esta fase (gap documentado), pero SÍ es una forma válida real de OCDS -- este fixture ejercita
+    // ese camino de código (alimentar recordatorios de plazo) con una fecha límite a 2 días, dentro
+    // de la ventana default de `scanUpcomingDeadlineReminders` (3 días).
+    const nlPage = {
+      current_page: 1,
+      last_page: 1,
+      per_page: 10,
+      total: 1,
+      data: [
+        {
+          numberPublication: 1,
+          releases: [
+            {
+              ocid: "ocds-k3ufh7-999001",
+              date: "2026-09-19T00:00:00Z",
+              buyer: { name: "SECRETARÍA DE ADMINISTRACIÓN" },
+              tender: {
+                title: "Convocatoria con plazo próximo (Fase 9)",
+                status: "active",
+                tenderPeriod: { endDate: "2026-09-21T18:00:00-06:00" },
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (typeof url === "string" && url.includes("api-ocds.nl.gob.mx")) {
+          return new Response(JSON.stringify(nlPage), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    const results = await runDiscoverTendersForOrganization(repo, organizationId, { now: () => now });
+    const nlResult = results.find((r) => r.source === "nl_ocds")!;
+    expect(nlResult).toBeDefined();
+    expect(nlResult.state).toBe("ok");
+    expect(nlResult.created).toBe(1);
+
+    const tenders = (await repo.listTenders(organizationId)).filter((t) => t.source === "nl_ocds");
+    expect(tenders).toHaveLength(1);
+    expect(tenders[0]!.externalId).toBe("ocds-k3ufh7-999001");
+    expect(tenders[0]!.submissionDeadline).toBe("2026-09-21T18:00:00-06:00");
+
+    // La licitación con fecha límite real alimenta los recordatorios de plazo (REQ del brief).
+    const scan = await repo.scanUpcomingDeadlineReminders(organizationId, { nowIso: now.toISOString() });
+    expect(scan.created).toBe(1);
+    const reminders = await repo.listTenderDeadlineReminders(organizationId, tenders[0]!.id);
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]!.submissionDeadline).toBe("2026-09-21T18:00:00-06:00");
+  });
+
+  it("aggregator sin credenciales se registra 'not_configured' (nunca intenta una petición real) -- el barrido de los demás conectores continúa", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+    const results = await runDiscoverTendersForOrganization(repo, organizationId);
+    const aggregatorResult = results.find((r) => r.source === "aggregator")!;
+    expect(aggregatorResult.state).toBe("not_configured");
+    expect(aggregatorResult.created).toBe(0);
+  });
+});
+
 describe("runDiscoverTendersSweep", () => {
   it("recorre TODAS las organizaciones activas del vertical -- un fallo en una no detiene el barrido de las demás", async () => {
     const repo = new InMemoryLicitacionesRepository();

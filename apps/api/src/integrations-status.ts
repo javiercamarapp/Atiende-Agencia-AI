@@ -206,6 +206,15 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     variables: ["BOOKING_MESSAGING_API_TOKEN"],
   },
 
+  // ---- Licitaciones: agregador comercial de licitaciones (Fase 9, "API por pegar") ----
+  {
+    id: "licitaciones-aggregator",
+    nombre: "Licitaciones — agregador comercial (API por pegar)",
+    habilita:
+      "Con AMBAS presentes, `connectors/aggregator.ts::createAggregatorConnector().discover()` deja de lanzar `SourceNotConfiguredError` (`source_run.state = 'not_configured'`) y empieza a paginar contra `${LICITACIONES_AGGREGATOR_BASE_URL}/tenders` con `Authorization: Bearer ${LICITACIONES_AGGREGATOR_API_KEY}`. Sin proveedor elegido todavía en este monorepo -- el contrato de entrada esperado (JSON paginado por cursor) está documentado en `AggregatorTenderItem`/`AggregatorPageResponse` (packages/domain-licitaciones/src/connectors/aggregator.ts); es la única vía realista a cobertura NACIONAL amplia de licitaciones (las fuentes OCDS estatales reales, `nl_ocds`/`cdmx_ocds`, cubren solo Nuevo León/CDMX -- ver README de la vertical).",
+    variables: ["LICITACIONES_AGGREGATOR_API_KEY", "LICITACIONES_AGGREGATOR_BASE_URL"],
+  },
+
   // ---- apps/web (Vite, build-time) ----
   {
     id: "web-supabase-realtime",

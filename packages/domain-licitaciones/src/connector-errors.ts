@@ -46,3 +46,21 @@ export class InterfaceChangedError extends Error {
     this.name = "InterfaceChangedError";
   }
 }
+
+/**
+ * Fase 9 — lanzado cuando la fuente responde `429 Too Many Requests`. El
+ * "backoff" que pide el brief de esta fase (respeto a la fuente, "backoff
+ * ante 429") se implementa DETENIENDO la corrida por completo en cuanto
+ * aparece un 429 (nunca reintenta en el mismo proceso, nunca sigue pidiendo
+ * páginas siguientes) -- el worker no tiene temporizadores propios
+ * (`apps/worker/src/jobs/licitaciones/README.md`: "no corre como proceso
+ * propio"), así que el backoff real ocurre entre corridas programadas
+ * (`SourceCadence.minIntervalMinutes` de cada conector, ver
+ * `connector-registry.ts`), no con un `sleep` dentro de esta llamada.
+ */
+export class RateLimitedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RateLimitedError";
+  }
+}

@@ -32,6 +32,15 @@ export interface AssertLegitimateCsvBodyOptions {
   readonly url: string;
 }
 
+function looksLikeHtml(trimmed: string): boolean {
+  return trimmed.startsWith("<") || /<html[\s>]/i.test(trimmed.slice(0, 512));
+}
+
+function findBlockMarker(trimmed: string): string | undefined {
+  const lower = trimmed.slice(0, 4096).toLowerCase();
+  return BLOCK_MARKERS.find((needle) => lower.includes(needle));
+}
+
 /**
  * Valida que `sample` (el primer chunk decodificado, o el texto completo
  * para la variante en lote) tenga forma de CSV real y no de página de
@@ -45,13 +54,34 @@ export interface AssertLegitimateCsvBodyOptions {
  */
 export function assertLegitimateCsvBody(sample: string, options: AssertLegitimateCsvBodyOptions): void {
   const trimmed = sample.trimStart();
-  const looksLikeHtml = trimmed.startsWith("<") || /<html[\s>]/i.test(trimmed.slice(0, 512));
-  if (!looksLikeHtml) return; // Forma de CSV (no empieza como HTML) -- no hay nada que bloquear aquí.
+  if (!looksLikeHtml(trimmed)) return; // Forma de CSV (no empieza como HTML) -- no hay nada que bloquear aquí.
 
-  const lower = trimmed.slice(0, 4096).toLowerCase();
-  const marker = BLOCK_MARKERS.find((needle) => lower.includes(needle));
+  const marker = findBlockMarker(trimmed);
   if (marker) {
     throw new CaptchaDetectedError(`Respuesta de bloqueo detectada en ${options.url} (marcador: "${marker}") -- no es el CSV real, se reporta como corrida fallida en vez de "0 registros".`);
   }
   throw new InterfaceChangedError(`Respuesta HTML inesperada en ${options.url} (se esperaba CSV) sin marcador de bloqueo reconocido -- posible cambio de formato del portal.`);
+}
+
+export interface AssertLegitimateJsonBodyOptions {
+  readonly url: string;
+}
+
+/**
+ * Fase 9 — variante JSON de `assertLegitimateCsvBody`, para conectores OCDS
+ * (`nl-ocds-connector.ts`): un `200 OK` con un cuerpo HTML de bloqueo/captcha
+ * donde se esperaba un JSON de OCDS (release/record package) tampoco debe
+ * interpretarse como "0 releases" — mismo criterio SR-14, mismos marcadores
+ * de bloqueo reconocidos, solo cambia la forma esperada del cuerpo legítimo
+ * (JSON: empieza con `{`/`[` tras recortar espacios, nunca con `<`).
+ */
+export function assertLegitimateJsonBody(sample: string, options: AssertLegitimateJsonBodyOptions): void {
+  const trimmed = sample.trimStart();
+  if (!looksLikeHtml(trimmed)) return; // Forma de JSON (no empieza como HTML) -- el parser de JSON reportará su propio error si el resto del cuerpo está mal formado.
+
+  const marker = findBlockMarker(trimmed);
+  if (marker) {
+    throw new CaptchaDetectedError(`Respuesta de bloqueo detectada en ${options.url} (marcador: "${marker}") -- no es el JSON OCDS real, se reporta como corrida fallida en vez de "0 releases".`);
+  }
+  throw new InterfaceChangedError(`Respuesta HTML inesperada en ${options.url} (se esperaba JSON OCDS) sin marcador de bloqueo reconocido -- posible cambio de formato de la API.`);
 }
