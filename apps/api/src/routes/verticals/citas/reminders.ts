@@ -13,9 +13,10 @@
 // manuales — mismo secreto (`INTERNAL_SECRET`), dos formas de mandarlo.
 import { Hono } from "hono";
 import { runConfirmacionCitaCore } from "@atiende/domain-citas";
+import type { CitasRepository } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
-import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function citasRemindersRoutes(deps: AppDeps): Hono {
@@ -24,12 +25,17 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
   app.on(["GET", "POST"], "/internal/citas/confirmacion-cita", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    // Ruta interna de scheduler, sin authMiddleware/dbSession -- abre su propia
-    // sesión de sistema (`userId: null`) para todo el barrido, igual que documenta
-    // postgres-repository.ts (ninguna de estas queries depende de un auth.uid() real).
-    return withHeartbeat(deps, "/internal/citas/confirmacion-cita", () => deps.engine.withAppSession({ userId: null }, async (db) => {
-      const citasRepo = deps.citasRepo(db);
-      const organizations = await citasRepo.listActiveOrganizations();
+    // r4-fix-crons-transaccion-por-unidad: MISMO patrón exacto que hoteles/
+    // night-audit -- YA NO se abre una única `withAppSession` para todo el
+    // barrido. Un error SQL real en UNA organización dejaba esa transacción
+    // compartida ABORTADA (25P02); las organizaciones siguientes fallaban en
+    // cascada, y el COMMIT final -- sobre una transacción abortada -- devolvía
+    // `ROLLBACK` sin lanzar, revirtiendo en silencio confirmaciones ya
+    // encoladas de organizaciones anteriores. Ahora: una transacción para
+    // listar, y UNA transacción POR organización.
+    return withHeartbeat(deps, "/internal/citas/confirmacion-cita", async () => {
+      const withRepo = <T>(fn: (repo: CitasRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.citasRepo(db)));
+      const organizations = await withRepo((repo) => repo.listActiveOrganizations());
       let processed = 0;
       let sent = 0;
       let sentEmail = 0;
@@ -39,7 +45,7 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
       // captura y se sigue, se reporta en `failures[]` (ver diseño §5.3).
       for (const org of organizations) {
         try {
-          const summary = await runConfirmacionCitaCore(citasRepo, org.id);
+          const summary = await withRepo((repo) => runConfirmacionCitaCore(repo, org.id));
           processed += summary.processed;
           sent += summary.sent;
           sentEmail += summary.sentEmail;
@@ -48,8 +54,12 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
         }
       }
 
-      return c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, failures });
-    }))();
+      const response = c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, failures });
+      if (failures.length > 0) {
+        throw new CronPartialFailureError(`confirmacion-cita: ${failures.length} de ${organizations.length} organizaciones fallaron`, response);
+      }
+      return response;
+    })();
   });
 
   return app;
