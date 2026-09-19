@@ -33,15 +33,18 @@
 // ── POR QUÉ REST CRUDO Y NO EL SDK `@upstash/redis` ──────────────────────────
 // Es la decisión que se está PORTANDO, no una preferencia nueva: el proyecto
 // origen la tomó porque cuatro rutas y un HMAC no justifican una dependencia con su
-// propio agente HTTP (mismo criterio que usó ahí para Stripe). Nota para
-// quien lea esto junto a `packages/core-conversation/src/lock/redis-lock-store.ts`,
-// que SÍ usa `@upstash/redis`: ese paquete ya traía la dependencia por su
-// propio patrón (SET NX EX + un Lua de una línea para el release) portado de
-// un ORIGEN DISTINTO (atiende.ai, no el proyecto origen). No hay conflicto en que este
-// paquete conviva con esa dependencia en el mismo monorepo — cada adaptador
-// porta lo que su original real hacía. Nada impide migrar esto a
-// `@upstash/redis` después si el monorepo decide unificar clientes; no es
-// una restricción de este módulo, es fidelidad a la fuente portada.
+// propio agente HTTP (mismo criterio que usó ahí para Stripe).
+//
+// Nota para quien lea esto junto a
+// `packages/core-conversation/src/lock/redis-lock-store.ts`: ANTES de
+// fix/conversation-lock-upstash ese paquete traía el SDK `@upstash/redis` (portado
+// de un origen distinto, atiende.ai) y leía un par de variables con OTRO nombre
+// (`UPSTASH_REDIS_URL`/`UPSTASH_REDIS_TOKEN`, sin `_REST_`) — dos clientes, dos
+// convenciones de nombre, para el MISMO Redis de Upstash. Se unificó: ahora
+// `RedisLockStore` también habla REST crudo por `fetch` con el MISMO patrón de
+// este archivo (comando como array JSON, `AbortSignal.timeout`, nunca lanza) y
+// lee las MISMAS `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` — un solo
+// cliente Upstash, una sola credencial, en todo el monorepo.
 //
 // Lo que NO se portó de la fuente: `redisConfigurado`, `avisarBackend`,
 // `categoria`, `clientIp`, `bodyExcede` y el aviso de arranque por instancia
