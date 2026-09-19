@@ -803,8 +803,21 @@ export interface LicitacionesRepository {
   /** Lecciones vinculadas al PERFIL DE EMPRESA (org-wide, no solo la convocatoria puntual) -- consultable sin filtrar por tender. */
   listLessonsLearned(organizationId: string): Promise<readonly CompanyLessonLearnedRecord[]>;
 
-  /** REQ-055: escanea TODOS los contratos con `endDate` conocida de la organización (excepto `cerrado`/`rescindido`) y persiste una alerta nueva por cada (contrato, umbral) recién cruzado que no exista todavía -- idempotente: reescanear no duplica alertas ya emitidas para el mismo umbral. */
+  /** REQ-055: escanea TODOS los contratos con `endDate` conocida de la organización (excepto `cerrado`/`rescindido`) y persiste una alerta nueva por cada (contrato, umbral) recién cruzado que no exista todavía -- idempotente: reescanear no duplica alertas ya emitidas para el mismo umbral. Camino de STAFF autenticado (`POST .../renewals/scan`, `renewalRadar.ts`) -- para el barrido de sistema (`alert-notifications.ts`) ver `systemScanRenewalAlerts`, abajo. */
   scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult>;
+  /** Hallazgo de auditoría (severidad ALTA, "flujos de sistema bloqueados en
+   * escritura", ver migración 025): MISMO resultado/MISMO cómputo
+   * (`computeRenewalAlertCandidates`, puro TypeScript, sin duplicar) que
+   * `scanRenewalAlerts` -- pero exclusiva del barrido de sistema
+   * (`apps/worker/src/jobs/licitaciones/alert-notifications.ts`,
+   * `withAppSession({ userId: null })`), respaldada por funciones `security
+   * definer` de solo-sistema (`licitaciones.system_list_renewal_candidate_
+   * contracts`/`system_record_renewal_alert`) en vez de acceso directo a
+   * `licitaciones.contract`/`renewal_alert` (bloqueado por
+   * `can_access_org`/`can_write_org` bajo sesión de sistema, sin escape
+   * hatch). `scanRenewalAlerts` (arriba) sigue siendo el camino correcto para
+   * un staff autenticado real -- sin cambio. */
+  systemScanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult>;
   /** Bandeja de alertas, más recientes primero. */
   listRenewalAlerts(organizationId: string): Promise<readonly RenewalAlertRecord[]>;
   acknowledgeRenewalAlert(organizationId: string, alertId: string, actorId: string): Promise<RenewalAlertRecord>;
