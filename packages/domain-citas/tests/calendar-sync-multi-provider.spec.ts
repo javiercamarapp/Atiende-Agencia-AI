@@ -9,9 +9,12 @@
 // punta contra el protocolo HTTP real de cada plataforma — nunca un mock de HTTP
 // inventado.
 import { afterEach, describe, expect, it } from "vitest";
-import { createAppointment, cancelAppointment, rescheduleAppointment } from "../src/appointments.ts";
+import { createAppointment, cancelAppointment, rescheduleAppointment, retryAppointmentCalendarSyncFromPanel } from "../src/appointments.ts";
+import { updateCustomerEmailFromPanel } from "../src/customers.ts";
 import { syncPendingAppointmentsMultiProvider, tryTriggerCalendarSync } from "../src/calendar-sync.ts";
 import type { ResolveCalendarSyncPort, ResolvedCalendarSync } from "../src/calendar-sync.ts";
+import { CalComApiError } from "../src/calcom-port.ts";
+import { CalDavApiError } from "../src/caldav-port.ts";
 import { FakeCalendarSyncPort } from "../src/calendar-sync-port.ts";
 import { createCalendarSyncPortResolver } from "../src/calendar-sync-resolver-factory.ts";
 import { RealCalComPort } from "../src/calcom-port.ts";
@@ -28,13 +31,14 @@ function fixedResolver(resolved: ResolvedCalendarSync | null, connectedProviderI
   return async (providerId) => (connectedProviderIds.has(providerId) ? resolved : null);
 }
 
-async function createRealAppointment(fixture: ReturnType<typeof buildCitasFixture>, overrides: { customerPhone?: string; startsAt?: string } = {}) {
+async function createRealAppointment(fixture: ReturnType<typeof buildCitasFixture>, overrides: { customerPhone?: string; startsAt?: string; customerEmail?: string } = {}) {
   return createAppointment(fixture.repo, {
     organizationId: fixture.organizationId,
     providerId: fixture.providerId,
     serviceId: fixture.serviceId,
     customerName: "Ana Torres",
     customerPhone: overrides.customerPhone ?? "9991112233",
+    customerEmail: overrides.customerEmail,
     startsAt: overrides.startsAt ?? NEXT_MONDAY_9AM_MERIDA,
     source: "web",
   });
@@ -157,6 +161,186 @@ describe("tryTriggerCalendarSync / syncPendingAppointmentsMultiProvider — desp
     expect(summary.retried).toBe(1);
     const account = await fixture.repo.findProviderCalComAccount(fixture.providerId);
     expect(account!.syncStatus).toBe("connected");
+  });
+
+  // ==========================================================================
+  // Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — clasificación de
+  // rechazos de VALIDACIÓN (4xx que no es de credencial): nunca se reintentan,
+  // nunca tocan la cuenta, y quedan con un motivo legible + normalizado.
+  // ==========================================================================
+
+  it("un 422 real de Cal.com (event type exige attendeeEmail) queda 'invalid' de inmediato con el motivo específico, sin tocar la cuenta", async () => {
+    const fixture = buildCitasFixture();
+    await fixture.repo.connectProviderCalComAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, calcomEventTypeId: "555", apiKey: llaveFicticia() });
+    // Sin customerEmail a propósito -- el caso real documentado por el diseño de
+    // esta fase (el producto solo captura nombre/teléfono por defecto).
+    const appointment = await createRealAppointment(fixture);
+
+    const fake = new FakeCalendarSyncPort("calcom");
+    fake.failNextCall = new CalComApiError("Cal.com API error en /bookings", 422, JSON.stringify({ status: "error", message: "attendee.email es requerido para el event type consulta-general" }));
+    const resolver = fixedResolver({ port: fake, externalCalendarRef: "555" }, new Set([fixture.providerId]));
+
+    const summary = await tryTriggerCalendarSync(fixture.repo, resolver, appointment.id);
+    expect(summary.invalid).toBe(1);
+    expect(summary.exhausted).toBe(0);
+    expect(summary.retried).toBe(0);
+
+    const stored = await fixture.repo.findAppointmentForOrganization(fixture.organizationId, appointment.id);
+    expect(stored!.googleSyncStatus).toBe("invalid");
+    expect(stored!.googleSyncAttempts).toBe(1);
+    expect(stored!.googleSyncError).toBe("Cal.com exige el correo del cliente y esta cita no lo tiene. Agrega un correo al cliente desde su ficha en el panel y vuelve a intentar la sincronización.");
+
+    // La credencial sigue sirviendo -- un rechazo de validación de ESTA cita nunca
+    // marca la cuenta entera en error (a diferencia de un 401/403 real, ver la
+    // prueba de arriba).
+    const account = await fixture.repo.findProviderCalComAccount(fixture.providerId);
+    expect(account!.syncStatus).toBe("connected");
+  });
+
+  it("el mismo 422 de Cal.com CONTRA EL SIMULADOR HTTP REAL (event type con requiresAttendeeEmail) también queda 'invalid'", async () => {
+    const fixture = buildCitasFixture();
+    const calcomSim = new CalComApiSimulator({ apiKey: llaveFicticia("e2e-422"), eventTypes: [{ id: 555, slug: "consulta", title: "Consulta", lengthInMinutes: 30, requiresAttendeeEmail: true }] });
+    try {
+      const { baseUrl } = await calcomSim.start();
+      await fixture.repo.connectProviderCalComAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, calcomEventTypeId: "555", apiKey: llaveFicticia("e2e-422"), baseUrl });
+      const appointment = await createRealAppointment(fixture);
+
+      const resolver = createCalendarSyncPortResolver(fixture.repo, null, { createCalComPort: (cfg) => new RealCalComPort(cfg) });
+      const summary = await tryTriggerCalendarSync(fixture.repo, resolver, appointment.id);
+      expect(summary.invalid).toBe(1);
+      expect(calcomSim.bookings.size).toBe(0); // Cal.com nunca creó el booking
+
+      const stored = await fixture.repo.findAppointmentForOrganization(fixture.organizationId, appointment.id);
+      expect(stored!.googleSyncStatus).toBe("invalid");
+      expect(stored!.googleSyncError).toContain("Cal.com exige el correo del cliente");
+    } finally {
+      await calcomSim.stop();
+    }
+  });
+
+  it("cuando el cliente SÍ tiene correo, Cal.com lo recibe y el mismo event type que exige attendeeEmail sincroniza sin problema", async () => {
+    const fixture = buildCitasFixture();
+    const calcomSim = new CalComApiSimulator({ apiKey: llaveFicticia("e2e-ok"), eventTypes: [{ id: 555, slug: "consulta", title: "Consulta", lengthInMinutes: 30, requiresAttendeeEmail: true }] });
+    try {
+      const { baseUrl } = await calcomSim.start();
+      await fixture.repo.connectProviderCalComAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, calcomEventTypeId: "555", apiKey: llaveFicticia("e2e-ok"), baseUrl });
+      const appointment = await createRealAppointment(fixture, { customerEmail: "ana.torres@example.test" });
+
+      const resolver = createCalendarSyncPortResolver(fixture.repo, null, { createCalComPort: (cfg) => new RealCalComPort(cfg) });
+      const summary = await tryTriggerCalendarSync(fixture.repo, resolver, appointment.id);
+      expect(summary.synced).toBe(1);
+      expect(calcomSim.bookings.size).toBe(1);
+      expect([...calcomSim.bookings.values()][0]!.attendeeEmail).toBe("ana.torres@example.test");
+    } finally {
+      await calcomSim.stop();
+    }
+  });
+
+  it("un 400 real de CalDAV (rechazo de validación genérico, no de credencial) también queda 'invalid', sin tocar la cuenta", async () => {
+    const fixture = buildCitasFixture();
+    await fixture.repo.connectProviderCalDavAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, calendarCollectionUrl: "https://caldav.example.test/cal/", username: "x@example.test", password: claveFicticia() });
+    const appointment = await createRealAppointment(fixture);
+
+    const fake = new FakeCalendarSyncPort("caldav");
+    fake.failNextCall = new CalDavApiError("CalDAV error", 400, "VEVENT malformado");
+    const resolver = fixedResolver({ port: fake, externalCalendarRef: "https://caldav.example.test/cal/" }, new Set([fixture.providerId]));
+
+    const summary = await tryTriggerCalendarSync(fixture.repo, resolver, appointment.id);
+    expect(summary.invalid).toBe(1);
+
+    const stored = await fixture.repo.findAppointmentForOrganization(fixture.organizationId, appointment.id);
+    expect(stored!.googleSyncStatus).toBe("invalid");
+    expect(stored!.googleSyncError).toContain("el servidor CalDAV rechazó esta cita (código 400)");
+
+    const account = await fixture.repo.findProviderCalDavAccount(fixture.providerId);
+    expect(account!.syncStatus).toBe("connected");
+  });
+
+  it("un 5xx real de Cal.com sigue reintentando con backoff — NUNCA se clasifica como rechazo de validación", async () => {
+    const fixture = buildCitasFixture();
+    await fixture.repo.connectProviderCalComAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, calcomEventTypeId: "555", apiKey: llaveFicticia() });
+    const appointment = await createRealAppointment(fixture);
+
+    const fake = new FakeCalendarSyncPort("calcom");
+    fake.failNextCall = new CalComApiError("Cal.com API error en /bookings", 503, "service unavailable");
+    const resolver = fixedResolver({ port: fake, externalCalendarRef: "555" }, new Set([fixture.providerId]));
+
+    const summary = await tryTriggerCalendarSync(fixture.repo, resolver, appointment.id, new Date("2026-09-08T00:00:00.000Z"));
+    expect(summary.retried).toBe(1);
+    expect(summary.invalid).toBe(0);
+
+    const stored = await fixture.repo.findAppointmentForOrganization(fixture.organizationId, appointment.id);
+    expect(stored!.googleSyncStatus).toBe("pending");
+    expect(stored!.googleSyncNextRetryAt).not.toBeNull();
+  });
+
+  it("resumen de sincronizaciones con problema del proveedor: cuenta las citas 'invalid' y trae el último motivo, sin marcar la cuenta", async () => {
+    const fixture = buildCitasFixture();
+    await fixture.repo.connectProviderCalComAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, calcomEventTypeId: "555", apiKey: llaveFicticia() });
+    const a1 = await createRealAppointment(fixture, { customerPhone: "9990000010" });
+    const a2 = await createRealAppointment(fixture, { customerPhone: "9990000011", startsAt: zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString() });
+
+    const before = await fixture.repo.loadProviderCalendarSyncIssues(fixture.providerId);
+    expect(before).toEqual({ count: 0, lastReason: null });
+
+    const fake = new FakeCalendarSyncPort("calcom");
+    const resolver = fixedResolver({ port: fake, externalCalendarRef: "555" }, new Set([fixture.providerId]));
+
+    fake.failNextCall = new CalComApiError("Cal.com API error", 422, JSON.stringify({ message: "email requerido" }));
+    await tryTriggerCalendarSync(fixture.repo, resolver, a1.id);
+    fake.failNextCall = new CalComApiError("Cal.com API error", 422, JSON.stringify({ message: "email requerido" }));
+    await tryTriggerCalendarSync(fixture.repo, resolver, a2.id);
+
+    const after = await fixture.repo.loadProviderCalendarSyncIssues(fixture.providerId);
+    expect(after.count).toBe(2);
+    expect(after.lastReason).toContain("Cal.com exige el correo del cliente");
+
+    // Nunca marca la cuenta -- solo es una señal a nivel de resumen, ver diseño.
+    const account = await fixture.repo.findProviderCalComAccount(fixture.providerId);
+    expect(account!.syncStatus).toBe("connected");
+  });
+
+  it("botón 'reintentar sincronización': tras agregar el correo del cliente, la cita 'invalid' vuelve a 'pending' y sincroniza de verdad", async () => {
+    const fixture = buildCitasFixture();
+    await fixture.repo.connectProviderCalComAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, calcomEventTypeId: "555", apiKey: llaveFicticia() });
+    const appointment = await createRealAppointment(fixture);
+
+    const fake = new FakeCalendarSyncPort("calcom");
+    fake.failNextCall = new CalComApiError("Cal.com API error", 422, JSON.stringify({ message: "email requerido" }));
+    const resolver = fixedResolver({ port: fake, externalCalendarRef: "555" }, new Set([fixture.providerId]));
+    await tryTriggerCalendarSync(fixture.repo, resolver, appointment.id);
+
+    const invalidRow = await fixture.repo.findAppointmentForOrganization(fixture.organizationId, appointment.id);
+    expect(invalidRow!.googleSyncStatus).toBe("invalid");
+
+    // El staff completa el correo del cliente desde la ficha de Clientes...
+    await updateCustomerEmailFromPanel(fixture.repo, fixture.organizationId, invalidRow!.customerId, "ana.torres@example.test");
+    // ...y reintenta desde el panel.
+    const retried = await retryAppointmentCalendarSyncFromPanel(fixture.repo, fixture.organizationId, appointment.id, "staff-user-id");
+    expect(retried.googleSyncStatus).toBe("pending");
+    expect(retried.googleSyncAttempts).toBe(0);
+    expect(retried.googleSyncError).toBeNull();
+
+    const summary = await tryTriggerCalendarSync(fixture.repo, resolver, appointment.id);
+    expect(summary.synced).toBe(1);
+    // El PRIMER createEvent (antes de agregar el correo) también quedó registrado
+    // en `fake.calls` -- el que importa es el ÚLTIMO (el reintento real, ya con
+    // el correo corregido).
+    const createEventCalls = fake.calls.filter((c) => c.method === "createEvent");
+    expect((createEventCalls.at(-1)!.input as { attendeeEmail?: string }).attendeeEmail).toBe("ana.torres@example.test");
+
+    const finalRow = await fixture.repo.findAppointmentForOrganization(fixture.organizationId, appointment.id);
+    expect(finalRow!.googleSyncStatus).toBe("synced");
+  });
+
+  it("reintentar una cita que NO está 'invalid' (p.ej. ya 'synced') es un conflicto real, nunca un no-op silencioso", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createRealAppointment(fixture);
+    const fake = new FakeCalendarSyncPort("calcom");
+    const resolver = fixedResolver({ port: fake, externalCalendarRef: "555" }, new Set([fixture.providerId]));
+    await tryTriggerCalendarSync(fixture.repo, resolver, appointment.id); // sincroniza normal -> 'synced'
+
+    await expect(retryAppointmentCalendarSyncFromPanel(fixture.repo, fixture.organizationId, appointment.id, "staff-user-id")).rejects.toThrow(/synced/);
   });
 
   it("syncPendingAppointmentsMultiProvider procesa citas de proveedores en Google, Cal.com y CalDAV en la misma corrida", async () => {

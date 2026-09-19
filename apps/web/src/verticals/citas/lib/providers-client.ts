@@ -97,12 +97,36 @@ export interface GoogleCalendarStatus {
 
 export type CalendarProviderSyncStatus = "disconnected" | "connected" | "error";
 
+// Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — resumen de
+// "sincronizaciones con problema" de ESTE proveedor (nunca por plataforma, ver
+// @atiende/domain-citas::CalendarSyncIssuesSummary): número de citas actualmente
+// con rechazo PERMANENTE de validación + el motivo normalizado de la más
+// reciente. Se autolimpia solo (en cuanto el staff corrige el dato y reintenta,
+// esa cita deja de contar) — nunca marca la cuenta entera en error por esto, ver
+// Proveedores.tsx para la advertencia ámbar.
+export interface CalendarSyncIssuesSummary {
+  readonly count: number;
+  readonly lastReason: string | null;
+}
+
+interface CalendarSyncIssuesApiBody {
+  readonly count: number;
+  readonly last_reason: string | null;
+}
+
+const EMPTY_SYNC_ISSUES: CalendarSyncIssuesSummary = { count: 0, lastReason: null };
+
+function mapSyncIssues(row: CalendarSyncIssuesApiBody | undefined): CalendarSyncIssuesSummary {
+  return row ? { count: row.count, lastReason: row.last_reason } : EMPTY_SYNC_ISSUES;
+}
+
 export interface CalComStatus {
   readonly connected: boolean;
   readonly syncStatus: CalendarProviderSyncStatus;
   readonly syncError: string | null;
   readonly eventTypeId: string | null;
   readonly baseUrl: string | null;
+  readonly syncIssues: CalendarSyncIssuesSummary;
 }
 
 export interface CalDavStatus {
@@ -111,6 +135,7 @@ export interface CalDavStatus {
   readonly syncError: string | null;
   readonly calendarCollectionUrl: string | null;
   readonly username: string | null;
+  readonly syncIssues: CalendarSyncIssuesSummary;
 }
 
 interface CalComStatusApiBody {
@@ -119,6 +144,7 @@ interface CalComStatusApiBody {
   readonly sync_error: string | null;
   readonly calcom_event_type_id: string | null;
   readonly calcom_base_url: string | null;
+  readonly sync_issues?: CalendarSyncIssuesApiBody;
 }
 
 interface CalDavStatusApiBody {
@@ -127,14 +153,15 @@ interface CalDavStatusApiBody {
   readonly sync_error: string | null;
   readonly calendar_collection_url: string | null;
   readonly username: string | null;
+  readonly sync_issues?: CalendarSyncIssuesApiBody;
 }
 
 function mapCalComStatus(row: CalComStatusApiBody): CalComStatus {
-  return { connected: row.connected, syncStatus: row.sync_status, syncError: row.sync_error, eventTypeId: row.calcom_event_type_id, baseUrl: row.calcom_base_url };
+  return { connected: row.connected, syncStatus: row.sync_status, syncError: row.sync_error, eventTypeId: row.calcom_event_type_id, baseUrl: row.calcom_base_url, syncIssues: mapSyncIssues(row.sync_issues) };
 }
 
 function mapCalDavStatus(row: CalDavStatusApiBody): CalDavStatus {
-  return { connected: row.connected, syncStatus: row.sync_status, syncError: row.sync_error, calendarCollectionUrl: row.calendar_collection_url, username: row.username };
+  return { connected: row.connected, syncStatus: row.sync_status, syncError: row.sync_error, calendarCollectionUrl: row.calendar_collection_url, username: row.username, syncIssues: mapSyncIssues(row.sync_issues) };
 }
 
 export interface ProviderDetail {
@@ -143,6 +170,9 @@ export interface ProviderDetail {
   readonly googleCalendar: GoogleCalendarStatus;
   readonly calcom: CalComStatus;
   readonly caldav: CalDavStatus;
+  /** Fase 6 §2 (seguimiento) — UN solo resumen por proveedor (nunca por
+   * plataforma), ver `CalendarSyncIssuesSummary`. */
+  readonly calendarSyncIssues: CalendarSyncIssuesSummary;
   /** Fase 8 — ids de los servicios (activos) que este proveedor ya ofrece hoy, ver
    * admin.ts::GET .../providers/:providerId. */
   readonly offeredServiceIds: readonly string[];
@@ -154,6 +184,7 @@ interface ProviderDetailApiBody {
   readonly google_calendar: { connected: boolean; sync_status: GoogleCalendarSyncStatus; sync_error: string | null };
   readonly calcom: CalComStatusApiBody;
   readonly caldav: CalDavStatusApiBody;
+  readonly calendar_sync_issues?: CalendarSyncIssuesApiBody;
   readonly offered_service_ids: readonly string[];
 }
 
@@ -165,6 +196,7 @@ export async function fetchProviderDetail(fetchImpl: typeof fetch, apiBaseUrl: s
     googleCalendar: { connected: body.google_calendar.connected, syncStatus: body.google_calendar.sync_status, syncError: body.google_calendar.sync_error },
     calcom: mapCalComStatus(body.calcom),
     caldav: mapCalDavStatus(body.caldav),
+    calendarSyncIssues: mapSyncIssues(body.calendar_sync_issues),
     offeredServiceIds: body.offered_service_ids,
   };
 }
@@ -184,7 +216,7 @@ export async function connectCalCom(fetchImpl: typeof fetch, apiBaseUrl: string,
     "POST",
     { api_key: input.apiKey, event_type_id: input.eventTypeId, ...(input.baseUrl ? { base_url: input.baseUrl } : {}) },
   );
-  return { connected: body.connected, syncStatus: body.sync_status, syncError: null, eventTypeId: body.calcom_event_type_id, baseUrl: body.calcom_base_url };
+  return { connected: body.connected, syncStatus: body.sync_status, syncError: null, eventTypeId: body.calcom_event_type_id, baseUrl: body.calcom_base_url, syncIssues: EMPTY_SYNC_ISSUES };
 }
 
 export async function disconnectCalCom(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<void> {
@@ -217,7 +249,7 @@ export async function connectCalDav(fetchImpl: typeof fetch, apiBaseUrl: string,
     "POST",
     { calendar_collection_url: input.calendarCollectionUrl, username: input.username, password: input.password },
   );
-  return { connected: body.connected, syncStatus: body.sync_status, syncError: null, calendarCollectionUrl: body.calendar_collection_url, username: body.username };
+  return { connected: body.connected, syncStatus: body.sync_status, syncError: null, calendarCollectionUrl: body.calendar_collection_url, username: body.username, syncIssues: EMPTY_SYNC_ISSUES };
 }
 
 export async function disconnectCalDav(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, providerId: string): Promise<void> {

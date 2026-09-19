@@ -39,6 +39,7 @@ describe("fetchProviderDetail", () => {
           google_calendar: { connected: false, sync_status: "disconnected", sync_error: null },
           calcom: { connected: false, sync_status: "disconnected", sync_error: null, calcom_event_type_id: null, calcom_base_url: null },
           caldav: { connected: false, sync_status: "disconnected", sync_error: null, calendar_collection_url: null, username: null },
+          calendar_sync_issues: { count: 0, last_reason: null },
         }),
         { status: 200 },
       ),
@@ -48,8 +49,9 @@ describe("fetchProviderDetail", () => {
     expect(result.provider.displayName).toBe("Dra. Fernanda López");
     expect(result.availabilityRules).toEqual([{ id: "r1", dayOfWeek: 1, startTime: "09:00:00", endTime: "17:00:00", isActive: true }]);
     expect(result.googleCalendar).toEqual({ connected: false, syncStatus: "disconnected", syncError: null });
-    expect(result.calcom).toEqual({ connected: false, syncStatus: "disconnected", syncError: null, eventTypeId: null, baseUrl: null });
-    expect(result.caldav).toEqual({ connected: false, syncStatus: "disconnected", syncError: null, calendarCollectionUrl: null, username: null });
+    expect(result.calcom).toEqual({ connected: false, syncStatus: "disconnected", syncError: null, eventTypeId: null, baseUrl: null, syncIssues: { count: 0, lastReason: null } });
+    expect(result.caldav).toEqual({ connected: false, syncStatus: "disconnected", syncError: null, calendarCollectionUrl: null, username: null, syncIssues: { count: 0, lastReason: null } });
+    expect(result.calendarSyncIssues).toEqual({ count: 0, lastReason: null });
   });
 
   it("404 -> error real", async () => {
@@ -135,7 +137,7 @@ describe("connectCalCom", () => {
     }) as unknown as typeof fetch;
 
     const result = await connectCalCom(fetchImpl, "http://api.local", "tok", "prop-1", "prov-1", { apiKey: llaveFicticia("123"), eventTypeId: "555" });
-    expect(result).toEqual({ connected: true, syncStatus: "connected", syncError: null, eventTypeId: "555", baseUrl: null });
+    expect(result).toEqual({ connected: true, syncStatus: "connected", syncError: null, eventTypeId: "555", baseUrl: null, syncIssues: { count: 0, lastReason: null } });
   });
 
   it("con base_url (self-hosted) lo manda en el body y lo mapea de vuelta", async () => {
@@ -168,10 +170,10 @@ describe("disconnectCalCom / fetchCalComStatus / testCalComConnection", () => {
   it("fetchCalComStatus mapea la respuesta y nunca ve un api_key en el body", async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       expect(url).toBe("http://api.local/v1/citas/properties/prop-1/providers/prov-1/calcom/status");
-      return new Response(JSON.stringify({ connected: true, sync_status: "error", sync_error: "401 unauthorized", calcom_event_type_id: "555", calcom_base_url: null }), { status: 200 });
+      return new Response(JSON.stringify({ connected: true, sync_status: "error", sync_error: "401 unauthorized", calcom_event_type_id: "555", calcom_base_url: null, sync_issues: { count: 2, last_reason: "Cal.com exige el correo del cliente y esta cita no lo tiene." } }), { status: 200 });
     }) as unknown as typeof fetch;
     const result = await fetchCalComStatus(fetchImpl, "http://api.local", "tok", "prop-1", "prov-1");
-    expect(result).toEqual({ connected: true, syncStatus: "error", syncError: "401 unauthorized", eventTypeId: "555", baseUrl: null });
+    expect(result).toEqual({ connected: true, syncStatus: "error", syncError: "401 unauthorized", eventTypeId: "555", baseUrl: null, syncIssues: { count: 2, lastReason: "Cal.com exige el correo del cliente y esta cita no lo tiene." } });
   });
 
   it("testCalComConnection hace POST y mapea ok/checked_at", async () => {
@@ -204,7 +206,7 @@ describe("connectCalDav / disconnectCalDav / fetchCalDavStatus / testCalDavConne
     }) as unknown as typeof fetch;
 
     const result = await connectCalDav(fetchImpl, "http://api.local", "tok", "prop-1", "prov-1", { calendarCollectionUrl: "https://caldav.example.test/dav/calendars/user/x@y.com/abc/", username: "x@y.com", password: claveFicticia("real") });
-    expect(result).toEqual({ connected: true, syncStatus: "connected", syncError: null, calendarCollectionUrl: "https://caldav.example.test/dav/calendars/user/x@y.com/abc/", username: "x@y.com" });
+    expect(result).toEqual({ connected: true, syncStatus: "connected", syncError: null, calendarCollectionUrl: "https://caldav.example.test/dav/calendars/user/x@y.com/abc/", username: "x@y.com", syncIssues: { count: 0, lastReason: null } });
   });
 
   it("una URL sin https:// (400 real) propaga el error", async () => {
@@ -228,7 +230,7 @@ describe("connectCalDav / disconnectCalDav / fetchCalDavStatus / testCalDavConne
       return new Response(JSON.stringify({ connected: false, sync_status: "disconnected", sync_error: null, calendar_collection_url: null, username: null }), { status: 200 });
     }) as unknown as typeof fetch;
     const result = await fetchCalDavStatus(fetchImpl, "http://api.local", "tok", "prop-1", "prov-1");
-    expect(result).toEqual({ connected: false, syncStatus: "disconnected", syncError: null, calendarCollectionUrl: null, username: null });
+    expect(result).toEqual({ connected: false, syncStatus: "disconnected", syncError: null, calendarCollectionUrl: null, username: null, syncIssues: { count: 0, lastReason: null } });
   });
 
   it("testCalDavConnection hace POST y mapea ok/checked_at", async () => {

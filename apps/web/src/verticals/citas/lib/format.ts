@@ -56,3 +56,32 @@ export const SOURCE_LABELS: Record<string, string> = {
 export function formatAppointmentSource(source: string): string {
   return SOURCE_LABELS[source] ?? source;
 }
+
+// Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — estado de
+// sincronización de calendario POR CITA (google_sync_status, ver
+// @atiende/domain-citas::GoogleSyncStatus). `null`/`skipped` (sin calendario
+// conectado) se tratan igual en la Agenda: no vale la pena un indicador cuando no
+// hay nada que sincronizar.
+export const GOOGLE_SYNC_STATUS_LABELS: Record<string, string> = {
+  pending: "Sincronización pendiente",
+  synced: "Sincronizada",
+  error: "Con problema de sincronización",
+  invalid: "No sincronizada",
+  pending_cancel: "Sincronización pendiente",
+  deleted: "Sincronizada",
+};
+
+export function formatGoogleSyncStatus(status: string | null): string {
+  if (!status) return "";
+  return GOOGLE_SYNC_STATUS_LABELS[status] ?? status;
+}
+
+/** `true` solo para los 2 estados que de verdad ameritan un indicador visible en
+ * la Agenda -- `pending`/`synced`/`skipped`/`deleted`/`pending_cancel` son ruido
+ * (el flujo normal), `error`/`invalid` son los dos casos donde algo requiere
+ * atención del staff (uno se resuelve solo con reintentos, el otro NO -- ver
+ * `formatGoogleSyncStatus`/Agenda.tsx para el botón "Reintentar", solo para
+ * 'invalid'). */
+export function googleSyncStatusNeedsAttention(status: string | null): boolean {
+  return status === "error" || status === "invalid";
+}

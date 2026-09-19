@@ -234,7 +234,7 @@ describe("Fase 6 §2 (seguimiento) — GET .../calcom/status y .../caldav/status
     const app = buildApp(ctx.deps);
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/calcom/status`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ connected: false, sync_status: "disconnected", sync_error: null, calcom_event_type_id: null, calcom_base_url: null });
+    expect(await res.json()).toEqual({ connected: false, sync_status: "disconnected", sync_error: null, calcom_event_type_id: null, calcom_base_url: null, sync_issues: { count: 0, last_reason: null } });
   });
 
   it("Cal.com conectado: connected:true, sync_status:'connected', sin api_key", async () => {
@@ -243,7 +243,7 @@ describe("Fase 6 §2 (seguimiento) — GET .../calcom/status y .../caldav/status
     await ctx.citasRepo.connectProviderCalComAccount({ organizationId: ctx.organizationId, providerId: ctx.providerId, calcomEventTypeId: "555", apiKey: llaveFicticia() });
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/calcom/status`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body).toEqual({ connected: true, sync_status: "connected", sync_error: null, calcom_event_type_id: "555", calcom_base_url: null });
+    expect(body).toEqual({ connected: true, sync_status: "connected", sync_error: null, calcom_event_type_id: "555", calcom_base_url: null, sync_issues: { count: 0, last_reason: null } });
     expect(JSON.stringify(body)).not.toContain(llaveFicticia());
   });
 
@@ -251,7 +251,7 @@ describe("Fase 6 §2 (seguimiento) — GET .../calcom/status y .../caldav/status
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/status`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
-    expect(await res.json()).toEqual({ connected: false, sync_status: "disconnected", sync_error: null, calendar_collection_url: null, username: null });
+    expect(await res.json()).toEqual({ connected: false, sync_status: "disconnected", sync_error: null, calendar_collection_url: null, username: null, sync_issues: { count: 0, last_reason: null } });
   });
 
   it("CalDAV conectado: connected:true, sin la contraseña de aplicación", async () => {
@@ -260,7 +260,7 @@ describe("Fase 6 §2 (seguimiento) — GET .../calcom/status y .../caldav/status
     await ctx.citasRepo.connectProviderCalDavAccount({ organizationId: ctx.organizationId, providerId: ctx.providerId, calendarCollectionUrl: "https://caldav.example.com/x/", username: "x@y.com", password: claveFicticia("secreta") });
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/status`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body).toEqual({ connected: true, sync_status: "connected", sync_error: null, calendar_collection_url: "https://caldav.example.com/x/", username: "x@y.com" });
+    expect(body).toEqual({ connected: true, sync_status: "connected", sync_error: null, calendar_collection_url: "https://caldav.example.com/x/", username: "x@y.com", sync_issues: { count: 0, last_reason: null } });
     expect(JSON.stringify(body)).not.toContain(claveFicticia("secreta"));
   });
 

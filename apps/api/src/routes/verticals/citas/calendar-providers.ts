@@ -148,10 +148,24 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
 
     const account = await citasRepo.findProviderCalComAccount(providerId);
-    if (!account) return c.json({ connected: false, sync_status: "disconnected" as const, sync_error: null, calcom_event_type_id: null, calcom_base_url: null });
+    // Fase 6 §2 (seguimiento) — resumen de "sincronizaciones con problema" (citas
+    // con rechazo PERMANENTE de validación, ver domain-citas::calendar-sync.ts):
+    // se calcula SIEMPRE por proveedor (nunca por plataforma) -- ver
+    // CalendarSyncIssuesSummary/loadProviderCalendarSyncIssues para el porqué. Se
+    // pide incluso sin cuenta conectada de esta plataforma en particular, por si
+    // el proveedor tiene citas 'invalid' de una conexión previa que desconectó.
+    const syncIssues = await citasRepo.loadProviderCalendarSyncIssues(providerId);
+    if (!account) return c.json({ connected: false, sync_status: "disconnected" as const, sync_error: null, calcom_event_type_id: null, calcom_base_url: null, sync_issues: { count: syncIssues.count, last_reason: syncIssues.lastReason } });
     // El api_key NUNCA se devuelve al navegador tras guardarse -- solo metadata
     // pública de la conexión (event_type_id/base_url/estado).
-    return c.json({ connected: account.syncStatus !== "disconnected", sync_status: account.syncStatus, sync_error: account.syncError, calcom_event_type_id: account.calcomEventTypeId, calcom_base_url: account.baseUrl });
+    return c.json({
+      connected: account.syncStatus !== "disconnected",
+      sync_status: account.syncStatus,
+      sync_error: account.syncError,
+      calcom_event_type_id: account.calcomEventTypeId,
+      calcom_base_url: account.baseUrl,
+      sync_issues: { count: syncIssues.count, last_reason: syncIssues.lastReason },
+    });
   });
 
   app.post("/v1/citas/properties/:propertyId/providers/:providerId/calcom/test-connection", async (c) => {
@@ -236,9 +250,17 @@ export function citasCalendarProvidersRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
 
     const account = await citasRepo.findProviderCalDavAccount(providerId);
-    if (!account) return c.json({ connected: false, sync_status: "disconnected" as const, sync_error: null, calendar_collection_url: null, username: null });
+    const syncIssues = await citasRepo.loadProviderCalendarSyncIssues(providerId);
+    if (!account) return c.json({ connected: false, sync_status: "disconnected" as const, sync_error: null, calendar_collection_url: null, username: null, sync_issues: { count: syncIssues.count, last_reason: syncIssues.lastReason } });
     // La contraseña de aplicación NUNCA se devuelve al navegador tras guardarse.
-    return c.json({ connected: account.syncStatus !== "disconnected", sync_status: account.syncStatus, sync_error: account.syncError, calendar_collection_url: account.calendarCollectionUrl, username: account.username });
+    return c.json({
+      connected: account.syncStatus !== "disconnected",
+      sync_status: account.syncStatus,
+      sync_error: account.syncError,
+      calendar_collection_url: account.calendarCollectionUrl,
+      username: account.username,
+      sync_issues: { count: syncIssues.count, last_reason: syncIssues.lastReason },
+    });
   });
 
   app.post("/v1/citas/properties/:propertyId/providers/:providerId/caldav/test-connection", async (c) => {

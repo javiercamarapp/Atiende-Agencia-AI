@@ -28,6 +28,7 @@ import type {
 import type {
   AppointmentSyncRow,
   CalendarProviderSyncStatus,
+  CalendarSyncIssuesSummary,
   CancelResult,
   CitasRepository,
   CompleteResult,
@@ -51,6 +52,7 @@ import type {
   ReassignResult,
   RescheduleResult,
   ReminderCandidateRow,
+  RetryCalendarSyncResult,
   TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
@@ -557,6 +559,14 @@ export class InMemoryCitasRepository implements CitasRepository {
     return { items: page, total: matching.length, nextOffset };
   }
 
+  async updateCustomerEmailFromPanel(organizationId: string, customerId: string, email: string | null): Promise<CustomerRecord | null> {
+    const existing = this.customers.get(customerId);
+    if (!existing || existing.organizationId !== organizationId) return null;
+    const updated: CustomerRecord = { ...existing, email };
+    this.customers.set(customerId, updated);
+    return updated;
+  }
+
   async listActiveServices(organizationId: string): Promise<readonly ServiceRecord[]> {
     return [...this.services.values()].filter((s) => s.organizationId === organizationId && s.isActive).sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -789,6 +799,26 @@ export class InMemoryCitasRepository implements CitasRepository {
       const updated: AppointmentRecord = { ...appointment, status: "no_show" };
       this.appointments.set(appointmentId, updated);
       return { outcome: "marked_no_show", appointment: updated };
+    });
+  }
+
+  // Fase 6 §2 (seguimiento) — "reintentar sincronización" del panel: mismo
+  // candado + mismo criterio not_found/conflict_invalid_status que
+  // confirm/complete/no-show de arriba. Solo transiciona una cita realmente
+  // 'invalid' -- cualquier otro estado (incluido 'error', 'pending', etc.) es
+  // conflict_invalid_status, nunca un no-op silencioso que confunda al staff
+  // sobre si el reintento de verdad hizo algo.
+  async retryAppointmentCalendarSyncFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<RetryCalendarSyncResult> {
+    return this.appointmentLock.run(`retry-sync:${organizationId}:${appointmentId}`, async () => {
+      const appointment = this.appointments.get(appointmentId);
+      if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+      if (appointment.googleSyncStatus !== "invalid") {
+        return { outcome: "conflict_invalid_status", status: appointment.googleSyncStatus };
+      }
+
+      const updated: AppointmentRecord = { ...appointment, googleSyncStatus: "pending", googleSyncAttempts: 0, googleSyncNextRetryAt: null, googleSyncError: null };
+      this.appointments.set(appointmentId, updated);
+      return { outcome: "retried", appointment: updated };
     });
   }
 
@@ -1145,6 +1175,7 @@ export class InMemoryCitasRepository implements CitasRepository {
       serviceName: service?.name ?? null,
       customerName: customer?.fullName ?? null,
       customerPhone: customer?.phone ?? null,
+      customerEmail: customer?.email ?? null,
       startsAt: appointment.startsAt,
       endsAt: appointment.endsAt,
       notes: appointment.notes,
@@ -1200,6 +1231,21 @@ export class InMemoryCitasRepository implements CitasRepository {
 
   async markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void> {
     this.updateAppointmentSyncFields(appointmentId, { googleSyncStatus: "error", googleSyncAttempts: attempts, googleSyncError: error, googleSyncNextRetryAt: null });
+  }
+
+  async markAppointmentGoogleSyncInvalid(appointmentId: string, attempts: number, reason: string): Promise<void> {
+    this.updateAppointmentSyncFields(appointmentId, { googleSyncStatus: "invalid", googleSyncAttempts: attempts, googleSyncError: reason, googleSyncNextRetryAt: null });
+  }
+
+  async loadProviderCalendarSyncIssues(providerId: string): Promise<CalendarSyncIssuesSummary> {
+    // Más reciente primero por `createdAt` -- ver la nota de diseño de
+    // `CalendarSyncIssuesSummary` (repository.ts): "más reciente" aquí es "la cita
+    // creada más recientemente", no "el rechazo más reciente" (esta capa no guarda
+    // un timestamp propio de cuándo se marcó 'invalid').
+    const invalidOnes = [...this.appointments.values()]
+      .filter((a) => a.providerId === providerId && a.googleSyncStatus === "invalid")
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    return { count: invalidOnes.length, lastReason: invalidOnes[0]?.googleSyncError ?? null };
   }
 
   // ============================================================================

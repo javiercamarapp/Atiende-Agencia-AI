@@ -187,6 +187,34 @@ describe("tryTriggerGoogleSync — intento inmediato best-effort tras crear una 
     expect(account!.syncStatus).toBe("error");
   });
 
+  // Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — un 400 real que NO es
+  // invalid_grant (rechazo de VALIDACIÓN, no de credencial) nunca debe reintentarse
+  // a ciegas hasta agotar MAX_SYNC_ATTEMPTS -- se detiene de inmediato con
+  // google_sync_status='invalid', sin tocar la cuenta (la credencial sigue
+  // sirviendo).
+  it("un 400 real que NO es invalid_grant (rechazo de validación) queda 'invalid' de inmediato, sin tocar la cuenta", async () => {
+    const fixture = buildCitasFixture();
+    fixture.repo.seedProviderCalendarAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, googleCalendarId: "primary", refreshToken: "rt" });
+    const appointment = await createRealAppointment(fixture);
+    const port = new FakeGoogleCalendarPort();
+    port.failNextCall = new GoogleCalendarApiError("Google Calendar API error en /calendars/primary/events", 400, JSON.stringify({ error: { message: "Invalid time range." } }));
+
+    const summary = await tryTriggerGoogleSync(fixture.repo, fixedResolver(port, new Set([fixture.providerId])), appointment.id);
+    expect(summary.invalid).toBe(1);
+    expect(summary.exhausted).toBe(0);
+
+    const stored = await fixture.repo.findAppointmentForOrganization(fixture.organizationId, appointment.id);
+    expect(stored!.googleSyncStatus).toBe("invalid");
+    expect(stored!.googleSyncAttempts).toBe(1); // se detuvo de inmediato, NO tras 5 intentos
+    // El mensaje semántico real (Invalid time range.) sí queda -- el envelope JSON
+    // completo NUNCA se reproduce estructuralmente (ver extractProviderMessage).
+    expect(stored!.googleSyncError).toBe("Google Calendar rechazó esta cita (código 400): Invalid time range.");
+    expect(stored!.googleSyncError).not.toContain("{");
+
+    const account = await fixture.repo.findProviderCalendarAccount(fixture.providerId);
+    expect(account!.syncStatus).toBe("connected"); // la credencial sigue sirviendo -- nunca se toca por esto
+  });
+
   it("una cita ya 'synced' (no pending/pending_cancel) no se vuelve a tocar — tryTriggerGoogleSync es un no-op", async () => {
     const fixture = buildCitasFixture();
     fixture.repo.seedProviderCalendarAccount({ organizationId: fixture.organizationId, providerId: fixture.providerId, googleCalendarId: "primary", refreshToken: "rt" });
@@ -204,7 +232,7 @@ describe("tryTriggerGoogleSync — intento inmediato best-effort tras crear una 
   it("un appointmentId inexistente es un no-op silencioso, nunca lanza", async () => {
     const fixture = buildCitasFixture();
     const port = new FakeGoogleCalendarPort();
-    await expect(tryTriggerGoogleSync(fixture.repo, fixedResolver(port, new Set()), randomUUID())).resolves.toEqual({ processed: 0, synced: 0, retried: 0, exhausted: 0, skipped: 0, errors: [] });
+    await expect(tryTriggerGoogleSync(fixture.repo, fixedResolver(port, new Set()), randomUUID())).resolves.toEqual({ processed: 0, synced: 0, retried: 0, exhausted: 0, invalid: 0, skipped: 0, errors: [] });
   });
 });
 

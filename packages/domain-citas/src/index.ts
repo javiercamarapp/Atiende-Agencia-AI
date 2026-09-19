@@ -38,6 +38,7 @@ export { actorHash, consumeRateLimit, requestActor } from "./rate-limit.ts";
 
 export type {
   AppointmentSyncRow,
+  CalendarSyncIssuesSummary,
   CancelResult,
   CitasRepository,
   CompleteResult,
@@ -57,6 +58,7 @@ export type {
   ReassignResult,
   ReminderCandidateRow,
   RescheduleResult,
+  RetryCalendarSyncResult,
   TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
@@ -89,6 +91,7 @@ export type { GoogleOAuthPlatformConfig } from "./google-calendar-factory.ts";
 export {
   MAX_SYNC_ATTEMPTS,
   nextSyncBackoffMs,
+  sanitizeProviderSyncReason,
   SYNC_BATCH_SIZE,
   syncPendingAppointments,
   syncPendingAppointmentsMultiProvider,
@@ -119,6 +122,7 @@ export {
   queryAvailability,
   reassignAppointment,
   rescheduleAppointment,
+  retryAppointmentCalendarSyncFromPanel,
   validateCancelAppointmentPayload,
   validateCreateAppointmentPayload,
   validateReassignAppointmentPayload,
@@ -126,7 +130,7 @@ export {
 } from "./appointments.ts";
 export type { CreateAppointmentFromPanelPayload, CustomerAppointmentSummary, PreparedAppointment, PreparedReassign, PreparedReschedule, QueryAvailabilityInput, ReassignOutcome, RescheduleOutcome } from "./appointments.ts";
 
-export { lookupCitasCustomer } from "./customers.ts";
+export { lookupCitasCustomer, updateCustomerEmailFromPanel } from "./customers.ts";
 export type { CitasCustomerContext, UpcomingAppointmentContext } from "./customers.ts";
 
 export { acknowledgeOnlyTurnHandler } from "./whatsapp/turn-handler.ts";

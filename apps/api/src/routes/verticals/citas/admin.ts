@@ -24,6 +24,7 @@ import {
   ALL_VERTICALS,
   AppointmentConflictError,
   AppointmentForbiddenError,
+  AppointmentNotFoundError,
   AppointmentValidationError,
   createAppointmentFromPanel,
   DEFAULT_LISTA_ESPERA_LIMIT,
@@ -32,6 +33,7 @@ import {
   sortWaitlistByPosition,
   tryEnqueueAppointmentEmail,
   tryTriggerCalendarSync,
+  updateCustomerEmailFromPanel,
 } from "@atiende/domain-citas";
 import type {
   AppointmentRecord,
@@ -326,6 +328,11 @@ function serializeAppointment(appointment: AppointmentRecord) {
     notes: appointment.notes,
     created_at: appointment.createdAt,
     google_sync_status: appointment.googleSyncStatus,
+    // Fase 6 §2 (seguimiento) — motivo NORMALIZADO/saneado del último rechazo,
+    // solo tiene contenido real cuando google_sync_status es 'invalid' o 'error'
+    // (ver calendar-sync.ts::sanitizeProviderSyncReason -- nunca el cuerpo crudo
+    // de la respuesta del proveedor).
+    google_sync_error: appointment.googleSyncError,
   };
 }
 
@@ -486,12 +493,16 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // sección "Calendarios conectados" del panel las pinta juntas, un solo round
     // trip) — el secreto (api_key/contraseña de aplicación) nunca viaja aquí, solo
     // `sync_status`/`sync_error`/metadata pública de la conexión.
-    const [rules, calendarAccount, calcomAccount, caldavAccount, services] = await Promise.all([
+    const [rules, calendarAccount, calcomAccount, caldavAccount, services, syncIssues] = await Promise.all([
       citasRepo.loadAvailabilityRules(providerId),
       citasRepo.findProviderCalendarAccount(providerId),
       citasRepo.findProviderCalComAccount(providerId),
       citasRepo.findProviderCalDavAccount(providerId),
       citasRepo.listActiveServices(organizationId),
+      // Fase 6 §2 (seguimiento) — UN solo resumen por proveedor (nunca por
+      // plataforma, ver CalendarSyncIssuesSummary): "Calendarios conectados"
+      // pinta la advertencia ámbar junto a lo que sea que esté conectado.
+      citasRepo.loadProviderCalendarSyncIssues(providerId),
     ]);
     const offeredServiceIds = (
       await Promise.all(services.map(async (service) => ((await citasRepo.providerOffersService(providerId, service.id)) ? service.id : null)))
@@ -507,6 +518,7 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       caldav: caldavAccount
         ? { connected: caldavAccount.syncStatus !== "disconnected", sync_status: caldavAccount.syncStatus, sync_error: caldavAccount.syncError, calendar_collection_url: caldavAccount.calendarCollectionUrl, username: caldavAccount.username }
         : { connected: false, sync_status: "disconnected" as const, sync_error: null, calendar_collection_url: null, username: null },
+      calendar_sync_issues: { count: syncIssues.count, last_reason: syncIssues.lastReason },
       offered_service_ids: offeredServiceIds,
     });
   });
@@ -920,6 +932,39 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const upcoming = await citasRepo.listActiveAppointmentsForCustomer(organizationId, customerId, new Date().toISOString());
     const enriched = await enrichAppointments(citasRepo, organizationId, upcoming);
     return c.json({ customer: serializeCustomer(customer), upcoming_appointments: enriched });
+  });
+
+  interface UpdateCustomerBody {
+    readonly email?: unknown;
+  }
+
+  // ---- Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — captura/edición
+  // del correo OPCIONAL de un cliente YA existente (ver domain-citas/src/
+  // customers.ts::updateCustomerEmailFromPanel para el porqué: `citas.customers.
+  // email` existe desde Fase 1 pero nunca era editable después de la primera
+  // reserva -- el único lugar del panel donde el staff puede agregarle un correo
+  // a un cliente cuyas citas Cal.com rechaza por falta de `attendeeEmail`, sin
+  // tener que recrear la cita). `email: null` (o ausente del body -- ambos se
+  // tratan como "quitar el correo") NUNCA es un error: nunca es obligatorio. ----
+  app.patch("/v1/citas/properties/:propertyId/customers/:customerId", async (c) => {
+    const organizationId = c.get("organizationId");
+    const customerId = c.req.param("customerId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<UpdateCustomerBody>(c.req.raw, 1024);
+
+    if (raw.email !== undefined && raw.email !== null && typeof raw.email !== "string") {
+      throw Errors.validation("email: se esperaba un texto o null.");
+    }
+    const email = typeof raw.email === "string" ? raw.email : null;
+
+    try {
+      const updated = await updateCustomerEmailFromPanel(citasRepo, organizationId, customerId, email);
+      return c.json({ customer: serializeCustomer(updated) });
+    } catch (err) {
+      if (err instanceof AppointmentNotFoundError) throw Errors.notFound(err.message);
+      if (err instanceof AppointmentValidationError) throw Errors.validation(err.message);
+      throw err;
+    }
   });
 
   // ---- Fase 9 — GET solo-lectura de la lista de espera viva, en el MISMO orden
