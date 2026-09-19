@@ -14,7 +14,21 @@
 // MISMO patrón de invocación (sin scheduler en proceso) que
 // `discover-tenders.ts`/`jobs/hoteles/night-audit.ts` -- ver su comentario
 // de cabecera para la decisión completa.
+//
+// r4-fix-crons-transaccion-por-unidad (corrección de PR #163, bloqueante #2): ANTES,
+// esta función recibía un `LicitacionesRepository` YA ligado a una única transacción
+// abierta por la ruta para TODO el barrido -- mismo defecto exacto que
+// `../hoteles/night-audit.ts` tenía antes de su fix (ver `WithHotelesRepo` ahí para
+// el detalle completo del mecanismo: un error SQL real en una organización deja esa
+// transacción ABORTADA -- Postgres 25P02 --, las organizaciones siguientes fallan en
+// cascada, y el COMMIT final -- sobre una transacción abortada -- devuelve el tag
+// `ROLLBACK` SIN lanzar, revirtiendo en silencio TODAS las organizaciones ya
+// procesadas). Fix: `runDeadlineReminderSweep` recibe un runner (`withRepo`) que abre
+// UNA transacción por organización, mismo patrón EXACTO que
+// `../licitaciones/alert-notifications.ts::runAlertNotificationSweep`.
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
+
+export type WithLicitacionesRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => Promise<T>;
 
 export interface RunDeadlineRemindersOptions {
   /** Ventana de anticipación (días) -- default 3 (mismo valor que el repo origen). */
@@ -38,15 +52,18 @@ export interface DeadlineReminderSweepResult {
  * real en la capa de datos). Un tenant con datos raros nunca detiene el
  * barrido de los demás (mismo criterio que `citasRemindersRoutes`/
  * `runNightAuditSweep`/`runDiscoverTendersSweep`).
+ *
+ * r4-fix-crons-transaccion-por-unidad: `listActiveOrganizations()` corre en su propia
+ * transacción corta (vía `withRepo`), y CADA organización corre la suya.
  */
-export async function runDeadlineReminderSweep(repo: LicitacionesRepository, options: RunDeadlineRemindersOptions = {}): Promise<readonly DeadlineReminderSweepResult[]> {
+export async function runDeadlineReminderSweep(withRepo: WithLicitacionesRepo, options: RunDeadlineRemindersOptions = {}): Promise<readonly DeadlineReminderSweepResult[]> {
   const now = options.now ?? (() => new Date());
-  const organizations = await repo.listActiveOrganizations();
+  const organizations = await withRepo((repo) => repo.listActiveOrganizations());
   const results: DeadlineReminderSweepResult[] = [];
 
   for (const org of organizations) {
     try {
-      const result = await repo.scanUpcomingDeadlineReminders(org.id, { windowDays: options.windowDays, nowIso: now().toISOString() });
+      const result = await withRepo((repo) => repo.scanUpcomingDeadlineReminders(org.id, { windowDays: options.windowDays, nowIso: now().toISOString() }));
       results.push({ organizationId: org.id, scanned: result.scanned, created: result.created });
     } catch (err) {
       results.push({ organizationId: org.id, scanned: 0, created: 0, error: err instanceof Error ? err.message : String(err) });

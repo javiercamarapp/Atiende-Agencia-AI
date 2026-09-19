@@ -8,6 +8,7 @@
 // qué esto es seguro/no es un mock de lógica de negocio).
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { InMemorySaludRepository } from "@atiende/db";
 import { buildApp } from "../src/app.ts";
 import { buildLicitacionesTestContext } from "./licitaciones-fixtures.ts";
 
@@ -80,6 +81,102 @@ describe("POST /internal/licitaciones/discover-tenders", () => {
 
     const tenders = await ctx.repo.listTenders(ctx.organizationId);
     expect(tenders.some((t) => t.source === "compras_mx_historico" && t.externalId === "CTR-1")).toBe(true);
+  });
+});
+
+// r4-fix-crons-transaccion-por-unidad (re-revisión, bloqueante único): 'aggregator'
+// sin credenciales (`SourceNotConfiguredError` -> state 'not_configured') es el
+// camino feliz esperado mientras no se elija proveedor -- NO debe hacer que el
+// latido quede en "error". Solo una fuente con un estado de fallo REAL (p. ej.
+// 'down', por un 500 real de la fuente) debe disparar CronPartialFailureError.
+describe("latido de /internal/licitaciones/discover-tenders -- 'not_configured' no es un fallo del cron", () => {
+  const SUPERADMIN_ID = "superadmin-test-latido";
+
+  function heartbeatReaderFor(saludRepo: InMemorySaludRepository) {
+    saludRepo.addPlatformSuperadmin(SUPERADMIN_ID);
+    return async () => {
+      const latidos = await saludRepo.listCronHeartbeatsForSuperadmin(SUPERADMIN_ID);
+      return latidos.find((l) => l.cronName === "/internal/licitaciones/discover-tenders") ?? null;
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("(a) solo el aggregator sin configurar -- el cron NO lanza y el latido queda 'ok'", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const readLatido = heartbeatReaderFor(ctx.deps.saludRepo as InMemorySaludRepository);
+    const csv = csvFixture(["CTR-A,EXP-A,Prov,Contrato A,,,,,,1000,MXN,2020-01-01,2020-06-01,,,"]);
+    vi.stubGlobal("fetch", stubFetchForDiscoverTenders(csv));
+
+    const res = await app.request("/internal/licitaciones/discover-tenders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; failures: { source: string | null }[] };
+    // El body/`ok` NO cambian de comportamiento -- 'aggregator' sigue reportado como fallo ahí (sin este PR ya era así).
+    expect(body.ok).toBe(false);
+    expect(body.failures.map((f) => f.source)).toEqual(["aggregator"]);
+
+    const latido = await readLatido();
+    expect(latido?.lastStatus).toBe("ok");
+    expect(latido?.consecutiveFailures).toBe(0);
+  });
+
+  it("(b) una fuente configurada que falla de verdad (con aggregator TAMBIÉN configurado y ok) -- SÍ lanza CronPartialFailureError, latido 'error'", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const readLatido = heartbeatReaderFor(ctx.deps.saludRepo as InMemorySaludRepository);
+    vi.stubEnv("LICITACIONES_AGGREGATOR_API_KEY", "clave-de-prueba");
+    vi.stubEnv("LICITACIONES_AGGREGATOR_BASE_URL", "https://aggregator.test");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes("api-ocds.nl.gob.mx")) return new Response(JSON.stringify({ current_page: 1, data: [], last_page: 1, per_page: 10, total: 0 }), { status: 200, headers: { "content-type": "application/json" } });
+        if (url.includes("datos.cdmx.gob.mx")) return new Response(`${CDMX_CSV_HEADER}\n`, { status: 200, headers: { "content-type": "text/csv" } });
+        if (url.includes("aggregator.test")) return new Response(JSON.stringify({ items: [], nextCursor: null }), { status: 200, headers: { "content-type": "application/json" } });
+        // compras_mx_historico -- fuente CONFIGURADA que falla de verdad (500 real).
+        return new Response("boom", { status: 500 });
+      }),
+    );
+
+    const res = await app.request("/internal/licitaciones/discover-tenders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; failures: { source: string | null; error: string }[] };
+    expect(body.failures.map((f) => f.source)).toEqual(["compras_mx_historico"]);
+
+    const latido = await readLatido();
+    expect(latido?.lastStatus).toBe("error");
+    expect(latido?.lastError).toContain("compras_mx_historico");
+  });
+
+  it("(c) 'not_configured' (aggregator) + un fallo real (compras_mx_historico) a la vez -- lanza, y el detalle del latido nombra SOLO la fuente realmente fallida", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const readLatido = heartbeatReaderFor(ctx.deps.saludRepo as InMemorySaludRepository);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes("api-ocds.nl.gob.mx")) return new Response(JSON.stringify({ current_page: 1, data: [], last_page: 1, per_page: 10, total: 0 }), { status: 200, headers: { "content-type": "application/json" } });
+        if (url.includes("datos.cdmx.gob.mx")) return new Response(`${CDMX_CSV_HEADER}\n`, { status: 200, headers: { "content-type": "text/csv" } });
+        // compras_mx_historico -- fuente configurada que falla de verdad; 'aggregator' sigue not_configured (sin credenciales en este test).
+        return new Response("boom", { status: 500 });
+      }),
+    );
+
+    const res = await app.request("/internal/licitaciones/discover-tenders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; failures: { source: string | null; error: string }[] };
+    // El body sigue reportando AMBAS fuentes (comportamiento sin cambios) ...
+    expect(body.failures.map((f) => f.source).sort()).toEqual(["aggregator", "compras_mx_historico"]);
+
+    const latido = await readLatido();
+    expect(latido?.lastStatus).toBe("error");
+    // ... pero el detalle del latido nombra SOLO la fuente realmente fallida.
+    expect(latido?.lastError).toContain("compras_mx_historico");
+    expect(latido?.lastError).not.toContain("aggregator");
   });
 });
 

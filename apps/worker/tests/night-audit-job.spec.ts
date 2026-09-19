@@ -15,7 +15,9 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryHotelesRepository } from "@atiende/domain-hoteles";
+import type { HotelesRepository } from "@atiende/domain-hoteles";
 import { runNightAuditForProperty, runNightAuditSweep } from "../src/jobs/hoteles/night-audit.ts";
+import { makeAbortSimulatingRepo, makePerCallTransactionalWithRepo, simulateSingleSharedTransaction } from "./support/fake-transactional-engine.ts";
 
 let repo: InMemoryHotelesRepository;
 let organizationId: string;
@@ -106,7 +108,7 @@ describe("runNightAuditSweep", () => {
     // 2026-09-10T10:00:00Z == 04:00 hora CDMX (UTC-6) -- ya pasó el umbral de las 03:00.
     const now = () => new Date("2026-09-10T10:00:00Z");
 
-    const results = await runNightAuditSweep(repo, { now });
+    const results = await runNightAuditSweep((fn) => fn(repo), { now });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ organizationId, propertyId, ran: true, businessDate: "2026-09-09" });
@@ -118,7 +120,7 @@ describe("runNightAuditSweep", () => {
     // 2026-09-10T06:00:00Z == 00:00 hora CDMX -- antes de las 03:00.
     const now = () => new Date("2026-09-10T06:00:00Z");
 
-    const results = await runNightAuditSweep(repo, { now });
+    const results = await runNightAuditSweep((fn) => fn(repo), { now });
 
     expect(results).toEqual([{ organizationId, propertyId, ran: false, skippedReason: "fuera_de_horario" }]);
   });
@@ -130,7 +132,7 @@ describe("runNightAuditSweep", () => {
     // otherPropertyId no tiene tax_config sembrado -- `loadTaxConfig` lanza.
     const now = () => new Date("2026-09-10T10:00:00Z");
 
-    const results = await runNightAuditSweep(repo, { now });
+    const results = await runNightAuditSweep((fn) => fn(repo), { now });
 
     expect(results).toHaveLength(2);
     const failed = results.find((r) => r.propertyId === otherPropertyId);
@@ -229,5 +231,126 @@ describe("runNightAuditForProperty -- session: \"sistema\"", () => {
     expect(applied).toBeNull();
     const untouched = await repo.findReservation(propertyId, reservation.id);
     expect(untouched!.status).toBe("confirmada");
+  });
+});
+
+// r4-fix-crons-transaccion-por-unidad (auditoría a1b #1, ALTA) -- reproduce el bug
+// real que ningún test anterior de este archivo podía ver (`InMemoryHotelesRepository`
+// no es transaccional, ver auditoria-a1b-resultado.json hallazgo #1 punto 7): un
+// error SQL real en UNA property, bajo una transacción COMPARTIDA para todo el
+// barrido, revierte en silencio el trabajo de las properties YA cerradas -- ver
+// apps/worker/tests/support/fake-transactional-engine.ts para el mecanismo completo.
+describe("r4-fix-crons-transaccion-por-unidad -- transacción por property (reproduce el bug + prueba el fix)", () => {
+  let propB: string;
+  let propC: string;
+  let roomTypeB: string;
+  let roomTypeC: string;
+
+  async function seedProperty(propId: string, roomTypeIdForProp: string, orgId: string) {
+    repo.seedActiveHotelProperty(orgId, propId);
+    repo.seedTaxConfig(propId, { ivaRate: 0.16, ishRate: 0.03, discountThreshold: 500 });
+    repo.seedRoomType(propId, roomTypeIdForProp);
+    repo.seedNightlyRates(propId, roomTypeIdForProp, [{ date: "2026-09-10", price: 1000, minStay: 1, closedToArrival: false, closedToDeparture: false }]);
+  }
+
+  async function seedReservationFor(propId: string, roomTypeIdForProp: string, orgId: string) {
+    const reservation = await repo.insertReservation({ organizationId: orgId, propertyId: propId, roomTypeId: roomTypeIdForProp, guestId: null, checkInDate: "2026-09-10", checkOutDate: "2026-09-12", totalAmount: 1000 });
+    await repo.transitionReservation(propId, reservation.id, ["confirmada"], "check_in", null);
+    await repo.transitionReservation(propId, reservation.id, ["check_in"], "en_estancia", null);
+    await repo.ensurePrimaryFolio(propId, orgId, reservation.id);
+  }
+
+  beforeEach(async () => {
+    // property (default del beforeEach de arriba) = "A" -- ya sembrada con su
+    // reserva en casa. B y C son properties HERMANAS, mismo tenant setup, para
+    // demostrar que el fallo de B NUNCA debe contagiar ni a A (anterior) ni a C
+    // (posterior) en el barrido.
+    propB = randomUUID();
+    propC = randomUUID();
+    roomTypeB = randomUUID();
+    roomTypeC = randomUUID();
+    await seedProperty(propB, roomTypeB, organizationId);
+    await seedProperty(propC, roomTypeC, organizationId);
+    await seedReservationFor(propertyId, roomTypeId, organizationId); // A
+    await seedReservationFor(propB, roomTypeB, organizationId);
+    await seedReservationFor(propC, roomTypeC, organizationId);
+  });
+
+  const properties = () => [
+    { organizationId, propertyId },
+    { organizationId, propertyId: propB },
+    { organizationId, propertyId: propC },
+  ];
+
+  /** Reproduce LITERALMENTE el bucle que `runNightAuditSweep` tenía ANTES de este
+   *  fix (ver el diff de este PR): un solo `repo` compartido para TODAS las
+   *  properties, try/catch POR property que nunca relanza. */
+  async function legacySweepAllPropertiesInOneSession(repoForEverything: HotelesRepository): Promise<{ propertyId: string; ran: boolean; error?: string }[]> {
+    const results: { propertyId: string; ran: boolean; error?: string }[] = [];
+    for (const p of properties()) {
+      try {
+        await runNightAuditForProperty(repoForEverything, { organizationId: p.organizationId, propertyId: p.propertyId, businessDate: "2026-09-10", session: "sistema" });
+        results.push({ propertyId: p.propertyId, ran: true });
+      } catch (err) {
+        results.push({ propertyId: p.propertyId, ran: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return results;
+  }
+
+  it("ANTES del fix (patrón reconstruido): un error SQL real en la property B revierte en silencio TAMBIÉN el cierre YA COMMITEADO de A -- y C falla en cascada con el error de B, no el suyo", async () => {
+    const { proxy, isAborted } = makeAbortSimulatingRepo(repo, (method, args) => method === "systemLoadTaxConfig" && args[0] === propB, "P0001: reserva_invalida (SQL real simulado)");
+
+    const results = await simulateSingleSharedTransaction(repo, isAborted, () => legacySweepAllPropertiesInOneSession(proxy));
+
+    // El propio resultado del barrido MIENTE: reporta A como corrida exitosa
+    // (con su summary real, `ran:true`) -- el bug es precisamente que esto ya
+    // no es cierto después del COMMIT->ROLLBACK silencioso.
+    const resultA = results.find((r) => r.propertyId === propertyId)!;
+    expect(resultA.ran).toBe(true);
+    // C falla en cascada -- ve el error engañoso de B (25P02), no el suyo propio.
+    const resultC = results.find((r) => r.propertyId === propC)!;
+    expect(resultC.ran).toBe(false);
+    expect(resultC.error).toMatch(/25P02|aborted/i);
+
+    // Pero el estado REAL, tras el "COMMIT" (que devolvió ROLLBACK en silencio
+    // porque la sesión quedó abortada), NO tiene el cargo de A -- se perdió,
+    // aunque el resultado de arriba diga `ran:true`. Este es el hallazgo real.
+    const runA = await repo.findNightAuditRun(propertyId, "2026-09-10");
+    expect(runA).toBeNull();
+    const reservationsInHouseA = await repo.listInHouseReservationsForNightAudit(propertyId, "2026-09-10");
+    // La reserva de A sigue "en_estancia" (nunca se cerró de verdad) porque el
+    // cargo posteado se revirtió junto con todo lo demás.
+    expect(reservationsInHouseA).toHaveLength(1);
+  });
+
+  it("DESPUÉS del fix (código real): el mismo error SQL en B se aísla -- A y C SÍ persisten con su cierre real, solo B se reporta como fallo", async () => {
+    const { proxy, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "systemLoadTaxConfig" && args[0] === propB, "P0001: reserva_invalida (SQL real simulado)");
+    const perCallTxn = makePerCallTransactionalWithRepo(repo);
+    const withRepo = async <T>(fn: (r: HotelesRepository) => Promise<T>): Promise<T> => {
+      try {
+        return await perCallTxn(() => fn(proxy));
+      } finally {
+        reset(); // cada `withRepo` es una sesión/conexión nueva -- el aborto de una NUNCA sobrevive a la siguiente.
+      }
+    };
+
+    // 2026-09-11T10:00:00Z == 04:00 hora CDMX (UTC-6) -- ya pasó el umbral de las
+    // 03:00, cierra el día anterior (2026-09-10, que es el que sembramos arriba).
+    const results = await runNightAuditSweep(withRepo, { now: () => new Date("2026-09-11T10:00:00Z") });
+
+    const resultA = results.find((r) => r.propertyId === propertyId)!;
+    const resultB = results.find((r) => r.propertyId === propB)!;
+    const resultC = results.find((r) => r.propertyId === propC)!;
+    expect(resultA.ran).toBe(true);
+    expect(resultB.ran).toBe(false);
+    expect(resultB.error).toContain("P0001");
+    // C corre bien, con SU PROPIO resultado -- ya no ve el error de B.
+    expect(resultC.ran).toBe(true);
+
+    // Y el estado real coincide con lo reportado -- A y C SÍ cerraron de verdad.
+    expect(await repo.findNightAuditRun(propertyId, "2026-09-10")).not.toBeNull();
+    expect(await repo.findNightAuditRun(propC, "2026-09-10")).not.toBeNull();
+    expect(await repo.findNightAuditRun(propB, "2026-09-10")).toBeNull();
   });
 });

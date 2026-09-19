@@ -25,7 +25,7 @@ Ver su propio `README.md`.
 variables de entorno reales hacen falta en ESTE entorno, sin imprimir valores.
 Ver `docs/CREDENCIALES.md` y su propio `README.md`.
 
-## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-correo-inline-sesion-staff/`, `verify-whatsapp-inline-sesion-staff/`, `verify-rentas-bitacora-auditoria/`
+## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-crons-transaccion-por-unidad/`, `verify-correo-inline-sesion-staff/`, `verify-whatsapp-inline-sesion-staff/`, `verify-rentas-bitacora-auditoria/`
 
 `verify-correo-inline-sesion-staff/` (auditoría a2, CRÍTICO) y
 `verify-whatsapp-inline-sesion-staff/` (auditoría a2b, CRÍTICO, mismo bug con el
@@ -39,7 +39,11 @@ de cada uno.
 Verificaciones contra Postgres **real** (RLS + GRANT reales — no el repositorio
 en memoria que usa `npm test`) de fixes puntuales ya auditados. Cada una trae su
 propio `run.sh` para correrla a mano localmente — ver el `README.md` de cada
-directorio.
+directorio. `verify-crons-transaccion-por-unidad/` es distinta de las demás: no
+verifica RLS/GRANT de ninguna tabla de negocio, sino el MECANISMO de
+transacciones de Postgres (COMMIT sobre una transacción abortada devuelve
+ROLLBACK sin lanzar) detrás del fix "una transacción por unidad" en los crons
+de barrido (night-audit/cobranza-reminders/alert-notifications/etc.).
 
 ## `verify-real-postgres-ci/`
 

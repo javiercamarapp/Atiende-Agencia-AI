@@ -37,7 +37,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runCobranzaReminderSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
-import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
@@ -103,16 +103,27 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
   app.on(["GET", "POST"], "/internal/despachos/cobranza-reminders", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return withHeartbeat(deps, "/internal/despachos/cobranza-reminders", () => deps.engine.withAppSession({ userId: null }, async (db) => {
-      const repo = deps.despachosRepo(db);
-      const sweep = await runCobranzaReminderSweep(repo);
-      // Disparo inline best-effort (ver comentario de cabecera): el barrido de
-      // arriba pudo haber encolado recordatorios reales de cobranza vía
-      // `channel='email'` -- este cron es INDEPENDIENTE del cron de
+    // r4-fix-crons-transaccion-por-unidad (auditoría a1b #2, MEDIA): YA NO se
+    // abre una única `withAppSession` para todo el barrido -- `runCobranzaReminderSweep`
+    // recibe un runner (`withRepo`) que abre UNA transacción POR organización
+    // (ver su comentario de cabecera en @atiende/worker).
+    return withHeartbeat(deps, "/internal/despachos/cobranza-reminders", async () => {
+      const withRepo = <T>(fn: (repo: DespachosRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.despachosRepo(db)));
+      const sweep = await runCobranzaReminderSweep(withRepo);
+      // Disparo inline best-effort (ver comentario de cabecera del archivo): el
+      // barrido de arriba pudo haber encolado recordatorios reales de cobranza
+      // vía `channel='email'` -- este cron es INDEPENDIENTE del cron de
       // `/internal/despachos/email-dispatch` (vercel.json los agenda por
       // separado), así que sin esto un correo podía esperar hasta 24h a que
-      // corriera el OTRO cron.
-      await triggerDespachosEmailDispatchInline(deps, db, repo);
+      // corriera el OTRO cron. r4-fix-crons-transaccion-por-unidad: antes
+      // compartía LA MISMA transacción del barrido completo (un fallo del
+      // drenado inline podía tumbar el barrido y viceversa); ahora que el
+      // barrido ya no tiene una única `repo`/transacción "del request", abre
+      // la suya propia -- mismo criterio que `runDespachosEmailDispatch` (el
+      // cron separado de email-dispatch, que siempre abrió la suya). Sigue
+      // pasando `db` (además de `repo`) porque `triggerDespachosEmailDispatchInline`
+      // envuelve el drenado en su propio SAVEPOINT (hotfix auditoría a2).
+      await deps.engine.withAppSession({ userId: null }, (db) => triggerDespachosEmailDispatchInline(deps, db, deps.despachosRepo(db)));
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => {
@@ -125,21 +136,25 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
         },
         { receivables_scanned: 0, reminders_due: 0, emails_enqueued: 0 },
       );
-      return c.json(
-        {
-          ok: failures.length === 0,
-          organizations_checked: sweep.length,
-          ...totals,
-          corridas: sweep.map((r) => ({
-            organization_id: r.organizationId,
-            error: r.error ?? null,
-            properties: r.properties.map((p) => ({ property_id: p.propertyId, receivables_scanned: p.receivablesScanned, reminders_due: p.remindersDue, emails_enqueued: p.emailsEnqueued })),
-          })),
-          failures,
-        },
-        200,
-      );
-    }))();
+      const body = {
+        ok: failures.length === 0,
+        organizations_checked: sweep.length,
+        ...totals,
+        corridas: sweep.map((r) => ({
+          organization_id: r.organizationId,
+          error: r.error ?? null,
+          properties: r.properties.map((p) => ({ property_id: p.propertyId, receivables_scanned: p.receivablesScanned, reminders_due: p.remindersDue, emails_enqueued: p.emailsEnqueued })),
+        })),
+        failures,
+      };
+      const response = c.json(body, 200);
+      // (5) el latido no debe registrar "ok" limpio si alguna organización
+      // falló -- ver CronPartialFailureError (with-heartbeat.ts).
+      if (failures.length > 0) {
+        throw new CronPartialFailureError(`cobranza-reminders: ${failures.length} de ${sweep.length} organizaciones fallaron`, response);
+      }
+      return response;
+    })();
   });
 
   app.on(["GET", "POST"], "/internal/despachos/email-dispatch", async (c) => {
