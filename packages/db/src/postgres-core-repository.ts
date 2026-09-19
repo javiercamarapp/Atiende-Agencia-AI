@@ -24,6 +24,7 @@ import type {
   CreateStaffInviteInput,
   MembershipRow,
   NotificationRow,
+  OrgAdminStaffLookupRow,
   OrganizationBillingRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
@@ -423,6 +424,31 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       if (pgErr?.code === "P0001") throw new MembershipRoleUpdateError(pgErr.message ?? "No se pudo cambiar el rol de ese staff.");
       throw err;
     }
+  }
+
+  // Fase 3 caller-binding (ver `packages/db/migrations/0016_caller_binding_
+  // fase3.sql`) — `core.find_staff_for_org_admin` valida DENTRO de la función que
+  // `auth.uid()` (esta sesión real por-request) es owner/admin de `organizationId`
+  // antes de devolver nada; sin fila = no existe ese correo (la función nunca
+  // distingue "no autorizado" de "no existe" en su resultado — ambos casos
+  // devuelven cero filas, solo un `auth.uid()` no autorizado lanza 42501, que
+  // nunca debería alcanzar este método real porque `admin-staff.ts` ya gatea con
+  // `assertVerticalRole`/`requirePropertyMembership` antes de llamarlo).
+  async findStaffForOrgAdmin(organizationId: string, email: string): Promise<OrgAdminStaffLookupRow | null> {
+    const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
+      `select id, email, full_name from core.find_staff_for_org_admin($1, $2);`,
+      [organizationId, email],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
+  }
+
+  async isStaffOrgMember(organizationId: string, targetUserId: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ is_staff_org_member_for_org_admin: boolean }>(
+      `select core.is_staff_org_member_for_org_admin($1, $2) as is_staff_org_member_for_org_admin;`,
+      [organizationId, targetUserId],
+    );
+    return rows[0]?.is_staff_org_member_for_org_admin ?? false;
   }
 
   // ---- CoreRepository — sesión de sistema (igual que login), ver comentario de

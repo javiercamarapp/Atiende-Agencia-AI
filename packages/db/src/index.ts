@@ -4,6 +4,7 @@ export type {
   CoreStaffRepository,
   StaffUserRow,
   MembershipRow,
+  OrgAdminStaffLookupRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
   StaffInviteRow,
