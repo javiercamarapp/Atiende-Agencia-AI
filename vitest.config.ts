@@ -108,15 +108,32 @@ export default defineConfig({
         "packages/agent-core/src/gateway/providers/fake-provider.ts",
         "packages/mcp-servers/cfdi/src/adapters/fake-pac-adapter.ts",
       ],
-      // Trinquete anti-regresión, no meta aspiracional -- ~2 puntos por debajo
-      // de lo medido el 2026-09-19 (57.82% líneas/sentencias, 82.08% ramas,
-      // 76.67% funciones -- ver docs/COBERTURA.md para el detalle y cómo
-      // subir el umbral cuando la cobertura real suba de forma sostenida).
+      // Trinquete anti-regresión, no meta aspiracional -- ver docs/COBERTURA.md
+      // para el detalle y cómo subir el umbral cuando la cobertura real suba de
+      // forma sostenida.
+      //
+      // Medido el 2026-09-19 (rama test/web-componentes-verticales, tras sumar
+      // tests reales de componentes React de apps/web -- shells/nav móvil de las
+      // 6 verticales + Reservas/Folio de hoteles, Pedidos de restaurantes, Agenda
+      // de citas, portal de propietario de rentas, Cierre mensual/Cobranza de
+      // despachos, decisión go/no-go de licitaciones): 60.88% líneas/sentencias,
+      // 81.79% ramas, 75.28% funciones (`npm run test:coverage`, 459 archivos /
+      // 4917 tests, todos en verde).
+      //
+      // lines/statements sube de 55 a 58 (~2 puntos por debajo de lo medido,
+      // redondeando hacia abajo -- mismo criterio que el umbral original del
+      // 2026-09-19 de PR #144). branches/functions se DEJAN igual (80/74) en vez
+      // de subirlos: lo medido hoy (81.79%/75.28%) es ligeramente MÁS BAJO que lo
+      // medido el 19-sep para PR #144 (82.08%/76.67%) -- no por una regresión de
+      // esta rama (no toca SQL ni backend, solo agrega tests), sino porque `main`
+      // avanzó con más branches/functions de OTROS PRs en paralelo que esta rama
+      // no cubre; aplicar la resta de ~2 puntos aquí bajaría el piso real por
+      // debajo de 80/74, que es lo contrario de un trinquete anti-regresión.
       thresholds: {
-        lines: 55,
+        lines: 58,
         branches: 80,
         functions: 74,
-        statements: 55,
+        statements: 58,
       },
     },
   },
