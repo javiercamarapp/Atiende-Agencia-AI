@@ -61,6 +61,31 @@ describe("POST /rentas/:propertyId/unidades/:unidadId/reservas", () => {
     expect(payload.html).toContain("Ana Pérez");
   });
 
+  // Cierre del hallazgo "rentas no tiene disparo inline de correo, solo el cron
+  // diario -- un correo encolado puede tardar hasta ~24h en salir" (ver
+  // ../src/routes/verticals/rentas/email-dispatch.ts::triggerRentasEmailDispatchInline).
+  // Mismo criterio que hoteles-guest-emails.spec.ts/citas-appointments.spec.ts: se
+  // verifica el envío inline SIN llamar aparte a /internal/rentas/email-dispatch.
+  it("crear la reserva dispara el envío inline del correo real dentro del mismo request", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas`,
+      authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-08-01", fin: "2026-08-03" }, huespedNombre: "Ana Pérez", huespedContacto: "ana@example.com" }),
+    );
+    // La reserva se creó bien aunque el envío del correo falle -- best-effort
+    // real, sin RESEND_API_KEY en este fixture (ver TEST_ENV.resend.apiKey === null).
+    expect(res.status).toBe(201);
+
+    // Sin ningún POST/GET a /internal/rentas/email-dispatch de por medio: el
+    // disparo inline (triggerRentasEmailDispatchInline) ya reclamó el job y marcó
+    // el intento fallido DENTRO de este mismo request -- nunca se queda en
+    // 'pending' esperando al cron diario.
+    const job = ctx.rentasRepo.getMessagingOutbox().find((o) => o.channel === "email" && o.eventType === "reserva.creada");
+    expect(job?.status).toBe("failed");
+    expect(job?.attempts).toBe(1);
+  });
+
   it("huespedContacto sin correo real (solo teléfono): no encola ningún correo (nunca es un error para la reserva)", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);
