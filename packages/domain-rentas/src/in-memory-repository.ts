@@ -54,8 +54,13 @@ import type {
   OwnerStatementDetalle,
   OwnerStatementSummary,
   PayoutDetalle,
+  RegistrarAuditoriaInput,
   ReglaCanal,
   ReglaMinStayRecord,
+  RentasAuditLogFiltro,
+  RentasAuditLogPagina,
+  RentasAuditLogPaginacion,
+  RentasAuditLogRow,
   RentasOrganizationSummary,
   RentasPropertySummary,
   ReservaParaStatement,
@@ -212,6 +217,12 @@ export class InMemoryRentasRepository implements RentasRepository {
   /** Espejo de solo-lectura de `core.property` (vertical 'rentas') — mismo rol que
    *  `InMemoryHotelesRepository.properties`. */
   private readonly propertiesDiscovery = new Map<string, RentasPropertySummary & { organizationId: string }>();
+
+  // ---- r5 — bitácora de auditoría del staff ----
+  /** Expuesto también como referencia tipada directa (`ctx.rentasRepo.auditLog`,
+   *  mismo criterio que el resto de este archivo) para que un test pueda inspeccionar
+   *  lo que quedó registrado sin depender de `listAuditoria`. */
+  readonly auditLog: (RentasAuditLogRow & { readonly organizationId: string })[] = [];
 
   constructor(private readonly calendarStore: InMemoryRentasCalendarStore = new InMemoryRentasCalendarStore()) {}
 
@@ -719,5 +730,47 @@ export class InMemoryRentasRepository implements RentasRepository {
       .filter((p) => p.organizationId === organizationId)
       .map((p) => ({ propertyId: p.propertyId, name: p.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // ---- RentasRepository: r5 — bitácora de auditoría del staff ----
+
+  async registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void> {
+    // A diferencia de PostgresRentasRepository (que ignora `input.actorUserId` y deja
+    // que `rentas.record_audit_log` capture el actor real vía `auth.uid()`), este
+    // doble en memoria SÍ lo usa -- no hay sesión SQL/`auth.uid()` que simular aquí,
+    // y los tests necesitan un actor real para poder afirmar "quién" quedó registrado.
+    this.auditLog.push({
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      campo: input.campo ?? null,
+      antes: input.antes ?? null,
+      despues: input.despues ?? null,
+      createdAtMs: Date.now(),
+    });
+  }
+
+  async listAuditoria(organizationId: string, filtro: RentasAuditLogFiltro, paginacion: RentasAuditLogPaginacion): Promise<RentasAuditLogPagina> {
+    const limit = Math.min(200, Math.max(1, paginacion.limit ?? 50));
+    const offset = Math.max(0, paginacion.offset ?? 0);
+
+    let filtrados = this.auditLog.filter((r) => r.organizationId === organizationId);
+    if (filtro.entityType) filtrados = filtrados.filter((r) => r.entityType === filtro.entityType);
+    if (filtro.desde) {
+      const desdeMs = new Date(`${filtro.desde}T00:00:00.000Z`).getTime();
+      filtrados = filtrados.filter((r) => r.createdAtMs >= desdeMs);
+    }
+    if (filtro.hasta) {
+      const hastaExclusivoMs = new Date(`${filtro.hasta}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000;
+      filtrados = filtrados.filter((r) => r.createdAtMs < hastaExclusivoMs);
+    }
+    filtrados = [...filtrados].sort((a, b) => b.createdAtMs - a.createdAtMs);
+
+    const total = filtrados.length;
+    const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, ...row }) => row);
+    return { disponible: true, items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
   }
 }

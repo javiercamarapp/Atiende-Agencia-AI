@@ -43,8 +43,13 @@ import type {
   OwnerStatementDetalle,
   OwnerStatementSummary,
   PayoutDetalle,
+  RegistrarAuditoriaInput,
   ReglaCanal,
   ReglaMinStayRecord,
+  RentasAuditLogFiltro,
+  RentasAuditLogPagina,
+  RentasAuditLogPaginacion,
+  RentasAuditLogRow,
   RentasOrganizationSummary,
   RentasPropertySummary,
   ReservaParaStatement,
@@ -208,6 +213,19 @@ export interface RentasRepository {
   /** `GET .../unidades/:unidadId/incidencias`: incidencias de mantenimiento
    *  reportadas sobre una unidad (H-055), más recientes primero. */
   listIncidencias(propertyId: string, unidadId: string): Promise<readonly IncidenciaMantenimientoRecord[]>;
+
+  // ---- r5 — bitácora de auditoría del staff (ver migrations/021_rentas_audit_log.sql) ----
+
+  /** Registra una fila de auditoría DENTRO de la transacción compartida del request
+   *  (nunca abre su propia transacción, nunca debe romper ni revertir la acción de
+   *  negocio que audita) -- ver el contrato completo en el comentario de cabecera de
+   *  `PostgresRentasRepository.registrarAuditoria`. */
+  registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void>;
+  /** `GET .../auditoria`: bitácora paginada de UNA organización, opcionalmente
+   *  filtrada por tipo de entidad y rango de fechas. Solo la ruta HTTP decide quién
+   *  puede llamarla (owner/admin de la organización) -- este método no re-valida el
+   *  rol, la RLS de `rentas.audit_log` sí lo hace como defensa en profundidad. */
+  listAuditoria(organizationId: string, filtro: RentasAuditLogFiltro, paginacion: RentasAuditLogPaginacion): Promise<RentasAuditLogPagina>;
 }
 
 export type {
@@ -238,8 +256,13 @@ export type {
   OwnerStatementDetalle,
   OwnerStatementSummary,
   PayoutDetalle,
+  RegistrarAuditoriaInput,
   ReglaCanal,
   ReglaMinStayRecord,
+  RentasAuditLogFiltro,
+  RentasAuditLogPagina,
+  RentasAuditLogPaginacion,
+  RentasAuditLogRow,
   RentasOrganizationSummary,
   RentasPropertySummary,
   ReservaParaStatement,
