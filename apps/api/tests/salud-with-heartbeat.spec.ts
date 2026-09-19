@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { InMemorySaludRepository } from "@atiende/db";
 import type { AppDeps } from "../src/deps.ts";
-import { withHeartbeat } from "../src/salud/with-heartbeat.ts";
+import { CronPartialFailureError, withHeartbeat } from "../src/salud/with-heartbeat.ts";
 
 function depsConSaludRepo(saludRepo: InMemorySaludRepository = new InMemorySaludRepository()): AppDeps {
   // Cast deliberado: withHeartbeat solo lee `deps.saludRepo`, un AppDeps
@@ -87,6 +87,29 @@ describe("withHeartbeat", () => {
     });
 
     await expect(envuelto()).rejects.toBe(errorDelHandler);
+  });
+
+  it("r4-fix-crons-transaccion-por-unidad: CronPartialFailureError registra latido 'error' pero devuelve la Response ORIGINAL (200 + detalle), nunca la relanza al caller HTTP", async () => {
+    const saludRepo = new InMemorySaludRepository();
+    saludRepo.addPlatformSuperadmin("admin-1");
+    const deps = depsConSaludRepo(saludRepo);
+    const respuestaParcial = new Response(JSON.stringify({ ok: false, failures: [{ organization_id: "org-1", error: "boom" }] }), { status: 200 });
+
+    const envuelto = withHeartbeat(deps, "/internal/test/barrido-parcial", async () => {
+      throw new CronPartialFailureError("1 unidad falló", respuestaParcial);
+    });
+    const respuesta = await envuelto();
+
+    // El caller HTTP (Vercel Cron) recibe la Response 200 real, con el detalle
+    // de failures -- nunca un 500 (las unidades que sí corrieron ya
+    // persistieron, aisladas por transacción propia; no tiene sentido que el
+    // scheduler la reintente completa).
+    expect(respuesta).toBe(respuestaParcial);
+    expect(respuesta.status).toBe(200);
+    // Pero el latido SÍ queda como "error" -- el panel de salud no debe
+    // mostrar "ok" limpio cuando una unidad real falló.
+    const latidos = await saludRepo.listCronHeartbeatsForSuperadmin("admin-1");
+    expect(latidos[0]).toMatchObject({ cronName: "/internal/test/barrido-parcial", lastStatus: "error", lastError: "1 unidad falló", consecutiveFailures: 1 });
   });
 
   it("el mensaje de error se trunca a 500 caracteres antes de registrarlo", async () => {
