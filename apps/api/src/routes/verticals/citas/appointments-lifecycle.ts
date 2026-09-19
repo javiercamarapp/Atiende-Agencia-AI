@@ -47,7 +47,7 @@ import type { AppointmentRecord, CitasRepository } from "@atiende/domain-citas";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
-import { triggerCitasEmailDispatchInline } from "./email-dispatch.ts";
+import { runCitasEmailDispatch, triggerCitasEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface RescheduleBody {
@@ -281,6 +281,11 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       await tryNotifyWaitlistAfterCancel(citasRepo, organizationId, appointment);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.cancelled", appointment.id);
       await triggerCitasEmailDispatchInline(deps, c.get("db"), citasRepo);
+      // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
+      // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
+      // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
+      // sistema (runCitasEmailDispatch ya pasa el guard auth.uid() is null).
+      c.get("postCommitTasks").push(() => runCitasEmailDispatch(deps).then(() => undefined));
       // Fase 3 §5 — mismo best-effort que la cancelación del agente.
       await tryTriggerCalendarSync(citasRepo, deps.citasCalendarSyncPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });
@@ -317,6 +322,11 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       const appointment = await confirmAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.confirmed", appointment.id);
       await triggerCitasEmailDispatchInline(deps, c.get("db"), citasRepo);
+      // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
+      // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
+      // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
+      // sistema (runCitasEmailDispatch ya pasa el guard auth.uid() is null).
+      c.get("postCommitTasks").push(() => runCitasEmailDispatch(deps).then(() => undefined));
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
@@ -339,6 +349,11 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       const appointment = await completeAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.completed", appointment.id);
       await triggerCitasEmailDispatchInline(deps, c.get("db"), citasRepo);
+      // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
+      // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
+      // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
+      // sistema (runCitasEmailDispatch ya pasa el guard auth.uid() is null).
+      c.get("postCommitTasks").push(() => runCitasEmailDispatch(deps).then(() => undefined));
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
@@ -361,6 +376,11 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       const appointment = await markAppointmentNoShowFromPanel(citasRepo, organizationId, appointmentId, userId);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.no_show", appointment.id);
       await triggerCitasEmailDispatchInline(deps, c.get("db"), citasRepo);
+      // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
+      // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
+      // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
+      // sistema (runCitasEmailDispatch ya pasa el guard auth.uid() is null).
+      c.get("postCommitTasks").push(() => runCitasEmailDispatch(deps).then(() => undefined));
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);

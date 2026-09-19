@@ -18,7 +18,7 @@ import type { FiscalDeadlineRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { triggerDespachosEmailDispatchInline } from "./notifications.ts";
+import { runDespachosEmailDispatch, triggerDespachosEmailDispatchInline } from "./notifications.ts";
 
 interface CalcularBody {
   readonly year?: unknown;
@@ -129,6 +129,11 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     // ./notifications.ts::triggerDespachosEmailDispatchInline) — mismo `repo`/
     // transacción del request, best-effort real.
     await triggerDespachosEmailDispatchInline(deps, c.get("db"), repo);
+    // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
+    // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
+    // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
+    // sistema (runDespachosEmailDispatch ya pasa el guard auth.uid() is null).
+    c.get("postCommitTasks").push(() => runDespachosEmailDispatch(deps).then(() => undefined));
 
     return c.json(
       {

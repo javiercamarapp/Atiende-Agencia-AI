@@ -19,7 +19,7 @@ import type { RangoFechas } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
+import { runRentasEmailDispatch, triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -160,6 +160,11 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // ./email-dispatch.ts::triggerRentasEmailDispatchInline) — mismo `repo`/
       // transacción del request, best-effort real.
       await triggerRentasEmailDispatchInline(deps, db, repo);
+      // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
+      // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
+      // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
+      // sistema (runRentasEmailDispatch ya pasa el guard auth.uid() is null).
+      c.get("postCommitTasks").push(() => runRentasEmailDispatch(deps).then(() => undefined));
 
       return c.json({ id: resultado.ocupacionId, conflictosCapaCruzada: resultado.conflictosCapaCruzada.length }, 201);
     } catch (err) {

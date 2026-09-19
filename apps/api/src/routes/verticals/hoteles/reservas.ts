@@ -37,7 +37,7 @@ import {
 import { runNoShowSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
-import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
+import { runHotelesEmailDispatch, triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -296,6 +296,10 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           // sin el SAVEPOINT, la transacción abortada hacía fallar con 500 el
           // UPDATE de `idempotency_key` que corre justo después de este bloque.
           await triggerHotelesEmailDispatchInline(deps, c.get("db"), repo);
+          // Arreglo de fondo (auditoría a2, parte 3) — ver comentario de
+          // folios.ts::cerrar; el envío real solo puede pasar post-commit, en
+          // sesión de sistema.
+          c.get("postCommitTasks").push(() => runHotelesEmailDispatch(deps).then(() => undefined));
           return { status: 201, body: serializeReservation(reservation) };
         },
       );
