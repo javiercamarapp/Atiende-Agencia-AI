@@ -91,6 +91,30 @@ describe("SucursalesPage (restaurantes)", () => {
     expect(rendered.container.textContent).toContain("No se pudo cargar https://api.test/v1/restaurantes/prop-1/admin/sucursales (500).");
   });
 
+  it("reintentar tras un error vuelve a pedir las sucursales", async () => {
+    let ok = false;
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET" && url === "https://api.test/v1/restaurantes/prop-1/admin/sucursales") {
+        return jsonResponse({ branches: [SUCURSAL_CENTRO, SUCURSAL_NORTE] }, ok);
+      }
+      throw new Error(`fetch inesperado en el test: ${method} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("No se pudo cargar https://api.test/v1/restaurantes/prop-1/admin/sucursales (500).");
+
+    ok = true;
+    const retryBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Reintentar")!;
+    await act(async () => {
+      click(retryBtn);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(rendered.container.textContent).toContain("Sucursal Centro");
+  });
+
   it("renderiza sucursales reales: nombre, slug, estado activo/inactivo y '—' honesto cuando falta el dato", async () => {
     stubFetch({});
     rendered = renderPage();
