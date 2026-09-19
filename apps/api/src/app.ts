@@ -20,6 +20,7 @@ import { restaurantesRoutes } from "./routes/verticals/restaurantes/restaurantes
 import { hotelesRoutes } from "./routes/verticals/hoteles/hoteles.ts";
 import { hotelesVoiceToolsRoutes } from "./routes/verticals/hoteles/voice-tools.ts";
 import { hotelesWhatsAppRoutes } from "./routes/verticals/hoteles/whatsapp.ts";
+import { hotelesCfdiWebhookRoutes } from "./routes/verticals/hoteles/cfdi-webhook.ts";
 import { citasRoutes } from "./routes/verticals/citas/citas.ts";
 import { licitacionesRoutes } from "./routes/verticals/licitaciones/licitaciones.ts";
 import { despachosRoutes } from "./routes/verticals/despachos/despachos.ts";
@@ -64,6 +65,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", hotelesRoutes(deps));
   app.route("/", hotelesVoiceToolsRoutes(deps));
   app.route("/", hotelesWhatsAppRoutes(deps));
+  app.route("/", hotelesCfdiWebhookRoutes(deps));
   app.route("/", citasRoutes(deps));
   app.route("/", licitacionesRoutes(deps));
   app.route("/", despachosRoutes(deps));
