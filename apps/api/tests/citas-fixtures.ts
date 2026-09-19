@@ -8,8 +8,8 @@ import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMem
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, crearValidadorUrlCaldav, InMemoryCitasRepository } from "@atiende/domain-citas";
-import type { ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, GoogleCalendarPort, ResolverDns } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createCalendarSyncPortResolver, createDefaultConversationGuard, createGoogleCalendarPortResolver, crearValidadorUrlCaldav, InMemoryCitasRepository, RealCalComPort, RealCalDavPort } from "@atiende/domain-citas";
+import type { CalendarSyncPort, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, GoogleCalendarPort, ResolverDns } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -71,6 +71,16 @@ export interface CitasTestContextOptions {
    * credenciales reales.
    */
   readonly googleCalendarPort?: GoogleCalendarPort;
+  /**
+   * Fase 6 §2 (seguimiento) — mismo criterio que `googleCalendarPort`: cuando se
+   * pasa, `createCalendarSyncPortResolver` real (resolución de cuenta Cal.com
+   * conectada + api_key) devuelve este puerto genérico (`CalendarSyncPort`, nunca
+   * toca la red) en vez de un `RealCalComPort` real — normalmente un
+   * `FakeCalendarSyncPort("calcom")` (ver @atiende/domain-citas).
+   */
+  readonly calcomPort?: CalendarSyncPort;
+  /** Ver `calcomPort` — mismo criterio para CalDAV. */
+  readonly caldavPort?: CalendarSyncPort;
   /**
    * Hallazgo de auditoría (ALTO, SSRF) — resolver DNS falso para
    * `citasCaldavUrlValidator` (`crearValidadorUrlCaldav`, ver
@@ -150,6 +160,19 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     return { accessToken: "fake-access-token", refreshToken: "fake-refresh-token", expiresIn: 3600 };
   };
 
+  // Fase 6 §2 (seguimiento) — resolver GENÉRICO multi-proveedor real (misma
+  // lógica de resolución de cuenta/despacho por plataforma que producción, ver
+  // @atiende/domain-citas::createCalendarSyncPortResolver), con las tres fábricas
+  // de puerto inyectadas: Google reusa el mismo `googleCalendarPort` de arriba
+  // (comportamiento IDÉNTICO al resolver Google-only para los tests que no tocan
+  // Cal.com/CalDAV), Cal.com/CalDAV devuelven `calcomPort`/`caldavPort` si el test
+  // los pasó.
+  const citasCalendarSyncPortResolver = createCalendarSyncPortResolver(citasRepo, { clientId: "test-google-client-id", clientSecret: "test-google-client-secret" }, {
+    createGooglePort: () => options.googleCalendarPort!,
+    createCalComPort: () => options.calcomPort!,
+    createCalDavPort: () => options.caldavPort!,
+  });
+
   const restaurantesRepoUnused = new InMemoryRestaurantesRepository();
   const hotelesRepoUnused = new InMemoryHotelesRepository();
   const licitacionesRepoUnused = new InMemoryLicitacionesRepository();
@@ -170,6 +193,14 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     citasTurnHandler: acknowledgeOnlyCitasTurnHandler(),
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver,
+    citasCalendarSyncPortResolver,
+    // Fase 6 §2 (seguimiento) — ver AppDeps.citasCalComPortFactory/citasCalDavPortFactory:
+    // usados SOLO por POST .../{calcom,caldav}/test-connection. Cuando el test pasó
+    // `calcomPort`/`caldavPort`, se devuelve ESE mismo fake sin importar `cfg` (para
+    // poder aserciones sobre `calls`/`events`); si no, construye el puerto real (nunca
+    // debería tocar la red porque ningún test llama a test-connection sin pasarlo).
+    citasCalComPortFactory: (cfg) => options.calcomPort ?? new RealCalComPort(cfg),
+    citasCalDavPortFactory: (cfg) => options.caldavPort ?? new RealCalDavPort(cfg),
     citasGoogleTokenExchange,
     citasCaldavUrlValidator: crearValidadorUrlCaldav({ resolverDns: options.caldavDnsResolver ?? resolverDnsFalsoPorDefecto }),
     licitacionesRepo: (_db) => licitacionesRepoUnused,
