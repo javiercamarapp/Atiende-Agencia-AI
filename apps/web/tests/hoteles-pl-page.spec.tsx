@@ -133,6 +133,31 @@ describe("PlPage (hoteles)", () => {
     expect(call![0]).toBe("https://api.test/hoteles/prop-1/pl?desde=2026-08-21&hasta=2026-09-19");
   });
 
+  it("REQ-r5 (mismo bug que Asistencia.tsx): entre 18:00 y 23:59 CDMX 'hoy' sigue siendo el día de calendario CDMX, nunca el día UTC (que ya es mañana)", async () => {
+    // 2026-09-20T01:30:00.000Z = 2026-09-19T19:30:00 en America/Mexico_City
+    // (UTC-6): el día UTC ya es 20-sep, pero el día de calendario del negocio
+    // sigue siendo 19-sep. Bug real corregido en esta ronda (revisión de PR
+    // #170): `rangeForDays` calculaba `hasta` con `new Date().toISOString().
+    // slice(0, 10)` (día UTC) -- pedía el P&L de "mañana" (20-sep, un rango que
+    // no existe todavía) y ese mismo `hasta` corrido se pasaba como
+    // `defaultFecha` al formulario de gasto nuevo (Pl.tsx:459), precargando la
+    // fecha de mañana -- el gasto cae en otro día/periodo contable.
+    vi.setSystemTime(new Date("2026-09-20T01:30:00.000Z"));
+    stubFetch({});
+    rendered = renderPage();
+    await esperarCarga();
+
+    const plCall = fetchMock.mock.calls.find(([url]) => url.startsWith("https://api.test/hoteles/prop-1/pl?"));
+    expect(plCall![0]).toBe("https://api.test/hoteles/prop-1/pl?desde=2026-08-21&hasta=2026-09-19");
+
+    const toggle = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Registrar gasto"))!;
+    await act(async () => {
+      click(toggle);
+    });
+    const fechaInput = rendered.container.querySelector("#pl-fecha") as HTMLInputElement;
+    expect(fechaInput.value).toBe("2026-09-19");
+  });
+
   it("estado de error real cuando falla el P&L — nunca se queda atorado en 'Cargando' ni inventa datos", async () => {
     stubFetch({ plOk: false });
     rendered = renderPage();
