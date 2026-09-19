@@ -14,6 +14,7 @@ import { superadminRoutes } from "./routes/superadmin.ts";
 import { superadminIntegracionesRoutes } from "./routes/superadmin-integraciones.ts";
 import { superadminLlmUsageRoutes } from "./routes/superadmin-llm-usage.ts";
 import { superadminBreakGlassRoutes } from "./routes/superadmin-break-glass.ts";
+import { superadminImpersonacionRoutes } from "./routes/superadmin-impersonacion.ts";
 import { superadminFacturacionRoutes } from "./routes/superadmin-facturacion.ts";
 import { superadminSaludRoutes } from "./routes/superadmin-salud.ts";
 import { superadminResumenRoutes } from "./routes/superadmin-resumen.ts";
@@ -68,6 +69,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminIntegracionesRoutes(deps));
   app.route("/", superadminLlmUsageRoutes(deps));
   app.route("/", superadminBreakGlassRoutes(deps));
+  app.route("/", superadminImpersonacionRoutes(deps));
   app.route("/", superadminFacturacionRoutes(deps));
   app.route("/", superadminSaludRoutes(deps));
   app.route("/", superadminResumenRoutes(deps));

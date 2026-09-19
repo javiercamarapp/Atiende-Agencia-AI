@@ -12,7 +12,7 @@
 // memoria en vez de Postgres real (mismo criterio que el resto de la suite).
 import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import {
   InMemoryRestaurantesRepository,
   createLlmWhatsAppTurnHandler,
@@ -211,6 +211,11 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     rentasBreakGlassSessionRepo: (_db) => new InMemoryBreakGlassSessionRepository(),
     rentasBreakGlassAuditRepo: (_db) => new InMemoryBreakGlassAuditRepository(),
     rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
+    // Bloque C -- impersonación de superadmin con bitácora: campo requerido de
+    // AppDeps que este fixture (independiente del de fixtures.ts) todavía no
+    // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
+    // impersonación.
+    impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),
@@ -408,6 +413,11 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
     rentasBreakGlassSessionRepo: (_db) => new InMemoryBreakGlassSessionRepository(),
     rentasBreakGlassAuditRepo: (_db) => new InMemoryBreakGlassAuditRepository(),
     rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
+    // Bloque C -- impersonación de superadmin con bitácora: campo requerido de
+    // AppDeps que este fixture (independiente del de fixtures.ts) todavía no
+    // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
+    // impersonación.
+    impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
       llmGateway: undefined,
       llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),
