@@ -53,6 +53,13 @@ export const Errors = {
   // formado nunca se envía a un PAC real -- se rechaza ANTES de intentar timbrar.
   cfdiHospedajeInvalido: (codigos: readonly string[]) =>
     new ApiError(422, "cfdi_hospedaje_invalido", `El CFDI de hospedaje no pasó la validación fiscal previa al timbrado: ${codigos.join(", ")}.`),
+  // Fix hallazgo auditoría (rubro 6, ALTA) — `DualPacCfdiPort.timbrar` falla rápido
+  // (`CfdiFolioStampingInProgressError`) en vez de esperar cuando otro proceso ya
+  // tiene una reserva viva del mismo folio (dos requests concurrentes reales, o un
+  // reintento del cliente mientras el anterior sigue en vuelo) -- se traduce a un
+  // 409 explícito, nunca a un 500 genérico.
+  cfdiTimbradoEnCurso: () =>
+    new ApiError(409, "cfdi_timbrado_en_curso", "Ya hay un timbrado en curso para este folio (otra solicitud concurrente, o un reintento mientras la anterior sigue en proceso). Vuelve a intentar en unos segundos."),
   // ---- despachos (cierre mensual, Fase 6 -- bloqueo de edición de movimientos ya cerrados) ----
   despachosPeriodoCerrado: (periodo: string) =>
     new ApiError(409, "periodo_cerrado", `El periodo ${periodo} ya está cerrado; no se pueden ingestar nuevos CFDI con fecha en ese periodo. Reabra el periodo primero.`),

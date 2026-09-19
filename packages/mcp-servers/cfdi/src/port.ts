@@ -125,6 +125,22 @@ export class CfdiFolioConflictError extends Error {
   }
 }
 
+/** Fix hallazgo auditoría (rubro 6, ALTA) — otro proceso/instancia ya tiene una
+ *  reserva VIVA de este folio ahora mismo (está a medio timbrar). `DualPacCfdiPort`
+ *  falla rápido en vez de esperar/reintentar (ver comentario de cabecera de
+ *  `dual-pac-cfdi-port.ts` para el trade-off): el llamador (típicamente la ruta
+ *  HTTP que invocó `timbrar`) debe traducir esto a un reintento explícito del
+ *  cliente poco después, nunca a un 500 genérico. */
+export class CfdiFolioStampingInProgressError extends Error {
+  readonly code = "cfdi_folio_stamping_in_progress";
+  readonly folio: string;
+  constructor(folio: string) {
+    super(`el folio ${folio} ya tiene un timbrado en curso en otro proceso; reintenta en unos segundos`);
+    this.name = "CfdiFolioStampingInProgressError";
+    this.folio = folio;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Puerto
 // ---------------------------------------------------------------------------
