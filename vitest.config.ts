@@ -116,14 +116,17 @@ export default defineConfig({
       // tests reales de componentes React de apps/web -- shells/nav móvil de las
       // 6 verticales + Reservas/Folio de hoteles, Pedidos de restaurantes, Agenda
       // de citas, portal de propietario de rentas, Cierre mensual/Cobranza de
-      // despachos, decisión go/no-go de licitaciones): 60.88% líneas/sentencias,
-      // 81.79% ramas, 75.28% funciones (`npm run test:coverage`, 459 archivos /
-      // 4917 tests, todos en verde).
+      // despachos, decisión go/no-go de licitaciones, MÁS la ronda de corrección
+      // de una revisión independiente del PR #154: check-out/asignar-habitación
+      // en Reservas, caso de sesión ausente en el portal de propietario):
+      // 60.93% líneas/sentencias, 81.8% ramas, 75.41% funciones
+      // (`TZ=UTC npm run test:coverage`, 459 archivos / 4920 tests, todos en
+      // verde).
       //
       // lines/statements sube de 55 a 58 (~2 puntos por debajo de lo medido,
       // redondeando hacia abajo -- mismo criterio que el umbral original del
       // 2026-09-19 de PR #144). branches/functions se DEJAN igual (80/74) en vez
-      // de subirlos: lo medido hoy (81.79%/75.28%) es ligeramente MÁS BAJO que lo
+      // de subirlos: lo medido hoy (81.8%/75.41%) es ligeramente MÁS BAJO que lo
       // medido el 19-sep para PR #144 (82.08%/76.67%) -- no por una regresión de
       // esta rama (no toca SQL ni backend, solo agrega tests), sino porque `main`
       // avanzó con más branches/functions de OTROS PRs en paralelo que esta rama
