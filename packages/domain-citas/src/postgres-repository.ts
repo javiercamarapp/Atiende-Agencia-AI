@@ -10,6 +10,7 @@
 // ruta de staff (cancelar desde panel) sí abre sesión con el userId real, que es lo
 // que `cancelAppointmentFromPanel` recibe como `actorUserId`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
@@ -1072,8 +1073,46 @@ export class PostgresCitasRepository implements CitasRepository {
     await this.db.query(`update citas.appointments set google_sync_status = 'error', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, error]);
   }
 
+  // Hallazgo CRÍTICO de auditoría (a1, verificado contra `main` en b4e5a83) — el
+  // CHECK vigente en la base real (`migrations/005_google_calendar_sync.sql` ~91-92,
+  // `appointments_google_sync_status_check`) NO incluye `'invalid'` — solo lo agrega
+  // la migración `019_calendar_sync_error_visibility.sql`, que "mergear a main" NUNCA
+  // aplica automáticamente (ver REGLA DURA de docs/DEPLOY.md). Un UPDATE directo con
+  // `google_sync_status = 'invalid'` contra la base sin migrar lanza SQLSTATE 23514
+  // (`check_violation`) — y esto se dispara con CUALQUIER rechazo 400/404/409/422 del
+  // proveedor de calendario (caso normal documentado: reserva Cal.com sin correo del
+  // cliente, ver `isPermanentValidationError`/`calendar-sync.ts`).
+  //
+  // Sin SAVEPOINT, ese 23514 deja ABORTADA la transacción del request (crear/
+  // cancelar/reagendar cita, `tryTriggerCalendarSync` corre en la MISMA transacción
+  // que la escritura real, ver `appointments.ts`) o del batch del cron
+  // (`syncPendingAppointmentsMultiProvider`) — la cita, el correo encolado y el
+  // rate-limit del request se revierten en silencio (el `COMMIT` sobre una
+  // transacción abortada no lanza error, ver `managed-postgres-engine.ts`), y en el
+  // batch, `createEvent` de Google ya corrió (no es idempotente) así que la
+  // siguiente corrida duplica el evento en calendarios de tenants sanos. Mismo
+  // patrón SAVEPOINT ya usado en `upsertCustomer` de este archivo (~460-491):
+  // degrada al UPDATE previo a la migración 019 (`google_sync_status = 'error'`,
+  // mismo SQL que `markAppointmentGoogleSyncExhausted`) conservando el motivo
+  // legible en `google_sync_error` — la cita queda en un estado FINAL válido en
+  // ambas versiones del esquema, nunca se pierde el intento. Cualquier otro código
+  // de error se repropaga tal cual (`runWithSavepointFallback` nunca enmascara un
+  // fallo real).
   async markAppointmentGoogleSyncInvalid(appointmentId: string, attempts: number, reason: string): Promise<void> {
-    await this.db.query(`update citas.appointments set google_sync_status = 'invalid', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, reason]);
+    await runWithSavepointFallback({
+      session: this.db,
+      primary: () =>
+        this.db.query(
+          `update citas.appointments set google_sync_status = 'invalid', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`,
+          [appointmentId, attempts, reason],
+        ),
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "23514",
+      fallback: () =>
+        this.db.query(
+          `update citas.appointments set google_sync_status = 'error', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`,
+          [appointmentId, attempts, reason],
+        ),
+    });
   }
 
   /** Fase 6 §2 (seguimiento) — a diferencia de `runCancelRpc`/confirm/complete/
