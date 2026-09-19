@@ -381,7 +381,7 @@ describe("Fase 6 §2 (seguimiento) — POST .../caldav/test-connection", () => {
     caldavPort.failNextCall = new CalDavApiError("prohibido", 403, "forbidden");
     const ctx = await buildCitasTestContext(buildApp, { caldavPort });
     const app = buildApp(ctx.deps);
-    await ctx.citasRepo.connectProviderCalDavAccount({ organizationId: ctx.organizationId, providerId: ctx.providerId, calendarCollectionUrl: "https://caldav.example.com/x/", username: "x@y.com", password: "pw-revocada" });
+    await ctx.citasRepo.connectProviderCalDavAccount({ organizationId: ctx.organizationId, providerId: ctx.providerId, calendarCollectionUrl: "https://caldav.example.com/x/", username: "x@y.com", password: "app-password-de-prueba-revocada" });
 
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/test-connection`, { method: "POST", headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
     expect(res.status).toBe(422);
