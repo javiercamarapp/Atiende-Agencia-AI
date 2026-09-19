@@ -78,7 +78,7 @@ import {
   PostgresRentasMensajeriaRepository,
   RealIcalFeedPort,
 } from "@atiende/domain-rentas";
-import { openManagedPostgres, PostgresCoreRepository, PostgresImpersonationRepository } from "@atiende/db";
+import { openManagedPostgres, PostgresAuthzAuditRepository, PostgresCoreRepository, PostgresImpersonationRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import { loadApiEnv } from "../env.ts";
@@ -88,6 +88,7 @@ import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-rep
 import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
+import { PersistentAuthzAuditSink } from "./authz-audit-sink.ts";
 import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
 import { ProductionLlmUsageRepository } from "./llm-usage-repository.ts";
 import { ProductionSaludRepository } from "./salud-repository.ts";
@@ -417,6 +418,17 @@ export function buildProductionDeps(): AppDeps {
     // routes/superadmin-impersonacion.ts) -- las funciones `security definer`
     // exigen `auth.uid() = p_caller_id`.
     impersonationRepo: (db) => new PostgresImpersonationRepository(db),
+    // Sink persistente de `requireAdminAccess` (audit-on-denial de TODA
+    // `/superadmin/*`, ver ./authz-audit-sink.ts y
+    // packages/db/migrations/0021_superadmin_authz_audit_log.sql) -- sesión de
+    // SISTEMA propia por escritura (mismo patrón que `despachosAuditSink`/
+    // `hotelesFraudeAuditSink`), cae a un `InMemoryAuditSink` interno mientras
+    // la migración 0021 no esté aplicada contra Supabase real.
+    authzAuditSink: new PersistentAuthzAuditSink(engine),
+    // Lectura paginada -- MISMA fábrica por-request que `impersonationRepo` de
+    // arriba: `core.list_authz_audit_log_for_superadmin` exige
+    // `auth.uid() = p_caller_id`.
+    authzAuditRepo: (db) => new PostgresAuthzAuditRepository(db),
     llmGateway,
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
     // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.

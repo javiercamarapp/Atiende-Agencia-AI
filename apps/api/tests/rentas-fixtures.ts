@@ -7,7 +7,7 @@
 // findUnidad/findCanalPorCodigo/etc.) — en Postgres real ambos caminos leen/escriben
 // la misma tabla, esta fixture reproduce esa misma propiedad.
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -181,6 +181,8 @@ export async function buildRentasTestContext(buildApp: BuildAppFn, options: { ll
     // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
     // impersonación.
     impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
+    authzAuditSink: new InMemoryAuditSink(),
+    authzAuditRepo: (_db) => new InMemoryAuthzAuditRepository(),
     llmGateway: options.llmGateway,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     saludRepo: new InMemorySaludRepository(),
