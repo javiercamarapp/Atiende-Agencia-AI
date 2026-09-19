@@ -12,9 +12,11 @@ import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   createDefaultConversationGuard,
-  createGoogleCalendarPortResolver,
+  createCalendarSyncPortResolver, createGoogleCalendarPortResolver,
   createLlmWhatsAppTurnHandler,
   InMemoryCitasRepository,
+  RealCalComPort,
+  RealCalDavPort,
   type WhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import { InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryTenancyEngine } from "@atiende/db";
@@ -142,6 +144,9 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     citasTurnHandler: turnHandler,
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(citasRepo, null),
+    citasCalendarSyncPortResolver: createCalendarSyncPortResolver(citasRepo, null),
+    citasCalComPortFactory: (cfg) => new RealCalComPort(cfg),
+    citasCalDavPortFactory: (cfg) => new RealCalDavPort(cfg),
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp).");
     },

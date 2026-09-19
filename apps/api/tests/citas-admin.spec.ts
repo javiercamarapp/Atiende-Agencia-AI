@@ -61,6 +61,26 @@ describe("GET /v1/citas/properties/:propertyId/providers(/:providerId)", () => {
     expect(body.google_calendar.connected).toBe(false);
   });
 
+  // Fase 6 §2 (seguimiento) — misma ficha, ahora también trae el estado de
+  // Cal.com/CalDAV (la sección "Calendarios conectados" del panel los pinta en
+  // un solo round trip, igual que Google) — sin el secreto en ningún caso.
+  it("la ficha de un proveedor trae también el estado de Cal.com y CalDAV, sin secretos", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    await ctx.citasRepo.connectProviderCalComAccount({ organizationId: ctx.organizationId, providerId: ctx.providerId, calcomEventTypeId: "555", apiKey: "cal_test_secreta" });
+    await ctx.citasRepo.connectProviderCalDavAccount({ organizationId: ctx.organizationId, providerId: ctx.providerId, calendarCollectionUrl: "https://caldav.example.com/x/", username: "x@y.com", password: "pw-secreta" });
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}`, { headers: { authorization: `Bearer ${ctx.staff.owner.token}` } });
+    const body = (await res.json()) as {
+      calcom: { connected: boolean; sync_status: string; calcom_event_type_id: string | null; calcom_base_url: string | null };
+      caldav: { connected: boolean; sync_status: string; calendar_collection_url: string | null; username: string | null };
+    };
+    expect(body.calcom).toEqual({ connected: true, sync_status: "connected", sync_error: null, calcom_event_type_id: "555", calcom_base_url: null });
+    expect(body.caldav).toEqual({ connected: true, sync_status: "connected", sync_error: null, calendar_collection_url: "https://caldav.example.com/x/", username: "x@y.com" });
+    expect(JSON.stringify(body)).not.toContain("cal_test_secreta");
+    expect(JSON.stringify(body)).not.toContain("pw-secreta");
+  });
+
   it("404 para un proveedor que no existe", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
