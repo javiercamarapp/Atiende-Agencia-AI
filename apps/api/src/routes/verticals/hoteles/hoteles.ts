@@ -19,6 +19,7 @@ import { hotelesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { hotelesAdminCatalogoRoutes } from "./admin-catalogo.ts";
 import { hotelesAdminStaffRoutes } from "./admin-staff.ts";
 import { hotelesRevenueRoutes } from "./revenue.ts";
+import { hotelesReputacionRoutes } from "./reputacion.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -54,5 +55,9 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // (dominio y migración ya existían desde Fase 9; esta rama agrega el primer
   // invocador real, ver revenue.ts).
   app.route("/", hotelesRevenueRoutes(deps));
+  // Fase 11/13 — REQ-CRM-002/003: reputación/CRM -- wiring HTTP real del
+  // clasificador + índice agregado (dominio y modelo de datos ya existían desde
+  // Fase 11; esta rama agrega el primer invocador real, ver reputacion.ts).
+  app.route("/", hotelesReputacionRoutes(deps));
   return app;
 }
