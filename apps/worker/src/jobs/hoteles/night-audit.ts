@@ -34,6 +34,25 @@
 // (property, business_date) SIEMPRE devuelve el resumen ya guardado en un segundo
 // intento -- ver domain-hoteles/src/night-audit/engine.ts para la razón de no portar
 // el advisory lock del origen literal.
+//
+// Fase 6b (flujos de sistema, migrations/023_night_audit_sistema_escritura.sql):
+// `runNightAuditForProperty` es código COMPARTIDO -- lo invoca tanto la ruta interna
+// de barrido (`POST /internal/hoteles/night-audit`, sesión de sistema, sin
+// `auth.uid()`) como el disparo manual autenticado
+// (`POST /hoteles/:propertyId/night-audit`, staff real, mismo `NIGHT_AUDIT_ROLES` de
+// siempre). Verificado contra Postgres real: `loadTaxConfig`/
+// `listInHouseReservationsForNightAudit`/`postNightlyHospedajeCharge`/
+// `sumChargesByConceptForBusinessDate`/`sumPaymentsByMethodForBusinessDate` (y, vía
+// `runNoShowSweep`, toda la cadena de no-show) están TODOS bloqueados bajo sesión de
+// sistema -- `hoteles.reservation`/`rate_plan`/`tax_config`/`folio`/`charge`/`payment`
+// son tablas de dinero/PII, ninguna recibe una policy nueva. `claimNightAuditRun`/
+// `finishNightAuditRun`/`listActiveHotelProperties` NO cambian (ya tenían escape
+// hatch/policy compatible desde migrations/008 y el PR de flujos-de-sistema #1,
+// respectivamente). El parámetro `session` de `RunNightAuditParams` decide, en tiempo
+// de ejecución, cuál juego de métodos usar -- "staff" es LITERAL el código de antes
+// de este PR (sin ningún cambio de comportamiento); "sistema" usa los métodos
+// `systemXxx` nuevos, cableados SOLO desde la ruta interna de barrido (ver el header
+// de esa migración para el análisis completo).
 import {
   DEFAULT_PROPERTY_TIMEZONE,
   buildNightAuditSummary,
@@ -49,6 +68,12 @@ export interface RunNightAuditParams {
   readonly organizationId: string;
   readonly propertyId: string;
   readonly businessDate: string;
+  /** "staff" -- disparo manual autenticado (`POST /hoteles/:propertyId/night-audit`),
+   *  usa los métodos ORIGINALES del repositorio, SIN NINGÚN CAMBIO de comportamiento
+   *  respecto a antes de Fase 6b. "sistema" -- ruta interna de barrido gateada por
+   *  secreto, usa los métodos `systemXxx` nuevos (migrations/023). Requerido explícito
+   *  (sin default) -- ver el comentario de cabecera de este archivo. */
+  readonly session: "staff" | "sistema";
 }
 
 /**
@@ -64,21 +89,35 @@ export async function runNightAuditForProperty(repo: HotelesRepository, params: 
     return { ...(claim.summary as unknown as NightAuditSummary), yaCompletado: true };
   }
 
-  const taxConfig = await repo.loadTaxConfig(params.propertyId);
+  const isSystem = params.session === "sistema";
+
+  const taxConfig = isSystem ? await repo.systemLoadTaxConfig(params.propertyId) : await repo.loadTaxConfig(params.propertyId);
 
   // 1) Posteo de hospedaje de la noche — reservas en casa.
-  const inHouse = await repo.listInHouseReservationsForNightAudit(params.propertyId, params.businessDate);
+  const inHouse = isSystem
+    ? await repo.systemListInHouseReservationsForNightAudit(params.propertyId, params.businessDate)
+    : await repo.listInHouseReservationsForNightAudit(params.propertyId, params.businessDate);
   const hospedajePlan = planNightlyHospedajeCharges(inHouse, taxConfig);
   const postedCharges: NightAuditSummary["postedCharges"][number][] = [];
   for (const decision of hospedajePlan.charges) {
-    const posted = await repo.postNightlyHospedajeCharge({
-      organizationId: params.organizationId,
-      propertyId: params.propertyId,
-      folioId: decision.folioId,
-      businessDate: params.businessDate,
-      netAmount: decision.netAmount,
-      taxAmount: decision.taxAmount,
-    });
+    const posted = isSystem
+      ? await repo.systemPostNightAuditCharge({
+          organizationId: params.organizationId,
+          propertyId: params.propertyId,
+          reservationId: decision.reservationId,
+          folioId: decision.folioId,
+          businessDate: params.businessDate,
+          netAmount: decision.netAmount,
+          taxAmount: decision.taxAmount,
+        })
+      : await repo.postNightlyHospedajeCharge({
+          organizationId: params.organizationId,
+          propertyId: params.propertyId,
+          folioId: decision.folioId,
+          businessDate: params.businessDate,
+          netAmount: decision.netAmount,
+          taxAmount: decision.taxAmount,
+        });
     postedCharges.push({ reservationId: decision.reservationId, folioId: decision.folioId, amount: decision.netAmount, taxAmount: decision.taxAmount });
     void posted; // `isNew` no cambia lo que se reporta -- un cargo ya existente (retry) se reporta igual.
   }
@@ -86,15 +125,26 @@ export async function runNightAuditForProperty(repo: HotelesRepository, params: 
   // 2) No-shows del día -- REUTILIZADO del mecanismo real de Fase 3
   //    (`POST /hoteles/:propertyId/reservas/procesar-no-show`), extraído a
   //    `runNoShowSweep` (ver night-audit/engine.ts §2 y el comentario de cabecera de
-  //    no-show.ts) precisamente para que night-audit no lo reimplemente.
-  const noShowResults = await runNoShowSweep(repo, { organizationId: params.organizationId, propertyId: params.propertyId, asOfDate: params.businessDate });
+  //    no-show.ts) precisamente para que night-audit no lo reimplemente. Mismo
+  //    `session` que el resto de esta corrida -- ver no-show.ts para el detalle del
+  //    camino "sistema".
+  const noShowResults = await runNoShowSweep(repo, {
+    organizationId: params.organizationId,
+    propertyId: params.propertyId,
+    asOfDate: params.businessDate,
+    session: params.session,
+  });
   const noShows: NightAuditSummary["noShows"][number][] = noShowResults.map((r) => ({ reservationId: r.reservationId, chargeAmount: r.penalizacionNeta }));
 
   // 3) Resumen de caja del día -- agrupado por fecha de negocio en la zona horaria de
   //    la property (ver `DEFAULT_PROPERTY_TIMEZONE`: sin columna de timezone propia
   //    todavía por property en `core.property`, gap declarado, no inventado).
-  const cargosPorConcepto = await repo.sumChargesByConceptForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE);
-  const pagosPorMetodo = await repo.sumPaymentsByMethodForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE);
+  const cargosPorConcepto = isSystem
+    ? await repo.systemSumChargesByConceptForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE)
+    : await repo.sumChargesByConceptForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE);
+  const pagosPorMetodo = isSystem
+    ? await repo.systemSumPaymentsByMethodForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE)
+    : await repo.sumPaymentsByMethodForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE);
 
   const summary = buildNightAuditSummary({
     businessDate: params.businessDate,
@@ -131,10 +181,13 @@ export interface NightAuditSweepResult {
 
 /**
  * Barrido de TODAS las properties de hoteles activas (`repo.listActiveHotelProperties`)
- * -- invocado por la ruta interna gateada por secreto (ver comentario de cabecera).
- * Un fallo en una property nunca detiene el resto (mismo criterio que
- * `citasRemindersRoutes`/`NightAuditScheduler.tick` del origen): se captura y se
- * reporta en `error`, la corrida de las demás continúa.
+ * -- invocado ÚNICA Y EXCLUSIVAMENTE por la ruta interna gateada por secreto (ver
+ * comentario de cabecera) -- a diferencia de `runNightAuditForProperty`, este barrido
+ * NUNCA lo invoca un camino de staff, así que siempre corre `session: "sistema"`
+ * (Fase 6b) sin necesitar exponerlo como opción. Un fallo en una property nunca
+ * detiene el resto (mismo criterio que `citasRemindersRoutes`/
+ * `NightAuditScheduler.tick` del origen): se captura y se reporta en `error`, la
+ * corrida de las demás continúa.
  */
 export async function runNightAuditSweep(repo: HotelesRepository, options: NightAuditSweepOptions = {}): Promise<NightAuditSweepResult[]> {
   const runHourLocal = options.runHourLocal ?? 3;
@@ -152,7 +205,12 @@ export async function runNightAuditSweep(repo: HotelesRepository, options: Night
     }
     const businessDate = businessDateToClose(now, DEFAULT_PROPERTY_TIMEZONE);
     try {
-      const summary = await runNightAuditForProperty(repo, { organizationId: property.organizationId, propertyId: property.propertyId, businessDate });
+      const summary = await runNightAuditForProperty(repo, {
+        organizationId: property.organizationId,
+        propertyId: property.propertyId,
+        businessDate,
+        session: "sistema",
+      });
       results.push({ organizationId: property.organizationId, propertyId: property.propertyId, ran: true, businessDate, summary });
     } catch (err) {
       results.push({

@@ -207,6 +207,14 @@ export type {
 } from "./night-audit/engine.ts";
 export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";
 
+// ---- Fase 6b — flujos de sistema de night-audit/no-show (migrations/023) ----
+export type {
+  DueNoShowReservationForSystem,
+  NewSystemNightAuditChargeInput,
+  NewSystemNoShowApplicationInput,
+  SystemNoShowApplicationResult,
+} from "./types.ts";
+
 // ---- Fase 7 — descubrimiento de organización/property para el panel web de staff ----
 export type { HotelOrganizationSummary, PropertySummary } from "./types.ts";
 

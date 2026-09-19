@@ -3,6 +3,15 @@
 // reutilización del no-show ya existente (runNoShowSweep, Fase 3), idempotencia por
 // (property, business_date), y el barrido de todas las properties activas con reloj
 // inyectado (determinista, sin depender de la hora real de la corrida de CI).
+//
+// Fase 6b (flujos de sistema, migrations/023_night_audit_sistema_escritura.sql): las
+// pruebas de `describe("runNightAuditForProperty", ...)` de abajo usan
+// `session: "staff"` (mismo comportamiento LITERAL de antes de esta fase, ver
+// night-audit.ts) -- el bloque `describe("runNightAuditForProperty -- session:
+// \"sistema\"", ...)` al final ejercita el camino nuevo (métodos `systemXxx`) contra
+// el MISMO repositorio en memoria, para confirmar que ambos caminos producen el mismo
+// resultado observable. `runNightAuditSweep` SIEMPRE corre `session: "sistema"`
+// internamente (ver su comentario de cabecera) -- sus pruebas de abajo no cambian.
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryHotelesRepository } from "@atiende/domain-hoteles";
@@ -36,7 +45,7 @@ describe("runNightAuditForProperty", () => {
   it("postea el hospedaje de la noche de cada reserva en casa (neto + IVA + ISH)", async () => {
     const { reservation, folio } = await seedInHouseReservation("2026-09-10", "2026-09-12");
 
-    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10" });
+    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "staff" });
 
     expect(summary.yaCompletado).toBe(false);
     expect(summary.postedCharges).toHaveLength(1);
@@ -49,8 +58,8 @@ describe("runNightAuditForProperty", () => {
   it("una segunda corrida del MISMO (property, business_date) SIEMPRE devuelve el resumen ya guardado, sin volver a postear", async () => {
     await seedInHouseReservation("2026-09-10", "2026-09-12");
 
-    const first = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10" });
-    const second = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10" });
+    const first = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "staff" });
+    const second = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "staff" });
 
     expect(first.postedCharges).toHaveLength(1);
     expect(second.yaCompletado).toBe(true);
@@ -64,7 +73,7 @@ describe("runNightAuditForProperty", () => {
   it("REQ-REV-013: reutiliza el no-show YA existente de Fase 3 -- una reserva confirmada vencida se marca no_show y su penalización se postea", async () => {
     const reservation = await repo.insertReservation({ organizationId, propertyId, roomTypeId, guestId: null, checkInDate: "2026-09-08", checkOutDate: "2026-09-10", totalAmount: 2000 });
 
-    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10" });
+    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "staff" });
 
     expect(summary.noShows).toHaveLength(1);
     expect(summary.noShows[0]!.reservationId).toBe(reservation.id);
@@ -83,7 +92,7 @@ describe("runNightAuditForProperty", () => {
     await repo.transitionReservation(propertyId, reservation.id, ["confirmada"], "check_in", null);
     await repo.transitionReservation(propertyId, reservation.id, ["check_in"], "en_estancia", null);
 
-    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10" });
+    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "staff" });
 
     expect(summary.postedCharges).toEqual([]);
     expect(summary.anomalies).toHaveLength(1);
@@ -129,5 +138,96 @@ describe("runNightAuditSweep", () => {
     expect(failed?.ran).toBe(false);
     expect(failed?.error).toBeDefined();
     expect(ok?.ran).toBe(true);
+  });
+});
+
+// Fase 6b (flujos de sistema, migrations/023_night_audit_sistema_escritura.sql): el
+// camino `session: "sistema"` usa los métodos `systemXxx` nuevos -- estas pruebas
+// confirman que produce el MISMO resultado observable que `session: "staff"` (arriba)
+// para los mismos fixtures, y que las funciones nuevas rechazan invariantes inválidas
+// (equivalente en memoria de lo que la función SQL real valida, ver
+// scripts/verify-hoteles-night-audit-sistema/ para la verificación contra Postgres
+// real).
+describe("runNightAuditForProperty -- session: \"sistema\"", () => {
+  it("postea el hospedaje de la noche vía los métodos systemXxx (mismo resultado que session: \"staff\")", async () => {
+    const { reservation, folio } = await seedInHouseReservation("2026-09-10", "2026-09-12");
+
+    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "sistema" });
+
+    expect(summary.postedCharges).toHaveLength(1);
+    expect(summary.postedCharges[0]).toMatchObject({ reservationId: reservation.id, folioId: folio.id, amount: 1000 });
+    expect(summary.anomalies).toEqual([]);
+  });
+
+  it("una segunda corrida del MISMO (property, business_date) bajo sesión de sistema tampoco vuelve a postear", async () => {
+    await seedInHouseReservation("2026-09-10", "2026-09-12");
+
+    const first = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "sistema" });
+    const second = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "sistema" });
+
+    expect(first.postedCharges).toHaveLength(1);
+    expect(second.yaCompletado).toBe(true);
+  });
+
+  it("REQ-REV-013 bajo sesión de sistema: una reserva confirmada vencida se marca no_show y su penalización se postea vía systemApplyNoShow", async () => {
+    const reservation = await repo.insertReservation({ organizationId, propertyId, roomTypeId, guestId: null, checkInDate: "2026-09-08", checkOutDate: "2026-09-10", totalAmount: 2000 });
+
+    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate: "2026-09-10", session: "sistema" });
+
+    expect(summary.noShows).toHaveLength(1);
+    expect(summary.noShows[0]!.reservationId).toBe(reservation.id);
+    expect(summary.noShows[0]!.chargeAmount).toBeCloseTo(1000, 2);
+    const updated = await repo.findReservation(propertyId, reservation.id);
+    expect(updated!.status).toBe("no_show");
+  });
+
+  it("systemPostNightAuditCharge rechaza un folio que no es el primario de la reserva (invariante validada por la función, no solo por el llamador)", async () => {
+    const { reservation } = await seedInHouseReservation("2026-09-10", "2026-09-12");
+    const otraReserva = await repo.insertReservation({ organizationId, propertyId, roomTypeId, guestId: null, checkInDate: "2026-09-01", checkOutDate: "2026-09-03", totalAmount: 500 });
+    const folioAjeno = await repo.ensurePrimaryFolio(propertyId, organizationId, otraReserva.id);
+
+    await expect(
+      repo.systemPostNightAuditCharge({
+        organizationId,
+        propertyId,
+        reservationId: reservation.id,
+        folioId: folioAjeno.id,
+        businessDate: "2026-09-10",
+        netAmount: 1000,
+        taxAmount: 160,
+      }),
+    ).rejects.toThrow(/folio_invalido/);
+  });
+
+  it("systemApplyNoShow: reintento (mismo llamado 2 veces -- reintento del cron o 2 instancias concurrentes) nunca duplica la penalización", async () => {
+    const reservation = await repo.insertReservation({ organizationId, propertyId, roomTypeId, guestId: null, checkInDate: "2026-09-08", checkOutDate: "2026-09-10", totalAmount: 2000 });
+
+    const first = await repo.systemApplyNoShow({ organizationId, propertyId, reservationId: reservation.id, netAmount: 1000, taxAmount: 160 });
+    const second = await repo.systemApplyNoShow({ organizationId, propertyId, reservationId: reservation.id, netAmount: 1000, taxAmount: 160 });
+
+    expect(first).not.toBeNull();
+    // Segunda llamada pierde la carrera (la reserva ya no está 'confirmada') -- `null`,
+    // NUNCA una segunda penalización -- mismo criterio atómico que `transitionReservation`.
+    expect(second).toBeNull();
+    const charges = await repo.listChargesForCfdi(first!.folioId);
+    expect(charges.filter((c) => c.concept === "hospedaje" && c.stayDate === null)).toHaveLength(1);
+  });
+
+  it("systemApplyNoShow rechaza una reserva de otra organización/property (cross-tenant)", async () => {
+    const otherOrgId = randomUUID();
+    const otherPropertyId = randomUUID();
+    const reservation = await repo.insertReservation({ organizationId, propertyId, roomTypeId, guestId: null, checkInDate: "2026-09-08", checkOutDate: "2026-09-10", totalAmount: 2000 });
+
+    const applied = await repo.systemApplyNoShow({
+      organizationId: otherOrgId,
+      propertyId: otherPropertyId,
+      reservationId: reservation.id,
+      netAmount: 1000,
+      taxAmount: 160,
+    });
+
+    expect(applied).toBeNull();
+    const untouched = await repo.findReservation(propertyId, reservation.id);
+    expect(untouched!.status).toBe("confirmada");
   });
 });

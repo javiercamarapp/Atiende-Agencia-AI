@@ -538,6 +538,65 @@ export interface ActiveHotelProperty {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Fase 6b -- flujos de sistema de night-audit/no-show
+// (migrations/023_night_audit_sistema_escritura.sql). EXCLUSIVOS de
+// `apps/worker/src/jobs/hoteles/{night-audit,no-show}.ts` cuando corren bajo
+// `session: "sistema"` -- ver el header de esa migración y de
+// `HotelesRepository` (repository.ts, sección "Fase 6b") para el análisis
+// completo de por qué el camino de sistema necesita un método/tipo NUEVO por
+// operación en vez de reutilizar los de arriba.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Candidata a no-show, versión MÍNIMA system-only -- solo los 3 campos que
+ *  `evaluateNoShowPenaltyBase` necesita (folioEngine.ts). A diferencia de
+ *  `findDueNoShowReservations` (camino de staff, sin cambio, sigue
+ *  devolviendo el `ReservationRecord` completo), esta vía nunca expone el
+ *  resto de la fila. */
+export interface DueNoShowReservationForSystem {
+  readonly reservationId: string;
+  readonly checkInDate: string;
+  readonly checkOutDate: string;
+  readonly totalAmount: number;
+}
+
+/** Input de `HotelesRepository.systemPostNightAuditCharge` -- `netAmount`/
+ *  `taxAmount` YA CALCULADOS por `planNightlyHospedajeCharges`/
+ *  `computeChargeAmounts` (TypeScript puro); la función SQL detrás de este
+ *  método NUNCA recalcula un monto, solo valida invariantes baratos y
+ *  persiste (ver migrations/023). */
+export interface NewSystemNightAuditChargeInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly reservationId: string;
+  readonly folioId: string;
+  readonly businessDate: string;
+  readonly netAmount: number;
+  readonly taxAmount: number;
+}
+
+/** Input de `HotelesRepository.systemApplyNoShow` -- `netAmount`/`taxAmount`
+ *  YA CALCULADOS por `evaluateNoShowPenaltyBase`/`computeNoShowPenaltyAmounts`
+ *  (folioEngine.ts, TypeScript puro) ANTES de reclamar la reserva (ambos solo
+ *  dependen de datos ya disponibles en la candidata, ver el header de
+ *  migrations/023 para el detalle). */
+export interface NewSystemNoShowApplicationInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly reservationId: string;
+  readonly netAmount: number;
+  readonly taxAmount: number;
+}
+
+/** `null` cuando `systemApplyNoShow` perdió el reclamo atómico (la reserva ya
+ *  no estaba en 'confirmada' -- carrera perdida, mismo criterio de no-op que
+ *  `transitionReservation`). */
+export interface SystemNoShowApplicationResult {
+  readonly folioId: string;
+  readonly chargeId: string;
+  readonly chargeCreatedAt: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Fase 7 — descubrimiento de organización/property para el panel web de staff
 // (apps/web/src/verticals/hoteles): `LoginSession.organizations` (ver
 // apps/web/src/lib/auth-client.ts) solo trae {id, slug, nombre, vertical, rol} —
