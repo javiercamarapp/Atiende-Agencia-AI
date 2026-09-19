@@ -56,6 +56,13 @@ import type {
   RevenueGateRecord,
   RevenueBacktestRunRecord,
   NewRevenueBacktestRunInput,
+  GuestReviewRecord,
+  NewGuestReviewInput,
+  GuestReviewActionRecord,
+  NewGuestReviewActionInput,
+  GuestReviewActionStatus,
+  GuestReviewResponseRecord,
+  NewGuestReviewResponseInput,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
@@ -579,6 +586,37 @@ export interface HotelesRepository {
   setRevenueGateOwnerApproval(propertyId: string, granted: boolean, actorUserId: string): Promise<RevenueGateRecord>;
   listRevenueBacktestRuns(propertyId: string): Promise<readonly RevenueBacktestRunRecord[]>;
   insertRevenueBacktestRun(input: NewRevenueBacktestRunInput): Promise<RevenueBacktestRunRecord>;
+  // ---- Fase 11/13 (REQ-CRM-002/003) — reputación/CRM: wiring de
+  // hoteles.guest_review/hoteles.guest_review_action (migrations/013_reputacion.sql)
+  // + hoteles.guest_review_response (migrations/021_reputacion_respuestas.sql). Gap
+  // real verificado antes de esta fase: el dominio puro (`reputacion/clasificador.ts`/
+  // `indice.ts`) y el modelo de datos ya existían, pero `HotelesRepository` no tenía
+  // ningún método para ninguna de las 3 tablas -- ninguna ruta HTTP podía
+  // funcionar. ----
+
+  insertGuestReview(input: NewGuestReviewInput): Promise<GuestReviewRecord>;
+  listGuestReviews(propertyId: string, filter?: { readonly sentiment?: GuestReviewRecord["sentiment"] }): Promise<readonly GuestReviewRecord[]>;
+  findGuestReview(propertyId: string, reviewId: string): Promise<GuestReviewRecord | null>;
+
+  insertGuestReviewAction(input: NewGuestReviewActionInput): Promise<GuestReviewActionRecord>;
+  listGuestReviewActions(propertyId: string, reviewId: string): Promise<readonly GuestReviewActionRecord[]>;
+  findGuestReviewAction(propertyId: string, actionId: string): Promise<GuestReviewActionRecord | null>;
+  /** Resuelve (marca ejecutada/descartada) una acción pendiente -- `ticketId` solo
+   *  se persiste cuando `actionType === 'ticket_mantenimiento'` Y `status ===
+   *  'ejecutada'` (el llamador ya creó el ticket real vía `insertMaintenanceTicket`
+   *  antes de llamar aquí, ver reputacion.ts). Lanza si la acción no existe o ya
+   *  fue resuelta (mismo criterio que `resolveFraudAlert`/
+   *  `FraudAlertAlreadyResolvedError`). */
+  resolveGuestReviewAction(
+    propertyId: string,
+    actionId: string,
+    resolvedBy: string,
+    status: Exclude<GuestReviewActionStatus, "pendiente">,
+    ticketId: string | null,
+  ): Promise<GuestReviewActionRecord>;
+
+  insertGuestReviewResponse(input: NewGuestReviewResponseInput): Promise<GuestReviewResponseRecord>;
+  listGuestReviewResponses(propertyId: string, reviewId: string): Promise<readonly GuestReviewResponseRecord[]>;
 }
 
 /** Fila de `hoteles.messaging_outbox` reclamada para despacho real — mismo shape
@@ -631,3 +669,4 @@ export type {
   NewStaffScheduleInput,
 } from "./types.ts";
 export type { RevenueGateRecord, RevenueBacktestRunRecord, NewRevenueBacktestRunInput } from "./types.ts";
+export type { GuestReviewResponseRecord, NewGuestReviewResponseInput } from "./types.ts";
