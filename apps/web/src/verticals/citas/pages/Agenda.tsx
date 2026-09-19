@@ -391,7 +391,11 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
             <ChevronLeft aria-hidden />
             Anterior
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setAnchor(new Date())}>
+          {/* Bug real (revisión r6 de corrección de PR #171, bloqueante 1): este botón seguía
+              con `setAnchor(new Date())` -- el mismo bug que el estado inicial de `anchor` de
+              arriba ya corrige (ver su comentario), pero reintroducido aquí. Mismo fix: anclar
+              al día de CALENDARIO del negocio, nunca al instante UTC. */}
+          <Button variant="outline" size="sm" onClick={() => setAnchor(parseFechaSolo(hoyFechaSolo()))}>
             Hoy
           </Button>
           <Button variant="outline" size="sm" onClick={() => setAnchor((a) => shiftAnchor(a, view, 1))}>

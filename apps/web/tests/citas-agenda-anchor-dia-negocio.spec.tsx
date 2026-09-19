@@ -112,4 +112,38 @@ describe("AgendaPage (citas) — el RANGO pedido al servidor usa el día de NEGO
     expect(url.searchParams.get("from")).toBe("2026-09-21T00:00:00.000Z");
     expect(url.searchParams.get("to")).toBe("2026-09-28T00:00:00.000Z");
   });
+
+  it("botón 'Hoy' a las 22:00 CDMX del 30-sep: pide el rango de SEPTIEMBRE, nunca el de octubre (bloqueante 1, corrección de PR #171)", async () => {
+    // Bug real: el estado inicial de `anchor` ya ancla al día de negocio (fix de PR
+    // #171), pero el botón "Hoy" seguía con `setAnchor(new Date())` -- el mismo bug
+    // exacto del punto 2 del encargo, reintroducido en el botón. Este test navega
+    // primero a otro mes (para que "Hoy" tenga que mover el `anchor` de verdad) y
+    // luego pulsa "Hoy" en la ventana 18:00-23:59 CDMX.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(INSTANTE_22H_CDMX_30_SEP));
+
+    rendered = renderComponent(<AgendaPage {...CTX} />);
+    await esperarCarga();
+
+    const siguienteBtn = Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent?.includes("Siguiente"))!;
+    act(() => {
+      siguienteBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+      siguienteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await esperarCarga();
+
+    const hoyBtn = Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent === "Hoy")!;
+    act(() => {
+      hoyBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+      hoyBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await esperarCarga();
+
+    const url = new URL(appointmentsUrls.at(-1)!);
+    // Control del bug: con `setAnchor(new Date())`, el mes UTC de este instante ya
+    // sería octubre -> from = 2026-10-01, to = 2026-11-01. Con el fix, "Hoy" ancla al
+    // día de negocio (30-sep) y vuelve a pedir septiembre.
+    expect(url.searchParams.get("from")).toBe("2026-09-01T00:00:00.000Z");
+    expect(url.searchParams.get("to")).toBe("2026-10-01T00:00:00.000Z");
+  });
 });
