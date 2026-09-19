@@ -20,8 +20,10 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   BREAK_GLASS_LECTOR_LIMIT_DEFAULT,
   BREAK_GLASS_LECTOR_LIMIT_MAX,
+  BreakGlassAccessDeniedError,
   BreakGlassDurationInvalidError,
   BreakGlassOrganizationRequiredError,
+  BreakGlassPropertyNotFoundError,
   BreakGlassReasonRequiredError,
   BreakGlassSessionNotFoundError,
   abrirAccesoBreakGlass,
@@ -50,6 +52,53 @@ interface AbrirAccesoBody {
   readonly organizationId?: unknown;
   readonly reason?: unknown;
   readonly durationMinutes?: unknown;
+}
+
+// Hallazgo de revisión real (ronda r5): `?propertyId=`/`?limit=`/`?offset=` de
+// las 7 rutas de lectura de tenant (`registrarLectorTenant`, abajo) llegaban
+// SIN VALIDAR hasta las funciones `security definer` de Postgres --
+// `propertyId` sin forma de UUID producía SQLSTATE 22P02
+// (invalid_text_representation, mismo caso que
+// `superadmin-facturacion.ts::parseOrganizationIdQuery` ya documenta) y un
+// `limit`/`offset` no-entero (`1.5`), negativo, o no-numérico llegaba tal
+// cual como parámetro `integer` de Postgres -- 500 genérico en los tres
+// casos. Validar aquí (400 explícito, nunca toca la base) es el mismo
+// criterio que el resto de este monorepo aplica a cualquier id/paginado que
+// entra por query string.
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parsePropertyIdQuery(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  if (!UUID_REGEX.test(raw)) throw Errors.validation("propertyId debe ser un UUID válido.");
+  return raw;
+}
+
+// Entero SIN SIGNO en texto completo (`^\d+$`) -- deliberadamente más estricto
+// que `Number.isInteger(Number(raw))`: `Number("1.5")`/`Number(" 3")`/
+// `Number("3e2")` son todos valores que `Number.isFinite` aceptaría sin
+// pestañear, pero ninguno es "un entero escrito como un entero" -- el patrón
+// de texto se exige PRIMERO, antes de convertir, para que ninguna de esas
+// formas se cuele.
+const NONNEGATIVE_INT_RE = /^\d+$/;
+
+function parseLimitQuery(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return BREAK_GLASS_LECTOR_LIMIT_DEFAULT;
+  if (!NONNEGATIVE_INT_RE.test(raw) || Number(raw) < 1) {
+    throw Errors.validation("limit debe ser un entero >= 1.");
+  }
+  // Por encima del tope no es un error de validación (holgado a propósito,
+  // mismo criterio que el resto de paginados de este monorepo) -- se acota en
+  // silencio al máximo, nunca se rechaza una petición honesta de "tráeme
+  // todo lo que puedas".
+  return Math.min(BREAK_GLASS_LECTOR_LIMIT_MAX, Number(raw));
+}
+
+function parseOffsetQuery(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return 0;
+  if (!NONNEGATIVE_INT_RE.test(raw)) {
+    throw Errors.validation("offset debe ser un entero >= 0.");
+  }
+  return Number(raw);
 }
 
 function serializeSession(s: BreakGlassSession, nowMs: number = Date.now()) {
@@ -235,11 +284,13 @@ function registrarLectorTenant<T>(
     // "organización no encontrada" más abajo, nunca un comportamiento distinto.
     const organizationId = c.req.param("organizationId") ?? "";
     const reason = c.req.query("reason") ?? "";
-    const propertyId = c.req.query("propertyId") || undefined;
-    const limitParam = c.req.query("limit");
-    const offsetParam = c.req.query("offset");
-    const limit = limitParam !== undefined && Number.isFinite(Number(limitParam)) ? Math.min(BREAK_GLASS_LECTOR_LIMIT_MAX, Math.max(1, Number(limitParam))) : BREAK_GLASS_LECTOR_LIMIT_DEFAULT;
-    const offset = offsetParam !== undefined && Number.isFinite(Number(offsetParam)) ? Math.max(0, Number(offsetParam)) : 0;
+    // Las 3 líneas de abajo lanzan 400 (Errors.validation) ANTES de abrir
+    // `withAppSession` -- un `propertyId`/`limit`/`offset` inválido nunca
+    // toca la base. Ver el comentario de cabecera de estas funciones para el
+    // hallazgo real que corrigen.
+    const propertyId = parsePropertyIdQuery(c.req.query("propertyId"));
+    const limit = parseLimitQuery(c.req.query("limit"));
+    const offset = parseOffsetQuery(c.req.query("offset"));
 
     return deps.engine.withAppSession({ userId: callerId }, async (db) => {
       const actor = { userId: callerId, email: c.get("userEmail") };
@@ -268,6 +319,14 @@ function registrarLectorTenant<T>(
         return c.json({ [jsonKey]: resultado.datos, disponible: resultado.disponible });
       } catch (err) {
         if (err instanceof BreakGlassReasonRequiredError) throw Errors.validation(err.message);
+        // Defensa en profundidad real de Postgres (ver el comentario de
+        // cabecera de `BreakGlassPropertyNotFoundError`/`BreakGlassAccessDeniedError`
+        // en errors.ts) -- `PostgresBreakGlassRentasDataRepository` ya dejó la
+        // transacción recuperada (ROLLBACK TO SAVEPOINT) antes de lanzar
+        // cualquiera de estos dos, así que mapear aquí y devolver es seguro:
+        // no se vuelve a tocar `db` después de este punto.
+        if (err instanceof BreakGlassPropertyNotFoundError) throw Errors.notFound(err.message);
+        if (err instanceof BreakGlassAccessDeniedError) throw Errors.forbidden(err.message);
         throw err;
       }
     });

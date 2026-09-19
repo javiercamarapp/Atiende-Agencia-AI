@@ -63,6 +63,7 @@
 // y en `packages/domain-citas/src/postgres-repository.ts` (`upsertCustomer`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { BreakGlassRentasDataRepository } from "./data-repository.ts";
+import { BreakGlassAccessDeniedError, BreakGlassPropertyNotFoundError } from "./errors.ts";
 import type {
   BreakGlassFinanzasResumen,
   BreakGlassLectorPaginacion,
@@ -78,6 +79,38 @@ import { BREAK_GLASS_LECTOR_LIMIT_DEFAULT, BREAK_GLASS_LECTOR_LIMIT_MAX } from "
 
 function isUndefinedFunctionError(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === "42883";
+}
+
+// Hallazgo de revisión real (ronda r5): `list_*_for_break_glass` (las 7
+// funciones de `020_break_glass_lectores.sql`) lanzan SQLSTATE `P0002` ("la
+// propiedad indicada no pertenece a esta organización") y `42501` (caller
+// distinto de `auth.uid()` / no-superadmin / sin sesión de romper-cristal
+// vigente -- defensa en profundidad, ver el comentario de cabecera de esa
+// migración) -- ninguno de los dos se distinguía de un error real de
+// Postgres antes de esto: ambos llegaban tal cual hasta `apps/api`, que
+// tampoco los mapeaba, terminando en un 500 genérico.
+function isPropertyNotFoundError(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "P0002";
+}
+function isAccessDeniedError(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42501";
+}
+
+/**
+ * Recupera la transacción tras un error DENTRO del SAVEPOINT de `savepointName`
+ * (cualquier excepción real de Postgres la deja "abortada" -- cualquier
+ * sentencia posterior en la misma transacción compartida, incluida la propia
+ * `COMMIT`/`ROLLBACK` final de `withAppSession`, seguiría funcionando bien
+ * porque esa sí hace `ROLLBACK` de la transacción completa -- pero si el
+ * LLAMADOR de este repositorio siguiera usando `db` para algo más ANTES de
+ * eso, como el `INSERT` de bitácora que `acceso.ts` ejecuta tras una lectura
+ * "exitosa", necesitaría la transacción sana) -- mismo patrón ya establecido
+ * para SQLSTATE 42883 más abajo, generalizado para reutilizarse también con
+ * `P0002`/`42501`.
+ */
+async function recuperarSavepoint(db: TenantDbSession, savepointName: string): Promise<void> {
+  await db.exec(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+  await db.exec(`RELEASE SAVEPOINT ${savepointName}`);
 }
 
 // Una sola advertencia por proceso y por función -- mismo criterio que
@@ -96,6 +129,36 @@ function resolverLimite(paginacion: BreakGlassLectorPaginacion | undefined): { l
     limit: Math.min(BREAK_GLASS_LECTOR_LIMIT_MAX, paginacion?.limit ?? BREAK_GLASS_LECTOR_LIMIT_DEFAULT),
     offset: Math.max(0, paginacion?.offset ?? 0),
   };
+}
+
+// Hallazgo de revisión real (ronda r5): `fecha_payout`/`vigente_desde`/
+// `fecha_check_in`/`fecha_check_out`/`programada_para` son columnas `date`
+// (OID 1082, sin componente de hora ni zona horaria) -- el parser default del
+// driver `pg` para ese OID construye un objeto `Date` en hora LOCAL del
+// PROCESO (`new Date(year, month, day)`, medianoche local), nunca UTC, aunque
+// los 4 `*Row`/`BreakGlassPricingResumen`/`BreakGlassPayoutResumen`/etc.
+// declaraban el campo como `string` ("YYYY-MM-DD", ver tipos.ts) -- una
+// mentira de tipos que, sin este normalizador, filtraba un objeto `Date` real
+// a cualquier consumidor (incluida la serialización JSON de la ruta HTTP, que
+// lo convertiría con `JSON.stringify` a un timestamp ISO CON hora, nunca la
+// fecha simple que el tipo declarado promete). Leer sus componentes con
+// `getUTCFullYear()`/`toISOString()` desplazaría la fecha un día completo en
+// cualquier proceso con offset horario POSITIVO (Europa/Asia): medianoche
+// LOCAL ahí cae en el día ANTERIOR al convertir a UTC. Este helper usa los
+// getters LOCALES (`getFullYear`/`getMonth`/`getDate`), que devuelven
+// exactamente los mismos año/mes/día con que el driver construyó el objeto --
+// nunca pasa por UTC, cero desplazamiento sin importar la zona horaria del
+// proceso (Vercel corre en UTC hoy, pero este repositorio no debe asumirlo).
+function dateColumnToYmd(value: Date | string): string {
+  if (typeof value === "string") return value; // ya normalizado (fixtures/tests, o un parser custom)
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateColumnToYmdOrNull(value: Date | string | null): string | null {
+  return value === null ? null : dateColumnToYmd(value);
 }
 
 interface ReservaRow {
@@ -143,7 +206,9 @@ interface PayoutRow {
   referencia_externa: string | null;
   moneda: string;
   monto_total_centavos: string;
-  fecha_payout: string;
+  // `date` (OID 1082) -- el driver `pg` la entrega como `Date`, nunca como
+  // texto, ver `dateColumnToYmd` arriba.
+  fecha_payout: Date | string;
   creado_en: string;
 }
 
@@ -153,7 +218,8 @@ interface PricingRow {
   unidad_id: string;
   precio_noche_centavos: string;
   moneda: string;
-  vigente_desde: string;
+  // `date` -- ver el comentario de `PayoutRow.fecha_payout`.
+  vigente_desde: Date | string;
 }
 
 interface MensajeriaRow {
@@ -162,8 +228,9 @@ interface MensajeriaRow {
   unidad_id: string;
   canal_codigo: string;
   huesped_nombre: string | null;
-  fecha_check_in: string | null;
-  fecha_check_out: string | null;
+  // `date`, nullable -- ver el comentario de `PayoutRow.fecha_payout`.
+  fecha_check_in: Date | string | null;
+  fecha_check_out: Date | string | null;
   reserva_confirmada: boolean;
   creado_en: string;
 }
@@ -175,7 +242,8 @@ interface LimpiezaRow {
   tipo: string;
   estado: string;
   prioridad: string;
-  programada_para: string;
+  // `date` -- ver el comentario de `PayoutRow.fecha_payout`.
+  programada_para: Date | string;
   completada_en: string | null;
   creado_en: string;
 }
@@ -207,13 +275,28 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_reservas");
       return rows.map(mapReservaRow);
     } catch (err) {
+      // `p_property_id` con forma de UUID válida pero que no pertenece a esta
+      // organización (P0002), o el resto de defensa en profundidad de la
+      // función (42501) -- NUNCA debe caer al fallback de 2 parámetros de
+      // abajo (ese camino no filtra por propiedad del lado de Postgres, así
+      // que "recuperarse" tragándose el error real devolvería TODO el tenant
+      // sin el filtro que el caller pidió, o datos a un caller que la propia
+      // función acaba de rechazar). Se recupera la transacción y se relanza
+      // como error tipado -- `apps/api` lo traduce a 404/403 explícitos.
+      if (isPropertyNotFoundError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_reservas");
+        throw new BreakGlassPropertyNotFoundError();
+      }
+      if (isAccessDeniedError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_reservas");
+        throw new BreakGlassAccessDeniedError();
+      }
       if (!isUndefinedFunctionError(err)) throw err;
       // 42883 real deja la transacción abortada (25P02 en cualquier query
       // posterior) -- sin este ROLLBACK TO SAVEPOINT, la query de respaldo de
       // abajo (y el INSERT de bitácora que ejecuta el llamador después) fallarían
       // también. Ver comentario de cabecera de este archivo.
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_reservas");
-      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_reservas");
+      await recuperarSavepoint(this.db, "sp_break_glass_reservas");
       advertirUnaVez(
         "list_reservas_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_reservas_for_break_glass(5 args) no existe todavía " +
@@ -255,9 +338,16 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         })),
       };
     } catch (err) {
+      if (isPropertyNotFoundError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_finanzas");
+        throw new BreakGlassPropertyNotFoundError();
+      }
+      if (isAccessDeniedError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_finanzas");
+        throw new BreakGlassAccessDeniedError();
+      }
       if (!isUndefinedFunctionError(err)) throw err;
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_finanzas");
-      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_finanzas");
+      await recuperarSavepoint(this.db, "sp_break_glass_finanzas");
       advertirUnaVez(
         "list_finanzas_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_finanzas_for_break_glass no existe todavía " +
@@ -286,14 +376,21 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           referenciaExterna: r.referencia_externa,
           moneda: r.moneda,
           montoTotalCentavos: Number(r.monto_total_centavos),
-          fechaPayout: r.fecha_payout,
+          fechaPayout: dateColumnToYmd(r.fecha_payout),
           creadoEnMs: new Date(r.creado_en).getTime(),
         })),
       };
     } catch (err) {
+      if (isPropertyNotFoundError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_payouts");
+        throw new BreakGlassPropertyNotFoundError();
+      }
+      if (isAccessDeniedError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_payouts");
+        throw new BreakGlassAccessDeniedError();
+      }
       if (!isUndefinedFunctionError(err)) throw err;
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_payouts");
-      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_payouts");
+      await recuperarSavepoint(this.db, "sp_break_glass_payouts");
       advertirUnaVez(
         "list_payouts_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_payouts_for_break_glass no existe todavía " +
@@ -321,13 +418,20 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           unidadId: r.unidad_id,
           precioNocheCentavos: Number(r.precio_noche_centavos),
           moneda: r.moneda,
-          vigenteDesde: r.vigente_desde,
+          vigenteDesde: dateColumnToYmd(r.vigente_desde),
         })),
       };
     } catch (err) {
+      if (isPropertyNotFoundError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_pricing");
+        throw new BreakGlassPropertyNotFoundError();
+      }
+      if (isAccessDeniedError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_pricing");
+        throw new BreakGlassAccessDeniedError();
+      }
       if (!isUndefinedFunctionError(err)) throw err;
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_pricing");
-      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_pricing");
+      await recuperarSavepoint(this.db, "sp_break_glass_pricing");
       advertirUnaVez(
         "list_pricing_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_pricing_for_break_glass no existe todavía " +
@@ -355,16 +459,23 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           unidadId: r.unidad_id,
           canalCodigo: r.canal_codigo,
           huespedNombre: r.huesped_nombre,
-          fechaCheckIn: r.fecha_check_in,
-          fechaCheckOut: r.fecha_check_out,
+          fechaCheckIn: dateColumnToYmdOrNull(r.fecha_check_in),
+          fechaCheckOut: dateColumnToYmdOrNull(r.fecha_check_out),
           reservaConfirmada: r.reserva_confirmada,
           creadoEnMs: new Date(r.creado_en).getTime(),
         })),
       };
     } catch (err) {
+      if (isPropertyNotFoundError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_mensajeria");
+        throw new BreakGlassPropertyNotFoundError();
+      }
+      if (isAccessDeniedError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_mensajeria");
+        throw new BreakGlassAccessDeniedError();
+      }
       if (!isUndefinedFunctionError(err)) throw err;
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_mensajeria");
-      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_mensajeria");
+      await recuperarSavepoint(this.db, "sp_break_glass_mensajeria");
       advertirUnaVez(
         "list_mensajeria_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_mensajeria_for_break_glass no existe todavía " +
@@ -393,15 +504,22 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           tipo: r.tipo,
           estado: r.estado,
           prioridad: r.prioridad,
-          programadaPara: r.programada_para,
+          programadaPara: dateColumnToYmd(r.programada_para),
           completadaEnMs: r.completada_en ? new Date(r.completada_en).getTime() : null,
           creadoEnMs: new Date(r.creado_en).getTime(),
         })),
       };
     } catch (err) {
+      if (isPropertyNotFoundError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_limpieza");
+        throw new BreakGlassPropertyNotFoundError();
+      }
+      if (isAccessDeniedError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_limpieza");
+        throw new BreakGlassAccessDeniedError();
+      }
       if (!isUndefinedFunctionError(err)) throw err;
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_limpieza");
-      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_limpieza");
+      await recuperarSavepoint(this.db, "sp_break_glass_limpieza");
       advertirUnaVez(
         "list_limpieza_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_limpieza_for_break_glass no existe todavía " +
@@ -437,9 +555,16 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         })),
       };
     } catch (err) {
+      if (isPropertyNotFoundError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_sync_ical");
+        throw new BreakGlassPropertyNotFoundError();
+      }
+      if (isAccessDeniedError(err)) {
+        await recuperarSavepoint(this.db, "sp_break_glass_sync_ical");
+        throw new BreakGlassAccessDeniedError();
+      }
       if (!isUndefinedFunctionError(err)) throw err;
-      await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_sync_ical");
-      await this.db.exec("RELEASE SAVEPOINT sp_break_glass_sync_ical");
+      await recuperarSavepoint(this.db, "sp_break_glass_sync_ical");
       advertirUnaVez(
         "list_sync_ical_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_sync_ical_for_break_glass no existe todavía " +
