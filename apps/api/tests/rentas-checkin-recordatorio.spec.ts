@@ -56,9 +56,11 @@ describe("GET/POST /internal/rentas/checkin-recordatorio", () => {
       authedJson(ctx.staff.adminGestora.token, { rango: { inicio: checkIn, fin: checkOut }, huespedNombre: "Ana Pérez", huespedContacto: "ana@example.com" }),
     );
     expect(crearRes.status).toBe(201);
-    // El disparo inline de la propia creación de la reserva ("reserva.creada") ya
-    // dejó ese job en 'failed' -- lo que importa aquí es el job DISTINTO que
-    // encola este barrido ("reserva.recordatorio_checkin").
+    // Fix a2b (CRÍTICO, seguimiento PR #166): sin RESEND_API_KEY en este
+    // fixture, el disparo inline de la propia creación de la reserva
+    // ("reserva.creada") ya NO reclama nada -- el job queda 'pending' -- lo
+    // que importa aquí es el job DISTINTO que encola este barrido
+    // ("reserva.recordatorio_checkin").
     expect(ctx.rentasRepo.getMessagingOutbox().filter((o) => o.eventType === "reserva.creada")).toHaveLength(1);
 
     const res = await app.request("/internal/rentas/checkin-recordatorio", { method: "POST", headers: { "x-atiende-internal-secret": TEST_ENV.internalSecret } });
@@ -68,11 +70,13 @@ describe("GET/POST /internal/rentas/checkin-recordatorio", () => {
     expect(body.enviados).toBe(1); // "enviados" = encolado con éxito, ver runRecordatorioCheckInCore.
 
     // Sin ningún POST/GET a /internal/rentas/email-dispatch de por medio: el
-    // disparo inline ya reclamó el job y marcó el intento fallido (fail-closed,
-    // sin RESEND_API_KEY en este fixture) DENTRO de esta misma corrida.
+    // disparo inline (triggerRentasEmailDispatchInline) YA NO reclama nada sin
+    // proveedor configurado -- el job de recordatorio queda intacto en
+    // 'pending' con attempts=0 (antes de este fix, quedaba 'failed' con
+    // attempts=1 sin que Resend jamás lo hubiera visto).
     const job = ctx.rentasRepo.getMessagingOutbox().find((o) => o.eventType === "reserva.recordatorio_checkin");
-    expect(job?.status).toBe("failed");
-    expect(job?.attempts).toBe(1);
+    expect(job?.status).toBe("pending");
+    expect(job?.attempts).toBe(0);
   });
 
   // Wiring real del scheduler (vercel.json::crons): Vercel Cron SIEMPRE dispara
