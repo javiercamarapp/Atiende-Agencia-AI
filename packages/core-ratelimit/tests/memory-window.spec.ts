@@ -1,6 +1,6 @@
 // ─── InMemoryWindowStore: sliding window real dentro del proceso ───────────
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { InMemoryWindowStore } from '../src/memory-window.ts';
 
 describe('InMemoryWindowStore', () => {
@@ -21,13 +21,31 @@ describe('InMemoryWindowStore', () => {
   });
 
   it('sliding real: los sellos fuera de la ventana no cuentan (no es ventana fija)', async () => {
-    const store = new InMemoryWindowStore();
-    expect(store.check('sliding', 2, 40)).toBe(true);
-    await new Promise((r) => setTimeout(r, 25));
-    expect(store.check('sliding', 2, 40)).toBe(true); // 2 vivos, cabe
-    expect(store.check('sliding', 2, 40)).toBe(false); // 3er hit dentro de la ventana de los 2 vivos: niega
-    await new Promise((r) => setTimeout(r, 25)); // el primer sello (t=0) ya salió de la ventana de 40ms
-    expect(store.check('sliding', 2, 40)).toBe(true); // solo 1 sello vivo (t=25) + este nuevo = 2, cabe
+    // Reloj falso en vez de setTimeout(real) + Date.now()(real): antes, este
+    // test dependía de que el wall-clock real cumpliera los 25ms/40ms exactos
+    // que asume cada aserción — bajo carga de máquina (varios `vitest run`
+    // en paralelo compitiendo por CPU, como en esta Mac con varios
+    // constructores a la vez) el scheduler de Node puede atrasar el
+    // setTimeout lo suficiente para que un sello que "debía" seguir vivo ya
+    // no lo esté (o viceversa), hasta desde el hallazgo original: flaky
+    // conocido, ver progreso-r4-ci-typecheck-lint-tests.md. `vi.useFakeTimers()`
+    // fija tanto `Date.now()` como el scheduler de timers a un reloj virtual
+    // que solo avanza cuando el test se lo pide explícitamente
+    // (`vi.advanceTimersByTimeAsync`) — los 25ms/40ms dejan de ser una
+    // promesa sobre el wall-clock real y pasan a ser exactos siempre, sin
+    // importar cuánta CPU tenga libre la máquina en ese instante.
+    vi.useFakeTimers();
+    try {
+      const store = new InMemoryWindowStore();
+      expect(store.check('sliding', 2, 40)).toBe(true);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(store.check('sliding', 2, 40)).toBe(true); // 2 vivos, cabe
+      expect(store.check('sliding', 2, 40)).toBe(false); // 3er hit dentro de la ventana de los 2 vivos: niega
+      await vi.advanceTimersByTimeAsync(25); // el primer sello (t=0) ya salió de la ventana de 40ms
+      expect(store.check('sliding', 2, 40)).toBe(true); // solo 1 sello vivo (t=25) + este nuevo = 2, cabe
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reset() limpia el estado', () => {
