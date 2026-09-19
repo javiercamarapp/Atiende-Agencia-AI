@@ -352,3 +352,109 @@ begin;
 set local role anon;
 select * from core.list_automation_action_log_for_superadmin('00000000-0000-0000-0000-000000000202', 50) as should_fail;
 rollback;
+
+-- ═══ Blindaje de las 3 funciones INTERNAS (`core._desatascar_outbox_colgados`/
+--    `core._marcar_prospectos_sin_movimiento`/`core._reencolar_mensaje_muerto`)
+--    -- dos capas independientes, probadas por separado: (capa 1) REVOKE
+--    explícito de anon/authenticated/service_role -- ninguna de las dos
+--    debería poder ni EJECUTAR la función (permission denied); (capa 2) el
+--    guard de CONTEXTO dentro de cada función -- probado corriendo SIN
+--    `set local role` (la sesión por defecto de este script es el dueño
+--    real de la función, que retiene EXECUTE implícito pase lo que pase con
+--    el REVOKE de arriba -- exactamente el escenario "¿y si el REVOKE
+--    fallara o se revirtiera?" que motivó este blindaje) con un
+--    `auth.uid()` real pero SIN ningún intent legítimo confirmándose -- el
+--    guard interno debe rechazarla igual, DEMOSTRANDO que la capa 2 no
+--    depende en absoluto de la capa 1. ═══
+
+\echo '=== 31. _desatascar_outbox_colgados: sesion authenticated (superadmin real) NO puede ejecutarla directo -- permission denied (capa 1: revoke) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select * from core._desatascar_outbox_colgados(30) as should_fail;
+rollback;
+
+\echo '=== 32. _desatascar_outbox_colgados: sesion authenticated SIN auth.uid() (simulando sistema) tampoco puede ejecutarla directo -- permission denied (capa 1: revoke) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select * from core._desatascar_outbox_colgados(30) as should_fail;
+rollback;
+
+\echo '=== 33. _desatascar_outbox_colgados: anon no puede ni ejecutar la funcion ==='
+begin;
+set local role anon;
+select * from core._desatascar_outbox_colgados(30) as should_fail;
+rollback;
+
+\echo '=== 34. _desatascar_outbox_colgados: AUNQUE tuviera EXECUTE (sesion sin cambio de rol, dueño real), un superadmin SIN un intent ejecutar_mantenimiento_ahora confirmandose es RECHAZADO por el guard interno (capa 2, independiente del revoke) ==='
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select * from core._desatascar_outbox_colgados(30) as should_fail;
+rollback;
+
+\echo '=== 35. _marcar_prospectos_sin_movimiento: sesion authenticated (superadmin real) NO puede ejecutarla directo -- permission denied (capa 1: revoke) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select * from core._marcar_prospectos_sin_movimiento(14) as should_fail;
+rollback;
+
+\echo '=== 36. _marcar_prospectos_sin_movimiento: sesion authenticated SIN auth.uid() tampoco puede ejecutarla directo -- permission denied (capa 1: revoke) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select * from core._marcar_prospectos_sin_movimiento(14) as should_fail;
+rollback;
+
+\echo '=== 37. _marcar_prospectos_sin_movimiento: anon no puede ni ejecutar la funcion ==='
+begin;
+set local role anon;
+select * from core._marcar_prospectos_sin_movimiento(14) as should_fail;
+rollback;
+
+\echo '=== 38. _marcar_prospectos_sin_movimiento: AUNQUE tuviera EXECUTE, un superadmin SIN un intent ejecutar_mantenimiento_ahora confirmandose es RECHAZADO por el guard interno (capa 2) ==='
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select * from core._marcar_prospectos_sin_movimiento(14) as should_fail;
+rollback;
+
+\echo '=== 39. _reencolar_mensaje_muerto: sesion authenticated (superadmin real) NO puede ejecutarla directo -- permission denied (capa 1: revoke) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select core._reencolar_mensaje_muerto('00000000-0000-0000-0000-000000000000'::uuid, 'hoteles', '00000000-0000-0000-0000-000000000224') as should_fail;
+rollback;
+
+\echo '=== 40. _reencolar_mensaje_muerto: sesion authenticated SIN auth.uid() (simulando sistema) tampoco puede ejecutarla directo -- permission denied (capa 1: revoke) -- NUNCA hay un caso legitimo de sistema para esta funcion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select core._reencolar_mensaje_muerto('00000000-0000-0000-0000-000000000000'::uuid, 'hoteles', '00000000-0000-0000-0000-000000000224') as should_fail;
+rollback;
+
+\echo '=== 41. _reencolar_mensaje_muerto: anon no puede ni ejecutar la funcion ==='
+begin;
+set local role anon;
+select core._reencolar_mensaje_muerto('00000000-0000-0000-0000-000000000000'::uuid, 'hoteles', '00000000-0000-0000-0000-000000000224') as should_fail;
+rollback;
+
+\echo '=== 42. _reencolar_mensaje_muerto: AUNQUE tuviera EXECUTE, un superadmin real SIN un intent reencolar_mensaje_muerto confirmandose (id inventado) es RECHAZADO por el guard interno (capa 2) -- nunca reencola nada (el ROLLBACK del propio bloque ya garantiza que el mensaje no cambió, no hace falta un SELECT de verificación después del error: un statement DESPUÉS de uno fallido en la misma transacción solo vería "current transaction is aborted") ==='
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select core._reencolar_mensaje_muerto('00000000-0000-0000-0000-000000000000'::uuid, 'hoteles', '00000000-0000-0000-0000-000000000224') as should_fail;
+rollback;
+
+\echo '=== 43. _reencolar_mensaje_muerto: sesion de SISTEMA (auth.uid() null), sin cambiar de rol (capa 2), es RECHAZADA SIEMPRE -- creado_por nunca puede ser igual a un auth.uid() nulo, esta funcion NUNCA tiene un caso legitimo de sistema ==='
+begin;
+select set_config('request.jwt.claim.sub', '', true);
+select core._reencolar_mensaje_muerto('00000000-0000-0000-0000-000000000000'::uuid, 'hoteles', '00000000-0000-0000-0000-000000000224') as should_fail;
+rollback;
+
+\echo '=== 44. _reencolar_mensaje_muerto: un intent REAL, confirmado y YA ejecutado (estado != pending) NO puede reutilizarse para una segunda llamada directa al helper -- el mensaje sigue igual ==='
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select id as intent_id into temp t44 from core.crear_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', 'reencolar_mensaje_muerto', jsonb_build_object('queue', 'hoteles', 'mensajeId', '00000000-0000-0000-0000-000000000224'), 'x', 5);
+select core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t44));
+select core._reencolar_mensaje_muerto((select intent_id from t44), 'hoteles', '00000000-0000-0000-0000-000000000224') as should_fail;
+rollback;

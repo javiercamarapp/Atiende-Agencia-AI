@@ -41,12 +41,20 @@
 --
 --   2. `core.automation_action_log` + DOS pares de funciones
 --      SQL de automatización, cada par con la MISMA lógica real compartida
---      en una función INTERNA sin guard (`core._desatascar_outbox_colgados`/
+--      en una función INTERNA (`core._desatascar_outbox_colgados`/
 --      `core._marcar_prospectos_sin_movimiento`, prefijo `_` = nunca
---      expuesta a `authenticated` -- `revoke all ... from public` sin
---      ningún `grant`, así que solo es invocable desde OTRA función
---      `security definer` con el MISMO dueño, ver abajo) más DOS entradas
---      públicas que la envuelven con guards DISTINTOS:
+--      pensada para exponerse a `authenticated`) cerrada por DOS mecanismos
+--      independientes: (a) `revoke all ... from public, anon, authenticated,
+--      service_role` explícito -- nunca solo `from public`, porque en el
+--      Supabase real de este proyecto un `ALTER DEFAULT PRIVILEGES`
+--      preexistente podría haber concedido EXECUTE directo a esos roles
+--      sobre funciones nuevas del schema `core`, grant que un `revoke ...
+--      from public` NO retira; (b) un guard de CONTEXTO dentro de cada
+--      función (ver su propio comentario) que no depende en absoluto de
+--      GRANT/REVOKE -- solo actúan en sesión de sistema, o con un intent
+--      `ejecutar_mantenimiento_ahora` REALMENTE confirmándose para ese
+--      mismo caller en esa misma transacción. Más DOS entradas públicas que
+--      las envuelven con guards DISTINTOS:
 --        - `core.desatascar_outbox_colgados_for_system` /
 --          `core.marcar_prospectos_sin_movimiento_for_system` — guard
 --          SOLO-SISTEMA (`auth.uid() is not null -> 42501`), invocadas por
@@ -216,6 +224,31 @@ declare
   v_id uuid;
   v_count bigint;
 begin
+  -- Defensa en profundidad, INDEPENDIENTE del REVOKE de abajo (ver ese
+  -- comentario para el porqué no basta con revoke): esta función solo hace
+  -- algo real en dos contextos -- sesión de SISTEMA (`auth.uid() is null`,
+  -- invocada por `desatascar_outbox_colgados_for_system`, el cron), o una
+  -- sesión de superadmin con un intent `ejecutar_mantenimiento_ahora`
+  -- REALMENTE confirmándose para ESE MISMO caller en ESTA MISMA transacción
+  -- (`confirmado_en is not null and estado = 'pending'` -- esa combinación
+  -- SOLO existe entre el UPDATE atómico de claim y el UPDATE final de
+  -- `confirmar_superadmin_action_intent_for_superadmin`, nunca fuera de esa
+  -- ventana, y `core.superadmin_action_intent` no tiene NINGÚN GRANT directo
+  -- -- nadie puede fabricar esa fila desde afuera). Un `authenticated`
+  -- cualquiera que de algún modo obtuviera EXECUTE sobre esta función
+  -- (p. ej. un `ALTER DEFAULT PRIVILEGES` preexistente en el proyecto real
+  -- de Supabase que el REVOKE de abajo ya neutraliza, pero esto es
+  -- redundante a propósito) sigue sin poder pasar este chequeo.
+  if auth.uid() is not null and not exists (
+    select 1 from core.superadmin_action_intent i
+    where i.creado_por = auth.uid()
+      and i.tipo = 'ejecutar_mantenimiento_ahora'
+      and i.confirmado_en is not null
+      and i.estado = 'pending'
+  ) then
+    raise exception '_desatascar_outbox_colgados: contexto de invocación inválido (requiere sesión de sistema, o un intent ejecutar_mantenimiento_ahora confirmándose para este caller)' using errcode = '42501';
+  end if;
+
   v_count := 0;
   for v_id in
     update citas.messaging_outbox
@@ -284,7 +317,17 @@ begin
 end;
 $$;
 
-revoke all on function core._desatascar_outbox_colgados(integer) from public;
+-- REVOKE explícito de `anon`/`authenticated`/`service_role`, NO solo `public`
+-- -- `revoke ... from public` por sí solo NO alcanza en el Supabase real de
+-- este proyecto: un `ALTER DEFAULT PRIVILEGES` preexistente ahí (fuera del
+-- control de esta migración) podría haber concedido EXECUTE directo a esos
+-- roles sobre funciones nuevas del schema `core`, y ese grant directo
+-- SOBREVIVE un `revoke ... from public` (que solo retira el privilegio
+-- implícito de PUBLIC). Un REVOKE explícito por rol siempre gana sin
+-- importar CÓMO se originó el grant -- combinado con el guard de arriba
+-- (que no depende en absoluto de GRANT/REVOKE), esta función queda cerrada
+-- por dos mecanismos independientes.
+revoke all on function core._desatascar_outbox_colgados(integer) from public, anon, authenticated, service_role;
 -- SIN grant a nadie -- función interna, solo invocable desde otra función
 -- `security definer` del MISMO dueño (las dos de abajo).
 
@@ -325,6 +368,21 @@ declare
   v_id uuid;
   v_empresa text;
 begin
+  -- Defensa en profundidad, INDEPENDIENTE del REVOKE de abajo -- MISMO
+  -- criterio EXACTO que `core._desatascar_outbox_colgados` (ver ese
+  -- comentario para el detalle completo del porqué): solo sesión de
+  -- sistema, o un intent `ejecutar_mantenimiento_ahora` REALMENTE
+  -- confirmándose para este caller en esta misma transacción.
+  if auth.uid() is not null and not exists (
+    select 1 from core.superadmin_action_intent i
+    where i.creado_por = auth.uid()
+      and i.tipo = 'ejecutar_mantenimiento_ahora'
+      and i.confirmado_en is not null
+      and i.estado = 'pending'
+  ) then
+    raise exception '_marcar_prospectos_sin_movimiento: contexto de invocación inválido (requiere sesión de sistema, o un intent ejecutar_mantenimiento_ahora confirmándose para este caller)' using errcode = '42501';
+  end if;
+
   for v_id, v_empresa in
     update core.prospecto p
     set necesita_seguimiento_desde = now()
@@ -343,7 +401,11 @@ begin
 end;
 $$;
 
-revoke all on function core._marcar_prospectos_sin_movimiento(integer) from public;
+-- REVOKE explícito de `anon`/`authenticated`/`service_role` -- mismo
+-- criterio EXACTO que `core._desatascar_outbox_colgados` (ver ese
+-- comentario para el detalle completo del porqué un simple `from public`
+-- no basta en el Supabase real de este proyecto).
+revoke all on function core._marcar_prospectos_sin_movimiento(integer) from public, anon, authenticated, service_role;
 -- SIN grant a nadie -- función interna, mismo criterio que la de outbox.
 
 create or replace function core.marcar_prospectos_sin_movimiento_for_system(p_umbral_dias integer default 14)
@@ -487,18 +549,38 @@ $$;
 revoke all on function core.cancelar_superadmin_action_intent_for_superadmin(uuid, uuid) from public;
 grant execute on function core.cancelar_superadmin_action_intent_for_superadmin(uuid, uuid) to authenticated;
 
--- Reencola UNA fila concreta en estado 'dead' de UNA cola concreta. Interna
--- (prefijo `_`, sin grant) -- `p_queue` se valida contra una lista cerrada
--- vía `if/elsif` LITERAL (nunca SQL dinámico con un identificador recibido
--- por parámetro). Re-valida `status = 'dead'` en el propio WHERE del UPDATE
--- (el mundo pudo cambiar desde que se creó el intent -- alguien más ya lo
--- reencoló, o el dispatcher ya lo movió) -- devuelve `false` si no tocó
--- ninguna fila, nunca lanza por "ya no está dead". Resetea `attempts`/
--- `next_attempt_at`/`claimed_at` donde la columna existe (un reencolado
--- humano deliberado merece intentos frescos); conserva el último error
--- histórico (`last_error`/`last_error_class`) tal cual -- nunca se borra el
--- rastro de qué lo mató la primera vez.
-create or replace function core._reencolar_mensaje_muerto(p_queue text, p_mensaje_id uuid)
+-- Reencola UNA fila concreta en estado 'dead' de UNA cola concreta -- esta
+-- es la función de MAYOR riesgo de las 3 internas: termina en un ENVÍO REAL
+-- a un cliente cuando corra el dispatcher, así que su defensa en
+-- profundidad es la más estricta de las tres. Interna (prefijo `_`) --
+-- `p_queue` se valida contra una lista cerrada vía `if/elsif` LITERAL
+-- (nunca SQL dinámico con un identificador recibido por parámetro).
+--
+-- `p_intent_id` es el contexto explícito exigido: esta función SOLO actúa
+-- si existe, EN ESTA MISMA transacción, un `core.superadmin_action_intent`
+-- con ese id, tipo `reencolar_mensaje_muerto`, `creado_por = auth.uid()`,
+-- `confirmado_en is not null and estado = 'pending'` (esa combinación
+-- exacta SOLO existe entre el UPDATE atómico de claim y el UPDATE final de
+-- `confirmar_superadmin_action_intent_for_superadmin` -- nunca antes, nunca
+-- después, nunca para otro caller) Y cuyo `payload` coincide EXACTAMENTE
+-- con `p_queue`/`p_mensaje_id` -- nadie puede fabricar esa fila desde
+-- afuera (`core.superadmin_action_intent` no tiene NINGÚN GRANT directo).
+-- Esto es INDEPENDIENTE del REVOKE de abajo: aunque esta función tuviera
+-- EXECUTE expuesto por accidente (p. ej. un `ALTER DEFAULT PRIVILEGES`
+-- preexistente en el Supabase real de este proyecto), invocarla directo
+-- sigue siendo inútil sin ANTES haber pasado por el flujo completo de
+-- crear + confirmar el intent -- que es, precisamente, lo que este
+-- mecanismo entero existe para exigir.
+--
+-- Re-valida `status = 'dead'` en el propio WHERE del UPDATE (el mundo pudo
+-- cambiar desde que se creó el intent -- alguien más ya lo reencoló, o el
+-- dispatcher ya lo movió) -- devuelve `false` si no tocó ninguna fila,
+-- nunca lanza por "ya no está dead". Resetea `attempts`/`next_attempt_at`/
+-- `claimed_at` donde la columna existe (un reencolado humano deliberado
+-- merece intentos frescos); conserva el último error histórico
+-- (`last_error`/`last_error_class`) tal cual -- nunca se borra el rastro de
+-- qué lo mató la primera vez.
+create or replace function core._reencolar_mensaje_muerto(p_intent_id uuid, p_queue text, p_mensaje_id uuid)
 returns boolean
 language plpgsql
 security definer
@@ -507,6 +589,19 @@ as $$
 declare
   v_rows integer;
 begin
+  if not exists (
+    select 1 from core.superadmin_action_intent i
+    where i.id = p_intent_id
+      and i.tipo = 'reencolar_mensaje_muerto'
+      and i.creado_por = auth.uid()
+      and i.confirmado_en is not null
+      and i.estado = 'pending'
+      and i.payload ->> 'queue' = p_queue
+      and (i.payload ->> 'mensajeId')::uuid = p_mensaje_id
+  ) then
+    raise exception '_reencolar_mensaje_muerto: contexto de invocación inválido (requiere un intent reencolar_mensaje_muerto confirmándose para este caller, con el mismo queue/mensajeId)' using errcode = '42501';
+  end if;
+
   if p_queue = 'citas' then
     update citas.messaging_outbox set status = 'pending', attempts = 0, claimed_at = null, next_attempt_at = now()
     where id = p_mensaje_id and status = 'dead';
@@ -534,7 +629,11 @@ begin
 end;
 $$;
 
-revoke all on function core._reencolar_mensaje_muerto(text, uuid) from public;
+-- REVOKE explícito de `anon`/`authenticated`/`service_role` -- mismo
+-- criterio EXACTO que `core._desatascar_outbox_colgados` (ver ese
+-- comentario), redundante A PROPÓSITO con el guard de contexto de arriba:
+-- dos mecanismos independientes para la función de mayor riesgo de las 3.
+revoke all on function core._reencolar_mensaje_muerto(uuid, text, uuid) from public, anon, authenticated, service_role;
 -- SIN grant a nadie -- función interna, invocada SOLO desde
 -- `core.confirmar_superadmin_action_intent_for_superadmin` de abajo.
 
@@ -605,7 +704,7 @@ begin
     if v_intent.tipo = 'reencolar_mensaje_muerto' then
       v_queue := v_intent.payload ->> 'queue';
       v_mensaje_id := (v_intent.payload ->> 'mensajeId')::uuid;
-      v_reencolado := core._reencolar_mensaje_muerto(v_queue, v_mensaje_id);
+      v_reencolado := core._reencolar_mensaje_muerto(p_intent_id, v_queue, v_mensaje_id);
       if not v_reencolado then
         raise exception 'el mensaje % de la cola % ya no está en estado dead (lo movieron, ya se reencoló antes, o ya no existe)', v_mensaje_id, v_queue;
       end if;
