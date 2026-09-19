@@ -283,3 +283,73 @@ describe("r4-fix-crons-transaccion-por-unidad -- transacción por organización 
     expect(recipients).toEqual(["owner-a@empresa.mx", "owner-c@empresa.mx"]);
   });
 });
+
+// r4-fix-crons-transaccion-por-unidad (corrección de PR #163, bloqueante #3) --
+// reproduce el hallazgo "PEOR de lo reportado" que este archivo SÍ corrigió en
+// despachos/cobranza-reminders.ts pero no aquí: dentro de la transacción por
+// organización que YA introdujo el fix de arriba, los pasos 1/2/3 seguían usando las
+// variantes `tryEnqueue*` (best-effort, tragan CUALQUIER error SQL real) en vez de las
+// `*Core` -- un error SQL real en el ÚLTIMO paso (encolar la alerta de factura
+// vencida) quedaba invisible: no aparecía en `failures[]`, la organización se
+// reportaba `ok` con sus 3 conteos > 0, y el COMMIT final -- sobre una transacción
+// abortada -- revertía en silencio TODOS los pasos de esa organización (incluidos los
+// recordatorios de plazo/renovación que sí habían corrido bien).
+describe("r4-fix-crons-transaccion-por-unidad -- swap a *Core (reproduce el hallazgo + prueba el fix)", () => {
+  const now = () => new Date("2026-09-14T12:00:00-06:00");
+
+  it("un error SQL real al encolar la alerta de factura vencida (paso 3) se reporta en error[] y revierte SOLO los 3 pasos de esa organización -- las demás organizaciones no se ven afectadas", async () => {
+    const orgB = randomUUID();
+    repo.seedOrganization({ id: orgB, slug: "org-b", name: "Org B" });
+    repo.seedNotificationRecipient(organizationId, { email: "owner-a@empresa.mx", fullName: "Owner A" });
+    repo.seedNotificationRecipient(orgB, { email: "owner-b@empresa.mx", fullName: "Owner B" });
+
+    // Org A: recordatorio de plazo (paso 1) -- para probar que un fallo del paso 3 de
+    // B NUNCA la toca (transacciones ya aisladas por organización).
+    await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-a", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
+
+    // Org B: recordatorio de plazo (paso 1, SÍ corre bien) + factura vencida (paso 3,
+    // donde se simula el error SQL real al encolar).
+    await repo.upsertTenderManual(orgB, baseInput({ externalId: "EXP-b-deadline", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
+    const { tender: tenderInvoiceB } = await repo.upsertTenderManual(orgB, baseInput({ externalId: "EXP-b-cobranza" }));
+    await repo.createContract(orgB, tenderInvoiceB.id, randomUUID());
+    await repo.createContractInvoice(orgB, tenderInvoiceB.id, { concepto: "Factura vencida", amount: "5000.00", invoiceVerifiedOn: "2026-06-01", actorId: randomUUID() });
+
+    const { proxy, reset } = makeAbortSimulatingRepo(
+      repo,
+      (method, args) => method === "enqueueMessagingOutbox" && args[0] === orgB && args[2] === "contract.invoice_overdue",
+      "23505: duplicate key value violates unique constraint (SQL real simulado)",
+    );
+    const perCallTxn = makePerCallTransactionalWithRepo(repo);
+    const withRepo = async <T>(fn: (r: LicitacionesRepository) => Promise<T>): Promise<T> => {
+      try {
+        return await perCallTxn(() => fn(proxy));
+      } finally {
+        reset();
+      }
+    };
+
+    const sweep = await runAlertNotificationSweep(withRepo, { now, todayIsoDate: "2026-09-14" });
+
+    const resultA = sweep.find((r) => r.organizationId === organizationId)!;
+    const resultB = sweep.find((r) => r.organizationId === orgB)!;
+    expect(resultA.error).toBeUndefined();
+    expect(resultA.deadlineReminders.emailsEnqueued).toBe(1);
+
+    // (a) el fallo SÍ se reporta -- antes (tryEnqueue*), `resultB.error` quedaba
+    //     `undefined` y `collectionAlerts.emailsEnqueued` reportaba 1 aunque el
+    //     INSERT real nunca sobrevivió al COMMIT.
+    expect(resultB.error).toContain("23505");
+
+    // (b) la transacción de B (los 3 pasos comparten UNA sola, ver comentario de
+    //     cabecera de `runAlertNotificationSweep`) se revirtió COMPLETA -- ni
+    //     siquiera el recordatorio de plazo del paso 1, que sí había corrido bien,
+    //     sobrevive. Antes de este fix, el paso 1 de B SÍ quedaba commiteado en
+    //     silencio en la corrida real de Postgres (el fake `makePerCallTransactionalWithRepo`
+    //     solo revierte si `fn` lanza -- que es justo lo que el swap a `*Core` logra:
+    //     antes `tryEnqueue*` tragaba el error y `fn` resolvía normal, así que ni
+    //     siquiera este fake habría detectado la reversión real de Postgres).
+    const outbox = repo.getMessagingOutbox();
+    const recipients = outbox.map((j) => (j.payload as { to: string }).to).sort();
+    expect(recipients).toEqual(["owner-a@empresa.mx"]);
+  });
+});

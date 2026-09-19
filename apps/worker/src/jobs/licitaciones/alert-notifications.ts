@@ -36,7 +36,7 @@
 // organización (`@atiende/domain-licitaciones::alert-notifications.ts`,
 // que a su vez usa el MISMO motor de correo vía Resend que citas/rentas ya
 // tienen — nunca se reinventa un canal nuevo).
-import { tryEnqueueDeadlineReminderEmails, tryEnqueueOverdueInvoiceEmails, tryEnqueueRenewalAlertEmails } from "@atiende/domain-licitaciones";
+import { enqueueDeadlineReminderEmailsCore, enqueueOverdueInvoiceEmailsCore, enqueueRenewalAlertEmailsCore } from "@atiende/domain-licitaciones";
 import type { LicitacionesRepository, ScanRenewalAlertsInput } from "@atiende/domain-licitaciones";
 
 /**
@@ -175,15 +175,28 @@ export async function runAlertNotificationSweep(withRepo: WithLicitacionesRepo, 
       const result = await withRepo(async (repo) => {
         // ---- 1) Recordatorios de plazo (Fase 8, reusa runDeadlineReminderSweep tal cual, sin reimplementar el escaneo). ----
         const deadlineScan = await repo.scanUpcomingDeadlineReminders(org.id, { windowDays: options.deadlineWindowDays, nowIso: options.now ? options.now().toISOString() : undefined });
-        const deadlineEmails = await tryEnqueueDeadlineReminderEmails(repo, org.id, deadlineScan.reminders);
+        // r4-fix-crons-transaccion-por-unidad (corrección de PR #163, bloqueante #3):
+        // ANTES se usaban las variantes `tryEnqueue*` (best-effort, atrapan CUALQUIER
+        // error -- incluido un error SQL real de `listOrganizationNotificationRecipients`/
+        // `enqueueMessagingOutbox` -- y devuelven `{recipients:0,enqueued:0}`). Dentro
+        // de ESTA transacción por organización, un error SQL real ahí quedaba
+        // invisible: no aparecía en `failures[]`, la ruta respondía `ok:true`, y el
+        // COMMIT final -- sobre una transacción abortada -- revertía en silencio TODA
+        // la organización (incluidos los pasos 1/2 de arriba, que sí habían corrido
+        // bien). Con las variantes `*Core` (dejan ver el error real), un fallo aquí
+        // SÍ se propaga -- lo captura el catch por organización de abajo (que reporta
+        // el error real en `failures[]` y hace ROLLBACK limpio de SOLO esa
+        // organización, vía `withRepo`), nunca se traga en silencio. Mismo swap ya
+        // hecho en `../despachos/cobranza-reminders.ts` (`enqueueCollectionReminderEmailForSystemCore`).
+        const deadlineEmails = await enqueueDeadlineReminderEmailsCore(repo, org.id, deadlineScan.reminders);
 
         // ---- 2) Alertas de renovación (Fase 6, `scanRenewalAlerts` ya existía -- lo nuevo es invocarlo desde un barrido transversal). `systemScanRenewalAlerts`: ver comentario de cabecera de `runRenewalAlertSweep`, arriba -- exclusiva de sesión de sistema. ----
         const renewalScan = await repo.systemScanRenewalAlerts(org.id, { leadDaysThresholds: options.renewalLeadDaysThresholds, todayIsoDate: options.todayIsoDate });
-        const renewalEmails = await tryEnqueueRenewalAlertEmails(repo, org.id, renewalScan.alerts);
+        const renewalEmails = await enqueueRenewalAlertEmailsCore(repo, org.id, renewalScan.alerts);
 
         // ---- 3) Facturas vencidas de cobranza (Fase 6, nueva lectura transversal en esta fase). ----
         const overdueInvoices = await repo.listOverdueContractInvoices(org.id, options.todayIsoDate);
-        const collectionEmails = await tryEnqueueOverdueInvoiceEmails(repo, org.id, overdueInvoices);
+        const collectionEmails = await enqueueOverdueInvoiceEmailsCore(repo, org.id, overdueInvoices);
 
         return {
           organizationId: org.id,
