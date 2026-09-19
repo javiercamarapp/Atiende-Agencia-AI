@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchCustomerDetail, fetchCustomers } from "../src/verticals/citas/lib/customers-client.ts";
+import { fetchCustomerDetail, fetchCustomers, updateCustomerEmail } from "../src/verticals/citas/lib/customers-client.ts";
 
 const CUSTOMER_ROW = { id: "cus-1", full_name: "Ana Torres", phone: "9991112233", email: null };
 
@@ -70,5 +70,35 @@ describe("fetchCustomerDetail", () => {
   it("404 -> error real", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "Cliente no encontrado." }), { status: 404 })) as unknown as typeof fetch;
     await expect(fetchCustomerDetail(fetchImpl, "http://api.local", "tok", "prop-1", "no-existe")).rejects.toThrow("Cliente no encontrado.");
+  });
+});
+
+// Fase 6 §2 (seguimiento, "citas-sync-errores-visibles")
+describe("updateCustomerEmail", () => {
+  it("hace PATCH con el correo y mapea la respuesta", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/v1/citas/properties/prop-1/customers/cus-1");
+      expect(init?.method).toBe("PATCH");
+      expect(JSON.parse(init!.body as string)).toEqual({ email: "ana.torres@example.test" });
+      return new Response(JSON.stringify({ customer: { ...CUSTOMER_ROW, email: "ana.torres@example.test" } }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await updateCustomerEmail(fetchImpl, "http://api.local", "tok", "prop-1", "cus-1", "ana.torres@example.test");
+    expect(result.email).toBe("ana.torres@example.test");
+  });
+
+  it("email: null manda { email: null } -- nunca es obligatorio", async () => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(JSON.parse(init!.body as string)).toEqual({ email: null });
+      return new Response(JSON.stringify({ customer: CUSTOMER_ROW }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await updateCustomerEmail(fetchImpl, "http://api.local", "tok", "prop-1", "cus-1", null);
+    expect(result.email).toBeNull();
+  });
+
+  it("un formato inválido (400) propaga el error real", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "email: formato inválido" }), { status: 400 })) as unknown as typeof fetch;
+    await expect(updateCustomerEmail(fetchImpl, "http://api.local", "tok", "prop-1", "cus-1", "no-es-un-correo")).rejects.toThrow("email: formato inválido");
   });
 });

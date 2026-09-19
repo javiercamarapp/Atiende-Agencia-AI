@@ -35,7 +35,7 @@
 // (apps/api) usa las versiones genéricas nuevas (`tryTriggerCalendarSync`/
 // `syncPendingAppointmentsMultiProvider`) con un resolver que cubre las tres
 // plataformas (ver calendar-sync-resolver-factory.ts).
-import { CalendarEventNotFoundError, isInvalidGrantError } from "./google-calendar-port.ts";
+import { CalendarEventNotFoundError, GoogleCalendarApiError, isInvalidGrantError } from "./google-calendar-port.ts";
 import type { GoogleCalendarPort } from "./google-calendar-port.ts";
 import { CalComApiError } from "./calcom-port.ts";
 import { CalDavApiError } from "./caldav-port.ts";
@@ -93,12 +93,17 @@ export interface SyncSummary {
   synced: number;
   retried: number;
   exhausted: number;
+  /** Fase 6 §2 (seguimiento) — citas que el motor dejó de reintentar de inmediato
+   * por un rechazo PERMANENTE de validación (`google_sync_status = 'invalid'`,
+   * ver `isPermanentValidationError`) — distinto de `exhausted` (backoff agotado
+   * tras `MAX_SYNC_ATTEMPTS` intentos que SÍ podían haber funcionado). */
+  invalid: number;
   skipped: number;
   errors: { appointmentId: string; error: string }[];
 }
 
 function emptySummary(): SyncSummary {
-  return { processed: 0, synced: 0, retried: 0, exhausted: 0, skipped: 0, errors: [] };
+  return { processed: 0, synced: 0, retried: 0, exhausted: 0, invalid: 0, skipped: 0, errors: [] };
 }
 
 function buildEventSummary(row: AppointmentSyncRow): string {
@@ -126,6 +131,105 @@ function permanentAuthErrorMessage(platform: CalendarPlatform): string {
   if (platform === "google") return "Google revocó el acceso (invalid_grant) — el proveedor debe reconectar su Google Calendar.";
   if (platform === "calcom") return "Cal.com rechazó la API key (401/403) — probablemente fue revocada. El proveedor debe reconectar Cal.com.";
   return "El servidor CalDAV rechazó las credenciales (401/403) — probablemente la contraseña de aplicación fue revocada. El proveedor debe reconectar CalDAV.";
+}
+
+/** Códigos HTTP que, para Google/Cal.com/CalDAV, significan "esta solicitud en
+ * particular está mal formada o el proveedor la rechazó por una regla de negocio
+ * suya (no una credencial inválida)" — nunca se va a arreglar solo reintentando
+ * la MISMA cita con los MISMOS datos, a diferencia de un 5xx/timeout/429 (ver
+ * `isPermanentValidationError` de abajo). 401/403 ya los intercepta
+ * `isPermanentAuthError` ANTES de llegar aquí (mismo error, dos lecturas: sigue
+ * siendo la credencial); 404 normalmente se intercepta antes como
+ * `CalendarEventNotFoundError` en los tres adaptadores reales (ver
+ * google-calendar-port.ts/calcom-port.ts/caldav-port.ts) — queda listado aquí
+ * igual por si algún adaptador futuro no hace esa distinción, para que ese caso
+ * tampoco se reintente 5 veces a ciegas. 409/412 de CalDAV (conflicto de ETag,
+ * `CalendarConflictError`) NO están aquí a propósito: ese es un caso de
+ * concurrencia optimista real (releer y reintentar SÍ puede funcionar), distinto
+ * de una validación permanente. */
+const VALIDATION_STATUS_CODES = new Set([400, 404, 409, 422]);
+
+/** Fallo PERMANENTE de validación (4xx real del proveedor que no es de
+ * credencial) — ver la nota de `VALIDATION_STATUS_CODES`. Se evalúa DESPUÉS de
+ * `isPermanentAuthError` en el catch de `syncOneAppointmentRow`, así que un
+ * 401/403 nunca llega aquí. */
+function isPermanentValidationError(err: unknown, platform: CalendarPlatform): boolean {
+  if (platform === "google" && err instanceof GoogleCalendarApiError) return VALIDATION_STATUS_CODES.has(err.status);
+  if (platform === "calcom" && err instanceof CalComApiError) return VALIDATION_STATUS_CODES.has(err.status);
+  if (platform === "caldav" && err instanceof CalDavApiError) return VALIDATION_STATUS_CODES.has(err.status);
+  return false;
+}
+
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+const PHONE_RE = /\+?\d[\d\s().-]{6,}\d/g;
+const MAX_SANITIZED_REASON_LEN = 300;
+
+/** Nunca vuelca el cuerpo crudo de la respuesta de un proveedor (puede traer el
+ * nombre/correo/teléfono del cliente que el propio proveedor rechazó) — sanea
+ * (redacta lo que luce a correo/teléfono), colapsa espacios y trunca. Usado tanto
+ * para el motivo que se guarda en la cita (`google_sync_error`) como para el que
+ * ve el staff en el panel. */
+export function sanitizeProviderSyncReason(raw: string, maxLen = MAX_SANITIZED_REASON_LEN): string {
+  const redacted = raw.replace(EMAIL_RE, "[correo]").replace(PHONE_RE, "[teléfono]");
+  const collapsed = redacted.replace(/\s+/g, " ").trim();
+  return collapsed.length > maxLen ? `${collapsed.slice(0, maxLen)}…` : collapsed;
+}
+
+function providerLabel(platform: CalendarPlatform): string {
+  if (platform === "google") return "Google Calendar";
+  if (platform === "calcom") return "Cal.com";
+  return "el servidor CalDAV";
+}
+
+/** Intenta sacar solo el MENSAJE semántico de un cuerpo JSON de error (p.ej.
+ * `{"message": "..."}` o `{"error": {"message": "..."}}`, las dos formas reales
+ * que usan los simuladores/adaptadores de este repo) en vez de devolver el
+ * envelope JSON completo tal cual — un objeto anidado real (nombre/teléfono/
+ * correo del cliente que el proveedor devolvió de vuelta, por ejemplo) nunca
+ * debe reproducirse estructuralmente en `google_sync_error`. Cuerpo no-JSON (o
+ * sin campo de mensaje reconocible): se devuelve tal cual, para que el caller lo
+ * sanee como texto plano (nunca se pierde silenciosamente un diagnóstico real). */
+function extractProviderMessage(rawBody: string): string {
+  try {
+    const parsed = JSON.parse(rawBody) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      if (typeof obj.message === "string") return obj.message;
+      const nestedError = obj.error;
+      if (nestedError && typeof nestedError === "object" && typeof (nestedError as Record<string, unknown>).message === "string") {
+        return (nestedError as Record<string, unknown>).message as string;
+      }
+    }
+  } catch {
+    // cuerpo no es JSON -- se trata como texto plano abajo.
+  }
+  return rawBody;
+}
+
+/** Motivo NORMALIZADO y legible en español para un rechazo permanente de
+ * validación — nunca el cuerpo crudo de la respuesta (ver
+ * `sanitizeProviderSyncReason`/`extractProviderMessage`). Caso especial
+ * documentado por el diseño de esta fase: Cal.com puede exigir `attendeeEmail`
+ * según cómo esté configurado el event type (ver calcom-port.ts) — cuando ESTA
+ * cita no tiene correo de cliente guardado, es el motivo real más probable y el
+ * más accionable de comunicar (dice exactamente qué falta y qué hacer), así que
+ * se usa un mensaje curado en vez del texto del proveedor. Cualquier otro
+ * rechazo de validación (Cal.com con correo ya presente, CalDAV, Google) cae al
+ * mensaje genérico con el código HTTP real + el mensaje semántico extraído,
+ * para no perder información real de depuración. */
+function permanentValidationReason(err: unknown, platform: CalendarPlatform, row: AppointmentSyncRow): string {
+  const isCreate = !row.googleEventId; // pending sin evento aún -> createEvent, no updateEvent.
+  if (platform === "calcom" && isCreate && !row.customerEmail) {
+    return "Cal.com exige el correo del cliente y esta cita no lo tiene. Agrega un correo al cliente desde su ficha en el panel y vuelve a intentar la sincronización.";
+  }
+  const label = providerLabel(platform);
+  if (err instanceof CalComApiError || err instanceof CalDavApiError || err instanceof GoogleCalendarApiError) {
+    const raw = err.body || err.message;
+    const snippet = sanitizeProviderSyncReason(extractProviderMessage(raw));
+    return `${label} rechazó esta cita (código ${err.status}): ${snippet}`;
+  }
+  const message = err instanceof Error ? err.message : "solicitud inválida";
+  return `${label} rechazó esta cita: ${sanitizeProviderSyncReason(message)}`;
 }
 
 /** Marca la CUENTA (no la cita) en error permanente — dispatcha a la tabla correcta
@@ -179,13 +283,14 @@ async function syncOneAppointmentRow(repo: CitasRepository, resolveSyncPort: Res
 
     // google_sync_status === 'pending'
     if (!row.googleEventId) {
-      // NOTA honesta: este repositorio no guarda el correo del cliente (solo
-      // teléfono/nombre, ver AppointmentSyncRow) — `attendeeEmail` queda sin
-      // enviar. Cal.com puede rechazar un booking sin correo de asistente según
-      // la configuración del event type; ese caso cae en el catch de abajo como
-      // cualquier otro fallo de sincronización (retry con backoff), nunca pierde
-      // la cita real. Recolectar correo del cliente es una decisión de producto
-      // fuera de alcance de este cambio.
+      // Fase 6 §2 (seguimiento) — `citas.customers.email` YA existía (columna
+      // opcional desde Fase 1); lo único que faltaba era mandarlo aquí.
+      // `attendeeEmail` queda `undefined` cuando el cliente no tiene correo
+      // guardado — Cal.com puede rechazar un booking sin correo de asistente
+      // según la configuración del event type; ese caso lo distingue
+      // `isPermanentValidationError` de abajo (rechazo permanente, con un motivo
+      // específico) de un fallo transitorio real (que sí sigue reintentando con
+      // backoff, sin perder nunca la cita real).
       const event = await calendarPort.createEvent({
         externalCalendarRef,
         summary: buildEventSummary(row),
@@ -193,6 +298,7 @@ async function syncOneAppointmentRow(repo: CitasRepository, resolveSyncPort: Res
         startTime: row.startsAt,
         endTime: row.endsAt,
         timeZone: row.timeZone,
+        attendeeEmail: row.customerEmail ?? undefined,
         attendeeName: row.customerName ?? undefined,
         attendeePhone: row.customerPhone ?? undefined,
       });
@@ -220,6 +326,19 @@ async function syncOneAppointmentRow(repo: CitasRepository, resolveSyncPort: Res
       await markAccountSyncError(repo, calendarPort.platform, row.providerId, permanentAuthErrorMessage(calendarPort.platform));
       await repo.markAppointmentGoogleSyncExhausted(row.id, attemptNum, "Cuenta desconectada (credencial inválida/revocada) — reconectar el calendario.");
       summary.exhausted += 1;
+      return;
+    }
+
+    if (isPermanentValidationError(err, calendarPort.platform)) {
+      // Fase 6 §2 (seguimiento) — rechazo PERMANENTE de validación: reintentar la
+      // MISMA cita con los MISMOS datos nunca va a funcionar (a diferencia de un
+      // 5xx/timeout/429, que sí puede resolverse solo), así que se detiene de
+      // inmediato sin esperar MAX_SYNC_ATTEMPTS — mismo criterio que
+      // isPermanentAuthError arriba, pero SIN tocar la cuenta del proveedor: la
+      // credencial sigue sirviendo, esto es sobre ESTA cita en particular (ver
+      // diseño de la cabecera del archivo).
+      await repo.markAppointmentGoogleSyncInvalid(row.id, attemptNum, permanentValidationReason(err, calendarPort.platform, row));
+      summary.invalid += 1;
       return;
     }
 

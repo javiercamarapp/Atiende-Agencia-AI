@@ -17,6 +17,7 @@ import { superadminBreakGlassRoutes } from "./routes/superadmin-break-glass.ts";
 import { superadminFacturacionRoutes } from "./routes/superadmin-facturacion.ts";
 import { superadminSaludRoutes } from "./routes/superadmin-salud.ts";
 import { superadminResumenRoutes } from "./routes/superadmin-resumen.ts";
+import { superadminAccionesRoutes } from "./routes/superadmin-acciones.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
@@ -33,6 +34,7 @@ import { despachosRoutes } from "./routes/verticals/despachos/despachos.ts";
 import { rentasRoutes } from "./routes/verticals/rentas/rentas.ts";
 import { whatsappDispatchRoutes } from "./routes/internal/whatsapp-dispatch.ts";
 import { resumenDiarioRoutes } from "./routes/internal/resumen-diario.ts";
+import { superadminMantenimientoRoutes } from "./routes/internal/superadmin-mantenimiento.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -69,6 +71,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminFacturacionRoutes(deps));
   app.route("/", superadminSaludRoutes(deps));
   app.route("/", superadminResumenRoutes(deps));
+  app.route("/", superadminAccionesRoutes(deps));
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
@@ -89,6 +92,9 @@ export function buildApp(deps: AppDeps): Hono {
   // Resumen diario automático -- plataforma compartida (no de un vertical),
   // mismo criterio que whatsappDispatchRoutes de arriba.
   app.route("/", resumenDiarioRoutes(deps));
+  // Automatizaciones seguras del back office de plataforma -- mismo criterio
+  // que resumenDiarioRoutes de arriba.
+  app.route("/", superadminMantenimientoRoutes(deps));
 
   return app;
 }

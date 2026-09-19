@@ -1,4 +1,4 @@
-import type { CoreRepository, CoreStaffRepository, LlmUsageRepository, ResumenDiarioRepository, SaludRepository } from "@atiende/db";
+import type { CoreRepository, CoreStaffRepository, LlmUsageRepository, ResumenDiarioRepository, SaludRepository, SuperadminAccionesRepository } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -307,6 +307,18 @@ export interface AppDeps {
    *  sobre `core.daily_ops_summary`, sesión del caller para las 2 lecturas
    *  `*ForSuperadmin` que alimentan la pantalla. */
   readonly resumenDiarioRepo: ResumenDiarioRepository;
+  /** Acciones sugeridas con confirmación + automatizaciones (back office de
+   *  plataforma, ver `routes/superadmin-acciones.ts` +
+   *  `routes/internal/superadmin-mantenimiento.ts` +
+   *  `superadmin-acciones/*`) — objeto FIJO, MISMO patrón EXACTO que
+   *  `saludRepo`/`resumenDiarioRepo` (ver
+   *  `packages/db/src/superadmin-acciones-repository.ts` y
+   *  `packages/db/migrations/0016_superadmin_acciones.sql`): sesión de
+   *  SISTEMA para las dos automatizaciones (`desatascarOutboxColgadosForSystem`/
+   *  `marcarProspectosSinMovimientoForSystem`, invocadas SOLO por el cron
+   *  `/internal/superadmin/mantenimiento`), sesión del caller para la
+   *  máquina de estados del intent y las 4 lecturas `*ForSuperadmin`. */
+  readonly accionesRepo: SuperadminAccionesRepository;
   /** Gateway LLM DEDICADO a la escalera `resumen-diario` -- DISTINTO de
    *  `llmGateway` de arriba (ese ata cada llamada a un `organization_id`
    *  real; el resumen diario es un gasto de PLATAFORMA, ver el comentario

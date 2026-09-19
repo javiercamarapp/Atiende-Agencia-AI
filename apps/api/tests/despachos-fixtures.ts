@@ -5,7 +5,7 @@
 // exactamente como lo haría un seed contra las migraciones SQL reales de
 // packages/domain-despachos/migrations/.
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -139,6 +139,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     saludRepo: new InMemorySaludRepository(),
     resumenDiarioRepo: new InMemoryResumenDiarioRepository(),
+    accionesRepo: new InMemorySuperadminAccionesRepository(),
     resumenDiarioLlmGateway: undefined,
   };
 

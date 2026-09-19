@@ -170,8 +170,21 @@ export type AppointmentActorChannel = AppointmentSource | "panel";
  * segunda transacción separada. `skipped` = el proveedor no tiene Google Calendar
  * conectado (no es un error a reintentar). `error` = se agotaron los reintentos
  * (`MAX_SYNC_ATTEMPTS`) o el refresh token quedó revocado — ver calendar-sync.ts.
+ *
+ * Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — `invalid`: el
+ * proveedor (Google/Cal.com/CalDAV) rechazó la cita con un fallo PERMANENTE de
+ * VALIDACIÓN (4xx que no es de credencial — p.ej. Cal.com exige `attendeeEmail` y
+ * esta cita no lo tiene, o el evento/booking en sí es inválido) — a diferencia de
+ * `error` (reintentos agotados contra un fallo que SÍ podía resolverse solo), un
+ * reintento automático de `invalid` nunca va a funcionar sin que alguien corrija
+ * el dato real que Cal.com/CalDAV/Google rechazó, así que el motor deja de
+ * reintentar de inmediato (ver `calendar-sync.ts::isPermanentValidationError`) y
+ * la cuenta del proveedor NO se marca en error (la credencial sigue sirviendo). El
+ * panel expone un botón "reintentar sincronización" que la regresa a `pending`
+ * tras que el staff corrija lo que haga falta (ver
+ * `retryAppointmentCalendarSyncFromPanel`).
  */
-export type GoogleSyncStatus = "pending" | "synced" | "error" | "skipped" | "pending_cancel" | "deleted";
+export type GoogleSyncStatus = "pending" | "synced" | "error" | "skipped" | "pending_cancel" | "deleted" | "invalid";
 
 export interface AppointmentRecord {
   readonly id: string;

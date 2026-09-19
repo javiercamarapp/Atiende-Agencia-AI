@@ -552,6 +552,7 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
       creadoPor: callerId,
       createdAt: now,
       updatedAt: now,
+      necesitaSeguimientoDesde: null,
     };
     this.prospectos.set(row.id, row);
     return row;
@@ -561,9 +562,21 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     if (!this.platformSuperadmins.has(callerId)) throw new Error("forbidden");
     const current = this.prospectos.get(prospectoId);
     if (!current) throw new ProspectoNotFoundError();
-    const updated: ProspectoRow = { ...current, estado: estado ?? current.estado, notas: notas ?? current.notas, updatedAt: new Date().toISOString() };
+    // Cualquier actualización real desmarca `necesitaSeguimientoDesde` --
+    // mismo criterio que `core.update_prospecto_for_superadmin` real (ver
+    // `packages/db/migrations/0016_superadmin_acciones.sql`).
+    const updated: ProspectoRow = { ...current, estado: estado ?? current.estado, notas: notas ?? current.notas, updatedAt: new Date().toISOString(), necesitaSeguimientoDesde: null };
     this.prospectos.set(prospectoId, updated);
     return updated;
+  }
+
+  /** Solo para tests -- marca un prospecto como "necesita seguimiento" sin
+   *  pasar por la automatización real (que este repo en memoria no simula,
+   *  mismo criterio que `InMemorySaludRepository.seedOutboxHealth`). */
+  seedProspectoNecesitaSeguimiento(prospectoId: string, desde: string): void {
+    const current = this.prospectos.get(prospectoId);
+    if (!current) return;
+    this.prospectos.set(prospectoId, { ...current, necesitaSeguimientoDesde: desde });
   }
 
   // Mismo rol de acceso total real por vertical que

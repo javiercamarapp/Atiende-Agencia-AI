@@ -8,8 +8,9 @@
 // de @atiende/ui (Card/Table/Input/Button) — la lógica de paginación, búsqueda y
 // fetch de arriba es exactamente la misma.
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, CalendarClock, ChevronLeft, ChevronRight, Search, Users } from "lucide-react";
+import { ArrowLeft, CalendarClock, ChevronLeft, ChevronRight, Mail, Pencil, Search, Users } from "lucide-react";
 import {
   Button,
   Card,
@@ -28,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@atiende/ui";
-import { fetchCustomerDetail, fetchCustomers } from "../lib/customers-client.ts";
+import { fetchCustomerDetail, fetchCustomers, updateCustomerEmail } from "../lib/customers-client.ts";
 import type { CustomerDetail, CustomerSummary } from "../lib/customers-client.ts";
 import { formatDateTime } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
@@ -145,6 +146,17 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
   const [detail, setDetail] = useState<CustomerDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — edición del correo
+  // OPCIONAL del cliente: `citas.customers.email` existía desde Fase 1 pero nunca
+  // era editable después de la primera reserva. Relevante para calendar-sync.ts:
+  // Cal.com puede exigir el correo del cliente para sincronizar una cita; sin
+  // esto, el staff no tenía forma de agregárselo a un cliente que ya existía sin
+  // uno (ver Agenda.tsx, botón "Reintentar sincronización").
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelado = false;
     fetchCustomerDetail(fetch, apiBaseUrl, token, propertyId, customerId)
@@ -154,6 +166,27 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
       cancelado = true;
     };
   }, [apiBaseUrl, token, propertyId, customerId]);
+
+  function startEditingEmail() {
+    setEmailInput(detail?.customer.email ?? "");
+    setEmailError(null);
+    setEditingEmail(true);
+  }
+
+  async function handleSaveEmail(e: FormEvent) {
+    e.preventDefault();
+    setSavingEmail(true);
+    setEmailError(null);
+    try {
+      const updated = await updateCustomerEmail(fetch, apiBaseUrl, token, propertyId, customerId, emailInput.trim() || null);
+      setDetail((prev) => (prev ? { ...prev, customer: updated } : prev));
+      setEditingEmail(false);
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "No se pudo guardar el correo.");
+    } finally {
+      setSavingEmail(false);
+    }
+  }
 
   return (
     <div className="flex max-w-xl flex-col gap-4">
@@ -169,10 +202,44 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
         <>
           <header>
             <h1 className="font-display text-xl font-semibold text-foreground">{detail.customer.fullName}</h1>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              {detail.customer.phone}
-              {detail.customer.email ? ` · ${detail.customer.email}` : ""}
-            </p>
+            <p className="mt-1 text-[13px] text-muted-foreground">{detail.customer.phone}</p>
+            {editingEmail ? (
+              <form onSubmit={handleSaveEmail} className="mt-2 flex flex-wrap items-center gap-2">
+                <Label htmlFor="citas-cliente-correo" className="sr-only">
+                  Correo del cliente
+                </Label>
+                <Input
+                  id="citas-cliente-correo"
+                  type="email"
+                  placeholder="Correo (opcional)"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="h-9 max-w-xs"
+                  autoFocus
+                />
+                <Button type="submit" size="sm" disabled={savingEmail}>
+                  {savingEmail ? "Guardando…" : "Guardar"}
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setEditingEmail(false)} disabled={savingEmail}>
+                  Cancelar
+                </Button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={startEditingEmail}
+                className="mt-1 flex items-center gap-1.5 text-[13px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              >
+                <Mail aria-hidden className="size-3.5" />
+                {detail.customer.email ?? "Agregar correo (para sincronizar con Cal.com)"}
+                <Pencil aria-hidden className="size-3" />
+              </button>
+            )}
+            {emailError && (
+              <p role="alert" className="mt-1 text-[13px] text-destructive">
+                {emailError}
+              </p>
+            )}
           </header>
           <Card>
             <CardHeader className="pb-3">

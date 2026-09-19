@@ -1,7 +1,7 @@
 // Motor puro de derivación de cadencia -- ver `../src/salud/cadencia.ts`.
 // Casos límite: expresión no soportada -> 0 (nunca inventa un número),
 // diario/horario/cada-N-minutos, y que `cadenciaMinutosPorRuta()` cubra
-// realmente los 18 crons declarados en vercel.json (falla si alguien agrega
+// realmente los 19 crons declarados en vercel.json (falla si alguien agrega
 // un cron a vercel.json sin que este módulo sepa derivar su cadencia, o si
 // alguien borra un cron de vercel.json sin darse cuenta).
 import { describe, expect, it } from "vitest";
@@ -40,9 +40,9 @@ describe("minutosEsperadosDeCron", () => {
 });
 
 describe("cadenciaMinutosPorRuta / rutasDeCronDeclaradas", () => {
-  it("cubre los 18 crons reales de vercel.json, todos con cadencia diaria determinable", () => {
+  it("cubre los 19 crons reales de vercel.json, todos con cadencia diaria determinable", () => {
     const rutas = rutasDeCronDeclaradas();
-    expect(rutas.length).toBe(18);
+    expect(rutas.length).toBe(19);
 
     const mapa = cadenciaMinutosPorRuta();
     for (const ruta of rutas) {

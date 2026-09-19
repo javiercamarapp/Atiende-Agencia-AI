@@ -25,6 +25,10 @@ export interface AppointmentSummary {
   readonly source: AppointmentSource;
   readonly notes: string | null;
   readonly googleSyncStatus: string | null;
+  /** Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — motivo NORMALIZADO
+   * del último rechazo (ver @atiende/domain-citas::sanitizeProviderSyncReason),
+   * solo tiene contenido real cuando `googleSyncStatus` es 'invalid' o 'error'. */
+  readonly googleSyncError: string | null;
   /** Solo vienen en el listado de agenda (admin.ts los enriquece) — `cancelAppointment`
    * responde con la cita "pelona" (serializeAppointment de appointments-lifecycle.ts,
    * sin enriquecer), así que estos 4 campos quedan `null` en esa respuesta. */
@@ -46,6 +50,7 @@ export interface AppointmentApiRow {
   readonly source: AppointmentSource;
   readonly notes: string | null;
   readonly google_sync_status?: string;
+  readonly google_sync_error?: string | null;
   readonly provider_name?: string | null;
   readonly service_name?: string | null;
   readonly customer_name?: string | null;
@@ -68,6 +73,7 @@ export function mapAppointmentRow(row: AppointmentApiRow): AppointmentSummary {
     source: row.source,
     notes: row.notes,
     googleSyncStatus: row.google_sync_status ?? null,
+    googleSyncError: row.google_sync_error ?? null,
     providerName: row.provider_name ?? null,
     serviceName: row.service_name ?? null,
     customerName: row.customer_name ?? null,
@@ -105,6 +111,16 @@ export async function completeAppointment(fetchImpl: typeof fetch, apiBaseUrl: s
 
 export async function markAppointmentNoShow(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, appointmentId: string): Promise<AppointmentSummary> {
   const body = await postJson<{ appointment: AppointmentApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments/${appointmentId}/no-show`, token);
+  return mapAppointmentRow(body.appointment);
+}
+
+/** Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — botón "Reintentar
+ * sincronización": solo tiene efecto sobre una cita que quedó
+ * `googleSyncStatus === 'invalid'` (rechazo permanente de validación, p.ej. Cal.com
+ * exige el correo del cliente y esta cita no lo tenía) — cualquier otro estado
+ * responde 409 (ver apps/api/.../citas/appointments-lifecycle.ts). */
+export async function retryAppointmentCalendarSync(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, appointmentId: string): Promise<AppointmentSummary> {
+  const body = await postJson<{ appointment: AppointmentApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/appointments/${appointmentId}/retry-sync`, token);
   return mapAppointmentRow(body.appointment);
 }
 

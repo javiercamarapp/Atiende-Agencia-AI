@@ -81,3 +81,16 @@ export type {
   UpsertDailyOpsSummaryInput,
 } from "./resumen-diario-repository.ts";
 export { PostgresResumenDiarioRepository, InMemoryResumenDiarioRepository } from "./resumen-diario-repository.ts";
+export type {
+  SuperadminAccionesRepository,
+  IntentTipo,
+  IntentEstado,
+  SuperadminActionIntentRow,
+  AutomationActionLogRow,
+  OutboxQueueName,
+  OutboxDeadMessageRow,
+  OutboxDeadMessageDetailRow,
+  DesatascarOutboxResultRow,
+  MarcarProspectoResultRow,
+} from "./superadmin-acciones-repository.ts";
+export { PostgresSuperadminAccionesRepository, InMemorySuperadminAccionesRepository } from "./superadmin-acciones-repository.ts";

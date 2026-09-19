@@ -4,7 +4,7 @@
 // packages/domain-citas/src/repository.ts) — puro listado/paginado de filas que
 // `upsertCustomer` ya escribía desde Fase 1, ninguna regla de negocio nueva sobre
 // el cliente mismo (nunca se crea/edita un cliente desde el panel).
-import { fetchJson } from "./admin-client.ts";
+import { fetchJson, sendJson } from "./admin-client.ts";
 import type { AppointmentApiRow, AppointmentSummary } from "./appointments-client.ts";
 import { mapAppointmentRow } from "./appointments-client.ts";
 
@@ -60,4 +60,13 @@ export interface CustomerDetail {
 export async function fetchCustomerDetail(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, customerId: string): Promise<CustomerDetail> {
   const body = await fetchJson<{ customer: CustomerApiRow; upcoming_appointments: readonly AppointmentApiRow[] }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/customers/${customerId}`, token);
   return { customer: mapCustomer(body.customer), upcomingAppointments: body.upcoming_appointments.map(mapAppointmentRow) };
+}
+
+/** Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — captura/edición del
+ * correo OPCIONAL de un cliente ya existente (ver apps/api/.../citas/admin.ts::
+ * PATCH .../customers/:customerId). `email: null` (o `""`, tratado igual) quita
+ * el correo guardado -- NUNCA es obligatorio. */
+export async function updateCustomerEmail(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, customerId: string, email: string | null): Promise<CustomerSummary> {
+  const body = await sendJson<{ customer: CustomerApiRow }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/customers/${customerId}`, token, "PATCH", { email: email || null });
+  return mapCustomer(body.customer);
 }

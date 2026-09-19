@@ -10,8 +10,9 @@
 //   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/confirm   (staff panel, JWT) — Fase 7
 //   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/complete  (staff panel, JWT) — Fase 7
 //   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/no-show   (staff panel, JWT) — Fase 7
+//   POST /v1/citas/properties/:propertyId/appointments/:appointmentId/retry-sync (staff panel, JWT) — Fase 6 §2 (seguimiento)
 //
-// Las 4 rutas de staff SÍ ejercitan requirePropertyMembership("propertyId") de
+// Las 5 rutas de staff SÍ ejercitan requirePropertyMembership("propertyId") de
 // core-auth — SIN allowedRoles (el origen no restringe por rol quién opera el
 // panel, ver domain-citas/src/roles.ts). El panel no tiene botón de reagendar ni
 // de reasignar en el origen — solo el agente ejecuta esas dos hoy; confirmar/
@@ -25,6 +26,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   AppointmentAlternativesError,
   AppointmentConflictError,
+  AppointmentForbiddenError,
   AppointmentNotFoundError,
   AppointmentValidationError,
   cancelAppointment,
@@ -36,6 +38,7 @@ import {
   notifyWaitlistAfterReschedule,
   reassignAppointment,
   rescheduleAppointment,
+  retryAppointmentCalendarSyncFromPanel,
   tryEnqueueAppointmentEmail,
   tryNotifyWaitlistOfFreedSlot,
   tryTriggerCalendarSync,
@@ -73,6 +76,12 @@ function serializeAppointment(appointment: AppointmentRecord) {
     source: appointment.source,
     notes: appointment.notes,
     created_at: appointment.createdAt,
+    // Fase 6 §2 (seguimiento) — la ruta nueva de "reintentar sincronización" (ver
+    // abajo) necesita devolver el estado de sync ya actualizado para feedback
+    // inmediato en el panel; admin.ts (listado de Agenda) ya lo exponía, esta
+    // respuesta puntual (cancelar/confirmar/completar/no-show/reintentar) no.
+    google_sync_status: appointment.googleSyncStatus,
+    google_sync_error: appointment.googleSyncError,
   };
 }
 
@@ -125,6 +134,12 @@ function mapErrorToHttp(err: unknown, c: Context): Response {
   if (err instanceof AppointmentNotFoundError) throw Errors.notFound(err.message);
   if (err instanceof AppointmentConflictError) throw Errors.conflict(err.message);
   if (err instanceof AppointmentValidationError) throw Errors.validation(err.message);
+  // Fase 6 §2 (seguimiento) — la ruta nueva de "reintentar sincronización" (ver
+  // abajo) es la primera de este archivo que de verdad puede lanzar esto
+  // (forbidden_out_of_scope, mismo criterio de property-scope que confirm/
+  // complete/no-show); se mapea aquí, en el helper compartido, en vez de
+  // duplicar el catch en cada ruta.
+  if (err instanceof AppointmentForbiddenError) throw Errors.forbidden(err.message);
   throw err;
 }
 
@@ -343,6 +358,40 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.no_show", appointment.id);
       await triggerCitasEmailDispatchInline(deps, citasRepo);
       return c.json({ appointment: serializeAppointment(appointment) });
+    } catch (err) {
+      return mapErrorToHttp(err, c);
+    }
+  });
+
+  // ---- Staff panel: "reintentar sincronización" — Fase 6 §2 (seguimiento,
+  // "citas-sync-errores-visibles"). Solo tiene efecto sobre una cita que el motor
+  // dejó en google_sync_status='invalid' (rechazo PERMANENTE de validación, p.ej.
+  // Cal.com exige el correo del cliente y esta cita no lo tenía — ver
+  // domain-citas/src/calendar-sync.ts) — el staff la corrige (agregar el correo
+  // del cliente, PATCH .../customers/:customerId) y dispara este botón para que
+  // no tenga que esperar al cron. Mismo guard EXACTO que
+  // confirm/complete/no-show de arriba (requirePropertyMembership, SIN
+  // allowedRoles). ----
+  app.use(
+    "/v1/citas/properties/:propertyId/appointments/:appointmentId/retry-sync",
+    authMiddleware(deps.env),
+    dbSession(deps.engine),
+    requirePropertyMembership("propertyId"),
+  );
+  app.post("/v1/citas/properties/:propertyId/appointments/:appointmentId/retry-sync", async (c) => {
+    const organizationId = c.get("organizationId");
+    const appointmentId = c.req.param("appointmentId");
+    const userId = c.get("userId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+
+    try {
+      const appointment = await retryAppointmentCalendarSyncFromPanel(citasRepo, organizationId, appointmentId, userId);
+      // Best-effort real, mismo criterio que crear/cancelar/reagendar: la
+      // transición a 'pending' YA quedó escrita de forma atómica arriba; esto
+      // solo evita que el staff tenga que esperar al cron para ver el resultado.
+      await tryTriggerCalendarSync(citasRepo, deps.citasCalendarSyncPortResolver, appointment.id);
+      const refreshed = await citasRepo.findAppointmentForOrganization(organizationId, appointment.id);
+      return c.json({ appointment: serializeAppointment(refreshed ?? appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
     }

@@ -27,7 +27,7 @@
 // agenda para no duplicar el selector de proveedor.
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, UserX, X } from "lucide-react";
+import { CalendarPlus, CalendarX2, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, Megaphone, RefreshCw, TriangleAlert, UserX, X } from "lucide-react";
 import {
   Badge,
   Button,
@@ -53,7 +53,7 @@ import {
   TabsTrigger,
 } from "@atiende/ui";
 import { ModalFormularioLateral } from "../../../components/ModalFormularioLateral.tsx";
-import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow } from "../lib/appointments-client.ts";
+import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow, retryAppointmentCalendarSync } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
 import { fetchProviders } from "../lib/providers-client.ts";
 import type { ProviderSummary } from "../lib/providers-client.ts";
@@ -61,7 +61,7 @@ import { fetchServices } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
 import { broadcastWaitlist, fetchWaitlist } from "../lib/waitlist-client.ts";
 import type { WaitlistCandidate } from "../lib/waitlist-client.ts";
-import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatTimeRange } from "../lib/format.ts";
+import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention } from "../lib/format.ts";
 import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
@@ -115,7 +115,7 @@ const CONFIRMABLE_STATUSES = new Set(["pending"]);
 const COMPLETABLE_STATUSES = new Set(["pending", "confirmed"]);
 const NO_SHOW_STATUSES = new Set(["pending", "confirmed"]);
 
-type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show";
+type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show" | "retry_sync";
 
 /** Clase compartida para los `<select>` nativos que se quedan nativos (el design
  * system no exporta un Select propio): mismo alto/radio/anillo de foco que el
@@ -283,6 +283,15 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       () => markAppointmentNoShow(fetch, apiBaseUrl, token, propertyId, appointmentId),
       "No se pudo marcar la cita como no-show.",
     );
+  }
+
+  // Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — "Reintentar
+  // sincronización": solo tiene efecto real sobre una cita 'invalid' (rechazo
+  // permanente de validación, p.ej. Cal.com exige el correo del cliente); el
+  // servidor responde 409 si la cita no está en ese estado (ver
+  // appointments-lifecycle.ts).
+  async function handleRetrySync(appointmentId: string) {
+    await runLifecycleAction(appointmentId, "retry_sync", null, () => retryAppointmentCalendarSync(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo reintentar la sincronización de esta cita.");
   }
 
   async function handleCreateAppointment(e: FormEvent) {
@@ -461,9 +470,28 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                   <p className="mt-0.5 text-[12px] text-muted-foreground">
                     {apt.providerName ?? "Proveedor desconocido"} · {formatAppointmentSource(apt.source)}
                   </p>
+                  {/* Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — indicador
+                      discreto de sincronización con el calendario externo, solo cuando
+                      de verdad requiere atención ('error'/'invalid' — el flujo normal
+                      'pending'/'synced'/'skipped' nunca se muestra aquí, sería ruido). */}
+                  {googleSyncStatusNeedsAttention(apt.googleSyncStatus) && (
+                    <p className="mt-1 flex items-start gap-1 text-[12px] text-amber-700 dark:text-amber-400">
+                      <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                      <span>
+                        {formatGoogleSyncStatus(apt.googleSyncStatus)}
+                        {apt.googleSyncError ? `: ${apt.googleSyncError}` : ""}
+                      </span>
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusBadgeVariant(apt.status)}>{formatAppointmentStatus(apt.status)}</Badge>
+                  {apt.googleSyncStatus === "invalid" && (
+                    <Button variant="outline" size="sm" onClick={() => void handleRetrySync(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
+                      <RefreshCw aria-hidden />
+                      {pendingAction?.id === apt.id && pendingAction.action === "retry_sync" ? "Reintentando…" : "Reintentar sincronización"}
+                    </Button>
+                  )}
                   {CONFIRMABLE_STATUSES.has(apt.status) && (
                     <Button variant="outline" size="sm" onClick={() => void handleConfirm(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
                       <Check aria-hidden />
