@@ -13,9 +13,22 @@ import { InMemoryCoreRepository, InMemoryResumenDiarioRepository } from "@atiend
 import { signAccessToken } from "@atiende/core-auth";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps } from "./fixtures.ts";
+import { generarYPersistirResumenDiario, type ResultadoGeneracion } from "../src/resumen-diario/agregador.ts";
+import { enviarCorreoResumenDiarioSiCorresponde } from "../src/resumen-diario/correo.ts";
 import type { AppDeps } from "../src/deps.ts";
 
 const CRON_PATH = "/internal/superadmin/resumen-diario";
+
+/** `generarYPersistirResumenDiario` devuelve `ResultadoGenerarResumenDiario`
+ *  (`{ ok:true, agregados, narrativa, ... } | { ok:false, motivo }`, ver el
+ *  hallazgo B de esta misma auditoría) -- estos helpers de test asumen el
+ *  camino feliz (`ok:true`) y fallan ruidosamente si no lo es, en vez de
+ *  dejar pasar un `undefined` silencioso. */
+async function generarResumenOk(deps: AppDeps, fecha: string): Promise<ResultadoGeneracion> {
+  const resultado = await generarYPersistirResumenDiario(deps, fecha);
+  if (!resultado.ok) throw new Error(`generarYPersistirResumenDiario no fue 'ok' para ${fecha}: ${resultado.motivo}`);
+  return resultado;
+}
 
 async function makeSuperadmin(base: Awaited<ReturnType<typeof buildTestDeps>>): Promise<{ token: string; superadminId: string; email: string }> {
   const coreRepo = base.deps.coreRepo as InMemoryCoreRepository;
@@ -271,5 +284,74 @@ describe("Resumen diario -- migración 0015 sin aplicar (SQLSTATE 42883), nunca 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean };
     expect(body.ok).toBe(true);
+  });
+});
+
+// Hallazgo de auditoría a1 (BAJA, rubro D): el marcado atómico de
+// `correo_enviado_en` se hace DESPUÉS de enviar a Resend (check-then-act,
+// ver el comentario de cabecera de `enviarCorreoResumenDiarioSiCorresponde`
+// para el porqué de NO invertir el orden) -- dos corridas concurrentes para
+// la MISMA fecha podían mandar el correo dos veces. Arreglo: header
+// `Idempotency-Key: resumen-diario/<fecha>` en el POST a Resend (soportado
+// en `POST /emails`, ventana de deduplicación de 24h -- ver el cuerpo del
+// PR para la cita completa de la documentación oficial de Resend). Estos
+// tests verifican lo que SÍ puede probarse sin Postgres/Resend reales: que
+// el código manda la clave correcta, determinista por fecha, en cada
+// intento -- la deduplicación real la hace el servidor de Resend, fuera del
+// alcance de una prueba unitaria.
+describe("Correo del resumen -- header Idempotency-Key (hallazgo D)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("dos corridas CONCURRENTES para la MISMA fecha mandan la MISMA Idempotency-Key -- Resend nunca reenvía bajo esa clave", async () => {
+    const base = await buildTestDeps();
+    const { email } = await makeSuperadmin(base);
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).seedPlatformSuperadminEmails([email]);
+    const deps = conResendConfigurado(base.deps);
+
+    const claves: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      claves.push((init?.headers as Record<string, string>)["Idempotency-Key"]);
+      return new Response(JSON.stringify({ id: "resend-id" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fecha = "2026-03-05";
+    const { agregados, narrativa } = await generarResumenOk(deps, fecha);
+
+    // Simula la condición de carrera real: dos invocaciones que arrancan
+    // "al mismo tiempo" para la MISMA fecha (p. ej. el cron real disparado
+    // dos veces por un reintento de la plataforma serverless) -- ambas leen
+    // `correoEnviadoEn === null` ANTES de que cualquiera termine de enviar
+    // (el guard en memoria por sí solo no basta para evitar esto, que es
+    // justo el hallazgo de la auditoría).
+    await Promise.all([enviarCorreoResumenDiarioSiCorresponde(deps, fecha, agregados, narrativa), enviarCorreoResumenDiarioSiCorresponde(deps, fecha, agregados, narrativa)]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(claves).toHaveLength(2);
+    expect(claves[0]).toBe(`resumen-diario/${fecha}`);
+    expect(claves[1]).toBe(claves[0]); // MISMA clave en ambas -- Resend deduplica del lado del servidor
+  });
+
+  it("fechas DISTINTAS -> Idempotency-Key DISTINTA -- nunca deduplica correos de días distintos", async () => {
+    const base = await buildTestDeps();
+    const { email } = await makeSuperadmin(base);
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).seedPlatformSuperadminEmails([email]);
+    const deps = conResendConfigurado(base.deps);
+
+    const claves: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      claves.push((init?.headers as Record<string, string>)["Idempotency-Key"]);
+      return new Response(JSON.stringify({ id: "resend-id" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const gen1 = await generarResumenOk(deps, "2026-03-05");
+    await enviarCorreoResumenDiarioSiCorresponde(deps, "2026-03-05", gen1.agregados, gen1.narrativa);
+    const gen2 = await generarResumenOk(deps, "2026-03-06");
+    await enviarCorreoResumenDiarioSiCorresponde(deps, "2026-03-06", gen2.agregados, gen2.narrativa);
+
+    expect(claves).toEqual(["resumen-diario/2026-03-05", "resumen-diario/2026-03-06"]);
   });
 });
