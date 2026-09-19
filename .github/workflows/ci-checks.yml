@@ -1,0 +1,99 @@
+name: CI (typecheck, lint, tests, build)
+
+# Qué es esto y por qué existe
+# ------------------------------------------------------------------------------
+# Hallazgo señalado por tres revisores independientes (19-sep-2026): el único
+# workflow de este repo, .github/workflows/postgres-real-gate.yml, dice
+# explícitamente en su propio comentario de cabecera y en
+# .github/workflows/README.md que NO corre `npm run typecheck`, `npm run lint`
+# ni `npx vitest run` — ese tier (repositorio en memoria) se corría solo a
+# mano por quien hacía el cambio. Resultado real: un "test:unit en verde"
+# reportado en un PR era solo la palabra de quien lo construyó, y varios
+# guards que viven dentro de `npm run test:unit` (numeración de migraciones,
+# inventario de credenciales, drift de documentación, workspaces sin código,
+# umbral de cobertura) nunca se ejecutaban en CI.
+#
+# Qué SÍ cubre este workflow
+# ------------------------------------------------------------------------------
+# - `npm ci` (misma instalación reproducible que el gate de Postgres).
+# - `npm run typecheck` (tsc del monorepo raíz + `--workspaces --if-present`,
+#   que incluye el tsconfig propio de apps/web con jsx/Bundler).
+# - `npm run lint` (ESLint flat config raíz, todo el árbol).
+# - `npm run test:unit` (vitest run, la suite completa de *.spec.ts/.spec.tsx
+#   listada en vitest.config.ts — incluye los guards en
+#   scripts/verify-migration-versions, scripts/verify-env, inventario de
+#   credenciales y drift de documentación que ya vivían como specs sueltas
+#   dentro de esta misma suite). Este comando NO activa el umbral de
+#   cobertura configurado en vitest.config.ts (`coverage.thresholds`, del PR
+#   #144) — ese umbral solo se evalúa cuando algo corre instrumentado con
+#   `--coverage` (`npm run test:coverage`), que vitest.config.ts documenta
+#   explícitamente que test:unit/test NO activan. Correr test:coverage aquí
+#   además de test:unit duplicaría tiempo de Actions por cero cobertura de
+#   guard adicional (mismas specs, ejecutadas dos veces) — ver
+#   docs/COBERTURA.md.
+# - El build de producción de `apps/web` (`npm run build --workspace apps/web`
+#   → `tsc --noEmit && vite build`), para que un build real roto (no solo el
+#   typecheck raíz, que excluye apps/web a propósito — ver el comentario de
+#   tsconfig.json) también falle el PR antes de llegar a Vercel.
+#
+# Qué NO cubre (fuera de alcance de este cambio puntual)
+# ------------------------------------------------------------------------------
+# - NO reemplaza ni toca .github/workflows/postgres-real-gate.yml (Postgres
+#   real + RLS/GRANT) — ese sigue siendo su propio workflow, con su propio
+#   servicio de Postgres. Mezclar ambos en un solo job encadenaría el tiempo
+#   de instalar Postgres + aplicar 100+ migraciones detrás de typecheck/lint,
+#   cuando hoy corren en paralelo.
+# - NO hace build de apps/api ni apps/worker (no tienen paso de `build` propio
+#   en package.json — son funciones/entry points de Node que Vercel invoca
+#   directo con `tsx`/`node --experimental-strip-types`, no un bundle previo;
+#   sí quedan cubiertos por `npm run typecheck`).
+# - NO hace deploy ni toca Vercel/Supabase/ninguna configuración externa — es
+#   exclusivamente de verificación.
+on:
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci-checks:
+    name: typecheck + lint + test:unit + build de apps/web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Typecheck (raíz + --workspaces --if-present, incluye apps/web)
+        run: npm run typecheck
+
+      - name: Lint (ESLint, todo el árbol)
+        run: npm run lint
+
+      - name: Tests unitarios (vitest run, repositorios en memoria)
+        run: npm run test:unit
+
+      - name: Build de apps/web (Vite)
+        run: npm run build --workspace apps/web
