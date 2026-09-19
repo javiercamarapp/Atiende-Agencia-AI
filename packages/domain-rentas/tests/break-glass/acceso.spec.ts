@@ -352,9 +352,10 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
 
     const { data, auditEntry } = await leerFinanzasTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
 
-    expect(data).toEqual([fila]);
-    expect(auditEntry.resourceType).toBe("finanzas");
-    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+    expect(data).toEqual({ disponible: true, datos: [fila] });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry!.resourceType).toBe("finanzas");
+    expect(auditEntry!.resultSummary).toEqual({ total: 1, ids: [fila.id] });
   });
 
   it("leerPayoutsTenantBreakGlass: resourceType='payouts'", async () => {
@@ -363,8 +364,9 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
     const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
 
     const { auditEntry } = await leerPayoutsTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
-    expect(auditEntry.resourceType).toBe("payouts");
-    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry!.resourceType).toBe("payouts");
+    expect(auditEntry!.resultSummary).toEqual({ total: 1, ids: [fila.id] });
   });
 
   it("leerPricingTenantBreakGlass: resourceType='pricing'", async () => {
@@ -373,8 +375,9 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
     const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
 
     const { auditEntry } = await leerPricingTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
-    expect(auditEntry.resourceType).toBe("pricing");
-    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry!.resourceType).toBe("pricing");
+    expect(auditEntry!.resultSummary).toEqual({ total: 1, ids: [fila.id] });
   });
 
   it("leerMensajeriaTenantBreakGlass: resourceType='mensajeria'", async () => {
@@ -383,8 +386,9 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
     const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
 
     const { auditEntry } = await leerMensajeriaTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
-    expect(auditEntry.resourceType).toBe("mensajeria");
-    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry!.resourceType).toBe("mensajeria");
+    expect(auditEntry!.resultSummary).toEqual({ total: 1, ids: [fila.id] });
   });
 
   it("leerLimpiezaTenantBreakGlass: resourceType='limpieza' (cubre limpieza/mantenimiento/inspeccion)", async () => {
@@ -393,8 +397,9 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
     const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
 
     const { auditEntry } = await leerLimpiezaTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
-    expect(auditEntry.resourceType).toBe("limpieza");
-    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry!.resourceType).toBe("limpieza");
+    expect(auditEntry!.resultSummary).toEqual({ total: 1, ids: [fila.id] });
   });
 
   it("leerSyncIcalTenantBreakGlass: resourceType='sync_ical', y el resumen auditado NUNCA lleva la URL completa (solo ids)", async () => {
@@ -403,10 +408,11 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
     const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
 
     const { data, auditEntry } = await leerSyncIcalTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
-    expect(data).toEqual([fila]);
-    expect(auditEntry.resourceType).toBe("sync_ical");
-    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
-    expect(JSON.stringify(auditEntry.resultSummary)).not.toContain("airbnb.com");
+    expect(data).toEqual({ disponible: true, datos: [fila] });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry!.resourceType).toBe("sync_ical");
+    expect(auditEntry!.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+    expect(JSON.stringify(auditEntry!.resultSummary)).not.toContain("airbnb.com");
   });
 
   it("filtro por propiedad: resourceScope.propertyId llega hasta el método de puerto (representativo, finanzas)", async () => {
@@ -423,6 +429,25 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
       NOW,
     );
 
-    expect(data).toEqual([filaDeLaPropiedadBuscada]);
+    expect(data).toEqual({ disponible: true, datos: [filaDeLaPropiedadBuscada] });
+  });
+
+  it("lector NO disponible (disponible: false, migración 020 pendiente): NO audita -- auditEntry es null y no se escribe ninguna fila en la bitácora", async () => {
+    const auditRepo = new InMemoryBreakGlassAuditRepository();
+    const dataRepoNoDisponible: BreakGlassRentasDataRepository = {
+      listReservasTenant: async () => [],
+      listFinanzasTenant: async () => ({ disponible: false, datos: [] }),
+      listPayoutsTenant: async () => ({ disponible: true, datos: [] }),
+      listPricingTenant: async () => ({ disponible: true, datos: [] }),
+      listMensajeriaTenant: async () => ({ disponible: true, datos: [] }),
+      listLimpiezaTenant: async () => ({ disponible: true, datos: [] }),
+      listSyncIcalTenant: async () => ({ disponible: true, datos: [] }),
+    };
+
+    const { data, auditEntry } = await leerFinanzasTenantBreakGlass(auditRepo, dataRepoNoDisponible, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
+
+    expect(data).toEqual({ disponible: false, datos: [] });
+    expect(auditEntry).toBeNull();
+    expect(await auditRepo.listForActor(ACTOR.userId)).toEqual([]);
   });
 });

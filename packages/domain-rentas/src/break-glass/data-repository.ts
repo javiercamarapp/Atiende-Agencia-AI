@@ -11,6 +11,7 @@
 import type {
   BreakGlassFinanzasResumen,
   BreakGlassLectorPaginacion,
+  BreakGlassLectorResultado,
   BreakGlassLimpiezaResumen,
   BreakGlassMensajeriaResumen,
   BreakGlassPayoutResumen,
@@ -39,31 +40,42 @@ export interface BreakGlassRentasDataRepository {
 
   /** Fase 10c -- movimiento financiero por reserva (`rentas.reserva_financiero`,
    *  003_finanzas_schema.sql). Mismo contrato de sesión/paginación que
-   *  `listReservasTenant`. */
-  listFinanzasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassFinanzasResumen[]>;
+   *  `listReservasTenant`.
+   *
+   *  Devuelve `BreakGlassLectorResultado` (no un array plano): `disponible:
+   *  false` cuando `rentas.list_finanzas_for_break_glass` todavía no existe en
+   *  la base real (SQLSTATE 42883, migración 020 sin aplicar) -- ver el
+   *  comentario de cabecera de `BreakGlassLectorResultado` en tipos.ts para el
+   *  porqué esto es distinto de "el tenant de verdad no tiene datos". */
+  listFinanzasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassFinanzasResumen>>;
 
   /** Fase 10c -- payouts por canal (`rentas.payout_canal`,
    *  005_finanzas_statement_payout_schema.sql), nivel de canal (no de línea
-   *  individual -- mismo criterio de resumen mínimo que el resto de este puerto). */
-  listPayoutsTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPayoutResumen[]>;
+   *  individual -- mismo criterio de resumen mínimo que el resto de este puerto).
+   *  Mismo contrato de `disponible` que `listFinanzasTenant`. */
+  listPayoutsTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassPayoutResumen>>;
 
   /** Fase 10c -- tarifa base vigente por unidad (`rentas.tarifa_base`,
-   *  002_pricing_schema.sql). */
-  listPricingTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPricingResumen[]>;
+   *  002_pricing_schema.sql). Mismo contrato de `disponible` que
+   *  `listFinanzasTenant`. */
+  listPricingTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassPricingResumen>>;
 
   /** Fase 10c -- resumen por conversación (`rentas.conversacion`,
-   *  009_rentas_mensajeria_schema.sql), no el contenido de cada mensaje. */
-  listMensajeriaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassMensajeriaResumen[]>;
+   *  009_rentas_mensajeria_schema.sql), no el contenido de cada mensaje. Mismo
+   *  contrato de `disponible` que `listFinanzasTenant`. */
+  listMensajeriaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassMensajeriaResumen>>;
 
   /** Fase 10c -- tareas operativas (`rentas.tarea_operativa`,
    *  010_rentas_limpieza_schema.sql): cubre limpieza, mantenimiento e inspección --
-   *  las tres son el mismo `tipo` en la misma tabla. */
-  listLimpiezaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassLimpiezaResumen[]>;
+   *  las tres son el mismo `tipo` en la misma tabla. Mismo contrato de
+   *  `disponible` que `listFinanzasTenant`. */
+  listLimpiezaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassLimpiezaResumen>>;
 
   /** Fase 10c -- feeds de sincronización de calendario por canal
    *  (`rentas.canal_feed_externo`, 008_ical_sync_schema.sql). La URL de import
-   *  SIEMPRE llega ya enmascarada (ver `BreakGlassSyncIcalResumen`). */
-  listSyncIcalTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassSyncIcalResumen[]>;
+   *  SIEMPRE llega ya enmascarada (ver `BreakGlassSyncIcalResumen`). Mismo
+   *  contrato de `disponible` que `listFinanzasTenant`. */
+  listSyncIcalTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassSyncIcalResumen>>;
 }
 
 /**
@@ -102,27 +114,27 @@ export class InMemoryBreakGlassRentasDataRepository implements BreakGlassRentasD
     return paginar(this.reservasPorOrganizacion.get(organizationId) ?? [], paginacion);
   }
 
-  async listFinanzasTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassFinanzasResumen[]> {
-    return paginar(this.finanzasPorOrganizacion.get(organizationId) ?? [], paginacion);
+  async listFinanzasTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassFinanzasResumen>> {
+    return { disponible: true, datos: paginar(this.finanzasPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
-  async listPayoutsTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPayoutResumen[]> {
-    return paginar(this.payoutsPorOrganizacion.get(organizationId) ?? [], paginacion);
+  async listPayoutsTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassPayoutResumen>> {
+    return { disponible: true, datos: paginar(this.payoutsPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
-  async listPricingTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPricingResumen[]> {
-    return paginar(this.pricingPorOrganizacion.get(organizationId) ?? [], paginacion);
+  async listPricingTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassPricingResumen>> {
+    return { disponible: true, datos: paginar(this.pricingPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
-  async listMensajeriaTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassMensajeriaResumen[]> {
-    return paginar(this.mensajeriaPorOrganizacion.get(organizationId) ?? [], paginacion);
+  async listMensajeriaTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassMensajeriaResumen>> {
+    return { disponible: true, datos: paginar(this.mensajeriaPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
-  async listLimpiezaTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassLimpiezaResumen[]> {
-    return paginar(this.limpiezaPorOrganizacion.get(organizationId) ?? [], paginacion);
+  async listLimpiezaTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassLimpiezaResumen>> {
+    return { disponible: true, datos: paginar(this.limpiezaPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
-  async listSyncIcalTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassSyncIcalResumen[]> {
-    return paginar(this.syncIcalPorOrganizacion.get(organizationId) ?? [], paginacion);
+  async listSyncIcalTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassSyncIcalResumen>> {
+    return { disponible: true, datos: paginar(this.syncIcalPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 }

@@ -66,6 +66,7 @@ import type { BreakGlassRentasDataRepository } from "./data-repository.ts";
 import type {
   BreakGlassFinanzasResumen,
   BreakGlassLectorPaginacion,
+  BreakGlassLectorResultado,
   BreakGlassLimpiezaResumen,
   BreakGlassMensajeriaResumen,
   BreakGlassPayoutResumen,
@@ -228,7 +229,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     }
   }
 
-  async listFinanzasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassFinanzasResumen[]> {
+  async listFinanzasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassFinanzasResumen>> {
     const { limit, offset } = resolverLimite(paginacion);
     await this.db.exec("SAVEPOINT sp_break_glass_finanzas");
     try {
@@ -237,19 +238,22 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_finanzas");
-      return rows.map((r) => ({
-        id: r.id,
-        ocupacionId: r.ocupacion_id,
-        propertyId: r.property_id,
-        moneda: r.moneda,
-        montoBrutoCentavos: Number(r.monto_bruto_centavos),
-        comisionCanalCentavos: Number(r.comision_canal_centavos),
-        comisionGestorCentavos: Number(r.comision_gestor_centavos),
-        gastosCentavos: Number(r.gastos_centavos),
-        impuestosCentavos: Number(r.impuestos_centavos),
-        netoCentavos: Number(r.neto_centavos),
-        createdAtMs: new Date(r.created_at).getTime(),
-      }));
+      return {
+        disponible: true,
+        datos: rows.map((r) => ({
+          id: r.id,
+          ocupacionId: r.ocupacion_id,
+          propertyId: r.property_id,
+          moneda: r.moneda,
+          montoBrutoCentavos: Number(r.monto_bruto_centavos),
+          comisionCanalCentavos: Number(r.comision_canal_centavos),
+          comisionGestorCentavos: Number(r.comision_gestor_centavos),
+          gastosCentavos: Number(r.gastos_centavos),
+          impuestosCentavos: Number(r.impuestos_centavos),
+          netoCentavos: Number(r.neto_centavos),
+          createdAtMs: new Date(r.created_at).getTime(),
+        })),
+      };
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
       await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_finanzas");
@@ -257,14 +261,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       advertirUnaVez(
         "list_finanzas_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_finanzas_for_break_glass no existe todavía " +
-          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return [];
+      return { disponible: false, datos: [] };
     }
   }
 
-  async listPayoutsTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPayoutResumen[]> {
+  async listPayoutsTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassPayoutResumen>> {
     const { limit, offset } = resolverLimite(paginacion);
     await this.db.exec("SAVEPOINT sp_break_glass_payouts");
     try {
@@ -273,16 +277,19 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_payouts");
-      return rows.map((r) => ({
-        id: r.id,
-        propertyId: r.property_id,
-        canalId: r.canal_id,
-        referenciaExterna: r.referencia_externa,
-        moneda: r.moneda,
-        montoTotalCentavos: Number(r.monto_total_centavos),
-        fechaPayout: r.fecha_payout,
-        creadoEnMs: new Date(r.creado_en).getTime(),
-      }));
+      return {
+        disponible: true,
+        datos: rows.map((r) => ({
+          id: r.id,
+          propertyId: r.property_id,
+          canalId: r.canal_id,
+          referenciaExterna: r.referencia_externa,
+          moneda: r.moneda,
+          montoTotalCentavos: Number(r.monto_total_centavos),
+          fechaPayout: r.fecha_payout,
+          creadoEnMs: new Date(r.creado_en).getTime(),
+        })),
+      };
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
       await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_payouts");
@@ -290,14 +297,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       advertirUnaVez(
         "list_payouts_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_payouts_for_break_glass no existe todavía " +
-          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return [];
+      return { disponible: false, datos: [] };
     }
   }
 
-  async listPricingTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPricingResumen[]> {
+  async listPricingTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassPricingResumen>> {
     const { limit, offset } = resolverLimite(paginacion);
     await this.db.exec("SAVEPOINT sp_break_glass_pricing");
     try {
@@ -306,14 +313,17 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_pricing");
-      return rows.map((r) => ({
-        id: r.id,
-        propertyId: r.property_id,
-        unidadId: r.unidad_id,
-        precioNocheCentavos: Number(r.precio_noche_centavos),
-        moneda: r.moneda,
-        vigenteDesde: r.vigente_desde,
-      }));
+      return {
+        disponible: true,
+        datos: rows.map((r) => ({
+          id: r.id,
+          propertyId: r.property_id,
+          unidadId: r.unidad_id,
+          precioNocheCentavos: Number(r.precio_noche_centavos),
+          moneda: r.moneda,
+          vigenteDesde: r.vigente_desde,
+        })),
+      };
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
       await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_pricing");
@@ -321,14 +331,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       advertirUnaVez(
         "list_pricing_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_pricing_for_break_glass no existe todavía " +
-          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return [];
+      return { disponible: false, datos: [] };
     }
   }
 
-  async listMensajeriaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassMensajeriaResumen[]> {
+  async listMensajeriaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassMensajeriaResumen>> {
     const { limit, offset } = resolverLimite(paginacion);
     await this.db.exec("SAVEPOINT sp_break_glass_mensajeria");
     try {
@@ -337,17 +347,20 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_mensajeria");
-      return rows.map((r) => ({
-        id: r.id,
-        propertyId: r.property_id,
-        unidadId: r.unidad_id,
-        canalCodigo: r.canal_codigo,
-        huespedNombre: r.huesped_nombre,
-        fechaCheckIn: r.fecha_check_in,
-        fechaCheckOut: r.fecha_check_out,
-        reservaConfirmada: r.reserva_confirmada,
-        creadoEnMs: new Date(r.creado_en).getTime(),
-      }));
+      return {
+        disponible: true,
+        datos: rows.map((r) => ({
+          id: r.id,
+          propertyId: r.property_id,
+          unidadId: r.unidad_id,
+          canalCodigo: r.canal_codigo,
+          huespedNombre: r.huesped_nombre,
+          fechaCheckIn: r.fecha_check_in,
+          fechaCheckOut: r.fecha_check_out,
+          reservaConfirmada: r.reserva_confirmada,
+          creadoEnMs: new Date(r.creado_en).getTime(),
+        })),
+      };
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
       await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_mensajeria");
@@ -355,14 +368,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       advertirUnaVez(
         "list_mensajeria_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_mensajeria_for_break_glass no existe todavía " +
-          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return [];
+      return { disponible: false, datos: [] };
     }
   }
 
-  async listLimpiezaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassLimpiezaResumen[]> {
+  async listLimpiezaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassLimpiezaResumen>> {
     const { limit, offset } = resolverLimite(paginacion);
     await this.db.exec("SAVEPOINT sp_break_glass_limpieza");
     try {
@@ -371,17 +384,20 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_limpieza");
-      return rows.map((r) => ({
-        id: r.id,
-        propertyId: r.property_id,
-        unidadId: r.unidad_id,
-        tipo: r.tipo,
-        estado: r.estado,
-        prioridad: r.prioridad,
-        programadaPara: r.programada_para,
-        completadaEnMs: r.completada_en ? new Date(r.completada_en).getTime() : null,
-        creadoEnMs: new Date(r.creado_en).getTime(),
-      }));
+      return {
+        disponible: true,
+        datos: rows.map((r) => ({
+          id: r.id,
+          propertyId: r.property_id,
+          unidadId: r.unidad_id,
+          tipo: r.tipo,
+          estado: r.estado,
+          prioridad: r.prioridad,
+          programadaPara: r.programada_para,
+          completadaEnMs: r.completada_en ? new Date(r.completada_en).getTime() : null,
+          creadoEnMs: new Date(r.creado_en).getTime(),
+        })),
+      };
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
       await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_limpieza");
@@ -389,14 +405,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       advertirUnaVez(
         "list_limpieza_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_limpieza_for_break_glass no existe todavía " +
-          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return [];
+      return { disponible: false, datos: [] };
     }
   }
 
-  async listSyncIcalTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassSyncIcalResumen[]> {
+  async listSyncIcalTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassSyncIcalResumen>> {
     const { limit, offset } = resolverLimite(paginacion);
     await this.db.exec("SAVEPOINT sp_break_glass_sync_ical");
     try {
@@ -405,18 +421,21 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_sync_ical");
-      return rows.map((r) => ({
-        id: r.id,
-        propertyId: r.property_id,
-        unidadId: r.unidad_id,
-        canalId: r.canal_id,
-        urlImportacionEnmascarada: r.url_importacion_enmascarada,
-        activo: r.activo,
-        ultimaSincronizacionExitosaEnMs: r.ultima_sincronizacion_exitosa_en ? new Date(r.ultima_sincronizacion_exitosa_en).getTime() : null,
-        enCuarentenaDesdeMs: r.en_cuarentena_desde ? new Date(r.en_cuarentena_desde).getTime() : null,
-        intentosFallidosConsecutivos: r.intentos_fallidos_consecutivos,
-        motivoCuarentena: r.motivo_cuarentena,
-      }));
+      return {
+        disponible: true,
+        datos: rows.map((r) => ({
+          id: r.id,
+          propertyId: r.property_id,
+          unidadId: r.unidad_id,
+          canalId: r.canal_id,
+          urlImportacionEnmascarada: r.url_importacion_enmascarada,
+          activo: r.activo,
+          ultimaSincronizacionExitosaEnMs: r.ultima_sincronizacion_exitosa_en ? new Date(r.ultima_sincronizacion_exitosa_en).getTime() : null,
+          enCuarentenaDesdeMs: r.en_cuarentena_desde ? new Date(r.en_cuarentena_desde).getTime() : null,
+          intentosFallidosConsecutivos: r.intentos_fallidos_consecutivos,
+          motivoCuarentena: r.motivo_cuarentena,
+        })),
+      };
     } catch (err) {
       if (!isUndefinedFunctionError(err)) throw err;
       await this.db.exec("ROLLBACK TO SAVEPOINT sp_break_glass_sync_ical");
@@ -424,10 +443,10 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       advertirUnaVez(
         "list_sync_ical_for_break_glass",
         "PostgresBreakGlassRentasDataRepository: rentas.list_sync_ical_for_break_glass no existe todavía " +
-          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return [];
+      return { disponible: false, datos: [] };
     }
   }
 }

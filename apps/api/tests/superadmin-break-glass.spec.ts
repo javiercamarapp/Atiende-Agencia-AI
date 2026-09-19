@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryCoreRepository } from "@atiende/db";
 import { signAccessToken } from "@atiende/core-auth";
 import { InMemoryBreakGlassRentasDataRepository } from "@atiende/domain-rentas";
+import type { BreakGlassRentasDataRepository } from "@atiende/domain-rentas";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
 
@@ -263,6 +264,54 @@ describe("superadmin-break-glass", () => {
     const bitacora = (await resBitacora.json()) as { entries: Array<{ resourceType: string }> };
     const tipos = bitacora.entries.map((e) => e.resourceType).sort();
     expect(tipos).toEqual(["finanzas", "limpieza", "mensajeria", "payouts", "pricing", "sync_ical"].sort());
+  });
+
+  // Bloqueante 3 de la revisión real del PR #155: `disponible: false` debe
+  // llegar hasta la respuesta HTTP -- distinto de un `200` con lista vacía por
+  // datos reales -- y NO debe generar fila de bitácora (acceso.ts nunca audita
+  // una lectura que no ocurrió). Doble mínimo del puerto (no
+  // `InMemoryBreakGlassRentasDataRepository`, que siempre está disponible) que
+  // simula el estado real de `PostgresBreakGlassRentasDataRepository` cuando
+  // la migración 020 todavía no está aplicada.
+  it("Fase 10c -- lector NO disponible (disponible: false): 200 con lista vacía Y disponible:false, SIN fila nueva en la bitácora", async () => {
+    const orgId = randomUUID();
+    const base = await buildTestDeps();
+    const dataRepoNoDisponible: BreakGlassRentasDataRepository = {
+      listReservasTenant: async () => [],
+      listFinanzasTenant: async () => ({ disponible: false, datos: [] }),
+      listPayoutsTenant: async () => ({ disponible: true, datos: [] }),
+      listPricingTenant: async () => ({ disponible: true, datos: [] }),
+      listMensajeriaTenant: async () => ({ disponible: true, datos: [] }),
+      listLimpiezaTenant: async () => ({ disponible: true, datos: [] }),
+      listSyncIcalTenant: async () => ({ disponible: true, datos: [] }),
+    };
+    const deps = { ...base.deps, rentasBreakGlassDataRepo: (_db: unknown) => dataRepoNoDisponible } as typeof base.deps;
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    const superadminId = randomUUID();
+    coreRepo.addStaff({ id: superadminId, email: "superadmin@example.com", passwordHash: null, fullName: "Super Admin", createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+    coreRepo.addPlatformSuperadmin(superadminId);
+    const token = await tokenFor(deps, superadminId, "superadmin@example.com");
+    const app = buildApp(deps);
+
+    const resOpen = await app.request("/superadmin/break-glass/sesiones", jsonRequestInit({ organizationId: orgId, reason: RAZON_VALIDA, durationMinutes: 30 }, { authorization: `Bearer ${token}` }));
+    expect(resOpen.status).toBe(201);
+
+    const resFinanzas = await app.request(`/superadmin/break-glass/organizaciones/${orgId}/finanzas`, { headers: { authorization: `Bearer ${token}` } });
+    expect(resFinanzas.status).toBe(200);
+    const finanzas = (await resFinanzas.json()) as { finanzas: unknown[]; disponible: boolean };
+    expect(finanzas.finanzas).toEqual([]);
+    expect(finanzas.disponible).toBe(false);
+
+    // Un lector SÍ disponible en la MISMA sesión sigue devolviendo disponible:true.
+    const resPayouts = await app.request(`/superadmin/break-glass/organizaciones/${orgId}/payouts`, { headers: { authorization: `Bearer ${token}` } });
+    const payouts = (await resPayouts.json()) as { payouts: unknown[]; disponible: boolean };
+    expect(payouts.disponible).toBe(true);
+
+    // La lectura NO disponible no dejó fila en la bitácora (fail-closed al
+    // revés: nunca se audita un uso que no ocurrió).
+    const resBitacora = await app.request("/superadmin/break-glass/bitacora", { headers: { authorization: `Bearer ${token}` } });
+    const bitacora = (await resBitacora.json()) as { entries: Array<{ resourceType: string }> };
+    expect(bitacora.entries.map((e) => e.resourceType)).toEqual(["payouts"]);
   });
 
   it("cerrar una sesión ajena (o inexistente) da 404, nunca cierra a nombre de otro superadmin", async () => {

@@ -10,6 +10,7 @@ import type {
   BreakGlassAuditEntry,
   BreakGlassFinanzasResumen,
   BreakGlassLectorPaginacion,
+  BreakGlassLectorResultado,
   BreakGlassLimpiezaResumen,
   BreakGlassMensajeriaResumen,
   BreakGlassPayoutResumen,
@@ -130,25 +131,53 @@ export async function leerReservasTenantBreakGlass(
 // comparten la misma forma de resumen mínimo (`{ total, ids }` sobre su propio
 // campo `id`) -- evita repetir 6 veces el mismo cuerpo de función solo con el
 // nombre del método del puerto y el `resourceType` distintos.
+//
+// FIX hallazgo de revisión real (ronda 1 del PR #155, bloqueante 3) -- estos 6
+// lectores, a diferencia de `leerReservasTenantBreakGlass`, SÍ pueden estar
+// "no disponibles" (`BreakGlassLectorResultado.disponible === false`, ver
+// tipos.ts): la migración 020 todavía no aplicada en la base real. Ese caso NO
+// pasa por `leerDatosTenantBreakGlass` -- nunca hubo una lectura real que
+// describir ni auditar (el mandato de la bitácora es "qué datos exactos se
+// vieron" de un uso COMPLETO del mecanismo, no un log de intentos fallidos, ver
+// el comentario de cabecera de `leerDatosTenantBreakGlass`) -- se propaga el
+// vacío honesto directo al llamador, con `auditEntry: null` explícito para que
+// la ruta/la UI puedan distinguirlo de una lectura real con 0 filas.
 // ─────────────────────────────────────────────────────────────────────────────
 function crearLectorTenantBreakGlass<T extends { readonly id: string }>(
   resourceType: BreakGlassAccessInput["resourceType"],
-  listar: (dataRepo: BreakGlassRentasDataRepository, organizationId: string, callerId: string, paginacion: BreakGlassLectorPaginacion) => Promise<readonly T[]>,
+  listar: (dataRepo: BreakGlassRentasDataRepository, organizationId: string, callerId: string, paginacion: BreakGlassLectorPaginacion) => Promise<BreakGlassLectorResultado<T>>,
 ) {
   return async function leer(
     auditRepo: BreakGlassAuditRepository,
     dataRepo: BreakGlassRentasDataRepository,
     input: Omit<BreakGlassAccessInput, "resourceType">,
     nowMs: number = Date.now(),
-  ): Promise<{ data: readonly T[]; auditEntry: BreakGlassAuditEntry }> {
+  ): Promise<{ data: BreakGlassLectorResultado<T>; auditEntry: BreakGlassAuditEntry | null }> {
+    if (!input.organizationId) throw new BreakGlassOrganizationRequiredError();
+    const reason = validarRazonBreakGlass(input.reason);
     const paginacion = extraerPaginacionDeResourceScope(input.resourceScope);
-    return leerDatosTenantBreakGlass(
-      auditRepo,
-      { ...input, resourceType },
-      () => listar(dataRepo, input.organizationId, input.actor.userId, paginacion),
-      (data) => ({ total: data.length, ids: data.map((r) => r.id) }),
-      nowMs,
-    );
+
+    const resultado = await listar(dataRepo, input.organizationId, input.actor.userId, paginacion);
+    if (!resultado.disponible) {
+      return { data: resultado, auditEntry: null };
+    }
+
+    let auditEntry: BreakGlassAuditEntry;
+    try {
+      auditEntry = await auditRepo.record({
+        actorUserId: input.actor.userId,
+        actorEmail: input.actor.email ?? null,
+        organizationId: input.organizationId,
+        reason,
+        resourceType,
+        resourceScope: input.resourceScope ?? {},
+        resultSummary: { total: resultado.datos.length, ids: resultado.datos.map((r) => r.id) },
+        occurredAtMs: nowMs,
+      });
+    } catch (err) {
+      throw new BreakGlassAuditWriteFailedError(err);
+    }
+    return { data: resultado, auditEntry };
   };
 }
 

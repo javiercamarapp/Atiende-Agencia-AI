@@ -18,6 +18,7 @@ export type {
   BreakGlassAuditEntry,
   BreakGlassFinanzasResumen,
   BreakGlassLectorPaginacion,
+  BreakGlassLectorResultado,
   BreakGlassLimpiezaResumen,
   BreakGlassMensajeriaResumen,
   BreakGlassPayoutResumen,

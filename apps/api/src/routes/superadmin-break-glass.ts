@@ -37,7 +37,7 @@ import {
   listarAccesosBreakGlass,
   obtenerAccesoActivoBreakGlass,
 } from "@atiende/domain-rentas";
-import type { BreakGlassAccessInput, BreakGlassAuditEntry, BreakGlassAuditRepository, BreakGlassRentasDataRepository, BreakGlassSession } from "@atiende/domain-rentas";
+import type { BreakGlassAccessInput, BreakGlassAuditEntry, BreakGlassAuditRepository, BreakGlassLectorResultado, BreakGlassRentasDataRepository, BreakGlassSession } from "@atiende/domain-rentas";
 import { rateLimit } from "@atiende/core-ratelimit";
 import type { Context } from "hono";
 import { Errors } from "../errors.ts";
@@ -195,6 +195,20 @@ export function superadminBreakGlassRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
  * vigente, mismo parseo de `?propertyId=`/`?limit=`/`?offset=`/`?reason=`, mismo
  * manejo de `BreakGlassReasonRequiredError` -> 422), solo cambia el segmento de
  * URL, la clave del JSON de respuesta, y qué composición de dominio invocar.
+ *
+ * FIX hallazgo de revisión real (ronda 1 del PR #155, bloqueante 3) -- `data`
+ * puede llegar como un array plano (`leerReservasTenantBreakGlass`, que
+ * SIEMPRE tiene datos reales disponibles, ver tipos.ts) o como
+ * `BreakGlassLectorResultado<T>` (los 6 lectores nuevos, que sí pueden estar
+ * `disponible: false` mientras la migración 020 no esté aplicada). La
+ * respuesta SIEMPRE incluye `disponible` -- `true` para reservas (nunca hay un
+ * estado "no disponible" genuino ahí), o el valor real del wrapper para los
+ * otros 6 -- para que la pestaña web pueda distinguir "el tenant no tiene
+ * datos de este tipo" de "el lector todavía no está disponible". `auditEntry`
+ * puede llegar `null` cuando el lector no estaba disponible (acceso.ts NUNCA
+ * audita una lectura que no ocurrió) -- no se expone en el JSON (la bitácora ya
+ * tiene su propio endpoint), pero es la razón por la que el tipo de `leer` lo
+ * permite.
  */
 function registrarLectorTenant<T>(
   app: Hono<CoreAuthHonoEnv>,
@@ -206,7 +220,7 @@ function registrarLectorTenant<T>(
     dataRepo: BreakGlassRentasDataRepository,
     input: Omit<BreakGlassAccessInput, "resourceType">,
     nowMs?: number,
-  ) => Promise<{ data: readonly T[]; auditEntry: BreakGlassAuditEntry }>,
+  ) => Promise<{ data: readonly T[] | BreakGlassLectorResultado<T>; auditEntry: BreakGlassAuditEntry | null }>,
 ): void {
   app.get(`/superadmin/break-glass/organizaciones/:organizationId/${path}`, async (c: Context<CoreAuthHonoEnv>) => {
     const callerId = c.get("userId");
@@ -241,7 +255,17 @@ function registrarLectorTenant<T>(
           reason: reason || sesionActiva.reason,
           resourceScope: { propertyId, limit, offset },
         });
-        return c.json({ [jsonKey]: data });
+        // `leerReservasTenantBreakGlass` devuelve un array plano (siempre
+        // disponible); los 6 lectores nuevos devuelven el wrapper -- se
+        // normaliza aquí, una sola vez, en vez de en cada composición de
+        // dominio.
+        let resultado: BreakGlassLectorResultado<T>;
+        if (Array.isArray(data)) {
+          resultado = { disponible: true, datos: data as readonly T[] };
+        } else {
+          resultado = data as BreakGlassLectorResultado<T>;
+        }
+        return c.json({ [jsonKey]: resultado.datos, disponible: resultado.disponible });
       } catch (err) {
         if (err instanceof BreakGlassReasonRequiredError) throw Errors.validation(err.message);
         throw err;

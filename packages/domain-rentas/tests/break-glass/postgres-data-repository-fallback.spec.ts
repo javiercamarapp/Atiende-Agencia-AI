@@ -180,12 +180,15 @@ describe("PostgresBreakGlassRentasDataRepository -- los 6 lectores nuevos, fallb
 
     const result = await repo.listFinanzasTenant(ORG_ID, CALLER_ID);
 
-    expect(result).toEqual([
-      { id: "f1", ocupacionId: "r1", propertyId: "p1", moneda: "MXN", montoBrutoCentavos: 100000, comisionCanalCentavos: 10000, comisionGestorCentavos: 5000, gastosCentavos: 0, impuestosCentavos: 16000, netoCentavos: 69000, createdAtMs: new Date("2026-01-01T00:00:00.000Z").getTime() },
-    ]);
+    // `disponible: true` -- la función existe y respondió filas reales (ver
+    // bloqueante 3: BreakGlassLectorResultado distingue esto de "no disponible").
+    expect(result).toEqual({
+      disponible: true,
+      datos: [{ id: "f1", ocupacionId: "r1", propertyId: "p1", moneda: "MXN", montoBrutoCentavos: 100000, comisionCanalCentavos: 10000, comisionGestorCentavos: 5000, gastosCentavos: 0, impuestosCentavos: 16000, netoCentavos: 69000, createdAtMs: new Date("2026-01-01T00:00:00.000Z").getTime() }],
+    });
   });
 
-  it("listFinanzasTenant: 42883 -> vacío honesto SIN romper la transacción para una query posterior (mismo patrón de bitácora)", async () => {
+  it("listFinanzasTenant: 42883 -> disponible:false (vacío honesto, NUNCA indistinguible de 'el tenant no tiene datos') SIN romper la transacción para una query posterior (mismo patrón de bitácora)", async () => {
     const session = abortableFakeSession([
       { match: /^select \* from rentas\.list_finanzas_for_break_glass/, respond: () => undefinedFunctionError("rentas.list_finanzas_for_break_glass(uuid,uuid,uuid,int,int)") },
       { match: /insert into rentas\.break_glass_access_log/, respond: () => [{ id: "audit-2" }] },
@@ -193,7 +196,7 @@ describe("PostgresBreakGlassRentasDataRepository -- los 6 lectores nuevos, fallb
     const repo = new PostgresBreakGlassRentasDataRepository(session);
 
     const result = await repo.listFinanzasTenant(ORG_ID, CALLER_ID);
-    expect(result).toEqual([]);
+    expect(result).toEqual({ disponible: false, datos: [] });
 
     // Regression guard del bloqueante 1 para los 6 lectores nuevos: sin
     // ROLLBACK TO SAVEPOINT, esta query posterior (el INSERT de bitácora real de
@@ -201,13 +204,13 @@ describe("PostgresBreakGlassRentasDataRepository -- los 6 lectores nuevos, fallb
     await expect(session.query("insert into rentas.break_glass_access_log (...) values (...) returning id;")).resolves.toEqual({ rows: [{ id: "audit-2" }] });
   });
 
-  it("listSyncIcalTenant: 42883 -> vacío honesto SIN romper la transacción (URL de import nunca llega a mapearse si la función no existe)", async () => {
+  it("listSyncIcalTenant: 42883 -> disponible:false SIN romper la transacción (URL de import nunca llega a mapearse si la función no existe)", async () => {
     const session = abortableFakeSession([{ match: /^select \* from rentas\.list_sync_ical_for_break_glass/, respond: () => undefinedFunctionError("rentas.list_sync_ical_for_break_glass(uuid,uuid,uuid,int,int)") }]);
     const repo = new PostgresBreakGlassRentasDataRepository(session);
 
     const result = await repo.listSyncIcalTenant(ORG_ID, CALLER_ID);
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ disponible: false, datos: [] });
     // La sesión debe quedar recuperada (no abortada) -- una query trivial
     // posterior no debe lanzar 25P02.
     await expect(session.query("select 1;")).rejects.toThrow(/ninguna regla coincide/);
