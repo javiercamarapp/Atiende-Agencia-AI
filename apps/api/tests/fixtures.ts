@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import {
+  hashPassword,
+  InMemoryCoreRepository,
+  InMemoryImpersonationRepository,
+  InMemoryLlmUsageRepository,
+  InMemoryResumenDiarioRepository,
+  InMemorySaludRepository,
+  InMemorySuperadminAccionesRepository,
+  InMemoryTenancyEngine,
+} from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -136,6 +145,13 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
   const rentasBreakGlassSessionRepo = new InMemoryBreakGlassSessionRepository();
   const rentasBreakGlassAuditRepo = new InMemoryBreakGlassAuditRepository();
   const rentasBreakGlassDataRepo = new InMemoryBreakGlassRentasDataRepository(new Map());
+  // Bloque C -- impersonación de superadmin con bitácora. Una sola instancia
+  // compartida por contexto de test (mismo criterio que las 3 de arriba: abrir
+  // -> listar -> terminar -> bitácora son pasos separados de un mismo flujo).
+  // Sembrada con la organización seedeada arriba (`organizationId`) para que
+  // los tests que impersonan esa organización no tengan que resembrarla.
+  const impersonationRepo = new InMemoryImpersonationRepository();
+  impersonationRepo.seedOrganization(organizationId);
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
@@ -184,6 +200,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     rentasBreakGlassSessionRepo: (_db) => rentasBreakGlassSessionRepo,
     rentasBreakGlassAuditRepo: (_db) => rentasBreakGlassAuditRepo,
     rentasBreakGlassDataRepo: (_db) => rentasBreakGlassDataRepo,
+    impersonationRepo: (_db) => impersonationRepo,
     llmGateway: undefined,
     llmUsageRepo,
     saludRepo,

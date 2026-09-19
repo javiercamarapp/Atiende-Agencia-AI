@@ -5,7 +5,7 @@
 // como lo haría un seed contra las migraciones SQL reales de
 // packages/domain-licitaciones/migrations/.
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -137,6 +137,11 @@ export async function buildLicitacionesTestContext(
     rentasBreakGlassSessionRepo: (_db) => new InMemoryBreakGlassSessionRepository(),
     rentasBreakGlassAuditRepo: (_db) => new InMemoryBreakGlassAuditRepository(),
     rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
+    // Bloque C -- impersonación de superadmin con bitácora: campo requerido de
+    // AppDeps que este fixture (independiente del de fixtures.ts) todavía no
+    // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
+    // impersonación.
+    impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
     llmGateway: options.llmGateway,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     saludRepo: new InMemorySaludRepository(),

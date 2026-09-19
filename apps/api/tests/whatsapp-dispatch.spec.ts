@@ -5,7 +5,7 @@
 // FakeWhatsAppGraphClient — NUNCA toca la red ni usa un WHATSAPP_ACCESS_TOKEN real.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -112,6 +112,11 @@ function buildDispatchTestContext(opts: { readonly withDispatcher: boolean; read
     rentasBreakGlassSessionRepo: (_db) => new InMemoryBreakGlassSessionRepository(),
     rentasBreakGlassAuditRepo: (_db) => new InMemoryBreakGlassAuditRepository(),
     rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
+    // Bloque C -- impersonación de superadmin con bitácora: campo requerido de
+    // AppDeps que este fixture (independiente del de fixtures.ts) todavía no
+    // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
+    // impersonación.
+    impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),
