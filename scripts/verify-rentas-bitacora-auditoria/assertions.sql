@@ -23,6 +23,11 @@
 --   6. `authenticated` no puede insertar directo en la tabla saltándose la función
 --      (sin policy de INSERT, deny-by-default real).
 --   7. El catálogo cerrado de `entity_type` rechaza un valor fuera de la lista.
+--   8. Un `campo`/`antes`/`despues` de más de 200/500/500 caracteres NUNCA viola el
+--      CHECK de longitud de la tabla -- la función trunca con `left()` antes del
+--      INSERT (corrección de revisión r5: un `motivoVersion` largo de un owner
+--      statement hacía que la fila se perdiera en silencio, ver el comentario de
+--      cabecera de `rentas.record_audit_log`).
 --
 -- Run vía ./run.sh -- ver ese archivo para cómo se levanta el Postgres efímero + el
 -- mock mínimo de plataforma (mismo patrón que scripts/verify-outbox-grants/).
@@ -84,9 +89,35 @@ select rentas.record_audit_log(
 ) as nuevo_id;
 rollback;
 
-\echo '--- 2. la fixture insertada arriba tiene el actor REAL de la sesión que la escribió (esta función ni siquiera acepta un parámetro de actor) ---'
-select actor_user_id = '00000000-0000-0000-0000-000000000011' as actor_correcto_deberia_ser_true, entity_type, action, campo, antes, despues
-from rentas.audit_log where entity_id = '00000000-0000-0000-0000-0000000000d1';
+-- Corrección de revisión r5 (no bloqueante #6): el escenario 2 original leía la
+-- fixture de arriba (sembrada por el SUPERUSUARIO con un `actor_user_id` fijo,
+-- fuera de cualquier begin/rollback) -- eso es tautológico, nunca demuestra que
+-- `rentas.record_audit_log` tome el actor de `auth.uid()`; esa propiedad la
+-- garantiza únicamente la FIRMA de la función (no acepta ningún parámetro de
+-- actor), no un dato que el propio script insertó a mano. Además, al vivir fuera
+-- de un `begin;.../rollback;`, `scripts/verify-real-postgres-ci/run-gate.mjs` ni
+-- siquiera lo contaba como escenario (de ahí el "14/14" pese a documentar 15).
+--
+-- Este reemplazo SÍ demuestra la propiedad con una llamada real: dentro del MISMO
+-- begin, invoca la función autenticado como el staff 11 y confirma que la fila
+-- que ACABA de insertar tiene `actor_user_id = auth.uid()` -- nunca lee una
+-- fixture ajena.
+\echo '--- 2. actor real: la fila que la función ACABA de insertar (dentro del mismo begin) tiene actor_user_id = auth.uid() -- nunca depende de leer una fixture externa ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.record_audit_log(
+  '00000000-0000-0000-0000-0000000000a1',
+  'pricing.tarifa_base.actualizada',
+  'pricing',
+  '00000000-0000-0000-0000-0000000000c2',
+  'precio_noche_centavos',
+  null,
+  '180000 MXN desde 2026-09-01'
+) as nuevo_id;
+select (actor_user_id = auth.uid())::int as actor_correcto_deberia_ser_1
+from rentas.audit_log where entity_id = '00000000-0000-0000-0000-0000000000c2';
+rollback;
 
 \echo ''
 \echo '=== 2) negativo: sin actor autenticado (sesion de sistema) ==='
@@ -211,4 +242,25 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
 select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'x', 'tipo_inventado', null, null, null, 'x') as should_fail;
+rollback;
+
+\echo ''
+\echo '=== 9) truncamiento defensivo: un motivoVersion largo nunca revienta el CHECK de longitud (corrección de revisión r5) ==='
+\echo ''
+
+\echo '--- 16. un `despues` de 600 caracteres (más de 500) NUNCA viola el CHECK -- la función trunca con left() antes del INSERT, la fila SIEMPRE se escribe ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.record_audit_log(
+  '00000000-0000-0000-0000-0000000000a1',
+  'owner_statement.nueva_version',
+  'owner_statement',
+  '00000000-0000-0000-0000-0000000000c3',
+  'version',
+  null,
+  repeat('x', 600)
+) as nuevo_id;
+select char_length(despues) as despues_truncado_deberia_ser_500
+from rentas.audit_log where entity_id = '00000000-0000-0000-0000-0000000000c3';
 rollback;
