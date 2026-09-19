@@ -129,6 +129,9 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture de pruebas genérico.");
     },
+    citasCaldavUrlValidator: async () => {
+      throw new Error("citasCaldavUrlValidator no está configurado en este fixture de pruebas genérico.");
+    },
     licitacionesRepo: (_db) => licitacionesRepo,
     despachosRepo: (_db) => despachosRepo,
     despachosAuditSink: new InMemoryAuditSink(),

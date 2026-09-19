@@ -190,6 +190,8 @@ export { buildVEventIcs, IcsBuildError, IcsParseError, parseVEventIcs } from "./
 export type { ParsedVEvent, VEventDraft } from "./caldav-ics.ts";
 export { CalDavApiError, RealCalDavPort } from "./caldav-port.ts";
 export type { CalDavPortConfig } from "./caldav-port.ts";
+export { crearValidadorUrlCaldav } from "./net/validar-url-caldav.ts";
+export type { MotivoRechazoUrlCaldav, ResolverDns, ResultadoValidacionUrlCaldav } from "./net/validar-url-caldav.ts";
 export type {
   CalendarProviderSyncStatus,
   ConnectProviderCalComAccountInput,

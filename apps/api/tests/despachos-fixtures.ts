@@ -105,6 +105,9 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (vertical despachos).");
     },
+    citasCaldavUrlValidator: async () => {
+      throw new Error("citasCaldavUrlValidator no está configurado en este fixture (vertical despachos).");
+    },
     licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
     rentasRepo: (_db) => new InMemoryRentasRepository(),
     rentasOwnerPortalRepo: (_db) => new InMemoryRentasOwnerPortalRepository(),

@@ -154,6 +154,9 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture de pruebas de KPIs de restaurantes.");
     },
+    citasCaldavUrlValidator: async () => {
+      throw new Error("citasCaldavUrlValidator no está configurado en este fixture de pruebas de KPIs de restaurantes.");
+    },
     licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
     despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
