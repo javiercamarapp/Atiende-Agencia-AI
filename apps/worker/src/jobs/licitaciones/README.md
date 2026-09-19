@@ -10,12 +10,14 @@ auditoría de paridad contra el repo origen).
 - **`discover-tenders.ts`** — invoca, para una organización, todos los
   conectores del registro único (`@atiende/domain-licitaciones`,
   `connector-registry.ts`) que ya traen una implementación REAL
-  (`descriptor.connector` presente). Hoy eso es exactamente uno:
-  `compras_mx_historico` (histórico de contratos de ComprasMX vía CSV
-  abierto de `datos.gob.mx`, ver
+  (`descriptor.connector` presente). Al escribir esta sección (Fase 8) eso
+  era exactamente uno: `compras_mx_historico` (histórico de contratos de
+  ComprasMX vía CSV abierto de `datos.gob.mx`, ver
   `packages/domain-licitaciones/src/connectors/compras-mx-historico.ts` para
   el detalle completo, incluidas las desviaciones deliberadas respecto del
-  repo origen). Cada corrida se registra vía `recordSourceRun`
+  repo origen). **Desactualizado: la Fase 9 (ver abajo) agregó 3 conectores
+  más al registro** (`nl_ocds`, `cdmx_ocds`, `aggregator`) — hoy son 4 con
+  `connector` real, no 1. Cada corrida se registra vía `recordSourceRun`
   (REQ-146..150: estado explícito, evidencia, cobertura — nunca "0
   registros" en silencio).
 - **`deadline-reminders.ts`** — escanea `submissionDeadline` de todas las
