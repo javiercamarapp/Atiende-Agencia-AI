@@ -51,7 +51,7 @@ describe("runCobranzaReminderSweep", () => {
     const invoice = await repo.insertInvoice(invoiceInput());
     await repo.registerReceivable({ organizationId, propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-09-14", clienteNombre: "Cliente A", clienteEmail: "cliente-a@example.com" });
 
-    const sweep = await runCobranzaReminderSweep(repo, { todayIsoDate: "2026-09-14" });
+    const sweep = await runCobranzaReminderSweep((fn) => fn(repo), { todayIsoDate: "2026-09-14" });
 
     expect(sweep).toHaveLength(1);
     const orgResult = sweep[0]!;
@@ -71,7 +71,7 @@ describe("runCobranzaReminderSweep", () => {
     // reales (-7/0/+7/+30/+60), ver cobranza/engine.ts::etapaRecordatorioCobranzaHoy.
     await repo.registerReceivable({ organizationId, propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-09-17", clienteEmail: "cliente@example.com" });
 
-    const sweep = await runCobranzaReminderSweep(repo, { todayIsoDate: "2026-09-14" });
+    const sweep = await runCobranzaReminderSweep((fn) => fn(repo), { todayIsoDate: "2026-09-14" });
 
     expect(sweep[0]!.properties).toEqual([{ propertyId, receivablesScanned: 1, remindersDue: 0, emailsEnqueued: 0 }]);
     expect(repo.getMessagingOutbox()).toHaveLength(0);
@@ -81,7 +81,7 @@ describe("runCobranzaReminderSweep", () => {
     const invoice = await repo.insertInvoice(invoiceInput());
     await repo.registerReceivable({ organizationId, propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-09-14" });
 
-    const sweep = await runCobranzaReminderSweep(repo, { todayIsoDate: "2026-09-14" });
+    const sweep = await runCobranzaReminderSweep((fn) => fn(repo), { todayIsoDate: "2026-09-14" });
 
     expect(sweep[0]!.properties).toEqual([{ propertyId, receivablesScanned: 1, remindersDue: 1, emailsEnqueued: 0 }]);
     expect(repo.getMessagingOutbox()).toHaveLength(0);
@@ -92,7 +92,7 @@ describe("runCobranzaReminderSweep", () => {
     const receivable = await repo.registerReceivable({ organizationId, propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-09-14", clienteEmail: "cliente@example.com" });
     await repo.markReceivablePaid(propertyId, receivable.id, "2026-09-01T00:00:00.000Z", 1160);
 
-    const sweep = await runCobranzaReminderSweep(repo, { todayIsoDate: "2026-09-14" });
+    const sweep = await runCobranzaReminderSweep((fn) => fn(repo), { todayIsoDate: "2026-09-14" });
     expect(sweep[0]!.properties).toEqual([{ propertyId, receivablesScanned: 0, remindersDue: 0, emailsEnqueued: 0 }]);
   });
 
@@ -100,8 +100,8 @@ describe("runCobranzaReminderSweep", () => {
     const invoice = await repo.insertInvoice(invoiceInput());
     await repo.registerReceivable({ organizationId, propertyId, invoiceId: invoice.id, fechaVencimiento: "2026-09-14", clienteEmail: "cliente@example.com" });
 
-    await runCobranzaReminderSweep(repo, { todayIsoDate: "2026-09-14" });
-    await runCobranzaReminderSweep(repo, { todayIsoDate: "2026-09-14" });
+    await runCobranzaReminderSweep((fn) => fn(repo), { todayIsoDate: "2026-09-14" });
+    await runCobranzaReminderSweep((fn) => fn(repo), { todayIsoDate: "2026-09-14" });
 
     expect(repo.getMessagingOutbox()).toHaveLength(1);
   });
@@ -123,7 +123,7 @@ describe("runCobranzaReminderSweep", () => {
       enqueueMessagingOutbox: repo.enqueueMessagingOutbox.bind(repo),
     } as unknown as DespachosRepository;
 
-    const sweep = await runCobranzaReminderSweep(brokenRepo, { todayIsoDate: "2026-09-14" });
+    const sweep = await runCobranzaReminderSweep((fn) => fn(brokenRepo), { todayIsoDate: "2026-09-14" });
     const failed = sweep.find((r) => r.organizationId === organizationId)!;
     const ok = sweep.find((r) => r.organizationId === org2)!;
     expect(failed.error).toBe("fallo simulado");
