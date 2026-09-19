@@ -458,3 +458,57 @@ select id as intent_id into temp t44 from core.crear_superadmin_action_intent_fo
 select core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t44));
 select core._reencolar_mensaje_muerto((select intent_id from t44), 'hoteles', '00000000-0000-0000-0000-000000000224') as should_fail;
 rollback;
+
+-- ═══ cerrar_prospecto: re-validación del estado ACTUAL del prospecto antes de
+--    ejecutar (`packages/db/migrations/0019_cerrar_prospecto_revalida_estado.sql`,
+--    corrige el lost-update: ANTES de esta migración, esta rama era la ÚNICA de
+--    las tres que nunca revisaba de nuevo el mundo real antes de escribir). `now()`
+--    es constante dentro de una misma transacción en Postgres, así que estos
+--    escenarios usan el mismo truco de `update ... set creado_en = now() -
+--    interval ...` que el escenario 19 (intent vencido) en vez de esperar reloj
+--    real. ═══
+
+\echo '=== 45. cerrar_prospecto: camino feliz SIN cambios en el prospecto -- sigue ejecutando normal tras el fix (regresión) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select id as intent_id into temp t45 from core.crear_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', 'cerrar_prospecto', jsonb_build_object('prospectoId', '00000000-0000-0000-0000-000000000210', 'estado', 'perdido'), 'x', 5);
+select estado as deberia_ser_executed from core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t45));
+reset role;
+select estado as deberia_ser_perdido from core.prospecto where id = '00000000-0000-0000-0000-000000000210';
+rollback;
+
+\echo '=== 46. cerrar_prospecto: el prospecto fue MODIFICADO por OTRO superadmin despues de crear el intent -- confirmacion RECHAZADA (failed con motivo), el estado nuevo NO se pisa ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select id as intent_id into temp t46 from core.crear_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', 'cerrar_prospecto', jsonb_build_object('prospectoId', '00000000-0000-0000-0000-000000000210', 'estado', 'perdido'), 'x', 5);
+reset role;
+-- Retrocede `creado_en` del intent (mismo truco que el escenario 19) -- simula
+-- que pasaron varios minutos desde que se creó, sin depender del reloj real.
+update core.superadmin_action_intent set creado_en = now() - interval '10 minutes' where id = (select intent_id from t46);
+-- Otro superadmin edita el MISMO prospecto por el editor normal mientras el
+-- primer intent seguía pendiente de confirmar.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000203', true);
+select core.update_prospecto_for_superadmin('00000000-0000-0000-0000-000000000203', '00000000-0000-0000-0000-000000000210', 'demo', 'editado por otro superadmin');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select estado as deberia_ser_failed from core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t46));
+reset role;
+select estado as deberia_ser_demo from core.prospecto where id = '00000000-0000-0000-0000-000000000210';
+select (error is not null) as deberia_ser_t from core.superadmin_action_intent where id = (select intent_id from t46);
+rollback;
+
+\echo '=== 47. cerrar_prospecto: el prospecto YA esta en un estado terminal cuando se confirma -- confirmacion RECHAZADA (failed con motivo), no se re-ejecuta encima ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000202', true);
+select id as intent_id into temp t47 from core.crear_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', 'cerrar_prospecto', jsonb_build_object('prospectoId', '00000000-0000-0000-0000-000000000210', 'estado', 'descartado'), 'x', 5);
+-- El prospecto ya se cerro por otro camino ANTES de que el creador del intent
+-- llegara a confirmarlo.
+select core.update_prospecto_for_superadmin('00000000-0000-0000-0000-000000000202', '00000000-0000-0000-0000-000000000210', 'perdido', null);
+select estado as deberia_ser_failed from core.confirmar_superadmin_action_intent_for_superadmin('00000000-0000-0000-0000-000000000202', (select intent_id from t47));
+reset role;
+select estado as deberia_ser_perdido from core.prospecto where id = '00000000-0000-0000-0000-000000000210';
+select (error is not null) as deberia_ser_t from core.superadmin_action_intent where id = (select intent_id from t47);
+rollback;
