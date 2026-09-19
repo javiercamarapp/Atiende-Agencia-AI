@@ -233,9 +233,20 @@ describe("vencimientos fiscales — flujo 3", () => {
     // disparo inline (triggerDespachosEmailDispatchInline) ya reclamó el job y
     // marcó el intento fallido DENTRO de este mismo request -- nunca se queda en
     // 'pending' esperando al cron diario.
+    //
+    // attempts=2 (no 1) desde el arreglo de fondo de la auditoría a2: además del
+    // disparo inline de arriba, dbSession ahora corre `runDespachosEmailDispatch`
+    // (sesión de SISTEMA) como tarea post-commit -- ver
+    // ./email-dispatch.ts::triggerDespachosEmailDispatchInline (en notifications.ts)
+    // y packages/core-auth/src/middleware.ts::dbSession. Contra Postgres real esto
+    // NO reprocesa el job dos veces: el intento inline en sesión de staff SIEMPRE
+    // es un no-op (claim_email_outbox_batch lanza 42501 antes de reclamar nada),
+    // así que solo la tarea post-commit reclama de verdad. `InMemoryDespachosRepository`
+    // (este fixture) no modela ese guard, así que en este entorno de prueba AMBOS
+    // intentos sí reclaman el job -- fidelidad de test conocida, no un bug.
     const job = ctx.despachosRepo.getMessagingOutbox().find((j) => j.eventType === "vencimiento.escalado");
     expect(job?.status).toBe("failed");
-    expect(job?.attempts).toBe(1);
+    expect(job?.attempts).toBe(2);
   });
 
   it("marcar completado un vencimiento ya completado da 409 conflict", async () => {

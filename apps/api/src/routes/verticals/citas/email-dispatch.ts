@@ -28,6 +28,7 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-citas";
 import type { CitasRepository, EmailDispatchSummary } from "@atiende/domain-citas";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -64,14 +65,37 @@ export async function runCitasEmailDispatch(deps: AppDeps): Promise<EmailDispatc
  * caído, RESEND_API_KEY no configurada) NUNCA se propaga al caller HTTP — el
  * correo ya quedó en el outbox y el cron diario (red de seguridad de respaldo,
  * sigue corriendo) lo recoge en la siguiente corrida.
+ *
+ * Hotfix (auditoría a2, CRÍTICO) — recibe también `db` (el MISMO
+ * `TenantDbSession` de `c.get("db")`/`withAppSession`, nunca uno nuevo) para
+ * envolver el drenado en `SAVEPOINT`. En TODA ruta de sesión de STAFF
+ * (`auth.uid()` no nulo) `citas.claim_email_outbox_batch` lanza SIEMPRE 42501
+ * (guard correcto, cross-tenant -- NO se afloja) y, sin este SAVEPOINT, esa
+ * excepción deja la transacción de negocio COMPLETA abortada (25P02) hasta un
+ * `ROLLBACK TO SAVEPOINT`: el `commit;` del motor sobre una transacción
+ * abortada no lanza error (Postgres responde "ROLLBACK" en silencio, ver
+ * packages/db/src/managed-postgres-engine.ts), así que la transición de la
+ * cita (cancelar/confirmar/completar/no-show) de ESTE MISMO request se pierde
+ * con un 2xx. Mismo patrón SAVEPOINT ya usado en
+ * `packages/domain-citas/src/postgres-repository.ts::upsertCustomer`. Ver
+ * `scripts/verify-correo-inline-sesion-staff/` para la prueba ANTES/DESPUÉS
+ * contra Postgres real.
  */
-export async function triggerCitasEmailDispatchInline(deps: AppDeps, citasRepo: CitasRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+export async function triggerCitasEmailDispatchInline(deps: AppDeps, db: TenantDbSession, citasRepo: CitasRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
     const summary = await dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize });
+    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
       console.error(`citas email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    try {
+      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
+      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
+    } catch (recoveryErr) {
+      console.error("citas email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
+    }
     console.error("citas email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
   }
 }

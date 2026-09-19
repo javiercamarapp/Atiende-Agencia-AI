@@ -30,6 +30,7 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-restaurantes";
 import type { EmailDispatchSummary, RestaurantesRepository } from "@atiende/domain-restaurantes";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -59,14 +60,33 @@ export async function runRestaurantesEmailDispatch(deps: AppDeps): Promise<Email
  * función gemela). Un fallo aquí NUNCA se propaga al caller HTTP — el correo ya
  * quedó en el outbox y el cron diario (red de seguridad de respaldo) lo recoge
  * después.
+ *
+ * Hotfix (auditoría a2, CRÍTICO) — recibe también `db` (el MISMO
+ * `TenantDbSession` de `withAppSession`, nunca uno nuevo) para envolver el
+ * drenado en `SAVEPOINT`. Los 2 call sites reales de esta función hoy
+ * (`public.ts::createOrder`, `whatsapp.ts`) YA corren en sesión de SISTEMA
+ * (`auth.uid()` null, guard pasa sin problema -- ver
+ * auditoria-a2-resultado.json::refuted, "Alcance a restaurantes public.ts:129
+ * createOrder"), así que este SAVEPOINT es defensa en profundidad (misma
+ * función que las otras 5 verticales, protegida igual por si un futuro call
+ * site la invoca desde sesión de staff), no la corrección de un bug activo en
+ * restaurantes.
  */
-export async function triggerRestaurantesEmailDispatchInline(deps: AppDeps, restaurantesRepo: RestaurantesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+export async function triggerRestaurantesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, restaurantesRepo: RestaurantesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
     const summary = await dispatchPendingEmailJobs(restaurantesRepo, deps.env.resend, { batchSize });
+    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
       console.error(`restaurantes email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    try {
+      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
+      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
+    } catch (recoveryErr) {
+      console.error("restaurantes email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
+    }
     console.error("restaurantes email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
   }
 }

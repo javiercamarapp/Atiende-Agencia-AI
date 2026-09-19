@@ -106,7 +106,7 @@ export function citasAppointmentsRoutes(deps: AppDeps): Hono {
         // del correo recién encolado arriba, mismo `citasRepo`/transacción (ver
         // comentario de cabecera de email-dispatch.ts), en vez de esperar al cron
         // diario de /internal/citas/email-dispatch.
-        await triggerCitasEmailDispatchInline(deps, citasRepo);
+        await triggerCitasEmailDispatchInline(deps, db, citasRepo);
         // Fase 3 §5 — intento inmediato de sincronizar con Google Calendar. La fila
         // ya quedó en google_sync_status='pending' de forma atómica dentro de
         // create_appointment_idempotent; tryTriggerCalendarSync absorbe cualquier
