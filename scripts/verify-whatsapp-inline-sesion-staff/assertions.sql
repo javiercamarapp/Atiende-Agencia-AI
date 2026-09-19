@@ -89,9 +89,24 @@ insert into restaurantes.customers (id, organization_id, phone, name, order_coun
   ('00000000-0000-0000-0000-0000000010ca', '00000000-0000-0000-0000-0000000010a1', '9990000010', 'Cliente a2b', 0)
 on conflict do nothing;
 
+-- Cuatro pedidos "pending" reales de la taqueria a2b -- d1/d2 para el escenario
+-- original ANTES/DESPUES (SAVEPOINT de `claim_messaging_outbox_batch`, ver abajo),
+-- d3/d4 para el escenario nuevo Blocker A (SAVEPOINT del SELECT de
+-- `resolveActiveWhatsAppPhoneNumberId`, ver más abajo).
 insert into restaurantes.orders (id, organization_id, property_id, customer_id, customer_name, customer_phone, total, status, items, source) values
   ('00000000-0000-0000-0000-0000000010d1', '00000000-0000-0000-0000-0000000010a1', '00000000-0000-0000-0000-0000000010b1', '00000000-0000-0000-0000-0000000010ca', 'Cliente a2b', '9990000010', 180, 'pending', '[{"name":"Taco","qty":3,"price":60}]'::jsonb, 'whatsapp'),
-  ('00000000-0000-0000-0000-0000000010d2', '00000000-0000-0000-0000-0000000010a1', '00000000-0000-0000-0000-0000000010b1', '00000000-0000-0000-0000-0000000010ca', 'Cliente a2b', '9990000010', 240, 'pending', '[{"name":"Taco","qty":4,"price":60}]'::jsonb, 'whatsapp')
+  ('00000000-0000-0000-0000-0000000010d2', '00000000-0000-0000-0000-0000000010a1', '00000000-0000-0000-0000-0000000010b1', '00000000-0000-0000-0000-0000000010ca', 'Cliente a2b', '9990000010', 240, 'pending', '[{"name":"Taco","qty":4,"price":60}]'::jsonb, 'whatsapp'),
+  ('00000000-0000-0000-0000-0000000010d3', '00000000-0000-0000-0000-0000000010a1', '00000000-0000-0000-0000-0000000010b1', '00000000-0000-0000-0000-0000000010ca', 'Cliente a2b', '9990000010', 120, 'pending', '[{"name":"Taco","qty":2,"price":60}]'::jsonb, 'whatsapp'),
+  ('00000000-0000-0000-0000-0000000010d4', '00000000-0000-0000-0000-0000000010a1', '00000000-0000-0000-0000-0000000010b1', '00000000-0000-0000-0000-0000000010ca', 'Cliente a2b', '9990000010', 300, 'pending', '[{"name":"Taco","qty":5,"price":60}]'::jsonb, 'whatsapp')
+on conflict do nothing;
+
+-- Canal de WhatsApp real conectado para la organización -- necesario para que el
+-- SELECT de `resolveActiveWhatsAppPhoneNumberId` (postgres-repository.ts:631) tenga
+-- algo que leer; el 42501 de la sección Blocker A de abajo ocurre en el CHEQUEO DE
+-- PERMISOS (falta el GRANT), antes siquiera de mirar si hay filas -- da igual si la
+-- tabla está vacía o no, pero una fila real hace el fixture honesto.
+insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id) values
+  ('00000000-0000-0000-0000-0000000010a1', 'PHONE_NUMBER_ID_TAQUERIA_A2B')
 on conflict do nothing;
 
 -- =============================================================================
@@ -136,6 +151,72 @@ rollback;
 begin;
 select count(*) as restaurantes_despues_status_persiste_deberia_ser_1 from restaurantes.orders where id = '00000000-0000-0000-0000-0000000010d2' and status = 'preparando';
 rollback;
+
+-- =============================================================================
+-- RESTAURANTES — Blocker A (revisión independiente de PR #169): el flujo completo
+-- UPDATE + SELECT de `whatsapp_channel_config` (resolveActiveWhatsAppPhoneNumberId,
+-- postgres-repository.ts:631, llamado desde order-notifications.ts::
+-- tryNotifyCustomerOnOrderStatusChange -- ANTES de `claim_messaging_outbox_batch`,
+-- ver order-lifecycle.ts::changeOrderStatus) + claim + commit, reproduciendo la
+-- base real SIN la migración que otorga el GRANT (`revoke select` de abajo simula
+-- el estado sin supabase/migrations/
+-- 20240101000140_017_restaurantes_sistema_whatsapp_channel_config.sql -- ver su
+-- propio encabezado: "NUNCA recibió ninguna policy NI ningún GRANT a
+-- authenticated" desde la Fase 1). El escenario original de arriba (con
+-- `claim_messaging_outbox_batch`) NO ejercitaba este SELECT porque corre DESPUÉS,
+-- en `triggerInline` -- si este SELECT ya abortó la transacción antes de llegar
+-- ahí, el SAVEPOINT de `triggerInline` nunca alcanza a rescatar nada.
+-- =============================================================================
+
+revoke select on restaurantes.whatsapp_channel_config from authenticated;
+
+\echo '=== restaurantes Blocker A ANTES (sin SAVEPOINT en el SELECT de whatsapp_channel_config): pending -> preparando + SELECT (42501, GRANT ausente) + commit -- reproduce el bug real de la base sin migrar ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000010c1', true);
+update restaurantes.orders set status = 'preparando' where id = '00000000-0000-0000-0000-0000000010d3' and status = 'pending';
+\set ON_ERROR_STOP off
+select phone_number_id from restaurantes.whatsapp_channel_config where organization_id = '00000000-0000-0000-0000-0000000010a1';
+\set ON_ERROR_STOP on
+commit;
+rollback;
+
+\echo '=== restaurantes Blocker A ANTES: el cambio de estado del pedido se PERDIÓ (prueba el bug -- deberia_ser_0) ==='
+begin;
+select count(*) as restaurantes_blocker_a_antes_status_perdido_deberia_ser_0 from restaurantes.orders where id = '00000000-0000-0000-0000-0000000010d3' and status = 'preparando';
+rollback;
+
+\echo '=== restaurantes Blocker A DESPUES (con SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE alrededor del SELECT, mismo patrón que src/order-notifications.ts::runNotifyBestEffort): pending -> preparando + SELECT (42501, absorbido) + claim (42501, absorbido, SAVEPOINT de triggerInline) + commit -- flujo completo real ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000010c1', true);
+update restaurantes.orders set status = 'preparando' where id = '00000000-0000-0000-0000-0000000010d4' and status = 'pending';
+savepoint sp_order_notify_best_effort;
+\set ON_ERROR_STOP off
+select phone_number_id from restaurantes.whatsapp_channel_config where organization_id = '00000000-0000-0000-0000-0000000010a1';
+\set ON_ERROR_STOP on
+rollback to savepoint sp_order_notify_best_effort;
+release savepoint sp_order_notify_best_effort;
+-- El best-effort de notificación falló limpio (sin phone_number_id resuelto, nunca
+-- llega a `enqueueMessagingOutbox`) -- comportamiento honesto, el negocio sigue.
+-- `triggerInline` corre después con su PROPIO SAVEPOINT (ya cubierto por el
+-- escenario de arriba) -- se reproduce aquí también para probar el flujo COMPLETO
+-- de un solo request real.
+savepoint sp_inline_whatsapp_dispatch;
+\set ON_ERROR_STOP off
+select * from restaurantes.claim_messaging_outbox_batch(5);
+\set ON_ERROR_STOP on
+rollback to savepoint sp_inline_whatsapp_dispatch;
+release savepoint sp_inline_whatsapp_dispatch;
+commit;
+rollback;
+
+\echo '=== restaurantes Blocker A DESPUES: el cambio de estado del pedido PERSISTE (prueba el fix -- deberia_ser_1) ==='
+begin;
+select count(*) as restaurantes_blocker_a_despues_status_persiste_deberia_ser_1 from restaurantes.orders where id = '00000000-0000-0000-0000-0000000010d4' and status = 'preparando';
+rollback;
+
+grant select on restaurantes.whatsapp_channel_config to authenticated;
 
 -- =============================================================================
 -- CITAS — defensa en profundidad (mismo `triggerInline` compartido, ver
@@ -230,4 +311,4 @@ begin;
 select count(*) as hoteles_despues_fila_persiste_deberia_ser_1 from hoteles.guest where id = '00000000-0000-0000-0000-0000000010f2';
 rollback;
 
-\echo '=== FIN — 12 escenarios: los 3 *_antes_*_deberia_ser_0 y los 3 *_despues_*_deberia_ser_1 son las verificaciones de valor; los 6 bloques ANTES/DESPUES de arriba deben completar sin ERROR (la excepción 42501 se absorbe con \set ON_ERROR_STOP off, a propósito). ==='
+\echo '=== FIN — 16 escenarios: los 4 *_antes_*_deberia_ser_0 y los 4 *_despues_*_deberia_ser_1 son las verificaciones de valor (restaurantes original, restaurantes Blocker A, citas, hoteles); los 8 bloques ANTES/DESPUES de arriba deben completar sin ERROR (la excepción 42501 se absorbe con \set ON_ERROR_STOP off, a propósito). ==='

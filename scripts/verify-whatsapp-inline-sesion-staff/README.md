@@ -28,9 +28,9 @@ integración de WhatsApp saliente, solo correo):
 
 | Call site | Sesión | ¿Vulnerable hoy? |
 |---|---|---|
-| `verticals/citas/whatsapp.ts` (webhook de Meta) | **Sistema** (`deps.engine.withAppSession({ userId: null }, ...)`) | No — `claim_messaging_outbox_batch` pasa el guard, nunca se llama con `auth.uid()` no nulo aquí. |
-| `verticals/hoteles/whatsapp.ts` (webhook de Meta) | **Sistema** (mismo patrón) | No — igual que citas. |
-| `verticals/restaurantes/whatsapp.ts` (webhook de Meta) | **Sistema** (mismo patrón) | No — igual que citas/hoteles. |
+| `verticals/citas/whatsapp.ts` (webhook de Meta) | **Sistema** (`deps.engine.withAppSession({ userId: null }, ...)`) | Protegido por el mismo `triggerInline` (SAVEPOINT incondicional) — **corrección de wording (no bloqueante, revisión de PR #169)**: `packages/db/src/managed-postgres-engine.ts:141` corre SIEMPRE `set local role authenticated;`, también en sesión de sistema (`auth.uid()` sí queda `null` ahí, pero el ROL de Postgres es el mismo). Contra una base sin las migraciones `0{15,17,19}_messaging_outbox_dispatch_authenticated_grants.sql` (el `EXECUTE` solo estaba en `service_role`), el fallo de permisos ocurre al nivel de GRANT de Postgres ANTES de que el cuerpo de la función evalúe `auth.uid()` — así que estos 3 webhooks TAMBIÉN habrían recibido `42501` en esa base, no solo las 2 rutas de staff. El `SAVEPOINT` de `triggerInline` los cubre igual (es incondicional), pero clasificarlos "No vulnerable" subestimaba el impacto real de la base sin migrar. |
+| `verticals/hoteles/whatsapp.ts` (webhook de Meta) | **Sistema** (mismo patrón) | Igual que citas — ver nota de arriba. |
+| `verticals/restaurantes/whatsapp.ts` (webhook de Meta) | **Sistema** (mismo patrón) | Igual que citas/hoteles — ver nota de arriba. |
 | `verticals/restaurantes/admin-orders.ts` línea ~155 (`PATCH .../admin/orders/:orderId/status`) | **Staff** (`authMiddleware` → `dbSession(deps.engine)` → `c.get("db")`, `MANAGER_ROLES`) | **SÍ, antes de este fix** — ver mecanismo abajo. |
 | `verticals/restaurantes/repartidor-orders.ts` línea ~106 (`PATCH .../repartidor/orders/:orderId/status`) | **Staff** (mismo middleware, `REPARTIDOR_ROLES`) | **SÍ, antes de este fix** — mismo mecanismo. |
 | `routes/internal/whatsapp-dispatch.ts` — `dispatchWhatsAppVertical` (el cron, `GET/POST /internal/whatsapp/dispatch`) | **Sistema** (`deps.engine.withAppSession({ userId: null }, ...)`, función DISTINTA de `triggerInline`, abre su propia sesión) | No aplica — no es un disparo inline, es el barrido de respaldo. |
@@ -72,34 +72,59 @@ distinguir cuál aplica.
 Para **restaurantes** — el flujo REAL, no uno sintético: `restaurantes.orders`,
 exactamente el `UPDATE ... SET status = ...` de
 `postgres-repository.ts::updateOrderStatus`, el mismo que
-`admin-orders.ts`/`repartidor-orders.ts` disparan hoy:
+`admin-orders.ts`/`repartidor-orders.ts` disparan hoy. Dos escenarios
+independientes, porque el request real tiene DOS puntos donde puede abortarse
+antes del `commit;` — cada uno con su propio SAVEPOINT en el código real:
 
-1. **ANTES** (sin el hotfix): sesión de staff cambia un pedido de `pending` a
-   `preparando`, llama `claim_messaging_outbox_batch` (falla `42501`), y hace
-   `commit;` sobre la transacción ya abortada — el cambio de estado se PIERDE
-   (`count(*) where status = 'preparando'` = 0 tras el commit).
-2. **DESPUÉS** (con el hotfix, mismo patrón que
-   `apps/api/src/routes/internal/whatsapp-dispatch.ts::triggerInline` tras el
-   fix): el mismo drenado, ahora envuelto en `SAVEPOINT
-   sp_inline_whatsapp_dispatch` / `ROLLBACK TO SAVEPOINT` + `RELEASE SAVEPOINT`
-   en el catch — el cambio de estado PERSISTE (`count(*)` = 1 tras el commit).
+1. **`claim_messaging_outbox_batch`** (el escenario original, ver bloque
+   "RESTAURANTES" de `assertions.sql`): sesión de staff cambia un pedido de
+   `pending` a `preparando`, llama `claim_messaging_outbox_batch` (falla
+   `42501`, guard cross-tenant, correcto y necesario), y hace `commit;` sobre la
+   transacción ya abortada — el cambio de estado se PIERDE (**ANTES**,
+   `restaurantes_antes_status_perdido_deberia_ser_0` = 0) / PERSISTE (**DESPUÉS**,
+   con `SAVEPOINT sp_inline_whatsapp_dispatch` / `ROLLBACK TO SAVEPOINT` +
+   `RELEASE SAVEPOINT`, mismo patrón que
+   `apps/api/src/routes/internal/whatsapp-dispatch.ts::triggerInline`,
+   `restaurantes_despues_status_persiste_deberia_ser_1` = 1).
+2. **`resolveActiveWhatsAppPhoneNumberId`** (Blocker A de la revisión
+   independiente de PR #169, ver bloque "RESTAURANTES — Blocker A" de
+   `assertions.sql`): ANTES de llegar a `claim_messaging_outbox_batch`,
+   `order-notifications.ts::tryNotifyCustomerOnOrderStatusChange` (llamado desde
+   `order-lifecycle.ts::changeOrderStatus`, ANTES de `triggerInline`) hace
+   `select phone_number_id from restaurantes.whatsapp_channel_config where
+   organization_id = $1` (`postgres-repository.ts:631`). Esa tabla no tuvo
+   `GRANT select` a `authenticated` hasta
+   `supabase/migrations/20240101000140_017_restaurantes_sistema_whatsapp_channel_config.sql`
+   — el fixture lo reproduce con un `revoke select ... from authenticated;`
+   antes del escenario (la base real va detrás de esa migración). El escenario
+   **DESPUÉS** cubre el flujo completo de un solo request: UPDATE +
+   SELECT de canal (falla `42501`, absorbido con
+   `SAVEPOINT sp_order_notify_best_effort`) + `claim_messaging_outbox_batch`
+   (falla `42501`, absorbido con el `SAVEPOINT sp_inline_whatsapp_dispatch` de
+   `triggerInline`) + `commit;` — el cambio de estado PERSISTE
+   (`restaurantes_blocker_a_despues_status_persiste_deberia_ser_1` = 1) pese a
+   que AMBOS best-effort de esta request fallaron.
 
 Para **citas** (`citas.providers`) y **hoteles** (`hoteles.guest`) — mismo
-mecanismo, defensa en profundidad: hoy ningún call site de citas/hoteles invoca
-su `triggerXWhatsAppDispatchInline` en sesión de staff (solo el webhook, sesión
-de sistema, ver tabla de arriba), pero comparten el mismo `triggerInline` — este
-verify prueba que el mecanismo SQL también los protege si un call site de staff
-se agrega ahí en el futuro, sin tener que tocar este archivo.
+mecanismo del escenario 1, defensa en profundidad: hoy ningún call site de
+citas/hoteles invoca su `triggerXWhatsAppDispatchInline` en sesión de staff
+(solo el webhook, sesión de sistema, ver tabla de arriba), pero comparten el
+mismo `triggerInline` — este verify prueba que el mecanismo SQL también los
+protege si un call site de staff se agrega ahí en el futuro, sin tener que
+tocar este archivo.
 
-Este verify demuestra el mecanismo a nivel SQL (idéntico al que ejecuta
-`triggerInline` vía `db.exec(...)` sobre `c.get("db")`); los tests unitarios
-(`apps/api/tests/whatsapp-inline-dispatch-savepoint.spec.ts`) cubren la capa
-TypeScript con un doble de sesión que reproduce el estado abortado real
-(`AbortAwareFakeSession` — a diferencia del doble usado en
-`restaurantes-email-dispatch-savepoint.spec.ts` de PR #166, este SÍ pone
-`aborted = true` en el propio mock del claim ANTES de lanzar, y el test afirma
-que una consulta POSTERIOR al trigger resuelve, no solo que la secuencia de
-`exec()` fue la esperada).
+Este verify demuestra el mecanismo a nivel SQL (idéntico al que ejecutan
+`triggerInline` y `order-notifications.ts::runNotifyBestEffort` vía
+`db.exec(...)` sobre `c.get("db")`); los tests unitarios
+(`apps/api/tests/whatsapp-inline-dispatch-savepoint.spec.ts` para
+`triggerInline`, `packages/domain-restaurantes/tests/
+order-notifications-savepoint.spec.ts` para el SAVEPOINT de
+`tryNotifyCustomerOnOrderStatusChange`) cubren la capa TypeScript con un doble
+de sesión que reproduce el estado abortado real (`AbortAwareFakeSession` — a
+diferencia del doble usado en `restaurantes-email-dispatch-savepoint.spec.ts`
+de PR #166, este SÍ pone `aborted = true` en el propio mock ANTES de lanzar, y
+el test afirma que una consulta POSTERIOR al trigger resuelve, no solo que la
+secuencia de `exec()` fue la esperada).
 
 ## Cómo correrlo
 
@@ -109,8 +134,9 @@ scripts/verify-whatsapp-inline-sesion-staff/run.sh
 
 Requiere `initdb`/`pg_ctl`/`psql` en PATH (Postgres instalado localmente, p. ej.
 `brew install postgresql@17`). Levanta un cluster Postgres efímero en un
-directorio temporal (puerto `55434`, distinto del `55433` de
-`verify-correo-inline-sesion-staff` por si ambos corrieran en paralelo en la
+directorio temporal (puerto `55467`, propio -- no bloqueante de la revisión de
+PR #169: el `55434` original chocaba con
+`verify-superadmin-caller-binding/run.sh` si ambos corrieran en paralelo en la
 misma máquina), aplica todas las migraciones reales de `supabase/migrations/` en
 orden, corre los escenarios de `assertions.sql`, y apaga/borra el cluster al
 salir — no toca ningún Postgres existente ni dato real.

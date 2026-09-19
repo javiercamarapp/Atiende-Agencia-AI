@@ -24,7 +24,10 @@ done
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 WORKDIR="$(mktemp -d)"
-PGPORT=55434
+# Puerto propio -- no bloqueante de la revisión de PR #169: 55434 chocaba con
+# scripts/verify-superadmin-caller-binding/run.sh (solo afecta corridas locales en
+# paralelo, el gate de CI usa su propio Postgres por corrida).
+PGPORT=55467
 PGDATA="$WORKDIR/pgdata"
 LOG="$WORKDIR/postgres.log"
 
@@ -61,4 +64,4 @@ echo ""
 "${PSQL_DB[@]}" -f "$HERE/assertions.sql"
 
 echo ""
-echo "==> listo — revisa arriba: los 3 escenarios *_antes_*_deberia_ser_0 y los 3 *_despues_*_deberia_ser_1 son la prueba real del bug y del fix."
+echo "==> listo — revisa arriba: los 4 escenarios *_antes_*_deberia_ser_0 y los 4 *_despues_*_deberia_ser_1 son la prueba real del bug y del fix."
