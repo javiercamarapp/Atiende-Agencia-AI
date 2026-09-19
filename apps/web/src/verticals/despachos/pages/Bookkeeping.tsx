@@ -63,6 +63,7 @@ import type {
   TipoCfdiBookkeeping,
 } from "../lib/bookkeeping-client.ts";
 import { formatMoney } from "../lib/format.ts";
+import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo conjunto que BOOKKEEPING_ROLES (@atiende/domain-despachos/roles.ts) --
@@ -317,7 +318,11 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
 
   // -- 2. Generar pólizas ------------------------------------------------------
   const [polizaTenantId, setPolizaTenantId] = useState("");
-  const [polizaFecha, setPolizaFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  // `hoyFechaSolo()` (día de calendario en America/Mexico_City), NO
+  // `new Date().toISOString().slice(0, 10)` (día UTC) -- ese patrón precarga
+  // MAÑANA en vez de HOY entre las 18:00 y las 23:59 hora de CDMX (00:00-05:59
+  // UTC), ver apps/web/src/lib/formato-fecha.ts.
+  const [polizaFecha, setPolizaFecha] = useState(() => hoyFechaSolo());
   const [polizaLoading, setPolizaLoading] = useState(false);
   const [polizaError, setPolizaError] = useState<string | null>(null);
   const [polizas, setPolizas] = useState<readonly PolizaResultado[] | null>(null);
@@ -340,7 +345,8 @@ export function BookkeepingPage({ apiBaseUrl, token, propertyId, role }: Despach
   }
 
   // -- 3. Ajuste manual (diario) ------------------------------------------------
-  const [ajusteFecha, setAjusteFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  // Mismo criterio que `polizaFecha` arriba: día de calendario CDMX, no UTC.
+  const [ajusteFecha, setAjusteFecha] = useState(() => hoyFechaSolo());
   const [ajusteConcepto, setAjusteConcepto] = useState("");
   const [ajusteTenantId, setAjusteTenantId] = useState("");
   const [ajusteEntries, setAjusteEntries] = useState<readonly AjusteEntryFila[]>([nuevaAjusteFila(), nuevaAjusteFila()]);

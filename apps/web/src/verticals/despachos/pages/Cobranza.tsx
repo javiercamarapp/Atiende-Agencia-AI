@@ -46,6 +46,7 @@ import {
 } from "../lib/cobranza-client.ts";
 import type { CobranzaAgeBucket, CobranzaReminderStage, CuentaCobranza, ResumenCobranza } from "../lib/cobranza-client.ts";
 import { formatDate, formatMoney } from "../lib/format.ts";
+import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
@@ -362,7 +363,12 @@ export function CobranzaPage({ apiBaseUrl, token, propertyId, role }: DespachosS
                       </TableCell>
                       <TableCell className="tabular-nums text-muted-foreground">{formatMoney(cuenta.monto)}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {formatDate(cuenta.fechaVencimiento)}
+                        {/* `fechaVencimiento` es columna `date` (solo día, sin hora) --
+                            `formatFechaSolo` (no `formatDate`) evita que se pinte un día
+                            antes en America/Mexico_City (bug real corregido de raíz, ver
+                            apps/web/src/lib/formato-fecha.ts). `pagadoEn` abajo SÍ es un
+                            timestamp real (`timestamptz`) y se queda con `formatDate`. */}
+                        {formatFechaSolo(cuenta.fechaVencimiento)}
                         <div className="text-[11px] text-muted-foreground">{cuenta.diasVencido > 0 ? `${cuenta.diasVencido} días de atraso` : cuenta.diasVencido < 0 ? `vence en ${-cuenta.diasVencido} días` : "vence hoy"}</div>
                       </TableCell>
                       <TableCell>
