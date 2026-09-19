@@ -38,6 +38,8 @@ export { InMemoryTenancyEngine } from "./in-memory-tenancy-engine.ts";
 export type { SeedTenancyProperty, SeedTenancyMembership } from "./in-memory-tenancy-engine.ts";
 export { openManagedPostgres } from "./managed-postgres-engine.ts";
 export type { ManagedPostgresConfig, ManagedPostgresEngine } from "./managed-postgres-engine.ts";
+export { runWithSavepointFallback } from "./savepoint-fallback.ts";
+export type { SavepointFallbackOptions } from "./savepoint-fallback.ts";
 export type {
   LlmUsageRepository,
   LlmUsageEventInput,
