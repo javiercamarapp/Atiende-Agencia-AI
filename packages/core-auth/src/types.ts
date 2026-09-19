@@ -23,6 +23,22 @@ export interface CoreAuthVariables {
   /** Solo definido DESPUÉS de que `requirePropertyMembership` corrió sobre la ruta. */
   platformRole?: PlatformRole;
   verticalRole?: string;
+  /**
+   * Arreglo de fondo (auditoría a2, "el correo inline nunca sale de verdad
+   * desde rutas de staff") — cola de tareas best-effort que `dbSession`
+   * ejecuta DESPUÉS de que la transacción de este request haya hecho COMMIT
+   * real (nunca si hubo rollback, ver comentario de cabecera de `dbSession`).
+   * Un handler de ruta empuja aquí en vez de invocar directo cuando necesita
+   * drenar un canal/outbox en sesión de SISTEMA tras confirmar -- p. ej. el
+   * correo inline: intentarlo DENTRO de la transacción de staff siempre falla
+   * el guard `auth.uid() is null` de `claim_email_outbox_batch` (ver
+   * apps/api/.../email-dispatch.ts), así que el envío real solo puede pasar
+   * después del commit, en una sesión nueva que sí vea el INSERT ya
+   * confirmado. Poblado por `dbSession` (siempre `[]` al entrar al handler);
+   * cada tarea corre en su propio try/catch, nunca relanza, nunca toca la
+   * respuesta ya armada por el handler.
+   */
+  postCommitTasks: Array<() => Promise<void>>;
 }
 
 export interface CoreAuthHonoEnv {

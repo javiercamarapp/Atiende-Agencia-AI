@@ -128,7 +128,7 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
       // El agente también puede haber agendado/cancelado/reagendado una cita
       // DENTRO de esta misma conversación (llm-turn-handler.ts), lo que encola un
       // correo real vía tryEnqueueAppointmentEmail — mismo disparo inline.
-      await triggerCitasEmailDispatchInline(deps, citasRepo);
+      await triggerCitasEmailDispatchInline(deps, db, citasRepo);
 
       // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
       // mensajes ya procesados quedan idempotentemente saltados por el ledger de

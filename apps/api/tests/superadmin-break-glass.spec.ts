@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemoryCoreRepository } from "@atiende/db";
 import { signAccessToken } from "@atiende/core-auth";
-import { InMemoryBreakGlassRentasDataRepository } from "@atiende/domain-rentas";
+import { BreakGlassAccessDeniedError, BreakGlassPropertyNotFoundError, InMemoryBreakGlassRentasDataRepository } from "@atiende/domain-rentas";
 import type { BreakGlassRentasDataRepository } from "@atiende/domain-rentas";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
@@ -325,5 +325,158 @@ describe("superadmin-break-glass", () => {
 
     const res = await app.request(`/superadmin/break-glass/sesiones/${randomUUID()}/cerrar`, { headers: { authorization: `Bearer ${token}` }, method: "POST" });
     expect(res.status).toBe(404);
+  });
+
+  // Hallazgo de revisión real (ronda r5): `propertyId`/`limit`/`offset` de las
+  // 7 rutas de lectura llegaban SIN validar hasta Postgres -- un `propertyId`
+  // sin forma de UUID, o un `limit`/`offset` no-entero/negativo/no-numérico,
+  // producían 500 genérico contra Postgres real. Estos casos se rechazan con
+  // 400 ANTES de tocar la base -- por eso se prueban SIN abrir ninguna sesión
+  // de romper-cristal primero: si el 400 llegara DESPUÉS del gate de sesión
+  // activa, estos requests darían 403, no 400.
+  describe("validación de propertyId/limit/offset en las 7 rutas de lectura -- 400 explícito, nunca 500", () => {
+    async function tokenSuperadmin(deps: Awaited<ReturnType<typeof buildTestDeps>>["deps"]) {
+      const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+      const superadminId = randomUUID();
+      coreRepo.addStaff({ id: superadminId, email: `super-${superadminId}@example.com`, passwordHash: null, fullName: "Super Admin", createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+      coreRepo.addPlatformSuperadmin(superadminId);
+      return tokenFor(deps, superadminId, `super-${superadminId}@example.com`);
+    }
+
+    it("propertyId sin forma de UUID -- 400, nunca 403 (se valida antes del gate de sesión activa)", async () => {
+      const base = await buildTestDeps();
+      const token = await tokenSuperadmin(base.deps);
+      const app = buildApp(base.deps);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${randomUUID()}/reservas?propertyId=no-es-un-uuid`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(400);
+    });
+
+    it.each([["1.5"], ["-1"], ["0"], ["abc"], ["1e2"]])("limit=%s -- 400", async (limit) => {
+      const base = await buildTestDeps();
+      const token = await tokenSuperadmin(base.deps);
+      const app = buildApp(base.deps);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${randomUUID()}/reservas?limit=${limit}`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(400);
+    });
+
+    // "2147483648"/"3000000000"/400 dígitos -- hallazgo de revisión real (ronda
+    // r5, no-bloqueante 1 del PR #167): `^\d+$` los acepta todos (son enteros
+    // sin signo válidos como TEXTO), pero exceden el máximo de `integer` de
+    // Postgres (2147483647, `p_offset` en las 7 funciones de
+    // `020_break_glass_lectores.sql`) -- sin este límite, Postgres real
+    // respondería SQLSTATE 22003/22P02 (el 400 dígitos desborda `Number` a
+    // `Infinity`), el mismo 500 genérico que esta ronda de validación existe
+    // para eliminar.
+    it.each([["1.5"], ["-1"], ["abc"], ["2147483648"], ["3000000000"], ["9".repeat(400)]])("offset=%s -- 400", async (offset) => {
+      const base = await buildTestDeps();
+      const token = await tokenSuperadmin(base.deps);
+      const app = buildApp(base.deps);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${randomUUID()}/reservas?offset=${offset}`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(400);
+    });
+
+    it("offset=2147483647 (justo el máximo de integer de Postgres) -- válido, llega al gate normal de sesión (403, nunca 400)", async () => {
+      const base = await buildTestDeps();
+      const token = await tokenSuperadmin(base.deps);
+      const app = buildApp(base.deps);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${randomUUID()}/reservas?offset=2147483647`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it("limit/offset/propertyId válidos siguen llegando al gate normal de sesión (403 sin sesión, nunca 400)", async () => {
+      const base = await buildTestDeps();
+      const token = await tokenSuperadmin(base.deps);
+      const app = buildApp(base.deps);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${randomUUID()}/reservas?propertyId=${randomUUID()}&limit=10&offset=0`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(403);
+    });
+
+    it("limit por encima del tope máximo se acota en silencio (200), nunca se rechaza -- holgado a propósito", async () => {
+      const orgId = randomUUID();
+      const base = await buildTestDeps();
+      const deps = { ...base.deps, rentasBreakGlassDataRepo: (_db: unknown) => new InMemoryBreakGlassRentasDataRepository(new Map([[orgId, []]])) } as typeof base.deps;
+      const token = await tokenSuperadmin(deps);
+      const app = buildApp(deps);
+
+      const resOpen = await app.request("/superadmin/break-glass/sesiones", jsonRequestInit({ organizationId: orgId, reason: RAZON_VALIDA, durationMinutes: 30 }, { authorization: `Bearer ${token}` }));
+      expect(resOpen.status).toBe(201);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${orgId}/reservas?limit=999999`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(200);
+    });
+  });
+
+  // Hallazgo de revisión real (ronda r5): las 7 funciones `security definer`
+  // de Postgres lanzan SQLSTATE P0002 (propiedad que no pertenece al tenant) y
+  // 42501 (defensa en profundidad -- caller/superadmin/sesión) -- antes de
+  // esto, `PostgresBreakGlassRentasDataRepository` los repropagaba tal cual y
+  // `apps/api` no los mapeaba, terminando en 500 genérico. Se simula aquí con
+  // un doble mínimo del puerto que lanza los errores TIPADOS que el
+  // repositorio real produce tras traducir esos SQLSTATE (ver
+  // postgres-data-repository-error-mapping.spec.ts para la traducción real
+  // SQLSTATE -> error tipado, con savepoint).
+  describe("mapeo de errores del repositorio -- P0002 -> 404, 42501 -> 403", () => {
+    it("BreakGlassPropertyNotFoundError -- 404, nunca 500", async () => {
+      const orgId = randomUUID();
+      const base = await buildTestDeps();
+      const dataRepoQueRechaza: BreakGlassRentasDataRepository = {
+        listReservasTenant: async () => {
+          throw new BreakGlassPropertyNotFoundError();
+        },
+        listFinanzasTenant: async () => ({ disponible: true, datos: [] }),
+        listPayoutsTenant: async () => ({ disponible: true, datos: [] }),
+        listPricingTenant: async () => ({ disponible: true, datos: [] }),
+        listMensajeriaTenant: async () => ({ disponible: true, datos: [] }),
+        listLimpiezaTenant: async () => ({ disponible: true, datos: [] }),
+        listSyncIcalTenant: async () => ({ disponible: true, datos: [] }),
+      };
+      const deps = { ...base.deps, rentasBreakGlassDataRepo: (_db: unknown) => dataRepoQueRechaza } as typeof base.deps;
+      const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+      const superadminId = randomUUID();
+      coreRepo.addStaff({ id: superadminId, email: "superadmin@example.com", passwordHash: null, fullName: "Super Admin", createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+      coreRepo.addPlatformSuperadmin(superadminId);
+      const token = await tokenFor(deps, superadminId, "superadmin@example.com");
+      const app = buildApp(deps);
+
+      const resOpen = await app.request("/superadmin/break-glass/sesiones", jsonRequestInit({ organizationId: orgId, reason: RAZON_VALIDA, durationMinutes: 30 }, { authorization: `Bearer ${token}` }));
+      expect(resOpen.status).toBe(201);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${orgId}/reservas?propertyId=${randomUUID()}`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(404);
+    });
+
+    it("BreakGlassAccessDeniedError -- 403, nunca 500", async () => {
+      const orgId = randomUUID();
+      const base = await buildTestDeps();
+      const dataRepoQueRechaza: BreakGlassRentasDataRepository = {
+        listReservasTenant: async () => {
+          throw new BreakGlassAccessDeniedError();
+        },
+        listFinanzasTenant: async () => ({ disponible: true, datos: [] }),
+        listPayoutsTenant: async () => ({ disponible: true, datos: [] }),
+        listPricingTenant: async () => ({ disponible: true, datos: [] }),
+        listMensajeriaTenant: async () => ({ disponible: true, datos: [] }),
+        listLimpiezaTenant: async () => ({ disponible: true, datos: [] }),
+        listSyncIcalTenant: async () => ({ disponible: true, datos: [] }),
+      };
+      const deps = { ...base.deps, rentasBreakGlassDataRepo: (_db: unknown) => dataRepoQueRechaza } as typeof base.deps;
+      const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+      const superadminId = randomUUID();
+      coreRepo.addStaff({ id: superadminId, email: "superadmin@example.com", passwordHash: null, fullName: "Super Admin", createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+      coreRepo.addPlatformSuperadmin(superadminId);
+      const token = await tokenFor(deps, superadminId, "superadmin@example.com");
+      const app = buildApp(deps);
+
+      const resOpen = await app.request("/superadmin/break-glass/sesiones", jsonRequestInit({ organizationId: orgId, reason: RAZON_VALIDA, durationMinutes: 30 }, { authorization: `Bearer ${token}` }));
+      expect(resOpen.status).toBe(201);
+
+      const res = await app.request(`/superadmin/break-glass/organizaciones/${orgId}/reservas`, { headers: { authorization: `Bearer ${token}` } });
+      expect(res.status).toBe(403);
+    });
   });
 });

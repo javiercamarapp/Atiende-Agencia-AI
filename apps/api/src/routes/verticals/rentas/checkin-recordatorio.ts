@@ -33,7 +33,7 @@ export function rentasCheckInRecordatorioRoutes(deps: AppDeps): Hono {
       // de `/internal/rentas/email-dispatch` (vercel.json los agenda por
       // separado), así que sin esto un correo podía esperar hasta 24h a que
       // corriera el OTRO cron.
-      await triggerRentasEmailDispatchInline(deps, rentasRepo);
+      await triggerRentasEmailDispatchInline(deps, db, rentasRepo);
       return c.json({ ok: true, procesadas: summary.procesadas, enviados: summary.enviados, sin_correo: summary.sinCorreo, fallos: summary.fallos });
     }))();
   });
