@@ -37,7 +37,8 @@
 
 insert into core.organization (id, vertical, name, slug) values
   ('00000000-0000-0000-0000-0000000c9200', 'restaurantes', 'Org Impersonación', 'org-impersonacion'),
-  ('00000000-0000-0000-0000-0000000c9201', 'restaurantes', 'Org Impersonación (con superadmin miembro)', 'org-impersonacion-con-superadmin')
+  ('00000000-0000-0000-0000-0000000c9201', 'restaurantes', 'Org Impersonación (con superadmin miembro)', 'org-impersonacion-con-superadmin'),
+  ('00000000-0000-0000-0000-0000000c9202', 'restaurantes', 'Org Impersonación (con el propio caller como miembro)', 'org-impersonacion-self-member')
 on conflict do nothing;
 
 -- superadmin-1/2/3: tres superadmins REALES (core.platform_superadmin).
@@ -60,7 +61,11 @@ on conflict do nothing;
 
 insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values
   ('00000000-0000-0000-0000-0000000c9103', '00000000-0000-0000-0000-0000000c9200', null, 'member', 'staff'),
-  ('00000000-0000-0000-0000-0000000c9101', '00000000-0000-0000-0000-0000000c9201', null, 'member', 'staff')
+  ('00000000-0000-0000-0000-0000000c9101', '00000000-0000-0000-0000-0000000c9201', null, 'member', 'staff'),
+  -- superadmin-3 (c9102) ADEMÁS es staff de esta organización -- el caso que
+  -- el escenario 22 (self-exclusion) verifica: no es "OTRO" superadmin, es
+  -- el propio caller, así que start_impersonation_session NO debe rechazarlo.
+  ('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9202', null, 'member', 'staff')
 on conflict do nothing;
 
 -- Dos sesiones insertadas DIRECTO (como el superusuario que corre este
@@ -162,16 +167,71 @@ set local role anon;
 select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9100', '00000000-0000-0000-0000-0000000c9300') as should_fail;
 rollback;
 
-\echo '=== 12. Camino feliz completo: superadmin-3 inicia -> queda ACTIVA en SQL -> aparece en la bitácora (start) -> termina -> ya NO cuenta como activa -> aparece en la bitácora (end) ==='
+-- Camino feliz completo (superadmin-3 inicia -> queda ACTIVA en SQL ->
+-- aparece en la bitácora (start) -> termina -> ya NO cuenta como activa ->
+-- aparece en la bitácora (end) -- hash chain real) -- partido en varios
+-- escenarios de UN SOLO alias `deberia_ser_N` cada uno (corrección de esta
+-- revisión, ver PR): `scripts/verify-real-postgres-ci/run-gate.mjs`
+-- (`isolateTargetStatement`) SOLO ejecuta, para un escenario "value", el
+-- texto hasta el FINAL de la sentencia del PRIMER alias `..._deberia_ser_N`
+-- que encuentra en el bloque -- con los 4 aliases que tenía este escenario
+-- en una sola sentencia `begin;...rollback;`, el gate de CI solo llegaba a
+-- ejecutar `start` + `activa_tras_iniciar`; la llamada a `end_impersonation_
+-- session` y las dos comprobaciones posteriores NUNCA corrían en CI (aunque
+-- SÍ corren si alguien pega el archivo completo a mano en `psql`, que es por
+-- lo que el bug pasó desapercibido). Cada escenario de abajo repite su
+-- propio `start` (cada uno vive en su PROPIA transacción, con su PROPIO
+-- `rollback;` -- nunca se pisan entre sí ni dejan estado para el siguiente).
+\echo '=== 12a. Camino feliz (1/5): superadmin-3 inicia -> queda ACTIVA en SQL ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9102', true);
-select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9200', 'Ticket SOP-VERIFY: camino feliz completo iniciar/terminar con bitácora real.')).id as id \gset imp_
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9200', 'Ticket SOP-VERIFY: camino feliz completo iniciar/terminar con bitácora real.')).id as id \gset imp12a_
 select core.is_impersonation_active_for_caller_and_org('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9200')::int as activa_tras_iniciar_deberia_ser_1;
-select count(*) as bitacora_start_deberia_ser_1 from core.impersonation_audit_log where session_id = :'imp_id' and event_type = 'start';
-select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9102', :'imp_id');
+rollback;
+
+\echo '=== 12b. Camino feliz (2/5): superadmin-3 inicia -> aparece en la bitácora como start ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9102', true);
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9200', 'Ticket SOP-VERIFY: camino feliz completo iniciar/terminar con bitácora real.')).id as id \gset imp12b_
+select count(*) as bitacora_start_deberia_ser_1 from core.impersonation_audit_log where session_id = :'imp12b_id' and event_type = 'start';
+rollback;
+
+\echo '=== 12c. Camino feliz (3/5): superadmin-3 inicia -> TERMINA -> ya NO cuenta como activa ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9102', true);
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9200', 'Ticket SOP-VERIFY: camino feliz completo iniciar/terminar con bitácora real.')).id as id \gset imp12c_
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9102', :'imp12c_id');
 select core.is_impersonation_active_for_caller_and_org('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9200')::int as activa_tras_terminar_deberia_ser_0;
-select count(*) as bitacora_end_deberia_ser_1 from core.impersonation_audit_log where session_id = :'imp_id' and event_type = 'end';
+rollback;
+
+\echo '=== 12d. Camino feliz (4/5): superadmin-3 inicia -> TERMINA -> aparece en la bitácora como end ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9102', true);
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9200', 'Ticket SOP-VERIFY: camino feliz completo iniciar/terminar con bitácora real.')).id as id \gset imp12d_
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9102', :'imp12d_id');
+select count(*) as bitacora_end_deberia_ser_1 from core.impersonation_audit_log where session_id = :'imp12d_id' and event_type = 'end';
+rollback;
+
+\echo '=== 12e. Camino feliz (5/5): hash chain real -- el evento end encadena (prev_hash) con el hash del evento start de la MISMA sesión, y ningún hash queda NULL ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9102', true);
+select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9200', 'Ticket SOP-VERIFY: camino feliz completo iniciar/terminar con bitácora real.')).id as id \gset imp12e_
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9102', :'imp12e_id');
+select (
+  a_end.prev_hash is not distinct from a_start.hash
+  and a_start.hash is not null
+  and a_end.hash is not null
+  and a_start.prev_hash is distinct from a_start.hash
+)::int as hash_chain_deberia_ser_1
+from core.impersonation_audit_log a_start
+join core.impersonation_audit_log a_end
+  on a_end.session_id = a_start.session_id
+where a_start.session_id = :'imp12e_id' and a_start.event_type = 'start' and a_end.event_type = 'end';
 rollback;
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -268,4 +328,34 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9103', true);
 select count(*) as deberia_ser_0 from core.list_impersonation_sessions_for_superadmin('00000000-0000-0000-0000-0000000c9103', 500);
+rollback;
+
+\echo '=== 22. start_impersonation_session: self-exclusion -- superadmin-3 impersona una organización donde ÉL MISMO es miembro (no OTRO superadmin) -- ACEPTADO ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9102', true);
+select core.start_impersonation_session('00000000-0000-0000-0000-0000000c9102', '00000000-0000-0000-0000-0000000c9202', 'Ticket SOP-VERIFY: self-exclusion -- el propio caller es miembro de esta organización, no debe contar como OTRO superadmin.');
+rollback;
+
+\echo '=== 23. list_impersonation_audit_log_for_superadmin: superadmin-2 (oversight de plataforma) ve al menos la entrada start de la fixture imp-activa ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9101', true);
+select (count(*) >= 1)::int as deberia_ser_1 from core.list_impersonation_audit_log_for_superadmin('00000000-0000-0000-0000-0000000c9101', 500);
+rollback;
+
+\echo '=== 24. list_impersonation_audit_log_for_superadmin: staff con membership real (no superadmin) ve CERO -- nunca bitácora ajena ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9103', true);
+select count(*) as deberia_ser_0 from core.list_impersonation_audit_log_for_superadmin('00000000-0000-0000-0000-0000000c9103', 500);
+rollback;
+
+\echo '=== 25. impersonation_session: SELECT directo desde anon -- RECHAZADO (sin GRANT, ni siquiera llega a evaluar RLS) ==='
+begin;
+-- as should_fail (sin GRANT SELECT a anon -- "permission denied", nunca una
+-- lista vacía silenciosa; ver revoke all ... from public, anon de la
+-- migración).
+set local role anon;
+select * from core.impersonation_session as should_fail;
 rollback;
