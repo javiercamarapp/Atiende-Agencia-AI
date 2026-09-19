@@ -178,21 +178,35 @@ listos para conectarse en cuanto el profesional dé de alta su cuenta desde la U
 
 | Variable | Dónde se obtiene | Habilita | Sin ella |
 |---|---|---|---|
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash console → tu base de datos Redis → REST API | Rate limiting **compartido** entre instancias serverless (`packages/core-ratelimit`, sí conectado — varias rutas llaman `rateLimit()`) | Cada instancia cuenta en memoria local (sigue protegiendo, no globalmente) |
-| `UPSTASH_REDIS_URL` / `UPSTASH_REDIS_TOKEN` | mismo Upstash, mismo par de credenciales | Candado distribuido de conversación de WhatsApp (`packages/core-conversation::RedisLockStore`) | **HOY no tiene ningún efecto**: `apps/api/src/production/deps.ts::citasConversationGuard` usa el guard en memoria fijo, nunca instancia `RedisLockStore` |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash console → tu base de datos Redis → REST API | (1) Rate limiting **compartido** entre instancias serverless (`packages/core-ratelimit`, conectado — varias rutas llaman `rateLimit()`). (2) Candado distribuido de conversación de WhatsApp del vertical de **citas** (`packages/core-conversation::RedisLockStore`, conectado en `apps/api/src/production/deps.ts::citasConversationGuard` vía `createDefaultConversationGuard()`) — evita que 2 mensajes casi-simultáneos del mismo cliente disparen 2 llamadas al LLM en paralelo entre instancias de Vercel Fluid Compute. **UNA sola credencial activa las dos.** | Rate limiting: cada instancia cuenta en memoria local (sigue protegiendo, no globalmente). Lock de conversación de citas: `citasConversationGuard` degrada a un lock en memoria — sigue serializando DENTRO de una instancia, nunca entre instancias. |
 
-**Hallazgo real** — inconsistencia de nombre entre dos paquetes que deberían
-compartir el mismo Redis de Upstash: `core-ratelimit` lee
-`UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` (la convención oficial del
-SDK REST de Upstash) pero `core-conversation` lee `UPSTASH_REDIS_URL`/
-`UPSTASH_REDIS_TOKEN` (sin `_REST_`). Configurar solo el primer par (lo que
-documenta la mayoría de guías de Upstash) deja el rate limiting distribuido
-activo pero el candado de conversación se queda fail-open sin aviso — aunque
-hoy es además discutible, porque `RedisLockStore` ni siquiera está conectado en
-`apps/api` (ver fila de arriba). No se corrigió el nombre en este PR (no hay
-comportamiento roto que arreglar sin antes decidir si vale la pena cablear
-`RedisLockStore`) — queda documentado para que quien lo conecte use el nombre
-correcto o unifique ambos pares.
+**Corrección aplicada (fix/conversation-lock-upstash)** — antes había un
+segundo par, `UPSTASH_REDIS_URL`/`UPSTASH_REDIS_TOKEN` (sin `_REST_`), que
+SOLO `core-conversation` leía y que nadie tenía configurado (verificado contra
+este mismo inventario); además `RedisLockStore` ni siquiera se instanciaba en
+`apps/api` — pegar cualquiera de los dos pares no tenía ningún efecto en el
+lock. Se unificó: `RedisLockStore` ahora lee las MISMAS
+`UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` que `core-ratelimit` (y
+usa el mismo patrón de cliente, REST crudo por `fetch`, en vez del SDK
+`@upstash/redis`) y `createDefaultConversationGuard()` lo conecta de verdad:
+con las credenciales configuradas, usa `RedisLockStore`; sin ellas, usa
+`InMemoryLockStore` (degradación explícita, no un fail-open silencioso).
+
+**Por qué solo el vertical de citas necesita este lock** — restaurantes y
+hoteles ya serializan mensajes casi-simultáneos del mismo cliente con una
+lease atómica REAL en Postgres (`claim_whatsapp_conversation`, 120s, ver
+`packages/domain-restaurantes/migrations/004_whatsapp_atomic_append_and_rate_limit.sql`
+y el equivalente de hoteles), que protege entre instancias serverless por sí
+sola — conectarles además el lock de Redis sería redundante. `citas` nunca
+construyó esa lease (adoptó `@atiende/core-conversation` en su lugar, ver
+`packages/domain-citas/src/whatsapp/inbound.ts`), así que ahí el lock de Redis
+sí es la única defensa real contra 2 llamadas al LLM en paralelo por la misma
+conversación entre instancias distintas. El `EXCLUDE USING gist` de
+`citas.appointments` (Fase 1 §0.7) es una defensa en profundidad DISTINTA —
+evita que 2 citas con horario traslapado lleguen a coexistir — pero no evita
+la llamada doble al LLM ni una respuesta duplicada cuando el traslape de
+horario no aplica (el cliente solo está platicando, cancelando o preguntando
+disponibilidad).
 
 ## Mensajería de partners de rentas (Airbnb / Vrbo / Booking.com)
 

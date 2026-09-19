@@ -179,10 +179,10 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
   },
   {
     id: "redis-conversation-lock",
-    nombre: "Lock distribuido de conversación de WhatsApp (Upstash Redis)",
+    nombre: "Lock distribuido de conversación de WhatsApp — citas (Upstash Redis)",
     habilita:
-      "Candado distribuido para evitar respuestas duplicadas del agente de WhatsApp entre instancias (packages/core-conversation::RedisLockStore). OJO — HOY NO está conectado en apps/api/src/production/deps.ts (citasConversationGuard usa el guard en memoria fijo, cubierto en profundidad por un EXCLUDE constraint de Postgres): configurar estas variables hoy no tiene ningún efecto hasta que alguien conecte RedisLockStore ahí. Nombre distinto (sin '_REST_') del par de 'redis-ratelimit' — ver nota de inconsistencia en docs/CREDENCIALES.md.",
-    variables: ["UPSTASH_REDIS_URL", "UPSTASH_REDIS_TOKEN"],
+      "Candado distribuido para que 2 mensajes casi-simultáneos del mismo cliente del vertical de citas (packages/core-conversation::RedisLockStore, conectado en apps/api/src/production/deps.ts::citasConversationGuard vía createDefaultConversationGuard) NUNCA disparen 2 llamadas al LLM en paralelo entre instancias de Vercel Fluid Compute (costo doble, respuestas duplicadas). MISMAS variables que 'redis-ratelimit' — antes leía un par con nombre distinto (sin '_REST_') que nadie tenía configurado; unificado (fix/conversation-lock-upstash). Solo citas usa este lock: restaurantes/hoteles ya serializan su conversación con una lease atómica real en Postgres (claim_whatsapp_conversation), que protege entre instancias por sí sola sin necesitar Redis. Sin estas variables, citasConversationGuard degrada a un lock en memoria — sigue serializando DENTRO de una instancia, no entre instancias.",
+    variables: ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"],
   },
 
   // ---- Mensajería de partners de rentas (Airbnb/Vrbo/Booking.com) ----

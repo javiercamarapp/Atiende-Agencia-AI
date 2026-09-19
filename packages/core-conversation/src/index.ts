@@ -12,7 +12,6 @@ export {
   type TransitionTable,
 } from './state/transitions.ts';
 export { InMemoryStateStore } from './state/in-memory-state-store.ts';
-export { PostgresStateStore, type PgRpcClient, type PostgresStateStoreOptions } from './state/postgres-state-store.ts';
 export {
   ConversationStateMachine,
   type TransitionOutcome,

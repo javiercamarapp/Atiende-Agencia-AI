@@ -309,14 +309,30 @@ export function buildProductionDeps(): AppDeps {
     // roles/proveedores registrados, ver ./llm-gateway.ts) ya se construye aquí en
     // cuanto `llmGateway` exista — cada llamada abre su propia sesión de Postgres
     // (ver `buildRealCitasTurnHandler`), sin relación con la sesión-por-request de
-    // `citasRepo` de arriba. `citasConversationGuard` sí se construye real (en
-    // memoria): es infraestructura pura de lock/estado, no un adaptador de datos de
-    // negocio — su límite real (single-process, no distribuido entre instancias
-    // serverless) queda cubierto en profundidad por el EXCLUDE USING gist de
-    // Postgres (autoridad final anti-traslape, Fase 1 §0.7), así que no finge una
-    // garantía que no tiene: sustituir este guard por uno con RedisLockStore es una
-    // decisión de infraestructura aparte, no un requisito para que el resto
-    // funcione correctamente.
+    // `citasRepo` de arriba. `citasConversationGuard` es infraestructura pura de
+    // lock/estado, no un adaptador de datos de negocio.
+    //
+    // Hallazgo de auditoría de credenciales corregido (fix/conversation-lock-upstash)
+    // — ANTES este comentario decía que `createDefaultConversationGuard()` "se
+    // construye real (en memoria)" SIEMPRE, sin importar qué credenciales hubiera:
+    // eso era el bug (pegar UPSTASH_REDIS_URL/UPSTASH_REDIS_TOKEN, con nombre
+    // distinto del que lee core-ratelimit, no tenía ningún efecto aquí). Ahora
+    // `createDefaultConversationGuard()` (domain-citas/src/whatsapp/inbound.ts) elige
+    // por sí sola, leyendo `process.env` directamente (mismo criterio que
+    // `rateLimit()`/`DistributedRateLimiter` de core-ratelimit, que tampoco pasan por
+    // `AppDeps`): `RedisLockStore` real entre instancias si
+    // UPSTASH_REDIS_REST_URL/_TOKEN están configuradas (MISMAS variables que
+    // core-ratelimit — una sola credencial activa ambas), `InMemoryLockStore` si no
+    // — degradación EXPLÍCITA (serializa dentro de una instancia, no entre
+    // instancias de Fluid Compute), documentada en
+    // `apps/api/src/integrations-status.ts` (integración "redis-conversation-lock"),
+    // nunca un fail-open silencioso. El EXCLUDE USING gist de `citas.appointments`
+    // (Fase 1 §0.7) sigue como defensa en profundidad DISTINTA — evita que 2 citas
+    // con horario traslapado lleguen a coexistir — pero no es sustituto de este lock:
+    // sin él, 2 mensajes casi-simultáneos del mismo cliente en 2 instancias distintas
+    // SÍ pueden disparar 2 llamadas al LLM en paralelo (costo doble, respuesta
+    // duplicada) aunque el traslape de horario nunca ocurra (el cliente solo está
+    // platicando, cancelando, o preguntando disponibilidad).
     citasTurnHandler: llmGateway ? buildRealCitasTurnHandler(engine, llmGateway) : notProductionReady<CitasWhatsAppTurnHandler>("citasTurnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     citasConversationGuard: createDefaultConversationGuard(),
     // Hallazgo de auditoría (ALTO, "El puerto de Google Calendar sigue
