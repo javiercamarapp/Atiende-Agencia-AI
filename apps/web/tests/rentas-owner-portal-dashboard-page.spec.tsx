@@ -11,6 +11,12 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OwnerPortalDashboardPage } from "../src/verticals/rentas/pages/OwnerPortalDashboard.tsx";
+import type {
+  OwnerPortalMe,
+  OwnerPortalStatementDetalle,
+  OwnerPortalStatementSummary,
+  OwnerPortalUnidad,
+} from "../src/verticals/rentas/lib/owner-portal-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -29,16 +35,47 @@ function jsonResponse(body: unknown, ok = true): Response {
 
 const SESSION = { token: "tok-123", refreshToken: "reftok", ownerId: "owner-1", email: "dueno@example.com" };
 
-const ME = { id: "owner-1", name: "Ana Dueña", email: "dueno@example.com", organizaciones: [{ organizationId: "org-1", name: "Gestora Demo" }] };
-const UNIDAD = { id: "u-1", name: "Depa 101", propertyId: "prop-1", organizationId: "org-1", organizationName: "Gestora Demo" };
-const STATEMENT = { id: "st-1", propertyId: "prop-1", organizationId: "org-1", organizationName: "Gestora Demo", periodo: { inicio: "2026-08-01", fin: "2026-08-31" }, version: 1, moneda: "MXN", netoCentavos: 1234550, generadoEn: "2026-09-01T00:00:00.000Z" };
-const DETALLE = { ...STATEMENT, motivoVersion: null, totales: { netoCentavos: 1234550 }, lineas: [{ ocupacionId: "occ-1", tipo: "ingreso", montoCentavos: 1500000 }] };
+// Revisión de PR #154 (no bloqueante 4): fixtures tipadas contra las interfaces
+// REALES de owner-portal-client.ts (antes eran objetos sueltos sin anotar, así
+// que campos faltantes -- `slug` de la organización, el desglose completo de
+// `totales`, `descripcion` de cada línea -- no los detectaba el compilador).
+const ME: OwnerPortalMe = {
+  id: "owner-1",
+  name: "Ana Dueña",
+  email: "dueno@example.com",
+  organizaciones: [{ organizationId: "org-1", name: "Gestora Demo", slug: "gestora-demo" }],
+};
+const UNIDAD: OwnerPortalUnidad = { id: "u-1", name: "Depa 101", propertyId: "prop-1", organizationId: "org-1", organizationName: "Gestora Demo" };
+const STATEMENT: OwnerPortalStatementSummary = {
+  id: "st-1",
+  propertyId: "prop-1",
+  organizationId: "org-1",
+  organizationName: "Gestora Demo",
+  periodo: { inicio: "2026-08-01", fin: "2026-08-31" },
+  version: 1,
+  moneda: "MXN",
+  netoCentavos: 1234550,
+  generadoEn: "2026-09-01T00:00:00.000Z",
+};
+const DETALLE: OwnerPortalStatementDetalle = {
+  ...STATEMENT,
+  motivoVersion: null,
+  totales: {
+    ingresosBrutosCentavos: 1500000,
+    comisionCanalCentavos: 150000,
+    comisionGestorCentavos: 100000,
+    gastosCentavos: 10000,
+    impuestosCentavos: 5450,
+    netoCentavos: 1234550,
+  },
+  lineas: [{ ocupacionId: "occ-1", tipo: "ingreso", descripcion: "Reserva confirmada ago-2026", montoCentavos: 1500000 }],
+};
 
 interface Handlers {
   me?: unknown;
   meOk?: boolean;
-  unidades?: readonly (typeof UNIDAD)[];
-  statements?: readonly (typeof STATEMENT)[];
+  unidades?: readonly OwnerPortalUnidad[];
+  statements?: readonly OwnerPortalStatementSummary[];
 }
 
 function stubFetch(handlers: Handlers) {
@@ -114,7 +151,29 @@ describe("OwnerPortalDashboardPage (rentas)", () => {
 
     const call = fetchMock.mock.calls.find(([url]) => url === "https://api.test/rentas/owner-portal/statements/st-1");
     expect(call).toBeDefined();
-    expect(rendered.container.textContent).toContain("Neto");
-    expect(rendered.container.textContent).toContain("15,000.00"); // línea real (1500000 centavos)
+    // "Neto" ya está en el header de la tabla ANTES del click (aserción vacía si
+    // solo se busca el label) -- lo que prueba que el detalle sí llegó y se
+    // pintó es contenido que NO existe hasta la respuesta real: la línea
+    // (occ-1/ingreso/monto) y el bloque de total con su NUEVO valor real.
+    const text = rendered.container.textContent!;
+    expect(text).toContain("occ-1");
+    expect(text).toContain("ingreso");
+    expect(text).toContain("15,000.00"); // línea real (1500000 centavos)
+    expect(text).toContain("Statement v1");
+  });
+
+  it("sin sesión persistida: nunca llama a la API, dispara onRequireLogin y no renderiza nada", async () => {
+    stubFetch({});
+    // Storage vacío (fresco, sin la sesión que `renderPage()` sí persiste) --
+    // ver comentario de `installMemoryLocalStorage` sobre por qué hace falta
+    // instalarlo explícito en este entorno de test.
+    installMemoryLocalStorage();
+    const onRequireLogin = vi.fn();
+    rendered = renderComponent(<OwnerPortalDashboardPage apiBaseUrl="https://api.test" onRequireLogin={onRequireLogin} />);
+    await esperarCarga();
+
+    expect(onRequireLogin).toHaveBeenCalled();
+    expect(rendered.container.textContent).toBe("");
+    expect(fetchMock.mock.calls.length).toBe(0);
   });
 });
