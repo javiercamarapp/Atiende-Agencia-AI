@@ -39,6 +39,17 @@
 import { tryEnqueueDeadlineReminderEmails, tryEnqueueOverdueInvoiceEmails, tryEnqueueRenewalAlertEmails } from "@atiende/domain-licitaciones";
 import type { LicitacionesRepository, ScanRenewalAlertsInput } from "@atiende/domain-licitaciones";
 
+/**
+ * r4-fix-crons-transaccion-por-unidad (auditoría a1b #2, MEDIA): runner de
+ * sesión inyectado -- CADA llamada abre (o reutiliza, en tests) su PROPIA
+ * transacción, nunca una compartida para todo el barrido. Ver `WithHotelesRepo`
+ * en `../hoteles/night-audit.ts` para el detalle completo del mecanismo
+ * (mismo patrón exacto: COMMIT sobre una transacción abortada devuelve
+ * `ROLLBACK` sin lanzar, revirtiendo en silencio TODAS las organizaciones ya
+ * procesadas en esa corrida).
+ */
+export type WithLicitacionesRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => Promise<T>;
+
 export interface RunRenewalAlertSweepOptions {
   readonly leadDaysThresholds?: readonly number[];
   /** Inyectable SOLO para pruebas deterministas -- por defecto la fecha real de hoy. */
@@ -146,31 +157,42 @@ const EMPTY_ORG_RESULT = { deadlineReminders: { scanned: 0, created: 0, emailsEn
  * para una organización, no tiene sentido seguir intentando renovación/
  * cobranza para esa misma organización en esta corrida; la siguiente corrida
  * lo reintenta).
+ *
+ * r4-fix-crons-transaccion-por-unidad: `listActiveOrganizations()` corre en su
+ * propia transacción corta (vía `withRepo`), y CADA organización corre la
+ * suya -- las 3 sub-operaciones de una misma organización SIGUEN compartiendo
+ * una sola transacción (documentado arriba: "no tiene sentido seguir
+ * intentando renovación/cobranza si el escaneo de plazo ya falló para esa
+ * organización"), pero esa transacción YA NO se extiende a las demás
+ * organizaciones -- ver `WithLicitacionesRepo` arriba para la razón exacta.
  */
-export async function runAlertNotificationSweep(repo: LicitacionesRepository, options: RunAlertNotificationSweepOptions = {}): Promise<readonly AlertNotificationSweepResult[]> {
-  const organizations = await repo.listActiveOrganizations();
+export async function runAlertNotificationSweep(withRepo: WithLicitacionesRepo, options: RunAlertNotificationSweepOptions = {}): Promise<readonly AlertNotificationSweepResult[]> {
+  const organizations = await withRepo((repo) => repo.listActiveOrganizations());
   const results: AlertNotificationSweepResult[] = [];
 
   for (const org of organizations) {
     try {
-      // ---- 1) Recordatorios de plazo (Fase 8, reusa runDeadlineReminderSweep tal cual, sin reimplementar el escaneo). ----
-      const deadlineScan = await repo.scanUpcomingDeadlineReminders(org.id, { windowDays: options.deadlineWindowDays, nowIso: options.now ? options.now().toISOString() : undefined });
-      const deadlineEmails = await tryEnqueueDeadlineReminderEmails(repo, org.id, deadlineScan.reminders);
+      const result = await withRepo(async (repo) => {
+        // ---- 1) Recordatorios de plazo (Fase 8, reusa runDeadlineReminderSweep tal cual, sin reimplementar el escaneo). ----
+        const deadlineScan = await repo.scanUpcomingDeadlineReminders(org.id, { windowDays: options.deadlineWindowDays, nowIso: options.now ? options.now().toISOString() : undefined });
+        const deadlineEmails = await tryEnqueueDeadlineReminderEmails(repo, org.id, deadlineScan.reminders);
 
-      // ---- 2) Alertas de renovación (Fase 6, `scanRenewalAlerts` ya existía -- lo nuevo es invocarlo desde un barrido transversal). `systemScanRenewalAlerts`: ver comentario de cabecera de `runRenewalAlertSweep`, arriba -- exclusiva de sesión de sistema. ----
-      const renewalScan = await repo.systemScanRenewalAlerts(org.id, { leadDaysThresholds: options.renewalLeadDaysThresholds, todayIsoDate: options.todayIsoDate });
-      const renewalEmails = await tryEnqueueRenewalAlertEmails(repo, org.id, renewalScan.alerts);
+        // ---- 2) Alertas de renovación (Fase 6, `scanRenewalAlerts` ya existía -- lo nuevo es invocarlo desde un barrido transversal). `systemScanRenewalAlerts`: ver comentario de cabecera de `runRenewalAlertSweep`, arriba -- exclusiva de sesión de sistema. ----
+        const renewalScan = await repo.systemScanRenewalAlerts(org.id, { leadDaysThresholds: options.renewalLeadDaysThresholds, todayIsoDate: options.todayIsoDate });
+        const renewalEmails = await tryEnqueueRenewalAlertEmails(repo, org.id, renewalScan.alerts);
 
-      // ---- 3) Facturas vencidas de cobranza (Fase 6, nueva lectura transversal en esta fase). ----
-      const overdueInvoices = await repo.listOverdueContractInvoices(org.id, options.todayIsoDate);
-      const collectionEmails = await tryEnqueueOverdueInvoiceEmails(repo, org.id, overdueInvoices);
+        // ---- 3) Facturas vencidas de cobranza (Fase 6, nueva lectura transversal en esta fase). ----
+        const overdueInvoices = await repo.listOverdueContractInvoices(org.id, options.todayIsoDate);
+        const collectionEmails = await tryEnqueueOverdueInvoiceEmails(repo, org.id, overdueInvoices);
 
-      results.push({
-        organizationId: org.id,
-        deadlineReminders: { scanned: deadlineScan.scanned, created: deadlineScan.created, emailsEnqueued: deadlineEmails.enqueued },
-        renewalAlerts: { evaluatedContracts: renewalScan.evaluatedContracts, alertsCreated: renewalScan.alertsCreated, emailsEnqueued: renewalEmails.enqueued },
-        collectionAlerts: { overdueInvoices: overdueInvoices.length, emailsEnqueued: collectionEmails.enqueued },
+        return {
+          organizationId: org.id,
+          deadlineReminders: { scanned: deadlineScan.scanned, created: deadlineScan.created, emailsEnqueued: deadlineEmails.enqueued },
+          renewalAlerts: { evaluatedContracts: renewalScan.evaluatedContracts, alertsCreated: renewalScan.alertsCreated, emailsEnqueued: renewalEmails.enqueued },
+          collectionAlerts: { overdueInvoices: overdueInvoices.length, emailsEnqueued: collectionEmails.enqueued },
+        };
       });
+      results.push(result);
     } catch (err) {
       results.push({ organizationId: org.id, ...EMPTY_ORG_RESULT, error: err instanceof Error ? err.message : String(err) });
     }

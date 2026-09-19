@@ -43,7 +43,7 @@ import type { EmailDispatchSummary as LicitacionesEmailDispatchSummary, Licitaci
 import { runAlertNotificationSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
-import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
@@ -86,13 +86,20 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
   app.on(["GET", "POST"], "/internal/licitaciones/alert-notifications", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return withHeartbeat(deps, "/internal/licitaciones/alert-notifications", () => deps.engine.withAppSession({ userId: null }, async (db) => {
-      const repo = deps.licitacionesRepo(db);
-      const sweep = await runAlertNotificationSweep(repo);
+    // r4-fix-crons-transaccion-por-unidad (auditoría a1b #2, MEDIA): YA NO se
+    // abre una única `withAppSession` para todo el barrido -- `runAlertNotificationSweep`
+    // recibe un runner (`withRepo`) que abre UNA transacción POR organización
+    // (ver su comentario de cabecera en @atiende/worker).
+    return withHeartbeat(deps, "/internal/licitaciones/alert-notifications", async () => {
+      const withRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.licitacionesRepo(db)));
+      const sweep = await runAlertNotificationSweep(withRepo);
       // Disparo inline best-effort (ver comentario de cabecera): el barrido de
       // arriba pudo haber encolado recordatorios de plazo/renovación/cobranza
-      // reales vía `channel='email'`.
-      await triggerLicitacionesEmailDispatchInline(deps, repo);
+      // reales vía `channel='email'`. r4-fix-crons-transaccion-por-unidad:
+      // antes compartía LA MISMA transacción del barrido completo; ahora abre
+      // la suya propia -- mismo criterio que `runLicitacionesEmailDispatch`
+      // (el cron separado de email-dispatch, que siempre abrió la suya).
+      await withRepo((repo) => triggerLicitacionesEmailDispatchInline(deps, repo));
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => ({
@@ -103,23 +110,27 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
         }),
         { deadline_reminders_created: 0, renewal_alerts_created: 0, overdue_invoices: 0, emails_enqueued: 0 },
       );
-      return c.json(
-        {
-          ok: failures.length === 0,
-          organizations_checked: sweep.length,
-          ...totals,
-          corridas: sweep.map((r) => ({
-            organization_id: r.organizationId,
-            error: r.error ?? null,
-            recordatorios_plazo: r.deadlineReminders,
-            alertas_renovacion: r.renewalAlerts,
-            alertas_cobranza: r.collectionAlerts,
-          })),
-          failures,
-        },
-        200,
-      );
-    }))();
+      const body = {
+        ok: failures.length === 0,
+        organizations_checked: sweep.length,
+        ...totals,
+        corridas: sweep.map((r) => ({
+          organization_id: r.organizationId,
+          error: r.error ?? null,
+          recordatorios_plazo: r.deadlineReminders,
+          alertas_renovacion: r.renewalAlerts,
+          alertas_cobranza: r.collectionAlerts,
+        })),
+        failures,
+      };
+      const response = c.json(body, 200);
+      // (5) el latido no debe registrar "ok" limpio si alguna organización
+      // falló -- ver CronPartialFailureError (with-heartbeat.ts).
+      if (failures.length > 0) {
+        throw new CronPartialFailureError(`alert-notifications: ${failures.length} de ${sweep.length} organizaciones fallaron`, response);
+      }
+      return response;
+    })();
   });
 
   app.on(["GET", "POST"], "/internal/licitaciones/email-dispatch", async (c) => {

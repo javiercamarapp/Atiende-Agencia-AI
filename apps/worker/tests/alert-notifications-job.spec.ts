@@ -122,7 +122,7 @@ describe("runAlertNotificationSweep", () => {
     await repo.createContractInvoice(organizationId, tenderInvoice.id, { concepto: "Factura vencida", amount: "5000.00", invoiceVerifiedOn: "2026-06-01", actorId: randomUUID() });
 
     const now = new Date("2026-09-14T12:00:00-06:00");
-    const sweep = await runAlertNotificationSweep(repo, { now: () => now, todayIsoDate: "2026-09-14" });
+    const sweep = await runAlertNotificationSweep((fn) => fn(repo), { now: () => now, todayIsoDate: "2026-09-14" });
     expect(sweep).toHaveLength(1);
     const orgResult = sweep[0]!;
     expect(orgResult.error).toBeUndefined();
@@ -144,7 +144,7 @@ describe("runAlertNotificationSweep", () => {
   it("sin ningún responsable (owner/admin) seteado en la organización, escanea igual pero no encola ningún correo", async () => {
     await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-1", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
 
-    const sweep = await runAlertNotificationSweep(repo, { now: () => new Date("2026-09-14T12:00:00-06:00"), todayIsoDate: "2026-09-14" });
+    const sweep = await runAlertNotificationSweep((fn) => fn(repo), { now: () => new Date("2026-09-14T12:00:00-06:00"), todayIsoDate: "2026-09-14" });
     expect(sweep[0]!.deadlineReminders).toEqual({ scanned: 1, created: 1, emailsEnqueued: 0 });
     expect(repo.getMessagingOutbox()).toHaveLength(0);
   });
@@ -155,11 +155,11 @@ describe("runAlertNotificationSweep", () => {
     await repo.createContract(organizationId, tender.id, randomUUID());
     await repo.createContractInvoice(organizationId, tender.id, { concepto: "Factura vencida", amount: "5000.00", invoiceVerifiedOn: "2026-06-01", actorId: randomUUID() });
 
-    await runAlertNotificationSweep(repo, { now: () => new Date("2026-09-14T12:00:00-06:00"), todayIsoDate: "2026-09-14" });
+    await runAlertNotificationSweep((fn) => fn(repo), { now: () => new Date("2026-09-14T12:00:00-06:00"), todayIsoDate: "2026-09-14" });
     // `listOverdueContractInvoices` SIEMPRE re-lista la misma factura mientras siga sin
     // pagarse (a diferencia de scanRenewalAlerts/scanUpcomingDeadlineReminders, no hay
     // tabla de "alerta ya emitida" intermedia) -- el dedupe real vive en el outbox.
-    await runAlertNotificationSweep(repo, { now: () => new Date("2026-09-15T12:00:00-06:00"), todayIsoDate: "2026-09-15" });
+    await runAlertNotificationSweep((fn) => fn(repo), { now: () => new Date("2026-09-15T12:00:00-06:00"), todayIsoDate: "2026-09-15" });
 
     expect(repo.getMessagingOutbox()).toHaveLength(1);
   });
@@ -182,7 +182,7 @@ describe("runAlertNotificationSweep", () => {
       enqueueMessagingOutbox: repo.enqueueMessagingOutbox.bind(repo),
     } as unknown as LicitacionesRepository;
 
-    const sweep = await runAlertNotificationSweep(brokenRepo, { now: () => new Date("2026-09-14T12:00:00-06:00"), todayIsoDate: "2026-09-14" });
+    const sweep = await runAlertNotificationSweep((fn) => fn(brokenRepo), { now: () => new Date("2026-09-14T12:00:00-06:00"), todayIsoDate: "2026-09-14" });
     const failed = sweep.find((r) => r.organizationId === organizationId)!;
     const ok = sweep.find((r) => r.organizationId === org2)!;
     expect(failed.error).toBe("fallo simulado");
