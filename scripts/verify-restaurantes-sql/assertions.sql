@@ -425,4 +425,55 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b0b02
 select count(*) as ve_clientes_ajenos_deberia_ser_0 from restaurantes.customers where organization_id = '00000000-0000-0000-0000-00000000a002';
 rollback;
 
+-- =============================================================================
+-- (10) Recorrido público completo (buscar_sucursal_cercana -> crear pedido) — ver
+--     `..._0015_core_rls_sesion_sistema.sql` (packages/db/migrations, mirror
+--     `supabase/migrations/20240101000136_...`). El hallazgo "NO corregido aquí" que
+--     documentaba el escenario 6 de arriba (`core.property` sin escape hatch de
+--     sesión de sistema) YA SE CORRIGIÓ en esa migración — este escenario 23
+--     reemplaza esa limitación: ahora ejercita `nearest_branch_by_colonia()` de
+--     punta a punta (JOIN real contra `core.property`) seguido de
+--     `create_order_idempotent()` con el `property_id` que esa función resolvió,
+--     exactamente el recorrido real de `PostgresRestaurantesRepository.findBranch()`
+--     -> `orders.ts::prepareCreateOrder` bajo `withAppSession({ userId: null })`.
+--     Verificado ANTES de `...000136` (reproducible quitando ese archivo de
+--     `supabase/migrations/` y volviendo a correr este script): la primera consulta
+--     de este escenario devuelve 0 filas y la segunda falla con
+--     `null value in column "property_id" ... violates not-null constraint` —
+--     el bug exacto que motivó todo este PR.
+-- =============================================================================
+
+\echo '=== 23. Recorrido público completo bajo sesion de sistema: nearest_branch_by_colonia() SI resuelve la sucursal (antes: 0 filas por core.property sin escape hatch) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select (count(*) = 1)::int as resuelve_sucursal_deberia_ser_1
+  from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-00000000a002', 'Alta Brisa');
+rollback;
+
+\echo '=== 24. Recorrido público completo: con esa sucursal ya resuelta, create_order_idempotent() SI crea el pedido (antes: NOT NULL violation en property_id) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+with sucursal as (
+  select property_id from restaurantes.nearest_branch_by_colonia('00000000-0000-0000-0000-00000000a002', 'Alta Brisa')
+)
+select (
+  restaurantes.create_order_idempotent(
+    jsonb_build_object(
+      'organization_id', '00000000-0000-0000-0000-00000000a002',
+      'property_id', (select property_id from sucursal),
+      'customer_id', '00000000-0000-0000-0000-00000000ca01',
+      'customer_name', 'Cliente Checkout Publico', 'customer_phone', '9990009999',
+      'customer_address', null, 'customer_email', null, 'branch', 'Sucursal 1',
+      'total', 250.00, 'items', jsonb_build_array(jsonb_build_object('name', 'Taco', 'qty', 2, 'price', 125)),
+      'source', 'whatsapp', 'notes', null, 'payment_method', 'efectivo',
+      'call_transcript', null, 'call_recording_url', null
+    ),
+    md5('scn24-fingerprint-a') || md5('scn24-fingerprint-b'),
+    md5('scn24-idem-a') || md5('scn24-idem-b')
+  )->>'property_id' = (select property_id::text from sucursal)
+)::int as pedido_creado_con_property_id_correcto_deberia_ser_1;
+rollback;
+
 \echo '=== FIN — revisa arriba: los escenarios marcados should_fail/deberia_ser_N deben terminar en ERROR o el valor N indicado; el resto debe devolver una fila real. ==='
