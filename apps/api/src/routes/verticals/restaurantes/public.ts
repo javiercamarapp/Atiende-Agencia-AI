@@ -126,7 +126,7 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
         // dejó correo (tryNotifyCustomerOrderConfirmationEmail, ver
         // order-notifications.ts); disparo inline del drenado, mismo
         // `repo`/transacción, en vez de esperar al cron diario.
-        await triggerRestaurantesEmailDispatchInline(deps, repo);
+        await triggerRestaurantesEmailDispatchInline(deps, db, repo);
         return c.json({ order });
       } catch (err) {
         if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
