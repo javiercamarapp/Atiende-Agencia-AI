@@ -325,7 +325,13 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline
           // best-effort del correo recién encolado arriba, mismo
           // `repo`/transacción (ver comentario de cabecera de email-dispatch.ts).
-          await triggerHotelesEmailDispatchInline(deps, repo);
+          // Ruta de sesión de STAFF, dentro de `repo.withIdempotency` (arriba),
+          // DESPUÉS de timbrar en el PAC: sin el SAVEPOINT del hotfix de
+          // auditoría a2, la transacción abortada hacía fallar con 500 el UPDATE
+          // de `idempotency_key` de abajo -- un CFDI YA timbrado en el PAC, sin
+          // registro local, y un reintento con la misma Idempotency-Key
+          // re-timbraba (la llave también se revertía).
+          await triggerHotelesEmailDispatchInline(deps, c.get("db"), repo);
         }
 
         return { status: 201 as const, body: serializeCfdi(created) };

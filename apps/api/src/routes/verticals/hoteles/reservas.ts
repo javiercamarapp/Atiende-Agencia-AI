@@ -289,8 +289,13 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           await tryEnqueueGuestEmail(repo, propertyId, organizationId, "reservation.created", reservation.id);
           // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort
           // del correo recién encolado arriba, mismo `repo`/transacción (ver
-          // comentario de cabecera de email-dispatch.ts).
-          await triggerHotelesEmailDispatchInline(deps, repo);
+          // comentario de cabecera de email-dispatch.ts). Ruta de sesión de STAFF:
+          // `db` es el MISMO `TenantDbSession` de esta transacción, necesario para
+          // el SAVEPOINT del hotfix de auditoría a2 -- CRÍTICO en este call site
+          // en particular, porque corre dentro de `repo.withIdempotency` (arriba):
+          // sin el SAVEPOINT, la transacción abortada hacía fallar con 500 el
+          // UPDATE de `idempotency_key` que corre justo después de este bloque.
+          await triggerHotelesEmailDispatchInline(deps, c.get("db"), repo);
           return { status: 201, body: serializeReservation(reservation) };
         },
       );

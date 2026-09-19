@@ -578,8 +578,11 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     });
     // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort del
     // correo recién encolado arriba, mismo `repo`/transacción (ver comentario de
-    // cabecera de email-dispatch.ts), en vez de esperar al cron diario.
-    await triggerHotelesEmailDispatchInline(deps, repo);
+    // cabecera de email-dispatch.ts), en vez de esperar al cron diario. Ruta de
+    // sesión de STAFF (ver `app.use` de arriba): `db` es el MISMO
+    // `TenantDbSession` de esta transacción, necesario para el SAVEPOINT del
+    // hotfix de auditoría a2 (ver comentario de cabecera de la función).
+    await triggerHotelesEmailDispatchInline(deps, c.get("db"), repo);
 
     return c.json({ id: folioId, estado: "cerrado", motivoCierre: motivo, saldo: balance });
   });
