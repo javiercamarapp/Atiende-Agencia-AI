@@ -183,6 +183,17 @@ function resumenDeLineas(lineas: readonly LineaConciliada[]): ResumenConciliacio
   };
 }
 
+// r5 -- mismos límites que el CHECK de `rentas.audit_log` (ver
+// migrations/021_rentas_audit_log.sql) -- ver el comentario dentro de
+// `registrarAuditoria` de abajo.
+const AUDIT_LOG_CAMPO_MAX = 200;
+const AUDIT_LOG_TEXTO_MAX = 500;
+
+function truncarCampoAuditoria(value: string | null | undefined, max: number): string | null {
+  if (value == null) return null;
+  return value.length > max ? value.slice(0, max) : value;
+}
+
 export class InMemoryRentasRepository implements RentasRepository {
   private readonly reglasCanalPricing = new Map<string, ReglaCanal>(); // key: unidadId:canalCodigo (usado por loadReglaCanalPricing)
   private readonly reglasComisionCanal: StoredReglaComisionCanal[] = [];
@@ -746,9 +757,16 @@ export class InMemoryRentasRepository implements RentasRepository {
       action: input.action,
       entityType: input.entityType,
       entityId: input.entityId,
-      campo: input.campo ?? null,
-      antes: input.antes ?? null,
-      despues: input.despues ?? null,
+      // Trunca a los MISMOS límites que el CHECK de `rentas.audit_log`
+      // (200/500/500, ver migrations/021_rentas_audit_log.sql) -- mismo criterio
+      // que `left(..., N)` dentro de `rentas.record_audit_log`. Sin este truncamiento
+      // este doble en memoria no reproduce el bug real que ese `left()` corrige (un
+      // `motivoVersion` largo violando el CHECK contra Postgres real), así que
+      // ningún test que solo use este repositorio lo detectaría (hallazgo de
+      // revisión r5: bloqueante 1).
+      campo: truncarCampoAuditoria(input.campo, AUDIT_LOG_CAMPO_MAX),
+      antes: truncarCampoAuditoria(input.antes, AUDIT_LOG_TEXTO_MAX),
+      despues: truncarCampoAuditoria(input.despues, AUDIT_LOG_TEXTO_MAX),
       createdAtMs: Date.now(),
     });
   }

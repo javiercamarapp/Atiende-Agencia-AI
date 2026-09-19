@@ -56,7 +56,16 @@
 -- ---------------------------------------------------------------------------
 create table rentas.audit_log (
   id uuid primary key default gen_random_uuid(),
-  organization_id uuid not null references core.organization(id) on delete cascade,
+  -- `on delete restrict` (nunca `cascade`, corrección de revisión r5): el trigger
+  -- de bloqueo incondicional de abajo (`rentas_audit_log_block_delete_trg`) rechaza
+  -- CUALQUIER DELETE sobre esta tabla, incluido el que un `cascade` dispararía al
+  -- borrar la organización -- con `cascade` ese borrado de organización fallaría
+  -- siempre con 0A000 (nunca completaría el cascade prometido), un patrón que
+  -- engaña sin necesidad: `restrict` expresa exactamente lo mismo (borrar la
+  -- organización falla mientras existan filas de bitácora) sin prometer un cascade
+  -- que el propio trigger nunca deja completar. Mismo criterio que
+  -- `rentas.break_glass_access_log` (012_break_glass_audit.sql).
+  organization_id uuid not null references core.organization(id) on delete restrict,
   -- `on delete restrict` (nunca `set null`) a propósito: el actor es NOT NULL -- un
   -- registro de auditoría sin saber quién hizo la acción no tiene ningún valor. Mismo
   -- criterio que `rentas.break_glass_access_log.actor_user_id` (012_break_glass_audit.sql).
@@ -118,9 +127,18 @@ create policy "admin_gestora lee la bitacora de auditoria de su organizacion" on
 -- de bloqueo incondicional (mismo patrón que
 -- `rentas.break_glass_access_log_block_mutation`, 012_break_glass_audit.sql) como
 -- defensa en profundidad: ni un GRANT futuro accidental podría violar el append-only.
-revoke all on rentas.audit_log from public, anon, authenticated;
-grant select on rentas.audit_log to authenticated;
-grant select, insert on rentas.audit_log to service_role;
+--
+-- `service_role` NO recibe `insert` (corrección de revisión r5): `security
+-- definer` hace que `record_audit_log` corra con los privilegios de su DUEÑO (quien
+-- corrió esta migración), no con los del caller -- ningún GRANT de INSERT sobre la
+-- TABLA es necesario para que la función siga escribiendo. `service_role` tiene el
+-- atributo `bypassrls`, así que un GRANT de INSERT aquí sería una vía de escritura
+-- DIRECTA con actor arbitrario que ningún caller real usa hoy -- contradice la
+-- afirmación de este archivo de que `record_audit_log` es la ÚNICA vía de
+-- escritura. Solo `select` (necesario para que un job de plataforma pueda leer,
+-- igual que `authenticated`).
+revoke all on rentas.audit_log from public, anon, authenticated, service_role;
+grant select on rentas.audit_log to authenticated, service_role;
 
 create or replace function rentas.audit_log_block_mutation()
 returns trigger
@@ -153,6 +171,21 @@ create trigger rentas_audit_log_block_delete_trg
 --    `security definer` bypassa esa misma RLS para el INSERT -- sin este check
 --    explícito, el bypass sería total, no solo para el propio tenant). Mismo
 --    criterio de "cross-tenant siempre rechazado" que el resto del repo.
+--
+--    Truncamiento defensivo de `p_campo`/`p_antes`/`p_despues` (corrección de
+--    revisión, r5): esta función es la ÚNICA vía de escritura -- por eso es el
+--    único lugar donde puede garantizarse, para TODO caller presente y futuro, que
+--    el CHECK de longitud de la tabla (200/500/500, ver arriba) nunca se viola.
+--    Antes de esta corrección, un `motivoVersion` de texto libre (hasta 500
+--    caracteres, validado así en la ruta HTTP) concatenado dentro de `despues` con
+--    ~26 caracteres de envoltura (`v${version} (${neto} ${moneda}, motivo:
+--    ${motivo})`) podía superar los 500 caracteres del CHECK -- `record_audit_log`
+--    lanzaba 23514, y el catch-all de `PostgresRentasRepository.registrarAuditoria`
+--    lo tragaba en silencio: la versión nueva de un owner statement ya entregado
+--    (la acción más sensible instrumentada) no dejaba NINGUNA fila en la bitácora,
+--    sin error visible para el cliente. `left(..., N)` trunca ANTES del INSERT, así
+--    que el CHECK nunca puede violarse por este motivo, sin importar qué texto
+--    libre arme cada caller (motivoVersion, fuente de un canal, etc.).
 -- ---------------------------------------------------------------------------
 create or replace function rentas.record_audit_log(
   p_organization_id uuid,
@@ -182,8 +215,12 @@ begin
       using errcode = '42501';
   end if;
 
+  -- `left(..., N)` -- nunca falla sobre NULL (devuelve NULL) -- garantiza que el
+  -- CHECK de longitud de la tabla (200/500/500) no pueda violarse aquí, sin
+  -- importar qué texto libre arme cada caller (ver comentario de cabecera de esta
+  -- función).
   insert into rentas.audit_log (organization_id, actor_user_id, action, entity_type, entity_id, campo, antes, despues)
-  values (p_organization_id, v_actor, p_action, p_entity_type, p_entity_id, p_campo, p_antes, p_despues)
+  values (p_organization_id, v_actor, p_action, p_entity_type, p_entity_id, left(p_campo, 200), left(p_antes, 500), left(p_despues, 500))
   returning id into v_id;
 
   return v_id;
