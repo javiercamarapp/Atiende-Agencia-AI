@@ -118,9 +118,8 @@ describe("runCobranzaReminderSweep", () => {
         if (orgId === organizationId) throw new Error("fallo simulado");
         return repo.listPropertiesForOrganization(orgId);
       },
-      listReceivables: repo.listReceivables.bind(repo),
-      findInvoice: repo.findInvoice.bind(repo),
-      insertCollectionEvent: repo.insertCollectionEvent.bind(repo),
+      systemListPendingReceivablesForReminders: repo.systemListPendingReceivablesForReminders.bind(repo),
+      systemRecordCollectionEvent: repo.systemRecordCollectionEvent.bind(repo),
       enqueueMessagingOutbox: repo.enqueueMessagingOutbox.bind(repo),
     } as unknown as DespachosRepository;
 

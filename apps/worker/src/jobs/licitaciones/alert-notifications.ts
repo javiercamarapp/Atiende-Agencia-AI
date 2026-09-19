@@ -54,10 +54,20 @@ export interface RenewalAlertSweepResult {
 
 /**
  * Barrido transversal (TODAS las organizaciones activas) de
- * `repo.scanRenewalAlerts` — hasta esta fase esa función solo se invocaba
+ * `repo.systemScanRenewalAlerts` — hasta esta fase esa función solo se invocaba
  * manualmente desde `POST .../renewals/scan` (un usuario tenía que abrir el
  * panel y darle clic), nunca por un scheduler externo. Mismo criterio de
  * aislamiento por organización que `runDeadlineReminderSweep`.
+ *
+ * Hallazgo de auditoría cerrado por esta versión del archivo (severidad ALTA,
+ * "flujos de sistema bloqueados en escritura", ver `packages/domain-
+ * licitaciones/migrations/025_licitaciones_sistema_renovaciones_facturas.sql`):
+ * este job corre bajo `deps.engine.withAppSession({ userId: null })` -- usa
+ * `repo.systemScanRenewalAlerts` (exclusiva de sistema, respaldada por
+ * funciones `security definer` de solo-sistema) en vez de `repo.
+ * scanRenewalAlerts` (código compartido con el staff autenticado de `POST
+ * .../renewals/scan`, `renewalRadar.ts` -- ESE camino sigue llamando a
+ * `scanRenewalAlerts` sin cambios).
  */
 export async function runRenewalAlertSweep(repo: LicitacionesRepository, options: RunRenewalAlertSweepOptions = {}): Promise<readonly RenewalAlertSweepResult[]> {
   const organizations = await repo.listActiveOrganizations();
@@ -66,7 +76,7 @@ export async function runRenewalAlertSweep(repo: LicitacionesRepository, options
   for (const org of organizations) {
     try {
       const input: ScanRenewalAlertsInput = { leadDaysThresholds: options.leadDaysThresholds, todayIsoDate: options.todayIsoDate };
-      const result = await repo.scanRenewalAlerts(org.id, input);
+      const result = await repo.systemScanRenewalAlerts(org.id, input);
       results.push({ organizationId: org.id, evaluatedContracts: result.evaluatedContracts, alertsCreated: result.alertsCreated });
     } catch (err) {
       results.push({ organizationId: org.id, evaluatedContracts: 0, alertsCreated: 0, error: err instanceof Error ? err.message : String(err) });
@@ -147,8 +157,8 @@ export async function runAlertNotificationSweep(repo: LicitacionesRepository, op
       const deadlineScan = await repo.scanUpcomingDeadlineReminders(org.id, { windowDays: options.deadlineWindowDays, nowIso: options.now ? options.now().toISOString() : undefined });
       const deadlineEmails = await tryEnqueueDeadlineReminderEmails(repo, org.id, deadlineScan.reminders);
 
-      // ---- 2) Alertas de renovación (Fase 6, `scanRenewalAlerts` ya existía -- lo nuevo es invocarlo desde un barrido transversal). ----
-      const renewalScan = await repo.scanRenewalAlerts(org.id, { leadDaysThresholds: options.renewalLeadDaysThresholds, todayIsoDate: options.todayIsoDate });
+      // ---- 2) Alertas de renovación (Fase 6, `scanRenewalAlerts` ya existía -- lo nuevo es invocarlo desde un barrido transversal). `systemScanRenewalAlerts`: ver comentario de cabecera de `runRenewalAlertSweep`, arriba -- exclusiva de sesión de sistema. ----
+      const renewalScan = await repo.systemScanRenewalAlerts(org.id, { leadDaysThresholds: options.renewalLeadDaysThresholds, todayIsoDate: options.todayIsoDate });
       const renewalEmails = await tryEnqueueRenewalAlertEmails(repo, org.id, renewalScan.alerts);
 
       // ---- 3) Facturas vencidas de cobranza (Fase 6, nueva lectura transversal en esta fase). ----

@@ -2419,6 +2419,69 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     return { evaluatedContracts: candidates.length, alertsCreated: created.length, alerts: created };
   }
 
+  // Hallazgo de auditoría (severidad ALTA, "flujos de sistema bloqueados en
+  // escritura", ver migración 025) -- exclusiva del barrido de sistema
+  // (`apps/worker/src/jobs/licitaciones/alert-notifications.ts`). MISMA lógica
+  // exacta que `scanRenewalAlerts` de arriba (mismo `computeRenewalAlertCandidates`
+  // puro, nunca duplicado) -- solo cambian las 2 funciones SQL que hacen el I/O,
+  // por funciones `security definer` de solo-sistema en vez de acceso directo a
+  // `licitaciones.contract`/`renewal_alert` (bloqueado bajo sesión de sistema, sin
+  // escape hatch). `scanRenewalAlerts` sigue siendo el camino correcto para el
+  // staff autenticado real (`POST .../renewals/scan`) -- sin cambio.
+  async systemScanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
+    const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
+    const today = input.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+
+    const contractsRes = await this.db.query<{ out_contract_id: string; out_tender_id: string; out_end_date: string }>(
+      `select * from licitaciones.system_list_renewal_candidate_contracts($1);`,
+      [organizationId],
+    );
+    const candidates: RenewalCandidateContract[] = contractsRes.rows.map((r) => ({ contractId: r.out_contract_id, tenderId: r.out_tender_id, endDate: r.out_end_date }));
+    const alertCandidates = computeRenewalAlertCandidates(candidates, today, thresholds);
+
+    const created: RenewalAlertRecord[] = [];
+    for (const candidate of alertCandidates) {
+      const inserted = await this.db.query<{
+        out_id: string;
+        out_organization_id: string;
+        out_contract_id: string;
+        out_tender_id: string;
+        out_predicted_date: string;
+        out_lead_days: number;
+        out_confidence: string;
+        out_status: "pendiente" | "reconocida";
+        out_acknowledged_at: string | null;
+        out_acknowledged_by: string | null;
+        out_created_at: string;
+      }>(`select * from licitaciones.system_record_renewal_alert($1, $2, $3, $4, $5, $6);`, [
+        organizationId,
+        candidate.contractId,
+        candidate.tenderId,
+        candidate.predictedDate,
+        candidate.leadDays,
+        candidate.confidence,
+      ]);
+      const row = inserted.rows[0];
+      if (row) {
+        created.push({
+          id: row.out_id,
+          organizationId: row.out_organization_id,
+          contractId: row.out_contract_id,
+          tenderId: row.out_tender_id,
+          predictedDate: row.out_predicted_date,
+          leadDays: row.out_lead_days,
+          confidence: Number(row.out_confidence),
+          status: row.out_status,
+          acknowledgedAt: row.out_acknowledged_at,
+          acknowledgedBy: row.out_acknowledged_by,
+          createdAt: row.out_created_at,
+        });
+      }
+    }
+
+    return { evaluatedContracts: candidates.length, alertsCreated: created.length, alerts: created };
+  }
+
   async listRenewalAlerts(organizationId: string): Promise<readonly RenewalAlertRecord[]> {
     const { rows } = await this.db.query<RenewalAlertRow>(
       `select ${RENEWAL_ALERT_COLUMNS} from licitaciones.renewal_alert where organization_id = $1 order by created_at desc;`,
@@ -2448,26 +2511,29 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     return rows.map((r) => ({ email: r.email, fullName: r.full_name }));
   }
 
+  // Hallazgo de auditoría (severidad ALTA, "flujos de sistema bloqueados en
+  // escritura", ver migración 025): exclusiva del barrido de sistema
+  // (`apps/worker/src/jobs/licitaciones/alert-notifications.ts`, sin caller de
+  // staff autenticado, verificado con `grep -rn`) -- mismo SELECT exacto que
+  // antes, ahora dentro de `licitaciones.system_list_overdue_contract_invoices`
+  // (`security definer`, guard de solo-sistema) en vez de directo contra la
+  // tabla (bloqueado por `can_access_org` bajo sesión de sistema, sin escape
+  // hatch). Sin cambio de contrato TypeScript -- mismo método, misma firma.
   async listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]> {
     const today = todayIsoDate ?? new Date().toISOString().slice(0, 10);
-    const { rows } = await this.db.query<{ id: string; contract_id: string; tender_id: string; concepto: string; amount: string; due_date: string; days_overdue: number }>(
-      `select i.id, i.contract_id, c.tender_id, i.concepto, i.amount::text as amount, i.due_date::text as due_date,
-              ($2::date - i.due_date)::int as days_overdue
-       from licitaciones.contract_invoice i
-       join licitaciones.contract c on c.id = i.contract_id
-       where i.organization_id = $1 and i.paid_at is null and i.due_date < $2::date
-       order by i.due_date asc;`,
+    const { rows } = await this.db.query<{ out_id: string; out_contract_id: string; out_tender_id: string; out_concepto: string; out_amount: string; out_due_date: string; out_days_overdue: number }>(
+      `select * from licitaciones.system_list_overdue_contract_invoices($1, $2::date);`,
       [organizationId, today],
     );
     return rows.map((r) => ({
       organizationId,
-      invoiceId: r.id,
-      contractId: r.contract_id,
-      tenderId: r.tender_id,
-      concepto: r.concepto,
-      amount: r.amount,
-      dueDate: r.due_date,
-      daysOverdue: r.days_overdue,
+      invoiceId: r.out_id,
+      contractId: r.out_contract_id,
+      tenderId: r.out_tender_id,
+      concepto: r.out_concepto,
+      amount: r.out_amount,
+      dueDate: r.out_due_date,
+      daysOverdue: r.out_days_overdue,
     }));
   }
 

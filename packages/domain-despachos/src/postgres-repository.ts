@@ -21,7 +21,9 @@ import type {
   NewInvoiceInput,
   NewInvoiceReviewInput,
   NewReceivableInput,
+  NewSystemCollectionEventInput,
   ReceivableRecord,
+  ReceivableReminderRow,
   TipoComprobante,
 } from "./types.ts";
 import type { DiotResult } from "./cfdi/reglas-fiscales-avanzadas.ts";
@@ -742,6 +744,53 @@ export class PostgresDespachosRepository implements DespachosRepository {
       [propertyId, receivableIds],
     );
     return rows.map(mapCollectionEvent);
+  }
+
+  // ---- Flujos de sistema (cron `cobranza-reminders`, migración 009 --
+  // exclusivos del barrido de sistema, ver DespachosRepository de arriba). ----
+
+  async systemListPendingReceivablesForReminders(propertyId: string): Promise<readonly ReceivableReminderRow[]> {
+    const { rows } = await this.db.query<{
+      out_id: string;
+      out_organization_id: string;
+      out_property_id: string;
+      out_invoice_id: string;
+      out_fecha_vencimiento: string;
+      out_cliente_nombre: string | null;
+      out_cliente_email: string | null;
+      out_factura_folio_fiscal: string;
+      out_factura_total: string;
+    }>(`select * from despachos.system_list_pending_receivables_with_invoice($1);`, [propertyId]);
+    return rows.map((r) => ({
+      id: r.out_id,
+      organizationId: r.out_organization_id,
+      propertyId: r.out_property_id,
+      invoiceId: r.out_invoice_id,
+      fechaVencimiento: r.out_fecha_vencimiento,
+      clienteNombre: r.out_cliente_nombre,
+      clienteEmail: r.out_cliente_email,
+      facturaFolioFiscal: r.out_factura_folio_fiscal,
+      facturaTotal: Number(r.out_factura_total),
+    }));
+  }
+
+  async systemRecordCollectionEvent(input: NewSystemCollectionEventInput): Promise<CollectionEventRecord | null> {
+    const { rows } = await this.db.query<{ out_id: string; out_created_at: string }>(
+      `select * from despachos.system_record_collection_event($1, $2, $3, $4, $5, $6, $7::date);`,
+      [input.organizationId, input.propertyId, input.receivableId, input.etapa, input.canal, input.respuesta, input.eventDate],
+    );
+    const row = rows[0];
+    if (!row) return null; // dedupe -- ya se había registrado esta etapa/cuenta ese día.
+    return {
+      id: row.out_id,
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      receivableId: input.receivableId,
+      etapa: input.etapa,
+      canal: input.canal,
+      respuesta: input.respuesta,
+      createdAt: row.out_created_at,
+    };
   }
 
   // ============================================================================
