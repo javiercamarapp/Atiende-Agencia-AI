@@ -229,7 +229,10 @@ lote (ej. el cron de reconciliación de citas):
   correr el camino de respaldo — usa `runWithSavepointFallback`
   (`@atiende/db`) en vez de repetir el patrón a mano; ya lo usan
   `domain-citas/src/postgres-repository.ts` (`markAppointmentGoogleSyncInvalid`,
-  `resolveProviderCalendarRefreshToken`, `runWithRowSavepoint`) y
+  `resolveProviderCalendarRefreshToken`, `resolveProviderCalComApiKey`,
+  `resolveProviderCalDavPassword`, `runWithRowSavepoint`),
+  `domain-restaurantes/src/postgres-repository.ts`/`domain-hoteles/src/
+  postgres-repository.ts` (`runWithRowSavepoint`, mismo helper que citas) y
   `packages/db/src/postgres-core-repository.ts` (`findStaffForOrgAdmin`,
   `isStaffOrgMember`, `recordBillingWebhookEvent`,
   `listBillingWebhookLogForSuperadmin`). `upsertCustomer` (mismo archivo,
@@ -242,9 +245,12 @@ lote (ej. el cron de reconciliación de citas):
   SAVEPOINT en un 500 ruidoso en vez de un 200/201 silenciosamente
   incorrecto. Si un flujo legítimo dependía de tragarse un error sin
   SAVEPOINT (ej. una sincronización "best-effort" que nunca debe tumbar el
-  request), la corrección es agregar SAVEPOINT a ESE flujo (ver
-  `tryTriggerCalendarSync`/`CitasRepository.runWithRowSavepoint`), nunca
-  relajar esta defensa.
+  request, o un tool call de un agente de WhatsApp con LLM real que corre
+  DENTRO del `withAppSession` del turno completo — ver `executeToolCall` en
+  cada `domain-*/src/whatsapp/llm-turn-handler.ts`), la corrección es agregar
+  SAVEPOINT a ESE flujo (ver `tryTriggerCalendarSync`/
+  `CitasRepository.runWithRowSavepoint`, y su equivalente por tool call en
+  los 3 turn handlers de WhatsApp), nunca relajar esta defensa.
 
 ### (d) Copiar `.env.example` a `.env` y pegar las keys reales — gratis
 ```bash
