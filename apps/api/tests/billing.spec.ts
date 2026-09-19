@@ -640,4 +640,78 @@ describe("POST /billing/webhook — bitácora (core.billing_webhook_log)", () =>
     const pagina = await deps.coreRepo.listBillingWebhookLogForSuperadmin(memberId, { limit: 10, offset: 0 });
     expect(pagina).toEqual({ disponible: true, rows: [], total: 0 });
   });
+
+  // Revisión de PR #153 (bloqueante 2): el commit caa938c dice "cubre cada
+  // resultado del handler" pero ningún test forzaba el resultado 'error' --
+  // grep error_interno en apps/api/tests daba 0 resultados. Este ejercita el
+  // catch real de billing.ts (L392-399): `aplicar()` (el upsert real) falla,
+  // se registra 'error'/'error_interno', y el error original se REPROPAGA
+  // sin cambios (mismo 500 que ya producía este catch antes de que existiera
+  // la bitácora).
+  it("un error real al aplicar el evento (el upsert falla) responde 500, registra 'error'/'error_interno', y el error original se repropaga sin cambios", async () => {
+    const base = await buildTestDeps();
+    const deps = {
+      ...base.deps,
+      saasBillingWebhookSecret: WEBHOOK_SECRET,
+      saasBillingCustomerLookup: new FakeCustomerLookup({ cus_boom: base.ownerEmail }),
+    };
+    const superId = await conSuperadmin(deps);
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    coreRepo.upsertOrganizationBilling = async () => {
+      throw new Error("fallo real de Postgres en el upsert (simulado)");
+    };
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_boom", created: now, customer: "cus_boom", subscription: "sub_boom", tenantId: base.organizationId });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+
+    expect(res.status).toBe(500);
+    const fila = await ultimaFilaDeBitacora(deps, superId);
+    expect(fila).toMatchObject({ result: "error", reason: "error_interno", providerEventId: "evt_boom", organizationId: base.organizationId });
+  });
+
+  // Revisión de PR #153 (bloqueante 2): `registrarWebhook` es una "segunda
+  // red" -- `deps.coreRepo.recordBillingWebhookEvent` YA nunca lanza por
+  // contrato, pero nada probaba que si LO HICIERA de todos modos, la
+  // respuesta HTTP real del webhook (la que Stripe usa para decidir si
+  // reintenta) se quedara intacta. Ejercita el camino de éxito (200) y el de
+  // firma inválida (401) con la escritura de bitácora rota.
+  it("si recordBillingWebhookEvent lanza (violando su propio contrato), la respuesta HTTP del webhook no cambia -- éxito sigue 200", async () => {
+    const base = await buildTestDeps();
+    const deps = {
+      ...base.deps,
+      saasBillingWebhookSecret: WEBHOOK_SECRET,
+      saasBillingCustomerLookup: new FakeCustomerLookup({ cus_segunda_red: base.ownerEmail }),
+    };
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    coreRepo.recordBillingWebhookEvent = async () => {
+      throw new Error("bitácora rota (simulado) -- registrarWebhook debe atraparlo igual");
+    };
+    const app = buildApp(deps);
+    const now = Math.floor(Date.now() / 1000);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_segunda_red", created: now, customer: "cus_segunda_red", subscription: "sub_segunda_red", tenantId: base.organizationId });
+    const header = firmarStripe(WEBHOOK_SECRET, now, payload);
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, procesado: true, estado: "aplicado" });
+  });
+
+  it("si recordBillingWebhookEvent lanza, el rechazo por firma inválida se sigue respondiendo 401 sin cambios", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    coreRepo.recordBillingWebhookEvent = async () => {
+      throw new Error("bitácora rota (simulado)");
+    };
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_1", created: Math.floor(Date.now() / 1000), customer: "cus_1", tenantId: base.organizationId });
+
+    const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": "t=1,v1=deadbeef" }));
+
+    expect(res.status).toBe(401);
+  });
 });
