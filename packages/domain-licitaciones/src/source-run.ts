@@ -3,7 +3,7 @@
 // `http/response-classifier.ts` (clasificación de fallos) al modelo de
 // tenancy por organización de Fusion (mismo criterio que el resto de
 // domain-licitaciones: sin `SourceId` de plataforma, todo `organizationId`).
-import { SOURCE_HEALTH_STATES, CaptchaDetectedError, InterfaceChangedError, SourceNotConfiguredError, type SourceConnectorId, type SourceHealthState } from "./connector-registry.ts";
+import { SOURCE_HEALTH_STATES, CaptchaDetectedError, InterfaceChangedError, RateLimitedError, SourceNotConfiguredError, type SourceConnectorId, type SourceHealthState } from "./connector-registry.ts";
 
 export function isSourceHealthState(value: string): value is SourceHealthState {
   return (SOURCE_HEALTH_STATES as readonly string[]).includes(value);
@@ -73,6 +73,10 @@ export const DEFAULT_STALE_THRESHOLD_MS: Record<SourceConnectorId, number> = {
   state_portal: 3 * 60 * 60_000,
   // Fase 8 — 3x su propia cadencia declarada (24 h, ver connector-registry.ts), mismo criterio que el resto de esta tabla.
   compras_mx_historico: 3 * 24 * 60 * 60_000,
+  // Fase 9 — 3x la cadencia declarada de cada conector OCDS/agregador (ver connector-registry.ts).
+  nl_ocds: 3 * 24 * 60 * 60_000,
+  cdmx_ocds: 3 * 24 * 60 * 60_000,
+  aggregator: 3 * 60 * 60_000,
 };
 
 /**
@@ -88,6 +92,7 @@ export function classifySourceFailure(error: unknown): { state: SourceHealthStat
   if (error instanceof SourceNotConfiguredError) return { state: "not_configured", message };
   if (error instanceof CaptchaDetectedError) return { state: "captcha_detected", message };
   if (error instanceof InterfaceChangedError) return { state: "interface_changed", message };
+  if (error instanceof RateLimitedError) return { state: "rate_limited", message };
   if (/captcha/i.test(message)) return { state: "captcha_detected", message };
   return { state: "down", message };
 }

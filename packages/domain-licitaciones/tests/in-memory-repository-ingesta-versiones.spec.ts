@@ -52,11 +52,11 @@ describe("InMemoryLicitacionesRepository -- andamiaje de ingesta (REQ-004/005/14
     expect(await repo.listSourceRuns(ORG, { limit: 1 })).toHaveLength(1);
   });
 
-  it("sourceFreshness incluye las 7 fuentes registradas aunque 6 nunca hayan corrido (REQ-149: nunca se oculta la obsolescencia)", async () => {
+  it("sourceFreshness incluye las 10 fuentes registradas aunque 9 nunca hayan corrido (REQ-149: nunca se oculta la obsolescencia)", async () => {
     const repo = new InMemoryLicitacionesRepository();
     await repo.upsertTenderManual(ORG, baseInput());
     const freshness = await repo.sourceFreshness(ORG);
-    expect(freshness).toHaveLength(7);
+    expect(freshness).toHaveLength(10);
     const manual = freshness.find((f) => f.source === "manual")!;
     expect(manual.stale).toBe(false);
     expect(manual.lastSuccessAt).not.toBeNull();
