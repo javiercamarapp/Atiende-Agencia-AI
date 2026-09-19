@@ -117,7 +117,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       // (llm-turn-handler.ts::createOrder), que además de la respuesta de texto
       // puede encolar una confirmación por correo — ver
       // triggerRestaurantesEmailDispatchInline en email-dispatch.ts.
-      await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
+      await triggerRestaurantesWhatsAppDispatchInline(deps, db, repo);
       await triggerRestaurantesEmailDispatchInline(deps, db, repo);
 
       // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
