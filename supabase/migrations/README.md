@@ -148,7 +148,7 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 3. No edites el contenido SQL al copiarlo: debe ser una copia exacta del original.
 4. Actualiza este README si cambia el conteo total o el orden de una vertical.
 
-`supabase/migrations/20240101000120_0008_auth_exchange_code.sql` — hallazgo de
+`supabase/migrations/20240101000122_0008_auth_exchange_code.sql` — hallazgo de
 auditoría (P2, "tokens de sesión completos en query params de URL, riesgo de
 filtración vía Referer/historial/logs"): `GET /auth/google/callback` y
 `GET /auth/magic-link/verify` ponían el JWT de acceso y el refresh token REALES en
@@ -160,3 +160,43 @@ código opaco de 60s de vida, y `POST /auth/exchange-code` (nuevo, en
 una respuesta JSON, nunca en otra URL. `GoogleCallback.tsx` (compartido por las 6
 verticales, también usado por magic-link) actualizado para llamar a ese endpoint
 al montar antes de persistir sesión.
+
+**Renumerada de `20240101000120` a `20240101000122` post-mortem (colisión real
+que sí llegó a `main`, a diferencia de las anteriores):** esta migración y
+`20240101000120_001_folio_stamp_reservation.sql` (rubro 6, reserva de folio
+CFDI) se construyeron en dos ramas paralelas que eligieron el mismo prefijo —
+la TERCERA colisión de numeración del día, pero la primera que un PR mergeó a
+`main` sin que nadie la detectara a mano antes (las otras dos migraciones
+103-108 y 78→79/80→81/82→83 documentadas arriba sí se renumeraron ANTES de
+mergear). Entre medio se mergeó `20240101000121_0009_billing_saas_schema.sql`
+(PR #121, SaaS billing), así que el siguiente prefijo libre real era
+`20240101000122`, no `20240101000121`. Se eligió renumerar ESTA de las dos
+(y no `001_folio_stamp_reservation.sql`) porque ambas son mutuamente
+independientes — `core.auth_exchange_code` (schema `core`) vs.
+`mcp_cfdi.folio_stamp_reservation` (schema propio `mcp_cfdi`, sin overlap de
+tablas/funciones) — y nada posterior (`20240101000121_0009_billing_saas_schema.sql`
+incluido) depende del orden relativo entre ambas, así que renombrar cualquiera
+de las dos es igual de seguro; se dejó `001_folio_stamp_reservation.sql` con su
+prefijo original para no reabrir esa comparación cada vez que se audite este
+README. Verificado antes de renombrar: `supabase/config.toml::project_id` sigue
+siendo el placeholder `atiende-fusion-PENDIENTE-DE-REEMPLAZAR` — **ningún
+proyecto Supabase real ha sido enlazado todavía** (`supabase link` nunca
+corrió contra este repo), así que no existe una base de datos real con
+`20240101000120_0008_auth_exchange_code.sql` ya registrada en
+`supabase_migrations.schema_migrations` bajo el prefijo viejo — el renombrado
+no requiere ningún paso manual de reconciliación contra una base ya
+desplegada. Si en el futuro esto SÍ llegara a aplicarse con el prefijo viejo
+antes de notar la colisión, el paso manual sería: `delete from
+supabase_migrations.schema_migrations where version = '20240101000120' and
+name like '%auth_exchange_code%';` seguido de `supabase db push` normal para
+que la CLI la re-registre con el prefijo `20240101000122` — el propio DDL de
+la migración (`create table core.auth_exchange_code (...)`, sin
+`if not exists`) fallaría de forma segura y explícita (`relation already
+exists`) si se intentara reaplicar sobre una base donde la tabla ya existe, en
+vez de corromper datos en silencio.
+
+Guard automático desde este mismo fix: `scripts/verify-migration-versions/`
+falla `npm run test:unit` y el workflow `postgres-real-gate.yml` (antes de
+levantar Postgres) si dos archivos de esta carpeta vuelven a compartir
+prefijo, o si un espejo diverge en contenido de su fuente real en
+`packages/*/migrations/`.
