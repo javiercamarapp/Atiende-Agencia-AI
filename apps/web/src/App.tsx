@@ -39,6 +39,7 @@ import { CfdiPage as HotelesCfdiPage } from "./verticals/hoteles/pages/Cfdi.tsx"
 import { CfdiListadoPage as HotelesCfdiListadoPage } from "./verticals/hoteles/pages/CfdiListado.tsx";
 import { PlPage as HotelesPlPage } from "./verticals/hoteles/pages/Pl.tsx";
 import { RevenuePage as HotelesRevenuePage } from "./verticals/hoteles/pages/Revenue.tsx";
+import { ReputacionPage as HotelesReputacionPage } from "./verticals/hoteles/pages/Reputacion.tsx";
 import { CatalogoPage as HotelesCatalogoPage } from "./verticals/hoteles/pages/Catalogo.tsx";
 import { PedidosFnbPage } from "./verticals/hoteles/pages/PedidosFnb.tsx";
 import { RentasLoginPage } from "./verticals/rentas/pages/Login.tsx";
@@ -304,6 +305,13 @@ const HotelesPlRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <Hote
  * que navegue directo a esta URL ve el 403 real del servidor como mensaje de
  * error dentro de Revenue.tsx). */
 const HotelesRevenueRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesRevenuePage {...ctx} />);
+
+/** Fase 11/13 (REQ-CRM-002/003) — wiring de reputación/CRM (pages/Reputacion.tsx)
+ * — mismo patrón que HotelesPlRoute/HotelesFraudeRoute (nav gateada
+ * cosméticamente por rol en HotelesShell.tsx, no aquí; un rol sin acceso que
+ * navegue directo a esta URL ve el 403 real del servidor como mensaje de error
+ * dentro de Reputacion.tsx). */
+const HotelesReputacionRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <HotelesReputacionPage {...ctx} />);
 
 /** Fix hallazgo CRÍTICO ("Alta de organización/property/tipos-de-habitación/
  * tarifas/huéspedes imposible sin SQL directo"): pantalla de catálogo (pages/
@@ -610,6 +618,7 @@ export function App() {
         <Route path="/hoteles/:orgSlug/cfdi" element={<HotelesCfdiListadoRoute />} />
         <Route path="/hoteles/:orgSlug/pl" element={<HotelesPlRoute />} />
         <Route path="/hoteles/:orgSlug/revenue" element={<HotelesRevenueRoute />} />
+        <Route path="/hoteles/:orgSlug/reputacion" element={<HotelesReputacionRoute />} />
         <Route path="/hoteles/:orgSlug/catalogo" element={<HotelesCatalogoRoute />} />
         <Route path="/rentas/login" element={<RentasLoginRoute />} />
         <Route path="/rentas/registro" element={<RentasRegistroRoute />} />

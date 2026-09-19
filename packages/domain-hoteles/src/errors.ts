@@ -17,3 +17,13 @@ export class FraudAlertAlreadyResolvedError extends Error {
     this.name = "FraudAlertAlreadyResolvedError";
   }
 }
+
+/** Fase 11/13 (REQ-CRM-002/003) — una acción de reputación ya resuelta (ejecutada o
+ *  descartada) no puede resolverse de nuevo. Mismo criterio exacto que
+ *  `FraudAlertAlreadyResolvedError`. */
+export class GuestReviewActionAlreadyResolvedError extends Error {
+  constructor(message = "Esta acción de reputación ya fue resuelta anteriormente.") {
+    super(message);
+    this.name = "GuestReviewActionAlreadyResolvedError";
+  }
+}

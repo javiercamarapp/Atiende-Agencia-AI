@@ -5,7 +5,7 @@
 // `core.has_property_access`/`hoteles.can_access_money`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
+import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -63,6 +63,13 @@ import type {
   RevenueGateRecord,
   RevenueBacktestRunRecord,
   NewRevenueBacktestRunInput,
+  GuestReviewRecord,
+  NewGuestReviewInput,
+  GuestReviewActionRecord,
+  NewGuestReviewActionInput,
+  GuestReviewActionStatus,
+  GuestReviewResponseRecord,
+  NewGuestReviewResponseInput,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
@@ -312,6 +319,114 @@ function mapFraudAlert(row: FraudAlertRawRow): FraudAlertRecord {
     decisionNote: row.decision_note,
     resolvedBy: row.resolved_by,
     resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
+// ---- Fase 11/13 (REQ-CRM-002/003) — reputación/CRM (migrations/013_reputacion.sql
+// + migrations/021_reputacion_respuestas.sql). ----
+
+interface GuestReviewRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  guest_id: string | null;
+  folio_id: string | null;
+  source: GuestReviewRecord["source"];
+  external_id: string | null;
+  texto: string;
+  idioma: string;
+  calificacion: number | null;
+  stay_state: GuestReviewRecord["stayState"];
+  is_public: boolean;
+  topics: unknown;
+  sentiment: GuestReviewRecord["sentiment"];
+  sentiment_score: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+const GUEST_REVIEW_COLUMNS = `id, organization_id, property_id, guest_id, folio_id, source, external_id, texto,
+       idioma, calificacion, stay_state, is_public, topics, sentiment,
+       sentiment_score::text as sentiment_score, created_by, created_at::text as created_at`;
+
+function mapGuestReview(row: GuestReviewRawRow): GuestReviewRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    guestId: row.guest_id,
+    folioId: row.folio_id,
+    source: row.source,
+    externalId: row.external_id,
+    texto: row.texto,
+    idioma: row.idioma,
+    calificacion: row.calificacion,
+    stayState: row.stay_state,
+    isPublic: row.is_public,
+    topics: (row.topics as GuestReviewRecord["topics"]) ?? [],
+    sentiment: row.sentiment,
+    sentimentScore: Number(row.sentiment_score),
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
+}
+
+interface GuestReviewActionRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  review_id: string;
+  action_type: GuestReviewActionRecord["actionType"];
+  status: GuestReviewActionStatus;
+  ticket_id: string | null;
+  detail: unknown;
+  reason: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+const GUEST_REVIEW_ACTION_COLUMNS = `id, organization_id, property_id, review_id, action_type, status, ticket_id,
+       detail, reason, resolved_by, resolved_at::text as resolved_at, created_at::text as created_at`;
+
+function mapGuestReviewAction(row: GuestReviewActionRawRow): GuestReviewActionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    reviewId: row.review_id,
+    actionType: row.action_type,
+    status: row.status,
+    ticketId: row.ticket_id,
+    detail: (row.detail as Record<string, unknown>) ?? {},
+    reason: row.reason,
+    resolvedBy: row.resolved_by,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
+interface GuestReviewResponseRawRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  review_id: string;
+  texto: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+const GUEST_REVIEW_RESPONSE_COLUMNS = `id, organization_id, property_id, review_id, texto, created_by, created_at::text as created_at`;
+
+function mapGuestReviewResponse(row: GuestReviewResponseRawRow): GuestReviewResponseRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    propertyId: row.property_id,
+    reviewId: row.review_id,
+    texto: row.texto,
+    createdBy: row.created_by,
     createdAt: row.created_at,
   };
 }
@@ -2093,6 +2208,122 @@ export class PostgresHotelesRepository implements HotelesRepository {
       ],
     );
     return this.toRevenueBacktestRunRecord(rows[0]!);
+  }
+
+  // ============================================================================
+  // Fase 11/13 (REQ-CRM-002/003) — reputación/CRM (ver migrations/013_reputacion.sql
+  // + migrations/021_reputacion_respuestas.sql).
+  // ============================================================================
+
+  async insertGuestReview(input: NewGuestReviewInput): Promise<GuestReviewRecord> {
+    const { rows } = await this.db.query<GuestReviewRawRow>(
+      `insert into hoteles.guest_review
+         (organization_id, property_id, guest_id, folio_id, source, external_id, texto, idioma,
+          calificacion, stay_state, is_public, topics, sentiment, sentiment_score, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15)
+       returning ${GUEST_REVIEW_COLUMNS};`,
+      [
+        input.organizationId,
+        input.propertyId,
+        input.guestId,
+        input.folioId,
+        input.source,
+        input.externalId,
+        input.texto,
+        input.idioma,
+        input.calificacion,
+        input.stayState,
+        input.isPublic,
+        JSON.stringify(input.topics),
+        input.sentiment,
+        input.sentimentScore,
+        input.createdBy,
+      ],
+    );
+    return mapGuestReview(rows[0]!);
+  }
+
+  async listGuestReviews(propertyId: string, filter?: { readonly sentiment?: GuestReviewRecord["sentiment"] }): Promise<readonly GuestReviewRecord[]> {
+    const { rows } = await this.db.query<GuestReviewRawRow>(
+      filter?.sentiment
+        ? `select ${GUEST_REVIEW_COLUMNS} from hoteles.guest_review where property_id = $1 and sentiment = $2 order by created_at desc limit 200;`
+        : `select ${GUEST_REVIEW_COLUMNS} from hoteles.guest_review where property_id = $1 order by created_at desc limit 200;`,
+      filter?.sentiment ? [propertyId, filter.sentiment] : [propertyId],
+    );
+    return rows.map(mapGuestReview);
+  }
+
+  async findGuestReview(propertyId: string, reviewId: string): Promise<GuestReviewRecord | null> {
+    const { rows } = await this.db.query<GuestReviewRawRow>(
+      `select ${GUEST_REVIEW_COLUMNS} from hoteles.guest_review where id = $1 and property_id = $2;`,
+      [reviewId, propertyId],
+    );
+    return rows[0] ? mapGuestReview(rows[0]) : null;
+  }
+
+  async insertGuestReviewAction(input: NewGuestReviewActionInput): Promise<GuestReviewActionRecord> {
+    const { rows } = await this.db.query<GuestReviewActionRawRow>(
+      `insert into hoteles.guest_review_action
+         (organization_id, property_id, review_id, action_type, status, ticket_id, detail, reason)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+       returning ${GUEST_REVIEW_ACTION_COLUMNS};`,
+      [input.organizationId, input.propertyId, input.reviewId, input.actionType, input.status, input.ticketId, JSON.stringify(input.detail), input.reason],
+    );
+    return mapGuestReviewAction(rows[0]!);
+  }
+
+  async listGuestReviewActions(propertyId: string, reviewId: string): Promise<readonly GuestReviewActionRecord[]> {
+    const { rows } = await this.db.query<GuestReviewActionRawRow>(
+      `select ${GUEST_REVIEW_ACTION_COLUMNS} from hoteles.guest_review_action where property_id = $1 and review_id = $2 order by created_at asc;`,
+      [propertyId, reviewId],
+    );
+    return rows.map(mapGuestReviewAction);
+  }
+
+  async findGuestReviewAction(propertyId: string, actionId: string): Promise<GuestReviewActionRecord | null> {
+    const { rows } = await this.db.query<GuestReviewActionRawRow>(
+      `select ${GUEST_REVIEW_ACTION_COLUMNS} from hoteles.guest_review_action where id = $1 and property_id = $2;`,
+      [actionId, propertyId],
+    );
+    return rows[0] ? mapGuestReviewAction(rows[0]) : null;
+  }
+
+  async resolveGuestReviewAction(
+    propertyId: string,
+    actionId: string,
+    resolvedBy: string,
+    status: Exclude<GuestReviewActionStatus, "pendiente">,
+    ticketId: string | null,
+  ): Promise<GuestReviewActionRecord> {
+    const { rows } = await this.db.query<GuestReviewActionRawRow>(
+      `update hoteles.guest_review_action
+       set status = $1, ticket_id = coalesce($2, ticket_id), resolved_by = $3, resolved_at = now()
+       where id = $4 and property_id = $5 and status = 'pendiente'
+       returning ${GUEST_REVIEW_ACTION_COLUMNS};`,
+      [status, ticketId, resolvedBy, actionId, propertyId],
+    );
+    if (rows[0]) return mapGuestReviewAction(rows[0]);
+    const existing = await this.findGuestReviewAction(propertyId, actionId);
+    if (!existing) throw new Error(`Acción de reputación ${actionId} no encontrada.`);
+    throw new GuestReviewActionAlreadyResolvedError();
+  }
+
+  async insertGuestReviewResponse(input: NewGuestReviewResponseInput): Promise<GuestReviewResponseRecord> {
+    const { rows } = await this.db.query<GuestReviewResponseRawRow>(
+      `insert into hoteles.guest_review_response (organization_id, property_id, review_id, texto, created_by)
+       values ($1, $2, $3, $4, $5)
+       returning ${GUEST_REVIEW_RESPONSE_COLUMNS};`,
+      [input.organizationId, input.propertyId, input.reviewId, input.texto, input.createdBy],
+    );
+    return mapGuestReviewResponse(rows[0]!);
+  }
+
+  async listGuestReviewResponses(propertyId: string, reviewId: string): Promise<readonly GuestReviewResponseRecord[]> {
+    const { rows } = await this.db.query<GuestReviewResponseRawRow>(
+      `select ${GUEST_REVIEW_RESPONSE_COLUMNS} from hoteles.guest_review_response where property_id = $1 and review_id = $2 order by created_at asc;`,
+      [propertyId, reviewId],
+    );
+    return rows.map(mapGuestReviewResponse);
   }
 }
 

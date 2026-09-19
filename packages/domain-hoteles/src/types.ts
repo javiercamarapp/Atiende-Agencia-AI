@@ -930,3 +930,27 @@ export interface NewRevenueBacktestRunInput {
   readonly detail: Readonly<Record<string, unknown>>;
   readonly runBy: string | null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 13 — cierre del wiring de reputación (migrations/
+// 021_reputacion_respuestas.sql): la respuesta libre de staff a una reseña
+// (distinta de `GuestReviewActionRecord`, que modela ACCIONES REGLADAS
+// disparadas por la clasificación -- ver comentario de cabecera de la migración).
+// ─────────────────────────────────────────────────────────────────────────
+export interface GuestReviewResponseRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly reviewId: string;
+  readonly texto: string;
+  readonly createdBy: string | null;
+  readonly createdAt: string;
+}
+
+export interface NewGuestReviewResponseInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly reviewId: string;
+  readonly texto: string;
+  readonly createdBy: string | null;
+}

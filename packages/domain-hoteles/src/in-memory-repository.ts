@@ -61,11 +61,18 @@ import type {
   RevenueGateRecord,
   RevenueBacktestRunRecord,
   NewRevenueBacktestRunInput,
+  GuestReviewRecord,
+  NewGuestReviewInput,
+  GuestReviewActionRecord,
+  NewGuestReviewActionInput,
+  GuestReviewActionStatus,
+  GuestReviewResponseRecord,
+  NewGuestReviewResponseInput,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import { isCancellable } from "./reservationStateMachine.ts";
 import { occupancyPct } from "./overbooking.ts";
-import { FraudAlertAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
+import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
 import { evaluateGateTransition, isDemotion, isPromotion } from "./revenue/revenueEngineGate.ts";
 import type { WalkForwardBacktestResult } from "./revenue/walkForwardBacktest.ts";
@@ -280,6 +287,11 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly fraudAlerts = new Map<string, FraudAlertRecord>();
   private readonly hospedajeFiscalConfigByProperty = new Map<string, HospedajeFiscalConfig>();
   private readonly cfdiEmisiones = new Map<string, CfdiEmisionRecord>();
+
+  // ---- Fase 11/13 — REQ-CRM-002/003: reputación/CRM ----
+  private readonly guestReviews = new Map<string, GuestReviewRecord>();
+  private readonly guestReviewActions = new Map<string, GuestReviewActionRecord>();
+  private readonly guestReviewResponses = new Map<string, GuestReviewResponseRecord>();
 
   // ---- Fase 6 — H5/REQ-REV-013 night audit + REQ-HK-008/011 housekeeping ----
   private readonly activeHotelProperties = new Map<string, ActiveHotelProperty>(); // key: propertyId
@@ -1957,5 +1969,82 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     list.push(record);
     this.revenueBacktestRuns.set(input.propertyId, list);
     return record;
+  }
+
+  // ============================================================================
+  // Fase 11/13 (REQ-CRM-002/003) — reputación/CRM.
+  // ============================================================================
+
+  async insertGuestReview(input: NewGuestReviewInput): Promise<GuestReviewRecord> {
+    const record: GuestReviewRecord = { ...input, id: randomUUID(), createdAt: new Date().toISOString() };
+    this.guestReviews.set(record.id, record);
+    return record;
+  }
+
+  async listGuestReviews(propertyId: string, filter?: { readonly sentiment?: GuestReviewRecord["sentiment"] }): Promise<readonly GuestReviewRecord[]> {
+    return [...this.guestReviews.values()]
+      .filter((r) => r.propertyId === propertyId && (!filter?.sentiment || r.sentiment === filter.sentiment))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async findGuestReview(propertyId: string, reviewId: string): Promise<GuestReviewRecord | null> {
+    const r = this.guestReviews.get(reviewId);
+    return r && r.propertyId === propertyId ? r : null;
+  }
+
+  async insertGuestReviewAction(input: NewGuestReviewActionInput): Promise<GuestReviewActionRecord> {
+    const record: GuestReviewActionRecord = {
+      ...input,
+      id: randomUUID(),
+      resolvedBy: null,
+      resolvedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    this.guestReviewActions.set(record.id, record);
+    return record;
+  }
+
+  async listGuestReviewActions(propertyId: string, reviewId: string): Promise<readonly GuestReviewActionRecord[]> {
+    return [...this.guestReviewActions.values()]
+      .filter((a) => a.propertyId === propertyId && a.reviewId === reviewId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  async findGuestReviewAction(propertyId: string, actionId: string): Promise<GuestReviewActionRecord | null> {
+    const a = this.guestReviewActions.get(actionId);
+    return a && a.propertyId === propertyId ? a : null;
+  }
+
+  async resolveGuestReviewAction(
+    propertyId: string,
+    actionId: string,
+    resolvedBy: string,
+    status: Exclude<GuestReviewActionStatus, "pendiente">,
+    ticketId: string | null,
+  ): Promise<GuestReviewActionRecord> {
+    const existing = this.guestReviewActions.get(actionId);
+    if (!existing || existing.propertyId !== propertyId) throw new Error(`Acción de reputación ${actionId} no encontrada.`);
+    if (existing.status !== "pendiente") throw new GuestReviewActionAlreadyResolvedError();
+    const updated: GuestReviewActionRecord = {
+      ...existing,
+      status,
+      ticketId: ticketId ?? existing.ticketId,
+      resolvedBy,
+      resolvedAt: new Date().toISOString(),
+    };
+    this.guestReviewActions.set(actionId, updated);
+    return updated;
+  }
+
+  async insertGuestReviewResponse(input: NewGuestReviewResponseInput): Promise<GuestReviewResponseRecord> {
+    const record: GuestReviewResponseRecord = { ...input, id: randomUUID(), createdAt: new Date().toISOString() };
+    this.guestReviewResponses.set(record.id, record);
+    return record;
+  }
+
+  async listGuestReviewResponses(propertyId: string, reviewId: string): Promise<readonly GuestReviewResponseRecord[]> {
+    return [...this.guestReviewResponses.values()]
+      .filter((r) => r.propertyId === propertyId && r.reviewId === reviewId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
   }
 }
