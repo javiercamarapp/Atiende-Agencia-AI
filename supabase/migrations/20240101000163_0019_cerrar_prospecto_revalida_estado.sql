@@ -37,11 +37,11 @@
 --
 -- Conserva EXACTOS: `security definer`, `set search_path = core, pg_temp`, el
 -- guard de caller binding (`auth.uid() = p_caller_id`), el guard de superadmin
--- (implícito vía `core.is_platform_superadmin` -- en realidad esta función no
--- lo revalida a sí misma, solo confía en que el intent ya fue creado por un
--- superadmin real; se deja idéntico a 0016, no es parte de este hallazgo), y
--- el `revoke from public` + `grant to authenticated` -- ninguno cambia con
--- este arreglo, la firma de la función es la misma.
+-- (`core.is_platform_superadmin(p_caller_id)`, L74-76 de este archivo -- SÍ se
+-- revalida en CADA llamada a esta función, idéntico a `0016` L673-675; no es
+-- "implícito" ni confía solo en que el intent fue creado por un superadmin
+-- real), y el `revoke from public` + `grant to authenticated` -- ninguno
+-- cambia con este arreglo, la firma de la función es la misma.
 --
 -- Solo SQL: ningún código TypeScript cambia (la función devuelve el mismo tipo
 -- `core.superadmin_action_intent`, la excepción cae en la misma rama `catch`
@@ -120,14 +120,25 @@ begin
       -- Re-valida el estado ACTUAL del prospecto (lock de fila real, se
       -- libera solo al terminar esta transacción) -- ANTES de esta migración
       -- esta rama era la ÚNICA de las tres que NO re-validaba nada (ver el
-      -- comentario de cabecera de este archivo). Si el prospecto ya no
-      -- existe, cambió DESPUÉS de que se creó este intent, o ya está en un
-      -- estado terminal (alguien más ya lo cerró, o incluso lo reabrió y
-      -- volvió a cerrar de otra forma), se rechaza -- nunca se pisa un
-      -- estado más reciente que el que el superadmin vio al crear el intent.
+      -- comentario de cabecera de este archivo). Tres rechazos posibles, cada
+      -- uno con su propio mensaje para que quede claro en `error` cuál pasó:
+      -- el prospecto ya no existe, cambió DESPUÉS de que se creó este intent
+      -- (otro superadmin lo editó mientras tanto), o ya estaba en un estado
+      -- terminal desde ANTES de que se creara el intent (alguien más lo
+      -- cerró, o incluso lo reabrió y volvió a cerrar de otra forma). Reduce
+      -- drásticamente -- no elimina del todo -- la ventana del lost-update:
+      -- queda una carrera residual de milisegundos si la transacción
+      -- concurrente EMPEZÓ antes de `creado_en` del intent pero hizo commit
+      -- después (`now()` es el inicio de la transacción de esta función, no
+      -- el momento del commit ajeno); aceptable para este hallazgo, que era
+      -- de severidad baja y con ventana real de hasta 5 minutos.
       select * into v_prospecto from core.prospecto where id = v_prospecto_id for update;
-      if v_prospecto.id is null or v_prospecto.updated_at > v_intent.creado_en or v_prospecto.estado in ('ganado', 'perdido', 'descartado') then
-        raise exception 'el prospecto cambió después de crear este intent (estado actual: %); creá el intent de nuevo', v_prospecto.estado;
+      if v_prospecto.id is null then
+        raise exception 'el prospecto % ya no existe; no se puede cerrar', v_prospecto_id;
+      elsif v_prospecto.updated_at > v_intent.creado_en then
+        raise exception 'el prospecto cambió después de crear este intent (estado actual: %); es necesario crear el intent de nuevo', v_prospecto.estado;
+      elsif v_prospecto.estado in ('ganado', 'perdido', 'descartado') then
+        raise exception 'el prospecto ya estaba en un estado terminal (%) cuando se creó este intent; no se re-ejecuta', v_prospecto.estado;
       end if;
       -- Reutiliza la función YA existente (misma que usa el editor de
       -- prospectos) -- nunca duplica su validación/lógica.
