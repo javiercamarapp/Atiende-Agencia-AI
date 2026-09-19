@@ -57,7 +57,11 @@ cliente real, Gasto de API (tope de LLM por organización/plataforma),
 Integraciones (`GET /superadmin/integraciones`, qué credencial falta pegar),
 Break-glass (acceso auditado y de solo lectura a datos de un tenant, hoy solo
 para rentas), Facturación (MRR/reconciliación de la suscripción SaaS propia de
-Atiende vía Stripe) y Salud operativa (`/superadmin/salud`,
+Atiende vía Stripe, con bitácora completa y filtrable de CADA intento de
+`POST /billing/webhook` — procesado/ignorado/rechazado/error, incluidos los
+rechazos por firma inválida que antes no quedaban registrados en ningún
+lado — ver `packages/db/migrations/0018_billing_webhook_registro.sql`) y
+Salud operativa (`/superadmin/salud`,
 `apps/api/src/routes/superadmin-salud.ts`: latidos de los 17 crons de
 `vercel.json` vía `withHeartbeat`, salud de las 6 colas `messaging_outbox`
 —citas/hoteles/restaurantes/despachos/rentas/licitaciones— y última corrida

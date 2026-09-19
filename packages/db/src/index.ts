@@ -22,6 +22,12 @@ export type {
   BillingWebhookEventMark,
   SuperadminOrganizationBillingRow,
   BillingWebhookEventSummaryRow,
+  BillingWebhookLogResult,
+  BillingWebhookLogReason,
+  RecordBillingWebhookEventInput,
+  BillingWebhookLogRow,
+  BillingWebhookLogFilters,
+  BillingWebhookLogPage,
 } from "./core-repository.ts";
 export {
   StaffInviteInvalidError,

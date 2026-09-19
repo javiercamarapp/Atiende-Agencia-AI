@@ -472,6 +472,15 @@ export interface CoreRepository {
   getBillingEntityOrder(entityId: string): Promise<number | null>;
   /** Adaptador `LedgerStore.sellarOrden`. */
   sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void>;
+  /** Bitácora completa de CADA intento de `POST /billing/webhook` (procesado,
+   *  ignorado, rechazado, error) — ver `packages/db/migrations/0018_billing_
+   *  webhook_registro.sql` para el porqué de una tabla nueva separada del
+   *  ledger de dedupe. BEST-EFFORT por contrato: esta llamada NUNCA lanza
+   *  (incluso si `core.record_billing_webhook_event` todavía no existe en la
+   *  base real — SQLSTATE 42883, migración aplicada después del código, ver
+   *  `postgres-core-repository.ts`) — un fallo de esta escritura jamás debe
+   *  tumbar la respuesta real del webhook. */
+  recordBillingWebhookEvent(input: RecordBillingWebhookEventInput): Promise<void>;
 
   // ---- Pantalla /superadmin/facturacion — lectura agregada de la suscripción
   // SaaS propia de Atiende por organización (asientos contratados/staff real,
@@ -501,6 +510,12 @@ export interface CoreRepository {
   /** Conteo total (no acotado por `limit`) de eventos de webhook ya
    *  aplicados con éxito — para el stat card de la pantalla. */
   countBillingWebhookEventsForSuperadmin(callerId: string): Promise<number>;
+  /** Bitácora COMPLETA (todo resultado, con o sin organización resuelta) de
+   *  `core.billing_webhook_log` — ver `0018_billing_webhook_registro.sql`.
+   *  `disponible: false` (nunca lanza) cuando la migración todavía no se
+   *  aplicó en este ambiente (SQLSTATE 42883) — la pantalla debe mostrar "no
+   *  disponible aún", nunca un 500. */
+  listBillingWebhookLogForSuperadmin(callerId: string, filters: BillingWebhookLogFilters): Promise<BillingWebhookLogPage>;
 }
 
 /** Fila de `core.list_organization_billing_for_superadmin` — join de
@@ -539,6 +554,78 @@ export interface BillingWebhookEventSummaryRow {
   readonly eventId: string;
   /** ISO 8601. */
   readonly processedAt: string;
+}
+
+/** `core.billing_webhook_log.result` — ver `0018_billing_webhook_registro.sql`. */
+export type BillingWebhookLogResult = "procesado" | "ignorado" | "rechazado" | "error";
+
+/** `core.billing_webhook_log.reason` — enum corto y estable, MISMO vocabulario
+ *  que `@atiende/billing::MotivoRechazo` para los 4 primeros valores (nunca se
+ *  traduce/reformula entre el motivo real de `verificarTenantDelWebhook` y lo
+ *  que queda guardado). */
+export type BillingWebhookLogReason =
+  | "tenant_id_ausente"
+  | "tenant_no_existe"
+  | "customer_no_coincide"
+  | "email_no_coincide"
+  | "firma_invalida"
+  | "json_invalido"
+  | "evento_no_reconocido"
+  | "duplicado"
+  | "fuera_de_orden"
+  | "aplicado"
+  | "error_interno";
+
+/** Input de `CoreRepository.recordBillingWebhookEvent` — un intento CRUDO de
+ *  `POST /billing/webhook`, con o sin éxito. `providerEventId`/`eventType`/
+ *  `organizationId` son `null` cuando el intento se rechazó ANTES de poder
+ *  resolverlos (p.ej. firma inválida se rechaza antes de parsear el body). */
+export interface RecordBillingWebhookEventInput {
+  readonly providerEventId: string | null;
+  readonly eventType: string | null;
+  readonly organizationId: string | null;
+  readonly result: BillingWebhookLogResult;
+  readonly reason: BillingWebhookLogReason;
+}
+
+/** Fila de `core.list_billing_webhook_log_for_superadmin` — `organizationName`/
+ *  `organizationSlug` son `null` cuando `organizationId` es `null` (rechazo sin
+ *  organización resuelta) o cuando la organización se borró después. */
+export interface BillingWebhookLogRow {
+  readonly id: string;
+  readonly providerEventId: string | null;
+  readonly eventType: string | null;
+  readonly organizationId: string | null;
+  readonly organizationName: string | null;
+  readonly organizationSlug: string | null;
+  readonly result: BillingWebhookLogResult;
+  readonly reason: string;
+  /** ISO 8601. */
+  readonly createdAt: string;
+}
+
+/** Filtros de `CoreRepository.listBillingWebhookLogForSuperadmin` — todos
+ *  opcionales salvo `limit`/`offset` (paginado explícito; el repositorio
+ *  acota ambos a un rango sano igual que la función SQL, nunca confía en que
+ *  el caller mande valores fuera de rango). `desde`/`hasta` son ISO 8601. */
+export interface BillingWebhookLogFilters {
+  readonly result?: BillingWebhookLogResult;
+  readonly eventType?: string;
+  readonly organizationId?: string;
+  readonly desde?: string;
+  readonly hasta?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** Página de resultados de `listBillingWebhookLogForSuperadmin`. `disponible:
+ *  false` (siempre con `rows: []`, `total: 0`) es el "vacío honesto" que la
+ *  Fase de compatibilidad exige cuando `0018_billing_webhook_registro.sql`
+ *  todavía no se aplicó en el ambiente real -- nunca un 500. */
+export interface BillingWebhookLogPage {
+  readonly disponible: boolean;
+  readonly rows: readonly BillingWebhookLogRow[];
+  readonly total: number;
 }
 
 /** Fila real de `core.prospecto` — ver el comentario de cabecera de la migración

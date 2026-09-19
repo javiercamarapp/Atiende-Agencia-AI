@@ -44,7 +44,7 @@ import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { calcularPerSeat, SEAT_CITAS_RESERVACIONES, SEAT_HOTELES, SEAT_RESTAURANTES } from "@atiende/billing";
 import type { SeatVerticalConfig } from "@atiende/billing";
-import type { SuperadminOrganizationBillingRow } from "@atiende/db";
+import type { BillingWebhookLogFilters, BillingWebhookLogResult, SuperadminOrganizationBillingRow } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { crearCheckoutDeOrganizacion } from "./billing.ts";
 import type { AppDeps } from "../deps.ts";
@@ -63,6 +63,42 @@ const SEAT_CONFIG_POR_VERTICAL: Readonly<Record<string, SeatVerticalConfig>> = {
 const ESTADOS_VALIDOS = new Set(["sin_suscripcion", "activa", "pago_pendiente", "cancelada"]);
 const DEFAULT_WEBHOOK_LIMIT = 20;
 const MAX_WEBHOOK_LIMIT = 200;
+
+// `core.billing_webhook_log.result` (`0018_billing_webhook_registro.sql`) --
+// distinto de `ESTADOS_VALIDOS` de arriba (esos son `organization_billing.
+// status`, esto es el resultado de UN intento de webhook).
+const RESULTADOS_BITACORA_VALIDOS: ReadonlySet<BillingWebhookLogResult> = new Set(["procesado", "ignorado", "rechazado", "error"]);
+const DEFAULT_BITACORA_LIMIT = 50;
+const MAX_BITACORA_LIMIT = 200;
+
+// Revisión de PR #153 (bloqueante 3): `Date.parse` acepta entradas laxas
+// (p.ej. `"2026"`) que Postgres SÍ rechaza al llegar como `timestamptz`
+// (SQLSTATE 22007), lo que `postgres-core-repository.ts` repropaga tal cual
+// -> `app.onError` lo vuelve un 500 `internal_error` genérico en una pantalla
+// de diagnóstico de cobros. Devolver el string ISO normalizado (nunca el raw
+// del query param) hace que el valor que llega a Postgres sea SIEMPRE una
+// fecha real ya validada en esta capa -- un 400 explícito en vez de un 500.
+function parseFechaQuery(raw: string | undefined, field: string): string | undefined {
+  if (raw === undefined) return undefined;
+  const parsed = Date.parse(raw);
+  if (Number.isNaN(parsed)) throw Errors.validation(`${field} debe ser una fecha ISO 8601 válida.`);
+  return new Date(parsed).toISOString();
+}
+
+// Revisión de PR #153 (bloqueante 3): `organizationId` llega crudo del query
+// string hasta el parámetro `uuid` de `core.list_billing_webhook_log_for_
+// superadmin`. Un valor parcial/no-UUID (p.ej. mientras el usuario todavía
+// está tecleando en el input de la UI) NO es SQLSTATE 42883 (el fallback de
+// compatibilidad de base sin migrar) sino 22P02 (`invalid_text_representation`),
+// que `postgres-core-repository.ts` repropaga tal cual -> 500 genérico.
+// Validar el formato AQUÍ devuelve un 400 explícito en vez de dejar que
+// Postgres sea quien decida.
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function parseOrganizationIdQuery(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  if (!UUID_REGEX.test(raw)) throw Errors.validation("organizationId debe ser un UUID válido.");
+  return raw;
+}
 
 function unixToIso(unix: number | null): string | null {
   return unix === null ? null : new Date(unix * 1000).toISOString();
@@ -221,6 +257,48 @@ export function superadminFacturacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
       deps.coreRepo.countBillingWebhookEventsForSuperadmin(c.get("userId")),
     ]);
     return c.json({ eventos, total });
+  });
+
+  // Bitácora COMPLETA de `POST /billing/webhook` (`0018_billing_webhook_
+  // registro.sql`) -- a diferencia de `webhooks-recientes` de arriba (feed
+  // ligero, solo eventos ya aplicados con éxito, sin organización/motivo),
+  // esta incluye TODO intento (procesado/ignorado/rechazado/error), filtrable
+  // por resultado/tipo/organización/rango de fechas, paginado.
+  // `disponible: false` (nunca un 500) cuando la migración todavía no se
+  // aplicó en este ambiente -- ver el comentario de cabecera de
+  // `PostgresCoreRepository.listBillingWebhookLogForSuperadmin`.
+  app.get("/superadmin/facturacion/webhooks-bitacora", async (c) => {
+    const rawResult = c.req.query("result");
+    if (rawResult !== undefined && !RESULTADOS_BITACORA_VALIDOS.has(rawResult as BillingWebhookLogResult)) {
+      throw Errors.validation("result inválido.");
+    }
+    const rawLimit = c.req.query("limit");
+    let limit = DEFAULT_BITACORA_LIMIT;
+    if (rawLimit !== undefined) {
+      const parsed = Number(rawLimit);
+      if (!Number.isInteger(parsed) || parsed < 1) throw Errors.validation("limit debe ser un entero >= 1.");
+      limit = Math.min(parsed, MAX_BITACORA_LIMIT);
+    }
+    const rawOffset = c.req.query("offset");
+    let offset = 0;
+    if (rawOffset !== undefined) {
+      const parsed = Number(rawOffset);
+      if (!Number.isInteger(parsed) || parsed < 0) throw Errors.validation("offset debe ser un entero >= 0.");
+      offset = parsed;
+    }
+
+    const filters: BillingWebhookLogFilters = {
+      result: rawResult as BillingWebhookLogResult | undefined,
+      eventType: c.req.query("eventType"),
+      organizationId: parseOrganizationIdQuery(c.req.query("organizationId")),
+      desde: parseFechaQuery(c.req.query("desde"), "desde"),
+      hasta: parseFechaQuery(c.req.query("hasta"), "hasta"),
+      limit,
+      offset,
+    };
+
+    const pagina = await deps.coreRepo.listBillingWebhookLogForSuperadmin(c.get("userId"), filters);
+    return c.json(pagina);
   });
 
   // Acción acotada: SOLO genera el enlace de checkout (reutiliza
