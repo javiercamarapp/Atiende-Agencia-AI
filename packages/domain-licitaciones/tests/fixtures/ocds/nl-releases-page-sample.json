@@ -1,0 +1,797 @@
+{
+  "current_page": 1,
+  "data": [
+    {
+      "numberPublication": 94,
+      "releases": [
+        {
+          "ocid": "ocds-k3ufh7-338790",
+          "id": "ocds-k3ufh7-338790-2026-08-22T02:00:02Z",
+          "date": "2026-08-18T10:09:03Z",
+          "tag": [
+            "planning"
+          ],
+          "initiationType": "tender",
+          "buyer": {
+            "id": "MX-NL-DEP-211110260705001",
+            "name": "SERVICIOS DE PROTECCIÓN INSTITUCIONAL"
+          },
+          "tender": {
+            "id": 338790,
+            "status": "active",
+            "statusDetails": "Selección de requisiciones",
+            "title": "REFACCIONES Y ACCESORIOS MENORES DE EQUIPO DE TRANSPORTE",
+            "procuringEntity": {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN"
+            },
+            "mainProcurementCategory": "goods",
+            "value": {
+              "amount": 234552,
+              "currency": "MXN"
+            },
+            "items": [
+              {
+                "id": "71841-1",
+                "description": "ACUMULADOR",
+                "classification": {
+                  "description": "ACUMULADOR PARA VEHICULOS OFICIALES ESPECIFICACIONES: Polaridad Poste al Frente (Izq / Der), ALTURA DE 190MM, ANCHO DE 175 MM, LARGO 277 MM, BCI 48/91, CAPACIDAD DE ARRANQUE 912 AMPERIOS, PESO 17.6 KG, VOLTAJE 12 VOLTS Y CAPACIDAD DE RESERVA 115 MINUTOS. SE ANEXA FICHA TECNICA"
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 29601,
+                    "description": "REFACCIONES Y ACCESORIOS MENORES DE EQUIPO DE TRANSPORTE"
+                  }
+                ],
+                "quantity": 30,
+                "unit": {
+                  "name": "Pieza",
+                  "value": {
+                    "amount": 234552,
+                    "currency": "MXN"
+                  }
+                }
+              }
+            ]
+          },
+          "parties": [
+            {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN",
+              "identifier": {
+                "scheme": "MX-NL-SEC",
+                "id": "211110240000000",
+                "legalName": "SECRETARÍA DE ADMINISTRACIÓN"
+              },
+              "contactPoint": {
+                "id": "EJM0",
+                "name": "ESIQUIO JARAMILLO MORENO"
+              },
+              "roles": [
+                "procuringEntity"
+              ]
+            },
+            {
+              "id": "MX-NL-DEP-211110260705001",
+              "name": "SERVICIOS DE PROTECCIÓN INSTITUCIONAL",
+              "identifier": {
+                "scheme": "MX-NL-DEP",
+                "id": "211110260705001",
+                "legalName": "SERVICIOS DE PROTECCIÓN INSTITUCIONAL"
+              },
+              "roles": [
+                "buyer"
+              ],
+              "details": {
+                "classifications": {
+                  "description": "SECRETARÍA DE SEGURIDAD PÚBLICA",
+                  "id": 1,
+                  "scheme": "MX-NL-SEC"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ocid": "ocds-k3ufh7-338790",
+          "id": "ocds-k3ufh7-338790-2026-05-29T20:50:29Z",
+          "date": "2026-05-27T09:58:30Z",
+          "tag": [
+            "planning",
+            "tender",
+            "award"
+          ],
+          "initiationType": "tender",
+          "buyer": {
+            "id": "MX-NL-DEP-211110260705001",
+            "name": "SERVICIOS DE PROTECCIÓN INSTITUCIONAL"
+          },
+          "tender": {
+            "id": 338790,
+            "status": "",
+            "statusDetails": "AD autorización del Director General",
+            "title": "REFACCIONES Y ACCESORIOS MENORES DE EQUIPO DE TRANSPORTE",
+            "procuringEntity": {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN"
+            },
+            "mainProcurementCategory": "goods",
+            "value": {
+              "amount": 234552,
+              "currency": "MXN"
+            },
+            "items": [
+              {
+                "id": "71841-1",
+                "description": "ACUMULADOR",
+                "classification": {
+                  "description": "ACUMULADOR PARA VEHICULOS OFICIALES ESPECIFICACIONES: Polaridad Poste al Frente (Izq / Der), ALTURA DE 190MM, ANCHO DE 175 MM, LARGO 277 MM, BCI 48/91, CAPACIDAD DE ARRANQUE 912 AMPERIOS, PESO 17.6 KG, VOLTAJE 12 VOLTS Y CAPACIDAD DE RESERVA 115 MINUTOS. SE ANEXA FICHA TECNICA"
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 29601,
+                    "description": "REFACCIONES Y ACCESORIOS MENORES DE EQUIPO DE TRANSPORTE"
+                  }
+                ],
+                "quantity": 30,
+                "unit": {
+                  "name": "Pieza",
+                  "value": {
+                    "amount": 234552,
+                    "currency": "MXN"
+                  }
+                }
+              }
+            ],
+            "tenderers": [
+              {
+                "id": "MX-RFC-GOMH6508165B5",
+                "name": "GONZALEZ MARTINEZ HECTOR"
+              }
+            ],
+            "numberOfTenderers": 1
+          },
+          "parties": [
+            {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN",
+              "identifier": {
+                "scheme": "MX-NL-SEC",
+                "id": "211110240000000",
+                "legalName": "SECRETARÍA DE ADMINISTRACIÓN"
+              },
+              "contactPoint": {
+                "id": "EJM0",
+                "name": "ESIQUIO JARAMILLO MORENO"
+              },
+              "roles": [
+                "procuringEntity"
+              ]
+            },
+            {
+              "id": "MX-NL-DEP-211110260705001",
+              "name": "SERVICIOS DE PROTECCIÓN INSTITUCIONAL",
+              "identifier": {
+                "scheme": "MX-NL-DEP",
+                "id": "211110260705001",
+                "legalName": "SERVICIOS DE PROTECCIÓN INSTITUCIONAL"
+              },
+              "roles": [
+                "buyer"
+              ],
+              "details": {
+                "classifications": {
+                  "description": "SECRETARÍA DE SEGURIDAD PÚBLICA",
+                  "id": "026",
+                  "scheme": "MX-NL-SEC"
+                }
+              }
+            },
+            {
+              "id": "MX-RFC-GOMH6508165B5",
+              "name": "GONZALEZ MARTINEZ HECTOR",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "GOMH6508165B5",
+                "legalName": "GONZALEZ MARTINEZ HECTOR"
+              },
+              "address": {
+                "streetAddress": "J.CANTU LEAL 1321",
+                "locality": "BUENOS AIRES",
+                "region": "MONTERREY",
+                "countryName": "Mexico"
+              },
+              "contactPoint": {
+                "email": " "
+              },
+              "roles": [
+                "tenderer",
+                "supplier"
+              ],
+              "details": {
+                "classifications": {
+                  "description": "Persona física",
+                  "id": "PF",
+                  "scheme": "MX-NL-TP"
+                },
+                "scale": "small"
+              }
+            }
+          ]
+        },
+        {
+          "ocid": "ocds-k3ufh7-339123",
+          "id": "ocds-k3ufh7-339123-2026-09-19T02:00:02Z",
+          "date": "2026-09-17T10:05:23Z",
+          "tag": [
+            "planning",
+            "tender",
+            "awardCancellation"
+          ],
+          "initiationType": "tender",
+          "buyer": {
+            "id": "MX-NL-DEP-211110410200001",
+            "name": "SUBSECRETARÍA DE PROTECCIÓN SOCIAL Y OPORTUNIDADES"
+          },
+          "tender": {
+            "id": 339123,
+            "status": "cancelled",
+            "statusDetails": "Cancelada",
+            "title": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+            "procuringEntity": {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN"
+            },
+            "mainProcurementCategory": "services",
+            "value": {
+              "amount": 29998911,
+              "currency": "MXN"
+            },
+            "items": [
+              {
+                "id": "62221-1",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "SERVICIOS DE OBTURACIÓN, CON ENTREGA DE APOYOS FUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 6000,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 3281709.6,
+                    "currency": "MXN"
+                  }
+                }
+              },
+              {
+                "id": "62221-2",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "SELLADOR DE FOSETAS Y FISURAS, CON ENTREGA DE APOYOS FUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 6000,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 3914025.6,
+                    "currency": "MXN"
+                  }
+                }
+              },
+              {
+                "id": "62221-3",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "APLICACIONES DE FLÚOR, CON ENTREGA DEAPOYOSFUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 4078,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 2230468.62,
+                    "currency": "MXN"
+                  }
+                }
+              },
+              {
+                "id": "62221-4",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "SERVICIOS DE LIMPIEZA DENTAL, CON ENTREGA DEAPOYOS FUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 4078,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 2339316.96,
+                    "currency": "MXN"
+                  }
+                }
+              },
+              {
+                "id": "62221-5",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "SERVICIOS DE OPTOMETRÍA CON ENTREGA DELENTES GRADUADOS HASTA 6 DIOPTRÍAS, CON ENTREGA DE APOYOS FUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 12000,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 18233390.4,
+                    "currency": "MXN"
+                  }
+                }
+              }
+            ]
+          },
+          "parties": [
+            {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN",
+              "identifier": {
+                "scheme": "MX-NL-SEC",
+                "id": "211110240000000",
+                "legalName": "SECRETARÍA DE ADMINISTRACIÓN"
+              },
+              "contactPoint": {
+                "id": "MIRC",
+                "name": "MARIA ISABEL RUBIO CERVANTES"
+              },
+              "roles": [
+                "procuringEntity"
+              ]
+            },
+            {
+              "id": "MX-NL-DEP-211110410200001",
+              "name": "SUBSECRETARÍA DE PROTECCIÓN SOCIAL Y OPORTUNIDADES",
+              "identifier": {
+                "scheme": "MX-NL-DEP",
+                "id": "211110410200001",
+                "legalName": "SUBSECRETARÍA DE PROTECCIÓN SOCIAL Y OPORTUNIDADES"
+              },
+              "roles": [
+                "buyer"
+              ],
+              "details": {
+                "classifications": {
+                  "description": "SECRETARÍA DE IGUALDAD E INCLUSIÓN",
+                  "id": 1,
+                  "scheme": "MX-NL-SEC"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ocid": "ocds-k3ufh7-339123",
+          "id": "ocds-k3ufh7-339123-2026-05-29T20:50:29Z",
+          "date": "2026-05-22T14:35:51Z",
+          "tag": [
+            "planning"
+          ],
+          "initiationType": "tender",
+          "buyer": {
+            "id": "MX-NL-DEP-211110410200001",
+            "name": "SUBSECRETARÍA DE PROTECCIÓN SOCIAL Y OPORTUNIDADES"
+          },
+          "tender": {
+            "id": 339123,
+            "status": "active",
+            "statusDetails": "Selección de requisiciones",
+            "title": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+            "procuringEntity": {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN"
+            },
+            "mainProcurementCategory": "services",
+            "value": {
+              "amount": 29998911,
+              "currency": "MXN"
+            },
+            "items": [
+              {
+                "id": "62221-1",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "APLICACIONES DE FLÚOR, CON ENTREGA DEAPOYOSFUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 4078,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 2230468.62,
+                    "currency": "MXN"
+                  }
+                }
+              },
+              {
+                "id": "62221-2",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "SELLADOR DE FOSETAS Y FISURAS, CON ENTREGA DE APOYOS FUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 6000,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 3914025.6,
+                    "currency": "MXN"
+                  }
+                }
+              },
+              {
+                "id": "62221-3",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "SERVICIOS DE LIMPIEZA DENTAL, CON ENTREGA DEAPOYOS FUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 4078,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 2339316.96,
+                    "currency": "MXN"
+                  }
+                }
+              },
+              {
+                "id": "62221-4",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "SERVICIOS DE OBTURACIÓN, CON ENTREGA DE APOYOS FUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 6000,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 3281709.6,
+                    "currency": "MXN"
+                  }
+                }
+              },
+              {
+                "id": "62221-5",
+                "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS",
+                "classification": {
+                  "description": "SERVICIOS DE OPTOMETRÍA CON ENTREGA DELENTES GRADUADOS HASTA 6 DIOPTRÍAS, CON ENTREGA DE APOYOS FUNCIONALES PARA LOS MUNICIPIOS DEL ESTADO DE NUEVO LEON EN EL EJERCICIO 2026. SE ANEXA FICHA TECNICA. CANCELA Y SUSTITUYE  335764."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 44101,
+                    "description": "AYUDAS SOCIALES A PERSONAS - MEDICAMENTOS Y ACCESORIOS MÉDICOS"
+                  }
+                ],
+                "quantity": 12000,
+                "unit": {
+                  "name": "Servicio",
+                  "value": {
+                    "amount": 18233390.4,
+                    "currency": "MXN"
+                  }
+                }
+              }
+            ]
+          },
+          "parties": [
+            {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN",
+              "identifier": {
+                "scheme": "MX-NL-SEC",
+                "id": "211110240000000",
+                "legalName": "SECRETARÍA DE ADMINISTRACIÓN"
+              },
+              "contactPoint": {
+                "id": "MIRC",
+                "name": "MARIA ISABEL RUBIO CERVANTES"
+              },
+              "roles": [
+                "procuringEntity"
+              ]
+            },
+            {
+              "id": "MX-NL-DEP-211110410200001",
+              "name": "SUBSECRETARÍA DE PROTECCIÓN SOCIAL Y OPORTUNIDADES",
+              "identifier": {
+                "scheme": "MX-NL-DEP",
+                "id": "211110410200001",
+                "legalName": "SUBSECRETARÍA DE PROTECCIÓN SOCIAL Y OPORTUNIDADES"
+              },
+              "roles": [
+                "buyer"
+              ],
+              "details": {
+                "classifications": {
+                  "description": "SECRETARÍA DE IGUALDAD E INCLUSIÓN",
+                  "id": "041",
+                  "scheme": "MX-NL-SEC"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ocid": "ocds-k3ufh7-317364",
+          "id": "ocds-k3ufh7-317364-2026-09-19T02:00:02Z",
+          "date": "2025-05-28T17:55:57Z",
+          "tag": [
+            "planning",
+            "tender",
+            "award"
+          ],
+          "initiationType": "tender",
+          "buyer": {
+            "id": "MX-NL-DEP-211110260906001",
+            "name": "CENTRO DE REINSERCIÓN SOCIAL FEMENIL"
+          },
+          "tender": {
+            "id": 317364,
+            "status": "complete",
+            "statusDetails": "Concurso terminado",
+            "title": "ALIMENTACIÓN INTERNOS DE CENTROS DE READAPTACIÓN SOCIAL",
+            "procuringEntity": {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN"
+            },
+            "procurementMethod": "open",
+            "procurementMethodDetails": "Subasta Electrónica Inversa",
+            "mainProcurementCategory": "goods",
+            "value": {
+              "amount": 211607,
+              "currency": "MXN"
+            },
+            "items": [
+              {
+                "id": "72320-1",
+                "description": "AGUA EN PIPA (LITROS)",
+                "classification": {
+                  "description": "SUMINISTRO DE AGUA PURIFICADA A GRANEL DE CALIDAD SEGUN NORMA OFICIAL MEXICANA NOM-201-SSA1-2015 DE LA SECRETARIA DE SALUD, DE ACUERDO A CONTRATO SEI/DGAS-006/2025. EL SUMINISTRO SE LLEVARÁ A CABO EN EL CERESO FEMENIL Y CONSTA DEL DEPOSITO DE AGUA A GRANEL CON PIPAS DE 16,000 LITROS DE GRADO ALIMENTICIO, EN EL PERIODO DEL 01 AL 31 DE MARZO 2025, MISMOS QUE SON UTILIZADOS PARA ABASTECER LOS BEBEDEROS DEL INTERIOR DE LOS MODULOS Y LA COCINA. UBICACION CERESO FEMENIL, AV. MANUEL L. BARRAGAN, SN, COLONIA EXHACIENDA EL CANADA, ESCOBEDO, N.L. SE SOLICITAN 274,815 LITROS PARA EL PERIODO MENCIONADO. SE ANEXA FICHA TECNICA Y CONTRATO."
+                },
+                "additionalClassifications": [
+                  {
+                    "id": 22102,
+                    "description": "ALIMENTACIÓN INTERNOS DE CENTROS DE READAPTACIÓN SOCIAL"
+                  }
+                ],
+                "quantity": 274815,
+                "unit": {
+                  "name": "Litro",
+                  "value": {
+                    "amount": 211607.55,
+                    "currency": "MXN"
+                  }
+                }
+              }
+            ],
+            "tenderPeriod": {
+              "startDate": "2025-01-27T18:48:17-06:00",
+              "endDate": "2025-02-04T18:48:17-06:00"
+            },
+            "enquiryPeriod": {
+              "startDate": "2025-01-30T18:48:17-06:00",
+              "endDate": "2025-01-31T18:48:17-06:00"
+            },
+            "tenderers": [
+              {
+                "id": "MX-RFC-AFI960529V4A",
+                "name": "A FINA, S.A. DE C.V."
+              }
+            ],
+            "numberOfTenderers": 1
+          },
+          "awards": [
+            {
+              "id": "428695",
+              "value": {
+                "amount": 211607.55,
+                "currency": "MXN"
+              },
+              "status": "active",
+              "statusDetails": "",
+              "items": [
+                {
+                  "id": "72320-1",
+                  "description": "AGUA EN PIPA (LITROS)",
+                  "classification": {
+                    "description": "SUMINISTRO DE AGUA PURIFICADA A GRANEL DE CALIDAD SEGUN NORMA OFICIAL MEXICANA NOM-201-SSA1-2015 DE LA SECRETARIA DE SALUD, DE ACUERDO A CONTRATO SEI/DGAS-006/2025. EL SUMINISTRO SE LLEVARÁ A CABO EN EL CERESO FEMENIL Y CONSTA DEL DEPOSITO DE AGUA A GRANEL CON PIPAS DE 16,000 LITROS DE GRADO ALIMENTICIO, EN EL PERIODO DEL 01 AL 31 DE MARZO 2025, MISMOS QUE SON UTILIZADOS PARA ABASTECER LOS BEBEDEROS DEL INTERIOR DE LOS MODULOS Y LA COCINA. UBICACION CERESO FEMENIL, AV. MANUEL L. BARRAGAN, SN, COLONIA EXHACIENDA EL CANADA, ESCOBEDO, N.L. SE SOLICITAN 274,815 LITROS PARA EL PERIODO MENCIONADO. SE ANEXA FICHA TECNICA Y CONTRATO."
+                  },
+                  "additionalClassifications": [
+                    {
+                      "id": 22102,
+                      "description": "ALIMENTACIÓN INTERNOS DE CENTROS DE READAPTACIÓN SOCIAL"
+                    }
+                  ],
+                  "quantity": 274815,
+                  "unit": {
+                    "name": "Litro",
+                    "value": {
+                      "amount": 211607.55,
+                      "currency": "MXN"
+                    }
+                  }
+                }
+              ],
+              "milestones": [
+                {
+                  "id": "1",
+                  "title": "PROCESADA POR SECOP",
+                  "dateMet": "2025-05-28T00:00:00-06:00",
+                  "status": "met"
+                },
+                {
+                  "id": "428695",
+                  "title": "CREACIÓN ORDEN DE COMPRA",
+                  "dateMet": "2025-05-28T00:00:00-06:00",
+                  "status": "met"
+                }
+              ],
+              "date": "2025-05-28T17:54:48Z",
+              "suppliers": [
+                {
+                  "id": "MX-RFC-AFI960529V4A",
+                  "name": "AQUA FINA, S.A. DE C.V."
+                }
+              ]
+            }
+          ],
+          "contracts": [
+            {
+              "id": 1,
+              "awardID": 428695,
+              "implementation": {
+                "milestones": [
+                  {
+                    "id": "1",
+                    "type": "delivery",
+                    "title": "ENTREGADA A CONTROL DE OPERACIONES",
+                    "dateMet": "2025-05-29T00:00:00-06:00",
+                    "status": "met"
+                  },
+                  {
+                    "id": "2",
+                    "type": "delivery",
+                    "title": "ENTREGADA A RECEPCIÓN",
+                    "dateMet": "2025-05-29T00:00:00-06:00",
+                    "status": "met"
+                  },
+                  {
+                    "id": "3",
+                    "type": "delivery",
+                    "title": "ENTREGADA A PROVEEDOR",
+                    "dateMet": "2025-05-30T00:00:00-06:00",
+                    "status": "met"
+                  }
+                ]
+              }
+            }
+          ],
+          "parties": [
+            {
+              "id": "MX-NL-SEC-211110240000000",
+              "name": "SECRETARÍA DE ADMINISTRACIÓN",
+              "identifier": {
+                "scheme": "MX-NL-SEC",
+                "id": "211110240000000",
+                "legalName": "SECRETARÍA DE ADMINISTRACIÓN"
+              },
+              "contactPoint": {
+                "id": "MGN0",
+                "name": "MARIO ALBERTO GONZALEZ NIETO"
+              },
+              "roles": [
+                "procuringEntity"
+              ]
+            },
+            {
+              "id": "MX-NL-DEP-211110260906001",
+              "name": "CENTRO DE REINSERCIÓN SOCIAL FEMENIL",
+              "identifier": {
+                "scheme": "MX-NL-DEP",
+                "id": "211110260906001",
+                "legalName": "CENTRO DE REINSERCIÓN SOCIAL FEMENIL"
+              },
+              "roles": [
+                "buyer"
+              ],
+              "details": {
+                "classifications": {
+                  "description": "SECRETARÍA DE SEGURIDAD PÚBLICA",
+                  "id": 1,
+                  "scheme": "MX-NL-SEC"
+                }
+              }
+            },
+            {
+              "id": "MX-RFC-AFI960529V4A",
+              "name": "A FINA, S.A. DE C.V.",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "AFI960529V4A",
+                "legalName": "A FINA, S.A. DE C.V."
+              },
+              "address": {
+                "streetAddress": "JALAPA 349",
+                "locality": "PARAÍSO",
+                "region": "GUADALUPE",
+                "countryName": "Mexico"
+              },
+              "contactPoint": {
+                "email": "aquafinasa@hotmail.com"
+              },
+              "roles": [
+                "tenderer",
+                "supplier"
+              ],
+              "details": {
+                "classifications": {
+                  "description": "Persona moral",
+                  "id": "PM",
+                  "scheme": "MX-NL-TP"
+                },
+                "scale": "small"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "last_page": 1,
+  "per_page": 10,
+  "total": 5
+}
