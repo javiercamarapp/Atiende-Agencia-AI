@@ -85,7 +85,14 @@ function stubFetch(handlers: Handlers) {
       const list = typeof handlers.cuentas === "function" ? handlers.cuentas() : (handlers.cuentas ?? []);
       return jsonResponse(list, handlers.cuentasOk ?? true);
     }
-    if (method === "POST" && url.endsWith("/pagar")) return jsonResponse({ ...CUENTA, pagadoEn: "2026-09-19T00:00:00.000Z" });
+    // Mediodía UTC (no medianoche) -- evita que `formatDate` (sin `timeZone`,
+    // usa la zona de la máquina que corre el test) pinte un día distinto según
+    // dónde corra: medianoche UTC cae en "18 sep" en zonas al oeste de UTC
+    // (America/Mexico_City) pero en "19 sep" en UTC/Europe/Madrid, así que
+    // `npm run test:unit` solo pasaba en la Mac del autor (CST). Verificado con
+    // node: 18:00Z es "19 sep 2026" en UTC, Europe/Madrid (UTC+2) y
+    // America/Mexico_City (UTC-6) por igual.
+    if (method === "POST" && url.endsWith("/pagar")) return jsonResponse({ ...CUENTA, pagadoEn: "2026-09-19T18:00:00.000Z" });
     if (method === "POST" && url.endsWith("/recordatorio")) return jsonResponse({ etapa: "recordatorio_formal", diasVencido: 35, enviado: true, motivo: null });
     throw new Error(`fetch inesperado en el test: ${method} ${url}`);
   });
@@ -152,7 +159,7 @@ describe("CobranzaPage (despachos)", () => {
     await esperarCarga();
 
     const pagarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Marcar pagada"))!;
-    current = [{ ...CUENTA, pagadoEn: "2026-09-19T00:00:00.000Z" }];
+    current = [{ ...CUENTA, pagadoEn: "2026-09-19T18:00:00.000Z" }]; // ver nota de zona horaria arriba
     await act(async () => {
       pagarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
@@ -166,7 +173,7 @@ describe("CobranzaPage (despachos)", () => {
     // "Pagada" y sus acciones (incluido el mensaje transitorio) desaparecen, mismo
     // criterio que el componente: una cuenta pagada no ofrece "marcar pagada" de
     // nuevo.
-    expect(rendered.container.textContent).toContain("Pagada 18 sep 2026");
+    expect(rendered.container.textContent).toContain("Pagada 19 sep 2026");
     expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Marcar pagada"))).toBe(false);
   });
 
