@@ -219,7 +219,13 @@ describe("SuperAdminBreakGlassPage", () => {
 
     const tabFinanzas = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Finanzas");
     expect(tabFinanzas).toBeDefined();
-    click(tabFinanzas!);
+    // Radix Tabs activa la pestaña en `onMouseDown` (button===0), NO en `onClick`
+    // (ver @radix-ui/react-tabs) -- `click()` de test-utils/render.tsx solo
+    // dispara el evento "click", así que aquí hace falta el "mousedown" real
+    // que Radix escucha.
+    await act(async () => {
+      tabFinanzas!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    });
     await esperarCarga();
 
     expect(fetchMock.mock.calls.some((call: unknown[]) => String(call[0]).includes("/organizaciones/org-1/finanzas"))).toBe(true);

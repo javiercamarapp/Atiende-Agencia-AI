@@ -7,7 +7,17 @@ import { describe, expect, it } from "vitest";
 import { InMemoryBreakGlassAuditRepository } from "../../src/break-glass/audit-repository.ts";
 import { InMemoryBreakGlassRentasDataRepository } from "../../src/break-glass/data-repository.ts";
 import type { BreakGlassRentasDataRepository } from "../../src/break-glass/data-repository.ts";
-import { leerDatosTenantBreakGlass, leerReservasTenantBreakGlass, validarRazonBreakGlass } from "../../src/break-glass/acceso.ts";
+import {
+  leerDatosTenantBreakGlass,
+  leerFinanzasTenantBreakGlass,
+  leerLimpiezaTenantBreakGlass,
+  leerMensajeriaTenantBreakGlass,
+  leerPayoutsTenantBreakGlass,
+  leerPricingTenantBreakGlass,
+  leerReservasTenantBreakGlass,
+  leerSyncIcalTenantBreakGlass,
+  validarRazonBreakGlass,
+} from "../../src/break-glass/acceso.ts";
 import {
   BreakGlassAuditWriteFailedError,
   BreakGlassOrganizationRequiredError,
@@ -316,5 +326,103 @@ describe("leerReservasTenantBreakGlass -- la composición concreta para resource
       leerReservasTenantBreakGlass(auditRepo, dataRepoEspia, { actor: ACTOR, organizationId: randomUUID(), reason: "no" }, NOW),
     ).rejects.toThrow(BreakGlassReasonRequiredError);
     expect(seLlamoAlDataRepo).toBe(false);
+  });
+});
+
+// Fase 10c -- los 6 lectores restantes (ver ../../src/break-glass/tipos.ts y
+// ../../migrations/020_break_glass_lectores.sql). Todos comparten
+// `crearLectorTenantBreakGlass` (misma fábrica interna de acceso.ts) con
+// `leerReservasTenantBreakGlass` ya probado arriba -- este bloque NO repite los
+// 3 requisitos genéricos (razón obligatoria/auditoría/fail-closed, ya cubiertos
+// por `leerDatosTenantBreakGlass`/`leerReservasTenantBreakGlass` arriba), solo
+// verifica lo que es específico de cada composición nueva: (1) lee del método
+// de puerto correcto, con el organizationId/callerId correctos, (2) el
+// resourceType auditado es el correcto, (3) el resumen auditado es
+// `{ total, ids }` sobre el campo `id` de CADA tipo de recurso, (4) el filtro
+// por propiedad (`resourceScope.propertyId`) SÍ llega hasta el método de
+// puerto -- para al menos uno de los 6 (representativo, mismo criterio que el
+// resto de este archivo: no duplicar 6 veces la misma aserción).
+describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensajeria/limpieza/sync_ical)", () => {
+  const ORG_ID = randomUUID();
+
+  it("leerFinanzasTenantBreakGlass: lee finanzas del tenant correcto y audita { total, ids } con resourceType='finanzas'", async () => {
+    const auditRepo = new InMemoryBreakGlassAuditRepository();
+    const fila = { id: randomUUID(), ocupacionId: randomUUID(), propertyId: randomUUID(), moneda: "MXN", montoBrutoCentavos: 500000, comisionCanalCentavos: 0, comisionGestorCentavos: 0, gastosCentavos: 0, impuestosCentavos: 0, netoCentavos: 450000, createdAtMs: NOW };
+    const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map([[ORG_ID, [fila]]]));
+
+    const { data, auditEntry } = await leerFinanzasTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
+
+    expect(data).toEqual([fila]);
+    expect(auditEntry.resourceType).toBe("finanzas");
+    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+  });
+
+  it("leerPayoutsTenantBreakGlass: resourceType='payouts'", async () => {
+    const auditRepo = new InMemoryBreakGlassAuditRepository();
+    const fila = { id: randomUUID(), propertyId: randomUUID(), canalId: randomUUID(), referenciaExterna: null, moneda: "MXN", montoTotalCentavos: 100000, fechaPayout: "2026-09-01", creadoEnMs: NOW };
+    const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
+
+    const { auditEntry } = await leerPayoutsTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
+    expect(auditEntry.resourceType).toBe("payouts");
+    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+  });
+
+  it("leerPricingTenantBreakGlass: resourceType='pricing'", async () => {
+    const auditRepo = new InMemoryBreakGlassAuditRepository();
+    const fila = { id: randomUUID(), propertyId: randomUUID(), unidadId: randomUUID(), precioNocheCentavos: 150000, moneda: "MXN", vigenteDesde: "2026-01-01" };
+    const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
+
+    const { auditEntry } = await leerPricingTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
+    expect(auditEntry.resourceType).toBe("pricing");
+    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+  });
+
+  it("leerMensajeriaTenantBreakGlass: resourceType='mensajeria'", async () => {
+    const auditRepo = new InMemoryBreakGlassAuditRepository();
+    const fila = { id: randomUUID(), propertyId: randomUUID(), unidadId: randomUUID(), canalCodigo: "airbnb", huespedNombre: "Ana", fechaCheckIn: "2026-10-01", fechaCheckOut: "2026-10-05", reservaConfirmada: true, creadoEnMs: NOW };
+    const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
+
+    const { auditEntry } = await leerMensajeriaTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
+    expect(auditEntry.resourceType).toBe("mensajeria");
+    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+  });
+
+  it("leerLimpiezaTenantBreakGlass: resourceType='limpieza' (cubre limpieza/mantenimiento/inspeccion)", async () => {
+    const auditRepo = new InMemoryBreakGlassAuditRepository();
+    const fila = { id: randomUUID(), propertyId: randomUUID(), unidadId: randomUUID(), tipo: "mantenimiento", estado: "pendiente", prioridad: "alta", programadaPara: "2026-09-25", completadaEnMs: null, creadoEnMs: NOW };
+    const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
+
+    const { auditEntry } = await leerLimpiezaTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
+    expect(auditEntry.resourceType).toBe("limpieza");
+    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+  });
+
+  it("leerSyncIcalTenantBreakGlass: resourceType='sync_ical', y el resumen auditado NUNCA lleva la URL completa (solo ids)", async () => {
+    const auditRepo = new InMemoryBreakGlassAuditRepository();
+    const fila = { id: randomUUID(), propertyId: randomUUID(), unidadId: randomUUID(), canalId: randomUUID(), urlImportacionEnmascarada: "https://www.airbnb.com/***", activo: true, ultimaSincronizacionExitosaEnMs: NOW, enCuarentenaDesdeMs: null, intentosFallidosConsecutivos: 0, motivoCuarentena: null };
+    const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
+
+    const { data, auditEntry } = await leerSyncIcalTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
+    expect(data).toEqual([fila]);
+    expect(auditEntry.resourceType).toBe("sync_ical");
+    expect(auditEntry.resultSummary).toEqual({ total: 1, ids: [fila.id] });
+    expect(JSON.stringify(auditEntry.resultSummary)).not.toContain("airbnb.com");
+  });
+
+  it("filtro por propiedad: resourceScope.propertyId llega hasta el método de puerto (representativo, finanzas)", async () => {
+    const auditRepo = new InMemoryBreakGlassAuditRepository();
+    const propertyIdBuscado = randomUUID();
+    const filaDeOtraPropiedad = { id: randomUUID(), ocupacionId: randomUUID(), propertyId: randomUUID(), moneda: "MXN", montoBrutoCentavos: 1, comisionCanalCentavos: 0, comisionGestorCentavos: 0, gastosCentavos: 0, impuestosCentavos: 0, netoCentavos: 1, createdAtMs: NOW };
+    const filaDeLaPropiedadBuscada = { ...filaDeOtraPropiedad, id: randomUUID(), propertyId: propertyIdBuscado };
+    const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map([[ORG_ID, [filaDeOtraPropiedad, filaDeLaPropiedadBuscada]]]));
+
+    const { data } = await leerFinanzasTenantBreakGlass(
+      auditRepo,
+      dataRepo,
+      { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA, resourceScope: { propertyId: propertyIdBuscado } },
+      NOW,
+    );
+
+    expect(data).toEqual([filaDeLaPropiedadBuscada]);
   });
 });
