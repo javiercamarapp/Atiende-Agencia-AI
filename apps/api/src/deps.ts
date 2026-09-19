@@ -4,7 +4,18 @@ import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
-import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
+import type {
+  CalComPortConfig,
+  CalDavPortConfig,
+  CalendarSyncPort as CitasCalendarSyncPort,
+  CitasConversationGuard,
+  CitasRepository,
+  ExchangeAuthorizationCodeInput,
+  ExchangeAuthorizationCodeResult,
+  ResolveCalendarPort,
+  ResolveCalendarSyncPort,
+  WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
+} from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { CalendarSyncPort, CanalMensajeria, CanalMensajeriaCodigo, RentasCalendarSyncRepository, RentasMensajeriaRepository, RentasOnboardingRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
@@ -112,6 +123,31 @@ export interface AppDeps {
    * apps/api sustituyan el `createPort` real por un `FakeGoogleCalendarPort`
    * compartido, sin reescribir la lógica de resolución/rotación de token. */
   readonly citasGoogleCalendarPortResolver: ResolveCalendarPort;
+  /** Fase 6 §2 (seguimiento) — resolver GENÉRICO multi-proveedor
+   * (Google/Cal.com/CalDAV, ver @atiende/domain-citas::ResolveCalendarSyncPort/
+   * createCalendarSyncPortResolver): el que las rutas de citas usan HOY para el
+   * intento inmediato best-effort (`tryTriggerCalendarSync`) y el cron de
+   * reconciliación (`syncPendingAppointmentsMultiProvider`) — `citasGoogleCalendarPortResolver`
+   * de arriba sigue existiendo SOLO porque `@atiende/domain-citas::tryTriggerGoogleSync`/
+   * `syncPendingAppointments` (Fase 3, sin tocar) todavía lo piden en su firma;
+   * ningún código de producción en apps/api lo invoca ya directamente. En
+   * producción, `createCalendarSyncPortResolver(citasRepo, env.googleOAuth)`
+   * (mismo patrón de "singleton de proceso, abre su propia sesión por invocación"
+   * que el resolver de Google, ver production/deps.ts). */
+  readonly citasCalendarSyncPortResolver: ResolveCalendarSyncPort;
+  /** Fase 6 §2 (seguimiento) — construye un `CalendarSyncPort` de Cal.com/CalDAV
+   * para UNA cuenta ya resuelta (con sus credenciales/URL ya en mano), usado SOLO
+   * por `POST .../{calcom,caldav}/test-connection` (calendar-providers.ts): esa
+   * ruta ya sabe de qué plataforma se trata (viene en el path) y ya resolvió la
+   * cuenta correcta vía `findProviderCalComAccount`/`findProviderCalDavAccount` —
+   * a diferencia de `citasCalendarSyncPortResolver` (que decide POR SÍ SOLO qué
+   * plataforma está conectada, con prioridad Google > Cal.com > CalDAV), aquí no
+   * hay ambigüedad que resolver, solo un punto de inyección para que las pruebas
+   * de apps/api sustituyan `RealCalComPort`/`RealCalDavPort` por un
+   * `FakeCalendarSyncPort` sin tocar la red. En producción son
+   * `(cfg) => new RealCalComPort(cfg)`/`(cfg) => new RealCalDavPort(cfg)`. */
+  readonly citasCalComPortFactory: (cfg: CalComPortConfig) => CitasCalendarSyncPort;
+  readonly citasCalDavPortFactory: (cfg: CalDavPortConfig) => CitasCalendarSyncPort;
   /** Fase 3 §4 paso 3 — intercambio real `code -> {access_token, refresh_token}`
    * contra Google, inyectado por el mismo motivo que el resolver de arriba: en
    * producción es `exchangeGoogleAuthorizationCode` real; en pruebas, un doble que

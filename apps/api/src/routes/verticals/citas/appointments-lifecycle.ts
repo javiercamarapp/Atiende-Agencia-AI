@@ -38,7 +38,7 @@ import {
   rescheduleAppointment,
   tryEnqueueAppointmentEmail,
   tryNotifyWaitlistOfFreedSlot,
-  tryTriggerGoogleSync,
+  tryTriggerCalendarSync,
 } from "@atiende/domain-citas";
 import type { AppointmentRecord, CitasRepository } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
@@ -154,7 +154,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
         // Fase 3 §5 — la fila ya quedó en 'pending_cancel'/'skipped' de forma atómica
         // dentro de cancel_appointment_idempotent; best-effort real, nunca puede
         // convertir esta respuesta 200 en un error.
-        await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+        await tryTriggerCalendarSync(citasRepo, deps.citasCalendarSyncPortResolver, appointment.id);
         return c.json({ appointment: serializeAppointment(appointment) });
       } catch (err) {
         return mapErrorToHttp(err, c);
@@ -186,7 +186,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
         await tryNotifyWaitlistAndEmail(deps, citasRepo, org.id, appointment.providerId, appointment.serviceId, previousStartsAt, appointment.startsAt, appointment.id);
         // Fase 3 §5 — reschedule_appointment_idempotent ya dejó 'pending' (si había
         // google_event_id) de forma atómica; best-effort real.
-        await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+        await tryTriggerCalendarSync(citasRepo, deps.citasCalendarSyncPortResolver, appointment.id);
         return c.json({ appointment: serializeAppointment(appointment) });
       } catch (err) {
         return mapErrorToHttp(err, c);
@@ -235,7 +235,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
         await triggerCitasEmailDispatchInline(deps, citasRepo);
         // Fase 3 §5 — reassign_appointment_idempotent ya dejó 'pending' (si había
         // google_event_id) de forma atómica; best-effort real.
-        await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+        await tryTriggerCalendarSync(citasRepo, deps.citasCalendarSyncPortResolver, appointment.id);
         return c.json({ appointment: serializeAppointment(appointment) });
       } catch (err) {
         return mapErrorToHttp(err, c);
@@ -263,7 +263,7 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.cancelled", appointment.id);
       await triggerCitasEmailDispatchInline(deps, citasRepo);
       // Fase 3 §5 — mismo best-effort que la cancelación del agente.
-      await tryTriggerGoogleSync(citasRepo, deps.citasGoogleCalendarPortResolver, appointment.id);
+      await tryTriggerCalendarSync(citasRepo, deps.citasCalendarSyncPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });
     } catch (err) {
       return mapErrorToHttp(err, c);
