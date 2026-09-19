@@ -117,13 +117,25 @@ npm run lint
 npm run test:unit
 ```
 
+Estos 4 comandos corren automáticamente en CI en cada `pull_request` y en
+cada `push` a `main` (`.github/workflows/ci-checks.yml`, agregado
+19-sep-2026), junto con el build de producción de `apps/web`
+(`npm run build --workspace apps/web`) — antes de eso, un `test:unit` en
+verde en un PR era solo la palabra local de quien lo construía. Ver ese
+workflow para el detalle exacto de qué corre y qué no.
+
 `npm run test:coverage` corre la misma suite instrumentada con
 `@vitest/coverage-v8` — ver `docs/COBERTURA.md` para qué mide, qué NO mide
 (no certifica SQL/RLS — eso es el gate de Postgres real de abajo) y de dónde
-sale el umbral configurado.
+sale el umbral configurado. **No** corre en CI (solo `test:unit`, que no
+activa el umbral de cobertura — ver el comentario de `vitest.config.ts`);
+se corre a mano cuando hace falta medir cobertura real.
 
 `npm run verify:migration-versions` y `npm run verify:env` son guards propios
-de este repo — ver `scripts/README.md`. Los `scripts/verify-*/` que corren
-contra Postgres real (RLS/GRANT reales, no el repositorio en memoria) tienen
-su propio `run.sh` y corren automáticamente en CI
-(`.github/workflows/postgres-real-gate.yml`).
+de este repo — ver `scripts/README.md`. `verify:migration-versions` también
+corre como specs sueltas dentro de `npm run test:unit` (ya cubierto por
+`ci-checks.yml`) además de como paso dedicado dentro del gate de Postgres
+real, antes de instalar `psql`. Los `scripts/verify-*/` que corren contra
+Postgres real (RLS/GRANT reales, no el repositorio en memoria) tienen su
+propio `run.sh` y corren automáticamente en CI
+(`.github/workflows/postgres-real-gate.yml`), en un workflow separado.

@@ -1,10 +1,31 @@
 # .github/workflows
 
+Dos workflows, deliberadamente separados (no se mezclan responsabilidades en
+un solo job): `postgres-real-gate.yml` (Postgres real, RLS/GRANT) y
+`ci-checks.yml` (typecheck/lint/tests en memoria/build). Ambos disparan en
+`pull_request`, en `push` a `main`, y manualmente (`workflow_dispatch`), y
+corren en paralelo — ninguno espera al otro.
+
+## ci-checks.yml
+
+Agregado 19-sep-2026, para cerrar un hueco que `postgres-real-gate.yml` (ver
+abajo) documentaba explícitamente en su propio comentario de cabecera desde
+que existe: **ningún** workflow de este repo corría `npm run typecheck`,
+`npm run lint` ni `npm run test:unit` — ese tier corría solo a mano por quien
+hacía el cambio, así que un PR con "tests en verde" era solo la palabra local
+de quien lo construyó. Corre, en un solo job sin matriz sobre `ubuntu-latest`:
+`npm ci` → `npm run typecheck` → `npm run lint` → `npm run test:unit` →
+`npm run build --workspace apps/web`. Frugal a propósito: `concurrency` con
+`cancel-in-progress` por rama, `timeout-minutes: 15`,
+`permissions: contents: read`, cache de npm, `paths-ignore` para cambios solo
+de docs/markdown, sin servicios externos ni secretos. Ver el comentario de
+cabecera del propio workflow para el detalle completo de qué cubre y qué no.
+
 ## postgres-real-gate.yml
 
-Único workflow de este repo. Es **solo de tests** — no tiene ningún paso de
-build, deploy, publicación, ni integración con Vercel u otro servicio con costo
-o efectos de producción. Dispara en `pull_request`, en `push` a `main`, y
+Es **solo de tests contra Postgres real** — no tiene ningún paso de build,
+deploy, publicación, ni integración con Vercel u otro servicio con costo o
+efectos de producción. Dispara en `pull_request`, en `push` a `main`, y
 manualmente (`workflow_dispatch`).
 
 ### Qué cubre
@@ -50,12 +71,14 @@ runner deriva el resultado esperado de cada escenario, y el `README.md` de cada
 
 ### Qué NO cubre
 
-- El resto de la suite (`npm run typecheck`, `npx vitest run`, `npm run
-  test:integration`, lint) **no tiene ningún trigger de CI todavía** — sigue
-  corriéndose a mano por quien hace el cambio.
-  Agregar ese tier es una decisión de plataforma más amplia (qué runner, qué
-  triggers, cache de `node_modules`, tiempo de corrida de 4089+ specs), fuera
-  del alcance de este hallazgo puntual sobre Postgres real.
+- `npm run typecheck`, `npm run lint` y `npm run test:unit` — desde
+  19-sep-2026 corren en `ci-checks.yml` (ver arriba), workflow separado de
+  este.
+- `npm run test:integration` sigue **sin ningún trigger de CI** — ni este
+  workflow ni `ci-checks.yml` lo corren; sigue corriéndose a mano por quien
+  hace el cambio. Agregarlo es una decisión de plataforma más amplia (qué
+  runner, si necesita su propio servicio de Postgres o Redis, tiempo de
+  corrida), fuera del alcance del hallazgo que motivó `ci-checks.yml`.
 - No ejercita ninguna tabla/función/policy de las 6 verticales que no esté ya
   cubierta por un `scripts/verify-*/assertions.sql` existente. No es un fuzz ni
   un test de regresión general del esquema — es exactamente, y solamente, lo

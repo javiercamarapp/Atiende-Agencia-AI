@@ -173,6 +173,13 @@ como parámetro plano.
   `security definer` a `auth.uid()`: si el caller (TypeScript) también cambia
   en la misma rama, despliega el caller primero.
 
+**Además de lo de abajo, desde el 19-sep-2026 `.github/workflows/ci-checks.yml`
+corre en cada `pull_request`/`push` a `main` (workflow separado, en paralelo
+al de Postgres real): `npm run typecheck`, `npm run lint`,
+`npm run test:unit` y el build de `apps/web`. Antes de eso ese tier corría
+solo a mano por quien hacía el cambio — ver el comentario de cabecera de ese
+workflow.**
+
 **Dos guards que corren en CI antes de tocar Postgres, no solo de memoria:**
 
 - `npm run verify:migration-versions` (`scripts/verify-migration-versions/`) —

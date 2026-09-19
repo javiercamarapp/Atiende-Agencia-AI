@@ -53,9 +53,12 @@ name: Postgres real (gate)
 # Qué NO cubre (fuera de alcance de este cambio puntual — ver
 # scripts/verify-real-postgres-ci/README.md para el detalle)
 # ------------------------------------------------------------------------------
-# - NO reemplaza ni corre `npm run typecheck` / `npx vitest run` / lint — ese
-#   tier (repositorio en memoria) sigue sin ningún trigger de CI en este repo;
-#   agregarlo es una decisión de plataforma más amplia, fuera de este hallazgo.
+# - NO corre `npm run typecheck` / `npm run lint` / `npm run test:unit` / build
+#   de apps/web — ese tier (repositorio en memoria) corre en su propio
+#   workflow, .github/workflows/ci-checks.yml (agregado 19-sep-2026, mismos
+#   triggers pull_request/push a main), deliberadamente separado de este job
+#   para no encadenar typecheck/lint/tests detrás de instalar Postgres real +
+#   aplicar 100+ migraciones.
 # - NO ejercita ninguna tabla/función/policy de las 6 verticales que no esté ya
 #   cubierta por un scripts/verify-*/assertions.sql existente — esto NO es un
 #   test de regresión general de todo el esquema, es exactamente el alcance que
