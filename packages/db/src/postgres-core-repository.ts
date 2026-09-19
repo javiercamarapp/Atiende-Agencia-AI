@@ -543,4 +543,14 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       throw err;
     }
   }
+
+  async ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }> {
+    const { rows } = await this.db.query<{ demo_organization_id: string; demo_slug: string }>(
+      `select demo_organization_id, demo_slug from core.ensure_demo_access_for_superadmin($1, $2);`,
+      [callerId, vertical],
+    );
+    const row = rows[0];
+    if (!row) throw new Error("ensure_demo_access_for_superadmin no devolvió ninguna fila.");
+    return { organizationId: row.demo_organization_id, slug: row.demo_slug };
+  }
 }

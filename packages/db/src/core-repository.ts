@@ -314,6 +314,15 @@ export interface CoreRepository {
    *  cual). Lanza `ProspectoNotFoundError` si el id no existe (SQLSTATE P0002, ver
    *  `core.update_prospecto_for_superadmin`). */
   updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow>;
+  /** "Entrar a los otros paneles" (ver `supabase/migrations/20240101000119_0014_
+   *  superadmin_demo_access.sql`) — NO es un mecanismo de impersonación nuevo: crea,
+   *  de forma idempotente, una organización DEMO real para `vertical` (si no existe
+   *  todavía) y una fila real de `core.membership` que vincula a `callerId` con ella
+   *  (rol de acceso total real de esa vertical). El caller HTTP encadena esto con el
+   *  `POST /auth/select-org` YA existente para obtener una sesión real del Shell de
+   *  esa vertical — cero superficie de autorización nueva, mismo modelo que protege
+   *  a cualquier cliente real. */
+  ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }>;
 }
 
 /** Fila real de `core.prospecto` — ver el comentario de cabecera de la migración

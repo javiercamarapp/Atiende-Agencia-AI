@@ -503,4 +503,36 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     this.prospectos.set(prospectoId, updated);
     return updated;
   }
+
+  // Mismo rol de acceso total real por vertical que
+  // core.ensure_demo_access_for_superadmin (ver la migración 0014) -- nunca un rol
+  // inventado solo para esto.
+  private static readonly ROL_DEMO_POR_VERTICAL: Record<string, string> = {
+    hoteles: "owner",
+    restaurantes: "owner",
+    citas: "owner",
+    licitaciones: "owner",
+    despachos: "admin",
+    rentas: "admin_gestora",
+  };
+
+  async ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }> {
+    if (!this.platformSuperadmins.has(callerId)) throw new Error("forbidden");
+    const verticalRole = InMemoryCoreRepository.ROL_DEMO_POR_VERTICAL[vertical];
+    if (!verticalRole) throw new Error("vertical inválida");
+
+    const slug = `demo-${vertical}`;
+    let org = [...this.organizations.values()].find((o) => o.slug === slug);
+    if (!org) {
+      org = { id: randomUUID(), slug, name: `Demo — Vista previa (${vertical})`, vertical, status: "active", createdAt: new Date().toISOString() };
+      this.organizations.set(org.id, org);
+    }
+
+    const yaMiembro = this.memberships.some((m) => m.userId === callerId && m.organizationId === org!.id);
+    if (!yaMiembro) {
+      this.memberships.push({ userId: callerId, organizationId: org.id, platformRole: "owner", verticalRole, propertyIds: null });
+    }
+
+    return { organizationId: org.id, slug: org.slug };
+  }
 }
