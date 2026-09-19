@@ -311,6 +311,16 @@ export class InMemorySuperadminAccionesRepository implements SuperadminAccionesR
   private readonly automationLog: AutomationActionLogRow[] = [];
   private readonly deadMessages = new Map<string, OutboxDeadMessageDetailRow>();
   private now: () => Date = () => new Date();
+  /** `cerrar_prospecto` REUTILIZA `core.update_prospecto_for_superadmin` (la
+   *  MISMA función que el editor de prospectos) -- en producción eso pasa
+   *  DENTRO de la función SQL `confirmar_superadmin_action_intent_for_
+   *  superadmin`; en memoria, `core.prospecto` vive en
+   *  `InMemoryCoreRepository` (un objeto DISTINTO), así que este callback es
+   *  el equivalente de esa misma reutilización -- `apps/api/tests/fixtures.ts`
+   *  lo conecta a `coreRepo.updateProspectoForSuperadmin`. `null` = sin
+   *  conectar (el intent `cerrar_prospecto` queda `failed`, nunca finge un
+   *  éxito). */
+  private ejecutarCerrarProspecto: ((callerId: string, prospectoId: string, estado: string) => Promise<{ readonly id: string; readonly estado: string }>) | null = null;
 
   addPlatformSuperadmin(staffId: string): void {
     this.isSuperadmin.add(staffId);
@@ -321,6 +331,11 @@ export class InMemorySuperadminAccionesRepository implements SuperadminAccionesR
    *  (`salud/motor.ts`/`resumen-diario/motor.ts` reciben `ahora` explícito). */
   setClock(now: () => Date): void {
     this.now = now;
+  }
+
+  /** Solo para tests/wiring -- ver el comentario del campo. */
+  setEjecutarCerrarProspecto(fn: (callerId: string, prospectoId: string, estado: string) => Promise<{ readonly id: string; readonly estado: string }>): void {
+    this.ejecutarCerrarProspecto = fn;
   }
 
   /** Solo para tests -- siembra un mensaje `dead` reencolable de una cola. */
@@ -405,7 +420,7 @@ export class InMemorySuperadminAccionesRepository implements SuperadminAccionesR
     }
   }
 
-  private async ejecutar(_callerId: string, intent: SuperadminActionIntentRow): Promise<unknown> {
+  private async ejecutar(callerId: string, intent: SuperadminActionIntentRow): Promise<unknown> {
     if (intent.tipo === "reencolar_mensaje_muerto") {
       const queue = intent.payload.queue as OutboxQueueName;
       const mensajeId = intent.payload.mensajeId as string;
@@ -416,14 +431,11 @@ export class InMemorySuperadminAccionesRepository implements SuperadminAccionesR
       return { reencolado: true, queue, mensajeId };
     }
     if (intent.tipo === "cerrar_prospecto") {
-      // El repo en memoria de acciones NO tiene su propia copia de
-      // `core.prospecto` (vive en `InMemoryCoreRepository`) -- los tests de
-      // ruta que ejercitan `cerrar_prospecto` de punta a punta construyen
-      // `AppDeps` con AMBOS repos apuntando al mismo `InMemoryCoreRepository`
-      // (ver `apps/api/tests/fixtures.ts`), así que en la práctica esta rama
-      // nunca se alcanza -- se deja el error explícito en vez de fingir un
-      // resultado, para no esconder una integración mal cableada en un test.
-      throw new Error("cerrar_prospecto: InMemorySuperadminAccionesRepository no puede tocar core.prospecto directamente -- ver comentario de este método");
+      if (!this.ejecutarCerrarProspecto) throw new Error("cerrar_prospecto: InMemorySuperadminAccionesRepository.setEjecutarCerrarProspecto no fue conectado (ver apps/api/tests/fixtures.ts)");
+      const prospectoId = intent.payload.prospectoId as string;
+      const estado = intent.payload.estado as string;
+      const prospecto = await this.ejecutarCerrarProspecto(callerId, prospectoId, estado);
+      return { prospectoId: prospecto.id, estado: prospecto.estado };
     }
     if (intent.tipo === "ejecutar_mantenimiento_ahora") {
       const outbox = await this.desatascarOutboxColgadosForSystem();
