@@ -37,7 +37,7 @@ Columnas: **ID** · **Criterio de aceptación** (observable) · **Tipo de prueba
 | REQ-TEN-003 | `assertPropertyAccess` no lanza cuando hay acceso; lanza `PropertyAccessDeniedError` con `propertyId`/`code` correctos cuando no lo hay. | unit (Vitest) | `npx vitest run packages/core-tenancy/tests/session.spec.ts` | **hecho**: 3/3 tests en verde. |
 | REQ-TEN-004 | `assertPlatformRole` no lanza con un rol permitido; lanza `InsufficientPlatformRoleError` con un rol fuera de la lista. | unit (Vitest) | `npx vitest run packages/core-tenancy/tests/session.spec.ts` | **hecho**: 2/2 tests en verde. |
 | REQ-TEN-005 | `buildTenantSessionClaims` propaga `propertyIds` completo sin `propertyId` explícito; lo acota a `[propertyId]` con uno explícito (incluso si la membership es `propertyIds:null`); rechaza con `PropertyAccessDeniedError` si la membership no tiene acceso a ese `propertyId`. | unit (Vitest) | `npx vitest run packages/core-tenancy/tests/session.spec.ts` | **hecho**: 4/4 tests en verde. |
-| REQ-TEN-006 | `isVertical` acepta exactamente las 5 verticales y rechaza `"despachos"`/cualquier string arbitrario/cadena vacía. | unit (Vitest) | `npx vitest run packages/core-tenancy/tests/types.spec.ts` | **hecho**: 2/2 tests en verde. |
+| REQ-TEN-006 | `isVertical` acepta exactamente las 6 verticales (`hoteles`,`restaurantes`,`rentas`,`licitaciones`,`citas`,`despachos` — `despachos` se incorporó como sexta vertical real en su propia Fase 1, ya no se rechaza) y rechaza cualquier string arbitrario/cadena vacía. | unit (Vitest) | `npx vitest run packages/core-tenancy/tests/types.spec.ts` | **hecho**: 2/2 tests en verde. |
 
 ### 2.2 AUTH — `@atiende/core-auth`
 
@@ -65,7 +65,7 @@ Columnas: **ID** · **Criterio de aceptación** (observable) · **Tipo de prueba
 | REQ-GTW-008 | Los 3 proveedores (`OpenRouterProvider`/`AnthropicProvider`/`OpenAiProvider`) arman el body/headers del contrato documentado de su API (OpenRouter/OpenAI: Chat Completions; Anthropic: Messages API con `system` aparte) y parsean texto/tokens/costo reales de la respuesta — sin prueba unitaria propia que inyecte un `fetch` fiel a cada contrato. | unit (Vitest) | — (no existe `packages/agent-core/tests/gateway/providers/*.spec.ts` todavía) | **pendiente**: código de producción real y en uso por el gateway, sin cobertura de test directa. |
 | REQ-GTW-009 | Con un proveedor que reserva presupuesto y luego falla, `settleBudget(..., 0)` libera la reserva completa — el ledger del tenant queda como si esa llamada nunca se hubiera cobrado. | unit (Vitest) | — (ningún test de `fallback.spec.ts`/`budget.spec.ts` afirma el efecto en el ledger tras un fallo, solo que el fallback ocurre) | **pendiente**: comportamiento real en `gateway.ts`, sin aserción directa todavía. |
 
-## 3. Corrida completa (evidencia agregada)
+## 3. Corrida completa (evidencia agregada, snapshot histórico — ver nota)
 
 ```
 $ npx tsc --noEmit -p tsconfig.json                     # 0 errores
@@ -78,3 +78,18 @@ $ npx vitest run --config vitest.config.ts
 
 Ningún test se saltó, se marcó `skip`, ni se dejó en rojo "para después". El hash del
 commit que fija esta corrida está en el mensaje del commit inicial del repositorio.
+
+**Nota (barrido de documentación, 19-sep-2026): estos números ya no son el
+alcance real del último comando.** `vitest.config.ts::test.include` cubre hoy
+`packages/*/tests/**`, `packages/mcp-servers/*/tests/**` y
+`apps/*/tests/**` — es decir, `npx vitest run --config vitest.config.ts` sin
+argumentos (el mismo comando que `npm run test:unit`) ya ejercita TODA la
+suite del monorepo (núcleo + las 6 verticales + `apps/api`/`apps/web`), no
+solo los 10 archivos de núcleo que esta sección documentó cuando `atiende`
+era solo el esqueleto inicial. "10 passed (10)"/"85 passed (85)" es un
+snapshot histórico de esa corrida inicial, no el resultado de correr ese
+comando hoy — no se reemplaza aquí por un número nuevo a propósito (se
+pudriría otra vez con el ritmo de esta rama); corre
+`npx vitest run --config vitest.config.ts` tú mismo para el conteo vigente.
+Para acotar la corrida solo a núcleo (lo que esta sección sí describe), usa
+`npx vitest run --config vitest.config.ts packages/core-tenancy packages/core-auth packages/agent-core/tests/gateway`.

@@ -2,9 +2,13 @@
 
 Dominio real y portado — ya NO es una carpeta reservada. Actualizado en el barrido
 de documentación de las rondas 13/14/16: este README decía "aún no portado",
-desactualizado desde hace muchas fases (`src/` tiene 46 archivos, `migrations/` 22).
-Portado de `licitaciones/packages/agents` (lo específico de negocio; el gateway LLM
-compartido vive en `@atiende/agent-core`, nunca duplicado aquí).
+desactualizado desde hace muchas fases. El conteo de archivos se pudre rápido con
+el ritmo de esta rama (era 46/22 en la ronda 13/14/16, es 52/23 al 19-sep-2026) —
+verifica con `find packages/domain-licitaciones/src -type f | wc -l` /
+`find packages/domain-licitaciones/migrations -type f | wc -l` en vez de confiar
+en cualquier número escrito aquí. Portado de `licitaciones/packages/agents` (lo
+específico de negocio; el gateway LLM compartido vive en `@atiende/agent-core`,
+nunca duplicado aquí).
 
 Cubre, de punta a punta: descubrimiento de convocatorias (conectores reales, ver
 `connectors/`/`connector-registry.ts`), checklist de cumplimiento/integridad,

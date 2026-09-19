@@ -288,40 +288,54 @@ cierto): la sección de Stripe decía que `packages/billing`/`STRIPE_WEBHOOK_SEC
 
 `vercel.json` dispara sus ~18 crons **una vez al día** (plan Hobby). Verificado
 leyendo el código si el envío real de WhatsApp/correo depende únicamente de esa
-corrida diaria o si además hay un disparo inline al encolar:
+corrida diaria o si además hay un disparo inline al encolar.
 
-### SÍ tienen disparo inline (no dependen solo del cron)
+**Corregido en el barrido de documentación del 19-sep-2026: esta sección
+afirmaba que despachos/rentas/licitaciones "SOLO dependen del cron diario, sin
+disparo inline" — eso dejó de ser cierto con las mismas fases que agregaron
+`triggerDespachosEmailDispatchInline`/`triggerRentasEmailDispatchInline`/
+`triggerLicitacionesEmailDispatchInline` (ya en `main`; verificado de nuevo con
+`git grep -n "EmailDispatchInline" -- apps/api/src`). Las 3 filas se movieron
+abajo.**
+
+### Tienen disparo inline desde una acción real de negocio (no dependen solo del cron)
 
 | Cron diario | Disparo inline (best-effort, en el mismo request que encoló) |
 |---|---|
 | `/internal/citas/email-dispatch` (14:05) | `triggerCitasEmailDispatchInline` — llamado desde `appointments.ts`, `appointments-lifecycle.ts` (×6), `whatsapp.ts` |
 | `/internal/hoteles/email-dispatch` (14:15) | `triggerHotelesEmailDispatchInline` — llamado desde `folios.ts`, `reservas.ts`, `cfdi.ts` |
 | `/internal/restaurantes/email-dispatch` (14:20) | `triggerRestaurantesEmailDispatchInline` — llamado desde `whatsapp.ts`, `public.ts` |
+| `/internal/despachos/email-dispatch` (14:30) | `triggerDespachosEmailDispatchInline` — llamado desde `vencimientos.ts` (`POST .../vencimientos/:id/escalar`, staff real) y desde el propio cron de `cobranza-reminders` (`notifications.ts`) |
+| `/internal/rentas/email-dispatch` (14:35) | `triggerRentasEmailDispatchInline` — llamado desde `reservas.ts` (`POST .../reservas`, confirmación real al huésped) y desde el propio cron de `checkin-recordatorio.ts` |
 | `/internal/whatsapp/dispatch` (14:55) | `triggerCitasWhatsAppDispatchInline` / `triggerHotelesWhatsAppDispatchInline` / `triggerRestaurantesWhatsAppDispatchInline` (`routes/internal/whatsapp-dispatch.ts`) — cada webhook de WhatsApp de esas 3 verticales dispara su propio drenado inline justo después de encolar la respuesta |
 
-Todas las 4 filas de arriba: el cron diario sigue existiendo como **red de
+Todas las filas de arriba: el cron diario sigue existiendo como **red de
 seguridad de respaldo** (recoge lo que el disparo inline no pudo enviar —
 `WHATSAPP_ACCESS_TOKEN` caído, rate-limit de Graph API, el propio request
 muriendo antes de disparar el drenado), pero un mensaje real casi siempre se
 envía en segundos, no en hasta 24h.
 
-### SOLO dependen del cron diario (sin disparo inline)
+### Disparo inline solo dentro de su propio cron (matiz, no "sin disparo inline")
 
-| Cron diario | Archivo:línea | Por qué importa |
-|---|---|---|
-| `/internal/despachos/email-dispatch` (14:30) | `apps/api/src/routes/verticals/despachos/notifications.ts:61` | Despachos no tiene agente de WhatsApp — solo correo. Sin disparo inline: un correo de despachos (p.ej. recordatorio de cobranza) puede tardar hasta ~24h en salir. |
-| `/internal/rentas/email-dispatch` (14:35) | `apps/api/src/routes/verticals/rentas/email-dispatch.ts:22` | Mismo caso: rentas no tiene agente de WhatsApp, y esta ruta no tiene ningún `triggerRentasEmailDispatchInline` en todo el repo (verificado: cero resultados de `Inline` en `routes/verticals/rentas/*.ts`). |
-| `/internal/licitaciones/email-dispatch` (08:00) | `apps/api/src/routes/verticals/licitaciones/alertNotifications.ts:68` | Mismo caso — cero `Inline` en `routes/verticals/licitaciones/*.ts`. |
-| `/internal/licitaciones/discover-tenders`, `deadline-reminders`, `alert-notifications` (05:00/06:00/07:00) | `apps/worker/src/jobs/licitaciones/*.ts` | Por diseño son barridos de una vez al día (descubrir licitaciones nuevas, recordatorios de plazo), no colas de mensajes en tiempo real — un disparo inline no aplicaría aquí de la misma forma. |
-| `/internal/hoteles/night-audit`, `/internal/citas/confirmacion-cita`, `/internal/despachos/cobranza-reminders`, `/internal/rentas/checkin-recordatorio`/`checkout-sweep`, `/internal/citas/google-calendar-sync`, `/internal/rentas/ical-sync` | varios | Mismo caso: barridos por-tiempo (auditoría nocturna, recordatorios, sincronización periódica), no colas de "algo que un usuario acaba de encolar" — el concepto de "disparo inline" no aplica igual que a un mensaje de WhatsApp/correo. |
+| Cron diario | Detalle |
+|---|---|
+| `/internal/licitaciones/alert-notifications` (07:00) | `triggerLicitacionesEmailDispatchInline` — llamado DENTRO de esta misma ruta, justo después de encolar recordatorios de plazo/renovación/facturas vencidas (`runAlertNotificationSweep`). Corta la espera de hasta 1h (esperar al cron `/internal/licitaciones/email-dispatch` de las 08:00) a segundos, pero sigue acotado a la corrida diaria de las 07:00 — a diferencia de despachos/rentas arriba, licitaciones no tiene ninguna ruta de staff/usuario que dispare este drenado desde una acción real (no tiene WhatsApp ni un flujo equivalente a "escalar"/"reservar"). |
 
-**Conclusión accionable**: el envío real de correo de **despachos, rentas y
-licitaciones** depende HOY únicamente de una corrida diaria (hasta ~24h de
-demora en el peor caso) — a diferencia de citas/hoteles/restaurantes, que ya
-tienen disparo inline best-effort. Si Javier quiere correo casi-inmediato para
-esos 3 verticales (p.ej. confirmaciones al huésped/cliente), hace falta agregar
-su propio `triggerXEmailDispatchInline` con el mismo patrón que
-`hoteles/email-dispatch.ts`/`citas/email-dispatch.ts` — cambio de código, no de
-credenciales, fuera de alcance de este PR. Esto **no** cambia la conclusión
-sobre el límite de cron jobs del plan Hobby de Vercel (ver `docs/DEPLOY.md`): los
-~18 crons ya existentes no se tocan aquí.
+### Genuinamente solo dependen del cron diario (sin ningún disparo inline)
+
+| Cron diario | Por qué importa |
+|---|---|
+| `/internal/licitaciones/discover-tenders`, `deadline-reminders` (05:00/06:00) | `apps/worker/src/jobs/licitaciones/*.ts` — barridos de una vez al día (descubrir licitaciones nuevas), no colas de mensajes; un disparo inline no aplicaría aquí de la misma forma. |
+| `/internal/hoteles/night-audit`, `/internal/citas/confirmacion-cita`, `/internal/despachos/cobranza-reminders`, `/internal/rentas/checkin-recordatorio`/`checkout-sweep`, `/internal/citas/google-calendar-sync`, `/internal/rentas/ical-sync` | varios | Barridos por-tiempo (auditoría nocturna, recordatorios, sincronización periódica), no colas de "algo que un usuario acaba de encolar" — el concepto de "disparo inline" no aplica igual que a un mensaje de WhatsApp/correo. |
+| `/internal/superadmin/resumen-diario` (09:00 local / 15:00 UTC) | Resumen diario automático de plataforma (`apps/api/src/resumen-diario/*`) — corre una vez al día, después de los demás crons, para reflejar el día ya asentado; no es una cola de mensajes de un tenant. |
+
+**Conclusión actualizada**: las 6 verticales con canal de correo ya tienen
+algún disparo inline best-effort hoy — citas/hoteles/restaurantes/despachos/
+rentas desde una acción real de negocio (o desde su propio cron secundario),
+licitaciones desde su propio cron de alertas. Ningún vertical depende ya
+únicamente de la corrida diaria de `/internal/<vertical>/email-dispatch` para
+su correo principal — lo que sí sigue acotado a una corrida diaria son los
+barridos de descubrimiento/recordatorio de la tabla de arriba, por diseño (no
+son colas de mensajes). Esto **no** cambia la conclusión sobre el límite de
+cron jobs del plan Hobby de Vercel (ver `docs/DEPLOY.md`): los ~18 crons ya
+existentes no se tocan aquí.

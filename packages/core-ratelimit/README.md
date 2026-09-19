@@ -105,6 +105,7 @@ su razón documentada inline. Resumen:
 | `mcp:scheduling` | Abierto (acotado) | Mismo criterio que `mcp:pms`. |
 | `mcp:pos` | Abierto (acotado) | Mismo criterio que `mcp:pms`. |
 | `conversation:inbound-webhook` | Abierto (acotado)¹ | Tenant/canal autenticado — pero ver la nota ¹. |
+| `rentas:ical-feed-publico` | Abierto (acotado) | Feed `.ics` público de disponibilidad (`GET /rentas/.../feed.ics`, sin auth) — el límite es contra scraping/ráfaga (3+2N queries por request, hallazgo de auditoría rubro 10), nunca la última defensa de integridad: el contenido es solo disponibilidad, nunca dato sensible. Negar por completo un poll real de una OTA (Airbnb/Booking/VRBO) rompería su sincronización de calendario. |
 | *(sin categoría / categoría no listada)* | **Cerrado** | Default seguro — una categoría nueva se cataloga aquí, nunca se asume abierta. |
 
 ¹ **"Abierto" en esta tabla nunca significa "sin límite"** — degrada al backend en memoria

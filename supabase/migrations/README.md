@@ -22,7 +22,28 @@ es solo un espejo renombrado para que la CLI funcione desde la raíz del repo.
 sus propias migraciones (en su código, tests, docs) usando las rutas originales en
 `packages/*/migrations/*.sql` — esos archivos no se tocan ni se eliminan.
 
-## Orden actual (112 migraciones, timestamps 20240101000001 .. 20240101000112)
+## Cuántas migraciones hay realmente
+
+Este número se ha desactualizado varias veces en este mismo README y en
+`docs/DEPLOY.md` (109, luego 112 migraciones narradas, mientras el directorio ya
+tenía más archivos) — no confíes en ningún conteo escrito a mano aquí abajo.
+Verifica siempre con:
+
+```
+ls supabase/migrations/*.sql | wc -l
+```
+
+Hay un hueco real en `20240101000126` y `20240101000134` — timestamps que
+nunca se usaron (colisión evitada al renumerar en otra rama), no archivos
+borrados; `npm run verify:migration-versions` confirma que no hay prefijos
+duplicados ni espejos divergentes, sea cual sea el conteo real en el momento
+en que lo corras. La narración detallada de abajo (1-112, más 120/122 con su
+propia nota de colisión) cubre las primeras fases; la sección "113 en
+adelante" al final de este archivo resume, más brevemente, las fases más
+recientes sin repetir el mismo nivel de detalle por archivo — **deliberadamente
+sin citar un total**, ver la nota de esa sección.
+
+## Orden narrado en detalle (fases iniciales, hasta la migración 112)
 
 1. `packages/db/migrations/0001_core_schema.sql` — primero porque todo lo demás depende del schema core.
 2. `packages/core-conversation/migrations/001_conversation_state_cas.sql`
@@ -135,8 +156,9 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
 2. Cópiala aquí también, renombrada con el **siguiente timestamp libre en la
-   secuencia** (el último usado hasta ahora es `20240101000112`; usa
-   `20240101000113`, luego `...114`, etc., o cambia a timestamps reales
+   secuencia** (verifica el último real con `ls supabase/migrations/ | sort |
+   tail -1` — no confíes en ningún número escrito en este README, se ha
+   desactualizado varias veces), o cambia a timestamps reales
    `YYYYMMDDHHMMSS` del día en que agregas la migración — lo único que importa es
    que sean estrictamente crecientes respecto a los que ya existen aquí). Verifica
    siempre el último archivo real con `ls supabase/migrations/` antes de elegir el
@@ -200,3 +222,44 @@ falla `npm run test:unit` y el workflow `postgres-real-gate.yml` (antes de
 levantar Postgres) si dos archivos de esta carpeta vuelven a compartir
 prefijo, o si un espejo diverge en contenido de su fuente real en
 `packages/*/migrations/`.
+
+## 113 en adelante (resumen, sin narración por archivo)
+
+Fases más recientes (16-19 sep 2026 en adelante), listadas por lo que cada una
+cierra — ver el comentario de cabecera de cada archivo SQL para el detalle
+completo. **Sin un total citado a propósito**: esta tabla se ha quedado atrás
+del conteo real más de una vez (era "113-132" cuando el directorio ya tenía
+133+ archivos) — agrega una fila por migración nueva en vez de mantener un
+número de cierre.
+
+| Migración | Qué cierra |
+|---|---|
+| 113 `0011_login_lookup_security_definer.sql` | Hallazgo de producción real (16-sep): con `DATABASE_URL` apuntando por primera vez a Postgres real con la contraseña correcta, NINGÚN login funcionaba — `core.staff_user` tiene RLS con una sola policy `id = auth.uid()` y ninguna tabla de `core` tenía GRANT a `authenticated`. |
+| 114 `0012_superadmin_prospectos.sql` | "Cerebro de ventas" del superadmin — prospectos por vertical, patrón adaptado del panel interno de Likida. |
+| 115 `0013_notifications_schema.sql` | Notificaciones internas genéricas para las 6 verticales + superadmin. |
+| 116 `017_messaging_outbox_dispatch_and_calendar_token_authenticated_grants.sql` | Mismo bug raíz de GRANT faltante a `authenticated` (ver migraciones 86-91/103-108), aplicado a 12 funciones de outbox de WhatsApp + 2 de refresh token de Google Calendar. |
+| 117 `019_messaging_outbox_dispatch_authenticated_grants.sql` | Mismo bug raíz, licitaciones. |
+| 118 `015_messaging_outbox_dispatch_authenticated_grants.sql` | Mismo bug raíz, rentas. |
+| 119 `0014_superadmin_demo_access.sql` | "Entrar a los otros paneles" desde superadmin con sesión propia, sin datos reales de un cliente — para probar botones/comandos. |
+| 120 `001_folio_stamp_reservation.sql` (paquete `mcp-servers/cfdi`) | Reserva atómica de folio CFDI (`mcp_cfdi.folio_stamp_reservation`) reemplazando un `Map` en memoria de proceso — TOCTOU real bajo Fluid Compute. |
+| 121 `0009_billing_saas_schema.sql` | Esquema de la suscripción SaaS propia de Atiende a sus organizaciones clientes (`core.organization_billing`). |
+| 122 `0008_auth_exchange_code.sql` | Cierra fuga real: el JWT de acceso/refresh viajaba en la URL del redirect 302 de Google/magic-link — se reemplaza por un código opaco de un solo uso de 60s, canjeado por `POST /auth/exchange-code`. |
+| 123 `020_cfdi_webhook_status_security_definer.sql` | Ruta HTTP del webhook del PAC de CFDI (Finkok/SW Sapien) — el puerto ya verificaba la firma, faltaba conectarlo (`apps/api/src/routes/verticals/hoteles/cfdi-webhook.ts`). |
+| 124 `0010_llm_usage_budget_schema.sql` | Modelo de datos de "Gasto de API" del superadmin — techo de gasto de LLM por organización/plataforma. |
+| 125 `021_reputacion_respuestas.sql` | Columna/tabla para que el staff responda una reseña de huésped (Fase 11 de reputación no la traía). |
+| 126 | Sin usar — timestamp saltado, no un archivo borrado (`verify-migration-versions` no lo exige contiguo, solo estrictamente creciente y sin duplicados). |
+| 127 `0011_superadmin_caller_binding.sql` | Fix de seguridad: 12 funciones `core.*_for_superadmin` recibían `p_caller_id` como parámetro plano sin atarlo a `auth.uid()` — cualquier sesión `authenticated` que conociera el UUID de un superadmin podía suplantarlo. Ver `docs/DEPLOY.md` para el orden de despliegue código-antes-que-migración que este fix exige. |
+| 128 `0012_caller_binding_fase2.sql` | Mismo patrón, 14 funciones más de `core` (refresh tokens, billing, notificaciones, identidades pre-auth). Mismo requisito de orden de despliegue que 127. |
+| 129 `018_break_glass_wiring.sql` | Conecta break-glass de rentas a rutas HTTP reales (`/superadmin/break-glass`) + endurece el criterio de "quién es superadmin" (antes un proxy débil: "staff sin membership"). Mismo requisito de orden de despliegue que 127/128. |
+| 130 `018_calcom_self_hosted_base_url.sql` | Soporta Cal.com self-hosted (`calcom_base_url` opcional por cuenta) además del SaaS oficial. |
+| 131 `023_ocds_connectors_source_check.sql` | Conectores OCDS reales de licitaciones (Nuevo León, CDMX) + agregador comercial gateado por credenciales — agrega `'nl_ocds'`/`'cdmx_ocds'`/`'aggregator'` al CHECK de `source_run.source`. |
+| 132 `0013_superadmin_facturacion.sql` | Lecturas de "Facturación" del superadmin: estado de suscripción por organización, asientos y reconciliación contra `core.organization_billing`. |
+| 133 `016_known_zone_authenticated_grant.sql` | Hallazgo real de `verify-restaurantes-sql` (primera vez que el repositorio Postgres de restaurantes se ejercitó contra Postgres real, no el mirror en memoria): `restaurantes.known_zone` tenía RLS habilitado pero sin policy ni GRANT a `authenticated`/`anon` — a diferencia de todas las demás tablas del paquete. |
+| 134 | Sin usar — timestamp saltado, no un archivo borrado (mismo caso que 126). |
+| 135 `0014_superadmin_salud_operativa.sql` | Primera pieza de "Salud operativa" del superadmin: latidos de los 17 crons de `vercel.json` (`withHeartbeat`), salud de las 6 colas `messaging_outbox` (WhatsApp/email) y estado de las fuentes de licitaciones — el superadmin antes no tenía forma de saber si un cron dejó de correr o una cola quedó atascada sin drenar. |
+
+Si vuelves a auditar este README, agrega una fila breve por cada migración
+nueva a esta tabla (no hace falta reproducir la prosa extensa de las fases
+1-112) — no hay ninguna cifra de total que actualizar en ningún lado de este
+archivo, a propósito: usa `ls supabase/migrations/*.sql | wc -l` cuando
+necesites el conteo real.
