@@ -125,8 +125,10 @@ export interface AppDeps {
   /** Fase 2 §2.6-b — lock distribuido + máquina de estados de
    * @atiende/core-conversation que serializa mensajes casi-simultáneos del mismo
    * teléfono (ver whatsapp/inbound.ts de domain-citas). Construible una sola vez
-   * por proceso; producción real debe pasar un RedisLockStore en vez del
-   * InMemoryLockStore por defecto de `createDefaultConversationGuard()`. */
+   * por proceso. `createDefaultConversationGuard()` (fix/conversation-lock-upstash)
+   * ya elige por sí sola: RedisLockStore si UPSTASH_REDIS_REST_URL/_TOKEN están
+   * configuradas (mismas variables que @atiende/core-ratelimit), InMemoryLockStore
+   * si no — nunca hace falta pasarle un LockStore distinto a mano solo por esto. */
   readonly citasConversationGuard: CitasConversationGuard;
   /** Fase 3 §4/§5 — resuelve el GoogleCalendarPort real para UN provider_id
    * concreto (o `null` si no puede sincronizar todavía, ver diseño §4/§9).

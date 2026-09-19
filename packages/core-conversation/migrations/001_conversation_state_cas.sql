@@ -10,6 +10,16 @@
 --
 -- Requiere: tabla `conversations` con columna `metadata JSONB`.
 -- Schema del campo: metadata.conversation_state = { state, context, version }
+--
+-- Hallazgo de auditoría de credenciales (fix/conversation-lock-upstash) —
+-- confirmado: ninguna migración de este repo crea esa tabla `conversations`
+-- (ver docs/DEPLOY.md §0.3) y el único adaptador TS que llamaba a estas 2
+-- funciones (`packages/core-conversation/src/state/postgres-state-store.ts`,
+-- `PostgresStateStore`) se retiró del árbol en ese mismo cambio por no tener
+-- consumidor real en producción — `createDefaultConversationGuard()` usa
+-- `InMemoryStateStore`, nunca esto. Esta migración se deja como está (no se
+-- borra, por convención de este repo, ver supabase/migrations/README.md) para
+-- quien decida en el futuro sí construir la tabla y el adaptador real.
 
 CREATE OR REPLACE FUNCTION get_conversation_state(
   p_conversation_id UUID,

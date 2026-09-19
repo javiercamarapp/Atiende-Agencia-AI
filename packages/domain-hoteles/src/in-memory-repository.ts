@@ -14,6 +14,7 @@ import type {
   ConversationMessage,
   ContactoNoOperativoRecord,
   DiscountChargeForFraudScan,
+  DueNoShowReservationForSystem,
   ExpenseEntryRecord,
   FnbOrderRecord,
   FolioRecord,
@@ -41,6 +42,8 @@ import type {
   NewRoomInput,
   NewRoomTypeInput,
   NewStaffScheduleInput,
+  NewSystemNightAuditChargeInput,
+  NewSystemNoShowApplicationInput,
   NightAuditRunRecord,
   NightlyRateRecord,
   ChargeRecord,
@@ -55,6 +58,7 @@ import type {
   RoomTypeSummary,
   GuestSummary,
   StaffScheduleRecord,
+  SystemNoShowApplicationResult,
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
@@ -71,6 +75,7 @@ import type {
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import { isCancellable } from "./reservationStateMachine.ts";
+import { nightsBetween } from "./quote.ts";
 import { occupancyPct } from "./overbooking.ts";
 import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
@@ -1559,6 +1564,104 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       totals[p.method] = (totals[p.method] ?? 0) + p.amount;
     }
     return totals;
+  }
+
+  // ---- HotelesRepository: Fase 6b — flujos de sistema de night-audit/no-show
+  // (espejo en memoria de migrations/023 -- sin RLS que simular aquí, así que se
+  // reutilizan las mismas piezas privadas que ya usan los métodos originales, pero
+  // como métodos DISTINTOS y validando las MISMAS invariantes que valida la función
+  // SQL real, para que un test contra memoria detecte el mismo tipo de error que
+  // detectaría Postgres). ----
+
+  async systemListInHouseReservationsForNightAudit(
+    propertyId: string,
+    businessDate: string,
+  ): Promise<readonly { reservationId: string; folioId: string | null; nightlyPrice: number | null }[]> {
+    return this.listInHouseReservationsForNightAudit(propertyId, businessDate);
+  }
+
+  async systemLoadTaxConfig(propertyId: string): Promise<TaxConfigRecord> {
+    return this.loadTaxConfig(propertyId);
+  }
+
+  async systemSumChargesByConceptForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>> {
+    return this.sumChargesByConceptForBusinessDate(propertyId, businessDate, timezone);
+  }
+
+  async systemSumPaymentsByMethodForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>> {
+    return this.sumPaymentsByMethodForBusinessDate(propertyId, businessDate, timezone);
+  }
+
+  async systemPostNightAuditCharge(input: NewSystemNightAuditChargeInput): Promise<{ id: string; createdAt: string; isNew: boolean }> {
+    if (input.netAmount < 0 || input.taxAmount < 0) {
+      throw new Error(`monto_invalido: el cargo de hospedaje de night-audit no admite montos negativos (reserva=${input.reservationId}).`);
+    }
+    const reservation = this.reservations.get(input.reservationId);
+    if (
+      !reservation ||
+      reservation.propertyId !== input.propertyId ||
+      reservation.organizationId !== input.organizationId ||
+      !["check_in", "en_estancia"].includes(reservation.status)
+    ) {
+      throw new Error(
+        `reserva_invalida: ${input.reservationId} no pertenece a la property/organización indicada o no está en un estado que admita el cargo de hospedaje.`,
+      );
+    }
+    const folio = this.folios.get(input.folioId);
+    if (
+      !folio ||
+      folio.reservationId !== input.reservationId ||
+      folio.propertyId !== input.propertyId ||
+      folio.organizationId !== input.organizationId ||
+      !folio.isPrimary
+    ) {
+      throw new Error(`folio_invalido: ${input.folioId} no es el folio primario de la reserva ${input.reservationId} en esta property/organización.`);
+    }
+    return this.postNightlyHospedajeCharge({
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      folioId: input.folioId,
+      businessDate: input.businessDate,
+      netAmount: input.netAmount,
+      taxAmount: input.taxAmount,
+    });
+  }
+
+  async systemFindDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly DueNoShowReservationForSystem[]> {
+    const candidatas = await this.findDueNoShowReservations(propertyId, asOfDate);
+    return candidatas.map((r) => ({ reservationId: r.id, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, totalAmount: r.totalAmount }));
+  }
+
+  async systemApplyNoShow(input: NewSystemNoShowApplicationInput): Promise<SystemNoShowApplicationResult | null> {
+    if (input.netAmount < 0 || input.taxAmount < 0) {
+      throw new Error(`monto_invalido: la penalización de no-show no admite montos negativos (reserva=${input.reservationId}).`);
+    }
+    // Reclamo atómico -- mismo guard EXACTO que `transitionReservation(propertyId,
+    // reservationId, ['confirmada'], 'no_show', null)`: `null` si perdió la carrera (o
+    // pertenece a otra property/organización) -- nunca lanza.
+    const stored = this.reservations.get(input.reservationId);
+    if (!stored || stored.propertyId !== input.propertyId || stored.organizationId !== input.organizationId || stored.status !== "confirmada") {
+      return null;
+    }
+    stored.status = "no_show";
+
+    for (const night of nightsBetween(stored.checkInDate, stored.checkOutDate)) {
+      await this.releaseAvailability(input.propertyId, stored.roomTypeId, night, 1);
+    }
+
+    const folio = await this.ensurePrimaryFolio(input.propertyId, input.organizationId, input.reservationId);
+    const charge = await this.insertCharge({
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      folioId: folio.id,
+      description: "Penalización por no-show",
+      amount: input.netAmount,
+      taxAmount: input.taxAmount,
+      concept: "hospedaje",
+      stayDate: null,
+    });
+
+    return { folioId: folio.id, chargeId: charge.id, chargeCreatedAt: charge.createdAt };
   }
 
   // ---- HotelesRepository: Fase 6 — REQ-HK-011 tickets de mantenimiento ----

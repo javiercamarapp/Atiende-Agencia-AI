@@ -15,6 +15,7 @@ import type {
   ConversationMessage,
   ContactoNoOperativoRecord,
   DiscountChargeForFraudScan,
+  DueNoShowReservationForSystem,
   ExpenseEntryRecord,
   FnbOrderItem,
   FnbOrderRecord,
@@ -43,6 +44,8 @@ import type {
   NewRoomInput,
   NewRoomTypeInput,
   NewStaffScheduleInput,
+  NewSystemNightAuditChargeInput,
+  NewSystemNoShowApplicationInput,
   NightAuditRunRecord,
   NightlyRateRecord,
   ChargeRecord,
@@ -57,6 +60,7 @@ import type {
   RoomTypeSummary,
   GuestSummary,
   StaffScheduleRecord,
+  SystemNoShowApplicationResult,
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
@@ -1832,6 +1836,87 @@ export class PostgresHotelesRepository implements HotelesRepository {
       [propertyId, businessDate, timezone],
     );
     return Object.fromEntries(rows.map((r) => [r.method, Number(r.total)]));
+  }
+
+  // ---- HotelesRepository: Fase 6b — flujos de sistema de night-audit/no-show
+  // (migrations/023_night_audit_sistema_escritura.sql). EXCLUSIVOS de
+  // `apps/worker/src/jobs/hoteles/{night-audit,no-show}.ts` bajo `session: "sistema"` --
+  // ver el header de esa migración para el análisis completo. ----
+
+  async systemListInHouseReservationsForNightAudit(
+    propertyId: string,
+    businessDate: string,
+  ): Promise<readonly { reservationId: string; folioId: string | null; nightlyPrice: number | null }[]> {
+    const { rows } = await this.db.query<{ out_reservation_id: string; out_folio_id: string | null; out_nightly_price: string | null }>(
+      `select * from hoteles.system_list_in_house_reservations_for_night_audit($1, $2::date);`,
+      [propertyId, businessDate],
+    );
+    return rows.map((r) => ({
+      reservationId: r.out_reservation_id,
+      folioId: r.out_folio_id,
+      nightlyPrice: r.out_nightly_price == null ? null : Number(r.out_nightly_price),
+    }));
+  }
+
+  async systemLoadTaxConfig(propertyId: string): Promise<TaxConfigRecord> {
+    const { rows } = await this.db.query<{ out_iva_rate: string; out_ish_rate: string; out_discount_threshold: string }>(
+      `select * from hoteles.system_load_tax_config($1);`,
+      [propertyId],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`No hay hoteles.tax_config configurado para property "${propertyId}".`);
+    return { ivaRate: Number(row.out_iva_rate), ishRate: Number(row.out_ish_rate), discountThreshold: Number(row.out_discount_threshold) };
+  }
+
+  async systemSumChargesByConceptForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>> {
+    const { rows } = await this.db.query<{ out_concept: string; out_total: string }>(
+      `select * from hoteles.system_sum_charges_by_concept_for_business_date($1, $2::date, $3);`,
+      [propertyId, businessDate, timezone],
+    );
+    return Object.fromEntries(rows.map((r) => [r.out_concept, Number(r.out_total)]));
+  }
+
+  async systemSumPaymentsByMethodForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>> {
+    const { rows } = await this.db.query<{ out_method: string; out_total: string }>(
+      `select * from hoteles.system_sum_payments_by_method_for_business_date($1, $2::date, $3);`,
+      [propertyId, businessDate, timezone],
+    );
+    return Object.fromEntries(rows.map((r) => [r.out_method, Number(r.out_total)]));
+  }
+
+  async systemPostNightAuditCharge(input: NewSystemNightAuditChargeInput): Promise<{ id: string; createdAt: string; isNew: boolean }> {
+    const { rows } = await this.db.query<{ out_id: string; out_created_at: string; out_is_new: boolean }>(
+      `select * from hoteles.system_post_night_audit_charge($1, $2, $3, $4, $5::date, $6, $7);`,
+      [input.organizationId, input.propertyId, input.reservationId, input.folioId, input.businessDate, input.netAmount, input.taxAmount],
+    );
+    const row = rows[0];
+    if (!row) throw new Error(`systemPostNightAuditCharge: la función no devolvió fila (reserva=${input.reservationId}).`);
+    return { id: row.out_id, createdAt: row.out_created_at, isNew: row.out_is_new };
+  }
+
+  async systemFindDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly DueNoShowReservationForSystem[]> {
+    const { rows } = await this.db.query<{
+      out_reservation_id: string;
+      out_check_in_date: string;
+      out_check_out_date: string;
+      out_total_amount: string;
+    }>(`select * from hoteles.system_find_due_no_show_reservations($1, $2::date);`, [propertyId, asOfDate]);
+    return rows.map((r) => ({
+      reservationId: r.out_reservation_id,
+      checkInDate: r.out_check_in_date,
+      checkOutDate: r.out_check_out_date,
+      totalAmount: Number(r.out_total_amount),
+    }));
+  }
+
+  async systemApplyNoShow(input: NewSystemNoShowApplicationInput): Promise<SystemNoShowApplicationResult | null> {
+    const { rows } = await this.db.query<{ out_folio_id: string; out_charge_id: string; out_charge_created_at: string }>(
+      `select * from hoteles.system_apply_no_show($1, $2, $3, $4, $5);`,
+      [input.organizationId, input.propertyId, input.reservationId, input.netAmount, input.taxAmount],
+    );
+    const row = rows[0];
+    if (!row) return null; // carrera perdida: la reserva ya no estaba en 'confirmada'.
+    return { folioId: row.out_folio_id, chargeId: row.out_charge_id, chargeCreatedAt: row.out_charge_created_at };
   }
 
   // ---- HotelesRepository: Fase 6 — REQ-HK-011 tickets de mantenimiento ----

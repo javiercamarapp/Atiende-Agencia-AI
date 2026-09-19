@@ -4,7 +4,7 @@
 // núcleo compartido, igual patrón que hoteles apps/api/src/routes/auth.ts").
 //
 // Mismo patrón dual de adaptador que ya usa `@atiende/core-conversation`
-// (`InMemoryStateStore`/`PostgresStateStore` implementando el mismo `StateStore`):
+// (`InMemoryLockStore`/`RedisLockStore` implementando el mismo `LockStore`):
 // un puerto TS explícito en vez de exponer `TenantDbSession.query(sql, params)` crudo
 // en cada caller, para que la lógica de negocio (issueSession, etc.) se pruebe con un
 // adaptador real en memoria sin requerir Postgres — packages/db no tiene todavía
