@@ -15,6 +15,7 @@
 // nunca debe tumbar la lectura de crons o de prospectos -- se convierte en
 // `null` para esa sección, que `combinarDiarioAgregados` (puro) transforma en
 // "no se pudo leer" (nunca en "todo en cero").
+import { isUndefinedFunctionError } from "@atiende/db";
 import type { AppDeps } from "../deps.ts";
 import { combinarDiarioAgregados, fechaAyerMexico, PROSPECTOS_SIN_MOVIMIENTO_DIAS, TOP_ORGANIZACIONES_GASTO_LLM, umbralSinMovimiento, ventanaDiaMexico, type DiarioAgregados, type FuentesDiarias } from "./motor.ts";
 import { redactarResumenDiario } from "./redaccion.ts";
@@ -92,16 +93,6 @@ export interface ResultadoMigracionPendiente {
 }
 
 export type ResultadoGenerarResumenDiario = ResultadoGeneracion | ResultadoMigracionPendiente;
-
-/** SQLSTATE 42883 (`undefined_function`) -- lo que Postgres real lanza cuando
- *  una función `security definer` referenciada todavía no existe. Mismo
- *  criterio que `packages/db/src/postgres-core-repository.ts::
- *  isUndefinedFunctionError` (PR #149), reimplementado aquí en vez de
- *  importado porque ese archivo es interno de `@atiende/db` y este vive en
- *  `apps/api`. */
-function isUndefinedFunctionError(err: unknown): boolean {
-  return (err as { code?: string } | null)?.code === "42883";
-}
 
 /** Sondeo barato ANTES de redactar con el LLM -- `listCronHeartbeatsForSystem`
  *  es una simple lectura de una sola tabla (`core.cron_heartbeat`, sin

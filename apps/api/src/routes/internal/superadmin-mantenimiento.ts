@@ -14,22 +14,12 @@
 // NUNCA envían nada por sí solas -- solo devuelven filas a `pending`/anotan
 // un prospecto, dejando el trabajo real (enviar/decidir) a los dispatchers y
 // al superadmin humano respectivamente.
+import { isUndefinedFunctionError } from "@atiende/db";
 import { Hono } from "hono";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
-
-/** SQLSTATE 42883 (`undefined_function`) -- lo que Postgres real lanza cuando
- *  `core.desatascar_outbox_colgados_for_system`/`core.marcar_prospectos_sin_
- *  movimiento_for_system` (ambas de `packages/db/migrations/0016_superadmin_
- *  acciones.sql`) todavía no existen. Mismo criterio que `../../resumen-
- *  diario/agregador.ts::isUndefinedFunctionError` (hallazgo B de esta misma
- *  auditoría) -- reimplementado aquí en vez de importado porque son archivos
- *  hermanos sin un módulo compartido de utilidades de error SQL todavía. */
-function isUndefinedFunctionError(err: unknown): boolean {
-  return (err as { code?: string } | null)?.code === "42883";
-}
 
 /** Umbral de "colgado" para el desatasque de outbox -- MISMO valor que usa
  *  `ejecutar_mantenimiento_ahora` (ver `../superadmin-acciones.ts`), un solo

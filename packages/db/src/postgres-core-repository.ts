@@ -45,6 +45,7 @@ import {
   ProspectoNotFoundError,
   StaffInviteInvalidError,
 } from "./core-repository.ts";
+import { isUndefinedFunctionError } from "./sql-errors.ts";
 
 interface StaffUserRawRow {
   readonly id: string;
@@ -286,9 +287,9 @@ function mapOrganizationBillingSuperadmin(row: OrganizationBillingSuperadminRawR
 // driver `pg` (usado por `ManagedPostgresEngine`, ver `managed-postgres-engine.ts`)
 // propaga el error crudo con `.code` = el SQLSTATE, mismo patrón ya usado en este
 // archivo para P0001 (`acceptStaffInvite`/`updateMemberVerticalRole`).
-function isUndefinedFunctionError(err: unknown): boolean {
-  return (err as { code?: string } | null)?.code === "42883";
-}
+// `isUndefinedFunctionError` vive en `./sql-errors.ts` (hallazgo no-bloqueante #5
+// de la auditoría a1: estaba triplicada, copia-pegada, en este archivo y en dos
+// más de `apps/api`).
 
 // Una sola advertencia por proceso (nunca por request -- evitaría inundar logs bajo
 // tráfico real mientras la migración sigue pendiente de aplicar a mano).
