@@ -59,6 +59,7 @@ interface Handlers {
   reservasOk?: boolean;
   tiposHabitacion?: unknown;
   huespedes?: unknown;
+  habitaciones?: unknown;
 }
 
 function stubFetch(handlers: Handlers) {
@@ -66,12 +67,19 @@ function stubFetch(handlers: Handlers) {
     const method = init?.method ?? "GET";
     if (url.includes("/tipos-habitacion")) return jsonResponse(handlers.tiposHabitacion ?? []);
     if (url.includes("/huespedes")) return jsonResponse(handlers.huespedes ?? []);
+    // OJO al orden: "/habitaciones" (fetchRooms, GET .../habitaciones?roomTypeId=)
+    // es distinto de "/tipos-habitacion" arriba -- ya descartado por el `if`
+    // anterior antes de llegar aquí.
+    if (method === "GET" && url.includes("/habitaciones")) return jsonResponse(handlers.habitaciones ?? []);
     if (method === "GET" && /\/reservas$/.test(url)) {
       const list = typeof handlers.reservas === "function" ? handlers.reservas() : (handlers.reservas ?? []);
       return jsonResponse(list, handlers.reservasOk ?? true);
     }
     if (method === "POST" && /\/reservas$/.test(url)) {
       return jsonResponse({ ...RESERVA_BASE, id: "res-nueva" });
+    }
+    if (method === "PATCH" && url.includes("/asignar-habitacion")) {
+      return jsonResponse({ ...RESERVA_BASE, roomId: JSON.parse((init?.body as string) ?? "{}").roomId ?? null });
     }
     if (method === "PATCH" && url.includes("/transicion")) {
       return jsonResponse({ ...RESERVA_BASE, estado: "check_in" });
@@ -154,6 +162,73 @@ describe("ReservasPage (hoteles)", () => {
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({ toStatus: "check_in" });
     expect(rendered.container.textContent).toContain("Check-in");
+  });
+
+  it("'Marcar Check-out' (reserva en_estancia) llama PATCH .../transicion con {toStatus:'check_out'} y recarga la lista", async () => {
+    const EN_ESTANCIA: ReservationSummary = { ...RESERVA_BASE, estado: "en_estancia" };
+    let current: readonly ReservationSummary[] = [EN_ESTANCIA];
+    stubFetch({ reservas: () => current });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const marcarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Marcar Check-out"))!;
+    current = [{ ...EN_ESTANCIA, estado: "check_out" }];
+    await act(async () => {
+      marcarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+
+    const transicionCall = fetchMock.mock.calls.find(([url]) => url.includes("/transicion"));
+    expect(transicionCall).toBeDefined();
+    const [url, init] = transicionCall!;
+    expect(url).toBe("https://api.test/hoteles/prop-1/reservas/res-1/transicion");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({ toStatus: "check_out" });
+    // Tras recargar, la reserva ya viene con estado `check_out` real -- el botón
+    // de la SIGUIENTE transición genérica ("Marcar Cerrada") reemplaza a "Marcar
+    // Check-out" (NEXT_GENERIC_STATUS: check_out -> cerrada), evidencia de que sí
+    // se releyó la lista y no solo se quedó con el estado optimista del click.
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Marcar Check-out"))).toBe(false);
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.includes("Marcar Cerrada"))).toBe(true);
+  });
+
+  it("asignar habitación: pide las habitaciones del tipo real y llama PATCH .../asignar-habitacion con {roomId} real", async () => {
+    stubFetch({
+      reservas: [RESERVA_BASE],
+      habitaciones: [{ id: "hab-9", codigo: "101", estado: "disponible", roomTypeId: "rt-1" }],
+    });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const asignarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Asignar habitación"))!;
+    await act(async () => {
+      asignarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+
+    // fetchRooms real: GET .../hoteles/prop-1/habitaciones?roomTypeId=rt-1 (el
+    // roomTypeId de la reserva, no uno inventado).
+    const habitacionesCall = fetchMock.mock.calls.find(([url]) => url.includes("/habitaciones?roomTypeId="));
+    expect(habitacionesCall).toBeDefined();
+    expect(habitacionesCall![0]).toBe("https://api.test/hoteles/prop-1/habitaciones?roomTypeId=rt-1");
+
+    const select = rendered.container.querySelector("select") as HTMLSelectElement;
+    changeValue(select, "hab-9");
+    const confirmarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Confirmar asignación"))!;
+    await act(async () => {
+      confirmarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+
+    const asignarCall = fetchMock.mock.calls.find(([url]) => url.includes("/asignar-habitacion"));
+    expect(asignarCall).toBeDefined();
+    const [url, init] = asignarCall!;
+    expect(url).toBe("https://api.test/hoteles/prop-1/reservas/res-1/asignar-habitacion");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({ roomId: "hab-9" });
   });
 
   it("cancelar reserva: abre el AlertDialog (no cancela de inmediato) y solo al confirmar llama POST .../cancelar", async () => {
