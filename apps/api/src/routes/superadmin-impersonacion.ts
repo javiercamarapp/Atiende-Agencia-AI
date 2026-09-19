@@ -6,25 +6,29 @@
 //
 // AUTORIZACIÓN: dos capas independientes, igual criterio que el resto del
 // back office de plataforma (`superadmin.ts`/`superadmin-break-glass.ts`):
-//   1. Aquí: `requireAdminAccess` de `@atiende/core-authz` (admin-middleware,
-//      la pieza que esta migración también conecta) -- audita CADA intento
+//   1. `requireAdminAccess` de `@atiende/core-authz` (admin-middleware, la
+//      pieza que esta migración también conecta) -- audita CADA intento
 //      denegado (`InMemoryAuditSink`) y aplica rate-limit real
-//      (`InMemoryRateLimiter`) a los intentos denegados por actor+ruta. El
-//      `platformRole` que lee es SINTÉTICO ("owner" si `core.is_platform_
-//      superadmin`, `undefined` si no) -- `PlatformRole` de `@atiende/
-//      core-tenancy` (owner/admin/member/viewer) es un rol DENTRO de una
-//      organización; un superadmin de plataforma no pertenece a ninguna por
-//      diseño, así que no hay un `PlatformRole` "real" que leer. Se documenta
-//      aquí, en el PR y en `knownGaps`: `requireOrganizationMembership()` (la
-//      variante que sí lee `core.membership`) NO se usa -- no aplica a este
-//      actor.
+//      (`InMemoryRateLimiter`) a los intentos denegados por actor+ruta.
+//      MONTADO EN `routes/superadmin.ts`, NO aquí (ver el comentario largo de
+//      ese archivo): Hono trata `app.use("/superadmin/*", mw)` como un
+//      patrón que matchea TODA ruta bajo `/superadmin/` en la app compuesta,
+//      no solo las de su propio archivo, y `superadmin.ts` se monta ANTES
+//      que este router en `apps/api/src/app.ts` -- montar aquí una SEGUNDA
+//      copia de `authMiddleware`/`requireAdminAccess` sería, en el mejor
+//      caso, trabajo redundante (la primera copia ya decidió) y, en el peor
+//      (como pasaba antes de esta corrección), código MUERTO: la rama de
+//      denegación de la copia de este archivo nunca se ejecutaba porque la
+//      de `superadmin.ts` ya había cortado la cadena con su propio 403
+//      antes de llegar aquí -- verificado con un test que solo comprobaba el
+//      status 403 sin distinguir qué middleware lo produjo. El
+//      `platformRole` sintético ("owner" si `core.is_platform_superadmin`,
+//      `undefined` si no) se resuelve una sola vez, en `superadmin.ts`.
 //   2. Dentro de cada función SQL (`core.start_impersonation_session`/etc.,
 //      ver `0020_superadmin_impersonacion.sql`): la autoridad REAL, nunca
 //      confiada solo a esta capa.
 import { Hono } from "hono";
-import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { InMemoryAuditSink, InMemoryRateLimiter, requireAdminAccess } from "@atiende/core-authz";
 import {
   ImpersonationConflictError,
   ImpersonationForbiddenError,
@@ -32,16 +36,10 @@ import {
   ImpersonationReasonInvalidError,
   type ImpersonationAuditEntryRow,
   type ImpersonationSessionRow,
+  type ImpersonationSessionWithActiveRow,
 } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
-
-// Instancias por-proceso, compartidas por TODA la superficie de esta ruta --
-// mismo criterio que `requireAdminAccess` documenta en su propio comentario
-// de cabecera (un bucket/sink por actor+ruta, defensa en profundidad de UN
-// proceso). 30 intentos denegados / 5 min por actor+ruta antes de 429.
-const impersonacionAudit = new InMemoryAuditSink();
-const impersonacionRateLimiter = new InMemoryRateLimiter({ capacity: 30, refillPerSecond: 30 / 300 });
 
 const MENSAJE_NO_MIGRADO = "La impersonación de superadmin todavía no está disponible en esta base (migración 0020 pendiente de aplicar).";
 
@@ -50,6 +48,12 @@ interface IniciarBody {
   readonly reason?: unknown;
 }
 
+// `activa` para start/end/getActiveSession: estas 3 lecturas YA están
+// filtradas en SQL a sesiones genuinamente vigentes (`expires_at > now()` Y
+// sin evento `end`) -- `core.start_impersonation_session` acaba de crearla,
+// `core.get_active_impersonation_session_for_superadmin` solo devuelve fila
+// si sigue activa. `expiresAtMs > nowMs` aquí es un cálculo REDUNDANTE
+// (siempre true para estas 3), nunca la fuente de verdad.
 function serializeSession(s: ImpersonationSessionRow, nowMs: number = Date.now()) {
   return {
     id: s.id,
@@ -60,6 +64,28 @@ function serializeSession(s: ImpersonationSessionRow, nowMs: number = Date.now()
     expiresAtMs: s.expiresAtMs,
     activa: s.expiresAtMs > nowMs,
     remainingMs: Math.max(0, s.expiresAtMs - nowMs),
+  };
+}
+
+// GET /superadmin/impersonacion/sesiones (oversight de plataforma, TODAS las
+// sesiones): a diferencia de `serializeSession` de arriba, aquí NO hay
+// filtro SQL previo que garantice "vigente" -- la lista incluye sesiones ya
+// terminadas o vencidas a propósito (es la bitácora de oversight). Por eso
+// `active` viene YA calculado en SQL (`core.list_impersonation_sessions_for_
+// superadmin`, ver la migración: `expires_at > now()` Y sin evento `end`) --
+// nunca `expiresAtMs > Date.now()` en TS, que ignoraría un `end` explícito y
+// mostraría "Activa" para una sesión ya cerrada hasta que expirara sola
+// (bug real corregido en esta revisión, ver PR).
+function serializeSessionListItem(s: ImpersonationSessionWithActiveRow) {
+  return {
+    id: s.id,
+    organizationId: s.organizationId,
+    reason: s.reason,
+    actorEmail: s.actorEmail,
+    startedAtMs: s.startedAtMs,
+    expiresAtMs: s.expiresAtMs,
+    activa: s.active,
+    remainingMs: Math.max(0, s.expiresAtMs - Date.now()),
   };
 }
 
@@ -81,20 +107,10 @@ function serializeAuditEntry(e: ImpersonationAuditEntryRow) {
 export function superadminImpersonacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
-  app.use("/superadmin/impersonacion/*", authMiddleware(deps.env));
-  app.use("/superadmin/impersonacion/*", async (c, next) => {
-    const isSuperadmin = await deps.coreRepo.isPlatformSuperadmin(c.get("userId"));
-    c.set("platformRole", isSuperadmin ? "owner" : undefined);
-    await next();
-  });
-  app.use(
-    "/superadmin/impersonacion/*",
-    requireAdminAccess({
-      allowedRoles: ["owner"],
-      audit: impersonacionAudit,
-      rateLimiter: impersonacionRateLimiter,
-    }),
-  );
+  // Autenticación + gateo de admin-middleware (audit-on-denial + rate-limit
+  // reales) ya corrieron para CUALQUIER `/superadmin/*`, incluida esta ruta
+  // -- ver el comentario de cabecera de este archivo y el de
+  // `routes/superadmin.ts`. `c.get("userId")` ya está disponible aquí.
 
   // Iniciar una sesión -- organización objetivo + motivo obligatorio (>=20
   // caracteres). Duración (15 min) y expiración SIEMPRE calculadas por
@@ -166,7 +182,7 @@ export function superadminImpersonacionRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     if (result.availability === "not_migrated") {
       return c.json({ available: false, sessions: [] });
     }
-    return c.json({ available: true, sessions: result.sessions.map((s) => serializeSession(s)) });
+    return c.json({ available: true, sessions: result.sessions.map((s) => serializeSessionListItem(s)) });
   });
 
   app.get("/superadmin/impersonacion/bitacora", async (c) => {
