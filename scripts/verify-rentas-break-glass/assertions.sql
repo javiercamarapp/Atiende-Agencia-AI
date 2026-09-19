@@ -252,26 +252,27 @@ rollback;
 -- ═══════════════════════════════════════════════════════════════════════════
 
 \echo '=== 20. break_glass_access_log: UPDATE está bloqueado incluso para service_role ==='
--- as should_fail (el trigger de bloqueo, no un alias -- UPDATE no admite `as`
--- sobre la sentencia completa; este comentario es lo que el runner automático
--- detecta para marcar el escenario como "debe terminar en ERROR").
 begin;
+-- as should_fail (el trigger de bloqueo, no un alias -- UPDATE no admite `as`
+-- sobre la sentencia completa; este comentario, DENTRO del bloque
+-- begin;/rollback;, es lo que el runner automático detecta para marcar el
+-- escenario como "debe terminar en ERROR").
 set local role service_role;
 update rentas.break_glass_access_log set reason = 'alterado' where id = '00000000-0000-0000-0000-0000000b6300';
 rollback;
 
 \echo '=== 21. break_glass_access_log: DELETE está bloqueado incluso para service_role ==='
+begin;
 -- as should_fail (ver nota del escenario 20 -- mismo motivo, DELETE tampoco
 -- admite `as` sobre la sentencia completa).
-begin;
 set local role service_role;
 delete from rentas.break_glass_access_log where id = '00000000-0000-0000-0000-0000000b6300';
 rollback;
 
 \echo '=== 22. break_glass_access_log: un staff con membership real (no superadmin) NO puede insertar a nombre del superadmin ==='
+begin;
 -- as should_fail (INSERT no admite `as alias` al final de VALUES(...); este
 -- comentario es lo que el runner automático detecta).
-begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b6103', true);
 insert into rentas.break_glass_access_log (actor_user_id, actor_email, organization_id, reason, resource_type, resource_scope, result_summary)
