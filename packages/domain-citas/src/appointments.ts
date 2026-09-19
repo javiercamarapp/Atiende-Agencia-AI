@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { computeAvailableSlots, isSlotWithinAvailability, zonedDateStr, zonedTimeToUtc } from "./availability.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentForbiddenError, AppointmentNotFoundError, AppointmentValidationError } from "./errors.ts";
-import type { CitasRepository } from "./repository.ts";
+import type { CitasRepository, RetryCalendarSyncResult } from "./repository.ts";
 import type { AppointmentRecord, CancelAppointmentPayload, CreateAppointmentPayload, ProviderRecord, ReassignAppointmentPayload, RescheduleAppointmentPayload, ServiceRecord, Slot } from "./types.ts";
 
 /**
@@ -510,6 +510,32 @@ export async function markAppointmentNoShowFromPanel(repo: CitasRepository, orga
   const validated = validateCancelAppointmentPayload({ organizationId, appointmentId });
   const result = await repo.markAppointmentNoShowFromPanel(validated.organizationId, validated.appointmentId, actorUserId);
   return resolveNoShowOutcome(result);
+}
+
+/** Fase 6 §2 (seguimiento) — "reintentar sincronización" desde el panel: solo
+ * transiciona una cita que el motor dejó en `google_sync_status = 'invalid'`
+ * (rechazo permanente de validación, ver calendar-sync.ts) de vuelta a `pending`,
+ * lista para que el próximo best-effort/cron la recoja con los datos ya
+ * corregidos (p.ej. el correo del cliente, ver `updateCustomerEmailFromPanel`).
+ * Cualquier otro `google_sync_status` es un conflicto real — reintentar una cita
+ * `synced`/`pending`/`skipped`/`deleted` no tiene sentido, y una en `error`
+ * (agotó backoff por un fallo transitorio, no de validación) se resuelve sola en
+ * la siguiente corrida del cron, nunca con este botón. */
+function resolveRetryCalendarSyncOutcome(result: RetryCalendarSyncResult): AppointmentRecord {
+  if (result.outcome === "not_found") throw new AppointmentNotFoundError("Cita no encontrada");
+  if (result.outcome === "conflict_invalid_status") {
+    throw new AppointmentConflictError(`Esta cita no tiene una sincronización con problema que reintentar (estado actual: '${result.status}').`);
+  }
+  if (result.outcome === "forbidden_out_of_scope") {
+    throw new AppointmentForbiddenError(result.message ?? "No tienes acceso a la sucursal de esta cita.");
+  }
+  return result.appointment;
+}
+
+export async function retryAppointmentCalendarSyncFromPanel(repo: CitasRepository, organizationId: string, appointmentId: string, actorUserId: string): Promise<AppointmentRecord> {
+  const validated = validateCancelAppointmentPayload({ organizationId, appointmentId });
+  const result = await repo.retryAppointmentCalendarSyncFromPanel(validated.organizationId, validated.appointmentId, actorUserId);
+  return resolveRetryCalendarSyncOutcome(result);
 }
 
 // ============================================================================

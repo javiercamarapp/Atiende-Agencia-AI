@@ -90,6 +90,33 @@ export type NoShowResult =
   | { readonly outcome: "conflict_invalid_status"; readonly status: string }
   | { readonly outcome: "forbidden_out_of_scope"; readonly message?: string };
 
+/** Fase 6 §2 (seguimiento) — "reintentar sincronización" desde el panel: solo
+ * tiene sentido sobre una cita que el motor YA marcó `google_sync_status =
+ * 'invalid'` (rechazo permanente de validación, ver `GoogleSyncStatus`) —
+ * cualquier otro estado es `conflict_invalid_status` (una cita `pending` ya se va
+ * a reintentar sola; una `synced`/`skipped`/`error`/`deleted` no tiene nada que
+ * reintentar aquí). Regresa la cita a `pending`/attempts=0 para que el próximo
+ * best-effort (disparado por el caller HTTP justo después, mismo patrón que
+ * crear/cancelar/reagendar) la recoja de inmediato con los datos ya corregidos. */
+export type RetryCalendarSyncResult =
+  | { readonly outcome: "retried"; readonly appointment: AppointmentRecord }
+  | { readonly outcome: "not_found" }
+  | { readonly outcome: "conflict_invalid_status"; readonly status: GoogleSyncStatus }
+  | { readonly outcome: "forbidden_out_of_scope"; readonly message?: string };
+
+/** Fase 6 §2 (seguimiento) — resumen de sincronizaciones con problema de UN
+ * proveedor, para la advertencia ámbar de "Calendarios conectados" (nunca marca
+ * la cuenta entera en rojo por esto — ver diseño en calendar-sync.ts: un rechazo
+ * de validación de UNA cita no dice nada sobre si la credencial sirve). `count` =
+ * número de citas de este proveedor actualmente en `google_sync_status =
+ * 'invalid'` (se autolimpia solo: en cuanto el staff corrige el dato y reintenta,
+ * la cita sale de 'invalid' y deja de contar) — `lastReason` es el motivo
+ * normalizado y saneado (ver `sanitizeProviderSyncReason`) de la más reciente. */
+export interface CalendarSyncIssuesSummary {
+  readonly count: number;
+  readonly lastReason: string | null;
+}
+
 /** Fase 12 (hallazgo de auditoría ALTO, "Staff no puede crear citas manualmente
  * desde la Agenda"): alta real de una cita desde el panel — `citas.
  * create_appointment_from_panel` (migrations/015). A diferencia de
@@ -173,6 +200,15 @@ export interface AppointmentSyncRow {
   readonly serviceName: string | null;
   readonly customerName: string | null;
   readonly customerPhone: string | null;
+  /** Fase 6 §2 (seguimiento) — correo OPCIONAL del cliente (`citas.customers.email`,
+   * columna que ya existía desde Fase 1 — nunca se le mandaba al motor de
+   * sincronización). Cuando viene, `syncOneAppointmentRow` lo manda como
+   * `attendeeEmail` al puerto genérico (Cal.com/CalDAV lo usan de verdad; Google lo
+   * descarta a propósito, ver `GoogleCalendarSyncAdapter`) — cuando es `null` y
+   * Cal.com rechaza el booking por eso, el motor lo clasifica como rechazo
+   * permanente de validación con un motivo específico, nunca lo reintenta a
+   * ciegas. */
+  readonly customerEmail: string | null;
   readonly startsAt: string;
   readonly endsAt: string;
   readonly notes: string | null;
@@ -436,6 +472,13 @@ export interface CitasRepository {
    * `listActiveProviders` (Fase 2 §1.2/§1.3): "listar lo que el dominio ya
    * calcula", nunca decide nada nuevo sobre el cliente. */
   listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage>;
+  /** Fase 6 §2 (seguimiento) — captura/edición del correo OPCIONAL de un cliente
+   * YA existente desde la ficha de Clientes del panel (`citas.customers.email`
+   * existía desde Fase 1 — nunca era editable después de la primera reserva). NUNCA
+   * lo hace obligatorio: `email: null` explícito lo quita, un formato inválido
+   * lanza `AppointmentValidationError` en la capa de negocio (appointments.ts), no
+   * aquí. `null` de retorno = el cliente no existe en esta organización. */
+  updateCustomerEmailFromPanel(organizationId: string, customerId: string, email: string | null): Promise<CustomerRecord | null>;
 
   // ---- Flujo 1: crear cita ----
   createAppointmentIdempotent(input: NewAppointmentInput, dedupeFingerprint: string, idempotencyKey: string | null): Promise<CreateAppointmentResult>;
@@ -533,6 +576,30 @@ export interface CitasRepository {
   markAppointmentGoogleSyncSkipped(appointmentId: string): Promise<void>;
   markAppointmentGoogleSyncRetry(appointmentId: string, attempts: number, error: string, nextRetryAtIso: string): Promise<void>;
   markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void>;
+  /** Fase 6 §2 (seguimiento) — rechazo PERMANENTE de validación (ver
+   * `GoogleSyncStatus.invalid`): a diferencia de `markAppointmentGoogleSyncExhausted`
+   * (backoff agotado, un reintento SÍ podía haber funcionado), esto nunca va a
+   * funcionar solo — dispara de inmediato sin esperar `MAX_SYNC_ATTEMPTS`, igual
+   * que `markAppointmentGoogleSyncExhausted` hace con `invalid_grant`. `reason` ya
+   * viene saneado/truncado por el caller (`sanitizeProviderSyncReason`, nunca el
+   * cuerpo crudo de la respuesta del proveedor). Nunca toca la cuenta del
+   * proveedor -- la credencial sigue sirviendo, ver diseño de la cabecera de
+   * calendar-sync.ts. */
+  markAppointmentGoogleSyncInvalid(appointmentId: string, attempts: number, reason: string): Promise<void>;
+  /** Fase 6 §2 (seguimiento) — botón "reintentar sincronización" del panel: solo
+   * transiciona una cita que está en `google_sync_status = 'invalid'` de vuelta a
+   * `pending`/attempts=0 (ver `RetryCalendarSyncResult`); cualquier otro estado es
+   * `conflict_invalid_status`. Property-scoped igual que confirmar/completar/
+   * no-show (`forbidden_out_of_scope` si el staff no cubre la sucursal de esta
+   * cita). */
+  retryAppointmentCalendarSyncFromPanel(organizationId: string, appointmentId: string, actorUserId: string): Promise<RetryCalendarSyncResult>;
+  /** Fase 6 §2 (seguimiento) — resumen de sincronizaciones con problema de un
+   * proveedor para la advertencia ámbar de "Calendarios conectados" (ver
+   * `CalendarSyncIssuesSummary`): cuenta las citas de ESTE proveedor actualmente
+   * en `google_sync_status = 'invalid'`, sin importar qué plataforma (Google/
+   * Cal.com/CalDAV) tenga conectada -- un proveedor normalmente solo conecta una,
+   * ver calendar-sync-resolver-factory.ts. */
+  loadProviderCalendarSyncIssues(providerId: string): Promise<CalendarSyncIssuesSummary>;
 
   // ---- Flujo 3: recordatorio/confirmación ----
   listActiveOrganizations(): Promise<readonly { id: string; timezone: string }[]>;

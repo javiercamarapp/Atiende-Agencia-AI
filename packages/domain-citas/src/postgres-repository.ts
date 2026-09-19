@@ -32,6 +32,7 @@ import type {
 import type {
   AppointmentSyncRow,
   CalendarProviderSyncStatus,
+  CalendarSyncIssuesSummary,
   CancelResult,
   CitasRepository,
   CompleteResult,
@@ -55,6 +56,7 @@ import type {
   ReassignResult,
   RescheduleResult,
   ReminderCandidateRow,
+  RetryCalendarSyncResult,
   TenantConfigPatch,
   TenantConfigRecord,
   WaitlistCandidateRow,
@@ -534,6 +536,20 @@ export class PostgresCitasRepository implements CitasRepository {
     return { items, total, nextOffset };
   }
 
+  /** Fase 6 §2 (seguimiento) — `citas.customers` solo tiene policy RLS de SELECT
+   * para `authenticated` (ver 001_citas_schema.sql); igual que crear una cita
+   * desde el panel, la escritura pasa por una RPC `security definer` que verifica
+   * membership de organización ANTES de tocar la fila (`update_customer_email_
+   * from_panel`, ver migrations/019). */
+  async updateCustomerEmailFromPanel(organizationId: string, customerId: string, email: string | null): Promise<CustomerRecord | null> {
+    const { rows } = await this.db.query<{ id: string; organization_id: string; full_name: string; phone: string; email: string | null }>(
+      `select citas.update_customer_email_from_panel($1, $2, $3) as result;`,
+      [organizationId, customerId, email],
+    );
+    const result = (rows[0] as unknown as { result: { id: string; organization_id: string; full_name: string; phone: string; email: string | null } | null } | undefined)?.result;
+    return result ? { id: result.id, organizationId: result.organization_id, fullName: result.full_name, phone: result.phone, email: result.email } : null;
+  }
+
   async listActiveServices(organizationId: string): Promise<readonly ServiceRecord[]> {
     const { rows } = await this.db.query<ServiceRow>(
       `select id, organization_id, name, duration_minutes, buffer_minutes_before, buffer_minutes_after, price_cents, is_active
@@ -973,7 +989,7 @@ export class PostgresCitasRepository implements CitasRepository {
 
   private static readonly APPOINTMENT_SYNC_ROW_SELECT = `select
        a.id, a.organization_id, a.provider_id,
-       s.name as service_name, c.full_name as customer_name, c.phone as customer_phone,
+       s.name as service_name, c.full_name as customer_name, c.phone as customer_phone, c.email as customer_email,
        a.starts_at, a.ends_at, a.notes,
        coalesce(pc.timezone, tc.default_timezone, 'America/Mexico_City') as time_zone,
        a.google_event_id, a.google_sync_status, a.google_sync_attempts
@@ -991,6 +1007,7 @@ export class PostgresCitasRepository implements CitasRepository {
     service_name: string | null;
     customer_name: string | null;
     customer_phone: string | null;
+    customer_email: string | null;
     starts_at: string;
     ends_at: string;
     notes: string | null;
@@ -1006,6 +1023,7 @@ export class PostgresCitasRepository implements CitasRepository {
       serviceName: row.service_name,
       customerName: row.customer_name,
       customerPhone: row.customer_phone,
+      customerEmail: row.customer_email,
       startsAt: row.starts_at,
       endsAt: row.ends_at,
       notes: row.notes,
@@ -1052,6 +1070,48 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void> {
     await this.db.query(`update citas.appointments set google_sync_status = 'error', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, error]);
+  }
+
+  async markAppointmentGoogleSyncInvalid(appointmentId: string, attempts: number, reason: string): Promise<void> {
+    await this.db.query(`update citas.appointments set google_sync_status = 'invalid', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, reason]);
+  }
+
+  /** Fase 6 §2 (seguimiento) — a diferencia de `runCancelRpc`/confirm/complete/
+   * no-show (AT409 se RAISEa y se mapea a `conflict_invalid_status` con un status
+   * fijo, ver esos métodos), `retry_appointment_calendar_sync_from_panel`
+   * (migrations/019) NUNCA raisea por conflicto de estado -- devuelve
+   * `{retried, appointment}` siempre, para que `conflict_invalid_status.status`
+   * lleve el `google_sync_status` REAL de la cita en vez de un valor adivinado.
+   * AT404/AT403 sí se raisean (cita no encontrada / staff fuera de la sucursal),
+   * mismo criterio que el resto del panel. */
+  async retryAppointmentCalendarSyncFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<RetryCalendarSyncResult> {
+    try {
+      const { rows } = await this.db.query<{ result: { retried: boolean; appointment: AppointmentRow } }>(`select citas.retry_appointment_calendar_sync_from_panel($1, $2) as result;`, [organizationId, appointmentId]);
+      const result = (rows[0] as unknown as { result: { retried: boolean; appointment: AppointmentRow } }).result;
+      const appointment = mapAppointment(result.appointment);
+      if (!result.retried) return { outcome: "conflict_invalid_status", status: appointment.googleSyncStatus };
+      return { outcome: "retried", appointment };
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
+      if (code === "AT404") return { outcome: "not_found" };
+      if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
+      throw err;
+    }
+  }
+
+  /** Fase 6 §2 (seguimiento) — ver `CalendarSyncIssuesSummary` (repository.ts) para
+   * por qué esto cuenta el subconjunto ACTUAL en `invalid` (nunca un rango de
+   * fechas fijo: se autolimpia solo cuando el staff corrige y reintenta). */
+  async loadProviderCalendarSyncIssues(providerId: string): Promise<CalendarSyncIssuesSummary> {
+    const { rows } = await this.db.query<{ count: string; last_reason: string | null }>(
+      `select count(*)::text as count,
+              (select google_sync_error from citas.appointments where provider_id = $1 and google_sync_status = 'invalid' order by created_at desc limit 1) as last_reason
+         from citas.appointments
+        where provider_id = $1 and google_sync_status = 'invalid';`,
+      [providerId],
+    );
+    const row = rows[0];
+    return { count: row ? Number(row.count) : 0, lastReason: row?.last_reason ?? null };
   }
 
   // ============================================================================

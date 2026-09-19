@@ -3,7 +3,8 @@
 // domain-restaurantes/tests/orders.spec.ts.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { cancelAppointment, cancelAppointmentFromPanel, completeAppointmentFromPanel, confirmAppointmentFromPanel, createAppointment, markAppointmentNoShowFromPanel, reassignAppointment, rescheduleAppointment } from "../src/appointments.ts";
+import { cancelAppointment, cancelAppointmentFromPanel, completeAppointmentFromPanel, confirmAppointmentFromPanel, createAppointment, markAppointmentNoShowFromPanel, reassignAppointment, rescheduleAppointment, retryAppointmentCalendarSyncFromPanel } from "../src/appointments.ts";
+import { updateCustomerEmailFromPanel } from "../src/customers.ts";
 import { AppointmentAlternativesError, AppointmentConflictError, AppointmentNotFoundError, AppointmentValidationError } from "../src/errors.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { buildCitasFixture } from "./fixtures.ts";
@@ -199,6 +200,57 @@ describe("confirmAppointmentFromPanel / completeAppointmentFromPanel / markAppoi
     await markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
     const rebooked = await createAppointment(fixture.repo, basePayload(fixture, { customerPhone: "9998887777" }));
     expect(rebooked.startsAt).toBe(MONDAY_10AM_MERIDA);
+  });
+});
+
+// Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — el motor de
+// sincronización (calendar-sync.spec.ts/calendar-sync-multi-provider.spec.ts)
+// prueba el camino real 'invalid' -> reintentar -> 'synced'. Aquí solo se prueba
+// la validación/los bordes de la función del panel en sí (nunca sincroniza de
+// verdad).
+describe("retryAppointmentCalendarSyncFromPanel", () => {
+  it("una cita inexistente nunca se encuentra (scope real, nunca solo por id)", async () => {
+    const fixture = buildCitasFixture();
+    await expect(retryAppointmentCalendarSyncFromPanel(fixture.repo, fixture.organizationId, randomUUID(), randomUUID())).rejects.toThrow(AppointmentNotFoundError);
+  });
+
+  it("una cita recién creada ('pending', nunca tocó el motor) no tiene nada que reintentar -- conflicto real", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await expect(retryAppointmentCalendarSyncFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID())).rejects.toThrow(AppointmentConflictError);
+  });
+});
+
+// Fase 6 §2 (seguimiento) — `citas.customers.email` existía desde Fase 1
+// (nunca editable después de la primera reserva); esto cierra ese hueco. NUNCA
+// obligatorio: `null` explícito lo quita.
+describe("updateCustomerEmailFromPanel", () => {
+  it("agrega el correo a un cliente que no tenía", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    const updated = await updateCustomerEmailFromPanel(fixture.repo, fixture.organizationId, appointment.customerId, "ana.torres@example.test");
+    expect(updated.email).toBe("ana.torres@example.test");
+  });
+
+  it("email: null explícito lo quita -- nunca es obligatorio", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture, { customerEmail: "viejo@example.test" }));
+    const cleared = await updateCustomerEmailFromPanel(fixture.repo, fixture.organizationId, appointment.customerId, null);
+    expect(cleared.email).toBeNull();
+  });
+
+  it("un formato de correo inválido se rechaza (400), nunca se guarda a medias", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await expect(updateCustomerEmailFromPanel(fixture.repo, fixture.organizationId, appointment.customerId, "no-es-un-correo")).rejects.toThrow(AppointmentValidationError);
+    const customer = await fixture.repo.findCustomerById(fixture.organizationId, appointment.customerId);
+    expect(customer!.email).toBeNull();
+  });
+
+  it("un customerId de OTRA organización nunca se encuentra (scope real)", async () => {
+    const fixture = buildCitasFixture();
+    const appointment = await createAppointment(fixture.repo, basePayload(fixture));
+    await expect(updateCustomerEmailFromPanel(fixture.repo, randomUUID(), appointment.customerId, "ana.torres@example.test")).rejects.toThrow(AppointmentNotFoundError);
   });
 });
 

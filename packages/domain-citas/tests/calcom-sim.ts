@@ -32,6 +32,16 @@ export interface CalComSimEventType {
   slug: string;
   title: string;
   lengthInMinutes: number;
+  /** Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — modela un event type
+   * real de Cal.com configurado para exigir el correo del asistente (Cal.com
+   * soporta campos de reserva personalizados y obligatorios por event type, ver
+   * su documentación de "Booking questions"; `attendee.email` puede ser uno de
+   * ellos según cómo lo configure el profesional en su cuenta). El simulador NO
+   * lo exige por defecto (mismo comportamiento que antes) -- solo cuando una
+   * prueba arma un event type con esto en `true` se puede reproducir, contra el
+   * protocolo HTTP real (headers/rutas/JSON), el 422 real que motivó esta fase:
+   * "Cal.com rechaza un booking por una validación (exige attendeeEmail...)". */
+  requiresAttendeeEmail?: boolean;
 }
 
 export interface CalComSimOptions {
@@ -168,6 +178,12 @@ export class CalComApiSimulator {
       }
       const eventType = this.#eventTypes.find((et) => et.id === body.eventTypeId);
       if (!eventType) return jsonResponse(404, errorEnvelope(`eventTypeId ${body.eventTypeId} no existe`));
+      if (eventType.requiresAttendeeEmail && !body.attendee?.email) {
+        // 422 real -- mismo código que Cal.com usa para "booking question
+        // obligatoria sin responder" -- nunca 400 (eso ya lo cubre la validación
+        // genérica de arriba: start/attendee.name/attendee.timeZone).
+        return jsonResponse(422, errorEnvelope(`attendee.email es requerido para el event type "${eventType.slug}"`));
+      }
       const id = this.#nextBookingId++;
       const uid = `sim-booking-${id}`;
       const start = new Date(body.start);
