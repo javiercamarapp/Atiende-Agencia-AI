@@ -10,6 +10,7 @@ import type { DespachosRepository } from "@atiende/domain-despachos";
 import type { CalendarSyncPort, CanalMensajeria, CanalMensajeriaCodigo, RentasCalendarSyncRepository, RentasMensajeriaRepository, RentasOnboardingRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import type { CustomerLookup, StripeClient } from "@atiende/billing";
 import type { ApiEnv } from "./env.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
@@ -216,4 +217,28 @@ export interface AppDeps {
    *  (apps/api/tests/whatsapp-dispatch.spec.ts) y en producción real
    *  (production/deps.ts, cuando `WHATSAPP_ACCESS_TOKEN` está presente). */
   readonly whatsAppDispatcher?: WhatsAppOutboundDispatcher;
+  /** Suscripción SaaS propia de Atiende a sus organizaciones clientes (auditoría
+   * de 22 rubros, hallazgo P1 #6) -- `@atiende/billing::StripeClient` real
+   * (Checkout Sessions per-seat, ver `production/saas-billing-stripe-port.ts`
+   * para el adaptador `fetch` sin SDK, mismo patrón que
+   * `production/hoteles-payments-port.ts`). `undefined`/`null` cuando
+   * `STRIPE_SECRET_KEY` no está configurada -- `POST /billing/checkout`
+   * responde 503 explícito, NUNCA finge una URL de checkout. Opcional (`?:`,
+   * mismo criterio que `whatsAppDispatcher`) para que ningún fixture existente
+   * de las otras 6 verticales tenga que tocarse solo por agregar este campo. */
+  readonly saasBillingStripeClient?: StripeClient | null;
+  /** Secreto de firma del webhook de Stripe (`whsec_...`, DISTINTO de
+   * `env.stripe.secretKey` -- ver el comentario de `ApiEnv.stripe` en env.ts).
+   * `undefined`/`null` cuando `STRIPE_WEBHOOK_SECRET` no está configurado --
+   * `POST /billing/webhook` responde 503 explícito, NUNCA procesa un evento sin
+   * poder verificar su firma. */
+  readonly saasBillingWebhookSecret?: string | null;
+  /** Adaptador real de `@atiende/billing::CustomerLookup` (consulta el email de
+   * un customer de Stripe) -- usado por `verificarTenantDelWebhook` SOLO en el
+   * primer checkout de un tenant (caso 2 de `tenant-verification.ts`).
+   * `undefined`/`null` = sin credenciales de Stripe configuradas; el webhook
+   * sigue funcionando (esa función ya trata "sin datos para cruzar" como
+   * "no bloquea", ver su comentario de cabecera), solo pierde ese cruce
+   * adicional de defensa en profundidad. */
+  readonly saasBillingCustomerLookup?: CustomerLookup | null;
 }

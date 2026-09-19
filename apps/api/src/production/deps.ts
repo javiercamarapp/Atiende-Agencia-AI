@@ -76,6 +76,7 @@ import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-reposi
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
+import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
@@ -323,6 +324,17 @@ export function buildProductionDeps(): AppDeps {
     rentasOnboardingRepo: createProductionRentasOnboardingRepo(),
     llmGateway,
     whatsAppDispatcher,
+    // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
+    // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
+    // cuanto `STRIPE_SECRET_KEY` esté configurada, `undefined` (503 honesto en
+    // la ruta, ver `routes/billing.ts`) mientras no lo esté. Comparte la MISMA
+    // cuenta de Stripe que `hotelesPaymentsPort` (un solo `STRIPE_SECRET_KEY`,
+    // ver el comentario de cabecera de `hoteles-payments-port.ts`) -- dos
+    // productos distintos de la misma cuenta, nunca dos integraciones
+    // separadas.
+    saasBillingStripeClient: env.stripe.secretKey ? new StripeSaasBillingCheckoutPort(fetch, { secretKey: env.stripe.secretKey }) : undefined,
+    saasBillingCustomerLookup: env.stripe.secretKey ? new StripeSaasBillingCustomerLookup(fetch, { secretKey: env.stripe.secretKey }) : undefined,
+    saasBillingWebhookSecret: env.stripe.webhookSecret,
   };
   return cached;
 }
