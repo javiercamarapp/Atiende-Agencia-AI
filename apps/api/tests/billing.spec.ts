@@ -468,7 +468,10 @@ describe("POST /billing/webhook -- rate limiting real (conversation:inbound-webh
     expect(last!.headers.get("Retry-After")).toBe("60");
   });
 
-  it("sin credenciales de Upstash configuradas (o con Redis caído), el webhook sigue pasando -- fail-open por diseño, nunca bloquea un webhook legítimo de Stripe por un blip del proveedor", async () => {
+  it("con Upstash configurado pero Redis caído a media petición, el webhook sigue pasando -- fail-open por diseño, nunca bloquea un webhook legítimo de Stripe por un blip del proveedor", async () => {
+    // Distinto del caso de abajo ("sin Upstash configurado"): aquí SÍ hay
+    // credenciales, y lo que falla es el `fetch` a Redis -- el camino de
+    // `redis_failure`/`failMode: 'open'` de `endpoint-policy.ts`.
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://fake-redis.upstash.io");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "tok-de-prueba");
     vi.stubGlobal(
@@ -490,6 +493,74 @@ describe("POST /billing/webhook -- rate limiting real (conversation:inbound-webh
     // categoría es ABIERTA), nunca bloquea con 429 ni con 5xx: el resto del
     // handler corre normal (firma válida -> 200 procesado).
     expect(res.status).toBe(200);
+  });
+
+  // Hallazgo de revisión real (ronda r5, no-bloqueante 3 del PR #167): el test
+  // de arriba (pese a su nombre anterior) solo probaba "Redis caído CON
+  // credenciales" -- el caso "sin Upstash configurado en absoluto" (que SÍ
+  // pide el encargo original) es un camino DISTINTO en
+  // `DistributedRateLimiter`: sin `UPSTASH_REDIS_REST_URL`/`_TOKEN`, `fetch`
+  // nunca se llama, y el backend en memoria de ESTA instancia SÍ aplica el
+  // límite (degradación, no ausencia de límite) -- 121 requests siguen dando
+  // 429 en la número 121, exactamente igual que con Redis disponible.
+  it("sin ninguna credencial de Upstash configurada, el backend en memoria SÍ limita -- no es 'pasar sin límite', es degradar a memoria", async () => {
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_rl_sin_upstash", created: Math.floor(Date.now() / 1000), customer: "cus_rl_sin_upstash", tenantId: base.organizationId });
+
+    let last: Response | undefined;
+    for (let i = 0; i < 121; i += 1) {
+      last = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": `t=1,v1=firma-invalida-sin-upstash-${i}` }));
+      if (i < 120) expect(last.status).toBe(401);
+    }
+    expect(last!.status).toBe(429);
+    expect(last!.headers.get("Retry-After")).toBe("60");
+  });
+
+  // Hallazgo de revisión real (ronda r5, bloqueante 1 del PR #167): sin este
+  // fix, `cf-connecting-ip` (falsificable por el cliente, sin Cloudflare real
+  // delante de Vercel) tenía prioridad -- rotarlo en cada request evadía el
+  // límite por completo.
+  it("rotar cf-connecting-ip en cada request NO evade el límite -- el actor real es x-forwarded-for, no un header que el cliente controla", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_rl_cf_spoof", created: Math.floor(Date.now() / 1000), customer: "cus_rl_cf_spoof", tenantId: base.organizationId });
+
+    let last: Response | undefined;
+    for (let i = 0; i < 121; i += 1) {
+      last = await app.request(
+        "/billing/webhook",
+        rawRequestInit(payload, { "stripe-signature": `t=1,v1=firma-invalida-cf-${i}`, "cf-connecting-ip": `10.0.0.${i % 255}`, "x-forwarded-for": "198.51.100.7" }),
+      );
+      if (i < 120) expect(last.status).toBe(401);
+    }
+    expect(last!.status).toBe(429);
+  });
+
+  // Hallazgo de revisión real (ronda r5, bloqueante 2 del PR #167): esta clave
+  // era byte-idéntica a la de `hoteles/cfdi-webhook.ts` -- tráfico NO
+  // autenticado contra /billing/webhook agotaba el bucket que ese webhook
+  // consulta DESPUÉS de verificar su propia firma (tope 60, no 120).
+  it("agotar el límite de /billing/webhook NO agota el bucket de /hoteles/cfdi/webhook (claves distintas pese a compartir categoría e IP)", async () => {
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
+    const app = buildApp(deps);
+    const payload = buildCheckoutCompletedEvent({ id: "evt_rl_cfdi_isolation", created: Math.floor(Date.now() / 1000), customer: "cus_rl_cfdi_isolation", tenantId: base.organizationId });
+
+    for (let i = 0; i < 121; i += 1) {
+      await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": `t=1,v1=firma-invalida-aislamiento-${i}` }));
+    }
+
+    // El bucket de CFDI (tope 60) sigue en cero -- una firma de PAC inválida
+    // sigue respondiendo 401 (firma), nunca 429 (que probaría que el bucket ya
+    // venía agotado por el tráfico de arriba).
+    const cfdiRes = await app.request("/hoteles/cfdi/webhook", rawRequestInit(JSON.stringify({ evento: "x" }), { "x-pac-signature": "firma-invalida" }));
+    expect(cfdiRes.status).not.toBe(429);
   });
 });
 
