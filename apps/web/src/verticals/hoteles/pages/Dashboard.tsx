@@ -56,6 +56,7 @@ import type { MaintenanceTicketSummary } from "../lib/housekeeping-client.ts";
 import { fetchPedidosFnb } from "../lib/pedidos-fnb-client.ts";
 import type { FnbPedido } from "../lib/pedidos-fnb-client.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
+import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 // Mismo conjunto exacto que `PL_ROLES` (domain-hoteles/src/roles.ts) — redeclarado a
@@ -221,7 +222,16 @@ function OperationalSummary({ apiBaseUrl, token, propertyId, orgSlug, role }: Ho
     };
   }, [apiBaseUrl, token, propertyId, showPedidos]);
 
-  const today = isoDate(new Date());
+  // Bug real (revisión de PR #164, "no bloqueante" #4): `isoDate(new Date())` da el día
+  // UTC -- entre las 18:00 y las 23:59 hora de CDMX (00:00-05:59 UTC) eso ya es MAÑANA,
+  // así que las tarjetas "Llegadas"/"Salidas" contaban las reservas de mañana. `today`
+  // aquí compara contra `checkInDate`/`checkOutDate` (columnas `date`, mismo criterio que
+  // `hoteles/pages/Asistencia.tsx::todayIso` tras su fix) -- necesita el día de
+  // calendario del NEGOCIO (`hoyFechaSolo`), no `isoDate`/UTC. Distinto de
+  // `rangeForDays` de arriba: ese sí se queda en UTC A PROPÓSITO (contrato con
+  // `parseDateRange` del servidor para el rango de reporte P&L, ver su comentario de
+  // cabecera) -- no es este bug.
+  const today = hoyFechaSolo();
   const llegadasHoy = reservations?.filter((r) => r.checkInDate === today && (r.estado === "confirmada" || r.estado === "check_in")).length ?? null;
   const salidasHoy = reservations?.filter((r) => r.checkOutDate === today && (r.estado === "en_estancia" || r.estado === "check_out")).length ?? null;
   const enEstancia = reservations?.filter((r) => r.estado === "en_estancia").length ?? null;
