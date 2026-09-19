@@ -165,11 +165,18 @@ export function SuperAdminAccionesPage({ apiBaseUrl, token }: { readonly apiBase
   async function confirmar(intentId: string) {
     setConfirmandoId(intentId);
     try {
-      await fetchJson(apiBaseUrl, token, `/superadmin/acciones/intents/${intentId}/confirmar`, { method: "POST" });
-      toast("Acción confirmada.");
+      // La API responde 200 también cuando la ejecución falló (la función SQL
+      // atrapa el error y guarda estado='failed' + error, sin relanzar) -- hay
+      // que leer `intent.estado`, nunca asumir éxito solo por el HTTP 200.
+      const { intent } = await fetchJson<{ intent: { estado: string; error: string | null } }>(apiBaseUrl, token, `/superadmin/acciones/intents/${intentId}/confirmar`, { method: "POST" });
+      if (intent.estado === "failed") {
+        toast.error("La acción falló al ejecutarse.", { description: intent.error ?? "Sin detalle del error." });
+      } else {
+        toast.success("Acción confirmada.");
+      }
       await cargar();
     } catch (err) {
-      toast(err instanceof Error ? err.message : "No se pudo confirmar la acción.");
+      toast.error(err instanceof Error ? err.message : "No se pudo confirmar la acción.");
     } finally {
       setConfirmandoId(null);
     }

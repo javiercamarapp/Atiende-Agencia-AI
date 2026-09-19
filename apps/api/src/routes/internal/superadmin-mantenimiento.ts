@@ -14,9 +14,11 @@
 // NUNCA envían nada por sí solas -- solo devuelven filas a `pending`/anotan
 // un prospecto, dejando el trabajo real (enviar/decidir) a los dispatchers y
 // al superadmin humano respectivamente.
+import { isUndefinedFunctionError } from "@atiende/db";
 import { Hono } from "hono";
 import { Errors } from "../../errors.ts";
 import { internalOrCronSecretMatches } from "../../http-security.ts";
+import { logEvent } from "../../logger.ts";
 import { withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
 
@@ -38,10 +40,37 @@ export function superadminMantenimientoRoutes(deps: AppDeps): Hono {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     return withHeartbeat(deps, SUPERADMIN_MANTENIMIENTO_CRON_PATH, async () => {
-      const [outbox, prospectos] = await Promise.all([
-        deps.accionesRepo.desatascarOutboxColgadosForSystem(UMBRAL_OUTBOX_MINUTOS),
-        deps.accionesRepo.marcarProspectosSinMovimientoForSystem(UMBRAL_PROSPECTOS_DIAS),
-      ]);
+      // `desatascarOutboxColgadosForSystem`/`marcarProspectosSinMovimientoForSystem`
+      // (`../../production/superadmin-acciones-repository.ts::
+      // ProductionSuperadminAccionesRepository`) abren cada una su PROPIA
+      // transacción -- ninguna comparte transacción con la otra ni con nada más
+      // en este handler, así que un catch simple alrededor del `Promise.all`
+      // basta (sin SAVEPOINT): si la migración 0016 no está aplicada, NINGUNA
+      // de las dos ejecutó nada real que necesite deshacerse.
+      let outbox: Awaited<ReturnType<typeof deps.accionesRepo.desatascarOutboxColgadosForSystem>>;
+      let prospectos: Awaited<ReturnType<typeof deps.accionesRepo.marcarProspectosSinMovimientoForSystem>>;
+      try {
+        [outbox, prospectos] = await Promise.all([
+          deps.accionesRepo.desatascarOutboxColgadosForSystem(UMBRAL_OUTBOX_MINUTOS),
+          deps.accionesRepo.marcarProspectosSinMovimientoForSystem(UMBRAL_PROSPECTOS_DIAS),
+        ]);
+      } catch (err) {
+        // Mismo criterio que el cron de resumen diario (hallazgo B): "migración
+        // pendiente" es el caso NORMAL de "código nuevo, base vieja" -- NUNCA un
+        // fallo real de este cron. Se resuelve (no se lanza) a propósito: lanzar
+        // aquí ensuciaría `core.cron_heartbeat` con `last_status='error'` vía
+        // `withHeartbeat` y generaría alertas falsas en `/superadmin/salud` por
+        // algo que no es un bug. Cualquier otro código de error se repropaga tal
+        // cual.
+        if (!isUndefinedFunctionError(err)) throw err;
+        // Hallazgo no-bloqueante #4 de la auditoría a1: a diferencia del cron
+        // de resumen diario (`../resumen-diario.ts`), esta rama respondía
+        // 200 { ok:false } SIN dejar ninguna señal en logs -- con el
+        // heartbeat en 'ok', este cron podía quedarse sin hacer nada
+        // indefinidamente sin avisar en ningún lado.
+        logEvent(c, "warn", "superadmin_mantenimiento_migracion_pendiente");
+        return c.json({ ok: false, motivo: "migracion_pendiente" });
+      }
 
       const filasDesatascadas = outbox.reduce((sum, q) => sum + (q.filasMovidas ?? 0), 0);
       return c.json({

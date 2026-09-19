@@ -1,4 +1,5 @@
 export { hashPassword, verifyPassword } from "./password.ts";
+export { isUndefinedFunctionError } from "./sql-errors.ts";
 export type {
   CoreRepository,
   CoreStaffRepository,

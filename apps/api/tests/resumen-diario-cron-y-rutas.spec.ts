@@ -11,11 +11,26 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCoreRepository, InMemoryResumenDiarioRepository } from "@atiende/db";
 import { signAccessToken } from "@atiende/core-auth";
+import { LlmGateway, CircuitBreaker, InMemoryCircuitBreakerStore, InMemoryBudgetLedgerStore, FakeLlmProvider } from "@atiende/agent-core";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps } from "./fixtures.ts";
+import { generarYPersistirResumenDiario, type ResultadoGeneracion } from "../src/resumen-diario/agregador.ts";
+import { enviarCorreoResumenDiarioSiCorresponde } from "../src/resumen-diario/correo.ts";
+import { RESUMEN_DIARIO_LLM_ROLE } from "../src/resumen-diario/redaccion.ts";
 import type { AppDeps } from "../src/deps.ts";
 
 const CRON_PATH = "/internal/superadmin/resumen-diario";
+
+/** `generarYPersistirResumenDiario` devuelve `ResultadoGenerarResumenDiario`
+ *  (`{ ok:true, agregados, narrativa, ... } | { ok:false, motivo }`, ver el
+ *  hallazgo B de esta misma auditoría) -- estos helpers de test asumen el
+ *  camino feliz (`ok:true`) y fallan ruidosamente si no lo es, en vez de
+ *  dejar pasar un `undefined` silencioso. */
+async function generarResumenOk(deps: AppDeps, fecha: string): Promise<ResultadoGeneracion> {
+  const resultado = await generarYPersistirResumenDiario(deps, fecha);
+  if (!resultado.ok) throw new Error(`generarYPersistirResumenDiario no fue 'ok' para ${fecha}: ${resultado.motivo}`);
+  return resultado;
+}
 
 async function makeSuperadmin(base: Awaited<ReturnType<typeof buildTestDeps>>): Promise<{ token: string; superadminId: string; email: string }> {
   const coreRepo = base.deps.coreRepo as InMemoryCoreRepository;
@@ -200,5 +215,201 @@ describe("GET/POST /superadmin/resumen -- autorización y camino feliz", () => {
     const app = buildApp(base.deps);
     const res = await app.request("/superadmin/resumen/no-es-una-fecha", { headers: { authorization: `Bearer ${token}` } });
     expect(res.status).toBe(400);
+  });
+});
+
+// Hallazgo de auditoría a1 (BAJA, rubro B): en la base real SIN la migración
+// `0015_superadmin_resumen_diario.sql` aplicada (el caso NORMAL de "código
+// nuevo, base vieja" -- ver REGLA DURA de compatibilidad del repo), el
+// UPSERT final (`core.upsert_daily_ops_summary`) no existe -- antes de este
+// fix, el cron respondía 500 TODOS los días, después de gastar una llamada
+// real de LLM (las 10 lecturas de fuente ya se tragaban su propio 42883
+// dentro de `leer()`, pero el UPSERT corría sin try/catch).
+describe("Resumen diario -- migración 0015 sin aplicar (SQLSTATE 42883), nunca un 500", () => {
+  it("cron -- 200 honesto { ok:false, motivo:'migracion_pendiente' }, heartbeat sigue 'ok' (no es un fallo real)", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setMigracionPendiente(true);
+    const app = buildApp(base.deps);
+
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; motivo?: string };
+    expect(body.ok).toBe(false);
+    expect(body.motivo).toBe("migracion_pendiente");
+
+    // El heartbeat NO debe quedar en 'error' -- `withHeartbeat` solo distingue
+    // "el handler lanzó" de "el handler resolvió"; el handler resolvió con un
+    // 200, así que el latido debe registrar 'ok'.
+    const saludRepo = base.deps.saludRepo as import("@atiende/db").InMemorySaludRepository;
+    const { superadminId } = await makeSuperadmin(base);
+    saludRepo.addPlatformSuperadmin(superadminId); // registro propio de InMemorySaludRepository -- ver su comentario de cabecera
+    const heartbeats = await saludRepo.listCronHeartbeatsForSuperadmin(superadminId);
+    const latido = heartbeats.find((h) => h.cronName === CRON_PATH);
+    expect(latido?.lastStatus).toBe("ok");
+  });
+
+  it("cron -- con migración pendiente, el sondeo corta ANTES del LLM: gateway.complete() nunca se llama (hallazgo no-bloqueante #1)", async () => {
+    // Los demás tests de este describe usan `resumenDiarioLlmGateway: undefined`
+    // (fixture genérico de `buildTestDeps`) -- con eso, `generarNarrativaLlm`
+    // devuelve `null` de inmediato SIN pasar por el gateway (ver
+    // `redaccion.ts::generarNarrativaLlm`), así que esos tests NO pueden detectar
+    // una regresión que quite el sondeo temprano y deje que el código llegue a
+    // intentar redactar por LLM antes de fallar en el UPSERT. Este test sí monta
+    // un gateway real con un proveedor falso registrado en el rol correcto, para
+    // afirmar sobre `callCount` (mismo patrón que `whatsapp-llm-agent.spec.ts`).
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setMigracionPendiente(true);
+    const fakeProvider = new FakeLlmProvider({ id: "resumen-diario-fake" });
+    const gateway = new LlmGateway({
+      breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
+      budgetStore: new InMemoryBudgetLedgerStore(),
+      budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 },
+    });
+    gateway.registerLadder(RESUMEN_DIARIO_LLM_ROLE, [fakeProvider]);
+    const deps: AppDeps = { ...base.deps, resumenDiarioLlmGateway: gateway };
+    const app = buildApp(deps);
+
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; motivo?: string };
+    expect(body.ok).toBe(false);
+    expect(body.motivo).toBe("migracion_pendiente");
+    expect(fakeProvider.callCount).toBe(0);
+  });
+
+  it("'generar ahora' -- 503 explícito (service_unavailable), nunca un 500 ni un 200 que finja éxito", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setMigracionPendiente(true);
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+
+    const res = await app.request("/superadmin/resumen/generar", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}" });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("service_unavailable");
+  });
+
+  it("defensa en profundidad -- el sondeo pasa pero el UPSERT falla igual (42883) -> mismo resultado honesto, nunca un 500", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setUpsertMigracionPendiente(true);
+    const app = buildApp(base.deps);
+
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; motivo?: string };
+    expect(body.ok).toBe(false);
+    expect(body.motivo).toBe("migracion_pendiente");
+  });
+
+  it("un código de error que NO es 42883 en el SONDEO no se confunde con 'migración pendiente' -- el cron sigue adelante", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setFallando(true);
+    const app = buildApp(base.deps);
+
+    // `setFallando` tumba las 10 lecturas de fuente (se tragan a `null`, comportamiento
+    // preexistente) Y también `listCronHeartbeatsForSystem` -- pero con un Error
+    // genérico SIN `.code = "42883"`, así que el sondeo debe tratarlo como "sigue
+    // adelante" (no como migración pendiente), y el cron debe completar con éxito
+    // usando el "vacío honesto" ya existente para cada sección.
+    //
+    // NOTA (hallazgo no-bloqueante #2 de la auditoría a1): este test NO cubre la
+    // rama de repropagación real (`if (!isUndefinedFunctionError(err)) throw err`
+    // del UPSERT en agregador.ts) -- el título anterior de este test ("se
+    // repropaga tal cual") afirmaba eso incorrectamente. Ese caso lo cubre el
+    // siguiente test, que sí hace que el UPSERT lance un error genérico.
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  it("un código de error que NO es 42883 en el UPSERT SÍ se repropaga tal cual -- el cron responde 500 real, nunca se confunde con 'migración pendiente'", async () => {
+    const base = await buildTestDeps();
+    const repo = base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository;
+    // A diferencia de `setFallando`/`setUpsertMigracionPendiente` (ambos simulan
+    // 42883), esto sobreescribe el método directamente con un Error genérico SIN
+    // `.code = "42883"` -- el sondeo pasa normal, pero el UPSERT final lanza algo
+    // que NO es "migración pendiente" y debe repropagarse tal cual (mismo patrón
+    // que ya usa `superadmin-mantenimiento-cron.spec.ts` para el mismo caso).
+    repo.upsertDailyOpsSummary = async () => {
+      throw new Error("conexión perdida con Postgres");
+    };
+    const app = buildApp(base.deps);
+
+    const res = await app.request(CRON_PATH, { method: "POST", headers: { "x-atiende-internal-secret": base.deps.env.internalSecret } });
+    expect(res.status).toBe(500);
+  });
+});
+
+// Hallazgo de auditoría a1 (BAJA, rubro D): el marcado atómico de
+// `correo_enviado_en` se hace DESPUÉS de enviar a Resend (check-then-act,
+// ver el comentario de cabecera de `enviarCorreoResumenDiarioSiCorresponde`
+// para el porqué de NO invertir el orden) -- dos corridas concurrentes para
+// la MISMA fecha podían mandar el correo dos veces. Arreglo: header
+// `Idempotency-Key: resumen-diario/<fecha>` en el POST a Resend (soportado
+// en `POST /emails`, ventana de deduplicación de 24h -- ver el cuerpo del
+// PR para la cita completa de la documentación oficial de Resend). Estos
+// tests verifican lo que SÍ puede probarse sin Postgres/Resend reales: que
+// el código manda la clave correcta, determinista por fecha, en cada
+// intento -- la deduplicación real la hace el servidor de Resend, fuera del
+// alcance de una prueba unitaria.
+describe("Correo del resumen -- header Idempotency-Key (hallazgo D)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("dos corridas CONCURRENTES para la MISMA fecha mandan la MISMA Idempotency-Key -- Resend nunca reenvía bajo esa clave", async () => {
+    const base = await buildTestDeps();
+    const { email } = await makeSuperadmin(base);
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).seedPlatformSuperadminEmails([email]);
+    const deps = conResendConfigurado(base.deps);
+
+    const claves: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const idempotencyKey = (init?.headers as Record<string, string> | undefined)?.["Idempotency-Key"];
+      if (!idempotencyKey) throw new Error("fetch mock: falta el header Idempotency-Key en el POST a Resend.");
+      claves.push(idempotencyKey);
+      return new Response(JSON.stringify({ id: "resend-id" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fecha = "2026-03-05";
+    const { agregados, narrativa } = await generarResumenOk(deps, fecha);
+
+    // Simula la condición de carrera real: dos invocaciones que arrancan
+    // "al mismo tiempo" para la MISMA fecha (p. ej. el cron real disparado
+    // dos veces por un reintento de la plataforma serverless) -- ambas leen
+    // `correoEnviadoEn === null` ANTES de que cualquiera termine de enviar
+    // (el guard en memoria por sí solo no basta para evitar esto, que es
+    // justo el hallazgo de la auditoría).
+    await Promise.all([enviarCorreoResumenDiarioSiCorresponde(deps, fecha, agregados, narrativa), enviarCorreoResumenDiarioSiCorresponde(deps, fecha, agregados, narrativa)]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(claves).toHaveLength(2);
+    expect(claves[0]).toBe(`resumen-diario/${fecha}`);
+    expect(claves[1]).toBe(claves[0]); // MISMA clave en ambas -- Resend deduplica del lado del servidor
+  });
+
+  it("fechas DISTINTAS -> Idempotency-Key DISTINTA -- nunca deduplica correos de días distintos", async () => {
+    const base = await buildTestDeps();
+    const { email } = await makeSuperadmin(base);
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).seedPlatformSuperadminEmails([email]);
+    const deps = conResendConfigurado(base.deps);
+
+    const claves: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const idempotencyKey = (init?.headers as Record<string, string> | undefined)?.["Idempotency-Key"];
+      if (!idempotencyKey) throw new Error("fetch mock: falta el header Idempotency-Key en el POST a Resend.");
+      claves.push(idempotencyKey);
+      return new Response(JSON.stringify({ id: "resend-id" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const gen1 = await generarResumenOk(deps, "2026-03-05");
+    await enviarCorreoResumenDiarioSiCorresponde(deps, "2026-03-05", gen1.agregados, gen1.narrativa);
+    const gen2 = await generarResumenOk(deps, "2026-03-06");
+    await enviarCorreoResumenDiarioSiCorresponde(deps, "2026-03-06", gen2.agregados, gen2.narrativa);
+
+    expect(claves).toEqual(["resumen-diario/2026-03-05", "resumen-diario/2026-03-06"]);
   });
 });
