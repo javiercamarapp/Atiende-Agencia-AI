@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { ejecutarCicloImportacion } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function rentasIcalSyncCronRoutes(deps: AppDeps): Hono {
@@ -23,7 +24,7 @@ export function rentasIcalSyncCronRoutes(deps: AppDeps): Hono {
   app.on(["GET", "POST"], "/internal/rentas/ical-sync", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    return withHeartbeat(deps, "/internal/rentas/ical-sync", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const syncRepo = deps.rentasCalendarSyncRepo(db);
       const feeds = await syncRepo.listFeedsActivos();
 
@@ -43,7 +44,7 @@ export function rentasIcalSyncCronRoutes(deps: AppDeps): Hono {
       }
 
       return c.json({ ok: true, procesados: resultados.length, resultados });
-    });
+    }))();
   });
 
   return app;

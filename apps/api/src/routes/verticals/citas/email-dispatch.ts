@@ -31,6 +31,7 @@ import type { CitasRepository, EmailDispatchSummary } from "@atiende/domain-cita
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Límite del drenado INLINE -- deliberadamente chico, mismo criterio que
@@ -84,33 +85,35 @@ export function citasEmailDispatchRoutes(deps: AppDeps): Hono {
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por
     // organización), misma sesión de sistema que google-calendar-sync.ts.
-    const summary = await runCitasEmailDispatch(deps);
+    return withHeartbeat(deps, "/internal/citas/email-dispatch", async () => {
+      const summary = await runCitasEmailDispatch(deps);
 
-    // HALLAZGO ALTO de la auditoría final: esta ruta respondía SIEMPRE `ok: true`
-    // sin importar cuántos jobs fallaran/murieran, así que nadie se enteraba
-    // nunca de un fallo real de la corrida diaria. DECISIÓN DOCUMENTADA: se deja
-    // el status code en 200 -- Vercel Cron únicamente entiende 200 como "el job
-    // corrió" (ver docs/DEPLOY.md#resumen-de-costo-por-plataforma), y este
-    // barrido ya aísla cada job fallido del resto del lote por diseño. La
-    // corrección real es LOGUEAR estructurado con severidad `error` cuando hubo
-    // fallos/jobs muertos -- consumible por cualquier integración de logs.
-    if (summary.failed > 0 || summary.dead > 0) {
-      logEvent(c, "error", "citas_email_dispatch_cron_con_fallos", {
+      // HALLAZGO ALTO de la auditoría final: esta ruta respondía SIEMPRE `ok: true`
+      // sin importar cuántos jobs fallaran/murieran, así que nadie se enteraba
+      // nunca de un fallo real de la corrida diaria. DECISIÓN DOCUMENTADA: se deja
+      // el status code en 200 -- Vercel Cron únicamente entiende 200 como "el job
+      // corrió" (ver docs/DEPLOY.md#resumen-de-costo-por-plataforma), y este
+      // barrido ya aísla cada job fallido del resto del lote por diseño. La
+      // corrección real es LOGUEAR estructurado con severidad `error` cuando hubo
+      // fallos/jobs muertos -- consumible por cualquier integración de logs.
+      if (summary.failed > 0 || summary.dead > 0) {
+        logEvent(c, "error", "citas_email_dispatch_cron_con_fallos", {
+          processed: summary.processed,
+          failed: summary.failed,
+          dead: summary.dead,
+          errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
+        });
+      }
+
+      return c.json({
+        ok: true,
         processed: summary.processed,
+        sent: summary.sent,
         failed: summary.failed,
         dead: summary.dead,
         errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
       });
-    }
-
-    return c.json({
-      ok: true,
-      processed: summary.processed,
-      sent: summary.sent,
-      failed: summary.failed,
-      dead: summary.dead,
-      errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
-    });
+    })();
   });
 
   return app;

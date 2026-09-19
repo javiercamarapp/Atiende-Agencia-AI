@@ -19,6 +19,7 @@ import { Hono } from "hono";
 import { runDeadlineReminderSweep, runDiscoverTendersSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
@@ -27,7 +28,7 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
   app.on(["GET", "POST"], "/internal/licitaciones/discover-tenders", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    return withHeartbeat(deps, "/internal/licitaciones/discover-tenders", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.licitacionesRepo(db);
       const sweep = await runDiscoverTendersSweep(repo);
       const failures: { organization_id: string; source: string | null; error: string }[] = [];
@@ -53,20 +54,20 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
         },
         200,
       );
-    });
+    }))();
   });
 
   app.on(["GET", "POST"], "/internal/licitaciones/deadline-reminders", async (c) => {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    return withHeartbeat(deps, "/internal/licitaciones/deadline-reminders", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.licitacionesRepo(db);
       const sweep = await runDeadlineReminderSweep(repo);
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const scanned = sweep.reduce((sum, r) => sum + r.scanned, 0);
       const created = sweep.reduce((sum, r) => sum + r.created, 0);
       return c.json({ ok: failures.length === 0, organizations_checked: sweep.length, scanned, created, failures }, 200);
-    });
+    }))();
   });
 
   return app;

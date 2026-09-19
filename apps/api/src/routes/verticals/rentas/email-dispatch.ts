@@ -28,6 +28,7 @@ import { dispatchPendingEmailJobs } from "@atiende/domain-rentas";
 import type { EmailDispatchSummary as RentasEmailDispatchSummary, RentasRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 /** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
@@ -73,15 +74,17 @@ export function rentasEmailDispatchRoutes(deps: AppDeps): Hono {
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por
     // organización), misma sesión de sistema que ical-sync-cron.ts.
-    const summary = await runRentasEmailDispatch(deps);
-    return c.json({
-      ok: true,
-      processed: summary.processed,
-      sent: summary.sent,
-      failed: summary.failed,
-      dead: summary.dead,
-      errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
-    });
+    return withHeartbeat(deps, "/internal/rentas/email-dispatch", async () => {
+      const summary = await runRentasEmailDispatch(deps);
+      return c.json({
+        ok: true,
+        processed: summary.processed,
+        sent: summary.sent,
+        failed: summary.failed,
+        dead: summary.dead,
+        errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
+      });
+    })();
   });
 
   return app;

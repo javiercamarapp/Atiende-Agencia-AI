@@ -12,7 +12,7 @@
 // memoria en vez de Postgres real (mismo criterio que el resto de la suite).
 import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
 import {
   InMemoryRestaurantesRepository,
   createLlmWhatsAppTurnHandler,
@@ -213,6 +213,7 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
+      saludRepo: new InMemorySaludRepository(),
   };
   return { deps, restaurantesRepo, organizationId, propertyId, tacosBistecId };
 }
@@ -406,6 +407,7 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
     rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
       llmGateway: undefined,
       llmUsageRepo: new InMemoryLlmUsageRepository(),
+      saludRepo: new InMemorySaludRepository(),
     };
     const app = buildApp(deps);
 
