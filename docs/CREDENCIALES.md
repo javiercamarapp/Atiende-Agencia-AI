@@ -140,29 +140,43 @@ handlers de WhatsApp ni `LlmRequirementExtractor` de licitaciones). Configurarla
 no es indistinto para el comportamiento actual; no cuenta como "faltante" en
 `computeIntegrationsStatus`.
 
-## Voz (ElevenLabs)
+## Voz (ElevenLabs) — patrón oficial
 
-Dos direcciones distintas que es fácil confundir:
+Solo existe una dirección real hoy, y **no requiere ninguna API key de
+ElevenLabs**:
 
-1. **ENTRANTE** (ElevenLabs → nuestra API): `VOICE_TOOL_SECRET` (ver "Secretos
-   propios" arriba) autentica las llamadas de las Server Tools que ElevenLabs
-   invoca contra `routes/verticals/*/voice-tools.ts`. **No requiere ninguna API
-   key de ElevenLabs** — nosotros somos el servicio siendo llamado.
-2. **SALIENTE** (nuestro backend → API de ElevenLabs, para leer/actualizar la
-   config del agente o listar voces): `packages/voice-gateway` ya tiene el
-   provider real implementado (`ElevenLabsVoiceProvider`), pero **verificado: NO
-   está conectado a ningún router de `apps/api` todavía** (cero imports reales
-   del paquete fuera de comentarios). `ELEVENLABS_API_KEY` **no se lee en ningún
-   código ejecutable de este repo** — solo se la menciona dentro de un
-   comentario de `packages/voice-gateway/src/providers/elevenlabs-provider.ts`
-   como ejemplo de "cómo la leería un script de desarrollo"; en producción el
-   diseño real pasa la key vía `apiKeyProvider` inyectado, pensado para
-   `supabase.rpc('get_secret', { secret_name: 'ELEVENLABS_API_KEY' })` (Supabase
-   Vault), nunca una variable de entorno estática.
+**ENTRANTE** (ElevenLabs → nuestra API): `VOICE_TOOL_SECRET` (ver "Secretos
+propios" arriba) autentica las llamadas de las Server Tools que ElevenLabs
+invoca DURANTE una llamada en curso, contra
+`routes/verticals/{restaurantes,hoteles,citas}/voice-tools.ts` — nosotros
+somos el servicio siendo llamado, nunca el que llama a ElevenLabs. Restaurantes
+y citas usan un secreto compartido de plataforma; hoteles usa un secreto **por
+property** (`hoteles.voice_agent_config.tool_webhook_secret`, con endpoint de
+rotación) — ver el comentario de cabecera de cada `voice-tools.ts` para el
+porqué de la divergencia. Este es el patrón oficial para cualquier vertical
+nueva que agregue Server Tools de voz.
 
-`ELEVENLABS_API_KEY` se deja en `.env.example` como placeholder para cuando ese
-wiring exista, pero no aparece en `computeIntegrationsStatus`/el test guard
-porque hoy no gatea ningún comportamiento real.
+**`packages/voice-gateway` (retirado del árbol en este PR) — por qué se
+deprecó, no se conectó.** Ese paquete resolvía la dirección SALIENTE
+(nuestro backend → API de ElevenLabs/GPT-Live-1: signed URL de sesión,
+listado de voces, lectura/escritura de config del agente, y una sesión
+WebRTC de navegador para GPT-Live-1) — una superficie DISTINTA de "recibir
+el webhook de tool call", que las 3 verticales nunca necesitaron para lo que
+construyeron. Verificado antes de deprecar: cero imports reales del paquete
+fuera de comentarios/docs en todo el monorepo; `ELEVENLABS_API_KEY` nunca se
+leía en código ejecutable; `VOICE_PROVIDER` nunca se leía; no existía (ni
+existe hoy) ningún endpoint de signed-url/config de agente en `apps/api`, ni
+una UI de admin de voz en `apps/web` que lo consumiera. Conectarlo de verdad
+habría exigido inventar esas superficies desde cero (decisión de producto:
+qué vertical la estrena, qué UI la expone) — no era una migración mecánica.
+El código en sí era real y probado (no un cascarón), simplemente nadie lo
+necesitaba todavía; si en el futuro un vertical necesita administrar
+sesiones/config de voz salientes, reconstruir sobre ese mismo diseño
+(disponible en el historial de git de este PR) sigue siendo razonable.
+
+`ELEVENLABS_API_KEY` se **retira** de `.env.example` en este PR: su único
+consumidor planeado (`voice-gateway`) se retiró, y el patrón oficial
+(entrante) no necesita nunca una API key saliente de ElevenLabs.
 
 ## Cal.com / CalDAV (citas)
 
@@ -282,6 +296,12 @@ app; no aparece en `.env.example`.
 `packages/`) quedaron registradas en `apps/api/src/integrations-status.ts` y
 `.env.example` coincide 1:1 con esa lista (más `ELEVENLABS_API_KEY`, dejada a
 propósito como placeholder no funcional — ver sección "Voz").
+
+**Actualización 19-sep-2026 (PR de deprecación de `packages/voice-gateway`):**
+`ELEVENLABS_API_KEY` se retiró de `.env.example` — el placeholder existía solo
+para el día en que `voice-gateway` se conectara, y ese paquete se retiró del
+árbol (ver sección "Voz (ElevenLabs) — patrón oficial" arriba). El resto de
+esta sección queda como registro histórico de la auditoría original.
 
 **Sin documentar antes de este PR** (leídas por el código, ausentes de
 `.env.example`):

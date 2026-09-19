@@ -18,10 +18,12 @@ patrón vía `apps/api/src/routes/internal/whatsapp-dispatch.ts`.
 escalera de proveedores, presupuesto por tokens). Un envío de WhatsApp no tiene
 escalera de fallback entre proveedores (solo existe Meta Graph API) ni presupuesto
 por tokens — meterlo ahí forzaría un concepto que no aplica. El paralelo
-estructural correcto ya existe en el monorepo: `packages/voice-gateway`, un paquete
-de canal hermano de `agent-core` que SÍ reutiliza sus primitivas genéricas
-(`CircuitBreaker`, que es genérico por `providerId: string`, no atado a LLM). Este
-paquete sigue exactamente ese patrón: reutiliza `@atiende/agent-core`'s
+estructural que motivó este diseño fue `packages/voice-gateway` (**retirado del
+árbol después, por falta de consumidor real — ver docs/CREDENCIALES.md §"Voz"**,
+pero la razón estructural sigue vigente): un paquete de canal hermano de
+`agent-core` que reutilizaba sus primitivas genéricas (`CircuitBreaker`, que es
+genérico por `providerId: string`, no atado a LLM) sin meterse dentro de
+`agent-core`. Este paquete sigue ese mismo patrón: reutiliza `@atiende/agent-core`'s
 `CircuitBreaker` (keyed por `phone_number_id` en vez de LLM provider id), sin
 duplicar su lógica.
 
