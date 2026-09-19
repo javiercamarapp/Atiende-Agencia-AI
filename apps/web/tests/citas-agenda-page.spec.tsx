@@ -17,17 +17,22 @@ import { changeValue, flushMicrotasks, renderComponent, submitForm, type Rendere
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
-let confirmSpy: ReturnType<typeof vi.spyOn>;
+// `vi.stubGlobal` (mismo mecanismo que ya usa `fetch` en el resto de este
+// archivo) en vez de `vi.spyOn(window, "confirm")`: la firma real de
+// `window.confirm` (con sus sobrecargas) no infiere bien contra el tipo de
+// retorno de `vi.spyOn` en este entorno de tipos -- `vi.fn()` sin generic
+// explícito evita el problema y sigue siendo un mock real e inspeccionable.
+let confirmMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  confirmMock = vi.fn(() => true);
+  vi.stubGlobal("confirm", confirmMock);
 });
 
 afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
   vi.unstubAllGlobals();
-  confirmSpy.mockRestore();
 });
 
 function jsonResponse(body: unknown, ok = true): Response {
@@ -149,13 +154,13 @@ describe("AgendaPage (citas)", () => {
       await flushMicrotasks();
     });
 
-    expect(confirmSpy).not.toHaveBeenCalled();
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/v1/citas/properties/prop-1/appointments/apt-1/confirm" && init?.method === "POST");
+    expect(confirmMock).not.toHaveBeenCalled();
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/citas/properties/prop-1/appointments/apt-1/confirm" && init?.method === "POST");
     expect(call).toBeDefined();
   });
 
   it("'Cancelar' pide confirmación real del navegador antes de llamar a la API; si se rechaza, NUNCA llama a la API", async () => {
-    confirmSpy.mockReturnValue(false);
+    confirmMock.mockReturnValue(false);
     stubFetch({ appointments: [CITA_PENDING] });
     rendered = renderPage();
     await esperarCarga();
@@ -166,12 +171,12 @@ describe("AgendaPage (citas)", () => {
       await flushMicrotasks();
     });
 
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("¿Cancelar esta cita?"));
-    expect(fetchMock.mock.calls.some(([url]: [string]) => url.endsWith("/cancel"))).toBe(false);
+    expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining("¿Cancelar esta cita?"));
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/cancel"))).toBe(false);
   });
 
   it("'Cancelar' con confirmación aceptada llama POST .../appointments/apt-1/cancel", async () => {
-    confirmSpy.mockReturnValue(true);
+    confirmMock.mockReturnValue(true);
     stubFetch({ appointments: [CITA_PENDING] });
     rendered = renderPage();
     await esperarCarga();
@@ -183,7 +188,7 @@ describe("AgendaPage (citas)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/v1/citas/properties/prop-1/appointments/apt-1/cancel" && init?.method === "POST");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/citas/properties/prop-1/appointments/apt-1/cancel" && init?.method === "POST");
     expect(call).toBeDefined();
   });
 
@@ -208,7 +213,7 @@ describe("AgendaPage (citas)", () => {
     await submitForm(form);
     await esperarCarga();
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => /\/appointments$/.test(url) && init?.method === "POST");
+    const call = fetchMock.mock.calls.find(([url, init]) => /\/appointments$/.test(url) && init?.method === "POST");
     expect(call).toBeDefined();
     const body = JSON.parse(call![1].body as string);
     expect(body).toMatchObject({ provider_id: "prov-1", service_id: "svc-1", customer_name: "Pedro Sánchez", customer_phone: "5533334444" });

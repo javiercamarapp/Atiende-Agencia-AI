@@ -133,7 +133,7 @@ describe("FolioPage (hoteles)", () => {
     await submitForm(chargeForm);
     await esperarCarga();
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/hoteles/prop-1/folios/folio-1/cargos" && init?.method === "POST");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/hoteles/prop-1/folios/folio-1/cargos" && init?.method === "POST");
     expect(call).toBeDefined();
     const [, init] = call!;
     expect(JSON.parse(init.body as string)).toEqual({ descripcion: "Minibar", monto: 150, concepto: "extras" });
@@ -167,7 +167,7 @@ describe("FolioPage (hoteles)", () => {
     await act(async () => {
       cerrarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
-    expect(fetchMock.mock.calls.some(([url]: [string]) => url.endsWith("/cerrar"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/cerrar"))).toBe(false);
     expect(document.body.textContent).toContain("irreversible");
 
     const confirmBtn = [...document.body.querySelectorAll("button")].find((b) => b.textContent === "Sí, cerrar folio")!;
@@ -177,7 +177,7 @@ describe("FolioPage (hoteles)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url]: [string]) => url.endsWith("/cerrar"));
+    const call = fetchMock.mock.calls.find(([url]) => url.endsWith("/cerrar"));
     expect(call).toBeDefined();
     const [url, init] = call!;
     expect(url).toBe("https://api.test/hoteles/prop-1/folios/folio-1/cerrar");

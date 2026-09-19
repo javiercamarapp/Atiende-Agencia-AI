@@ -12,6 +12,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CobranzaPage } from "../src/verticals/despachos/pages/Cobranza.tsx";
 import type { DespachosShellContext } from "../src/verticals/despachos/DespachosShell.tsx";
+import type { CuentaCobranza } from "../src/verticals/despachos/lib/cobranza-client.ts";
 import { changeValue, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
@@ -37,18 +38,20 @@ const CTX: DespachosShellContext = {
   staffEmail: "contador@example.com",
 };
 
-const CUENTA = {
+const CUENTA: CuentaCobranza = {
   id: "cta-1",
   invoiceId: "inv-1",
   facturaId: "ABCDEFGH-1234-5678",
   monto: 11600,
   fechaVencimiento: "2026-08-15",
   diasVencido: 35,
-  bucket: "31-60" as const,
+  bucket: "31-60",
   score: 0.55,
   clienteNombre: "Cliente Demo SA",
   clienteEmail: "cliente@example.com",
+  montoPagado: null,
   pagadoEn: null,
+  creadoEn: "2026-08-01T00:00:00.000Z",
 };
 
 const RESUMEN = {
@@ -156,7 +159,7 @@ describe("CobranzaPage (despachos)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/despachos/prop-1/cobranza/cuentas/cta-1/pagar" && init?.method === "POST");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/despachos/prop-1/cobranza/cuentas/cta-1/pagar" && init?.method === "POST");
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ montoPagado: 11600 });
     // Tras recargar, la cuenta ya viene con `pagadoEn` real -- el badge cambia a
@@ -180,7 +183,7 @@ describe("CobranzaPage (despachos)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/despachos/prop-1/cobranza/cuentas/cta-1/recordatorio" && init?.method === "POST");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/despachos/prop-1/cobranza/cuentas/cta-1/recordatorio" && init?.method === "POST");
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ stage: "segundo_recordatorio" });
     expect(rendered.container.textContent).toContain("Recordatorio enviado");

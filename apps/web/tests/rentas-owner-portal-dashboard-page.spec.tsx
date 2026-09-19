@@ -112,7 +112,7 @@ describe("OwnerPortalDashboardPage (rentas)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url]: [string]) => url === "https://api.test/rentas/owner-portal/statements/st-1");
+    const call = fetchMock.mock.calls.find(([url]) => url === "https://api.test/rentas/owner-portal/statements/st-1");
     expect(call).toBeDefined();
     expect(rendered.container.textContent).toContain("Neto");
     expect(rendered.container.textContent).toContain("15,000.00"); // línea real (1500000 centavos)

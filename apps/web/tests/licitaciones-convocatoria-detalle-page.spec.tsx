@@ -179,7 +179,7 @@ describe("ConvocatoriaDetallePage (licitaciones)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/licitaciones/prop-1/tenders/tender-1/go-no-go" && init?.method === "POST");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/licitaciones/prop-1/tenders/tender-1/go-no-go" && init?.method === "POST");
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ decision: "go", reasons: ["Margen atractivo", "Capacidad técnica suficiente"] });
   });
@@ -201,7 +201,7 @@ describe("ConvocatoriaDetallePage (licitaciones)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/licitaciones/prop-1/tenders/tender-1/go-no-go" && init?.method === "POST");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/licitaciones/prop-1/tenders/tender-1/go-no-go" && init?.method === "POST");
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ decision: "no_go", reasons: ["Fuera de nuestra capacidad"] });
   });

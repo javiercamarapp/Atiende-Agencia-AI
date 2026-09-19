@@ -147,7 +147,7 @@ describe("ReservasPage (hoteles)", () => {
       await flushMicrotasks();
     });
 
-    const transicionCall = fetchMock.mock.calls.find(([url]: [string]) => url.includes("/transicion"));
+    const transicionCall = fetchMock.mock.calls.find(([url]) => url.includes("/transicion"));
     expect(transicionCall).toBeDefined();
     const [url, init] = transicionCall!;
     expect(url).toBe("https://api.test/hoteles/prop-1/reservas/res-1/transicion");
@@ -164,7 +164,7 @@ describe("ReservasPage (hoteles)", () => {
     const cancelarBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Cancelar")!;
     click(cancelarBtn);
     // Todavía no se disparó ningún POST /cancelar solo por abrir el modal.
-    expect(fetchMock.mock.calls.some(([url]: [string]) => url.includes("/cancelar"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes("/cancelar"))).toBe(false);
     // El AlertDialog (Radix) porta su contenido a `document.body`, no a `container`
     // (mismo criterio ya usado en superadmin-gasto-api-page.spec.tsx).
     expect(document.body.textContent).toContain("¿Cancelar la reserva");
@@ -176,7 +176,7 @@ describe("ReservasPage (hoteles)", () => {
       await flushMicrotasks();
     });
 
-    const cancelCall = fetchMock.mock.calls.find(([url]: [string]) => url.includes("/cancelar"));
+    const cancelCall = fetchMock.mock.calls.find(([url]) => url.includes("/cancelar"));
     expect(cancelCall).toBeDefined();
     const [url, init] = cancelCall!;
     expect(url).toBe("https://api.test/hoteles/prop-1/reservas/res-1/cancelar");
@@ -201,7 +201,7 @@ describe("ReservasPage (hoteles)", () => {
     await submitForm(form);
     await esperarCarga();
 
-    const createCall = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/hoteles/prop-1/reservas" && init?.method === "POST");
+    const createCall = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/hoteles/prop-1/reservas" && init?.method === "POST");
     expect(createCall).toBeDefined();
     const [, init] = createCall!;
     expect(JSON.parse(init.body as string)).toEqual({ roomTypeId: "rt-1", checkInDate: "2026-11-01", checkOutDate: "2026-11-05" });

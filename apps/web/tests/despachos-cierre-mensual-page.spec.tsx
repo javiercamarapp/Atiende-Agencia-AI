@@ -132,7 +132,7 @@ describe("CierreMensualPage (despachos)", () => {
     await submitForm(form);
     await esperarCarga();
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/despachos/prop-1/cierre-mensual/periodos" && init?.method === "POST");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/despachos/prop-1/cierre-mensual/periodos" && init?.method === "POST");
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ anio: 2026, mes: 9 });
     expect(rendered.container.textContent).toContain("septiembre 2026");

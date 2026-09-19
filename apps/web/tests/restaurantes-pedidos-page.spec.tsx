@@ -33,6 +33,8 @@ const CTX: RestaurantesShellContext = {
   propertyId: "prop-1",
   orgSlug: "demo",
   role: "owner",
+  staffFullName: "Manager Demo",
+  staffEmail: "manager@example.com",
 };
 
 const PEDIDO_PENDING: OrderSummary = {
@@ -151,7 +153,7 @@ describe("PedidosPage (restaurantes)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/v1/restaurantes/prop-1/admin/orders/ord-1/status" && init?.method === "PATCH");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/restaurantes/prop-1/admin/orders/ord-1/status" && init?.method === "PATCH");
     expect(call).toBeDefined();
     const [, init] = call!;
     expect(JSON.parse(init.body as string)).toEqual({ status: "preparando" });
@@ -166,7 +168,7 @@ describe("PedidosPage (restaurantes)", () => {
     await act(async () => {
       cancelarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
-    expect(fetchMock.mock.calls.some(([url, init]: [string, RequestInit]) => url.endsWith("/status") && init?.method === "PATCH")).toBe(false);
+    expect(fetchMock.mock.calls.some(([url, init]) => url.endsWith("/status") && init?.method === "PATCH")).toBe(false);
     expect(document.body.textContent).toContain("¿Cancelar el pedido de Juan Pérez?");
 
     const confirmBtn = [...document.body.querySelectorAll("button")].find((b) => b.textContent === "Cancelar el pedido")!;
@@ -176,7 +178,7 @@ describe("PedidosPage (restaurantes)", () => {
       await flushMicrotasks();
     });
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url.endsWith("/status") && init?.method === "PATCH");
+    const call = fetchMock.mock.calls.find(([url, init]) => url.endsWith("/status") && init?.method === "PATCH");
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ status: "cancelado" });
   });
@@ -191,7 +193,7 @@ describe("PedidosPage (restaurantes)", () => {
     changeValue(select, "rep-1");
     await esperarCarga();
 
-    const call = fetchMock.mock.calls.find(([url, init]: [string, RequestInit]) => url === "https://api.test/v1/restaurantes/prop-1/admin/orders/ord-1/assign-repartidor" && init?.method === "PATCH");
+    const call = fetchMock.mock.calls.find(([url, init]) => url === "https://api.test/v1/restaurantes/prop-1/admin/orders/ord-1/assign-repartidor" && init?.method === "PATCH");
     expect(call).toBeDefined();
     expect(JSON.parse(call![1].body as string)).toEqual({ repartidorId: "rep-1" });
   });
