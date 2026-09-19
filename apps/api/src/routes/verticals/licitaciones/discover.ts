@@ -42,13 +42,30 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
       const withRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.licitacionesRepo(db)));
       const sweep = await runDiscoverTendersSweep(withRepo);
       const failures: { organization_id: string; source: string | null; error: string }[] = [];
+      // r4-fix-crons-transaccion-por-unidad (re-revisión, bloqueante único): `failures[]`
+      // de arriba sigue reportando CUALQUIER fuente con `state !== "ok"` (incluida
+      // `not_configured`, para que el body/`ok` no cambien de comportamiento). Pero
+      // `not_configured` (p. ej. el conector `aggregator` mientras no exista
+      // LICITACIONES_AGGREGATOR_API_KEY/BASE_URL -- ver connector-errors.ts) NO es un
+      // fallo del cron: es el camino feliz esperado mientras no se elija proveedor
+      // (documentado en el propio spec de esta ruta), y esa fuente ya tiene su
+      // propio canal de salud (no el latido de ESTE cron). Sin este filtro, el
+      // latido quedaba en "error" TODOS los días aunque la corrida fuera perfecta
+      // -- una alerta crítica falsa y permanente que además tapaba fallos reales.
+      // `realFailures` es el subconjunto que sí dispara `CronPartialFailureError`.
+      const realFailures: typeof failures = [];
       for (const orgResult of sweep) {
         if (orgResult.error) {
-          failures.push({ organization_id: orgResult.organizationId, source: null, error: orgResult.error });
+          const item = { organization_id: orgResult.organizationId, source: null, error: orgResult.error };
+          failures.push(item);
+          realFailures.push(item);
           continue;
         }
         for (const r of orgResult.results) {
-          if (r.state !== "ok") failures.push({ organization_id: orgResult.organizationId, source: r.source, error: r.message });
+          if (r.state === "ok") continue;
+          const item = { organization_id: orgResult.organizationId, source: r.source, error: r.message };
+          failures.push(item);
+          if (r.state !== "not_configured") realFailures.push(item);
         }
       }
       const response = c.json(
@@ -65,9 +82,11 @@ export function licitacionesDiscoverRoutes(deps: AppDeps): Hono {
         200,
       );
       // (5) el latido no debe registrar "ok" limpio si alguna fuente/organización
-      // falló -- ver CronPartialFailureError (with-heartbeat.ts).
-      if (failures.length > 0) {
-        throw new CronPartialFailureError(`discover-tenders: ${failures.length} fallo(s) de ${sweep.length} organizaciones`, response);
+      // falló DE VERDAD -- ver CronPartialFailureError (with-heartbeat.ts) y el
+      // comentario de `realFailures` arriba. `ok`/`failures[]` del body no cambian.
+      if (realFailures.length > 0) {
+        const fuentes = realFailures.map((f) => f.source ?? `organización ${f.organization_id}`).join(", ");
+        throw new CronPartialFailureError(`discover-tenders: ${realFailures.length} fallo(s) real(es) de ${sweep.length} organizaciones (${fuentes})`, response);
       }
       return response;
     })();
