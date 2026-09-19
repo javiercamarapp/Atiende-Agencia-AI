@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { cancelAppointment, completeAppointment, confirmAppointment, fetchAppointments, markAppointmentNoShow } from "../src/verticals/citas/lib/appointments-client.ts";
+import { cancelAppointment, completeAppointment, confirmAppointment, fetchAppointments, markAppointmentNoShow, retryAppointmentCalendarSync } from "../src/verticals/citas/lib/appointments-client.ts";
 
 const APPOINTMENT_ROW = {
   id: "apt-1",
@@ -40,6 +40,7 @@ describe("fetchAppointments", () => {
         source: "web",
         notes: null,
         googleSyncStatus: "skipped",
+        googleSyncError: null,
         providerName: "Dra. Fernanda López",
         serviceName: "Consulta general",
         customerName: "Ana Torres",
@@ -113,5 +114,28 @@ describe("confirmAppointment / completeAppointment / markAppointmentNoShow", () 
   it("un conflicto (409) al completar propaga el error real", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No se puede completar una cita en estado 'cancelled'." }), { status: 409 })) as unknown as typeof fetch;
     await expect(completeAppointment(fetchImpl, "http://api.local", "tok", "prop-1", "apt-1")).rejects.toThrow("No se puede completar una cita en estado 'cancelled'.");
+  });
+});
+
+// Fase 6 §2 (seguimiento, "citas-sync-errores-visibles")
+describe("retryAppointmentCalendarSync", () => {
+  it("hace POST a .../retry-sync y mapea la respuesta (incluido google_sync_status ya actualizado)", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/v1/citas/properties/prop-1/appointments/apt-1/retry-sync");
+      expect(init?.method).toBe("POST");
+      return new Response(
+        JSON.stringify({ appointment: { ...APPOINTMENT_ROW, google_sync_status: "synced", google_sync_error: null, provider_name: undefined, service_name: undefined, customer_name: undefined, customer_phone: undefined } }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await retryAppointmentCalendarSync(fetchImpl, "http://api.local", "tok", "prop-1", "apt-1");
+    expect(result.googleSyncStatus).toBe("synced");
+    expect(result.googleSyncError).toBeNull();
+  });
+
+  it("un conflicto (409, la cita no está 'invalid') propaga el error real", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "Esta cita no tiene una sincronización con problema que reintentar (estado actual: 'synced')." }), { status: 409 })) as unknown as typeof fetch;
+    await expect(retryAppointmentCalendarSync(fetchImpl, "http://api.local", "tok", "prop-1", "apt-1")).rejects.toThrow(/estado actual: 'synced'/);
   });
 });

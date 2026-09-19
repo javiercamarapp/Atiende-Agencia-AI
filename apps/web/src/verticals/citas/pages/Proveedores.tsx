@@ -18,7 +18,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, CalendarSync, Pencil, Plug, Plus, UserRound } from "lucide-react";
+import { ArrowLeft, CalendarSync, Pencil, Plug, Plus, TriangleAlert, UserRound } from "lucide-react";
 import {
   Badge,
   Button,
@@ -544,6 +544,25 @@ export function ProveedorFichaPage({ apiBaseUrl, token, propertyId, orgSlug, pro
           <div className="flex flex-col gap-3">
             <h2 className="font-display text-base font-semibold text-foreground">Calendarios conectados</h2>
             <p className="-mt-2 text-[13px] text-muted-foreground">Cada proveedor conecta su propio calendario — es personal, nunca compartido por todo el negocio.</p>
+
+            {/* Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — advertencia
+                ámbar (nunca roja: la credencial sigue sirviendo, ver diseño en
+                domain-citas/src/calendar-sync.ts) cuando este proveedor tiene citas
+                con un rechazo PERMANENTE de validación (p.ej. Cal.com exige el correo
+                del cliente). Se autolimpia sola en cuanto el staff corrige el dato y
+                reintenta -- nunca requiere que alguien la "cierre" a mano. */}
+            {detail.calendarSyncIssues.count > 0 && (
+              <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                <div className="text-[13px] text-amber-800 dark:text-amber-400">
+                  <p className="font-semibold">
+                    {detail.calendarSyncIssues.count} {detail.calendarSyncIssues.count === 1 ? "cita no se sincronizó" : "citas no se sincronizaron"} por un problema que la credencial no resuelve sola.
+                  </p>
+                  {detail.calendarSyncIssues.lastReason && <p className="mt-0.5">{detail.calendarSyncIssues.lastReason}</p>}
+                  <p className="mt-0.5 text-amber-700/80 dark:text-amber-400/80">Corrige el dato que falte y usa "Reintentar sincronización" en la cita, desde la Agenda.</p>
+                </div>
+              </div>
+            )}
 
             <Card>
               <CardHeader className="pb-3">
