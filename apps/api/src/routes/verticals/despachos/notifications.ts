@@ -33,6 +33,7 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-despachos";
 import type { DespachosRepository, EmailDispatchSummary as DespachosEmailDispatchSummary } from "@atiende/domain-despachos";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runCobranzaReminderSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
@@ -61,14 +62,37 @@ export async function runDespachosEmailDispatch(deps: AppDeps): Promise<Despacho
  * request (nunca una sesión nueva). Un fallo aquí NUNCA se propaga al caller
  * HTTP — el correo ya quedó en el outbox y el cron diario (red de seguridad
  * de respaldo) lo recoge después.
+ *
+ * Hotfix (auditoría a2, CRÍTICO) — recibe también `db` (el MISMO
+ * `TenantDbSession` de `c.get("db")`/`withAppSession`, nunca uno nuevo) para
+ * envolver el drenado en `SAVEPOINT`. En TODA ruta de sesión de STAFF
+ * (`auth.uid()` no nulo) `despachos.claim_email_outbox_batch` lanza SIEMPRE
+ * 42501 (guard correcto, cross-tenant -- NO se afloja) y, sin este SAVEPOINT,
+ * esa excepción deja la transacción de negocio COMPLETA abortada (25P02) hasta
+ * un `ROLLBACK TO SAVEPOINT`: el `commit;` del motor sobre una transacción
+ * abortada no lanza error (Postgres responde "ROLLBACK" en silencio, ver
+ * packages/db/src/managed-postgres-engine.ts), así que el escalamiento de
+ * vencimientos.ts de ESTE MISMO request se pierde con un 2xx. Mismo patrón
+ * SAVEPOINT ya usado en
+ * `packages/domain-citas/src/postgres-repository.ts::upsertCustomer`. Ver
+ * `scripts/verify-correo-inline-sesion-staff/` para la prueba ANTES/DESPUÉS
+ * contra Postgres real.
  */
-export async function triggerDespachosEmailDispatchInline(deps: AppDeps, despachosRepo: DespachosRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+export async function triggerDespachosEmailDispatchInline(deps: AppDeps, db: TenantDbSession, despachosRepo: DespachosRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
     const summary = await dispatchPendingEmailJobs(despachosRepo, deps.env.resend, { batchSize });
+    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
       console.error(`despachos email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    try {
+      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
+      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
+    } catch (recoveryErr) {
+      console.error("despachos email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
+    }
     console.error("despachos email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
   }
 }
@@ -96,8 +120,10 @@ export function despachosNotificationsRoutes(deps: AppDeps): Hono {
       // drenado inline podía tumbar el barrido y viceversa); ahora que el
       // barrido ya no tiene una única `repo`/transacción "del request", abre
       // la suya propia -- mismo criterio que `runDespachosEmailDispatch` (el
-      // cron separado de email-dispatch, que siempre abrió la suya).
-      await withRepo((repo) => triggerDespachosEmailDispatchInline(deps, repo));
+      // cron separado de email-dispatch, que siempre abrió la suya). Sigue
+      // pasando `db` (además de `repo`) porque `triggerDespachosEmailDispatchInline`
+      // envuelve el drenado en su propio SAVEPOINT (hotfix auditoría a2).
+      await deps.engine.withAppSession({ userId: null }, (db) => triggerDespachosEmailDispatchInline(deps, db, deps.despachosRepo(db)));
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => {

@@ -118,7 +118,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       // puede encolar una confirmación por correo — ver
       // triggerRestaurantesEmailDispatchInline en email-dispatch.ts.
       await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
-      await triggerRestaurantesEmailDispatchInline(deps, repo);
+      await triggerRestaurantesEmailDispatchInline(deps, db, repo);
 
       // Meta reintenta el batch firmado completo ante cualquier respuesta no-2xx. Los
       // mensajes ya procesados quedan idempotentemente saltados por el ledger de

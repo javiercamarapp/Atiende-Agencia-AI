@@ -40,6 +40,7 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-licitaciones";
 import type { EmailDispatchSummary as LicitacionesEmailDispatchSummary, LicitacionesRepository } from "@atiende/domain-licitaciones";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runAlertNotificationSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
@@ -68,14 +69,33 @@ export async function runLicitacionesEmailDispatch(deps: AppDeps): Promise<Licit
  * (nunca una sesión nueva). Un fallo aquí NUNCA se propaga al caller HTTP —
  * el correo ya quedó en el outbox y el cron diario (red de seguridad de
  * respaldo) lo recoge después.
+ *
+ * Hotfix (auditoría a2, CRÍTICO) — recibe también `db` (el MISMO
+ * `TenantDbSession` de `withAppSession`, nunca uno nuevo) para envolver el
+ * drenado en `SAVEPOINT`. El ÚNICO call site real de esta función hoy
+ * (`/internal/licitaciones/alert-notifications` de abajo) YA corre en sesión
+ * de SISTEMA (`auth.uid()` null, guard pasa sin problema -- ver
+ * auditoria-a2-resultado.json::refuted, "Alcance a restaurantes public.ts:129
+ * createOrder y licitaciones alertNotifications.ts:95"), así que este SAVEPOINT
+ * es defensa en profundidad (misma función que las otras 5 verticales,
+ * protegida igual por si un futuro call site la invoca desde sesión de staff),
+ * no la corrección de un bug activo en licitaciones.
  */
-export async function triggerLicitacionesEmailDispatchInline(deps: AppDeps, licitacionesRepo: LicitacionesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+export async function triggerLicitacionesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, licitacionesRepo: LicitacionesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
     const summary = await dispatchPendingEmailJobs(licitacionesRepo, deps.env.resend, { batchSize });
+    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
       console.error(`licitaciones email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    try {
+      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
+      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
+    } catch (recoveryErr) {
+      console.error("licitaciones email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
+    }
     console.error("licitaciones email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
   }
 }
@@ -98,8 +118,10 @@ export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
       // reales vía `channel='email'`. r4-fix-crons-transaccion-por-unidad:
       // antes compartía LA MISMA transacción del barrido completo; ahora abre
       // la suya propia -- mismo criterio que `runLicitacionesEmailDispatch`
-      // (el cron separado de email-dispatch, que siempre abrió la suya).
-      await withRepo((repo) => triggerLicitacionesEmailDispatchInline(deps, repo));
+      // (el cron separado de email-dispatch, que siempre abrió la suya). Sigue
+      // pasando `db` (además de `repo`) porque `triggerLicitacionesEmailDispatchInline`
+      // envuelve el drenado en su propio SAVEPOINT (hotfix auditoría a2).
+      await deps.engine.withAppSession({ userId: null }, (db) => triggerLicitacionesEmailDispatchInline(deps, db, deps.licitacionesRepo(db)));
       const failures = sweep.filter((r) => r.error != null).map((r) => ({ organization_id: r.organizationId, error: r.error }));
       const totals = sweep.reduce(
         (acc, r) => ({

@@ -32,7 +32,7 @@ import {
 import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
-import { triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
+import { runHotelesEmailDispatch, triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const CHARGE_CONCEPT_VALUES = new Set<ChargeConcept>(["hospedaje", "ab", "extras", "ajuste", "propina", "otro"]);
@@ -578,8 +578,19 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     });
     // Cluster #3 (CRÍTICO) de la auditoría final — disparo inline best-effort del
     // correo recién encolado arriba, mismo `repo`/transacción (ver comentario de
-    // cabecera de email-dispatch.ts), en vez de esperar al cron diario.
-    await triggerHotelesEmailDispatchInline(deps, repo);
+    // cabecera de email-dispatch.ts), en vez de esperar al cron diario. Ruta de
+    // sesión de STAFF (ver `app.use` de arriba): `db` es el MISMO
+    // `TenantDbSession` de esta transacción, necesario para el SAVEPOINT del
+    // hotfix de auditoría a2 (ver comentario de cabecera de la función). En
+    // sesión de staff este intento SIEMPRE es un no-op seguro (42501, guard de
+    // sesión de sistema) -- el envío real lo hace la tarea post-commit de abajo.
+    await triggerHotelesEmailDispatchInline(deps, c.get("db"), repo);
+    // Arreglo de fondo (auditoría a2, parte 3) — el drenado real solo puede
+    // pasar DESPUÉS de que esta transacción confirme, en sesión de SISTEMA
+    // (runHotelesEmailDispatch ya existe y pasa el guard auth.uid() is null).
+    // Encolar aquí una sesión nueva DENTRO de este request no sirve: no vería
+    // el correo recién encolado sin commit (ver citas/email-dispatch.ts).
+    c.get("postCommitTasks").push(() => runHotelesEmailDispatch(deps).then(() => undefined));
 
     return c.json({ id: folioId, estado: "cerrado", motivoCierre: motivo, saldo: balance });
   });

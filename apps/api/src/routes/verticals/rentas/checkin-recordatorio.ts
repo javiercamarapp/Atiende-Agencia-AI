@@ -37,8 +37,10 @@ export function rentasCheckInRecordatorioRoutes(deps: AppDeps): Hono {
       // corriera el OTRO cron. r4-fix-crons-transaccion-por-unidad: antes compartía
       // LA MISMA transacción del barrido completo; ahora abre la suya propia --
       // mismo criterio que `runRentasEmailDispatch` (el cron separado de
-      // email-dispatch, que siempre abrió la suya).
-      await withRepo((repo) => triggerRentasEmailDispatchInline(deps, repo));
+      // email-dispatch, que siempre abrió la suya). Sigue pasando `db` (además de
+      // `repo`) porque `triggerRentasEmailDispatchInline` envuelve el drenado en
+      // su propio SAVEPOINT (hotfix auditoría a2).
+      await deps.engine.withAppSession({ userId: null }, (db) => triggerRentasEmailDispatchInline(deps, db, deps.rentasRepo(db)));
       const response = c.json({ ok: summary.fallos === 0, procesadas: summary.procesadas, enviados: summary.enviados, sin_correo: summary.sinCorreo, fallos: summary.fallos });
       // (5) el latido no debe registrar "ok" limpio si alguna candidata falló --
       // ver CronPartialFailureError (with-heartbeat.ts). El caller HTTP sigue
