@@ -49,7 +49,6 @@ import type {
   RentasAuditLogFiltro,
   RentasAuditLogPagina,
   RentasAuditLogPaginacion,
-  RentasAuditLogRow,
   RentasOrganizationSummary,
   RentasPropertySummary,
   ReservaParaStatement,
