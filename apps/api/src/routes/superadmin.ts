@@ -12,12 +12,39 @@
 // defensa en profundidad (responde 403 explícito en vez de simplemente "0
 // resultados", mejor UX de error), nunca la única autoridad real.
 import { Hono } from "hono";
+import type { Context, Next } from "hono";
 import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ProspectoNotFoundError } from "@atiende/db";
 import type { ProspectoRow } from "@atiende/db";
+import {
+  ImpersonationWriteBlockedError,
+  InMemoryAuditSink,
+  InMemoryRateLimiter,
+  blockWritesWhileImpersonating,
+  requireAdminAccess,
+} from "@atiende/core-authz";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
+
+// Instancias por-proceso, compartidas por TODA la superficie `/superadmin/*`
+// de la app compuesta (ver comentario largo más abajo sobre por qué el
+// middleware montado AQUÍ gatea también las rutas de otros archivos) —
+// exportadas para que las pruebas puedan verificar que el intento denegado
+// realmente pasó por `requireAdminAccess` (audit-on-denial + rate-limit
+// reales), no solo que el status fue 403 (un 403 también lo produce
+// `Errors.forbidden` de cualquier otro guard). 30 intentos denegados / 5 min
+// por actor+ruta antes de 429, igual criterio que el resto del back office
+// que ya usaba este patrón (ver commit de superadmin-impersonacion.ts).
+export const superadminAdminAccessAudit = new InMemoryAuditSink();
+const superadminAdminAccessRateLimiter = new InMemoryRateLimiter({ capacity: 30, refillPerSecond: 30 / 300 });
+
+// Único endpoint mutante que el requisito "solo lectura por defecto" permite
+// EXPLÍCITAMENTE mientras hay una impersonación activa: terminar la propia
+// sesión (ver write-guard.ts::exemptPathPatterns). `:id` es un uuid real en
+// producción -- el patrón no valida su forma, solo su POSICIÓN, mismo
+// criterio "fail-closed, sin matching laxo de más" que el resto del guard.
+const IMPERSONACION_TERMINAR_PATH_RE = /^\/superadmin\/impersonacion\/sesiones\/[^/]+\/terminar$/;
 
 const VERTICALES_VALIDAS = new Set(["hoteles", "restaurantes", "rentas", "licitaciones", "citas", "despachos"]);
 const ESTADOS_VALIDOS = new Set(["nuevo", "contactado", "demo", "propuesta", "negociacion", "ganado", "perdido", "descartado"]);
@@ -69,13 +96,90 @@ interface UpdateProspectoBody {
 export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
+  // IMPORTANTE (hallazgo real durante esta tarea, no teórico -- verificado con
+  // un test): Hono trata `app.use("/superadmin/*", mw)` como un patrón que
+  // matchea CUALQUIER ruta bajo `/superadmin/` en la app COMPUESTA final --
+  // no solo las que define ESTE archivo. `/superadmin/break-glass/*`,
+  // `/superadmin/facturacion/*`, `/superadmin/impersonacion/*`, etc. viven en
+  // sus PROPIOS Hono sub-apps (otros archivos), montados aparte en
+  // `app.ts` -- pero igual comparten el prefijo `/superadmin/`, y
+  // `apps/api/src/app.ts` monta ESTE router (`superadminRoutes`) ANTES que
+  // todos los demás `superadmin-*.ts`. El efecto neto (demostrado con un test
+  // de integración en `apps/api/src/app.ts`/`superadmin.spec.ts`): TODO
+  // middleware montado aquí sobre `/superadmin/*` corre PRIMERO para
+  // CUALQUIER request bajo ese prefijo, sin importar en qué archivo esté
+  // definida la ruta final -- de ahí que la autenticación, el gateo de
+  // admin-middleware y el write-guard de solo-lectura se monten los TRES
+  // exactamente aquí, una sola vez, en vez de repetidos (e inevitablemente
+  // incompletos) en cada `superadmin-*.ts` por separado.
+  //
+  // Corrección de esta revisión (bloqueante de seguridad, ver PR): antes de
+  // este cambio, el guard de "solo lectura mientras impersonas" se montaba
+  // como una ALLOWLIST de 3 rutas exactas -- cualquier ruta mutante nueva
+  // (`/superadmin/acciones/*`, `/superadmin/gasto-api/*`,
+  // `/superadmin/break-glass/*`, `/superadmin/facturacion/*`, la propia
+  // `/superadmin/impersonacion/sesiones`) quedaba SIN GUARD por default. Y el
+  // 403 de "no eres superadmin" era un `throw` plano (sin auditoría ni
+  // rate-limit), lo que hacía INALCANZABLE la rama de denegación de
+  // `requireAdminAccess` (audit-on-denial + rate-limit reales) que
+  // `superadmin-impersonacion.ts` montaba en su propio archivo -- montada
+  // DESPUÉS de este archivo en `app.ts`, esa rama nunca llegaba a ejecutarse
+  // porque este 403 plano ya había cortado la cadena antes. Ambas piezas se
+  // arreglan reemplazando el chequeo plano por `requireAdminAccess` (montado
+  // AQUÍ, cubre TODA la superficie por el efecto de arriba) y el guard por
+  // un DENYLIST fail-closed (bloquea todo método mutante bajo
+  // `/superadmin/*`, con una excepción explícita por patrón: terminar la
+  // propia sesión de impersonación).
   app.use("/superadmin/*", authMiddleware(deps.env));
   app.use("/superadmin/*", async (c, next) => {
-    if (!(await deps.coreRepo.isPlatformSuperadmin(c.get("userId")))) {
-      throw Errors.forbidden("Este panel es exclusivo del back office de plataforma.");
-    }
+    const isSuperadmin = await deps.coreRepo.isPlatformSuperadmin(c.get("userId"));
+    // `platformRole` sintético -- MISMO criterio documentado en
+    // `superadmin-impersonacion.ts`: un superadmin de plataforma no tiene
+    // membership de organización, así que no hay un `PlatformRole` "real"
+    // que leer aquí; se sintetiza "owner" para que `requireAdminAccess`
+    // (que solo entiende `PlatformRole`) pueda gatear esta superficie
+    // distinta con la MISMA pieza (audit-on-denial + rate-limit reales) que
+    // el resto del back office de staff de organización.
+    c.set("platformRole", isSuperadmin ? "owner" : undefined);
     await next();
   });
+  app.use(
+    "/superadmin/*",
+    requireAdminAccess({
+      allowedRoles: ["owner"],
+      audit: superadminAdminAccessAudit,
+      rateLimiter: superadminAdminAccessRateLimiter,
+    }),
+  );
+  // Bloque C -- "por defecto SOLO LECTURA" mientras haya una sesión de
+  // impersonación activa (ver packages/core-authz/src/impersonation/
+  // write-guard.ts y 0020_superadmin_impersonacion.sql). Fail-closed: TODO
+  // método mutante bajo `/superadmin/*` queda bloqueado mientras el caller
+  // impersona, salvo `exemptPathPatterns` (terminar la propia sesión) --
+  // nunca una lista de rutas protegidas que haya que recordar ampliar cada
+  // vez que un archivo nuevo agregue un endpoint de escritura.
+  const impersonationWriteGuard = blockWritesWhileImpersonating<CoreAuthHonoEnv>({
+    isImpersonating: async (c) => {
+      const callerId = c.get("userId");
+      const result = await deps.engine.withAppSession({ userId: callerId }, (db) => deps.impersonationRepo(db).getActiveSession(callerId));
+      return result.availability === "available" && result.session !== null;
+    },
+    exemptPathPatterns: [IMPERSONACION_TERMINAR_PATH_RE],
+  });
+  // `ImpersonationWriteBlockedError` (core-authz) no es un `ApiError` (core-auth)
+  // -- el `onError` global de apps/api/src/app.ts solo traduce `ApiError` a un
+  // JSON con status real; sin este adaptador caería a 500 genérico. Mismo
+  // criterio que el resto de `errors.ts`: cada error de negocio se traduce
+  // explícitamente, nunca se deja caer al catch-all.
+  const impersonationWriteGuardMiddleware = async (c: Context<CoreAuthHonoEnv>, next: Next) => {
+    try {
+      await impersonationWriteGuard(c, next);
+    } catch (err) {
+      if (err instanceof ImpersonationWriteBlockedError) throw Errors.forbidden(err.message);
+      throw err;
+    }
+  };
+  app.use("/superadmin/*", impersonationWriteGuardMiddleware);
 
   app.get("/superadmin/organizations", async (c) => {
     const callerId = c.get("userId");

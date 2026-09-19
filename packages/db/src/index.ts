@@ -103,3 +103,20 @@ export type {
   MarcarProspectoResultRow,
 } from "./superadmin-acciones-repository.ts";
 export { PostgresSuperadminAccionesRepository, InMemorySuperadminAccionesRepository } from "./superadmin-acciones-repository.ts";
+export type {
+  ImpersonationSessionRow,
+  ImpersonationSessionWithActiveRow,
+  ImpersonationAuditEntryRow,
+  ImpersonationAuditEventType,
+  ImpersonationAvailability,
+  ImpersonationRepository,
+} from "./impersonation-repository.ts";
+export {
+  ImpersonationError,
+  ImpersonationForbiddenError,
+  ImpersonationReasonInvalidError,
+  ImpersonationNotFoundError,
+  ImpersonationConflictError,
+  PostgresImpersonationRepository,
+  InMemoryImpersonationRepository,
+} from "./impersonation-repository.ts";

@@ -75,7 +75,8 @@ default — conviene entonces o bien darle un alias `should_fail`/
   `post-migrations.sql`/`assertions.sql` de ningún `verify-*/` — son la fuente
   de verdad auditada, este script solo los orquesta y verifica su resultado.
 - No corre `npm run typecheck`/`npx vitest run`/lint — ese tier (repositorio en
-  memoria) es un workflow de CI separado (todavía no existe), no este.
+  memoria) es un workflow de CI separado, `.github/workflows/ci-checks.yml`
+  (agregado 19-sep-2026), no este.
 - Solo cubre lo que cada `assertions.sql` ya cubre — ver el `README.md` de cada
   `scripts/verify-*/` para el alcance exacto de cada fix verificado.
 

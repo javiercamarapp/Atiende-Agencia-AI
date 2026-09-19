@@ -117,13 +117,37 @@ npm run lint
 npm run test:unit
 ```
 
+`npm install` es para desarrollo local. En CI (`.github/workflows/ci-checks.yml`,
+agregado 19-sep-2026) corre `npm ci` (instalación reproducible desde
+`package-lock.json`, no `npm install`), seguido de los 3 comandos de arriba
+(`typecheck`, `lint`, `test:unit`) y del build de producción de `apps/web`
+(`npm run build --workspace apps/web`) — antes de eso, un `test:unit` en
+verde en un PR era solo la palabra local de quien lo construía. Ese workflow
+corre en cada `pull_request` y cada `push` a `main`, **salvo** cuando el
+diff completo cae fuera de `apps/**`/`packages/**` y son solo archivos
+`.md`/`docs/**` que no sean `docs/DEPLOY.md` ni
+`supabase/migrations/README.md` (`paths` con exclusiones, ver el comentario
+de cabecera del workflow para el detalle exacto). Ver ese workflow para qué
+más corre y qué no.
+
 `npm run test:coverage` corre la misma suite instrumentada con
 `@vitest/coverage-v8` — ver `docs/COBERTURA.md` para qué mide, qué NO mide
 (no certifica SQL/RLS — eso es el gate de Postgres real de abajo) y de dónde
-sale el umbral configurado.
+sale el umbral configurado. **No** corre en CI (solo `test:unit`, que no
+activa el umbral de cobertura — ver el comentario de `vitest.config.ts`);
+se corre a mano cuando hace falta medir cobertura real.
 
 `npm run verify:migration-versions` y `npm run verify:env` son guards propios
-de este repo — ver `scripts/README.md`. Los `scripts/verify-*/` que corren
+de este repo — ver `scripts/README.md`. `verify:migration-versions` corre
+como **paso dedicado contra `supabase/migrations/` real** dentro del gate de
+Postgres (`.github/workflows/postgres-real-gate.yml`), antes de instalar
+`psql` — ese es el único lugar donde corre en CI. La spec
+`packages/db/tests/migration-versions-guard.spec.ts`, que sí corre dentro de
+`npm run test:unit` (y por lo tanto en `ci-checks.yml`), NO es ese guard:
+solo prueba la lógica del checker contra árboles sintéticos en un
+directorio temporal, nunca contra `supabase/migrations/` real — no lo
+sustituye ni lo vuelve redundante. `verify:env` no tiene ninguna spec ni
+paso de CI propio; se corre a mano. Los `scripts/verify-*/` que corren
 contra Postgres real (RLS/GRANT reales, no el repositorio en memoria) tienen
 su propio `run.sh` y corren automáticamente en CI
-(`.github/workflows/postgres-real-gate.yml`).
+(`.github/workflows/postgres-real-gate.yml`), en un workflow separado.

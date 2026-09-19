@@ -49,6 +49,7 @@ import type { ContractInvoiceRecord, ReceivablesSummary } from "../lib/contract-
 import { createInconformidadDraft, fetchInconformidadDrafts, markInconformidadReviewed } from "../lib/inconformidad-client.ts";
 import type { InconformidadDraft } from "../lib/inconformidad-client.ts";
 import { formatDate } from "../lib/format.ts";
+import { formatFechaSolo, hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 // Mismo set literal que `Cierre.tsx` (WRITE_ROLES de
@@ -141,7 +142,11 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
 
   const [conceptoText, setConceptoText] = useState("");
   const [amountText, setAmountText] = useState("");
-  const [invoiceVerifiedOnText, setInvoiceVerifiedOnText] = useState(() => new Date().toISOString().slice(0, 10));
+  // `hoyFechaSolo()` (día de calendario en America/Mexico_City), NO
+  // `new Date().toISOString().slice(0, 10)` (día UTC) -- ese patrón viejo
+  // precargaba MAÑANA en vez de HOY entre las 18:00 y las 23:59 hora de CDMX
+  // (00:00-05:59 UTC), ver apps/web/src/lib/formato-fecha.ts.
+  const [invoiceVerifiedOnText, setInvoiceVerifiedOnText] = useState(() => hoyFechaSolo());
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [createInvoiceError, setCreateInvoiceError] = useState<string | null>(null);
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
@@ -372,7 +377,7 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                 <div className="grid gap-3 sm:grid-cols-3">
                   <StatCard icon={CircleDollarSign} label="Pendiente por cobrar" value={`$${receivables.totalPending}`} nota={`${receivables.countPending} factura(s)`} />
                   <StatCard icon={Clock} label="Vencido" value={`$${receivables.totalOverdue}`} nota={`${receivables.countOverdue} factura(s)`} />
-                  <StatCard icon={CalendarDays} label="Al corte de" value={formatDate(`${receivables.asOfDate}T00:00:00Z`)} />
+                  <StatCard icon={CalendarDays} label="Al corte de" value={formatFechaSolo(receivables.asOfDate)} />
                 </div>
               )}
 
@@ -385,7 +390,13 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                           {inv.concepto} · ${inv.amount}
                         </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          Verificada {formatDate(`${inv.invoiceVerifiedOn}T00:00:00Z`)} · vence {formatDate(`${inv.dueDate}T00:00:00Z`)}
+                          {/* `invoiceVerifiedOn`/`dueDate` son columnas `date` (solo día,
+                              013_contract_billing.sql) -- `formatFechaSolo`, no
+                              `formatDate(\`${x}T00:00:00Z\`)` (ese patrón viejo las pintaba
+                              un día antes en America/Mexico_City, mismo bug real que
+                              Cobranza.tsx). `paidAt` SÍ es un timestamp real y se queda con
+                              `formatDate`. */}
+                          Verificada {formatFechaSolo(inv.invoiceVerifiedOn)} · vence {formatFechaSolo(inv.dueDate)}
                           {inv.paidAt ? ` · pagada ${formatDate(inv.paidAt)}` : ""}
                         </p>
                       </div>
@@ -458,7 +469,8 @@ export function PostAdjudicacionPage({ apiBaseUrl, token, propertyId, orgSlug, r
                     <div key={d.id} className="flex flex-col gap-2 rounded-xl border border-border p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-[13px] font-semibold text-foreground">
-                          Versión {d.version} · límite {formatDate(`${d.plazo.fechaLimite}T00:00:00Z`)} ({d.plazo.diasHabiles} días hábiles)
+                          {/* `fechaLimite` es "YYYY-MM-DD" (solo día) -- ver InconformidadPlazo. */}
+                          Versión {d.version} · límite {formatFechaSolo(d.plazo.fechaLimite)} ({d.plazo.diasHabiles} días hábiles)
                         </p>
                         <div className="flex gap-1.5">
                           <ViabilityPill viability={d.viability} />
