@@ -4,9 +4,10 @@
 // transversal, y el orquestador combinado que además encola correo real.
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
+import { InMemoryLicitacionesRepository, tryEnqueueDeadlineReminderEmails, tryEnqueueOverdueInvoiceEmails, tryEnqueueRenewalAlertEmails } from "@atiende/domain-licitaciones";
 import type { LicitacionesRepository, TenderUpsertInput } from "@atiende/domain-licitaciones";
 import { runAlertNotificationSweep, runCollectionAlertSweep, runRenewalAlertSweep } from "../src/jobs/licitaciones/alert-notifications.ts";
+import { makeAbortSimulatingRepo, makePerCallTransactionalWithRepo, simulateSingleSharedTransaction } from "./support/fake-transactional-engine.ts";
 
 let repo: InMemoryLicitacionesRepository;
 let organizationId: string;
@@ -188,5 +189,97 @@ describe("runAlertNotificationSweep", () => {
     expect(failed.error).toBe("fallo simulado");
     expect(ok.error).toBeUndefined();
     expect(ok.deadlineReminders.created).toBe(1);
+  });
+});
+
+// r4-fix-crons-transaccion-por-unidad (auditoría a1b #2, MEDIA) -- reproduce el bug
+// real (transacción compartida para TODO el barrido) que ningún test anterior podía
+// ver, y prueba que el fix (transacción POR organización) lo cierra. Mismo mecanismo
+// que apps/worker/tests/night-audit-job.spec.ts -- ver
+// apps/worker/tests/support/fake-transactional-engine.ts.
+describe("r4-fix-crons-transaccion-por-unidad -- transacción por organización (reproduce el bug + prueba el fix)", () => {
+  let orgB: string;
+  let orgC: string;
+  const now = () => new Date("2026-09-14T12:00:00-06:00");
+
+  async function seedOrgWithDueDeadlineReminder(orgId: string, slug: string) {
+    repo.seedOrganization({ id: orgId, slug, name: `Org ${slug}` });
+    repo.seedNotificationRecipient(orgId, { email: `owner-${slug}@empresa.mx`, fullName: `Owner ${slug}` });
+    await repo.upsertTenderManual(orgId, baseInput({ externalId: `EXP-${slug}`, submissionDeadline: "2026-09-16T18:00:00-06:00" }));
+  }
+
+  beforeEach(async () => {
+    // organizationId (del beforeEach de arriba) = "A". B y C son organizaciones
+    // HERMANAS -- B falla, y el bug es que su fallo nunca debería contagiar ni a
+    // A (anterior) ni a C (posterior).
+    repo.seedNotificationRecipient(organizationId, { email: "owner-a@empresa.mx", fullName: "Owner A" });
+    await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-a", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
+    orgB = randomUUID();
+    orgC = randomUUID();
+    await seedOrgWithDueDeadlineReminder(orgB, "b");
+    await seedOrgWithDueDeadlineReminder(orgC, "c");
+  });
+
+  /** Reproduce LITERALMENTE el bucle que `runAlertNotificationSweep` tenía ANTES
+   *  de este fix: una sola sesión compartida para TODAS las organizaciones (las 3
+   *  sub-operaciones de una organización ya compartían try/catch, eso NO cambió). */
+  async function legacySweepAllOrgsInOneSession(repoForEverything: LicitacionesRepository): Promise<{ organizationId: string; ran: boolean; error?: string }[]> {
+    const results: { organizationId: string; ran: boolean; error?: string }[] = [];
+    for (const org of [{ id: organizationId }, { id: orgB }, { id: orgC }]) {
+      try {
+        const deadlineScan = await repoForEverything.scanUpcomingDeadlineReminders(org.id, { nowIso: now().toISOString() });
+        await tryEnqueueDeadlineReminderEmails(repoForEverything, org.id, deadlineScan.reminders);
+        const renewalScan = await repoForEverything.systemScanRenewalAlerts(org.id, {});
+        await tryEnqueueRenewalAlertEmails(repoForEverything, org.id, renewalScan.alerts);
+        const overdueInvoices = await repoForEverything.listOverdueContractInvoices(org.id, "2026-09-14");
+        await tryEnqueueOverdueInvoiceEmails(repoForEverything, org.id, overdueInvoices);
+        results.push({ organizationId: org.id, ran: true });
+      } catch (err) {
+        results.push({ organizationId: org.id, ran: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return results;
+  }
+
+  it("ANTES del fix (patrón reconstruido): un error SQL real en la organización B revierte en silencio TAMBIÉN el recordatorio YA COMMITEADO de A", async () => {
+    const { proxy, isAborted } = makeAbortSimulatingRepo(repo, (method, args) => method === "scanUpcomingDeadlineReminders" && args[0] === orgB, "40P01: deadlock detected (SQL real simulado)");
+
+    const results = await simulateSingleSharedTransaction(repo, isAborted, () => legacySweepAllOrgsInOneSession(proxy));
+
+    expect(results.find((r) => r.organizationId === organizationId)!.ran).toBe(true);
+    const resultC = results.find((r) => r.organizationId === orgC)!;
+    expect(resultC.ran).toBe(false);
+    expect(resultC.error).toMatch(/25P02|aborted/i);
+
+    // El correo real de A, ya encolado, se perdió con el COMMIT->ROLLBACK silencioso.
+    expect(repo.getMessagingOutbox()).toHaveLength(0);
+  });
+
+  it("DESPUÉS del fix (código real): el mismo error SQL en B se aísla -- A y C SÍ encolan su recordatorio real, solo B se reporta como fallo", async () => {
+    const { proxy, isAborted, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "scanUpcomingDeadlineReminders" && args[0] === orgB, "40P01: deadlock detected (SQL real simulado)");
+    const perCallTxn = makePerCallTransactionalWithRepo(repo);
+    const withRepo = async <T>(fn: (r: LicitacionesRepository) => Promise<T>): Promise<T> => {
+      try {
+        return await perCallTxn(() => fn(proxy));
+      } finally {
+        reset();
+      }
+    };
+
+    const sweep = await runAlertNotificationSweep(withRepo, { now, todayIsoDate: "2026-09-14" });
+
+    const resultA = sweep.find((r) => r.organizationId === organizationId)!;
+    const resultB = sweep.find((r) => r.organizationId === orgB)!;
+    const resultC = sweep.find((r) => r.organizationId === orgC)!;
+    expect(resultA.error).toBeUndefined();
+    expect(resultA.deadlineReminders.emailsEnqueued).toBe(1);
+    expect(resultB.error).toContain("40P01");
+    expect(resultC.error).toBeUndefined();
+    expect(resultC.deadlineReminders.emailsEnqueued).toBe(1);
+
+    // Los correos de A y C SÍ persisten -- solo B se perdió (y se reporta).
+    const outbox = repo.getMessagingOutbox();
+    const recipients = outbox.map((j) => (j.payload as { to: string }).to).sort();
+    expect(recipients).toEqual(["owner-a@empresa.mx", "owner-c@empresa.mx"]);
   });
 });

@@ -74,7 +74,12 @@ export interface CobranzaReminderSweepResult {
   readonly error?: string;
 }
 
-async function sweepProperty(repo: DespachosRepository, propertyId: string, todayIso: string): Promise<CobranzaReminderPropertyResult> {
+/** Exportada SOLO para que
+ *  `apps/worker/tests/despachos-cobranza-reminders-job.spec.ts` pueda
+ *  reconstruir el bucle PRE-fix (una sola sesión compartida para todo el
+ *  barrido) en su prueba de regresión -- ningún caller de producción la
+ *  importa directo, siempre a través de `runCobranzaReminderSweep`. */
+export async function sweepProperty(repo: DespachosRepository, propertyId: string, todayIso: string): Promise<CobranzaReminderPropertyResult> {
   // `systemListPendingReceivablesForReminders` ya trae el folio fiscal/total del
   // invoice asociado (join interno, security definer) -- ya no hace falta un
   // `findInvoice` aparte por cuenta (antes bloqueado igual bajo sesión de sistema).
