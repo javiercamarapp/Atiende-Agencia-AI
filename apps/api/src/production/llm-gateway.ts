@@ -63,6 +63,7 @@ import {
 } from "@atiende/agent-core";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore } from "./llm-usage-gateway-adapters.ts";
+import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
@@ -184,5 +185,53 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine): L
     gateway.registerLadder(role, providers);
   }
 
+  return gateway;
+}
+
+/** Tope MUY bajo, dedicado a `resumen-diario` -- una sola llamada al día,
+ *  sin `usageRecorder`/`orgMonthlyBudgetStore` (ver el comentario largo en
+ *  `../resumen-diario/redaccion.ts` para la decisión completa de atribución
+ *  de gasto de plataforma). Deliberadamente más bajo que
+ *  `DEFAULT_LLM_GATEWAY_BUDGET_LIMITS` (turnos de WhatsApp/extracción real,
+ *  potencialmente varias llamadas por minuto): esto es un párrafo narrativo,
+ *  una corrida diaria. */
+export const RESUMEN_DIARIO_LLM_BUDGET_LIMITS: GatewayBudgetLimits = {
+  maxRunUsd: 0.5,
+  maxTenantDailyUsd: 1,
+};
+
+/**
+ * Gateway DEDICADO a la escalera `resumen-diario` (`apps/api/src/resumen-
+ * diario/redaccion.ts::RESUMEN_DIARIO_LLM_ROLE`) -- SEPARADO del gateway
+ * compartido de `buildProductionLlmGateway` a propósito: ese gateway ata
+ * `usageRecorder`/`orgMonthlyBudgetStore` a `core.llm_usage_daily`/`core.
+ * llm_org_budget`, que EXIGEN `organization_id uuid not null references
+ * core.organization` -- el resumen diario es un gasto de PLATAFORMA, nunca
+ * de un tenant, y el diseño es explícito en NO inventar una organización
+ * falsa solo para reusar esas tablas (ver el comentario largo de
+ * `../resumen-diario/redaccion.ts`, que documenta la decisión completa).
+ *
+ * MISMA escalera de proveedores/credenciales que `buildProductionLlmGateway`
+ * (misma llamada a `buildProviderLadder`), pero con su PROPIO circuit
+ * breaker/budget ledger en memoria (aislados del gateway de tenants) y sin
+ * `usageRecorder`/`orgMonthlyBudgetStore` -- el costo/modelo/proveedor real
+ * que el proveedor reportó se guarda directamente en la fila de `core.
+ * daily_ops_summary` que produce el propio agregador (columnas `costo_llm_
+ * micro_usd`/`modelo_llm`/`proveedor_llm`), nunca en una tabla de gasto
+ * por-organización. `undefined` con el MISMO criterio fail-closed que
+ * `buildProductionLlmGateway`: sin ningún proveedor configurado, no hay
+ * narrativa por LLM -- se usa la plantilla determinista, nunca se finge una
+ * llamada.
+ */
+export function buildResumenDiarioLlmGateway(env: ApiEnv): LlmGateway | undefined {
+  const providers = buildProviderLadder(env);
+  if (providers.length === 0) return undefined;
+
+  const gateway = new LlmGateway({
+    breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()),
+    budgetStore: new InMemoryBudgetLedgerStore(),
+    budgetLimits: RESUMEN_DIARIO_LLM_BUDGET_LIMITS,
+  });
+  gateway.registerLadder(RESUMEN_DIARIO_LLM_ROLE, providers);
   return gateway;
 }

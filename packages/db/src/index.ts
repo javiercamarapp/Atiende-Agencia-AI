@@ -63,3 +63,20 @@ export type {
   LicitacionesFuenteRunRow,
 } from "./salud-repository.ts";
 export { PostgresSaludRepository, InMemorySaludRepository } from "./salud-repository.ts";
+export type {
+  ResumenDiarioRepository,
+  VentanaDia,
+  CronHeartbeatSystemRow,
+  OutboxDiarioRow,
+  LicitacionesFuenteRunSystemRow,
+  LlmPlatformBudgetSystemRow,
+  LlmUsageTotalRow,
+  LlmUsageTopOrganizacionRow,
+  OrganizacionesStaffNuevosRow,
+  ProspectosAgregadoRow,
+  FacturacionAgregadoRow,
+  GeneradoPor,
+  DailyOpsSummaryRow,
+  UpsertDailyOpsSummaryInput,
+} from "./resumen-diario-repository.ts";
+export { PostgresResumenDiarioRepository, InMemoryResumenDiarioRepository } from "./resumen-diario-repository.ts";

@@ -62,6 +62,7 @@
     { "path": "/internal/rentas/checkin-recordatorio", "schedule": "40 14 * * *" },
     { "path": "/internal/rentas/ical-sync", "schedule": "45 14 * * *" },
     { "path": "/internal/rentas/checkout-sweep", "schedule": "50 14 * * *" },
-    { "path": "/internal/whatsapp/dispatch", "schedule": "55 14 * * *" }
+    { "path": "/internal/whatsapp/dispatch", "schedule": "55 14 * * *" },
+    { "path": "/internal/superadmin/resumen-diario", "schedule": "0 15 * * *" }
   ]
 }

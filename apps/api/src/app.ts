@@ -16,6 +16,7 @@ import { superadminLlmUsageRoutes } from "./routes/superadmin-llm-usage.ts";
 import { superadminBreakGlassRoutes } from "./routes/superadmin-break-glass.ts";
 import { superadminFacturacionRoutes } from "./routes/superadmin-facturacion.ts";
 import { superadminSaludRoutes } from "./routes/superadmin-salud.ts";
+import { superadminResumenRoutes } from "./routes/superadmin-resumen.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
@@ -31,6 +32,7 @@ import { licitacionesRoutes } from "./routes/verticals/licitaciones/licitaciones
 import { despachosRoutes } from "./routes/verticals/despachos/despachos.ts";
 import { rentasRoutes } from "./routes/verticals/rentas/rentas.ts";
 import { whatsappDispatchRoutes } from "./routes/internal/whatsapp-dispatch.ts";
+import { resumenDiarioRoutes } from "./routes/internal/resumen-diario.ts";
 
 export function buildApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -66,6 +68,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminBreakGlassRoutes(deps));
   app.route("/", superadminFacturacionRoutes(deps));
   app.route("/", superadminSaludRoutes(deps));
+  app.route("/", superadminResumenRoutes(deps));
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
@@ -83,6 +86,9 @@ export function buildApp(deps: AppDeps): Hono {
   // Plataforma compartida (no de un vertical) — drena messaging_outbox de las 3
   // verticales de WhatsApp vía Graph API real, ver ese archivo para el detalle.
   app.route("/", whatsappDispatchRoutes(deps));
+  // Resumen diario automático -- plataforma compartida (no de un vertical),
+  // mismo criterio que whatsappDispatchRoutes de arriba.
+  app.route("/", resumenDiarioRoutes(deps));
 
   return app;
 }

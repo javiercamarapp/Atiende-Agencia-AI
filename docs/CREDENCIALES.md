@@ -27,7 +27,7 @@ explícito, nunca a datos falsos.
 |---|---|:-:|---|---|:-:|
 | `JWT_SECRET` | `openssl rand -hex 32` (o equivalente) | Sí | Firma/verificación de access y refresh tokens de staff (`routes/auth.ts`) | La API no arranca (`env.ts::requireEnv`) | **Sí** |
 | `VOICE_TOOL_SECRET` | `openssl rand -hex 32` | Sí | Autentica llamadas ENTRANTES de ElevenLabs Server Tools (header `x-atiende-tool-secret`) en los agentes de voz de citas/hoteles/restaurantes (`routes/verticals/*/voice-tools.ts`) — **no** requiere ninguna API key de ElevenLabs, ver sección "Voz" abajo | La API no arranca | **Sí** |
-| `INTERNAL_SECRET` | `openssl rand -hex 32` | Sí | Autentica las ~17 rutas `/internal/*` que Vercel Cron invoca a diario (`Authorization: Bearer $CRON_SECRET`) o que se llaman a mano (header `x-atiende-internal-secret`) — ver `http-security.ts::internalOrCronSecretMatches` | La API no arranca | **Sí** |
+| `INTERNAL_SECRET` | `openssl rand -hex 32` | Sí | Autentica las ~18 rutas `/internal/*` que Vercel Cron invoca a diario (`Authorization: Bearer $CRON_SECRET`) o que se llaman a mano (header `x-atiende-internal-secret`) — ver `http-security.ts::internalOrCronSecretMatches` | La API no arranca | **Sí** |
 | `RENTAS_OWNER_JWT_SECRET` | `openssl rand -hex 32`, **nunca el mismo valor que `JWT_SECRET`** | Sí | Firma/verificación de tokens del portal de propietario de rentas — secreto DISTINTO al de staff a propósito (defensa en profundidad) | La API no arranca | **Sí** |
 | `ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_TOKEN_TTL_SECONDS` | número de segundos; default 900 / 2592000 | No | TTL de los tokens de staff | Usa el default | No |
 | `RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS` / `RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS` | ídem, default 900 / 2592000 | No | TTL de los tokens del portal de propietario | Usa el default | No |
@@ -253,7 +253,7 @@ garantiza que el bundle YA DESPLEGADO las tenga si se configuraron después del
 
 | Variable | Dónde se da de alta | Notas |
 |---|---|---|
-| `CRON_SECRET` | Vercel → Project → Settings → Environment Variables — **con el MISMO valor que `INTERNAL_SECRET`** | **No la lee ningún código de este repo** (`grep` no encuentra `process.env.CRON_SECRET`) — es pura convención de Vercel: sus Cron Jobs invocan con `Authorization: Bearer $CRON_SECRET` automáticamente cuando esa variable existe en el proyecto. Sin ella (o con un valor distinto a `INTERNAL_SECRET`), los ~17 crons de `vercel.json` disparan pero cada corrida recibe 401. |
+| `CRON_SECRET` | Vercel → Project → Settings → Environment Variables — **con el MISMO valor que `INTERNAL_SECRET`** | **No la lee ningún código de este repo** (`grep` no encuentra `process.env.CRON_SECRET`) — es pura convención de Vercel: sus Cron Jobs invocan con `Authorization: Bearer $CRON_SECRET` automáticamente cuando esa variable existe en el proyecto. Sin ella (o con un valor distinto a `INTERNAL_SECRET`), los ~18 crons de `vercel.json` disparan pero cada corrida recibe 401. |
 
 `scripts/verify-real-postgres-ci/run-gate.mjs` (fuera del alcance `apps/`/
 `packages/` de este inventario) lee `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD` para
@@ -286,7 +286,7 @@ cierto): la sección de Stripe decía que `packages/billing`/`STRIPE_WEBHOOK_SEC
 
 ## Crons de Vercel — qué depende SOLO de la corrida diaria
 
-`vercel.json` dispara sus ~17 crons **una vez al día** (plan Hobby). Verificado
+`vercel.json` dispara sus ~18 crons **una vez al día** (plan Hobby). Verificado
 leyendo el código si el envío real de WhatsApp/correo depende únicamente de esa
 corrida diaria o si además hay un disparo inline al encolar.
 
@@ -327,6 +327,7 @@ envía en segundos, no en hasta 24h.
 |---|---|
 | `/internal/licitaciones/discover-tenders`, `deadline-reminders` (05:00/06:00) | `apps/worker/src/jobs/licitaciones/*.ts` — barridos de una vez al día (descubrir licitaciones nuevas), no colas de mensajes; un disparo inline no aplicaría aquí de la misma forma. |
 | `/internal/hoteles/night-audit`, `/internal/citas/confirmacion-cita`, `/internal/despachos/cobranza-reminders`, `/internal/rentas/checkin-recordatorio`/`checkout-sweep`, `/internal/citas/google-calendar-sync`, `/internal/rentas/ical-sync` | varios | Barridos por-tiempo (auditoría nocturna, recordatorios, sincronización periódica), no colas de "algo que un usuario acaba de encolar" — el concepto de "disparo inline" no aplica igual que a un mensaje de WhatsApp/correo. |
+| `/internal/superadmin/resumen-diario` (09:00 local / 15:00 UTC) | Resumen diario automático de plataforma (`apps/api/src/resumen-diario/*`) — corre una vez al día, después de los demás crons, para reflejar el día ya asentado; no es una cola de mensajes de un tenant. |
 
 **Conclusión actualizada**: las 6 verticales con canal de correo ya tienen
 algún disparo inline best-effort hoy — citas/hoteles/restaurantes/despachos/
@@ -336,5 +337,5 @@ licitaciones desde su propio cron de alertas. Ningún vertical depende ya
 su correo principal — lo que sí sigue acotado a una corrida diaria son los
 barridos de descubrimiento/recordatorio de la tabla de arriba, por diseño (no
 son colas de mensajes). Esto **no** cambia la conclusión sobre el límite de
-cron jobs del plan Hobby de Vercel (ver `docs/DEPLOY.md`): los ~17 crons ya
+cron jobs del plan Hobby de Vercel (ver `docs/DEPLOY.md`): los ~18 crons ya
 existentes no se tocan aquí.

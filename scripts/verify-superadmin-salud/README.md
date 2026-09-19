@@ -2,7 +2,7 @@
 
 Verificación, contra un Postgres **real**, de las 4 funciones nuevas de
 `packages/db/migrations/0014_superadmin_salud_operativa.sql` (pantalla
-`/superadmin/salud` — latidos de los 17 crons de `vercel.json`, salud
+`/superadmin/salud` — latidos de los 18 crons de `vercel.json`, salud
 agregada de las 6 colas de mensajería, última corrida por fuente de
 licitaciones):
 
