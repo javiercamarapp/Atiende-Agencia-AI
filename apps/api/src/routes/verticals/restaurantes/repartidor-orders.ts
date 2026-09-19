@@ -14,7 +14,7 @@ import { REPARTIDOR_ROLES, changeAssignedOrderStatus, isOrderStatus, OrderStatus
 import type { Order } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
-import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
+import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 function serializeOrder(o: Order) {
@@ -98,12 +98,27 @@ export function restaurantesRepartidorOrdersRoutes(deps: AppDeps): Hono<CoreAuth
     const incidentNote = typeof raw.incidentNote === "string" ? raw.incidentNote : null;
 
     try {
-      const updated = await changeAssignedOrderStatus(repo, organizationId, repartidorId, order, raw.status, incidentNote);
+      // Blocker A (revisión de PR #169) — mismo hotfix que admin-orders.ts: se pasa
+      // `c.get("db")` a `changeAssignedOrderStatus` para que su best-effort de
+      // notificación pueda envolverse en SAVEPOINT (esta ruta también corre en
+      // sesión de STAFF).
+      const updated = await changeAssignedOrderStatus(repo, organizationId, repartidorId, order, raw.status, incidentNote, c.get("db"));
       // Cluster #3 (CRÍTICO) de la auditoría final — mismo disparo inline
       // best-effort que admin-orders.ts::PATCH .../status (changeAssignedOrderStatus
       // también puede encolar el WhatsApp al cliente vía
       // tryNotifyCustomerOnOrderStatusChange), mismo `repo`/transacción.
-      await triggerRestaurantesWhatsAppDispatchInline(deps, repo);
+      //
+      // Auditoría a2b (CRÍTICO, primo de PR #166) — mismo hotfix de SAVEPOINT que
+      // admin-orders.ts (ver ese comentario y whatsapp-dispatch.ts): esta ruta
+      // también corre en sesión de STAFF (repartidor autenticado), así que
+      // `claim_messaging_outbox_batch` también lanza 42501 siempre aquí. Igual que
+      // en admin-orders.ts, este intento inline SIEMPRE es un no-op seguro en
+      // sesión de staff -- el envío real lo hace la tarea post-commit de abajo
+      // (Blocker B, revisión de PR #169).
+      await triggerRestaurantesWhatsAppDispatchInline(deps, c.get("db"), repo);
+      // Blocker B (revisión de PR #169) — mismo criterio que admin-orders.ts: el
+      // drenado real corre DESPUÉS del commit, en sesión de SISTEMA.
+      c.get("postCommitTasks").push(() => dispatchWhatsAppVertical(deps, "restaurantes", 5).then(() => undefined));
       return c.json({ order: serializeOrder(updated) });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);

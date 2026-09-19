@@ -19,6 +19,22 @@
 // (`apps/api/src/routes/verticals/licitaciones/discover.ts`), pensada para
 // un cron EXTERNO (Vercel Cron/Supabase Cron) -- y también invocables
 // directamente en pruebas unitarias, sin levantar HTTP.
+//
+// r4-fix-crons-transaccion-por-unidad (corrección de PR #163, bloqueante #2): ANTES,
+// tanto `runDiscoverTendersForOrganization` como `runDiscoverTendersSweep` recibían
+// un `LicitacionesRepository` YA ligado a una única transacción abierta por la ruta
+// para TODO el barrido (todas las organizaciones, TODAS las fuentes de cada una).
+// Además del defecto ya conocido de "una organización rara revierte a las demás en
+// silencio" (ver `WithHotelesRepo` en `../hoteles/night-audit.ts`), este archivo tenía
+// uno PEOR: el `catch` por fuente de abajo llama `repo.recordSourceRun` para dejar
+// registrada la corrida FALLIDA -- sobre la MISMA transacción que acaba de fallar
+// (p. ej. un error SQL real de `ingestTendersFromSource`), ese INSERT de "corrida
+// fallida" también fallaba con 25P02 (transacción abortada) y se tragaba en el
+// `catch (recordErr)` interno, dejando la fuente SIN NINGÚN registro de corrida --
+// ni éxito ni fallo. Fix: transacción POR fuente (la unidad natural de este loop,
+// más granular que por organización porque cada fuente ya hace su propio
+// `recordSourceRun`, tanto en el camino ok como en el de error) -- mismo patrón
+// `withRepo` ya introducido en `../hoteles/night-audit.ts`/`./alert-notifications.ts`.
 import {
   LICITACIONES_CONNECTOR_REGISTRY,
   classifySourceFailure,
@@ -30,6 +46,8 @@ import type {
   SourceHealthState,
   TenderSourceIngestCandidate,
 } from "@atiende/domain-licitaciones";
+
+export type WithLicitacionesRepo = <T>(fn: (repo: LicitacionesRepository) => Promise<T>) => Promise<T>;
 
 /**
  * Tope de registros por (organización, conector, corrida). El dataset
@@ -70,9 +88,16 @@ export interface RunDiscoverTendersOptions {
  * clasifica (`classifySourceFailure`, REQ-148 -- nunca se reporta como "ok"
  * ni como "0 registros" en silencio) y se registra como corrida fallida vía
  * `recordSourceRun`, y el barrido de los demás conectores continúa).
+ *
+ * r4-fix-crons-transaccion-por-unidad: `withRepo` abre UNA transacción POR fuente --
+ * el ingest (camino ok) y el `recordSourceRun` de la rama de error corren SIEMPRE en
+ * una transacción fresca, nunca en la que acaba de fallar (ver comentario de cabecera
+ * del archivo para el detalle completo: antes, `recordSourceRun` de la rama de error
+ * reutilizaba la MISMA sesión recién abortada y también fallaba con 25P02, en
+ * silencio).
  */
 export async function runDiscoverTendersForOrganization(
-  repo: LicitacionesRepository,
+  withRepo: WithLicitacionesRepo,
   organizationId: string,
   options: RunDiscoverTendersOptions = {},
 ): Promise<readonly DiscoverTendersSourceResult[]> {
@@ -94,18 +119,20 @@ export async function runDiscoverTendersForOrganization(
         candidates.push(record);
       }
 
-      const ingestResult = await repo.ingestTendersFromSource(organizationId, descriptor.id, candidates);
-      const finishedAt = now().toISOString();
-      await repo.recordSourceRun(organizationId, {
-        source: descriptor.id,
-        state: "ok",
-        startedAt,
-        finishedAt,
-        evidence: {
-          message: `Ingesta automática: ${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s)${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
-          coverage: { expected: candidates.length, obtained: ingestResult.created + ingestResult.updated },
-        },
-        correlationId: null,
+      const ingestResult = await withRepo(async (repo) => {
+        const ingest = await repo.ingestTendersFromSource(organizationId, descriptor.id, candidates);
+        await repo.recordSourceRun(organizationId, {
+          source: descriptor.id,
+          state: "ok",
+          startedAt,
+          finishedAt: now().toISOString(),
+          evidence: {
+            message: `Ingesta automática: ${ingest.created} nueva(s), ${ingest.updated} actualizada(s)${droppedCount > 0 ? `, ${droppedCount} fila(s) descartada(s)` : ""}.`,
+            coverage: { expected: candidates.length, obtained: ingest.created + ingest.updated },
+          },
+          correlationId: null,
+        });
+        return ingest;
       });
       results.push({
         source: descriptor.id,
@@ -120,7 +147,9 @@ export async function runDiscoverTendersForOrganization(
       const { state, message } = classifySourceFailure(err);
       const finishedAt = now().toISOString();
       try {
-        await repo.recordSourceRun(organizationId, { source: descriptor.id, state, startedAt, finishedAt, evidence: { message }, correlationId: null });
+        // Transacción NUEVA -- nunca la que acaba de fallar arriba (ver comentario de
+        // cabecera del archivo).
+        await withRepo((repo) => repo.recordSourceRun(organizationId, { source: descriptor.id, state, startedAt, finishedAt, evidence: { message }, correlationId: null }));
       } catch (recordErr) {
         // Nunca deja que un fallo al REGISTRAR la corrida fallida oculte el fallo original de la fuente.
         options.logger?.warn(`discover-tenders: no se pudo registrar la corrida fallida de "${descriptor.id}"`, {
@@ -146,13 +175,17 @@ export interface DiscoverTendersSweepResult {
  * la ruta interna gateada por secreto (mismo patrón EXACTO que
  * `runNightAuditSweep`/`citasRemindersRoutes`: un tenant con datos raros
  * nunca tumba el barrido completo de los demás).
+ *
+ * r4-fix-crons-transaccion-por-unidad: `listActiveOrganizations()` corre en su propia
+ * transacción corta (vía `withRepo`), y cada FUENTE de cada organización corre la
+ * suya -- ver `runDiscoverTendersForOrganization` arriba.
  */
-export async function runDiscoverTendersSweep(repo: LicitacionesRepository, options: RunDiscoverTendersOptions = {}): Promise<readonly DiscoverTendersSweepResult[]> {
-  const organizations = await repo.listActiveOrganizations();
+export async function runDiscoverTendersSweep(withRepo: WithLicitacionesRepo, options: RunDiscoverTendersOptions = {}): Promise<readonly DiscoverTendersSweepResult[]> {
+  const organizations = await withRepo((repo) => repo.listActiveOrganizations());
   const results: DiscoverTendersSweepResult[] = [];
   for (const org of organizations) {
     try {
-      results.push({ organizationId: org.id, results: await runDiscoverTendersForOrganization(repo, org.id, options) });
+      results.push({ organizationId: org.id, results: await runDiscoverTendersForOrganization(withRepo, org.id, options) });
     } catch (err) {
       results.push({ organizationId: org.id, results: [], error: err instanceof Error ? err.message : String(err) });
     }

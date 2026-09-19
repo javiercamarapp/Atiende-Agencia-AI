@@ -14,7 +14,7 @@ describe("POST /internal/hoteles/email-dispatch", () => {
     expect(res.status).toBe(401);
   });
 
-  it("fail-closed: sin RESEND_API_KEY configurada, un job pendiente se procesa y falla explícito (nunca 'sent')", async () => {
+  it("fix a2b: sin RESEND_API_KEY configurada, responde 'not_configured' y NO reclama nada (cero intentos quemados)", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
     const app = buildApp(ctx.deps);
 
@@ -29,13 +29,20 @@ describe("POST /internal/hoteles/email-dispatch", () => {
 
     const res = await app.request("/internal/hoteles/email-dispatch", { method: "POST", headers: { "x-atiende-internal-secret": TEST_ENV.internalSecret } });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { processed: number; sent: number; failed: number };
-    expect(body.processed).toBe(1);
+    const body = (await res.json()) as { status: string; processed: number; sent: number; failed: number };
+    // Fix a2b (CRÍTICO, seguimiento PR #166): sin proveedor configurado, la
+    // ruta responde 200 con `status: "not_configured"` y NUNCA reclama el
+    // outbox (cross-tenant, cuenta intento) -- antes de este fix,
+    // `processed`/`failed` eran 1 aquí, quemando un intento del job por cada
+    // invocación de este cron (o del drenado post-commit de cada acción de
+    // staff) sin que Resend jamás lo hubiera visto.
+    expect(body.status).toBe("not_configured");
+    expect(body.processed).toBe(0);
     expect(body.sent).toBe(0);
-    expect(body.failed).toBe(1);
+    expect(body.failed).toBe(0);
 
     const job = ctx.hotelesRepo.getOutbox().find((o) => o.channel === "email" && o.eventType === "reservation.created");
-    expect(job?.status).toBe("failed");
+    expect(job?.status).toBe("pending");
   });
 
   // Wiring real del scheduler (vercel.json::crons): Vercel Cron SIEMPRE dispara

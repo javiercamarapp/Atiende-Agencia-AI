@@ -32,7 +32,7 @@ describe("POST /internal/licitaciones/alert-notifications", () => {
 
     // Convocatoria con vencimiento próximo -- relativo a "ahora" (nunca una fecha
     // fija hardcoded, mismo criterio que licitaciones-discover.spec.ts para que el
-    // test no envejezca): la ruta usa `runAlertNotificationSweep(repo)` SIN
+    // test no envejezca): la ruta usa `runAlertNotificationSweep(withRepo)` SIN
     // `now`/`todayIsoDate` inyectado (misma firma real que un scheduler externo
     // invocaría en producción), así que la ventana de anticipación se evalúa contra
     // el reloj real del proceso.
@@ -69,12 +69,14 @@ describe("POST /internal/licitaciones/alert-notifications", () => {
     const res = await app.request("/internal/licitaciones/alert-notifications", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
     expect(res.status).toBe(200);
 
-    // Sin ningún POST/GET a /internal/licitaciones/email-dispatch de por medio: el
-    // disparo inline ya reclamó el job y marcó el intento fallido (fail-closed,
-    // sin RESEND_API_KEY en este fixture) DENTRO de esta misma corrida.
+    // Fix a2b (CRÍTICO, seguimiento PR #166): sin RESEND_API_KEY en este
+    // fixture, el disparo inline (`triggerLicitacionesEmailDispatchInline`) YA
+    // NO reclama nada -- `dispatchPendingEmailJobs` corta antes del claim. El
+    // job queda intacto en 'pending' (antes de este fix, quedaba 'failed' con
+    // attempts=1 sin que Resend jamás lo hubiera visto).
     const job = ctx.repo.getMessagingOutbox().find((j) => j.eventType === "tender.deadline_reminder");
-    expect(job?.status).toBe("failed");
-    expect(job?.attempts).toBe(1);
+    expect(job?.status).toBe("pending");
+    expect(job?.attempts).toBe(0);
   });
 });
 
@@ -86,20 +88,21 @@ describe("POST /internal/licitaciones/email-dispatch", () => {
     expect(res.status).toBe(401);
   });
 
-  it("fail-closed: sin RESEND_API_KEY configurada, un job pendiente se procesa y falla explícito (nunca 'sent')", async () => {
+  it("fix a2b: sin RESEND_API_KEY configurada, responde 'not_configured' y NO reclama nada (cero intentos quemados)", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);
     await ctx.repo.enqueueMessagingOutbox(ctx.organizationId, "email", "tender.deadline_reminder", "dedupe-test-1", { to: "owner@empresa.mx", subject: "Asunto", html: "<p>hola</p>", text: "hola" });
 
     const res = await app.request("/internal/licitaciones/email-dispatch", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { processed: number; sent: number; failed: number };
-    expect(body.processed).toBe(1);
+    const body = (await res.json()) as { status: string; processed: number; sent: number; failed: number };
+    expect(body.status).toBe("not_configured");
+    expect(body.processed).toBe(0);
     expect(body.sent).toBe(0);
-    expect(body.failed).toBe(1);
+    expect(body.failed).toBe(0);
 
     const job = ctx.repo.getMessagingOutbox().find((o) => o.channel === "email" && o.eventType === "tender.deadline_reminder");
-    expect(job?.status).toBe("failed");
+    expect(job?.status).toBe("pending");
   });
 });
 
@@ -139,16 +142,17 @@ describe("GET /internal/licitaciones/email-dispatch (invocación real de Vercel 
     expect(res.status).toBe(401);
   });
 
-  it("con Authorization: Bearer <INTERNAL_SECRET>, drena el outbox igual que el POST manual", async () => {
+  it("con Authorization: Bearer <INTERNAL_SECRET>, responde 'not_configured' igual que el POST manual (sin proveedor, cero intentos quemados)", async () => {
     const ctx = await buildLicitacionesTestContext(buildApp);
     const app = buildApp(ctx.deps);
     await ctx.repo.enqueueMessagingOutbox(ctx.organizationId, "email", "tender.deadline_reminder", "dedupe-test-cron-1", { to: "owner@empresa.mx", subject: "Asunto", html: "<p>hola</p>", text: "hola" });
 
     const res = await app.request("/internal/licitaciones/email-dispatch", { method: "GET", headers: { authorization: `Bearer ${ctx.deps.env.internalSecret}` } });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { processed: number; sent: number; failed: number };
-    expect(body.processed).toBe(1);
-    expect(body.failed).toBe(1);
+    const body = (await res.json()) as { status: string; processed: number; failed: number };
+    expect(body.status).toBe("not_configured");
+    expect(body.processed).toBe(0);
+    expect(body.failed).toBe(0);
   });
 });
 

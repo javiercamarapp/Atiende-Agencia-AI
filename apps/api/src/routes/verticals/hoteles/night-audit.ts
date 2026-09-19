@@ -26,11 +26,11 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { NIGHT_AUDIT_ROLES, type NightAuditSummary } from "@atiende/domain-hoteles";
+import { NIGHT_AUDIT_ROLES, type HotelesRepository, type NightAuditSummary } from "@atiende/domain-hoteles";
 import { runNightAuditForProperty, runNightAuditSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { secretMatches } from "../../../http-security.ts";
-import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
+import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -70,26 +70,36 @@ export function hotelesNightAuditRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.on(["GET", "POST"], "/internal/hoteles/night-audit", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return withHeartbeat(deps, "/internal/hoteles/night-audit", () => deps.engine.withAppSession({ userId: null }, async (db) => {
-      const repo = deps.hotelesRepo(db);
-      const results = await runNightAuditSweep(repo);
+    // r4-fix-crons-transaccion-por-unidad (auditoría a1b #1, ALTA): YA NO se abre
+    // una única `withAppSession` para todo el barrido -- `runNightAuditSweep`
+    // recibe un runner (`withRepo`) que abre UNA transacción POR property (ver su
+    // comentario de cabecera en @atiende/worker). Esta ruta ya no abre ninguna
+    // sesión propia; solo construye el runner y la pasa.
+    return withHeartbeat(deps, "/internal/hoteles/night-audit", async () => {
+      const withRepo = <T>(fn: (repo: HotelesRepository) => Promise<T>) => deps.engine.withAppSession({ userId: null }, (db) => fn(deps.hotelesRepo(db)));
+      const results = await runNightAuditSweep(withRepo);
       const failures = results.filter((r) => r.error != null);
-      return c.json(
-        {
-          ok: failures.length === 0,
-          properties_revisadas: results.length,
-          corridas: results.map((r) => ({
-            organizationId: r.organizationId,
-            propertyId: r.propertyId,
-            corrio: r.ran,
-            razonOmitida: r.skippedReason ?? null,
-            fecha: r.businessDate ?? null,
-            error: r.error ?? null,
-          })),
-        },
-        200,
-      );
-    }))();
+      const body = {
+        ok: failures.length === 0,
+        properties_revisadas: results.length,
+        corridas: results.map((r) => ({
+          organizationId: r.organizationId,
+          propertyId: r.propertyId,
+          corrio: r.ran,
+          razonOmitida: r.skippedReason ?? null,
+          fecha: r.businessDate ?? null,
+          error: r.error ?? null,
+        })),
+      };
+      const response = c.json(body, 200);
+      // (5) el latido no debe registrar "ok" limpio si alguna property falló --
+      // ver CronPartialFailureError (with-heartbeat.ts). El caller HTTP sigue
+      // recibiendo el 200 + detalle de arriba, nunca un 500.
+      if (failures.length > 0) {
+        throw new CronPartialFailureError(`night-audit: ${failures.length} de ${results.length} properties fallaron`, response);
+      }
+      return response;
+    })();
   });
 
   // ---- 2) Disparo manual / consulta — mismo montaje doble que

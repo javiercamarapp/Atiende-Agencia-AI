@@ -100,12 +100,14 @@ describe("POST /internal/despachos/cobranza-reminders", () => {
     const res = await app.request("/internal/despachos/cobranza-reminders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
     expect(res.status).toBe(200);
 
-    // Sin ningún POST/GET a /internal/despachos/email-dispatch de por medio: el
-    // disparo inline ya reclamó el job y marcó el intento fallido (fail-closed,
-    // sin RESEND_API_KEY en este fixture) DENTRO de esta misma corrida.
+    // Fix a2b (CRÍTICO, seguimiento PR #166): sin RESEND_API_KEY en este
+    // fixture, el disparo inline (`triggerDespachosEmailDispatchInline`) YA NO
+    // reclama nada -- `dispatchPendingEmailJobs` corta antes del claim. El job
+    // queda intacto en 'pending' (antes de este fix, quedaba 'failed' con
+    // attempts=1 sin que Resend jamás lo hubiera visto).
     const job = ctx.despachosRepo.getMessagingOutbox().find((j) => j.eventType === "cobranza.vencimiento");
-    expect(job?.status).toBe("failed");
-    expect(job?.attempts).toBe(1);
+    expect(job?.status).toBe("pending");
+    expect(job?.attempts).toBe(0);
   });
 
   // Wiring real del scheduler (vercel.json::crons): Vercel Cron SIEMPRE dispara
@@ -137,20 +139,21 @@ describe("POST /internal/despachos/email-dispatch", () => {
     expect(res.status).toBe(401);
   });
 
-  it("fail-closed: sin RESEND_API_KEY configurada, un job pendiente se procesa y falla explícito (nunca 'sent')", async () => {
+  it("fix a2b: sin RESEND_API_KEY configurada, responde 'not_configured' y NO reclama nada (cero intentos quemados)", async () => {
     const ctx = await buildDespachosTestContext(buildApp);
     const app = buildApp(ctx.deps);
     await ctx.despachosRepo.enqueueMessagingOutbox(ctx.organizationId, "email", "vencimiento.escalado", "dedupe-test-1", { to: "owner@despacho.mx", subject: "Asunto", html: "<p>hola</p>", text: "hola" });
 
     const res = await app.request("/internal/despachos/email-dispatch", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { processed: number; sent: number; failed: number };
-    expect(body.processed).toBe(1);
+    const body = (await res.json()) as { status: string; processed: number; sent: number; failed: number };
+    expect(body.status).toBe("not_configured");
+    expect(body.processed).toBe(0);
     expect(body.sent).toBe(0);
-    expect(body.failed).toBe(1);
+    expect(body.failed).toBe(0);
 
     const job = ctx.despachosRepo.getMessagingOutbox().find((o) => o.channel === "email" && o.eventType === "vencimiento.escalado");
-    expect(job?.status).toBe("failed");
+    expect(job?.status).toBe("pending");
   });
 
   it("GET con Authorization: Bearer <secreto> (forma real en que Vercel Cron invoca la ruta) también autentica", async () => {

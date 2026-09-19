@@ -124,7 +124,7 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
       // acaba de encolar aunque esta transacción todavía no haya hecho commit —
       // ver comentario de cabecera de whatsapp-dispatch.ts. Nunca puede convertir
       // esta respuesta en un error: el cron diario sigue como red de seguridad.
-      await triggerCitasWhatsAppDispatchInline(deps, citasRepo);
+      await triggerCitasWhatsAppDispatchInline(deps, db, citasRepo);
       // El agente también puede haber agendado/cancelado/reagendado una cita
       // DENTRO de esta misma conversación (llm-turn-handler.ts), lo que encola un
       // correo real vía tryEnqueueAppointmentEmail — mismo disparo inline.
