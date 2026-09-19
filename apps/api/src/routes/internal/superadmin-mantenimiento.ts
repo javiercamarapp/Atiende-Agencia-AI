@@ -20,6 +20,17 @@ import { internalOrCronSecretMatches } from "../../http-security.ts";
 import { withHeartbeat } from "../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../deps.ts";
 
+/** SQLSTATE 42883 (`undefined_function`) -- lo que Postgres real lanza cuando
+ *  `core.desatascar_outbox_colgados_for_system`/`core.marcar_prospectos_sin_
+ *  movimiento_for_system` (ambas de `packages/db/migrations/0016_superadmin_
+ *  acciones.sql`) todavía no existen. Mismo criterio que `../../resumen-
+ *  diario/agregador.ts::isUndefinedFunctionError` (hallazgo B de esta misma
+ *  auditoría) -- reimplementado aquí en vez de importado porque son archivos
+ *  hermanos sin un módulo compartido de utilidades de error SQL todavía. */
+function isUndefinedFunctionError(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42883";
+}
+
 /** Umbral de "colgado" para el desatasque de outbox -- MISMO valor que usa
  *  `ejecutar_mantenimiento_ahora` (ver `../superadmin-acciones.ts`), un solo
  *  número real en todo el sistema. */
@@ -38,10 +49,31 @@ export function superadminMantenimientoRoutes(deps: AppDeps): Hono {
     if (!internalOrCronSecretMatches(c.req.raw, deps.env.internalSecret)) throw Errors.unauthorized();
 
     return withHeartbeat(deps, SUPERADMIN_MANTENIMIENTO_CRON_PATH, async () => {
-      const [outbox, prospectos] = await Promise.all([
-        deps.accionesRepo.desatascarOutboxColgadosForSystem(UMBRAL_OUTBOX_MINUTOS),
-        deps.accionesRepo.marcarProspectosSinMovimientoForSystem(UMBRAL_PROSPECTOS_DIAS),
-      ]);
+      // `desatascarOutboxColgadosForSystem`/`marcarProspectosSinMovimientoForSystem`
+      // (`../../production/superadmin-acciones-repository.ts::
+      // ProductionSuperadminAccionesRepository`) abren cada una su PROPIA
+      // transacción -- ninguna comparte transacción con la otra ni con nada más
+      // en este handler, así que un catch simple alrededor del `Promise.all`
+      // basta (sin SAVEPOINT): si la migración 0016 no está aplicada, NINGUNA
+      // de las dos ejecutó nada real que necesite deshacerse.
+      let outbox: Awaited<ReturnType<typeof deps.accionesRepo.desatascarOutboxColgadosForSystem>>;
+      let prospectos: Awaited<ReturnType<typeof deps.accionesRepo.marcarProspectosSinMovimientoForSystem>>;
+      try {
+        [outbox, prospectos] = await Promise.all([
+          deps.accionesRepo.desatascarOutboxColgadosForSystem(UMBRAL_OUTBOX_MINUTOS),
+          deps.accionesRepo.marcarProspectosSinMovimientoForSystem(UMBRAL_PROSPECTOS_DIAS),
+        ]);
+      } catch (err) {
+        // Mismo criterio que el cron de resumen diario (hallazgo B): "migración
+        // pendiente" es el caso NORMAL de "código nuevo, base vieja" -- NUNCA un
+        // fallo real de este cron. Se resuelve (no se lanza) a propósito: lanzar
+        // aquí ensuciaría `core.cron_heartbeat` con `last_status='error'` vía
+        // `withHeartbeat` y generaría alertas falsas en `/superadmin/salud` por
+        // algo que no es un bug. Cualquier otro código de error se repropaga tal
+        // cual.
+        if (!isUndefinedFunctionError(err)) throw err;
+        return c.json({ ok: false, motivo: "migracion_pendiente" });
+      }
 
       const filasDesatascadas = outbox.reduce((sum, q) => sum + (q.filasMovidas ?? 0), 0);
       return c.json({
