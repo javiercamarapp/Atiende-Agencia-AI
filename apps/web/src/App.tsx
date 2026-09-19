@@ -25,6 +25,7 @@ import { SuperAdminDashboardPage } from "./superadmin/pages/Dashboard.tsx";
 import { SuperAdminProspectosPage } from "./superadmin/pages/Prospectos.tsx";
 import { SuperAdminPanelesPage } from "./superadmin/pages/Paneles.tsx";
 import { SuperAdminGastoApiPage } from "./superadmin/pages/GastoApi.tsx";
+import { SuperAdminIntegracionesPage } from "./superadmin/pages/Integraciones.tsx";
 import { Toaster } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -228,6 +229,15 @@ function SuperAdminGastoApiRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminGastoApiPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminIntegracionesRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminIntegracionesPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -578,6 +588,7 @@ export function App() {
         <Route path="/superadmin/prospectos" element={<SuperAdminProspectosRoute />} />
         <Route path="/superadmin/paneles" element={<SuperAdminPanelesRoute />} />
         <Route path="/superadmin/gasto-api" element={<SuperAdminGastoApiRoute />} />
+        <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
         <Route path="/hoteles/login" element={<HotelesLoginRoute />} />
         <Route path="/hoteles/:orgSlug" element={<HotelesDashboardRoute />} />
