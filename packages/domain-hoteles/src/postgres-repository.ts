@@ -5,6 +5,7 @@
 // `core.has_property_access`/`hoteles.can_access_money`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
@@ -1414,6 +1415,23 @@ export class PostgresHotelesRepository implements HotelesRepository {
 
   async markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void> {
     await this.db.query(`select hoteles.complete_messaging_outbox_dead($1, $2, $3);`, [id, attempts, errorClass]);
+  }
+
+  // Aislamiento por tool call del turno de WhatsApp (ver el comentario de cabecera
+  // de `runWithRowSavepoint` en `repository.ts` para el diseño completo) -- mismo
+  // `runWithSavepointFallback` que `PostgresCitasRepository`, con `isRecoverable`
+  // fijo en `true` y un `fallback` que simplemente relanza el mismo error DESPUÉS de
+  // que `ROLLBACK TO SAVEPOINT` ya dejó la transacción del turno utilizable para el
+  // resto del loop de tool-use / el commit final.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: fn,
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
   }
 
   async insertContactoNoOperativo(input: NewContactoNoOperativoInput): Promise<ContactoNoOperativoRecord> {
