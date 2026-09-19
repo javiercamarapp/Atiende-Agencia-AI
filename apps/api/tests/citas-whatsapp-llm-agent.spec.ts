@@ -19,7 +19,7 @@ import {
   RealCalDavPort,
   type WhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import { InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyRestaurantesTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -182,6 +182,7 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
+      saludRepo: new InMemorySaludRepository(),
   };
 }
 

@@ -1,4 +1,4 @@
-import type { CoreRepository, CoreStaffRepository, LlmUsageRepository } from "@atiende/db";
+import type { CoreRepository, CoreStaffRepository, LlmUsageRepository, SaludRepository } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -289,6 +289,15 @@ export interface AppDeps {
    *  instancia de objeto (`llmGateway` corre dentro de agent-core, agnóstico
    *  de Postgres a propósito). */
   readonly llmUsageRepo: LlmUsageRepository;
+  /** "Salud operativa" (back office de plataforma, ver
+   *  `routes/superadmin-salud.ts` + `salud/with-heartbeat.ts`) — objeto FIJO
+   *  (sesión de sistema para `recordCronHeartbeat`, sesión del caller para
+   *  las 3 lecturas `*ForSuperadmin`), MISMO patrón EXACTO que
+   *  `llmUsageRepo` (ver `packages/db/src/salud-repository.ts` y
+   *  `packages/db/migrations/0014_superadmin_salud_operativa.sql`).
+   *  `salud/with-heartbeat.ts::withHeartbeat` (aplicado a los 17 handlers
+   *  `/internal/*`) es el ÚNICO llamador real de `recordCronHeartbeat`. */
+  readonly saludRepo: SaludRepository;
   /** Dispatcher REAL compartido de WhatsApp saliente (@atiende/whatsapp-gateway) —
    *  drena `messaging_outbox` de las 3 verticales (citas/hoteles/restaurantes) vía
    *  Graph API real, consumido SOLO por `POST /internal/whatsapp/dispatch`

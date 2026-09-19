@@ -24,6 +24,7 @@ import { Hono } from "hono";
 import { syncPendingAppointmentsMultiProvider } from "@atiende/domain-citas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 export function citasGoogleCalendarSyncRoutes(deps: AppDeps): Hono {
@@ -34,7 +35,7 @@ export function citasGoogleCalendarSyncRoutes(deps: AppDeps): Hono {
 
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- misma sesión de
     // sistema que reminders.ts (barre TODA la plataforma, no una org concreta).
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    return withHeartbeat(deps, "/internal/citas/google-calendar-sync", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const citasRepo = deps.citasRepo(db);
       const summary = await syncPendingAppointmentsMultiProvider(citasRepo, deps.citasCalendarSyncPortResolver);
       return c.json({
@@ -46,7 +47,7 @@ export function citasGoogleCalendarSyncRoutes(deps: AppDeps): Hono {
         skipped: summary.skipped,
         errors: summary.errors.map((e) => ({ appointment_id: e.appointmentId, error: e.error })),
       });
-    });
+    }))();
   });
 
   return app;

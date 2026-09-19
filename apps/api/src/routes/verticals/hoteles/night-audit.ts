@@ -22,6 +22,7 @@ import { NIGHT_AUDIT_ROLES, type NightAuditSummary } from "@atiende/domain-hotel
 import { runNightAuditForProperty, runNightAuditSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
 import { secretMatches } from "../../../http-security.ts";
+import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -61,7 +62,7 @@ export function hotelesNightAuditRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.on(["GET", "POST"], "/internal/hoteles/night-audit", async (c) => {
     if (!secretMatches(c.req.raw, "x-atiende-internal-secret", deps.env.internalSecret)) throw Errors.unauthorized();
 
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
+    return withHeartbeat(deps, "/internal/hoteles/night-audit", () => deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.hotelesRepo(db);
       const results = await runNightAuditSweep(repo);
       const failures = results.filter((r) => r.error != null);
@@ -80,7 +81,7 @@ export function hotelesNightAuditRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         },
         200,
       );
-    });
+    }))();
   });
 
   // ---- 2) Disparo manual / consulta — mismo montaje doble que

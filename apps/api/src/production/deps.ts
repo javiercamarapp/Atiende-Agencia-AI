@@ -90,6 +90,7 @@ import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
 import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
 import { ProductionLlmUsageRepository } from "./llm-usage-repository.ts";
+import { ProductionSaludRepository } from "./salud-repository.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { notProductionReady } from "./not-ready.ts";
@@ -387,6 +388,9 @@ export function buildProductionDeps(): AppDeps {
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
     // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.
     llmUsageRepo: new ProductionLlmUsageRepository(engine),
+    // Salud operativa (back office de plataforma) — mismo criterio EXACTO
+    // que `llmUsageRepo` de arriba, ver ./salud-repository.ts.
+    saludRepo: new ProductionSaludRepository(engine),
     whatsAppDispatcher,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
