@@ -1,0 +1,48 @@
+-- Endurecimiento pendiente de #151 (Parte 2 de scripts/verify-flujos-staff/) --
+-- migrations/025_reserva_lifecycle_staff_grants.sql (Bug 3) otorgó
+-- `grant update on hoteles.availability to authenticated` A NIVEL DE TABLA COMPLETA
+-- para que `hoteles.book_availability()`/`hoteles.release_availability()`
+-- (SECURITY INVOKER por diseño -- ver comentario original de
+-- migrations/003_availability.sql) pudieran volver a funcionar contra Postgres real.
+-- Efecto colateral real, verificado contra Postgres real, NO documentado como tal por
+-- el cuerpo de #151 (que afirmaba "no se le da a nadie un UPDATE arbitrario de
+-- columnas" citando solo la policy de RLS, sin notar que el GRANT en sí era de tabla
+-- completa): cualquier staff con acceso a una property (`core.has_property_access`,
+-- la MISMA condición que ya gobierna la policy de UPDATE de esta tabla) podía, vía
+-- PostgREST directo (`PATCH hoteles.availability?id=eq....`), hacer
+-- `update hoteles.availability set total_rooms = <lo que sea>` -- la policy de RLS
+-- deja pasar la fila (misma property), y el GRANT de tabla completa no distingue QUÉ
+-- columna se toca. Confirmado leyendo las 2 únicas funciones de escritura reales
+-- (book_availability/release_availability, migrations/003 y 005): AMBAS solo tocan
+-- `booked_rooms` (`set booked_rooms = booked_rooms + _qty, updated_at = now()` /
+-- `set booked_rooms = greatest(booked_rooms - _qty, 0), updated_at = now()`) --
+-- ninguna de las dos toca `total_rooms` jamás. `total_rooms` es el INVENTARIO BASE
+-- (cuántas habitaciones existen), no la ocupación -- dejar que un staff de front
+-- desk lo edite directo por PostgREST (nunca expuesto por ninguna ruta HTTP de
+-- `apps/api`, ver comentario original de 003: "Disponibilidad como ruta propia
+-- queda fuera") es un bug de defensa en profundidad (un staff mal-intencionado o un
+-- bug de cliente podría inflar/desinflar el inventario reportado sin pasar por
+-- ninguna validación de negocio), no un GRANT a `anon` ni una fuga de datos entre
+-- tenants.
+--
+-- Arreglo: revoca el UPDATE de tabla completa que otorgó 025 (nunca se edita esa
+-- migración ya mergeada/aplicada en producción real, ver supabase/migrations/README.md
+-- sobre por qué las migraciones no se reescriben retroactivamente) y lo reemplaza por
+-- un GRANT de UPDATE a nivel de COLUMNA, solo sobre las columnas que
+-- book_availability/release_availability de verdad escriben: `booked_rooms` y
+-- `updated_at`. Un `select ... for update` (el que ambas funciones ejecutan
+-- internamente antes de su propio UPDATE) solo exige privilegio UPDATE sobre AL MENOS
+-- UNA columna de la tabla bloqueada -- no todas -- así que este cambio no rompe ese
+-- `for update` interno; ambas funciones siguen funcionando exactamente igual porque
+-- ninguna de las dos toca ninguna otra columna. La policy de RLS de UPDATE que 025 ya
+-- creó ("staff actualiza disponibilidad de su property",
+-- `core.has_property_access(auth.uid(), property_id)`) se deja intacta -- sigue
+-- siendo la misma condición que la policy de SELECT hermana, nunca `using (true)`;
+-- este cambio solo acota QUÉ COLUMNAS puede tocar ese UPDATE ya autorizado, nunca
+-- amplía QUIÉN puede tocarlas. Sin GRANT a `anon` (sin cambio).
+--
+-- Requiere: 003_availability.sql (tabla + book_availability), 005_reservas_estado.sql
+-- (release_availability), 025_reserva_lifecycle_staff_grants.sql (el GRANT de tabla
+-- completa y la policy de UPDATE que este archivo acota).
+revoke update on hoteles.availability from authenticated;
+grant update (booked_rooms, updated_at) on hoteles.availability to authenticated;
