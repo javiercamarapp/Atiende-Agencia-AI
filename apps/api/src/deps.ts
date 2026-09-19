@@ -1,4 +1,4 @@
-import type { CoreRepository, CoreStaffRepository, LlmUsageRepository, SaludRepository } from "@atiende/db";
+import type { CoreRepository, CoreStaffRepository, LlmUsageRepository, ResumenDiarioRepository, SaludRepository } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -298,6 +298,24 @@ export interface AppDeps {
    *  `salud/with-heartbeat.ts::withHeartbeat` (aplicado a los 17 handlers
    *  `/internal/*`) es el ÚNICO llamador real de `recordCronHeartbeat`. */
   readonly saludRepo: SaludRepository;
+  /** Resumen diario automático (back office de plataforma, ver
+   *  `routes/superadmin-resumen.ts` + `routes/internal/resumen-diario.ts` +
+   *  `resumen-diario/agregador.ts`) — objeto FIJO, MISMO patrón EXACTO que
+   *  `saludRepo` (ver `packages/db/src/resumen-diario-repository.ts` y
+   *  `packages/db/migrations/0015_superadmin_resumen_diario.sql`): sesión de
+   *  SISTEMA para las 10 lecturas de fuente `*ForSystem` + las 2 escrituras
+   *  sobre `core.daily_ops_summary`, sesión del caller para las 2 lecturas
+   *  `*ForSuperadmin` que alimentan la pantalla. */
+  readonly resumenDiarioRepo: ResumenDiarioRepository;
+  /** Gateway LLM DEDICADO a la escalera `resumen-diario` -- DISTINTO de
+   *  `llmGateway` de arriba (ese ata cada llamada a un `organization_id`
+   *  real; el resumen diario es un gasto de PLATAFORMA, ver el comentario
+   *  largo de `resumen-diario/redaccion.ts` y `production/llm-gateway.ts::
+   *  buildResumenDiarioLlmGateway`). `undefined` con el mismo criterio
+   *  fail-closed que `llmGateway`: sin ningún proveedor configurado, el
+   *  resumen se redacta con la plantilla determinista, nunca finge una
+   *  llamada al LLM. */
+  readonly resumenDiarioLlmGateway: LlmGateway | undefined;
   /** Dispatcher REAL compartido de WhatsApp saliente (@atiende/whatsapp-gateway) —
    *  drena `messaging_outbox` de las 3 verticales (citas/hoteles/restaurantes) vía
    *  Graph API real, consumido SOLO por `POST /internal/whatsapp/dispatch`

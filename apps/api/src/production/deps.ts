@@ -91,11 +91,13 @@ import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts
 import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
 import { ProductionLlmUsageRepository } from "./llm-usage-repository.ts";
 import { ProductionSaludRepository } from "./salud-repository.ts";
+import { ProductionResumenDiarioRepository } from "./resumen-diario-repository.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
   buildProductionLlmGateway,
+  buildResumenDiarioLlmGateway,
   CITAS_WHATSAPP_AGENT_ESCALATED_ROLE,
   CITAS_WHATSAPP_AGENT_ROLE,
   HOTELES_WHATSAPP_AGENT_ESCALATED_ROLE,
@@ -229,6 +231,13 @@ export function buildProductionDeps(): AppDeps {
   // se comparte entre los 3 turn handlers de WhatsApp y (vía `AppDeps.llmGateway`)
   // la ruta de extracción de requisitos de licitaciones.
   const llmGateway = buildProductionLlmGateway(env, engine);
+
+  // Gateway LLM DEDICADO al resumen diario -- SEPARADO del gateway de arriba
+  // a propósito (nunca ata la narrativa del resumen a un `organization_id`
+  // real, ver el comentario largo de `../resumen-diario/redaccion.ts` y
+  // `./llm-gateway.ts::buildResumenDiarioLlmGateway`). Mismo criterio
+  // fail-closed: `undefined` sin ningún proveedor configurado.
+  const resumenDiarioLlmGateway = buildResumenDiarioLlmGateway(env);
 
   // Dispatcher real de WhatsApp saliente — `undefined` si `WHATSAPP_ACCESS_TOKEN` no
   // está configurado (ver env.ts), mismo criterio fail-closed que `llmGateway`
@@ -391,6 +400,8 @@ export function buildProductionDeps(): AppDeps {
     // Salud operativa (back office de plataforma) — mismo criterio EXACTO
     // que `llmUsageRepo` de arriba, ver ./salud-repository.ts.
     saludRepo: new ProductionSaludRepository(engine),
+    resumenDiarioRepo: new ProductionResumenDiarioRepository(engine),
+    resumenDiarioLlmGateway,
     whatsAppDispatcher,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
