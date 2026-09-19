@@ -16,7 +16,7 @@ import type { Order, StaffOrderNotificationRecord } from "@atiende/domain-restau
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
-import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
+import { dispatchWhatsAppVertical, triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { parseBranchId, resolveEffectivePropertyIds } from "./admin-scope.ts";
 
@@ -145,7 +145,17 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     }
 
     try {
-      const updated = await changeOrderStatus(repo, organizationId, order, raw.status);
+      // Blocker A (revisión de PR #169) — `changeOrderStatus` ahora recibe
+      // `c.get("db")` para que su best-effort de notificación (tryNotify*, ver
+      // order-notifications.ts) pueda envolverse en SAVEPOINT: esta ruta corre en
+      // sesión de STAFF, y ese best-effort puede fallar de verdad (p.ej. el SELECT
+      // a `restaurantes.whatsapp_channel_config` sin GRANT en la base sin migrar)
+      // ANTES de llegar a `triggerInline` de abajo -- sin el SAVEPOINT, ese fallo
+      // dejaba la transacción completa abortada y el cambio de estado de ESTE
+      // MISMO pedido (el UPDATE que `changeOrderStatus` ya hizo) se perdía con un
+      // 2xx pese a que `triggerInline` de abajo ya se protegía con su propio
+      // SAVEPOINT.
+      const updated = await changeOrderStatus(repo, organizationId, order, raw.status, c.get("db"));
       // Cluster #3 (CRÍTICO) de la auditoría final — `changeOrderStatus` ya
       // encoló internamente (best-effort) el WhatsApp al cliente si el nuevo
       // status aplica (tryNotifyCustomerOnOrderStatusChange, ver
@@ -161,8 +171,17 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // 42501 SIEMPRE en esta transacción y, sin SAVEPOINT, dejaba la transacción
       // completa abortada: el cambio de status de ESTE MISMO pedido (línea de
       // arriba) se perdía con un 2xx pese a que `changeOrderStatus` ya había
-      // hecho commit lógico dentro de esta misma transacción.
+      // hecho commit lógico dentro de esta misma transacción. Este intento inline
+      // en sesión de staff SIEMPRE es un no-op seguro (42501, guard de sesión de
+      // sistema) -- el envío real lo hace la tarea post-commit de abajo (Blocker B,
+      // revisión de PR #169, mismo patrón que hoteles/folios.ts::runHotelesEmailDispatch).
       await triggerRestaurantesWhatsAppDispatchInline(deps, c.get("db"), repo);
+      // Blocker B (revisión de PR #169) — el drenado real solo puede pasar
+      // DESPUÉS de que esta transacción confirme, en sesión de SISTEMA
+      // (`dispatchWhatsAppVertical` ya existe y pasa el guard `auth.uid() is
+      // null`). Sin esto, el WhatsApp al cliente ("tu pedido va en camino") solo
+      // salía con el cron diario (`vercel.json`: "55 14 * * *"), hasta ~24h tarde.
+      c.get("postCommitTasks").push(() => dispatchWhatsAppVertical(deps, "restaurantes", 5).then(() => undefined));
       logEvent(c, "info", "restaurantes_admin_pedido_status_cambiado", { actorUserId: c.get("userId"), organizationId, orderId, status: raw.status });
       return c.json({ order: serializeOrder(updated) });
     } catch (err) {
