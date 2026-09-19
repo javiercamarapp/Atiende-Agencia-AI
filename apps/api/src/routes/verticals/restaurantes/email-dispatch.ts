@@ -4,11 +4,13 @@
 // `restaurantes.messaging_outbox` vía Resend — mismo patrón/guard EXACTO que
 // `apps/api/src/routes/verticals/citas/email-dispatch.ts` (Fase 6 §3 citas), la
 // primera vertical en resolver este mismo gap. Fail-closed real: sin
-// RESEND_API_KEY configurada (deps.env.resend.apiKey === null), cada job falla
-// explícito — la ruta responde 200 igual (el fallo por job ya quedó reflejado
-// en el resumen; esto es un barrido periódico, no una operación que deba tumbar
-// el scheduler) pero NUNCA marca ningún job 'sent' sin que Resend en verdad lo
-// haya aceptado.
+// RESEND_API_KEY configurada (deps.env.resend.apiKey === null), fix a2b hace
+// que NINGÚN job se reclame -- quedan 'pending' intactos, ver
+// `notConfigured`/`INLINE_BATCH_SIZE` abajo. CON la key configurada, cada job
+// que Resend rechace falla explícito — la ruta responde 200 igual (el fallo
+// por job ya quedó reflejado en el resumen; esto es un barrido periódico, no
+// una operación que deba tumbar el scheduler) pero NUNCA marca ningún job
+// 'sent' sin que Resend en verdad lo haya aceptado.
 //
 // Wiring real del scheduler: `vercel.json::crons` invoca este mismo path por
 // GET (única frecuencia/método real que permite el plan Hobby de Vercel, ver

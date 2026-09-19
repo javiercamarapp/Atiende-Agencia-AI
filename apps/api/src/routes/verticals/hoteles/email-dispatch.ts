@@ -1,11 +1,13 @@
 // Fase 12 hoteles (hallazgo ALTA) — POST/GET /internal/hoteles/email-dispatch:
 // drena el canal `email` de `hoteles.messaging_outbox` vía Resend. Mismo patrón
 // EXACTO que apps/api/src/routes/verticals/citas/email-dispatch.ts. Fail-closed
-// real: sin RESEND_API_KEY configurada (deps.env.resend.apiKey === null), cada
-// job falla explícito — la ruta responde 200 igual (el fallo por job ya quedó
-// reflejado en el resumen; esto es un barrido periódico, no una operación que deba
-// tumbar el scheduler) pero NUNCA marca ningún job 'sent' sin que Resend en
-// verdad lo haya aceptado.
+// real: sin RESEND_API_KEY configurada (deps.env.resend.apiKey === null), fix
+// a2b hace que NINGÚN job se reclame -- quedan 'pending' intactos, ver
+// `notConfigured`/`INLINE_BATCH_SIZE` abajo. CON la key configurada, cada job
+// que Resend rechace falla explícito — la ruta responde 200 igual (el fallo
+// por job ya quedó reflejado en el resumen; esto es un barrido periódico, no
+// una operación que deba tumbar el scheduler) pero NUNCA marca ningún job
+// 'sent' sin que Resend en verdad lo haya aceptado.
 //
 // Wiring real del scheduler: `vercel.json::crons` invoca este mismo path por GET
 // una vez al día (único método/frecuencia que permite el plan Hobby de Vercel, ver

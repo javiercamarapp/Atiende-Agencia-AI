@@ -5,11 +5,13 @@
 // POST (header manual `x-atiende-internal-secret`/tests), gateada por
 // `internalOrCronSecretMatches` (ver comentario de cabecera de
 // `http-security.ts::internalOrCronSecretMatches`). Fail-closed real:
-// sin RESEND_API_KEY configurada (deps.env.resend.apiKey === null), cada job falla
-// explícito — la ruta responde 200 igual (el fallo por job ya quedó reflejado en el
-// resumen; esto es un barrido periódico, no una operación que deba tumbar el
-// scheduler) pero NUNCA marca ningún job 'sent' sin que Resend en verdad lo haya
-// aceptado.
+// sin RESEND_API_KEY configurada (deps.env.resend.apiKey === null), fix a2b
+// hace que NINGÚN job se reclame -- quedan 'pending' intactos, ver
+// `notConfigured`/`INLINE_BATCH_SIZE` abajo. CON la key configurada, cada job
+// que Resend rechace falla explícito — la ruta responde 200 igual (el fallo
+// por job ya quedó reflejado en el resumen; esto es un barrido periódico, no
+// una operación que deba tumbar el scheduler) pero NUNCA marca ningún job
+// 'sent' sin que Resend en verdad lo haya aceptado.
 //
 // Cierre del hallazgo "rentas no tiene disparo inline de correo, solo el cron
 // diario de vercel.json::crons -- un correo encolado puede tardar hasta ~24h en
