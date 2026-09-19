@@ -52,6 +52,7 @@ import {
   LayoutDashboard,
   Receipt,
   ShieldAlert,
+  Star,
   Tags,
   TrendingUp,
   UtensilsCrossed,
@@ -128,6 +129,13 @@ const CATALOGO_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
 // accountant en REVENUE_BACKTEST_ROLES puede registrar un backtest, así que
 // también ve el link (la página gatea cada acción por separado).
 const REVENUE_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "accountant"]);
+
+// Fase 11/13 hoteles (REQ-CRM-002/003) — wiring de reputación/CRM: mismo
+// `REPUTACION_VIEW_ROLES` exacto que domain-hoteles/src/roles.ts (duplicado aquí a
+// propósito, ver el comentario de `role` arriba) — solo oculta el link
+// "Reputación" del nav para quien el servidor rechazaría de todas formas (403 en
+// reputacion.ts); housekeeping/maintenance/fnb nunca lo ven.
+const REPUTACION_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "reservations", "accountant"]);
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   useDocumentTitle("Hoteles");
@@ -310,6 +318,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
         { to: `${base}/fraude`, label: "Fraude", icon: ShieldAlert },
         { to: `${base}/cfdi`, label: "CFDI", icon: Receipt },
         ...(PEDIDOS_FNB_NAV_ROLES.has(role) ? [{ to: `${base}/pedidos-fnb`, label: "Pedidos F&B", icon: UtensilsCrossed }] : []),
+        ...(REPUTACION_NAV_ROLES.has(role) ? [{ to: `${base}/reputacion`, label: "Reputación", icon: Star }] : []),
       ],
     },
     {
