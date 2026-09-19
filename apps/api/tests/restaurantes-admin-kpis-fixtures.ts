@@ -9,7 +9,7 @@
 // reconoce esa forma exacta de query). Dos organizaciones sembradas para poder probar
 // aislamiento cross-tenant real de las rutas de KPIs.
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import type { Order, PersistedOrderItem } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
@@ -191,6 +191,8 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     saludRepo: new InMemorySaludRepository(),
+    resumenDiarioRepo: new InMemoryResumenDiarioRepository(),
+    resumenDiarioLlmGateway: undefined,
   };
 
   const app = buildApp(deps);

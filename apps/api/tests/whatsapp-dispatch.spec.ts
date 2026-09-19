@@ -5,7 +5,7 @@
 // FakeWhatsAppGraphClient — NUNCA toca la red ni usa un WHATSAPP_ACCESS_TOKEN real.
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -115,6 +115,8 @@ function buildDispatchTestContext(opts: { readonly withDispatcher: boolean; read
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),
+      resumenDiarioRepo: new InMemoryResumenDiarioRepository(),
+      resumenDiarioLlmGateway: undefined,
     whatsAppDispatcher,
   };
 

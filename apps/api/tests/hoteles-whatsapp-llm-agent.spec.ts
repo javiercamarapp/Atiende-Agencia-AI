@@ -12,7 +12,7 @@
 // restaurantes.
 import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, createLlmHotelesWhatsAppTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -161,6 +161,8 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),
+      resumenDiarioRepo: new InMemoryResumenDiarioRepository(),
+      resumenDiarioLlmGateway: undefined,
   };
   return { deps, hotelesRepo, organizationId, propertyId };
 }
@@ -307,6 +309,8 @@ describe("Agente de WhatsApp con LLM real de hoteles — end-to-end vía el webh
       llmGateway: undefined,
       llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),
+      resumenDiarioRepo: new InMemoryResumenDiarioRepository(),
+      resumenDiarioLlmGateway: undefined,
     };
     const app = buildApp(deps);
 
