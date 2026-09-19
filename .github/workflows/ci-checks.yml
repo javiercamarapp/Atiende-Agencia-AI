@@ -8,10 +8,19 @@ name: CI (typecheck, lint, tests, build)
 # .github/workflows/README.md que NO corre `npm run typecheck`, `npm run lint`
 # ni `npx vitest run` — ese tier (repositorio en memoria) se corría solo a
 # mano por quien hacía el cambio. Resultado real: un "test:unit en verde"
-# reportado en un PR era solo la palabra de quien lo construyó, y varios
-# guards que viven dentro de `npm run test:unit` (numeración de migraciones,
-# inventario de credenciales, drift de documentación, workspaces sin código,
-# umbral de cobertura) nunca se ejecutaban en CI.
+# reportado en un PR era solo la palabra de quien lo construyó, y dos guards
+# que viven dentro de `npm run test:unit` (inventario de credenciales —
+# apps/api/tests/env-inventory-guard.spec.ts, drift de documentación,
+# workspaces sin código) nunca se ejecutaban en CI. IMPORTANTE — lo que este
+# workflow NO cambia: el guard REAL de numeración/espejo de migraciones
+# (`npm run verify:migration-versions` contra `supabase/migrations/` real) ya
+# corría en CI desde antes de este PR, como paso propio de
+# postgres-real-gate.yml (ver ese workflow). La spec
+# packages/db/tests/migration-versions-guard.spec.ts que corre aquí dentro de
+# test:unit NO es ese guard: solo prueba la lógica del checker
+# (check-migration-versions.ts) contra árboles SINTÉTICOS en un directorio
+# temporal — nunca lee `supabase/migrations/` real, así que no reemplaza ni
+# duplica el paso del gate de Postgres.
 #
 # Qué SÍ cubre este workflow
 # ------------------------------------------------------------------------------
@@ -20,17 +29,17 @@ name: CI (typecheck, lint, tests, build)
 #   que incluye el tsconfig propio de apps/web con jsx/Bundler).
 # - `npm run lint` (ESLint flat config raíz, todo el árbol).
 # - `npm run test:unit` (vitest run, la suite completa de *.spec.ts/.spec.tsx
-#   listada en vitest.config.ts — incluye los guards en
-#   scripts/verify-migration-versions, scripts/verify-env, inventario de
-#   credenciales y drift de documentación que ya vivían como specs sueltas
-#   dentro de esta misma suite). Este comando NO activa el umbral de
-#   cobertura configurado en vitest.config.ts (`coverage.thresholds`, del PR
-#   #144) — ese umbral solo se evalúa cuando algo corre instrumentado con
-#   `--coverage` (`npm run test:coverage`), que vitest.config.ts documenta
-#   explícitamente que test:unit/test NO activan. Correr test:coverage aquí
-#   además de test:unit duplicaría tiempo de Actions por cero cobertura de
-#   guard adicional (mismas specs, ejecutadas dos veces) — ver
-#   docs/COBERTURA.md.
+#   listada en vitest.config.ts — incluye el inventario de credenciales
+#   (apps/api/tests/env-inventory-guard.spec.ts) y el drift de documentación
+#   (packages/db/tests/docs-migration-count-guard.spec.ts,
+#   packages/db/tests/workspace-source-guard.spec.ts) que ya vivían como
+#   specs sueltas dentro de esta misma suite, sin ningún trigger de CI). Este
+#   comando NO activa el umbral de cobertura configurado en vitest.config.ts
+#   (`coverage.thresholds`, del PR #144) — ese umbral no es una spec dentro
+#   de test:unit, es config de vitest.config.ts que solo se evalúa cuando
+#   algo corre instrumentado con `--coverage` (`npm run test:coverage`), y
+#   ese comando sigue sin ningún trigger de CI tras este PR (queda igual de
+#   sin correr que antes; ver docs/COBERTURA.md y el README raíz).
 # - El build de producción de `apps/web` (`npm run build --workspace apps/web`
 #   → `tsc --noEmit && vite build`), para que un build real roto (no solo el
 #   typecheck raíz, que excluye apps/web a propósito — ver el comentario de
@@ -49,21 +58,47 @@ name: CI (typecheck, lint, tests, build)
 #   sí quedan cubiertos por `npm run typecheck`).
 # - NO hace deploy ni toca Vercel/Supabase/ninguna configuración externa — es
 #   exclusivamente de verificación.
+#
+# Por qué `paths` con negaciones y re-inclusiones, no `paths-ignore`
+# ------------------------------------------------------------------------------
+# Una lista `paths-ignore: [**/*.md, docs/**]` ingenua ignora TODO archivo .md
+# sin importar dónde viva, y con eso burla dos de los guards de arriba en su
+# escenario motivador exacto — un PR que solo toca docs/DEPLOY.md o
+# supabase/migrations/README.md (docs-migration-count-guard) o que agrega un
+# directorio bajo packages/* con SOLO un README.md (workspace-source-guard)
+# matchea "**/*.md" y no dispara este workflow. Por eso: se excluye
+# "**/*.md" y "docs/**" en general, pero se re-incluyen explícitamente
+# docs/DEPLOY.md, supabase/migrations/README.md, y CUALQUIER cambio bajo
+# apps/** o packages/** (README.md incluido) — el orden importa, GitHub
+# Actions evalúa los patrones en secuencia y el último que matchea gana.
 on:
   pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!docs/**"
+      - "docs/DEPLOY.md"
+      - "supabase/migrations/README.md"
+      - "apps/**"
+      - "packages/**"
   push:
     branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!docs/**"
+      - "docs/DEPLOY.md"
+      - "supabase/migrations/README.md"
+      - "apps/**"
+      - "packages/**"
   workflow_dispatch: {}
 
 concurrency:
   group: ci-checks-${{ github.ref }}
-  cancel-in-progress: true
+  # cancel-in-progress solo para pull_request: en push a main, cancelar la
+  # corrida de un commit porque el siguiente merge ya llegó deja ese commit
+  # de main sin veredicto propio (queda "cancelled" en vez de pass/fail).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
