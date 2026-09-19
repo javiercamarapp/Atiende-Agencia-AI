@@ -78,6 +78,23 @@
 --    (nunca recibido del cliente) -- el CHECK de abajo es defensa en
 --    profundidad adicional contra un INSERT directo futuro que se saltara la
 --    función (ej. una migración de datos a mano).
+--
+--    `on delete restrict` en `actor_user_id`/`organization_id` (aquí y en
+--    `impersonation_audit_log` de abajo) es DELIBERADO, no un descuido: son
+--    tablas de auditoría/compliance -- borrar un `staff_user` u
+--    `organization` con historial de impersonación real perdería en
+--    silencio el rastro de "quién impersonó a quién y por qué" (mismo
+--    criterio que `rentas.break_glass_access_log`). El efecto práctico es
+--    que HOY no existe una baja definitiva de tenant/staff con historial de
+--    impersonación sin un paso manual explícito primero (purgar o archivar
+--    las filas de auditoría) -- decisión de producto pendiente, fuera de
+--    alcance de esta migración, documentada aquí para que no se lea como un
+--    bug. `impersonation_chain_head` (más abajo) SÍ usa `on delete cascade`
+--    -- consistente con lo anterior, no contradictorio: no es un registro
+--    histórico, es solo el puntero rodante al último hash de la cadena para
+--    poder seguir encadenando; en la práctica nunca se dispara solo por esto
+--    (borrar la organización ya falla antes, por el `restrict` de las dos
+--    tablas de arriba, mientras tengan alguna fila para esa organización).
 -- ═══════════════════════════════════════════════════════════════════════════
 create table core.impersonation_session (
   id uuid primary key default gen_random_uuid(),
@@ -216,9 +233,17 @@ create trigger impersonation_audit_log_block_delete_trg
 --    funciones `security definer` de abajo, que corren como el DUEÑO de la
 --    tabla (no sujeto a RLS por default, sin `force row level security`),
 --    mismo criterio documentado en el comentario de cabecera de esta
---    migración. Fail-closed real: ni siquiera un bug futuro que reutilizara
---    `service_role` para un INSERT directo pasaría la ausencia total de
---    policy de escritura.
+--    migración. Fail-closed real, a nivel de GRANT (no solo de policy):
+--    `service_role` recibe únicamente SELECT -- ni INSERT ni UPDATE ni
+--    DELETE, así que ni siquiera un bug futuro que reutilizara `service_role`
+--    para escribir directo tendría el permiso a nivel de columna/tabla para
+--    intentarlo (corrección de esta revisión: la versión anterior otorgaba
+--    INSERT/UPDATE/DELETE a `service_role` "porque los triggers de abajo lo
+--    bloquean de todas formas" -- cierto para UPDATE/DELETE, pero un INSERT
+--    directo SÍ habría pasado el trigger, que solo bloquea UPDATE/DELETE, no
+--    INSERT -- las funciones `security definer` de abajo corren como el
+--    DUEÑO de la tabla, nunca como `service_role`, así que no necesitan este
+--    GRANT para nada).
 -- ═══════════════════════════════════════════════════════════════════════════
 alter table core.impersonation_session enable row level security;
 alter table core.impersonation_audit_log enable row level security;
@@ -233,12 +258,11 @@ revoke all on core.impersonation_session from public, anon;
 revoke all on core.impersonation_audit_log from public, anon;
 grant select on core.impersonation_session to authenticated;
 grant select on core.impersonation_audit_log to authenticated;
--- `service_role` conserva acceso total a nivel de GRANT (mismo criterio que
--- break_glass_access_log: los triggers de arriba bloquean UPDATE/DELETE
--- incondicionalmente de todas formas, incluido `service_role` -- defensa en
--- profundidad, no ausencia de permiso).
-grant select, insert, update, delete on core.impersonation_session to service_role;
-grant select, insert, update, delete on core.impersonation_audit_log to service_role;
+-- `service_role` conserva SOLO SELECT -- ver el comentario de arriba para el
+-- porqué (INSERT directo NO estaba cubierto por los triggers de bloqueo,
+-- solo UPDATE/DELETE lo estaban).
+grant select on core.impersonation_session to service_role;
+grant select on core.impersonation_audit_log to service_role;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 4) Funciones `security definer` -- ÚNICA superficie de escritura real.
@@ -280,15 +304,37 @@ begin
 
   -- "Nunca impersonar a otro superadmin" -- ver comentario de cabecera de
   -- esta migración para el razonamiento completo de por qué esto se traduce
-  -- a nivel de organización.
+  -- a nivel de organización. `m.user_id <> p_caller_id` excluye al PROPIO
+  -- caller: un superadmin que ADEMÁS es staff de su propia organización de
+  -- prueba (caso real, no hipotético -- ver comentario de cabecera) no es
+  -- "otro" superadmin, y bloquearlo con este mensaje sería engañoso
+  -- (corrección de esta revisión). `core.platform_superadmin` no tiene
+  -- concepto de "revocado" (una fila = alta vigente; revocar es un DELETE,
+  -- ver `0010_platform_superadmin.sql`) -- el JOIN ya excluye por
+  -- construcción a cualquier ex-superadmin sin fila, sin necesidad de un
+  -- filtro adicional.
   if exists (
     select 1
     from core.membership m
     join core.platform_superadmin ps on ps.staff_user_id = m.user_id
     where m.organization_id = p_organization_id
+      and m.user_id <> p_caller_id
   ) then
     raise exception 'start_impersonation_session: no se puede impersonar una organización que tiene a otro superadmin de plataforma como miembro' using errcode = '42501';
   end if;
+
+  -- Serializa arranques CONCURRENTES del mismo actor -- sin este lock, dos
+  -- `POST /superadmin/impersonacion/sesiones` casi simultáneos del mismo
+  -- superadmin podían pasar AMBOS el `exists (...)` de abajo (ninguna sesión
+  -- activa todavía visible para ninguna de las dos transacciones) e insertar
+  -- DOS sesiones activas -- `get_active_impersonation_session_for_superadmin`
+  -- solo puede devolver una (la más reciente), así que la otra quedaba activa
+  -- pero invisible para el banner/write-guard del propio actor (corrección de
+  -- esta revisión). `hashtext` sobre el uuid completo (no solo su prefijo)
+  -- para minimizar colisiones con otros `pg_advisory_xact_lock` del monorepo
+  -- que usen la misma clave de 32 bits -- se libera solo al COMMIT/ROLLBACK
+  -- de esta transacción (nunca hace falta un `unlock` explícito).
+  perform pg_advisory_xact_lock(hashtext('impersonation_start:' || p_caller_id::text));
 
   if exists (
     select 1
@@ -422,11 +468,41 @@ grant execute on function core.is_impersonation_active_for_caller_and_org(uuid, 
 -- arriba, que solo exige ser YO): ver policy de RLS equivalente arriba, esto
 -- es la misma regla aplicada dos veces (defensa en profundidad, igual
 -- criterio que el resto del back office de plataforma).
+--
+-- `returns table (..., active boolean)`, NUNCA `setof core.impersonation_session`
+-- a secas (corrección de esta revisión): a diferencia de
+-- `get_active_impersonation_session_for_superadmin`/
+-- `is_impersonation_active_for_caller_and_org` de arriba (que YA filtran a
+-- "vigente" dentro del propio WHERE), esta función es la lista de OVERSIGHT
+-- -- incluye a propósito sesiones ya terminadas o vencidas -- así que
+-- "¿está activa?" tiene que calcularse aquí mismo, en SQL, columna por fila,
+-- para que ningún consumidor (la ruta HTTP, el adaptador TS) tenga que
+-- volver a calcularlo con su propio reloj y termine ignorando un evento
+-- `end` explícito (bug real encontrado y corregido en esta revisión: la ruta
+-- HTTP calculaba `activa` como `expiresAtMs > Date.now()`, así que una
+-- sesión recién terminada seguía apareciendo como "Activa" en el panel de
+-- oversight hasta que expirara sola, ~15 minutos después).
 create or replace function core.list_impersonation_sessions_for_superadmin(p_caller_id uuid, p_limit int default 100)
-returns setof core.impersonation_session
+returns table (
+  id uuid,
+  actor_user_id uuid,
+  actor_email text,
+  organization_id uuid,
+  reason text,
+  started_at timestamptz,
+  expires_at timestamptz,
+  created_at timestamptz,
+  active boolean
+)
 language sql stable security definer set search_path = core, pg_temp
 as $$
-  select s.*
+  select
+    s.id, s.actor_user_id, s.actor_email, s.organization_id, s.reason,
+    s.started_at, s.expires_at, s.created_at,
+    (
+      s.expires_at > now()
+      and not exists (select 1 from core.impersonation_audit_log a where a.session_id = s.id and a.event_type = 'end')
+    ) as active
   from core.impersonation_session s
   where auth.uid() is not null and auth.uid() = p_caller_id
     and core.is_platform_superadmin(p_caller_id)

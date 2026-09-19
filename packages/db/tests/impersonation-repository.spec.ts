@@ -15,6 +15,12 @@ function migrationMissingError(): Error & { code: string } {
   return err;
 }
 
+function abortedTransactionError(): Error & { code: string } {
+  const err = new Error("current transaction is aborted, commands ignored until end of transaction block") as Error & { code: string };
+  err.code = "25P02";
+  return err;
+}
+
 function businessError(code: string, message: string): Error & { code: string } {
   const err = new Error(message) as Error & { code: string };
   err.code = code;
@@ -36,6 +42,55 @@ function fakeSession(queryImpl: (sql: string, params?: unknown[]) => Promise<{ r
   return { session, execCalls };
 }
 
+/** Doble de prueba que REPRODUCE la semántica real de una transacción de
+ *  Postgres abortada -- mismo patrón EXACTO que
+ *  `packages/domain-citas/tests/upsert-customer-savepoint.spec.ts`/
+ *  `packages/domain-restaurantes/tests/upsert-customer-savepoint.spec.ts`
+ *  (corrección de esta revisión: los tests de arriba usaban un
+ *  `vi.fn().mockRejectedValueOnce/mockResolvedValueOnce` plano, que responde
+ *  "bien" en la segunda llamada SIN IMPORTAR si el código bajo prueba hizo
+ *  `ROLLBACK TO SAVEPOINT` o no -- no distinguiría una implementación
+ *  sutilmente incorrecta que se saltara el SAVEPOINT de una correcta). Esta
+ *  sesión SÍ lo distingue: una vez que `query()` lanza el error de "función
+ *  no existe" queda en estado ABORTADO real -- cualquier `query()` posterior
+ *  falla con 25P02 hasta que `exec("ROLLBACK TO SAVEPOINT ...")` la
+ *  recupere, exactamente como Postgres real. */
+class AbortAwareFakeSession implements TenantDbSession {
+  aborted = false;
+  readonly calls: string[] = [];
+
+  async query<T>(sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+    const normalized = sql.trim().toLowerCase();
+    this.calls.push(`query:${normalized.split("\n")[0]}`);
+    if (this.aborted) {
+      throw abortedTransactionError();
+    }
+    if (normalized.includes("core.start_impersonation_session")) {
+      // Mismo efecto que Postgres real: el SQLSTATE 42883 de la propia query
+      // deja la transacción ABORTADA para CUALQUIER consulta posterior
+      // (hasta un `ROLLBACK TO SAVEPOINT`), no solo lanza el error al llamador.
+      this.aborted = true;
+      throw migrationMissingError();
+    }
+    if (normalized.includes("select 1 as ok")) {
+      return { rows: [{ ok: true }] as unknown as T[] };
+    }
+    throw new Error(`AbortAwareFakeSession: query no soportada: ${sql}`);
+  }
+
+  async exec(sql: string): Promise<void> {
+    const normalized = sql.trim().toLowerCase();
+    this.calls.push(`exec:${normalized}`);
+    if (normalized.startsWith("savepoint")) return;
+    if (normalized.startsWith("rollback to savepoint")) {
+      this.aborted = false;
+      return;
+    }
+    if (normalized.startsWith("release savepoint")) return;
+    throw new Error(`AbortAwareFakeSession: exec no soportado: ${sql}`);
+  }
+}
+
 describe("PostgresImpersonationRepository -- fallback SQLSTATE 42883/42P01/42703", () => {
   it("startSession: degrada a not_migrated (nunca lanza, nunca simula éxito) y libera el SAVEPOINT", async () => {
     const query = vi.fn().mockRejectedValueOnce(migrationMissingError());
@@ -51,22 +106,48 @@ describe("PostgresImpersonationRepository -- fallback SQLSTATE 42883/42P01/42703
     expect(execCalls.some((s) => s.startsWith("RELEASE SAVEPOINT"))).toBe(true);
   });
 
-  it("startSession: una query POSTERIOR en la MISMA sesión sigue funcionando tras el fallback (prueba real del SAVEPOINT)", async () => {
-    const query = vi
-      .fn()
-      .mockRejectedValueOnce(migrationMissingError())
-      .mockResolvedValueOnce({ rows: [{ ok: true }] });
-    const { session } = fakeSession(query);
+  it("startSession: con una sesión que REPRODUCE el estado ABORTADO real de Postgres (25P02), el fallback hace SAVEPOINT -> query -> ROLLBACK TO SAVEPOINT -> RELEASE SAVEPOINT en ESE orden exacto, y una query posterior en la MISMA sesión sigue funcionando", async () => {
+    const session = new AbortAwareFakeSession();
     const repo = new PostgresImpersonationRepository(session);
 
-    const first = await repo.startSession("caller-1", "org-1", "motivo suficientemente largo para pasar el check");
-    expect(first.availability).toBe("not_migrated");
+    const result = await repo.startSession("caller-1", "org-1", "motivo suficientemente largo para pasar el check");
+    expect(result).toEqual({ availability: "not_migrated", session: null });
 
-    // Si el SAVEPOINT no se hubiera liberado bien, esta segunda query fallaría
-    // con 25P02 ("current transaction is aborted") -- aquí se resuelve porque
-    // el mock la programó para responder distinto la segunda vez.
+    // Orden exacto -- no solo "que estén todas", como el test anterior a esta
+    // revisión permitía (un `vi.fn()` plano no puede violar el orden porque
+    // no ejecuta lógica real; `AbortAwareFakeSession` SÍ lo haría fallar con
+    // 25P02 si el código bajo prueba hiciera la query ANTES del SAVEPOINT, o
+    // el RELEASE antes del ROLLBACK TO).
+    const savepointIdx = session.calls.findIndex((c) => c.startsWith("exec:savepoint"));
+    const queryIdx = session.calls.findIndex((c) => c.startsWith("query:"));
+    const rollbackIdx = session.calls.findIndex((c) => c.startsWith("exec:rollback to savepoint"));
+    const releaseIdx = session.calls.findIndex((c) => c.startsWith("exec:release savepoint"));
+    expect(savepointIdx).toBeGreaterThanOrEqual(0);
+    expect(savepointIdx).toBeLessThan(queryIdx);
+    expect(queryIdx).toBeLessThan(rollbackIdx);
+    expect(rollbackIdx).toBeLessThan(releaseIdx);
+
+    // La transacción del request YA NO está abortada -- una query cualquiera
+    // posterior en la MISMA sesión (ej. el resto del handler HTTP tras el
+    // fallback) tiene que funcionar, no fallar con 25P02.
     const { rows } = await session.query<{ ok: boolean }>("select 1 as ok;");
     expect(rows[0]?.ok).toBe(true);
+  });
+
+  it("prueba de que el bug era real: SIN pasar por ROLLBACK TO SAVEPOINT, la misma secuencia de consultas SÍ deriva en 25P02", async () => {
+    const session = new AbortAwareFakeSession();
+    await expect(
+      (async () => {
+        try {
+          await session.query("select * from core.start_impersonation_session($1, $2, $3);", []);
+        } catch {
+          // deliberadamente NO se llama a session.exec("ROLLBACK TO SAVEPOINT ...")
+          // aquí -- este bloque reproduce el bug (un catch que traga el error
+          // de Postgres y sigue usando la misma sesión sin SAVEPOINT).
+        }
+        return session.query("select 1 as ok;", []);
+      })(),
+    ).rejects.toMatchObject({ code: "25P02" });
   });
 
   it("getActiveSession/listSessions/listAuditLog: degradan a vacío/null (lectura), nunca lanzan", async () => {

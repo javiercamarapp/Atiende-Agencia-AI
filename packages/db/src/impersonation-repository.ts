@@ -38,6 +38,21 @@ export interface ImpersonationSessionRow {
   readonly expiresAtMs: number;
 }
 
+/** `listSessions` (oversight de plataforma, TODAS las sesiones -- incluidas
+ *  las ya terminadas/vencidas) trae, ADEMÁS de `ImpersonationSessionRow`, un
+ *  `active` calculado SIEMPRE en SQL (`expires_at > now()` Y sin evento
+ *  `end`, ver `core.list_impersonation_sessions_for_superadmin` en
+ *  `0020_superadmin_impersonacion.sql`) -- a diferencia de `startSession`/
+ *  `endSession`/`getActiveSession`, que YA filtran a sesiones vigentes por
+ *  construcción, esta lista NO lo hace (es la bitácora de oversight), así
+ *  que "¿está activa?" no puede inferirse solo de `expiresAtMs` en TypeScript
+ *  sin ignorar un evento `end` explícito -- bug real corregido en esta
+ *  revisión (ver PR: la ruta HTTP calculaba `activa` con `Date.now()` y
+ *  mostraba "Activa" para una sesión ya terminada hasta que expirara sola). */
+export interface ImpersonationSessionWithActiveRow extends ImpersonationSessionRow {
+  readonly active: boolean;
+}
+
 export type ImpersonationAuditEventType = "start" | "end";
 
 export interface ImpersonationAuditEntryRow {
@@ -109,7 +124,7 @@ export interface ImpersonationRepository {
   ): Promise<{ availability: ImpersonationAvailability; entry: ImpersonationAuditEntryRow | null }>;
   getActiveSession(callerId: string): Promise<{ availability: ImpersonationAvailability; session: ImpersonationSessionRow | null }>;
   isActiveForOrganization(callerId: string, organizationId: string): Promise<boolean>;
-  listSessions(callerId: string, limit?: number): Promise<{ availability: ImpersonationAvailability; sessions: readonly ImpersonationSessionRow[] }>;
+  listSessions(callerId: string, limit?: number): Promise<{ availability: ImpersonationAvailability; sessions: readonly ImpersonationSessionWithActiveRow[] }>;
   listAuditLog(callerId: string, limit?: number): Promise<{ availability: ImpersonationAvailability; entries: readonly ImpersonationAuditEntryRow[] }>;
 }
 
@@ -121,6 +136,13 @@ interface ImpersonationSessionRawRow {
   reason: string;
   started_at: string;
   expires_at: string;
+}
+
+/** Fila de `core.list_impersonation_sessions_for_superadmin` -- MISMAS
+ *  columnas que `ImpersonationSessionRawRow` más `active` (booleano
+ *  calculado en SQL, ver comentario de `ImpersonationSessionWithActiveRow`). */
+interface ImpersonationSessionWithActiveRawRow extends ImpersonationSessionRawRow {
+  active: boolean;
 }
 
 interface ImpersonationAuditEntryRawRow {
@@ -148,6 +170,10 @@ function mapSession(row: ImpersonationSessionRawRow): ImpersonationSessionRow {
     startedAtMs: new Date(row.started_at).getTime(),
     expiresAtMs: new Date(row.expires_at).getTime(),
   };
+}
+
+function mapSessionWithActive(row: ImpersonationSessionWithActiveRawRow): ImpersonationSessionWithActiveRow {
+  return { ...mapSession(row), active: row.active };
 }
 
 function mapAuditEntry(row: ImpersonationAuditEntryRawRow): ImpersonationAuditEntryRow {
@@ -205,12 +231,22 @@ function warnMissingImpersonationSchemaOnce(): void {
  *  tipados) se libera del SAVEPOINT y se re-lanza tal cual -- SÍ debe abortar
  *  el resto del request, es un rechazo real de negocio, no un problema de
  *  compatibilidad. */
-async function withSavepointFallback<T>(
+// Dos parámetros de tipo (TSuccess/TFail), NUNCA uno solo compartido:
+// `run()`/`onMissing()` devuelven formas DISTINTAS por diseño (`availability:
+// "available"` con datos reales vs. `availability: "not_migrated"` con
+// `null`/`[]`) -- con un solo `T` compartido, TypeScript infiere `T` a partir
+// del PRIMER argumento (`run`) y exige que `onMissing` devuelva EXACTAMENTE
+// ese mismo tipo, lo cual nunca es cierto aquí (bug de tipos preexistente,
+// corregido en esta revisión: `npm run typecheck` ya fallaba en los 5 métodos
+// de este archivo con "not_migrated is not assignable to available" antes de
+// este cambio, aunque ningún gate de CI lo ejecutaba para detectarlo -- ver
+// huecos conocidos del PR).
+async function withSavepointFallback<TSuccess, TFail>(
   db: TenantDbSession,
   savepointName: string,
-  run: () => Promise<T>,
-  onMissing: () => T,
-): Promise<T> {
+  run: () => Promise<TSuccess>,
+  onMissing: () => TFail,
+): Promise<TSuccess | TFail> {
   await db.exec(`SAVEPOINT ${savepointName}`);
   try {
     const result = await run();
@@ -303,11 +339,11 @@ export class PostgresImpersonationRepository implements ImpersonationRepository 
       this.db,
       "sp_list_impersonation_sessions",
       async () => {
-        const { rows } = await this.db.query<ImpersonationSessionRawRow>(
+        const { rows } = await this.db.query<ImpersonationSessionWithActiveRawRow>(
           `select * from core.list_impersonation_sessions_for_superadmin($1, $2);`,
           [callerId, limit],
         );
-        return { availability: "available" as const, sessions: rows.map(mapSession) };
+        return { availability: "available" as const, sessions: rows.map(mapSessionWithActive) };
       },
       () => ({ availability: "not_migrated" as const, sessions: [] }),
     );
@@ -477,7 +513,16 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
 
   async listSessions(callerId: string, limit = 100) {
     if (!this.isPlatformSuperadmin(callerId)) return { availability: "available" as const, sessions: [] };
-    const sessions = [...this.sessions.values()].sort((a, b) => b.startedAtMs - a.startedAtMs).slice(0, limit);
+    const nowMs = this.now();
+    const sessions: ImpersonationSessionWithActiveRow[] = [...this.sessions.values()]
+      .sort((a, b) => b.startedAtMs - a.startedAtMs)
+      .slice(0, limit)
+      .map((s) => ({
+        ...s,
+        // Mismo cálculo que `core.list_impersonation_sessions_for_superadmin`
+        // en SQL: vigente Y sin evento `end` -- ver `ImpersonationSessionWithActiveRow`.
+        active: s.expiresAtMs > nowMs && !this.auditLog.some((e) => e.sessionId === s.id && e.eventType === "end"),
+      }));
     return { availability: "available" as const, sessions };
   }
 

@@ -102,6 +102,7 @@ export type {
 export { PostgresSuperadminAccionesRepository, InMemorySuperadminAccionesRepository } from "./superadmin-acciones-repository.ts";
 export type {
   ImpersonationSessionRow,
+  ImpersonationSessionWithActiveRow,
   ImpersonationAuditEntryRow,
   ImpersonationAuditEventType,
   ImpersonationAvailability,
