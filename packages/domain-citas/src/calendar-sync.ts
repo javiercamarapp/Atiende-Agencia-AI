@@ -370,7 +370,18 @@ export async function syncPendingAppointmentsMultiProvider(repo: CitasRepository
   const summary = emptySummary();
   summary.processed = pending.length;
   for (const row of pending) {
-    await syncOneAppointmentRow(repo, resolveSyncPort, row, now, summary);
+    try {
+      // Hallazgo CRÍTICO de auditoría (a1, r3) — SAVEPOINT por fila: una fila
+      // "venenosa" (cualquier error que escape de `syncOneAppointmentRow`, que ya
+      // captura los fallos de sincronización normales -- ver su propio try/catch)
+      // NUNCA debe revertir las marcas synced/deleted de las filas YA procesadas
+      // en esta misma corrida del batch (ver diseño completo en el comentario de
+      // cabecera de `CitasRepository.runWithRowSavepoint`, repository.ts).
+      await repo.runWithRowSavepoint(() => syncOneAppointmentRow(repo, resolveSyncPort, row, now, summary));
+    } catch (err) {
+      const message = err instanceof Error ? err.message.slice(0, 500) : "sync failed (fila venenosa, aislada del resto del batch)";
+      summary.errors.push({ appointmentId: row.id, error: message });
+    }
   }
   return summary;
 }

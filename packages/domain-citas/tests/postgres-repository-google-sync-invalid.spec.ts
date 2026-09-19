@@ -90,3 +90,28 @@ describe("PostgresCitasRepository.markAppointmentGoogleSyncInvalid — SAVEPOINT
     ).rejects.toMatchObject({ code: "25P02" });
   });
 });
+
+describe("PostgresCitasRepository.runWithRowSavepoint — aísla una fila del lote de reconciliación", () => {
+  it("fn falla: ROLLBACK TO SAVEPOINT deja la sesión utilizable para la siguiente fila, y el error se repropaga tal cual", async () => {
+    const session = new AbortAwareFakeSession([{ match: /select 1/, respond: () => [] }]);
+    const repo = new PostgresCitasRepository(session);
+    const rowError = new Error("createEvent falló y la escritura de resultado también");
+
+    await expect(repo.runWithRowSavepoint(() => Promise.reject(rowError))).rejects.toBe(rowError);
+
+    expect(session.calls.some((c) => c.startsWith("savepoint sp_fallback_"))).toBe(true);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_fallback_"))).toBe(true);
+    // La sesión NO quedó abortada -- la siguiente fila del batch puede seguir.
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
+  });
+
+  it("fn tiene éxito: RELEASE SAVEPOINT, devuelve el resultado tal cual", async () => {
+    const session = new AbortAwareFakeSession([]);
+    const repo = new PostgresCitasRepository(session);
+
+    const result = await repo.runWithRowSavepoint(async () => "fila sincronizada");
+
+    expect(result).toBe("fila sincronizada");
+    expect(session.calls.some((c) => c.startsWith("release savepoint sp_fallback_"))).toBe(true);
+  });
+});

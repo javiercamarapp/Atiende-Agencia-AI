@@ -1069,6 +1069,24 @@ export class PostgresCitasRepository implements CitasRepository {
     await this.db.query(`update citas.appointments set google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = $4 where id = $1;`, [appointmentId, attempts, error, nextRetryAtIso]);
   }
 
+  // Aislamiento por fila del lote de reconciliación (ver el comentario de cabecera
+  // de `runWithRowSavepoint` en `repository.ts` para el diseño completo) —
+  // reutiliza el mismo `runWithSavepointFallback`, pero con `isRecoverable` fijo en
+  // `true` y un `fallback` que simplemente relanza el mismo error DESPUÉS de que
+  // `ROLLBACK TO SAVEPOINT` ya dejó la transacción del lote utilizable para la
+  // siguiente fila -- a diferencia de `markAppointmentGoogleSyncInvalid`, aquí no
+  // hay una consulta SQL alternativa que correr, solo aislamiento.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: fn,
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
+  }
+
   async markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void> {
     await this.db.query(`update citas.appointments set google_sync_status = 'error', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, error]);
   }
