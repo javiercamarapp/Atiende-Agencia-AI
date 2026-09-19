@@ -149,6 +149,93 @@ describe("dbSession", () => {
   });
 });
 
+describe("dbSession — postCommitTasks (arreglo de fondo, auditoría a2)", () => {
+  // Fix hallazgo auditoría a2 ("el correo inline nunca sale de verdad desde
+  // rutas de staff", parte 3 "arreglo de fondo"): dbSession ahora expone
+  // `postCommitTasks` en el contexto y corre cada tarea encolada ahí DESPUÉS
+  // de que la transacción de este request confirme (nunca si hubo rollback).
+
+  function buildAppWithPostCommitRoute(engine: TenancyEngine, task: () => Promise<void>) {
+    const app = new Hono<CoreAuthHonoEnv>();
+    app.onError((err, c) => {
+      if (err instanceof ApiError) return c.json({ code: err.code, message: err.message }, err.status as 400 | 401 | 403);
+      return c.json({ code: "internal_error", message: "error interno" }, 500);
+    });
+    app.use(requestId());
+    app.use(authMiddleware({ jwtSecret: SECRET }));
+    app.use(dbSession(engine));
+    app.get("/properties/:propertyId/ping", requirePropertyMembership("propertyId"), async (c) => {
+      c.get("postCommitTasks").push(task);
+      return c.json({ ok: true });
+    });
+    app.get("/properties/:propertyId/falla", requirePropertyMembership("propertyId"), () => {
+      throw new ApiError(409, "conflict", "escritura simulada que debió revertirse");
+    });
+    return app;
+  }
+
+  it("corre la tarea post-commit SOLO DESPUÉS de que la transacción confirmó", async () => {
+    const engine = trackingEngine();
+    let ranAfterCommit = false;
+    const app = buildAppWithPostCommitRoute(engine, async () => {
+      // Si esto corriera ANTES del commit real, `engine.committed` seguiría en
+      // `false` en este instante (trackingEngine solo lo pone en `true` cuando
+      // `withAppSession` ya resolvió) -- capturamos el valor exacto en el
+      // momento en que la tarea corre para probar el orden, no solo el estado
+      // final.
+      ranAfterCommit = engine.committed;
+    });
+    const token = await validToken();
+    const res = await app.request("/properties/p1/ping", { headers: { authorization: `Bearer ${token}`, "x-property-id": "p1" } });
+    expect(res.status).toBe(200);
+    expect(ranAfterCommit).toBe(true);
+  });
+
+  it("NO corre la tarea post-commit cuando el handler lanza y la transacción hace rollback", async () => {
+    const engine = trackingEngine();
+    let ran = false;
+    const app = new Hono<CoreAuthHonoEnv>();
+    app.onError((err, c) => {
+      if (err instanceof ApiError) return c.json({ code: err.code, message: err.message }, err.status as 400 | 401 | 403);
+      return c.json({ code: "internal_error", message: "error interno" }, 500);
+    });
+    app.use(requestId());
+    app.use(authMiddleware({ jwtSecret: SECRET }));
+    app.use(dbSession(engine));
+    app.get("/properties/:propertyId/falla", requirePropertyMembership("propertyId"), (c) => {
+      c.get("postCommitTasks").push(async () => {
+        ran = true;
+      });
+      throw new ApiError(409, "conflict", "escritura simulada que debió revertirse");
+    });
+    const token = await validToken();
+    const res = await app.request("/properties/p1/falla", { headers: { authorization: `Bearer ${token}`, "x-property-id": "p1" } });
+    expect(res.status).toBe(409);
+    expect(engine.rolledBack).toBe(true);
+    expect(ran).toBe(false);
+  });
+
+  it("un fallo de la tarea post-commit NUNCA cambia la respuesta ya armada por el handler", async () => {
+    const engine = trackingEngine();
+    const app = buildAppWithPostCommitRoute(engine, async () => {
+      throw new Error("drenado de correo caído -- best-effort, nunca debe tumbar el request");
+    });
+    const token = await validToken();
+    const res = await app.request("/properties/p1/ping", { headers: { authorization: `Bearer ${token}`, "x-property-id": "p1" } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(engine.committed).toBe(true);
+  });
+
+  it("un handler que nunca empuja nada no rompe -- postCommitTasks arranca vacío", async () => {
+    const engine = trackingEngine();
+    const app = buildApp(engine);
+    const token = await validToken();
+    const res = await app.request("/properties/p1/ping", { headers: { authorization: `Bearer ${token}`, "x-property-id": "p1" } });
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("authMiddleware", () => {
   it("401 sin header Authorization", async () => {
     const app = buildApp(fakeEngine([]));

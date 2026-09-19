@@ -110,6 +110,18 @@ export function rentasFinanzasPayoutsRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
       lineas: resultado.lineas,
     });
 
+    // r5 -- bitácora de auditoría (payout registrado).
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: userId,
+      action: "payout.registrado",
+      entityType: "payout",
+      entityId: creado.id,
+      campo: "monto_total_centavos",
+      antes: null,
+      despues: `${montoTotalCentavos} ${moneda} (canal ${canalCodigo}, ${fechaPayout})`,
+    });
+
     return c.json({ id: creado.id, creadoEn: creado.creadoEn, canalCodigo, moneda, montoTotalCentavos, fechaPayout, resumen: resultado.resumen, lineas: resultado.lineas }, 201);
   });
 

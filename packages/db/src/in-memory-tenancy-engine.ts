@@ -78,8 +78,25 @@ export class InMemoryTenancyEngine implements TenancyEngine {
           `InMemoryTenancyEngine: consulta SQL no soportada (alcance angosto a propósito, ver comentario de archivo): ${sql}`,
         );
       },
-      exec: async () => {
-        throw new Error("InMemoryTenancyEngine: exec() no soportado.");
+      exec: async (sql: string) => {
+        const normalized = sql.trim().toLowerCase();
+        // Fix hallazgo auditoría a2 (CRÍTICO, "el drenado inline de correo aborta
+        // la transacción de negocio en sesión de staff") — los 6 triggers inline
+        // (apps/api/.../email-dispatch.ts::triggerXEmailDispatchInline) ahora
+        // envuelven `dispatchPendingEmailJobs` en SAVEPOINT/RELEASE SAVEPOINT/
+        // ROLLBACK TO SAVEPOINT sobre el MISMO `db: TenantDbSession` de
+        // `c.get("db")` — este motor, usado por casi todos los fixtures de
+        // apps/api/tests (hoteles/citas/despachos/licitaciones/restaurantes, ver
+        // domain-rentas/src/in-memory-tenancy-engine.ts para el motor propio de
+        // rentas, que ya soportaba esto), es ahora el primer caller real de
+        // `exec()` en ese camino y necesita reconocerlas -- mismo criterio (no-op
+        // seguro: este motor no modela transacciones/abortos reales, ver
+        // comentario de cabecera del archivo) que
+        // InMemoryRentasTenancyEngine::exec().
+        if (normalized.startsWith("savepoint") || normalized.startsWith("release savepoint") || normalized.startsWith("rollback to savepoint")) {
+          return;
+        }
+        throw new Error(`InMemoryTenancyEngine: exec() no soportado más allá de SAVEPOINT/RELEASE SAVEPOINT/ROLLBACK TO SAVEPOINT: ${sql}`);
       },
     };
     return fn(session);

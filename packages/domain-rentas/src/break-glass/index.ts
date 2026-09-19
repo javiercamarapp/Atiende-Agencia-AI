@@ -33,11 +33,13 @@ export type {
 } from "./tipos.ts";
 
 export {
+  BreakGlassAccessDeniedError,
   BreakGlassAuditWriteFailedError,
   BreakGlassDurationInvalidError,
   BreakGlassError,
   BreakGlassNoActiveSessionError,
   BreakGlassOrganizationRequiredError,
+  BreakGlassPropertyNotFoundError,
   BreakGlassReasonRequiredError,
   BreakGlassSessionNotFoundError,
 } from "./errors.ts";

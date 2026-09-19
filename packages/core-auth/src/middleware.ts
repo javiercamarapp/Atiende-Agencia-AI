@@ -57,6 +57,8 @@ export function authMiddleware(env: CoreAuthEnv): MiddlewareHandler<CoreAuthHono
 
 export function dbSession(engine: TenancyEngine): MiddlewareHandler<CoreAuthHonoEnv> {
   return async (c: Ctx, next: Next) => {
+    const postCommitTasks: Array<() => Promise<void>> = [];
+    c.set("postCommitTasks", postCommitTasks);
     await engine.withAppSession({ userId: c.get("userId") ?? null }, async (session) => {
       c.set("db", session);
       await next();
@@ -76,6 +78,28 @@ export function dbSession(engine: TenancyEngine): MiddlewareHandler<CoreAuthHono
         throw c.error;
       }
     });
+    // Arreglo de fondo (auditoría a2) — llegar aquí significa que
+    // `engine.withAppSession(...)` de arriba resolvió SIN lanzar, es decir hizo
+    // `commit;` real (ver managed-postgres-engine.ts::withAppSession: cualquier
+    // throw dentro de `fn` -- incluido el `if (c.error) throw` de arriba -- cae
+    // en su `catch`, que hace `rollback;` y RELANZA, así que estas líneas NUNCA
+    // corren tras un rollback; no hace falta una bandera aparte). Corre cada
+    // tarea que el handler encoló en `postCommitTasks` (p. ej. el drenado real
+    // de correo en sesión de SISTEMA, ver
+    // apps/api/.../email-dispatch.ts::triggerXEmailDispatchInline / los call
+    // sites de sesión de staff que empujan `runXEmailDispatch(deps)`) — recién
+    // AHORA una sesión nueva puede ver las filas que este request encoló (antes
+    // del commit, esa sesión nueva -- en su propia transacción Postgres -- no
+    // las vería, ver comentario largo de citas/email-dispatch.ts). Best-effort
+    // real: el body/status de la respuesta ya se armó dentro de `next()`, esto
+    // corre después y nunca lo toca; un fallo aquí solo se loguea.
+    for (const task of postCommitTasks) {
+      try {
+        await task();
+      } catch (err) {
+        console.error("dbSession: una tarea post-commit falló (best-effort, no afecta la respuesta ya enviada):", err);
+      }
+    }
   };
 }
 

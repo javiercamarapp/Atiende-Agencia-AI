@@ -148,6 +148,19 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     if (monedaExistente && monedaExistente !== moneda) throw Errors.rentasPricingMonedaInconsistente(monedaExistente);
 
     const { id } = await repo.upsertTarifaBase({ organizationId: unidad.organizationId, propertyId, unidadId, precioNocheCentavos, moneda, vigenteDesde, createdBy: userId });
+    // r5 -- bitácora de auditoría (cambio de precio/tarifa). Nunca rompe esta
+    // request si falla -- ver comentario de cabecera de
+    // PostgresRentasRepository.registrarAuditoria.
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.tarifa_base.actualizada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "precio_noche_centavos",
+      antes: monedaExistente ? `moneda previa: ${monedaExistente}` : null,
+      despues: `${precioNocheCentavos} ${moneda} desde ${vigenteDesde}`,
+    });
     return c.json({ id, unidadId, precioNocheCentavos, moneda, vigenteDesde }, 201);
   });
 
@@ -182,6 +195,16 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     if (conflicto) throw Errors.rentasPricingSolapado(conflicto.nombre, conflicto.rango);
 
     const { id } = await repo.insertTemporada({ organizationId: unidad.organizationId, propertyId, unidadId, nombre, rango, precioNocheCentavos, moneda, createdBy: userId });
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.temporada.creada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "temporada",
+      antes: null,
+      despues: `"${nombre}": ${precioNocheCentavos} ${moneda} (${rango.inicio} a ${rango.fin})`,
+    });
     return c.json({ id, unidadId, nombre, rango, precioNocheCentavos, moneda }, 201);
   });
 
@@ -190,6 +213,7 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
+    const userId = c.get("userId");
     const repo = deps.rentasRepo(c.get("db"));
     const unidad = await requireUnidad(repo, propertyId, unidadId);
 
@@ -201,6 +225,16 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const fuente = requireString(raw.fuente, "fuente", 300);
 
     const { id } = await repo.upsertDescuentoDuracion({ organizationId: unidad.organizationId, propertyId, unidadId, nochesMinimas, porcentajeDescuentoBasisPoints, fuente });
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.descuento_duracion.actualizado",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "porcentaje_descuento_basis_points",
+      antes: null,
+      despues: `${nochesMinimas}+ noches: ${porcentajeDescuentoBasisPoints}bp (${fuente})`,
+    });
     return c.json({ id, unidadId, nochesMinimas, porcentajeDescuentoBasisPoints, fuente }, 201);
   });
 
@@ -209,6 +243,7 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
+    const userId = c.get("userId");
     const repo = deps.rentasRepo(c.get("db"));
     const unidad = await requireUnidad(repo, propertyId, unidadId);
 
@@ -226,6 +261,16 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     if (conflicto) throw Errors.rentasPricingSolapado(`regla min-stay existente (día ${conflicto.diaSemanaCheckIn ?? "todos"})`, conflicto.rango);
 
     const { id } = await repo.insertReglaMinStay({ organizationId: unidad.organizationId, propertyId, unidadId, rango, diaSemanaCheckIn, nochesMinimas });
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.min_stay.creada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "noches_minimas",
+      antes: null,
+      despues: `${nochesMinimas} noches (${rango.inicio} a ${rango.fin}, día ${diaSemanaCheckIn ?? "todos"})`,
+    });
     return c.json({ id, unidadId, rango, diaSemanaCheckIn, nochesMinimas }, 201);
   });
 
@@ -234,6 +279,7 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     assertVerticalRole(c, PRICING_ESCRITURA_ROLES);
     const propertyId = c.req.param("propertyId");
     const unidadId = c.req.param("unidadId");
+    const userId = c.get("userId");
     const repo = deps.rentasRepo(c.get("db"));
     const unidad = await requireUnidad(repo, propertyId, unidadId);
 
@@ -251,6 +297,16 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     if (!canal) throw Errors.notFound(`Canal "${canalCodigo}" no existe en el catálogo.`);
 
     const { id } = await repo.upsertReglaCanalPricing({ organizationId: unidad.organizationId, propertyId, unidadId, canalId: canal.id, markupBasisPoints, activo });
+    await repo.registrarAuditoria({
+      organizationId: unidad.organizationId,
+      actorUserId: userId,
+      action: "pricing.regla_canal.actualizada",
+      entityType: "pricing",
+      entityId: unidadId,
+      campo: "markup_basis_points",
+      antes: null,
+      despues: `canal ${canalCodigo}: ${markupBasisPoints}bp (activo: ${activo})`,
+    });
     return c.json({ id, unidadId, canalCodigo, markupBasisPoints, activo }, 201);
   });
 

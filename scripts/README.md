@@ -25,7 +25,14 @@ Ver su propio `README.md`.
 variables de entorno reales hacen falta en ESTE entorno, sin imprimir valores.
 Ver `docs/CREDENCIALES.md` y su propio `README.md`.
 
-## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`
+## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`, `verify-superadmin-salud/`, `verify-correo-inline-sesion-staff/`, `verify-rentas-bitacora-auditoria/`
+
+`verify-correo-inline-sesion-staff/` (auditoría a2, CRÍTICO) es distinto de los
+demás de esta lista: no verifica un GRANT/policy puntual aislado en su propio
+`begin;...rollback;`, sino un mecanismo de dos pasos que necesita un `commit;`
+real (drenado inline de correo dentro de la transacción de una ruta de staff,
+sin SAVEPOINT aborta esa transacción entera; con SAVEPOINT la fila de negocio
+sobrevive) — ver su propio `README.md`.
 
 Verificaciones contra Postgres **real** (RLS + GRANT reales — no el repositorio
 en memoria que usa `npm test`) de fixes puntuales ya auditados. Cada una trae su

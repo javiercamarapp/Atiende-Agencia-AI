@@ -33,6 +33,7 @@ explícito, nunca a datos falsos.
 | `RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS` / `RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS` | ídem, default 900 / 2592000 | No | TTL de los tokens del portal de propietario | Usa el default | No |
 | `ALLOWED_ORIGINS` | lista separada por comas, p.ej. `https://app.tudominio.com` | No | Orígenes permitidos por CORS | Default `http://localhost:5173` | No |
 | `APP_BASE_URL` | tu dominio real de `apps/web`, p.ej. `https://app.atiende.ai` | No | Arma el link `/aceptar-invitacion?token=...` dentro del correo de invitación de staff | Default `https://app.atiende.ai` (nunca bloquea la invitación, solo afecta el link) | No |
+| `TRUSTED_PROXY_IP_HEADER` | nombre de un header, p.ej. `cf-connecting-ip` (minúsculas) | No | Declara qué header de IP confiar como PRIMARIO en `http-security.ts::requestActor` (usado por todo rate-limit por IP de este repo) — solo tiene efecto si un proxy real y confiable (ej. Cloudflare) está delante de Vercel y garantiza que ESE header no lo puede escribir el cliente final. Hoy este despliegue es Vercel directo (sin evidencia de ningún proxy así en `vercel.json`), así que se deja SIN configurar a propósito. | Sin ella, se usa el último salto de `X-Forwarded-For` (el que Vercel mismo agrega, no falsificable) con `X-Real-IP` como respaldo — nunca `cf-connecting-ip` por defecto (ver hallazgo de revisión del PR #167: ese header, sin un proxy real delante, lo escribe el cliente). | No |
 
 ## Base de datos (Supabase Postgres)
 

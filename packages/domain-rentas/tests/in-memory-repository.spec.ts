@@ -130,3 +130,59 @@ describe("InMemoryRentasRepository: finanzas", () => {
     expect(await repo.findReservaFinanciero(randomUUID(), ocupacionId)).toBeNull();
   });
 });
+
+describe("InMemoryRentasRepository.listAuditoria: filtro desde/hasta anclado a America/Mexico_City (no bloqueante #10 de revisión r5)", () => {
+  it("una acción de las 20:00 hora de México el día 1 SIGUE contando como día 1, aunque en UTC ya sean las 02:00 del día 2", async () => {
+    const repo = new InMemoryRentasRepository();
+    const organizationId = randomUUID();
+
+    // 2026-06-01T20:00:00-06:00 == 2026-06-02T02:00:00.000Z -- con el bug viejo
+    // (medianoche UTC), esta fila caía en el filtro `desde=2026-06-02`, no en
+    // `desde=2026-06-01` que es el día real en que el staff mexicano la hizo.
+    const createdAtMs = new Date("2026-06-01T20:00:00-06:00").getTime();
+    repo.auditLog.push({
+      id: randomUUID(),
+      organizationId,
+      actorUserId: randomUUID(),
+      action: "pricing.tarifa_base.actualizada",
+      entityType: "pricing",
+      entityId: randomUUID(),
+      campo: "precio_noche_centavos",
+      antes: null,
+      despues: "200000 MXN",
+      createdAtMs,
+    });
+
+    const filtroDia1 = await repo.listAuditoria(organizationId, { desde: "2026-06-01", hasta: "2026-06-01" }, {});
+    expect(filtroDia1.total).toBe(1);
+
+    // Con el fix, esta fila YA NO cuenta como parte del día 2 (antes del fix sí lo
+    // hacía -- la comparación caía en UTC, donde el instante real ya cruzó
+    // medianoche).
+    const filtroDia2 = await repo.listAuditoria(organizationId, { desde: "2026-06-02", hasta: "2026-06-02" }, {});
+    expect(filtroDia2.total).toBe(0);
+  });
+
+  it("hasta es inclusivo hasta el final del día en hora de México (23:59:59 hora local, no UTC)", async () => {
+    const repo = new InMemoryRentasRepository();
+    const organizationId = randomUUID();
+
+    // 2026-06-01T23:30:00-06:00 -- ya sería 2026-06-02T05:30:00.000Z en UTC.
+    const createdAtMs = new Date("2026-06-01T23:30:00-06:00").getTime();
+    repo.auditLog.push({
+      id: randomUUID(),
+      organizationId,
+      actorUserId: randomUUID(),
+      action: "pricing.tarifa_base.actualizada",
+      entityType: "pricing",
+      entityId: randomUUID(),
+      campo: "precio_noche_centavos",
+      antes: null,
+      despues: "200000 MXN",
+      createdAtMs,
+    });
+
+    const resultado = await repo.listAuditoria(organizationId, { hasta: "2026-06-01" }, {});
+    expect(resultado.total).toBe(1);
+  });
+});

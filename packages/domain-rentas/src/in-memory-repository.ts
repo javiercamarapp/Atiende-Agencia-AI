@@ -54,8 +54,13 @@ import type {
   OwnerStatementDetalle,
   OwnerStatementSummary,
   PayoutDetalle,
+  RegistrarAuditoriaInput,
   ReglaCanal,
   ReglaMinStayRecord,
+  RentasAuditLogFiltro,
+  RentasAuditLogPagina,
+  RentasAuditLogPaginacion,
+  RentasAuditLogRow,
   RentasOrganizationSummary,
   RentasPropertySummary,
   ReservaParaStatement,
@@ -178,6 +183,17 @@ function resumenDeLineas(lineas: readonly LineaConciliada[]): ResumenConciliacio
   };
 }
 
+// r5 -- mismos límites que el CHECK de `rentas.audit_log` (ver
+// migrations/021_rentas_audit_log.sql) -- ver el comentario dentro de
+// `registrarAuditoria` de abajo.
+const AUDIT_LOG_CAMPO_MAX = 200;
+const AUDIT_LOG_TEXTO_MAX = 500;
+
+function truncarCampoAuditoria(value: string | null | undefined, max: number): string | null {
+  if (value == null) return null;
+  return value.length > max ? value.slice(0, max) : value;
+}
+
 export class InMemoryRentasRepository implements RentasRepository {
   private readonly reglasCanalPricing = new Map<string, ReglaCanal>(); // key: unidadId:canalCodigo (usado por loadReglaCanalPricing)
   private readonly reglasComisionCanal: StoredReglaComisionCanal[] = [];
@@ -212,6 +228,12 @@ export class InMemoryRentasRepository implements RentasRepository {
   /** Espejo de solo-lectura de `core.property` (vertical 'rentas') — mismo rol que
    *  `InMemoryHotelesRepository.properties`. */
   private readonly propertiesDiscovery = new Map<string, RentasPropertySummary & { organizationId: string }>();
+
+  // ---- r5 — bitácora de auditoría del staff ----
+  /** Expuesto también como referencia tipada directa (`ctx.rentasRepo.auditLog`,
+   *  mismo criterio que el resto de este archivo) para que un test pueda inspeccionar
+   *  lo que quedó registrado sin depender de `listAuditoria`. */
+  readonly auditLog: (RentasAuditLogRow & { readonly organizationId: string })[] = [];
 
   constructor(private readonly calendarStore: InMemoryRentasCalendarStore = new InMemoryRentasCalendarStore()) {}
 
@@ -719,5 +741,59 @@ export class InMemoryRentasRepository implements RentasRepository {
       .filter((p) => p.organizationId === organizationId)
       .map((p) => ({ propertyId: p.propertyId, name: p.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // ---- RentasRepository: r5 — bitácora de auditoría del staff ----
+
+  async registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void> {
+    // A diferencia de PostgresRentasRepository (que ignora `input.actorUserId` y deja
+    // que `rentas.record_audit_log` capture el actor real vía `auth.uid()`), este
+    // doble en memoria SÍ lo usa -- no hay sesión SQL/`auth.uid()` que simular aquí,
+    // y los tests necesitan un actor real para poder afirmar "quién" quedó registrado.
+    this.auditLog.push({
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      // Trunca a los MISMOS límites que el CHECK de `rentas.audit_log`
+      // (200/500/500, ver migrations/021_rentas_audit_log.sql) -- mismo criterio
+      // que `left(..., N)` dentro de `rentas.record_audit_log`. Sin este truncamiento
+      // este doble en memoria no reproduce el bug real que ese `left()` corrige (un
+      // `motivoVersion` largo violando el CHECK contra Postgres real), así que
+      // ningún test que solo use este repositorio lo detectaría (hallazgo de
+      // revisión r5: bloqueante 1).
+      campo: truncarCampoAuditoria(input.campo, AUDIT_LOG_CAMPO_MAX),
+      antes: truncarCampoAuditoria(input.antes, AUDIT_LOG_TEXTO_MAX),
+      despues: truncarCampoAuditoria(input.despues, AUDIT_LOG_TEXTO_MAX),
+      createdAtMs: Date.now(),
+    });
+  }
+
+  async listAuditoria(organizationId: string, filtro: RentasAuditLogFiltro, paginacion: RentasAuditLogPaginacion): Promise<RentasAuditLogPagina> {
+    const limit = Math.min(200, Math.max(1, paginacion.limit ?? 50));
+    const offset = Math.max(0, paginacion.offset ?? 0);
+
+    let filtrados = this.auditLog.filter((r) => r.organizationId === organizationId);
+    if (filtro.entityType) filtrados = filtrados.filter((r) => r.entityType === filtro.entityType);
+    // No bloqueante #10 de revisión r5: mismo criterio que
+    // PostgresRentasRepository.listAuditoria -- ancla `desde`/`hasta` a
+    // America/Mexico_City (offset fijo `-06:00`, ver el comentario de ese método)
+    // en vez de medianoche UTC, para que ambos repositorios (real e in-memory)
+    // clasifiquen el mismo instante en el mismo día de filtro.
+    if (filtro.desde) {
+      const desdeMs = new Date(`${filtro.desde}T00:00:00-06:00`).getTime();
+      filtrados = filtrados.filter((r) => r.createdAtMs >= desdeMs);
+    }
+    if (filtro.hasta) {
+      const hastaExclusivoMs = new Date(`${filtro.hasta}T00:00:00-06:00`).getTime() + 24 * 60 * 60 * 1000;
+      filtrados = filtrados.filter((r) => r.createdAtMs < hastaExclusivoMs);
+    }
+    filtrados = [...filtrados].sort((a, b) => b.createdAtMs - a.createdAtMs);
+
+    const total = filtrados.length;
+    const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, ...row }) => row);
+    return { disponible: true, items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
   }
 }

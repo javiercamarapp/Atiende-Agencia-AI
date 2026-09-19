@@ -25,6 +25,7 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-hoteles";
 import type { HotelesEmailDispatchSummary, HotelesRepository } from "@atiende/domain-hoteles";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -53,14 +54,44 @@ export async function runHotelesEmailDispatch(deps: AppDeps): Promise<HotelesEma
  * (nunca una sesión nueva, ver comentario de cabecera de esa función gemela).
  * Un fallo aquí NUNCA se propaga al caller HTTP — el correo ya quedó en el
  * outbox y el cron diario (red de seguridad de respaldo) lo recoge después.
+ *
+ * Hotfix (auditoría a2, CRÍTICO) — recibe también `db` (el MISMO
+ * `TenantDbSession` de `c.get("db")`/`withAppSession`, nunca uno nuevo) para
+ * envolver el drenado en `SAVEPOINT`. En TODA ruta de sesión de STAFF
+ * (`auth.uid()` no nulo) `hoteles.claim_email_outbox_batch` lanza SIEMPRE
+ * 42501 (guard correcto, cross-tenant -- NO se afloja) y, sin este SAVEPOINT,
+ * esa excepción deja la transacción de negocio COMPLETA abortada (25P02) hasta
+ * un `ROLLBACK TO SAVEPOINT`: el `commit;` del motor sobre una transacción
+ * abortada no lanza error (Postgres responde "ROLLBACK" en silencio, ver
+ * packages/db/src/managed-postgres-engine.ts), así que la escritura de negocio
+ * de ESTE MISMO request (folio cerrado, reserva creada...) se pierde con un
+ * 2xx -- o, si la ruta corre dentro de `repo.withIdempotency` (reservas.ts/
+ * cfdi.ts), la siguiente consulta de esa transacción falla con 25P02 y el
+ * cliente recibe 500. Mismo patrón SAVEPOINT ya usado en
+ * `packages/domain-citas/src/postgres-repository.ts::upsertCustomer`. Ver
+ * `scripts/verify-correo-inline-sesion-staff/` para la prueba ANTES/DESPUÉS
+ * contra Postgres real.
  */
-export async function triggerHotelesEmailDispatchInline(deps: AppDeps, hotelesRepo: HotelesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+export async function triggerHotelesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, hotelesRepo: HotelesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  await db.exec("SAVEPOINT sp_inline_email_dispatch");
   try {
     const summary = await dispatchPendingEmailJobs(hotelesRepo, deps.env.resend, { batchSize });
+    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
       console.error(`hoteles email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    // Cubre TANTO el 42501 determinista de sesión de staff (ver arriba) COMO
+    // cualquier otro error real de Postgres/Resend -- ambos dejan la
+    // transacción igual de abortada y necesitan el mismo ROLLBACK TO SAVEPOINT
+    // para que el resto del request (incluido el `commit;` final) pueda seguir
+    // usando la sesión con normalidad.
+    try {
+      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
+      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
+    } catch (recoveryErr) {
+      console.error("hoteles email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
+    }
     console.error("hoteles email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
   }
 }
