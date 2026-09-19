@@ -278,6 +278,33 @@ function mapOrganizationBillingSuperadmin(row: OrganizationBillingSuperadminRawR
   };
 }
 
+// Fase 3 caller-binding — SQLSTATE 42883 (`undefined_function`) es lo que Postgres
+// real lanza cuando `core.find_staff_for_org_admin`/`core.is_staff_org_member_for_
+// org_admin` todavía no existen (migración `0017_caller_binding_fase3.sql` sin
+// aplicar) -- ver el comentario de cabecera de `findStaffForOrgAdmin`/
+// `isStaffOrgMember` para el porqué completo del fallback que dispara esto. El
+// driver `pg` (usado por `ManagedPostgresEngine`, ver `managed-postgres-engine.ts`)
+// propaga el error crudo con `.code` = el SQLSTATE, mismo patrón ya usado en este
+// archivo para P0001 (`acceptStaffInvite`/`updateMemberVerticalRole`).
+function isUndefinedFunctionError(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42883";
+}
+
+// Una sola advertencia por proceso (nunca por request -- evitaría inundar logs bajo
+// tráfico real mientras la migración sigue pendiente de aplicar a mano).
+let warnedAboutMissingOrgAdminFunctions = false;
+function warnMissingOrgAdminFunctionsOnce(): void {
+  if (warnedAboutMissingOrgAdminFunctions) return;
+  warnedAboutMissingOrgAdminFunctions = true;
+  console.warn(
+    "PostgresCoreRepository: core.find_staff_for_org_admin/core.is_staff_org_member_for_org_admin " +
+      "no existen todavía (SQLSTATE 42883) -- degradando al camino anterior a la Fase 3 " +
+      "(core.find_staff_by_email/core.find_memberships_by_user_id + verificación de " +
+      "owner/admin en TypeScript). Aplica packages/db/migrations/0017_caller_binding_fase3.sql " +
+      "(o su espejo en supabase/migrations/) para usar las funciones nuevas.",
+  );
+}
+
 export class PostgresCoreRepository implements CoreRepository, CoreStaffRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -428,29 +455,92 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
     }
   }
 
-  // Fase 3 caller-binding (ver `packages/db/migrations/0016_caller_binding_
-  // fase3.sql`) — `core.find_staff_for_org_admin` valida DENTRO de la función que
-  // `auth.uid()` (esta sesión real por-request) es owner/admin de `organizationId`
-  // antes de devolver nada; sin fila = no existe ese correo (la función nunca
-  // distingue "no autorizado" de "no existe" en su resultado — ambos casos
-  // devuelven cero filas, solo un `auth.uid()` no autorizado lanza 42501, que
-  // nunca debería alcanzar este método real porque `admin-staff.ts` ya gatea con
-  // `assertVerticalRole`/`requirePropertyMembership` antes de llamarlo).
+  // Fase 3 caller-binding (ver `packages/db/migrations/0017_caller_binding_
+  // fase3.sql`) — `core.find_staff_for_org_admin`/`core.is_staff_org_member_for_
+  // org_admin` validan DENTRO de la función que `auth.uid()` (esta sesión real
+  // por-request) es owner/admin de `organizationId` antes de devolver nada.
+  //
+  // ORDEN DE DESPLIEGUE (hallazgo de revisión real: mergear a `main` despliega el
+  // código de inmediato, pero la base de datos REAL va detrás -- las migraciones se
+  // aplican después, a mano): si el código nuevo llegara ANTES que esta migración,
+  // las dos llamadas de abajo fallarían con SQLSTATE 42883 (`undefined_function`) --
+  // exactamente el mismo síntoma que "invitar/administrar staff quedó roto" en las 5
+  // verticales. Ambos métodos detectan ese código de error EXPLÍCITO (nunca cualquier
+  // error) y degradan al camino ANTERIOR a esta fase: las funciones viejas
+  // `core.find_staff_by_email`/`core.find_memberships_by_user_id` (sin el guard de
+  // solo-sistema -- si las nuevas no existen todavía, el guard tampoco, misma
+  // migración) sobre ESTA MISMA sesión real por-request, con la MISMA restricción de
+  // autorización que impondría la función nueva aplicada aquí en TypeScript
+  // (`assertCallerIsOrgAdminForFallback`: `auth.uid()` debe ser owner/admin de
+  // `organizationId`, vía una query directa a `core.membership` que la policy RLS
+  // "staff ve su propia membership" ya deja pasar sin necesitar `security definer`
+  // porque el caller consulta su PROPIA fila) -- nunca más ancho que lo que la
+  // función nueva habría permitido, y sin exponer `password_hash` (el fallback de
+  // `findStaffForOrgAdmin` solo selecciona `id, email, full_name`, igual que la
+  // función nueva). Cualquier otro código de error (o ausencia de `.code`) se
+  // repropaga tal cual -- este fallback SOLO existe para el caso "función todavía no
+  // aplicada", nunca para enmascarar un fallo real. Advertencia en stderr una sola
+  // vez por proceso (`warnMissingOrgAdminFunctionsOnce`), para que quede evidencia en
+  // logs de que la migración sigue pendiente sin inundar la salida en cada request.
   async findStaffForOrgAdmin(organizationId: string, email: string): Promise<OrgAdminStaffLookupRow | null> {
-    const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
-      `select id, email, full_name from core.find_staff_for_org_admin($1, $2);`,
-      [organizationId, email],
-    );
-    const row = rows[0];
-    return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
+    try {
+      const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
+        `select id, email, full_name from core.find_staff_for_org_admin($1, $2);`,
+        [organizationId, email],
+      );
+      const row = rows[0];
+      return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      warnMissingOrgAdminFunctionsOnce();
+      await this.assertCallerIsOrgAdminForFallback(organizationId);
+      const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
+        `select id, email, full_name from core.find_staff_by_email($1);`,
+        [email],
+      );
+      const row = rows[0];
+      return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
+    }
   }
 
   async isStaffOrgMember(organizationId: string, targetUserId: string): Promise<boolean> {
-    const { rows } = await this.db.query<{ is_staff_org_member_for_org_admin: boolean }>(
-      `select core.is_staff_org_member_for_org_admin($1, $2) as is_staff_org_member_for_org_admin;`,
-      [organizationId, targetUserId],
+    try {
+      const { rows } = await this.db.query<{ is_staff_org_member_for_org_admin: boolean }>(
+        `select core.is_staff_org_member_for_org_admin($1, $2) as is_staff_org_member_for_org_admin;`,
+        [organizationId, targetUserId],
+      );
+      return rows[0]?.is_staff_org_member_for_org_admin ?? false;
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      warnMissingOrgAdminFunctionsOnce();
+      await this.assertCallerIsOrgAdminForFallback(organizationId);
+      const { rows } = await this.db.query<{ organization_id: string }>(
+        `select organization_id from core.find_memberships_by_user_id($1);`,
+        [targetUserId],
+      );
+      return rows.some((r) => r.organization_id === organizationId);
+    }
+  }
+
+  // Autorización de respaldo (solo se usa dentro del fallback de arriba): replica,
+  // como query directa, la MISMA condición que exige `core.find_staff_for_org_admin`/
+  // `core.is_staff_org_member_for_org_admin` dentro de su propio cuerpo SQL --
+  // `auth.uid()` (el caller real de esta sesión por-request) con `platform_role`
+  // owner/admin en `organizationId`. `core.membership` tiene `grant select ... to
+  // authenticated` (ver `0001_core_schema.sql`) y su policy RLS ya acota a la fila
+  // propia del caller (`user_id = auth.uid()`) -- no hace falta `security definer`
+  // para esta lectura puntual. Lanza con SQLSTATE 42501 (mismo código que usaría la
+  // función nueva) si el caller no calificó.
+  private async assertCallerIsOrgAdminForFallback(organizationId: string): Promise<void> {
+    const { rows } = await this.db.query<{ platform_role: string }>(
+      `select platform_role from core.membership where organization_id = $1 and user_id = auth.uid() and platform_role in ('owner', 'admin');`,
+      [organizationId],
     );
-    return rows[0]?.is_staff_org_member_for_org_admin ?? false;
+    if (rows.length === 0) {
+      const err = new Error("find_staff_for_org_admin (fallback pre-migración): se requiere ser owner/admin de la organización") as Error & { code?: string };
+      err.code = "42501";
+      throw err;
+    }
   }
 
   // ---- CoreRepository — sesión de sistema (igual que login), ver comentario de

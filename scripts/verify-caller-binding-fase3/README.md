@@ -14,7 +14,7 @@ que la Fase 2 dejó documentado como "fuera de alcance" en
    refresh/magic-link/Google (pre-autenticación, sesión de sistema) y
    administración de staff de las 5 verticales con alta de staff
    (`admin-staff.ts` busca a OTRO usuario por correo). `packages/db/
-   migrations/0016_caller_binding_fase3.sql`:
+   migrations/0017_caller_binding_fase3.sql`:
    - Blinda las tres funciones originales con un guard de solo-sistema
      (`auth.uid() is not null -> raise ... 42501`) — seguro porque
      `ProductionCoreRepository` (verificado call site por call site) las
@@ -126,35 +126,76 @@ diseño.
 
 ## Orden de despliegue
 
+**Cualquier orden.** Mergear a `main` despliega `apps/api` de inmediato, pero la
+base de datos REAL va detrás (las migraciones se aplican después, a mano) —
+"código nuevo, migración vieja" es el caso NORMAL de este monorepo, nunca una
+excepción a evitar.
+
 - Guard de solo-sistema en `find_staff_by_email`/`find_staff_by_id`/
   `find_memberships_by_user_id`, `despachos.record_audit_log`, `hoteles.
   record_fraude_audit_log`, `restaurantes.increment_promotion_uses`,
   `rentas.find_owner_credential_by_email`: compatibles con el código VIEJO
-  Y el nuevo (todos sus callers reales ya corren en sesión de sistema hoy);
-  la migración puede aplicarse en cualquier orden relativo al deploy de
-  `apps/api`.
+  Y el nuevo (todos sus callers reales ya corren en sesión de sistema hoy,
+  confirmado archivo+línea abajo).
 - `restaurantes.enqueue_staff_order_notification`: mismo criterio — sus
   callers reales (sistema y autenticados) ya pasan `p_organization_id`
   real, el guard nuevo solo restringe un caso que ningún caller legítimo
   ejercita.
 - `rentas.revoke_owner_refresh_token`: mismo criterio — su único caller ya
-  abre la sesión como el propietario real.
+  abre la sesión como el propietario real (self-binding, `auth.uid() =
+  p_owner_id`).
 - `core.find_staff_for_org_admin`/`core.is_staff_org_member_for_org_admin`
-  (funciones NUEVAS): el código de `admin-staff.ts` que las llama debe
-  desplegarse DESPUÉS (o en el mismo deploy) que esta migración — si el
-  código nuevo llegara antes, esas dos llamadas fallarían (función
-  inexistente) en vez de degradar. Ver el comentario de cabecera de
-  `packages/db/migrations/0016_caller_binding_fase3.sql`.
+  (funciones NUEVAS): `PostgresCoreRepository.findStaffForOrgAdmin`/
+  `isStaffOrgMember` (`packages/db/src/postgres-core-repository.ts`) detectan
+  SQLSTATE 42883 (`undefined_function`, lo que Postgres real lanza si esta
+  migración TODAVÍA no se aplicó) y degradan automáticamente al camino
+  anterior a esta fase (`core.find_staff_by_email`/`core.find_memberships_
+  by_user_id`), aplicando en TypeScript la MISMA restricción de autorización
+  que exigiría la función nueva — nunca un camino más ancho. Cualquier otro
+  código de error se repropaga tal cual. Cubierto por `packages/db/tests/
+  postgres-core-repository-org-admin-fallback.spec.ts` (función inexistente
+  → camino viejo; función existente → camino nuevo; otro error → se
+  propaga).
 
-## Fuera de alcance de esta fase (documentado, no ignorado)
+### Call site + sesión, por función (verificado archivo+línea)
 
-- `apps/api/src/routes/verticals/hoteles/asistencia.ts` (`GET .../fraude/
-  cross-check`, exporta CSV de asistencia): usa `deps.coreRepo.
-  findStaffById(staffUserId)` con un `staffUserId` de query param, sin
-  verificar que ese staff pertenezca a la MISMA organización/property del
-  admin que exporta — el guard nuevo de `find_staff_by_id` no rompe este
-  call site (sigue en sesión de sistema) ni lo hace MÁS seguro: cierra el
-  bypass por RPC directo, pero la falta de scoping por-organización en la
-  capa TS de esa ruta concreta es un hallazgo DISTINTO (autorización de
-  negocio, no caller-binding de una función `security definer`), fuera del
-  alcance de esta pasada — candidato a una PR de seguimiento dedicada.
+| Función | Call site real | Sesión |
+|---|---|---|
+| `find_staff_by_email`/`find_staff_by_id`/`find_memberships_by_user_id` | `apps/api/src/production/core-repository.ts:57,63,69` | `engine.withAppSession({ userId: null })` — sistema |
+| `despachos.record_audit_log` | `apps/api/src/production/despachos-audit-sink.ts:66` | `engine.withAppSession({ userId: null })` — sistema |
+| `hoteles.record_fraude_audit_log` | `apps/api/src/production/hoteles-fraude-audit-sink.ts:62` | `engine.withAppSession({ userId: null })` — sistema |
+| `restaurantes.increment_promotion_uses` | `apps/api/src/routes/verticals/restaurantes/public.ts:114` (`createOrder`) | `deps.engine.withAppSession({ userId: null })` — sistema |
+| `rentas.find_owner_credential_by_email` | `apps/api/src/routes/verticals/rentas/owner-portal.ts:124` (login) | `deps.engine.withAppSession({ userId: null })` — sistema |
+| `rentas.revoke_owner_refresh_token` | `apps/api/src/routes/verticals/rentas/owner-portal.ts:190` (logout) | `deps.engine.withAppSession({ userId: ownerId })` — self, `ownerId = claims.sub` ya verificado |
+| `restaurantes.enqueue_staff_order_notification` | `public.ts:114` (`createOrder`, sistema) **y** `admin-orders.ts`/`repartidor-orders.ts` (`c.get("db")`, sesión real por-request) | mixta — ver guard org-scoped arriba |
+| `core.find_staff_for_org_admin`/`is_staff_org_member_for_org_admin` | los 5 `admin-staff.ts`, vía `deps.coreStaffRepo(c.get("db"))` | sesión real por-request, `auth.uid()` = el admin autenticado |
+
+## Hallazgo adicional cerrado en esta misma pasada (revisión real de PR #149)
+
+`apps/api/src/routes/verticals/hoteles/asistencia.ts` (`GET .../cruce` y
+`GET .../exportar-stps`) usaba `deps.coreRepo.findStaffById(staffUserId)` con
+un `staffUserId` de query param, sin verificar que ese staff perteneciera a la
+MISMA organización que el admin que consulta — un admin de la organización A
+podía exportar el CSV de asistencia (nombre/correo incluidos) de un empleado
+de la organización B. Se agregó `assertStaffBelongsToOrg` (reutiliza `core.
+is_staff_org_member_for_org_admin` vía `deps.coreStaffRepo(c.get("db"))`,
+MISMO umbral que ya exige `ATTENDANCE_ADMIN_ROLES` = owner/gm = `platform_role`
+owner/admin) en ambas rutas — 404 genérico antes de tocar `core.staff_user`.
+Test: `apps/api/tests/hoteles-asistencia.spec.ts` ("un owner de esta
+organización pidiendo el cruce/CSV de un empleado de OTRA organización → 404,
+sin filtrar su nombre ni correo").
+
+## Renumeración de `packages/domain-hoteles/migrations/`
+
+`023_hoteles_caller_binding_fase3.sql` colisionó con `023_night_audit_
+sistema_escritura.sql` (PR #148, merged en paralelo) — dos agentes calcularon
+"el siguiente número interno libre" sin verse entre sí. Renumerado a
+`024_hoteles_caller_binding_fase3.sql` (mismo prefijo de timestamp
+`20240101000149` en el espejo de `supabase/migrations/`, solo cambia el
+número interno). `packages/db/migrations/0016_caller_binding_fase3.sql`
+colisionó de la misma forma con `0016_superadmin_acciones.sql` (PR #147) —
+renumerado a `0017_caller_binding_fase3.sql`. `scripts/verify-migration-
+versions/check-migration-versions.ts` ahora detecta este tipo de colisión
+(`findDuplicateInternalNumbers`/`findNewInternalNumberDuplicates`, con una
+lista de excepciones "grandfathered" para las colisiones YA existentes antes
+de este guard) — ver el comentario de cabecera de ese archivo.
