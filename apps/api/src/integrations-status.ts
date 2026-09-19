@@ -238,6 +238,12 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "REFRESH_TOKEN_TTL_SECONDS",
   "ALLOWED_ORIGINS",
   "APP_BASE_URL",
+  // `http-security.ts::requestActor` -- opt-in explícito para confiar en un
+  // header de IP de un proxy real (ej. Cloudflare) delante de Vercel. Sin
+  // configurar en este despliegue a propósito (Vercel directo, sin proxy
+  // confiable, ver docs/CREDENCIALES.md) -- nunca bloquea nada, solo cambia de
+  // qué header se deriva el actor del rate-limit.
+  "TRUSTED_PROXY_IP_HEADER",
   "RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS",
   "RENTAS_OWNER_REFRESH_TOKEN_TTL_SECONDS",
   "RESEND_FROM_EMAIL",

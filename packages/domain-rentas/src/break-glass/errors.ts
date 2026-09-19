@@ -118,3 +118,49 @@ export class BreakGlassSessionNotFoundError extends BreakGlassError {
     );
   }
 }
+
+/**
+ * Hallazgo de revisión real (ronda r5): `?propertyId=` fue declarado (con
+ * forma de UUID válida -- la ruta HTTP valida el FORMATO antes de llamar
+ * aquí, ver `superadmin-break-glass.ts::parsePropertyIdQuery`) pero no
+ * pertenece a la organización objetivo, o no existe -- defensa en
+ * profundidad de las 7 funciones `security definer` de
+ * `020_break_glass_lectores.sql` (SQLSTATE `P0002`, "la propiedad indicada
+ * no pertenece a esta organización"). `PostgresBreakGlassRentasDataRepository`
+ * traduce ese SQLSTATE a este error tipado (con `ROLLBACK TO SAVEPOINT` antes
+ * de lanzar -- ver el comentario de cabecera de `postgres-data-repository.ts`
+ * para el porqué); `apps/api` lo traduce a 404 explícito, nunca al 500
+ * genérico que un `invalid_text_representation`/error SQL sin mapear
+ * produciría.
+ */
+export class BreakGlassPropertyNotFoundError extends BreakGlassError {
+  constructor() {
+    super(
+      "La propiedad indicada no pertenece a esta organización, o no existe.",
+      "break_glass_property_not_found",
+    );
+  }
+}
+
+/**
+ * Rechazo de defensa en profundidad de Postgres (SQLSTATE `42501`) desde
+ * cualquiera de las 7 funciones `security definer` de romper-cristal --
+ * caller distinto de `auth.uid()`, `rentas.is_platform_superadmin` falso, o
+ * sin una `rentas.break_glass_session` VIGENTE para exactamente ese
+ * actor+organización (la MISMA condición que la ruta HTTP ya verifica ANTES
+ * de llamar al lector, vía `obtenerAccesoActivoBreakGlass` -- esto es la
+ * segunda verificación real que `020_break_glass_lectores.sql` documenta,
+ * nunca confiada solo de la capa TypeScript). El mensaje nunca distingue cuál
+ * de las 3 condiciones falló -- ninguna filtra detalle interno de la
+ * autorización a quien la recibe. `PostgresBreakGlassRentasDataRepository`
+ * traduce este SQLSTATE a este error tipado (con `ROLLBACK TO SAVEPOINT`
+ * antes de lanzar); `apps/api` lo traduce a 403 explícito.
+ */
+export class BreakGlassAccessDeniedError extends BreakGlassError {
+  constructor() {
+    super(
+      "Sin permiso para leer datos de este tenant vía romper-cristal.",
+      "break_glass_access_denied",
+    );
+  }
+}
