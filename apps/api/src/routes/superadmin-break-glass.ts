@@ -18,6 +18,8 @@ import { Hono } from "hono";
 import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
+  BREAK_GLASS_LECTOR_LIMIT_DEFAULT,
+  BREAK_GLASS_LECTOR_LIMIT_MAX,
   BreakGlassDurationInvalidError,
   BreakGlassOrganizationRequiredError,
   BreakGlassReasonRequiredError,
@@ -25,12 +27,19 @@ import {
   abrirAccesoBreakGlass,
   cerrarAccesoBreakGlass,
   esSesionBreakGlassActiva,
+  leerFinanzasTenantBreakGlass,
+  leerLimpiezaTenantBreakGlass,
+  leerMensajeriaTenantBreakGlass,
+  leerPayoutsTenantBreakGlass,
+  leerPricingTenantBreakGlass,
   leerReservasTenantBreakGlass,
+  leerSyncIcalTenantBreakGlass,
   listarAccesosBreakGlass,
   obtenerAccesoActivoBreakGlass,
 } from "@atiende/domain-rentas";
-import type { BreakGlassAuditEntry, BreakGlassSession } from "@atiende/domain-rentas";
+import type { BreakGlassAccessInput, BreakGlassAuditEntry, BreakGlassAuditRepository, BreakGlassLectorResultado, BreakGlassRentasDataRepository, BreakGlassSession } from "@atiende/domain-rentas";
 import { rateLimit } from "@atiende/core-ratelimit";
+import type { Context } from "hono";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
 import type { AppDeps } from "../deps.ts";
@@ -153,19 +162,84 @@ export function superadminBreakGlassRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     return c.json({ entries: entries.map(serializeAuditEntry) });
   });
 
-  // Lectura de datos de tenant bajo break-glass -- la ÚNICA categoría de dato que
-  // este mecanismo sabe servir hoy (`resourceType: "reservas"`, ver el comentario
-  // de cabecera de BreakGlassReservaResumen en tipos.ts). SOLO mientras haya un
-  // acceso activo y vigente del propio superadmin para esta organización -- sin
-  // eso, 403 explícito ANTES de intentar la lectura (defensa en profundidad: la
-  // función SQL lo exige de nuevo, nunca confiada solo de este chequeo TS). Cada
-  // lectura exitosa queda registrada en la bitácora inmutable dentro de
-  // `leerReservasTenantBreakGlass` (fail-closed: si el registro de auditoría
-  // falla, los datos ya leídos NUNCA llegan al llamador).
-  app.get("/superadmin/break-glass/organizaciones/:organizationId/reservas", async (c) => {
+  // Lectura de datos de tenant bajo break-glass -- 7 categorías de dato hoy
+  // (`resourceType: "reservas"`, del PR #132, más las 6 que esta fase agrega:
+  // `finanzas`/`payouts`/`pricing`/`mensajeria`/`limpieza`/`sync_ical`, ver
+  // BreakGlass*Resumen en tipos.ts). Las 7 comparten el MISMO gate: SOLO mientras
+  // haya un acceso activo y vigente del propio superadmin para esta organización
+  // -- sin eso, 403 explícito ANTES de intentar la lectura (defensa en
+  // profundidad: cada función SQL lo exige de nuevo, nunca confiada solo de este
+  // chequeo TS). Cada lectura exitosa queda registrada en la bitácora inmutable
+  // dentro de su composición `leer*TenantBreakGlass` (fail-closed: si el
+  // registro de auditoría falla, los datos ya leídos NUNCA llegan al llamador).
+  //
+  // Filtro opcional por propiedad (`?propertyId=`) y paginado con tope
+  // (`?limit=`/`?offset=`, tope duro `BREAK_GLASS_LECTOR_LIMIT_MAX`) -- mismo
+  // contrato en las 7 rutas, `registrarLectorTenant` (abajo) evita repetir el
+  // parseo de query params + manejo de errores 7 veces.
+  registrarLectorTenant(app, deps, "reservas", "reservas", leerReservasTenantBreakGlass);
+  registrarLectorTenant(app, deps, "finanzas", "finanzas", leerFinanzasTenantBreakGlass);
+  registrarLectorTenant(app, deps, "payouts", "payouts", leerPayoutsTenantBreakGlass);
+  registrarLectorTenant(app, deps, "pricing", "pricing", leerPricingTenantBreakGlass);
+  registrarLectorTenant(app, deps, "mensajeria", "mensajeria", leerMensajeriaTenantBreakGlass);
+  registrarLectorTenant(app, deps, "limpieza", "limpieza", leerLimpiezaTenantBreakGlass);
+  registrarLectorTenant(app, deps, "sync-ical", "syncIcal", leerSyncIcalTenantBreakGlass);
+
+  return app;
+}
+
+/**
+ * Registra `GET /superadmin/break-glass/organizaciones/:organizationId/<path>`
+ * para UNA composición `leer*TenantBreakGlass` -- las 7 rutas de lectura de
+ * tenant de arriba comparten exactamente esta forma (mismo gate de sesión
+ * vigente, mismo parseo de `?propertyId=`/`?limit=`/`?offset=`/`?reason=`, mismo
+ * manejo de `BreakGlassReasonRequiredError` -> 422), solo cambia el segmento de
+ * URL, la clave del JSON de respuesta, y qué composición de dominio invocar.
+ *
+ * FIX hallazgo de revisión real (ronda 1 del PR #155, bloqueante 3) -- `data`
+ * puede llegar como un array plano (`leerReservasTenantBreakGlass`, que
+ * SIEMPRE tiene datos reales disponibles, ver tipos.ts) o como
+ * `BreakGlassLectorResultado<T>` (los 6 lectores nuevos, que sí pueden estar
+ * `disponible: false` mientras la migración 020 no esté aplicada). La
+ * respuesta SIEMPRE incluye `disponible` -- `true` para reservas (nunca hay un
+ * estado "no disponible" genuino ahí), o el valor real del wrapper para los
+ * otros 6 -- para que la pestaña web pueda distinguir "el tenant no tiene
+ * datos de este tipo" de "el lector todavía no está disponible". `auditEntry`
+ * puede llegar `null` cuando el lector no estaba disponible (acceso.ts NUNCA
+ * audita una lectura que no ocurrió) -- no se expone en el JSON (la bitácora ya
+ * tiene su propio endpoint), pero es la razón por la que el tipo de `leer` lo
+ * permite.
+ */
+function registrarLectorTenant<T>(
+  app: Hono<CoreAuthHonoEnv>,
+  deps: AppDeps,
+  path: string,
+  jsonKey: string,
+  leer: (
+    auditRepo: BreakGlassAuditRepository,
+    dataRepo: BreakGlassRentasDataRepository,
+    input: Omit<BreakGlassAccessInput, "resourceType">,
+    nowMs?: number,
+  ) => Promise<{ data: readonly T[] | BreakGlassLectorResultado<T>; auditEntry: BreakGlassAuditEntry | null }>,
+): void {
+  app.get(`/superadmin/break-glass/organizaciones/:organizationId/${path}`, async (c: Context<CoreAuthHonoEnv>) => {
     const callerId = c.get("userId");
-    const organizationId = c.req.param("organizationId");
+    // `c.req.param("organizationId")` -- la ruta se arma con un template literal
+    // (el path varía por lector), así que Hono ya no puede inferir en tiempo de
+    // compilación que ":organizationId" existe en ESTA cadena concreta (a
+    // diferencia de una ruta literal, ver el resto de handlers de este archivo) --
+    // el tipo resultante es `string | undefined`, aunque en tiempo de ejecución
+    // Hono garantiza que viene poblado porque el segmento SÍ está en el patrón
+    // registrado. `?? ""` solo satisface al compilador; una cadena vacía nunca
+    // matchea ningún `core.organization.id` real, así que el peor caso honesto es
+    // "organización no encontrada" más abajo, nunca un comportamiento distinto.
+    const organizationId = c.req.param("organizationId") ?? "";
     const reason = c.req.query("reason") ?? "";
+    const propertyId = c.req.query("propertyId") || undefined;
+    const limitParam = c.req.query("limit");
+    const offsetParam = c.req.query("offset");
+    const limit = limitParam !== undefined && Number.isFinite(Number(limitParam)) ? Math.min(BREAK_GLASS_LECTOR_LIMIT_MAX, Math.max(1, Number(limitParam))) : BREAK_GLASS_LECTOR_LIMIT_DEFAULT;
+    const offset = offsetParam !== undefined && Number.isFinite(Number(offsetParam)) ? Math.max(0, Number(offsetParam)) : 0;
 
     return deps.engine.withAppSession({ userId: callerId }, async (db) => {
       const actor = { userId: callerId, email: c.get("userEmail") };
@@ -175,18 +249,27 @@ export function superadminBreakGlassRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       }
 
       try {
-        const { data } = await leerReservasTenantBreakGlass(deps.rentasBreakGlassAuditRepo(db), deps.rentasBreakGlassDataRepo(db), {
+        const { data } = await leer(deps.rentasBreakGlassAuditRepo(db), deps.rentasBreakGlassDataRepo(db), {
           actor,
           organizationId,
           reason: reason || sesionActiva.reason,
+          resourceScope: { propertyId, limit, offset },
         });
-        return c.json({ reservas: data });
+        // `leerReservasTenantBreakGlass` devuelve un array plano (siempre
+        // disponible); los 6 lectores nuevos devuelven el wrapper -- se
+        // normaliza aquí, una sola vez, en vez de en cada composición de
+        // dominio.
+        let resultado: BreakGlassLectorResultado<T>;
+        if (Array.isArray(data)) {
+          resultado = { disponible: true, datos: data as readonly T[] };
+        } else {
+          resultado = data as BreakGlassLectorResultado<T>;
+        }
+        return c.json({ [jsonKey]: resultado.datos, disponible: resultado.disponible });
       } catch (err) {
         if (err instanceof BreakGlassReasonRequiredError) throw Errors.validation(err.message);
         throw err;
       }
     });
   });
-
-  return app;
 }
