@@ -1220,16 +1220,25 @@ export class PostgresRentasRepository implements RentasRepository {
       params.push(filtro.entityType);
       condiciones.push(`entity_type = $${params.length}`);
     }
+    // No bloqueante #10 de revisión r5: `created_at >= $n::date` comparaba usando la
+    // zona horaria de la SESIÓN de Postgres (UTC) -- el admin elige `desde`/`hasta`
+    // en hora local de México, así que una acción de las 18:00 a las 23:59 hora de
+    // México caía en el día SIGUIENTE del filtro (UTC ya cruzó medianoche). Se ancla
+    // explícitamente a America/Mexico_City con offset fijo `-06:00` (México no tiene
+    // horario de verano nacional desde 2022) -- mismo criterio EXACTO que
+    // domain-licitaciones/src/dates.ts (`MEXICO_CITY_OFFSET`), replicado aquí en vez
+    // de importado porque los paquetes de dominio no se importan entre sí.
     if (filtro.desde) {
-      params.push(filtro.desde);
-      condiciones.push(`created_at >= $${params.length}::date`);
+      params.push(`${filtro.desde}T00:00:00-06:00`);
+      condiciones.push(`created_at >= $${params.length}::timestamptz`);
     }
     if (filtro.hasta) {
       // Extremo inclusivo -- `hasta` es una fecha (sin hora), así que compara contra
       // el INICIO del día siguiente en vez de `<=` (que excluiría cualquier hora
-      // después de medianoche del propio día `hasta`).
-      params.push(filtro.hasta);
-      condiciones.push(`created_at < ($${params.length}::date + interval '1 day')`);
+      // después de medianoche del propio día `hasta`), ambos anclados a la misma
+      // zona de arriba.
+      params.push(`${filtro.hasta}T00:00:00-06:00`);
+      condiciones.push(`created_at < ($${params.length}::timestamptz + interval '1 day')`);
     }
     const where = condiciones.join(" and ");
 

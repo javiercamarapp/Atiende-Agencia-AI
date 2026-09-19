@@ -777,12 +777,17 @@ export class InMemoryRentasRepository implements RentasRepository {
 
     let filtrados = this.auditLog.filter((r) => r.organizationId === organizationId);
     if (filtro.entityType) filtrados = filtrados.filter((r) => r.entityType === filtro.entityType);
+    // No bloqueante #10 de revisión r5: mismo criterio que
+    // PostgresRentasRepository.listAuditoria -- ancla `desde`/`hasta` a
+    // America/Mexico_City (offset fijo `-06:00`, ver el comentario de ese método)
+    // en vez de medianoche UTC, para que ambos repositorios (real e in-memory)
+    // clasifiquen el mismo instante en el mismo día de filtro.
     if (filtro.desde) {
-      const desdeMs = new Date(`${filtro.desde}T00:00:00.000Z`).getTime();
+      const desdeMs = new Date(`${filtro.desde}T00:00:00-06:00`).getTime();
       filtrados = filtrados.filter((r) => r.createdAtMs >= desdeMs);
     }
     if (filtro.hasta) {
-      const hastaExclusivoMs = new Date(`${filtro.hasta}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000;
+      const hastaExclusivoMs = new Date(`${filtro.hasta}T00:00:00-06:00`).getTime() + 24 * 60 * 60 * 1000;
       filtrados = filtrados.filter((r) => r.createdAtMs < hastaExclusivoMs);
     }
     filtrados = [...filtrados].sort((a, b) => b.createdAtMs - a.createdAtMs);
