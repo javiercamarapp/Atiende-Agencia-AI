@@ -164,3 +164,109 @@ export interface NewBreakGlassSessionInput {
 export function esSesionBreakGlassActiva(session: BreakGlassSession, nowMs: number = Date.now()): boolean {
   return session.closedAtMs === null && session.expiresAtMs > nowMs;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lectores restantes (Fase 10c -- ver ../../migrations/020_break_glass_lectores.sql):
+// las 6 categorías de dato de rentas que `BreakGlassReservaResumen` (arriba) dejó
+// documentadas como pendientes -- `finanzas`, `payouts`, `pricing`, `mensajeria`,
+// `limpieza` (cubre limpieza Y mantenimiento, ver `rentas.tarea_operativa.tipo`) y
+// `sync_ical`. Mismo criterio de "resumen deliberadamente mínimo" que
+// `BreakGlassReservaResumen` -- cada tipo trae solo lo que su propia función SQL
+// devuelve, todos con un campo `id` (para que `acceso.ts::crearLectorTenantBreakGlass`
+// pueda describir el resultado de forma genérica, mismo patrón que
+// `leerReservasTenantBreakGlass` describe con `ocupacionIds`).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Alcance opcional de paginado + filtro por propiedad, compartido por los 7
+ *  lectores de tenant (reservas + los 6 de esta fase). `propertyId` viaja tal
+ *  cual a `resourceScope.propertyId` de la bitácora (ver acceso.ts). */
+export interface BreakGlassLectorPaginacion {
+  readonly propertyId?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+/** Página por defecto cuando el llamador no pide una explícita -- mismo valor
+ *  que el DEFAULT de `p_limit` en las funciones SQL de
+ *  `020_break_glass_lectores.sql`. */
+export const BREAK_GLASS_LECTOR_LIMIT_DEFAULT = 100;
+
+/** Tope DURO de página -- mismo valor que `least(coalesce(p_limit, 100), 200)`
+ *  en las funciones SQL; reforzado también aquí (defensa en profundidad, nunca
+ *  la única barrera) para que la ruta HTTP nunca le pida a Postgres una página
+ *  más grande que la que la propia función ya limitaría. */
+export const BREAK_GLASS_LECTOR_LIMIT_MAX = 200;
+
+export interface BreakGlassFinanzasResumen {
+  readonly id: string;
+  readonly ocupacionId: string;
+  readonly propertyId: string;
+  readonly moneda: string;
+  readonly montoBrutoCentavos: number;
+  readonly comisionCanalCentavos: number;
+  readonly comisionGestorCentavos: number;
+  readonly gastosCentavos: number;
+  readonly impuestosCentavos: number;
+  readonly netoCentavos: number;
+  readonly createdAtMs: number;
+}
+
+export interface BreakGlassPayoutResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly canalId: string;
+  readonly referenciaExterna: string | null;
+  readonly moneda: string;
+  readonly montoTotalCentavos: number;
+  readonly fechaPayout: string; // YYYY-MM-DD
+  readonly creadoEnMs: number;
+}
+
+export interface BreakGlassPricingResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly precioNocheCentavos: number;
+  readonly moneda: string;
+  readonly vigenteDesde: string; // YYYY-MM-DD
+}
+
+export interface BreakGlassMensajeriaResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly canalCodigo: string;
+  readonly huespedNombre: string | null;
+  readonly fechaCheckIn: string | null; // YYYY-MM-DD
+  readonly fechaCheckOut: string | null; // YYYY-MM-DD
+  readonly reservaConfirmada: boolean;
+  readonly creadoEnMs: number;
+}
+
+export interface BreakGlassLimpiezaResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly tipo: string; // 'limpieza' | 'mantenimiento' | 'inspeccion'
+  readonly estado: string;
+  readonly prioridad: string;
+  readonly programadaPara: string; // YYYY-MM-DD
+  readonly completadaEnMs: number | null;
+  readonly creadoEnMs: number;
+}
+
+/** `urlImportacionEnmascarada` -- NUNCA la URL completa (mandato de esta fase:
+ *  "nunca tokens de iCal/OTA... enmascara"): solo esquema+host, ver el
+ *  `regexp_replace` de `rentas.list_sync_ical_for_break_glass`. */
+export interface BreakGlassSyncIcalResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly canalId: string;
+  readonly urlImportacionEnmascarada: string;
+  readonly activo: boolean;
+  readonly ultimaSincronizacionExitosaEnMs: number | null;
+  readonly enCuarentenaDesdeMs: number | null;
+  readonly intentosFallidosConsecutivos: number;
+  readonly motivoCuarentena: string | null;
+}

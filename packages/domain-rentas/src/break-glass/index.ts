@@ -4,6 +4,8 @@
 // de esta subcarpeta. Ver ../../migrations/012_break_glass_audit.sql para el diseño
 // completo (gap verificado contra core-authz/impersonation antes de construirse).
 export {
+  BREAK_GLASS_LECTOR_LIMIT_DEFAULT,
+  BREAK_GLASS_LECTOR_LIMIT_MAX,
   BREAK_GLASS_MAX_DURATION_MINUTES,
   BREAK_GLASS_MIN_DURATION_MINUTES,
   BREAK_GLASS_MIN_REASON_LENGTH,
@@ -14,9 +16,16 @@ export {
 export type {
   BreakGlassAccessInput,
   BreakGlassAuditEntry,
+  BreakGlassFinanzasResumen,
+  BreakGlassLectorPaginacion,
+  BreakGlassLimpiezaResumen,
+  BreakGlassMensajeriaResumen,
+  BreakGlassPayoutResumen,
+  BreakGlassPricingResumen,
   BreakGlassResourceType,
   BreakGlassReservaResumen,
   BreakGlassSession,
+  BreakGlassSyncIcalResumen,
   NewBreakGlassAuditEntry,
   NewBreakGlassSessionInput,
   SuperadminActor,
@@ -41,7 +50,17 @@ export type { BreakGlassRentasDataRepository } from "./data-repository.ts";
 export { InMemoryBreakGlassSessionRepository } from "./sesion-repository.ts";
 export type { BreakGlassSessionRepository } from "./sesion-repository.ts";
 
-export { leerDatosTenantBreakGlass, leerReservasTenantBreakGlass, validarRazonBreakGlass } from "./acceso.ts";
+export {
+  leerDatosTenantBreakGlass,
+  leerFinanzasTenantBreakGlass,
+  leerLimpiezaTenantBreakGlass,
+  leerMensajeriaTenantBreakGlass,
+  leerPayoutsTenantBreakGlass,
+  leerPricingTenantBreakGlass,
+  leerReservasTenantBreakGlass,
+  leerSyncIcalTenantBreakGlass,
+  validarRazonBreakGlass,
+} from "./acceso.ts";
 export {
   abrirAccesoBreakGlass,
   cerrarAccesoBreakGlass,

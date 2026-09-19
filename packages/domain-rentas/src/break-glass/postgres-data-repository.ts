@@ -12,25 +12,72 @@
 // engine.admin NO es service_role"). Una lectura de `rentas.ocupacion` bajo
 // `admin` sigue sujeta a las policies normales de esa tabla (solo staff con
 // membership real) -- así que, tal como estaba, este adaptador SIEMPRE habría
-// devuelto CERO filas contra Postgres real, sin importar quién llamara: el
-// mecanismo nunca pudo haber funcionado.
+// devuelto CERO filas contra Postgres real: el mecanismo nunca pudo haber
+// funcionado.
 //
 // SESIÓN REQUERIDA (ya corregido): la sesión del PROPIO superadmin
 // (`engine.withAppSession({ userId: actor.userId }, ...)`) -- MISMO patrón que
 // `PostgresBreakGlassAuditRepository` (misma carpeta) y que
-// `ProductionRentasOwnerPortalRepository` (ver el comentario de cabecera de ese
-// archivo para el precedente exacto: una función `security definer`, dueña de su
-// propia autorización completa, sobre la sesión por-request normal -- nunca
-// `engine.admin`/`service_role`). `rentas.list_reservas_for_break_glass` (la
-// función que este adaptador invoca) es quien de verdad "salta" las policies de
-// `rentas.ocupacion` -- corre con el privilegio del DUEÑO de la función (quien
-// aplicó la migración), no con el de `authenticated` -- pero solo después de
-// verificar, DENTRO de la función, que `auth.uid() = p_caller_id`, que
-// `p_caller_id` es superadmin real, y que existe una `rentas.break_glass_session`
-// VIGENTE (sin cerrar, sin vencer) para exactamente ese actor+organización.
+// `ProductionRentasOwnerPortalRepository`. Cada función `security definer` que
+// este adaptador invoca es dueña de su propia autorización completa
+// (`auth.uid() = p_caller_id`, `rentas.is_platform_superadmin`, sesión de
+// romper-cristal vigente) -- corre con el privilegio del DUEÑO de la función
+// (quien aplicó la migración), nunca con el de `authenticated`.
+//
+// FASE 10c (ver ../../migrations/020_break_glass_lectores.sql) -- COMPATIBILIDAD
+// CON LA BASE SIN MIGRAR: mergear a `main` despliega este código al instante, pero
+// la base Supabase real va decenas de migraciones atrás y nadie las aplica al
+// mergear (ver AGENTS.md de esta tarea). Las 6 funciones nuevas
+// (`list_{finanzas,payouts,pricing,mensajeria,limpieza,sync_ical}_for_break_glass`)
+// y la nueva sobrecarga de 5 parámetros de `list_reservas_for_break_glass` no
+// existen todavía en una base que solo tiene `018_break_glass_wiring.sql`
+// aplicada -- Postgres real lanza SQLSTATE 42883 (`undefined_function`) en ese
+// caso, MISMO código que `packages/db/src/postgres-core-repository.ts` ya
+// detecta para su propio fallback de Fase 3 de caller-binding (`isUndefinedFunctionError`,
+// mismo patrón, replicado aquí porque este archivo vive en un paquete distinto sin
+// esa utilidad compartida). Cada uno de los 6 métodos nuevos cae a un VACÍO
+// HONESTO (`disponible: false` + lista vacía) -- no existe un "camino anterior"
+// real para estos 6 recursos (nunca tuvieron lector antes de esta fase, a
+// diferencia de reservas). `listReservasTenant` SÍ tiene un camino anterior real
+// (la sobrecarga de 2 parámetros de `018_break_glass_wiring.sql`, que sigue
+// existiendo intacta) -- cae a esa, y filtra/pagina el resultado en TypeScript
+// para no perder el comportamiento pedido por el llamador solo porque la
+// migración más reciente no se aplicó todavía.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { BreakGlassRentasDataRepository } from "./data-repository.ts";
-import type { BreakGlassReservaResumen } from "./tipos.ts";
+import type {
+  BreakGlassFinanzasResumen,
+  BreakGlassLectorPaginacion,
+  BreakGlassLimpiezaResumen,
+  BreakGlassMensajeriaResumen,
+  BreakGlassPayoutResumen,
+  BreakGlassPricingResumen,
+  BreakGlassReservaResumen,
+  BreakGlassSyncIcalResumen,
+} from "./tipos.ts";
+import { BREAK_GLASS_LECTOR_LIMIT_DEFAULT, BREAK_GLASS_LECTOR_LIMIT_MAX } from "./tipos.ts";
+
+function isUndefinedFunctionError(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42883";
+}
+
+// Una sola advertencia por proceso y por función -- mismo criterio que
+// `warnMissingOrgAdminFunctionsOnce` de `postgres-core-repository.ts`: evita
+// inundar logs bajo tráfico real mientras `020_break_glass_lectores.sql` sigue
+// pendiente de aplicar a mano.
+const advertidos = new Set<string>();
+function advertirUnaVez(fnName: string, mensaje: string): void {
+  if (advertidos.has(fnName)) return;
+  advertidos.add(fnName);
+  console.warn(mensaje);
+}
+
+function resolverLimite(paginacion: BreakGlassLectorPaginacion | undefined): { limit: number; offset: number } {
+  return {
+    limit: Math.min(BREAK_GLASS_LECTOR_LIMIT_MAX, paginacion?.limit ?? BREAK_GLASS_LECTOR_LIMIT_DEFAULT),
+    offset: Math.max(0, paginacion?.offset ?? 0),
+  };
+}
 
 interface ReservaRow {
   ocupacion_id: string;
@@ -43,23 +90,294 @@ interface ReservaRow {
   huesped_contacto: string | null;
 }
 
+function mapReservaRow(r: ReservaRow): BreakGlassReservaResumen {
+  return {
+    ocupacionId: r.ocupacion_id,
+    propertyId: r.property_id,
+    unidadId: r.unidad_id,
+    checkIn: r.check_in,
+    checkOut: r.check_out,
+    estado: r.estado,
+    huespedNombre: r.huesped_nombre,
+    huespedContacto: r.huesped_contacto,
+  };
+}
+
+interface FinanzasRow {
+  id: string;
+  ocupacion_id: string;
+  property_id: string;
+  moneda: string;
+  monto_bruto_centavos: string; // bigint -> string vía driver pg
+  comision_canal_centavos: string;
+  comision_gestor_centavos: string;
+  gastos_centavos: string;
+  impuestos_centavos: string;
+  neto_centavos: string;
+  created_at: string;
+}
+
+interface PayoutRow {
+  id: string;
+  property_id: string;
+  canal_id: string;
+  referencia_externa: string | null;
+  moneda: string;
+  monto_total_centavos: string;
+  fecha_payout: string;
+  creado_en: string;
+}
+
+interface PricingRow {
+  id: string;
+  property_id: string;
+  unidad_id: string;
+  precio_noche_centavos: string;
+  moneda: string;
+  vigente_desde: string;
+}
+
+interface MensajeriaRow {
+  id: string;
+  property_id: string;
+  unidad_id: string;
+  canal_codigo: string;
+  huesped_nombre: string | null;
+  fecha_check_in: string | null;
+  fecha_check_out: string | null;
+  reserva_confirmada: boolean;
+  creado_en: string;
+}
+
+interface LimpiezaRow {
+  id: string;
+  property_id: string;
+  unidad_id: string;
+  tipo: string;
+  estado: string;
+  prioridad: string;
+  programada_para: string;
+  completada_en: string | null;
+  creado_en: string;
+}
+
+interface SyncIcalRow {
+  id: string;
+  property_id: string;
+  unidad_id: string;
+  canal_id: string;
+  url_importacion_enmascarada: string;
+  activo: boolean;
+  ultima_sincronizacion_exitosa_en: string | null;
+  en_cuarentena_desde: string | null;
+  intentos_fallidos_consecutivos: number;
+  motivo_cuarentena: string | null;
+}
+
 export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasDataRepository {
   constructor(private readonly db: TenantDbSession) {}
 
-  async listReservasTenant(organizationId: string, callerId: string): Promise<readonly BreakGlassReservaResumen[]> {
-    const { rows } = await this.db.query<ReservaRow>(
-      `select * from rentas.list_reservas_for_break_glass($1, $2);`,
-      [callerId, organizationId],
-    );
-    return rows.map((r) => ({
-      ocupacionId: r.ocupacion_id,
-      propertyId: r.property_id,
-      unidadId: r.unidad_id,
-      checkIn: r.check_in,
-      checkOut: r.check_out,
-      estado: r.estado,
-      huespedNombre: r.huesped_nombre,
-      huespedContacto: r.huesped_contacto,
-    }));
+  async listReservasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassReservaResumen[]> {
+    const { limit, offset } = resolverLimite(paginacion);
+    try {
+      const { rows } = await this.db.query<ReservaRow>(
+        `select * from rentas.list_reservas_for_break_glass($1, $2, $3, $4, $5);`,
+        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+      );
+      return rows.map(mapReservaRow);
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      advertirUnaVez(
+        "list_reservas_for_break_glass",
+        "PostgresBreakGlassRentasDataRepository: rentas.list_reservas_for_break_glass(5 args) no existe todavía " +
+          "(SQLSTATE 42883) -- degradando a la sobrecarga de 2 parámetros de 018_break_glass_wiring.sql " +
+          "(sin filtro por propiedad ni paginado del lado de Postgres, aplicados aquí en TypeScript). " +
+          "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql (o su espejo en " +
+          "supabase/migrations/) para que Postgres haga el filtro/paginado real.",
+      );
+      const { rows } = await this.db.query<ReservaRow>(`select * from rentas.list_reservas_for_break_glass($1, $2);`, [callerId, organizationId]);
+      const todas = rows.map(mapReservaRow);
+      const filtradas = paginacion?.propertyId ? todas.filter((r) => r.propertyId === paginacion.propertyId) : todas;
+      return filtradas.slice(offset, offset + limit);
+    }
+  }
+
+  async listFinanzasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassFinanzasResumen[]> {
+    const { limit, offset } = resolverLimite(paginacion);
+    try {
+      const { rows } = await this.db.query<FinanzasRow>(
+        `select * from rentas.list_finanzas_for_break_glass($1, $2, $3, $4, $5);`,
+        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        ocupacionId: r.ocupacion_id,
+        propertyId: r.property_id,
+        moneda: r.moneda,
+        montoBrutoCentavos: Number(r.monto_bruto_centavos),
+        comisionCanalCentavos: Number(r.comision_canal_centavos),
+        comisionGestorCentavos: Number(r.comision_gestor_centavos),
+        gastosCentavos: Number(r.gastos_centavos),
+        impuestosCentavos: Number(r.impuestos_centavos),
+        netoCentavos: Number(r.neto_centavos),
+        createdAtMs: new Date(r.created_at).getTime(),
+      }));
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      advertirUnaVez(
+        "list_finanzas_for_break_glass",
+        "PostgresBreakGlassRentasDataRepository: rentas.list_finanzas_for_break_glass no existe todavía " +
+          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
+      );
+      return [];
+    }
+  }
+
+  async listPayoutsTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPayoutResumen[]> {
+    const { limit, offset } = resolverLimite(paginacion);
+    try {
+      const { rows } = await this.db.query<PayoutRow>(
+        `select * from rentas.list_payouts_for_break_glass($1, $2, $3, $4, $5);`,
+        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        propertyId: r.property_id,
+        canalId: r.canal_id,
+        referenciaExterna: r.referencia_externa,
+        moneda: r.moneda,
+        montoTotalCentavos: Number(r.monto_total_centavos),
+        fechaPayout: r.fecha_payout,
+        creadoEnMs: new Date(r.creado_en).getTime(),
+      }));
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      advertirUnaVez(
+        "list_payouts_for_break_glass",
+        "PostgresBreakGlassRentasDataRepository: rentas.list_payouts_for_break_glass no existe todavía " +
+          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
+      );
+      return [];
+    }
+  }
+
+  async listPricingTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassPricingResumen[]> {
+    const { limit, offset } = resolverLimite(paginacion);
+    try {
+      const { rows } = await this.db.query<PricingRow>(
+        `select * from rentas.list_pricing_for_break_glass($1, $2, $3, $4, $5);`,
+        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        propertyId: r.property_id,
+        unidadId: r.unidad_id,
+        precioNocheCentavos: Number(r.precio_noche_centavos),
+        moneda: r.moneda,
+        vigenteDesde: r.vigente_desde,
+      }));
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      advertirUnaVez(
+        "list_pricing_for_break_glass",
+        "PostgresBreakGlassRentasDataRepository: rentas.list_pricing_for_break_glass no existe todavía " +
+          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
+      );
+      return [];
+    }
+  }
+
+  async listMensajeriaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassMensajeriaResumen[]> {
+    const { limit, offset } = resolverLimite(paginacion);
+    try {
+      const { rows } = await this.db.query<MensajeriaRow>(
+        `select * from rentas.list_mensajeria_for_break_glass($1, $2, $3, $4, $5);`,
+        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        propertyId: r.property_id,
+        unidadId: r.unidad_id,
+        canalCodigo: r.canal_codigo,
+        huespedNombre: r.huesped_nombre,
+        fechaCheckIn: r.fecha_check_in,
+        fechaCheckOut: r.fecha_check_out,
+        reservaConfirmada: r.reserva_confirmada,
+        creadoEnMs: new Date(r.creado_en).getTime(),
+      }));
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      advertirUnaVez(
+        "list_mensajeria_for_break_glass",
+        "PostgresBreakGlassRentasDataRepository: rentas.list_mensajeria_for_break_glass no existe todavía " +
+          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
+      );
+      return [];
+    }
+  }
+
+  async listLimpiezaTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassLimpiezaResumen[]> {
+    const { limit, offset } = resolverLimite(paginacion);
+    try {
+      const { rows } = await this.db.query<LimpiezaRow>(
+        `select * from rentas.list_limpieza_for_break_glass($1, $2, $3, $4, $5);`,
+        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        propertyId: r.property_id,
+        unidadId: r.unidad_id,
+        tipo: r.tipo,
+        estado: r.estado,
+        prioridad: r.prioridad,
+        programadaPara: r.programada_para,
+        completadaEnMs: r.completada_en ? new Date(r.completada_en).getTime() : null,
+        creadoEnMs: new Date(r.creado_en).getTime(),
+      }));
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      advertirUnaVez(
+        "list_limpieza_for_break_glass",
+        "PostgresBreakGlassRentasDataRepository: rentas.list_limpieza_for_break_glass no existe todavía " +
+          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
+      );
+      return [];
+    }
+  }
+
+  async listSyncIcalTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassSyncIcalResumen[]> {
+    const { limit, offset } = resolverLimite(paginacion);
+    try {
+      const { rows } = await this.db.query<SyncIcalRow>(
+        `select * from rentas.list_sync_ical_for_break_glass($1, $2, $3, $4, $5);`,
+        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        propertyId: r.property_id,
+        unidadId: r.unidad_id,
+        canalId: r.canal_id,
+        urlImportacionEnmascarada: r.url_importacion_enmascarada,
+        activo: r.activo,
+        ultimaSincronizacionExitosaEnMs: r.ultima_sincronizacion_exitosa_en ? new Date(r.ultima_sincronizacion_exitosa_en).getTime() : null,
+        enCuarentenaDesdeMs: r.en_cuarentena_desde ? new Date(r.en_cuarentena_desde).getTime() : null,
+        intentosFallidosConsecutivos: r.intentos_fallidos_consecutivos,
+        motivoCuarentena: r.motivo_cuarentena,
+      }));
+    } catch (err) {
+      if (!isUndefinedFunctionError(err)) throw err;
+      advertirUnaVez(
+        "list_sync_ical_for_break_glass",
+        "PostgresBreakGlassRentasDataRepository: rentas.list_sync_ical_for_break_glass no existe todavía " +
+          "(SQLSTATE 42883) -- sin lector previo para este recurso, se devuelve una lista vacía honesta. " +
+          "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
+      );
+      return [];
+    }
   }
 }

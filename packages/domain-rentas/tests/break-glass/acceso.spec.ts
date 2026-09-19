@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemoryBreakGlassAuditRepository } from "../../src/break-glass/audit-repository.ts";
 import { InMemoryBreakGlassRentasDataRepository } from "../../src/break-glass/data-repository.ts";
+import type { BreakGlassRentasDataRepository } from "../../src/break-glass/data-repository.ts";
 import { leerDatosTenantBreakGlass, leerReservasTenantBreakGlass, validarRazonBreakGlass } from "../../src/break-glass/acceso.ts";
 import {
   BreakGlassAuditWriteFailedError,
@@ -299,7 +300,17 @@ describe("leerReservasTenantBreakGlass -- la composición concreta para resource
       new Map([[randomUUID(), [reserva()]]]),
     );
     let seLlamoAlDataRepo = false;
-    const dataRepoEspia = { listReservasTenant: async (id: string, callerId: string) => { seLlamoAlDataRepo = true; return dataRepo.listReservasTenant(id, callerId); } };
+    // Espía deliberadamente parcial (solo implementa el método que este test
+    // ejercita) -- cast explícito a BreakGlassRentasDataRepository porque el
+    // resto de métodos del puerto (Fase 10c) nunca se invocan aquí: la
+    // aserción real es `seLlamoAlDataRepo` en false (ni siquiera
+    // listReservasTenant debería llamarse sin una razón válida).
+    const dataRepoEspia = {
+      listReservasTenant: async (id: string, callerId: string) => {
+        seLlamoAlDataRepo = true;
+        return dataRepo.listReservasTenant(id, callerId);
+      },
+    } as unknown as BreakGlassRentasDataRepository;
 
     await expect(
       leerReservasTenantBreakGlass(auditRepo, dataRepoEspia, { actor: ACTOR, organizationId: randomUUID(), reason: "no" }, NOW),
