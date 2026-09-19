@@ -230,6 +230,14 @@ const RECURSOS: readonly RecursoBreakGlass[] = [
   },
 ];
 
+/** Tamaño de página al leer un recurso del tenant -- mismo valor que
+ *  `BREAK_GLASS_LECTOR_LIMIT_DEFAULT` de `@atiende/domain-rentas` (apps/web
+ *  no depende de ese paquete, ver el resto de clientes de rentas bajo
+ *  `verticals/rentas/lib/*-client.ts` -- mismo criterio, redeclarar en vez de
+ *  importar). Hallazgo BAJA de la auditoría a2: sin esto, las 7 pestañas
+ *  mostraban como máximo esta cantidad de filas SIN indicar que había más. */
+const PAGINA_TAMANO = 100;
+
 const DURACIONES = [
   { minutos: 15, etiqueta: "15 minutos" },
   { minutos: 30, etiqueta: "30 minutos" },
@@ -311,7 +319,18 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
   // cada RECURSO). `undefined` = todavía no se sabe (nunca se leyó este
   // recurso en este panel).
   const [disponiblePorRecurso, setDisponiblePorRecurso] = useState<Record<string, boolean | undefined>>({});
+  // Hallazgo BAJA confirmado de la auditoría a2 (evidencia:
+  // auditoria-a2-resultado.json, tercer elemento de `confirmed`): los 7
+  // lectores devuelven como máximo `PAGINA_TAMANO` filas y esta pestaña no
+  // indicaba que había más -- un superadmin investigando un incidente creía
+  // haber visto todo el tenant. `hasMorePorRecurso[key]` viaja tal cual desde
+  // `hasMore` de la respuesta (ver apps/api/.../superadmin-break-glass.ts);
+  // `cargandoMasRecurso` es DISTINTO de `cargandoRecurso` (la primera lectura
+  // de la pestaña) para poder deshabilitar solo el botón "cargar más" sin
+  // ocultar las filas ya cargadas mientras llega la página siguiente.
+  const [hasMorePorRecurso, setHasMorePorRecurso] = useState<Record<string, boolean>>({});
   const [cargandoRecurso, setCargandoRecurso] = useState<string | null>(null);
+  const [cargandoMasRecurso, setCargandoMasRecurso] = useState<string | null>(null);
 
   async function cargar() {
     setError(null);
@@ -392,37 +411,57 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
     setDatosPorRecurso({});
     setErrorPorRecurso({});
     setDisponiblePorRecurso({});
-    void leerRecurso(sesion, RECURSOS[0]!, "");
+    setHasMorePorRecurso({});
+    void leerRecurso(sesion, RECURSOS[0]!, "", 0);
   }
 
-  async function leerRecurso(sesion: Sesion, recurso: RecursoBreakGlass, propertyId: string) {
-    setCargandoRecurso(recurso.key);
+  /** `offset`/`append` (agregado con `hasMore`, hallazgo BAJA de la auditoría
+   *  a2): `append=false` (default, primera lectura de la pestaña o cambio de
+   *  filtro) reemplaza `datosPorRecurso[recurso.key]`; `append=true` ("cargar
+   *  más") concatena la página nueva a la ya mostrada, sin re-pedir lo que ya
+   *  se leyó. */
+  async function leerRecurso(sesion: Sesion, recurso: RecursoBreakGlass, propertyId: string, offset: number, append = false) {
+    if (append) setCargandoMasRecurso(recurso.key);
+    else setCargandoRecurso(recurso.key);
     setErrorPorRecurso((prev) => ({ ...prev, [recurso.key]: null }));
     try {
-      const qs = propertyId.trim() ? `?propertyId=${encodeURIComponent(propertyId.trim())}` : "";
-      const r = await fetchJson<Record<string, Record<string, unknown>[]> & { disponible?: boolean }>(
+      const params = new URLSearchParams();
+      if (propertyId.trim()) params.set("propertyId", propertyId.trim());
+      params.set("limit", String(PAGINA_TAMANO));
+      params.set("offset", String(offset));
+      const r = await fetchJson<Record<string, Record<string, unknown>[]> & { disponible?: boolean; hasMore?: boolean }>(
         apiBaseUrl,
         token,
-        `/superadmin/break-glass/organizaciones/${sesion.organizationId}/${recurso.path}${qs}`,
+        `/superadmin/break-glass/organizaciones/${sesion.organizationId}/${recurso.path}?${params.toString()}`,
       );
-      setDatosPorRecurso((prev) => ({ ...prev, [recurso.key]: r[recurso.jsonKey] ?? [] }));
+      const pagina = r[recurso.jsonKey] ?? [];
+      setDatosPorRecurso((prev) => ({ ...prev, [recurso.key]: append ? [...(prev[recurso.key] ?? []), ...pagina] : pagina }));
       // `disponible` viaja en TODAS las respuestas desde el fix del bloqueante
       // 3 -- `?? true` es solo defensa ante una API vieja/servidor no
       // actualizado (nunca el caso normal), para no mostrar "no disponible"
-      // por error de lectura de un campo ausente.
+      // por error de lectura de un campo ausente. Mismo criterio para
+      // `hasMore` (`?? false`, el default seguro cuando la API todavía no lo
+      // manda).
       setDisponiblePorRecurso((prev) => ({ ...prev, [recurso.key]: r.disponible ?? true }));
+      setHasMorePorRecurso((prev) => ({ ...prev, [recurso.key]: r.hasMore ?? false }));
     } catch (err) {
       setErrorPorRecurso((prev) => ({ ...prev, [recurso.key]: err instanceof Error ? err.message : `No se pudo leer "${recurso.etiqueta}" del tenant.` }));
     } finally {
-      setCargandoRecurso(null);
+      if (append) setCargandoMasRecurso(null);
+      else setCargandoRecurso(null);
     }
+  }
+
+  function cargarMasRecurso(sesion: Sesion, recurso: RecursoBreakGlass) {
+    const yaCargados = datosPorRecurso[recurso.key]?.length ?? 0;
+    void leerRecurso(sesion, recurso, filtroPropertyIdAplicado, yaCargados, true);
   }
 
   function cambiarRecursoActivo(sesion: Sesion, key: string) {
     setRecursoActivo(key);
     if (datosPorRecurso[key] === undefined) {
       const recurso = RECURSOS.find((r) => r.key === key);
-      if (recurso) void leerRecurso(sesion, recurso, filtroPropertyId);
+      if (recurso) void leerRecurso(sesion, recurso, filtroPropertyId, 0);
     }
   }
 
@@ -439,8 +478,9 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
     setDatosPorRecurso({});
     setErrorPorRecurso({});
     setDisponiblePorRecurso({});
+    setHasMorePorRecurso({});
     const recurso = RECURSOS.find((r) => r.key === recursoActivo) ?? RECURSOS[0]!;
-    void leerRecurso(sesion, recurso, propertyId);
+    void leerRecurso(sesion, recurso, propertyId, 0);
   }
 
   if (error && !sesiones) return <EstadoError mensaje={error} onReintentar={() => void cargar()} />;
@@ -555,6 +595,7 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
                                   const datos = datosPorRecurso[r.key];
                                   const err = errorPorRecurso[r.key];
                                   const disponible = disponiblePorRecurso[r.key];
+                                  const hasMore = hasMorePorRecurso[r.key] ?? false;
                                   return (
                                     <TabsContent key={r.key} value={r.key}>
                                       {cargandoRecurso === r.key && <p className="text-xs text-muted-foreground p-2">Leyendo {r.etiqueta.toLowerCase()} del tenant…</p>}
@@ -580,6 +621,21 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
                                               {r.renderFila(item)}
                                             </div>
                                           ))}
+                                          {/* Hallazgo BAJA confirmado de la auditoría a2 (tercer elemento de
+                                              `confirmed`): antes de esto, un superadmin viendo N filas exactas
+                                              a `PAGINA_TAMANO` no tenía forma de saber si eso era TODO el
+                                              tenant o solo la primera página. */}
+                                          <div className="flex items-center gap-2 pt-1">
+                                            <span className="text-[11px] text-muted-foreground">
+                                              Mostrando {datos.length}
+                                              {hasMore ? ", hay más" : ""}
+                                            </span>
+                                            {hasMore && (
+                                              <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" onClick={() => cargarMasRecurso(s, r)} disabled={cargandoMasRecurso === r.key}>
+                                                {cargandoMasRecurso === r.key ? "Cargando…" : "Cargar más"}
+                                              </Button>
+                                            )}
+                                          </div>
                                         </div>
                                       )}
                                     </TabsContent>
