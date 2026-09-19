@@ -970,18 +970,38 @@ export class PostgresCitasRepository implements CitasRepository {
    * proyecto, ver diseño §4/§9) exactamente igual que "sin proveedor conectado":
    * null, nunca una excepción que tumbe la corrida de reconciliación completa —
    * mismo criterio honesto que `resolveRefreshTokenFromVault` del origen.
+   *
+   * No-bloqueante de revisión (PR #158, ronda 1) — este `try/catch` atrapaba
+   * CUALQUIER error de `citas.get_provider_calendar_refresh_token` SIN `SAVEPOINT`,
+   * dentro del `withAppSession` propio del resolver (ver
+   * `apps/api/src/production/deps.ts::buildRealGoogleCalendarPortResolver`/
+   * `buildRealCalendarSyncPortResolver`, cada invocación abre su PROPIA sesión de
+   * una sola consulta). Con la defensa de `managed-postgres-engine.ts` de este PR,
+   * un Vault no disponible pasaba de "skip silencioso" a
+   * `AbortedTransactionCommitError`: la cita quedaba en `pending` y el cron de
+   * reconciliación reportaba error en cada corrida (no se pierden reservas —
+   * `tryTriggerCalendarSync`/`syncOneAppointmentRow` ya absorben cualquier error de
+   * este resolver — pero sí cambia el comportamiento observable). Mismo patrón
+   * `runWithSavepointFallback` que `recordBillingWebhookEvent`
+   * (`packages/db/src/postgres-core-repository.ts`): SIEMPRE recuperable, el
+   * `fallback` reproduce exactamente el `console.warn` + `null` de antes.
    */
   async resolveProviderCalendarRefreshToken(providerId: string): Promise<string | null> {
     const { rows: accountRows } = await this.db.query<{ google_refresh_token_secret_id: string | null }>(`select google_refresh_token_secret_id from citas.provider_calendar_accounts where provider_id = $1;`, [providerId]);
     const secretId = accountRows[0]?.google_refresh_token_secret_id ?? null;
     if (!secretId) return null;
-    try {
-      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
-      return rows[0]?.get_provider_calendar_refresh_token ?? null;
-    } catch (err) {
-      console.warn("resolveProviderCalendarRefreshToken: Vault no disponible todavía (Google Calendar real pendiente de infraestructura, ver diseño §4/§9):", err instanceof Error ? err.message : err);
-      return null;
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+        return rows[0]?.get_provider_calendar_refresh_token ?? null;
+      },
+      isRecoverable: () => true,
+      fallback: (err) => {
+        console.warn("resolveProviderCalendarRefreshToken: Vault no disponible todavía (Google Calendar real pendiente de infraestructura, ver diseño §4/§9):", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
   }
 
   async setProviderCalendarAccountSyncError(providerId: string, error: string): Promise<void> {
