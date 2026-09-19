@@ -55,10 +55,13 @@ name: Postgres real (gate)
 # ------------------------------------------------------------------------------
 # - NO corre `npm run typecheck` / `npm run lint` / `npm run test:unit` / build
 #   de apps/web — ese tier (repositorio en memoria) corre en su propio
-#   workflow, .github/workflows/ci-checks.yml (agregado 19-sep-2026, mismos
-#   triggers pull_request/push a main), deliberadamente separado de este job
-#   para no encadenar typecheck/lint/tests detrás de instalar Postgres real +
-#   aplicar 100+ migraciones.
+#   workflow, .github/workflows/ci-checks.yml (agregado 19-sep-2026), en
+#   pull_request/push a main igual que este job, pero NO con los mismos
+#   triggers: ci-checks.yml tiene exclusiones de `paths` (no dispara para un
+#   diff que solo toca docs/**/*.md fuera de docs/DEPLOY.md y
+#   supabase/migrations/README.md) que este workflow no tiene. Deliberadamente
+#   separado de este job para no encadenar typecheck/lint/tests detrás de
+#   instalar Postgres real + aplicar 100+ migraciones.
 # - NO ejercita ninguna tabla/función/policy de las 6 verticales que no esté ya
 #   cubierta por un scripts/verify-*/assertions.sql existente — esto NO es un
 #   test de regresión general de todo el esquema, es exactamente el alcance que

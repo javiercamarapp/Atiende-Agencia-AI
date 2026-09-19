@@ -174,11 +174,13 @@ como parámetro plano.
   en la misma rama, despliega el caller primero.
 
 **Además de lo de abajo, desde el 19-sep-2026 `.github/workflows/ci-checks.yml`
-corre en cada `pull_request`/`push` a `main` (workflow separado, en paralelo
-al de Postgres real): `npm run typecheck`, `npm run lint`,
-`npm run test:unit` y el build de `apps/web`. Antes de eso ese tier corría
-solo a mano por quien hacía el cambio — ver el comentario de cabecera de ese
-workflow.**
+corre en cada `pull_request`/`push` a `main` que toque `apps/**`, `packages/**`,
+`docs/DEPLOY.md`, `supabase/migrations/README.md` o cualquier archivo fuera
+de `docs/**`/`*.md` (workflow separado, en paralelo al de Postgres real, con
+sus propias exclusiones de paths — ver su comentario de cabecera):
+`npm run typecheck`, `npm run lint`, `npm run test:unit` y el build de
+`apps/web`. Antes de eso ese tier corría solo a mano por quien hacía el
+cambio — ver el comentario de cabecera de ese workflow.**
 
 **Dos guards que corren en CI antes de tocar Postgres, no solo de memoria:**
 
@@ -188,7 +190,12 @@ workflow.**
   paralelos) o si un espejo diverge en contenido de su fuente real en
   `packages/*/migrations/`. Corre como paso propio de
   `.github/workflows/postgres-real-gate.yml`, antes de instalar `psql` y
-  esperar a que el servicio Postgres levante — falla rápido y barato.
+  esperar a que el servicio Postgres levante — falla rápido y barato. Es el
+  ÚNICO lugar donde este guard corre contra el árbol real de
+  `supabase/migrations/`: `packages/db/tests/migration-versions-guard.spec.ts`
+  (dentro de `npm run test:unit`, y por lo tanto de `ci-checks.yml`) solo
+  prueba la lógica del checker contra árboles sintéticos en un directorio
+  temporal, nunca contra el árbol real.
 - El **gate de Postgres real** (`scripts/verify-real-postgres-ci/`,
   `run-gate.mjs`) descubre y corre automáticamente cualquier `scripts/verify-*/`
   con el contrato de 3 archivos (`bootstrap.sql`/`post-migrations.sql`/
