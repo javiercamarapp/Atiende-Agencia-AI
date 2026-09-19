@@ -16,7 +16,7 @@
 //    acción registrada", un estado legítimo y distinto del anterior.
 //  - lista con datos -- tabla + "cargar más" (paginado por `nextOffset`, nunca trae
 //    todo el historial en un solo request).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
@@ -61,10 +61,24 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargandoMas, setCargandoMas] = useState(false);
+  // Contador incrementado por "Reintentar" -- entra en las deps del efecto de abajo
+  // a propósito, para que reintentar SIEMPRE dispare un fetch nuevo aunque ningún
+  // filtro haya cambiado (de lo contrario `onReintentar` solo limpiaba `error` y la
+  // pantalla se quedaba en el skeleton de carga para siempre, ver hallazgo de
+  // revisión r5).
+  const [reintento, setReintento] = useState(0);
+  // Generación de la carga vigente: la incrementa el mismo efecto que dispara la
+  // carga inicial (por filtro nuevo o reintento), y `cargarMas` la captura al
+  // arrancar. Si los filtros cambian mientras una página de "cargar más" sigue en
+  // vuelo, la generación capturada queda vieja y esa respuesta se descarta en vez
+  // de anexarse a una lista que ya no corresponde a los filtros actuales
+  // (hallazgo de revisión r5).
+  const generacionRef = useRef(0);
 
   useEffect(() => {
     if (!puedeLeer) return;
     let cancelado = false;
+    generacionRef.current += 1;
     setItems(null);
     setError(null);
     (async () => {
@@ -82,19 +96,26 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, orgSlug, tipo, desde, hasta, puedeLeer]);
+  }, [apiBaseUrl, token, orgSlug, tipo, desde, hasta, puedeLeer, reintento]);
 
   async function cargarMas() {
     if (nextOffset === null || cargandoMas) return;
+    const generacion = generacionRef.current;
     setCargandoMas(true);
     try {
       const pagina = await fetchAuditoria(fetch, apiBaseUrl, token, orgSlug, { tipo: tipo || null, desde: desde || null, hasta: hasta || null, limit: PAGE_SIZE, offset: nextOffset });
+      // Los filtros cambiaron (o se disparó un reintento) mientras esta página
+      // estaba en vuelo: esta respuesta ya no corresponde a la carga vigente --
+      // descartarla en vez de anexarla a la lista actual.
+      if (generacion !== generacionRef.current) return;
       setItems((current) => [...(current ?? []), ...pagina.items]);
       setNextOffset(pagina.nextOffset);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar más de la bitácora.");
+      if (generacion === generacionRef.current) {
+        setError(err instanceof Error ? err.message : "No se pudo cargar más de la bitácora.");
+      }
     } finally {
-      setCargandoMas(false);
+      if (generacion === generacionRef.current) setCargandoMas(false);
     }
   }
 
@@ -146,7 +167,15 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
             </CardContent>
           </Card>
 
-          {error && <EstadoError mensaje={error} onReintentar={() => setError(null)} />}
+          {error && (
+            <EstadoError
+              mensaje={error}
+              onReintentar={() => {
+                setError(null);
+                setReintento((n) => n + 1);
+              }}
+            />
+          )}
 
           {!error && items === null && <EstadoCargando lineas={4} />}
 
@@ -169,6 +198,7 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
                   <TableHeader>
                     <TableRow>
                       <TableHead>Cuándo</TableHead>
+                      <TableHead>Quién</TableHead>
                       <TableHead>Acción</TableHead>
                       <TableHead>Campo</TableHead>
                       <TableHead>Antes</TableHead>
@@ -179,6 +209,15 @@ export function AuditoriaPage({ apiBaseUrl, token, orgSlug, session }: RentasShe
                     {items.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatearFechaHora(item.creadoEn)}</TableCell>
+                        {/* La ruta hoy solo trae el uuid del staff (`actorUserId`, ver
+                            auditoria-client.ts) -- sin resolver a nombre/email todavía
+                            (hallazgo de revisión r5, gap conocido). Mostrar el uuid
+                            completo, con truncamiento visual + title, es mejor que
+                            omitir por completo QUIÉN hizo la acción en una bitácora de
+                            auditoría. */}
+                        <TableCell className="text-xs font-mono text-muted-foreground max-w-[110px] truncate" title={item.actorUserId}>
+                          {item.actorUserId}
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <Badge variant="outline" className="w-fit text-[10px]">
