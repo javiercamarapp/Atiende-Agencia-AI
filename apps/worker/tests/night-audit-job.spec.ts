@@ -106,7 +106,7 @@ describe("runNightAuditSweep", () => {
     // 2026-09-10T10:00:00Z == 04:00 hora CDMX (UTC-6) -- ya pasó el umbral de las 03:00.
     const now = () => new Date("2026-09-10T10:00:00Z");
 
-    const results = await runNightAuditSweep(repo, { now });
+    const results = await runNightAuditSweep((fn) => fn(repo), { now });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ organizationId, propertyId, ran: true, businessDate: "2026-09-09" });
@@ -118,7 +118,7 @@ describe("runNightAuditSweep", () => {
     // 2026-09-10T06:00:00Z == 00:00 hora CDMX -- antes de las 03:00.
     const now = () => new Date("2026-09-10T06:00:00Z");
 
-    const results = await runNightAuditSweep(repo, { now });
+    const results = await runNightAuditSweep((fn) => fn(repo), { now });
 
     expect(results).toEqual([{ organizationId, propertyId, ran: false, skippedReason: "fuera_de_horario" }]);
   });
@@ -130,7 +130,7 @@ describe("runNightAuditSweep", () => {
     // otherPropertyId no tiene tax_config sembrado -- `loadTaxConfig` lanza.
     const now = () => new Date("2026-09-10T10:00:00Z");
 
-    const results = await runNightAuditSweep(repo, { now });
+    const results = await runNightAuditSweep((fn) => fn(repo), { now });
 
     expect(results).toHaveLength(2);
     const failed = results.find((r) => r.propertyId === otherPropertyId);
