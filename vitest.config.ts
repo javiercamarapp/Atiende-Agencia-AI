@@ -108,13 +108,15 @@ export default defineConfig({
         "packages/agent-core/src/gateway/providers/fake-provider.ts",
         "packages/mcp-servers/cfdi/src/adapters/fake-pac-adapter.ts",
       ],
-      // Umbral fijado en un commit aparte, después de medir la cobertura real
-      // -- ver docs/COBERTURA.md.
+      // Trinquete anti-regresión, no meta aspiracional -- ~2 puntos por debajo
+      // de lo medido el 2026-09-19 (57.82% líneas/sentencias, 82.08% ramas,
+      // 76.67% funciones -- ver docs/COBERTURA.md para el detalle y cómo
+      // subir el umbral cuando la cobertura real suba de forma sostenida).
       thresholds: {
-        lines: 0,
-        branches: 0,
-        functions: 0,
-        statements: 0,
+        lines: 55,
+        branches: 80,
+        functions: 74,
+        statements: 55,
       },
     },
   },
