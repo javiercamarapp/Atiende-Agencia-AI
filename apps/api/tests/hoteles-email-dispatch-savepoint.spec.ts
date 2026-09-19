@@ -24,6 +24,18 @@
 // fue realmente tomado antes (mismo comportamiento real de Postgres: no se
 // puede volver a un savepoint que nunca se creó). Cada test de fallo ahora
 // además verifica que una consulta POSTERIOR sobre la misma sesión resuelve.
+//
+// Corrección (revisión independiente PR #168, segunda vuelta) — el test de
+// "transacción ya abortada ANTES de este trigger" de abajo afirmaba
+// `resolves.toBeUndefined()` sin consultar la sesión después: no detectaba
+// que, con el fix ANTERIOR (tragar siempre el 25P02 del propio SAVEPOINT),
+// el resto del request seguía corriendo sobre una transacción condenada, y
+// el `commit;` a secas de `managed-postgres-engine.ts` (SIN
+// AbortedTransactionCommitError -- PR #158 sigue abierto) se convertía en un
+// ROLLBACK silencioso: 2xx con la escritura de negocio perdida. Corregido:
+// ahora afirma que el trigger RELANZA (ver `savepointTaken` en
+// `email-dispatch.ts`) para que el `catch` de `withAppSession` haga el
+// ROLLBACK real y el caller reciba un 5xx honesto.
 import { describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { InMemoryHotelesRepository } from "@atiende/domain-hoteles";
@@ -108,29 +120,39 @@ describe("triggerHotelesEmailDispatchInline — SAVEPOINT (regresión auditoría
     await expect(session.query()).resolves.toEqual({ rows: [] });
   });
 
-  it("fix (parte C): si la transacción YA venía abortada ANTES de este trigger, el propio SAVEPOINT lanza 25P02 -- igual nunca relanza (antes del fix, el exec corría fuera del try y sí se propagaba)", async () => {
+  it("fix corregido: si la transacción YA venía abortada ANTES de este trigger (causa AJENA), el propio SAVEPOINT lanza 25P02 y AHORA SÍ relanza -- no hay nada que un ROLLBACK TO SAVEPOINT pueda proteger, y tragarlo convertiría un 500 honesto en un 2xx con la escritura de negocio perdida", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
     const repo = new InMemoryHotelesRepository();
     const claimSpy = vi.spyOn(repo, "claimEmailOutboxBatch");
     const session = new AbortAwareFakeSession();
     session.aborted = true; // transacción ya rota por algo AJENO a este trigger
 
-    await expect(triggerHotelesEmailDispatchInline(ctx.deps, session, repo)).resolves.toBeUndefined();
+    await expect(triggerHotelesEmailDispatchInline(ctx.deps, session, repo)).rejects.toMatchObject({ code: "25P02" });
 
-    // El SAVEPOINT mismo falló (25P02): nunca se llegó a llamar el claim, y el
-    // intento de ROLLBACK TO SAVEPOINT (sin savepoint real que liberar) lo
-    // traga el catch de recuperación interno -- sin relanzar nada.
-    expect(session.execCalls).toEqual(["savepoint sp_inline_email_dispatch", "rollback to savepoint sp_inline_email_dispatch"]);
+    // El SAVEPOINT mismo falló (25P02): nunca se llegó a llamar el claim, y
+    // NO se intenta ningún ROLLBACK TO SAVEPOINT (no hay savepoint real que
+    // liberar) -- la sesión queda abortada tal cual, para que el `catch` de
+    // `withAppSession` (managed-postgres-engine.ts) haga el ROLLBACK real de
+    // TODA la transacción y el caller reciba un 5xx en vez de un 2xx con la
+    // escritura perdida.
+    expect(session.execCalls).toEqual(["savepoint sp_inline_email_dispatch"]);
     expect(claimSpy).not.toHaveBeenCalled();
+    expect(session.aborted).toBe(true);
   });
 
-  it("éxito real: SAVEPOINT -> RELEASE, sin ROLLBACK TO SAVEPOINT", async () => {
+  it("éxito real (con proveedor configurado): SAVEPOINT -> claim real -> RELEASE, sin ROLLBACK TO SAVEPOINT", async () => {
     const ctx = await buildHotelesTestContext(buildApp);
+    const deps = { ...ctx.deps, env: { ...ctx.deps.env, resend: { ...ctx.deps.env.resend, apiKey: "re_test_key" } } };
     const repo = new InMemoryHotelesRepository();
+    const claimSpy = vi.spyOn(repo, "claimEmailOutboxBatch");
     const session = new AbortAwareFakeSession();
 
-    await triggerHotelesEmailDispatchInline(ctx.deps, session, repo);
+    await triggerHotelesEmailDispatchInline(deps, session, repo);
 
+    // A diferencia del test anterior (parte a2b, parte A) -- aquí SÍ hay
+    // `apiKey` configurada, así que el claim real corre (nunca cae en el
+    // camino `notConfigured` que evita llamarlo del todo).
+    expect(claimSpy).toHaveBeenCalledTimes(1);
     expect(session.execCalls).toEqual(["savepoint sp_inline_email_dispatch", "release savepoint sp_inline_email_dispatch"]);
   });
 });

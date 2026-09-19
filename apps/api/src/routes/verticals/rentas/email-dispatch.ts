@@ -85,16 +85,39 @@ export async function runRentasEmailDispatch(deps: AppDeps, batchSize?: number):
  * abortada por una causa ANTERIOR a este trigger, ese `exec` en sí lanza
  * 25P02 -- sin el `try` alrededor, esa excepción se propagaba tal cual al
  * caller, contradiciendo el "nunca se propaga" de este docstring.
+ *
+ * Corrección (revisión independiente PR #168) — la versión anterior de este
+ * fix tragaba SIEMPRE ese 25P02, incluso cuando la transacción YA venía
+ * abortada por una causa AJENA a este trigger (p. ej. el encolado del correo
+ * de la vertical traga un error de Postgres SIN savepoint propio). Eso
+ * convertía un 500 honesto (el `exec` se propagaba sin el `try`, el `catch`
+ * de `withAppSession` hacía el ROLLBACK real) en un 2xx con la reserva de
+ * ESTE MISMO request perdida: sin savepoint que recuperar, el `commit;`
+ * final de `managed-postgres-engine.ts` sobre la transacción abortada se
+ * convierte en un ROLLBACK silencioso. Ahora se distingue con
+ * `savepointTaken`: si el SAVEPOINT mismo falla (nunca llegó a tomarse), no
+ * hay nada que este trigger pueda proteger con un `ROLLBACK TO SAVEPOINT` --
+ * se RELANZA, para que el caller reciba el 5xx honesto. Solo cuando el
+ * SAVEPOINT SÍ se tomó (la transacción estaba sana al entrar) y el fallo
+ * ocurre DESPUÉS (incluido el 42501 determinista de sesión de staff) se hace
+ * el `ROLLBACK TO SAVEPOINT` best-effort sin relanzar -- ese es el único
+ * caso que este SAVEPOINT existe para aislar.
  */
 export async function triggerRentasEmailDispatchInline(deps: AppDeps, db: TenantDbSession, rentasRepo: RentasRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  let savepointTaken = false;
   try {
     await db.exec("SAVEPOINT sp_inline_email_dispatch");
+    savepointTaken = true;
     const summary = await dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize });
     await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
       console.error(`rentas email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    if (!savepointTaken) {
+      console.error("rentas email-dispatch inline: la transacción ya venía abortada antes de este trigger, relanzando:", err);
+      throw err;
+    }
     try {
       await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
       await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");

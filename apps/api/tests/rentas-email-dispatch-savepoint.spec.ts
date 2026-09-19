@@ -18,6 +18,18 @@
 // SAVEPOINT`, y `ROLLBACK TO SAVEPOINT` solo "funciona" si un `SAVEPOINT` fue
 // realmente tomado antes. Cada test de fallo verifica además que una consulta
 // POSTERIOR sobre la misma sesión resuelve.
+//
+// Corrección (revisión independiente PR #168, segunda vuelta) — el test de
+// "transacción ya abortada ANTES de este trigger" de abajo afirmaba
+// `resolves.toBeUndefined()` sin consultar la sesión después: no detectaba
+// que, con el fix ANTERIOR (tragar siempre el 25P02 del propio SAVEPOINT),
+// el resto del request seguía corriendo sobre una transacción condenada, y
+// el `commit;` a secas de `managed-postgres-engine.ts` (SIN
+// AbortedTransactionCommitError -- PR #158 sigue abierto) se convertía en un
+// ROLLBACK silencioso: 2xx con la escritura de negocio perdida. Corregido:
+// ahora afirma que el trigger RELANZA (ver `savepointTaken` en
+// `email-dispatch.ts`) para que el `catch` de `withAppSession` haga el
+// ROLLBACK real y el caller reciba un 5xx honesto.
 import { describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { InMemoryRentasRepository } from "@atiende/domain-rentas";
@@ -95,26 +107,30 @@ describe("triggerRentasEmailDispatchInline — SAVEPOINT (regresión auditoría 
     await expect(session.query()).resolves.toEqual({ rows: [] });
   });
 
-  it("fix (parte C): si la transacción YA venía abortada ANTES de este trigger, el propio SAVEPOINT lanza 25P02 -- igual nunca relanza (antes del fix, el exec corría fuera del try y sí se propagaba)", async () => {
+  it("fix corregido: si la transacción YA venía abortada ANTES de este trigger (causa AJENA), el propio SAVEPOINT lanza 25P02 y AHORA SÍ relanza -- no hay nada que un ROLLBACK TO SAVEPOINT pueda proteger, y tragarlo convertiría un 500 honesto en un 2xx con la escritura de negocio perdida", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const repo = new InMemoryRentasRepository();
     const claimSpy = vi.spyOn(repo, "claimEmailOutboxBatch");
     const session = new AbortAwareFakeSession();
     session.aborted = true;
 
-    await expect(triggerRentasEmailDispatchInline(ctx.deps, session, repo)).resolves.toBeUndefined();
+    await expect(triggerRentasEmailDispatchInline(ctx.deps, session, repo)).rejects.toMatchObject({ code: "25P02" });
 
-    expect(session.execCalls).toEqual(["savepoint sp_inline_email_dispatch", "rollback to savepoint sp_inline_email_dispatch"]);
+    expect(session.execCalls).toEqual(["savepoint sp_inline_email_dispatch"]);
     expect(claimSpy).not.toHaveBeenCalled();
+    expect(session.aborted).toBe(true);
   });
 
-  it("éxito real: SAVEPOINT -> RELEASE, sin ROLLBACK TO SAVEPOINT", async () => {
+  it("éxito real (con proveedor configurado): SAVEPOINT -> claim real -> RELEASE, sin ROLLBACK TO SAVEPOINT", async () => {
     const ctx = await buildRentasTestContext(buildApp);
+    const deps = { ...ctx.deps, env: { ...ctx.deps.env, resend: { ...ctx.deps.env.resend, apiKey: "re_test_key" } } };
     const repo = new InMemoryRentasRepository();
+    const claimSpy = vi.spyOn(repo, "claimEmailOutboxBatch");
     const session = new AbortAwareFakeSession();
 
-    await triggerRentasEmailDispatchInline(ctx.deps, session, repo);
+    await triggerRentasEmailDispatchInline(deps, session, repo);
 
+    expect(claimSpy).toHaveBeenCalledTimes(1);
     expect(session.execCalls).toEqual(["savepoint sp_inline_email_dispatch", "release savepoint sp_inline_email_dispatch"]);
   });
 });

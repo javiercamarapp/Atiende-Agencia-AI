@@ -92,26 +92,51 @@ export async function runHotelesEmailDispatch(deps: AppDeps, batchSize?: number)
  * `try` (antes corría antes, sin protección): si la transacción YA venía
  * abortada por una causa ANTERIOR a este trigger, ese `exec` en sí lanza
  * 25P02 -- sin el `try` alrededor, esa excepción se propagaba tal cual al
- * caller, contradiciendo el "nunca se propaga" de este docstring. Con el
- * `try`, cae en el mismo `catch` de abajo, que intenta el
- * `ROLLBACK TO SAVEPOINT` (fallará también, porque el SAVEPOINT nunca llegó
- * a tomarse -- lo cubre el `catch` interno de recuperación, que solo loguea)
- * y de todos modos nunca relanza.
+ * caller, contradiciendo el "nunca se propaga" de este docstring.
+ *
+ * Corrección (revisión independiente PR #168) — la versión anterior de este
+ * fix tragaba SIEMPRE ese 25P02, incluso cuando la transacción YA venía
+ * abortada por una causa AJENA a este trigger (p. ej. `tryEnqueueGuestEmail`
+ * traga un error de Postgres SIN savepoint propio, ver
+ * `guest-email-notifications.ts`). Eso convertía un 500 honesto (el `exec`
+ * se propagaba sin el `try`, el `catch` de `withAppSession` hacía el
+ * ROLLBACK real) en un 2xx con la escritura de negocio de ESTE MISMO
+ * request perdida: sin savepoint que recuperar, el `commit;` final de
+ * `managed-postgres-engine.ts` sobre la transacción abortada se convierte en
+ * un ROLLBACK silencioso. Ahora se distingue con `savepointTaken`: si el
+ * SAVEPOINT mismo falla (nunca llegó a tomarse), no hay nada que este
+ * trigger pueda proteger con un `ROLLBACK TO SAVEPOINT` -- se RELANZA, para
+ * que el caller reciba el 5xx honesto. Solo cuando el SAVEPOINT SÍ se tomó
+ * (la transacción estaba sana al entrar) y el fallo ocurre DESPUÉS (dentro
+ * de `dispatchPendingEmailJobs`, incluido el 42501 determinista de sesión de
+ * staff) se hace el `ROLLBACK TO SAVEPOINT` best-effort sin relanzar -- ese
+ * es el único caso que este SAVEPOINT existe para aislar.
  */
 export async function triggerHotelesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, hotelesRepo: HotelesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  let savepointTaken = false;
   try {
     await db.exec("SAVEPOINT sp_inline_email_dispatch");
+    savepointTaken = true;
     const summary = await dispatchPendingEmailJobs(hotelesRepo, deps.env.resend, { batchSize });
     await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
     if (summary.dead > 0) {
       console.error(`hoteles email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
     }
   } catch (err) {
+    if (!savepointTaken) {
+      // El propio SAVEPOINT lanzó 25P02: la transacción ya venía abortada por
+      // una causa AJENA a este trigger. No hay nada que proteger con un
+      // ROLLBACK TO SAVEPOINT -- relanzar es la única opción honesta (ver
+      // corrección documentada arriba).
+      console.error("hoteles email-dispatch inline: la transacción ya venía abortada antes de este trigger, relanzando:", err);
+      throw err;
+    }
     // Cubre TANTO el 42501 determinista de sesión de staff (ver arriba) COMO
-    // cualquier otro error real de Postgres/Resend -- ambos dejan la
-    // transacción igual de abortada y necesitan el mismo ROLLBACK TO SAVEPOINT
-    // para que el resto del request (incluido el `commit;` final) pueda seguir
-    // usando la sesión con normalidad.
+    // cualquier otro error real de Postgres/Resend ocurrido DESPUÉS de tomar
+    // el SAVEPOINT -- ambos dejan la transacción igual de abortada y
+    // necesitan el mismo ROLLBACK TO SAVEPOINT para que el resto del request
+    // (incluido el `commit;` final) pueda seguir usando la sesión con
+    // normalidad.
     try {
       await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
       await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
