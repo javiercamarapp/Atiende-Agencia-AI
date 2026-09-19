@@ -90,8 +90,18 @@ const FECHA_SOLO_FORMATTER_LARGA = new Intl.DateTimeFormat("es-MX", { day: "nume
 export function formatFechaSolo(fecha: string | null | undefined, variante: "corta" | "larga" = "corta"): string {
   const soloDia = fecha ? normalizarFechaSolo(fecha) : null;
   if (!soloDia) return "—";
+  const instante = parseFechaSolo(soloDia);
+  // Bug real (revisión r6, punto 5): `FECHA_SOLO_RE`/`FECHA_SOLO_ISO_ANCLADA_RE` solo
+  // validan la FORMA ("YYYY-MM-DD"), nunca que mes/día sean valores de calendario
+  // posibles -- una cadena bien formada pero imposible (p.ej. "2026-13-45", que puede
+  // llegar aquí desde datos corruptos o un select* sin castear en el futuro) produce un
+  // `Invalid Date` en `parseFechaSolo`, y `Intl.DateTimeFormat.format` lanza
+  // `RangeError: Invalid time value` sobre un Invalid Date en pleno render -- nunca lo
+  // atrapaba nada, tumbando la página completa. Mismo criterio "honesto" que el resto de
+  // esta función: valor inesperado -> guion, nunca una excepción sin capturar.
+  if (Number.isNaN(instante.getTime())) return "—";
   const formatter = variante === "larga" ? FECHA_SOLO_FORMATTER_LARGA : FECHA_SOLO_FORMATTER_CORTA;
-  return formatter.format(parseFechaSolo(soloDia));
+  return formatter.format(instante);
 }
 
 /**

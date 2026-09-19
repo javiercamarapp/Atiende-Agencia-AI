@@ -56,6 +56,20 @@ describe("formatFechaSolo -- reproduce el bug real (REQ-r5, Cobranza.tsx) y lo c
     expect(formatFechaSolo("no-es-fecha")).toBe("—");
   });
 
+  // REQ-r6 (punto 5): una cadena de forma VÁLIDA ("YYYY-MM-DD") pero fecha imposible
+  // (mes/día fuera de rango) pasaba la regex de forma, producía un `Invalid Date` en
+  // `parseFechaSolo`, y `Intl.DateTimeFormat.format` sobre ese `Invalid Date` lanzaba
+  // `RangeError: Invalid time value` sin capturar -- en pleno render. Control del bug:
+  // `new Intl.DateTimeFormat(...).format(new Date("2026-13-45T00:00:00Z"))` confirmado a
+  // mano que lanza `RangeError`.
+  it("una cadena con forma válida pero fecha imposible (mes/día fuera de rango) -> guion, nunca lanza", () => {
+    expect(() => formatFechaSolo("2026-13-45")).not.toThrow();
+    expect(formatFechaSolo("2026-13-45")).toBe("—");
+    expect(() => formatFechaSolo("2026-02-30")).not.toThrow(); // Node normaliza a marzo -- fuera del rango real de "día de febrero"
+    expect(formatFechaSolo("2026-00-01")).toBe("—"); // mes 0 no existe
+    expect(formatFechaSolo("2026-01-00")).toBe("—"); // día 0 no existe
+  });
+
   // REQ (revisión de PR #164, bloqueante): la premisa "la API manda 'YYYY-MM-DD'" es
   // falsa contra Postgres real para despachos -- `managed-postgres-engine.ts` usa `pg`
   // sin `setTypeParser` (verificado: 0 resultados en todo el repo), así que una columna
