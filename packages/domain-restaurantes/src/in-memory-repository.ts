@@ -814,6 +814,15 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (event) event.status = "failed";
   }
 
+  // No-op real: sin una transacción/conexión Postgres real que proteger, no hay
+  // nada que aislar con un SAVEPOINT -- ver el comentario de cabecera de
+  // `runWithRowSavepoint` en `repository.ts`. `fn` corre directo y su error (si lo
+  // hay) se repropaga tal cual, mismo comportamiento observable que tendría un
+  // SAVEPOINT+ROLLBACK TO SAVEPOINT real desde el punto de vista del caller.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return fn();
+  }
+
   // ---- Dispatcher real de messaging_outbox (migrations/007) ----
 
   getOutbox(): readonly InMemoryOutboxRow[] {

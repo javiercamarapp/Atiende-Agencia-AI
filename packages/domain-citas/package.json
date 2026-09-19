@@ -14,6 +14,7 @@
     "@atiende/agent-core": "*",
     "@atiende/core-conversation": "*",
     "@atiende/core-tenancy": "*",
+    "@atiende/db": "*",
     "@atiende/whatsapp-gateway": "*"
   }
 }
