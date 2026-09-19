@@ -128,7 +128,7 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     // Cierre del hallazgo "despachos no tiene disparo inline de correo" (ver
     // ./notifications.ts::triggerDespachosEmailDispatchInline) — mismo `repo`/
     // transacción del request, best-effort real.
-    await triggerDespachosEmailDispatchInline(deps, repo);
+    await triggerDespachosEmailDispatchInline(deps, c.get("db"), repo);
 
     return c.json(
       {
