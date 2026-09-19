@@ -68,7 +68,17 @@ const SERVICIOS: readonly ServiceSummary[] = [
 function renderPage(): RenderedComponent {
   return renderComponent(
     <MemoryRouter>
-      <ProveedorFichaPage apiBaseUrl="https://api.test" token="tok-123" propertyId="prop-1" orgSlug="org-slug" providerId="prov-1" />
+      <ProveedorFichaPage
+        apiBaseUrl="https://api.test"
+        token="tok-123"
+        propertyId="prop-1"
+        orgSlug="org-slug"
+        orgId="org-1"
+        role="admin"
+        staffFullName="Staff De Prueba"
+        staffEmail="staff@example.com"
+        providerId="prov-1"
+      />
     </MemoryRouter>,
   );
 }
