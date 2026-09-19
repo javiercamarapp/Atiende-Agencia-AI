@@ -19,6 +19,9 @@ import type {
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
   BillingWebhookEventSummaryRow,
+  BillingWebhookLogFilters,
+  BillingWebhookLogPage,
+  BillingWebhookLogRow,
   CoreRepository,
   CoreStaffRepository,
   CreateProspectoInput,
@@ -30,6 +33,7 @@ import type {
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
   ProspectoRow,
+  RecordBillingWebhookEventInput,
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
@@ -131,6 +135,14 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   private readonly seenBillingWebhookEventIds = new Map<string, string>();
   // Ledger anti-reordenamiento — mismo dato que `core.billing_entity_order`.
   private readonly billingEntityOrder = new Map<string, number>();
+  // Bitácora completa de intentos de webhook — mismo dato que
+  // `core.billing_webhook_log` (`0018_billing_webhook_registro.sql`). Array
+  // simple (no `Map`): a diferencia del ledger de arriba, esta tabla admite
+  // MUCHAS filas por el mismo `providerEventId` (un rechazo/reintento no
+  // dedupe contra sí mismo, ver el comentario de cabecera de la migración
+  // para el porqué de que sea una tabla aparte del ledger).
+  private readonly billingWebhookLog: BillingWebhookLogRow[] = [];
+  private nextBillingWebhookLogId = 1;
 
   /** Solo para fixtures de prueba (`apps/api/tests/fixtures.ts`) — agrega una
    *  notificación ya creada (mismo criterio que `addStaff`/`addMembership`: nunca
@@ -734,5 +746,40 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   async countBillingWebhookEventsForSuperadmin(callerId: string): Promise<number> {
     if (!this.platformSuperadmins.has(callerId)) return 0;
     return this.seenBillingWebhookEventIds.size;
+  }
+
+  // ---- Bitácora de webhooks (`0018_billing_webhook_registro.sql`) — en
+  // memoria siempre "disponible: true" (no hay ninguna migración pendiente
+  // que simular aquí, mismo criterio que el resto de este archivo: solo
+  // espeja el chequeo `is_platform_superadmin`, nunca la fase de
+  // compatibilidad de despliegue que sí vive en `postgres-core-repository.ts`). ----
+
+  async recordBillingWebhookEvent(input: RecordBillingWebhookEventInput): Promise<void> {
+    const organization = input.organizationId ? this.organizations.get(input.organizationId) : undefined;
+    this.billingWebhookLog.push({
+      id: String(this.nextBillingWebhookLogId++),
+      providerEventId: input.providerEventId,
+      eventType: input.eventType,
+      organizationId: organization ? input.organizationId : null,
+      organizationName: organization?.name ?? null,
+      organizationSlug: organization?.slug ?? null,
+      result: input.result,
+      reason: input.reason,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async listBillingWebhookLogForSuperadmin(callerId: string, filters: BillingWebhookLogFilters): Promise<BillingWebhookLogPage> {
+    if (!this.platformSuperadmins.has(callerId)) return { disponible: true, rows: [], total: 0 };
+    const matching = this.billingWebhookLog
+      .filter((row) => filters.result === undefined || row.result === filters.result)
+      .filter((row) => filters.eventType === undefined || row.eventType === filters.eventType)
+      .filter((row) => filters.organizationId === undefined || row.organizationId === filters.organizationId)
+      .filter((row) => filters.desde === undefined || row.createdAt >= filters.desde)
+      .filter((row) => filters.hasta === undefined || row.createdAt <= filters.hasta)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || Number(b.id) - Number(a.id));
+    const limit = Math.max(1, Math.min(Math.trunc(filters.limit) || 50, 200));
+    const offset = Math.max(0, Math.trunc(filters.offset) || 0);
+    return { disponible: true, rows: matching.slice(offset, offset + limit), total: matching.length };
   }
 }
