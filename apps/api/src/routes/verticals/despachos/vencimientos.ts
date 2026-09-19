@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import {
   GESTION_VENCIMIENTOS_ROLES,
   VER_VENCIMIENTOS_ROLES,
@@ -29,8 +30,17 @@ interface CompletarBody {
   readonly comprobanteUrl?: unknown;
 }
 
+// Bug real (revisión r6, misma causa raíz que `apps/web/src/lib/formato-fecha.ts::
+// hoyFechaSolo` de PR #164, pero del lado del SERVIDOR): `new Date().toISOString().
+// slice(0, 10)` da el día UTC del proceso; Vercel corre con `TZ=UTC`, así que entre
+// las 18:00 y las 23:59 de America/Mexico_City (00:00-05:59 UTC) el servidor cree
+// que YA ES MAÑANA -- `diasRestantes` (abajo) y `fechaPresentacion` (al completar,
+// ver `markDeadlineCompleted`) quedaban corridos un día en esa ventana. Un solo
+// helper de servidor (`@atiende/core-tenancy::hoyFechaNegocio`) reemplaza este
+// `todayIso()` local -- ver su comentario de cabecera para el resto de call-sites
+// con el mismo bug ya corregidos en esta misma ronda.
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyFechaNegocio();
 }
 
 function serializeDeadline(d: FiscalDeadlineRecord) {
@@ -73,9 +83,16 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<CalcularBody>(c.req.raw, 1024);
-    const now = new Date();
-    const year = typeof raw.year === "number" ? raw.year : now.getUTCFullYear();
-    const month = typeof raw.month === "number" ? raw.month : now.getUTCMonth() + 1;
+    // Mismo bug/mismo fix que `todayIso()` de arriba: el default de year/month (cuando
+    // el caller no los manda) se deriva del día de NEGOCIO (`todayIso()`), nunca de
+    // `now.getUTCFullYear()/getUTCMonth()` -- si no, el último día del mes en CDMX
+    // entre las 18:00 y las 23:59 hora local calcularía los vencimientos del mes
+    // SIGUIENTE por error.
+    const hoyPartes = todayIso().split("-");
+    const hoyYear = Number(hoyPartes[0]);
+    const hoyMonth = Number(hoyPartes[1]);
+    const year = typeof raw.year === "number" ? raw.year : hoyYear;
+    const month = typeof raw.month === "number" ? raw.month : hoyMonth;
     if (!Number.isInteger(month) || month < 1 || month > 12) throw Errors.validation("month: se esperaba un entero 1-12.");
 
     const nuevos = calcularVencimientosDelPeriodo(year, month, todayIso());
