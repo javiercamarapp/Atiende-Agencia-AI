@@ -41,6 +41,11 @@ afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
   fetchBranchesMock.mockReset();
+  // Revisión de PR #154 (bloqueante no-crítico): antes vivía al final del test
+  // de logout -- si una aserción de ESE test fallaba, el stub de `fetch` se
+  // fugaba a los tests siguientes del archivo (el `vi.stubGlobal` nunca se
+  // deshacía). En `afterEach` corre siempre, incluso con el test en rojo.
+  vi.unstubAllGlobals();
 });
 
 async function renderShell(): Promise<RenderedComponent> {
@@ -121,7 +126,12 @@ describe("LicitacionesShell — nav móvil", () => {
       salirBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await flushMicrotasks();
     });
+    // logout() real (apps/web/src/lib/auth-client.ts) -- POST /auth/logout con
+    // el refreshToken de la sesión, no solo la navegación de vuelta al login.
+    expect(logoutFetch).toHaveBeenCalledWith(
+      "https://api.test/auth/logout",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "reftok" }) }),
+    );
     expect(onRequireLogin).toHaveBeenCalled();
-    vi.unstubAllGlobals();
   });
 });
