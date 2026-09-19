@@ -24,12 +24,31 @@ el `README.md` de cada `packages/domain-<vertical>/` y de cada
 
 | Vertical | Funciona de punta a punta | Pendiente honesto |
 |---|---|---|
-| **restaurantes** | Catálogo, pedidos, clientes, promociones, repartidor, staff, KPIs, agente de WhatsApp con LLM real (envío vía Meta Graph API, credencial pendiente de pegar). | Agente de voz ElevenLabs completo. |
+| **restaurantes** | Catálogo, pedidos, clientes, promociones, repartidor, staff, KPIs, agente de WhatsApp con LLM real (envío vía Meta Graph API, credencial pendiente de pegar). | Agente de voz ElevenLabs completo. Crear un pedido por el checkout público (web/voz/WhatsApp) no funciona hoy contra Postgres real — ver "Problemas conocidos" abajo. |
 | **hoteles** | Reservas/folios/CFDI de hospedaje (timbrado real vía Finkok/SW Sapien, credencial pendiente), housekeeping, fraude, P&L (USALI), checador de asistencia. | El gate/estado de **revenue management** (shadow/propone/autopilot) es real, pero **no existe ningún motor que produzca una recomendación de tarifa** — solo la máquina de estados, el backtest y la explicación de un precio ya dado. Reputación clasifica reseñas y responde, pero sin ingesta automática de Google/Booking/TripAdvisor (requiere esas credenciales). |
 | **citas** | Agenda, reservar/cancelar/confirmar/completar/no-show, horarios y excepciones editables, staff, sincronización real de calendario — **Google Calendar, Cal.com y CalDAV**, credencial por profesional. | Receptor de webhooks de Google Calendar (hoy solo sincronización por lote). |
 | **licitaciones** | Conectores OCDS reales y verificados contra la fuente pública: **Nuevo León** (333 convocatorias vigentes confirmadas). Post-adjudicación, cobranza, inconformidades, renovaciones. | **CDMX**: conector real y completo, pero la fuente pública que consume está estancada desde 2023 (no produce convocatorias vigentes hoy). Cobertura nacional depende de un **agregador comercial de pago sin proveedor elegido todavía** (`LICITACIONES_AGGREGATOR_API_KEY`) — ComprasMX en vivo y el DOF no se automatizan (reCAPTCHA/Akamai). |
 | **rentas** | Reservas, bloqueos, pricing, sincronización iCal con Airbnb/Booking/VRBO, finanzas y payouts a propietario, limpieza, onboarding self-service, portal de propietario, break-glass de superadmin (**solo lectura**). | Mensajería con huésped tiene aprobación humana real, pero **ningún cliente HTTP real de partner** (Airbnb/Vrbo/Booking.com) existe todavía — enviar un mensaje aprobado siempre falla hasta que se construya. |
-| **despachos** | CFDI/facturación, conciliación bancaria, migración de catálogo contable, cierre mensual, devolución de IVA, nómina, bookkeeping, declaraciones, cobranza, staff — panel completo. | Sin agente de WhatsApp/voz (es el único vertical solo-correo); correo depende hoy únicamente del cron diario (sin disparo inline). |
+| **despachos** | CFDI/facturación, conciliación bancaria, migración de catálogo contable, cierre mensual, devolución de IVA, nómina, bookkeeping, declaraciones, cobranza, staff — panel completo. Correo real con disparo inline (además del cron diario) desde una acción real de staff, p.ej. `POST .../vencimientos/:id/escalar`. | Sin agente de WhatsApp/voz (es el único vertical solo-correo). Ver "Problemas conocidos" abajo. |
+
+## Problemas conocidos
+
+**Sesión de sistema sin acceso a `core.property` (verificado contra Postgres
+real, arreglo en curso en otra rama).** La policy de SELECT de `core.property`
+(`packages/db/migrations/0001_core_schema.sql`) exige `auth.uid()` real —
+nunca contempló la sesión de sistema (`auth.uid()` NULL) que usan los flujos
+sin usuario autenticado: checkout público, agente de voz, agente de WhatsApp.
+Cualquier consulta de ESOS flujos que haga JOIN contra `core.property` recibe
+cero filas, en silencio. Impacto demostrado hoy: **crear un pedido por el
+checkout público de restaurantes (web, voz o WhatsApp) falla contra Postgres
+real para cualquier organización** — ver `scripts/verify-restaurantes-sql/README.md`
+para la verificación completa. Es plausible que otros flujos de sistema de
+otras verticales con el mismo patrón (JOIN contra `core.property` bajo sesión
+de sistema) compartan el mismo gap; no se auditaron todos todavía. Es un bug
+de disponibilidad, no de fuga de datos (el resultado es "cero filas", nunca
+datos de otro tenant) — invisible para los tests en memoria de este repo
+(nunca aplican RLS real), por eso pasó sin detectarse hasta correr contra
+Postgres real.
 
 ## Superadmin (back office de plataforma)
 

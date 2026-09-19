@@ -5,6 +5,17 @@ Fase 1 construida: `public.ts` (`POST /v1/restaurantes/:orgSlug/orders`,
 públicos/de sistema, ver diseño Fase 1 §3) y `whatsapp.ts`
 (`GET|POST /v1/restaurantes/whatsapp/webhook`, verificación HMAC sobre bytes crudos).
 
+**Problema conocido (verificado contra Postgres real, 19-sep-2026, arreglo en
+curso en otra rama — ver `scripts/verify-restaurantes-sql/README.md`):** la
+policy de SELECT de `core.property` nunca contempló la sesión de sistema
+(`auth.uid()` NULL) que usan estas rutas públicas — `findBranch()`
+(`postgres-repository.ts`, usada por `orders.ts::prepareCreateOrder`) hace
+JOIN contra `core.property` y devuelve `null` siempre bajo esa sesión. Efecto
+real: `POST /v1/restaurantes/:orgSlug/orders` (web, voz y WhatsApp por igual)
+falla con "Sucursal no encontrada" contra Postgres real, para cualquier
+organización. Invisible para los tests de este repo (corren contra el
+repositorio en memoria, que nunca aplica RLS real).
+
 Fase 3 agregó las primeras rutas de staff autenticado: `admin-kpis.ts` (dashboards de
 KPIs — ver `restaurantes-admin-kpis.spec.ts`).
 
