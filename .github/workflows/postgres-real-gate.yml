@@ -38,6 +38,17 @@ name: Postgres real (gate)
 #     * scripts/verify-rentas-cron-rls/ — el escape hatch de sesión-de-sistema en
 #       las policies RLS que tocan checkout-sweep-cron / ical-sync-cron /
 #       checkin-recordatorio / ical-feed-publico de rentas.
+# - ANTES de instalar psql/esperar a Postgres, corre
+#   `npm run verify:migration-versions` (scripts/verify-migration-versions/) — el
+#   guard agregado tras el bug real de #119/#120 (dos archivos de
+#   supabase/migrations/ con el mismo prefijo de timestamp, colado a `main` sin
+#   detectarse a mano). Aplicar cada .sql con `psql -f` uno por uno (como hace
+#   run-gate.mjs abajo) NUNCA detecta esa colisión por sí solo — `psql` no tiene
+#   noción de "version", a diferencia de la CLI real de Supabase
+#   (`supabase db push`, que sí usa ese prefijo como llave primaria de
+#   `supabase_migrations.schema_migrations` y fallaría/ignoraría uno de los dos
+#   en un proyecto real). Este paso falla rápido y barato, antes de gastar el
+#   tiempo de levantar Postgres y aplicar 100+ migraciones reales.
 #
 # Qué NO cubre (fuera de alcance de este cambio puntual — ver
 # scripts/verify-real-postgres-ci/README.md para el detalle)
@@ -91,6 +102,9 @@ jobs:
 
       - name: npm ci
         run: npm ci
+
+      - name: Guard de prefijos de versión duplicados en supabase/migrations (scripts/verify-migration-versions)
+        run: npm run verify:migration-versions
 
       - name: Confirmar cliente psql disponible
         run: |
