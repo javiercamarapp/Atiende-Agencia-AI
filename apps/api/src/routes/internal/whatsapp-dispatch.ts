@@ -46,9 +46,20 @@
 //      esta corrida diaria, nunca se pierde en silencio).
 //   2. `triggerCitasWhatsAppDispatchInline`/`triggerHotelesWhatsAppDispatchInline`/
 //      `triggerRestaurantesWhatsAppDispatchInline` (exportados abajo) -- disparo
-//      INLINE best-effort que cada webhook de citas/hoteles/restaurantes llama él
-//      mismo justo después de encolar la respuesta, para intentar enviarla YA en
-//      vez de esperar al cron. Mismo principio que
+//      INLINE best-effort, mismo `repo`/transacción del caller, para intentar
+//      enviar YA en vez de esperar al cron. Lo llaman los 3 webhooks de
+//      citas/hoteles/restaurantes (sesión de SISTEMA, ahí SÍ logra despachar) Y
+//      también `verticals/restaurantes/{admin-orders,repartidor-orders}.ts`
+//      (sesión de STAFF -- desactualizado hasta la revisión de PR #169: este
+//      comentario decía "cada webhook" cuando Fase 8 ya había agregado esos 2
+//      call sites de staff sin actualizarlo). En sesión de staff
+//      `claim_messaging_outbox_batch` SIEMPRE lanza 42501 (guard cross-tenant,
+//      ver más abajo) -- ese intento inline ahí es un no-op seguro por diseño;
+//      el envío real en esos 2 call sites lo hace `dispatchWhatsAppVertical`
+//      encolado en `postCommitTasks` (sesión de SISTEMA, DESPUÉS del commit,
+//      mismo patrón que `hoteles/folios.ts::runHotelesEmailDispatch` de PR
+//      #166). Mismo principio de "nunca propaga, nunca abre sesión nueva
+//      dentro de la transacción del caller" que
 //      `@atiende/domain-citas::tryTriggerGoogleSync`: un fallo aquí NUNCA se
 //      propaga al caller HTTP (el mensaje ya quedó en el outbox pase lo que
 //      pase) y NUNCA abre su propia sesión de BD nueva -- recibe el repo YA
@@ -153,7 +164,21 @@ const SAVEPOINT_NAME = "sp_inline_whatsapp_dispatch";
  *  cabecera del archivo, hotfix auditoría a2b) -- el `SAVEPOINT` inicial va
  *  DENTRO del `try` a propósito: si `db` ya traía la transacción abortada por
  *  otra causa, `SAVEPOINT` también lanza 25P02, y sin el `try` alrededor eso
- *  se propagaría como una excepción NUEVA fuera de este trigger best-effort. */
+ *  se propagaría como una excepción NUEVA fuera de este trigger best-effort.
+ *
+ *  Trade-off aceptado (no bloqueante, señalado en revisión de PR #169; mismo
+ *  trade-off ya aceptado en #166 para correo): si `dispatchPending` avanza a
+ *  mitad de lote antes de lanzar (p.ej. ya hizo `claim` + `markSent` de algún
+ *  mensaje y el error real ocurre después, en `breaker.reportFailure`/
+ *  `markRetry`), el `ROLLBACK TO SAVEPOINT` de abajo revierte TODO el lote
+ *  completo -- incluido lo que sí se envió por Graph API. En la ruta de webhook
+ *  (sesión SANA, sin abort real) eso puede provocar que el cron reintente un
+ *  envío que el cliente YA recibió. Se acepta porque el mensaje reintentado es
+ *  idempotente a nivel de negocio (mismo texto, sin costo de doble cobro) y
+ *  porque acotar el SAVEPOINT solo al `claim` exigiría partir
+ *  `dispatchPending` en dos transacciones separadas -- fuera de alcance de
+ *  este hotfix (ver `scripts/verify-whatsapp-inline-sesion-staff/README.md`
+ *  para la referencia cruzada). */
 async function triggerInline(deps: AppDeps, vertical: WhatsAppMessagingVertical, db: TenantDbSession, port: MessagingOutboxPort, limit: number): Promise<void> {
   const dispatcher = deps.whatsAppDispatcher;
   if (!dispatcher) return; // Sin token configurado: nada que intentar inline, el cron ya responde 503 si se invoca directo.
