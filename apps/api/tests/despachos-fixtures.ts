@@ -14,7 +14,19 @@ import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { DespachosRole } from "@atiende/domain-despachos";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
-import { FakeIcalFeedPort, InMemoryRentasCalendarStore, InMemoryRentasCalendarSyncRepository, InMemoryRentasMensajeriaRepository, InMemoryRentasOnboardingRepository, InMemoryRentasOwnerPortalRepository, InMemoryRentasRepository, SimuladorCanalMensajeria } from "@atiende/domain-rentas";
+import {
+  FakeIcalFeedPort,
+  InMemoryBreakGlassAuditRepository,
+  InMemoryBreakGlassRentasDataRepository,
+  InMemoryBreakGlassSessionRepository,
+  InMemoryRentasCalendarStore,
+  InMemoryRentasCalendarSyncRepository,
+  InMemoryRentasMensajeriaRepository,
+  InMemoryRentasOnboardingRepository,
+  InMemoryRentasOwnerPortalRepository,
+  InMemoryRentasRepository,
+  SimuladorCanalMensajeria,
+} from "@atiende/domain-rentas";
 import type { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { TEST_ENV } from "./fixtures.ts";
@@ -116,6 +128,10 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     rentasMensajeriaRepo: (_db) => new InMemoryRentasMensajeriaRepository(),
     rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
+    // Fase 10b -- "romper cristal", ver apps/api/tests/fixtures.ts para el criterio completo.
+    rentasBreakGlassSessionRepo: (_db) => new InMemoryBreakGlassSessionRepository(),
+    rentasBreakGlassAuditRepo: (_db) => new InMemoryBreakGlassAuditRepository(),
+    rentasBreakGlassDataRepo: (_db) => new InMemoryBreakGlassRentasDataRepository(new Map()),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
   };

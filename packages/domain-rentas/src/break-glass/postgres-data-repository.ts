@@ -1,17 +1,33 @@
 // PostgresBreakGlassRentasDataRepository -- adaptador de producción de
 // `BreakGlassRentasDataRepository`.
 //
-// ADVERTENCIA DE PRIVILEGIO (léase antes de wirear esto a producción real, mismo
-// criterio que owner-portal/postgres-repository.ts): esta clase DEBE construirse sobre
-// una sesión de privilegio administrativo (`ManagedPostgresEngine.admin`, o
-// equivalente -- NUNCA la sesión RLS por-request de un superadmin autenticado vía
-// `engine.withAppSession({ userId: actor.userId }, ...)`). El punto ENTERO de romper
-// cristal es leer datos de un tenant al que el superadmin NO pertenece -- ninguna
-// policy de `rentas.ocupacion`/`rentas.guest_minimo` lo dejaría pasar bajo RLS normal
-// (correctamente: esas policies existen para aislar tenants entre sí). El acceso
-// elevado real, deliberado y AUDITADO es exactamente lo que esta clase ejecuta -- la
-// auditoría (PostgresBreakGlassAuditRepository, misma carpeta) es la contrapartida que
-// hace que ese privilegio sea seguro de otorgar, no una casualidad de diseño.
+// CORRECCIÓN (ver ../../migrations/018_break_glass_wiring.sql, sección 3): la
+// versión original de este archivo advertía que debía construirse sobre
+// `ManagedPostgresEngine.admin` para "saltarse" las policies normales de
+// `rentas.ocupacion`/`rentas.guest_minimo`. Verificado contra el código real antes
+// de corregirlo (no asumido): `admin` NO es `service_role` -- es el MISMO rol de
+// mínimo privilegio que `withAppSession`, sin ningún `bypassrls` (ver el comentario
+// de cabecera de `packages/db/src/managed-postgres-engine.ts`, y la confirmación
+// explícita en `apps/api/src/production/deps.ts`: "la confirmación de que
+// engine.admin NO es service_role"). Una lectura de `rentas.ocupacion` bajo
+// `admin` sigue sujeta a las policies normales de esa tabla (solo staff con
+// membership real) -- así que, tal como estaba, este adaptador SIEMPRE habría
+// devuelto CERO filas contra Postgres real, sin importar quién llamara: el
+// mecanismo nunca pudo haber funcionado.
+//
+// SESIÓN REQUERIDA (ya corregido): la sesión del PROPIO superadmin
+// (`engine.withAppSession({ userId: actor.userId }, ...)`) -- MISMO patrón que
+// `PostgresBreakGlassAuditRepository` (misma carpeta) y que
+// `ProductionRentasOwnerPortalRepository` (ver el comentario de cabecera de ese
+// archivo para el precedente exacto: una función `security definer`, dueña de su
+// propia autorización completa, sobre la sesión por-request normal -- nunca
+// `engine.admin`/`service_role`). `rentas.list_reservas_for_break_glass` (la
+// función que este adaptador invoca) es quien de verdad "salta" las policies de
+// `rentas.ocupacion` -- corre con el privilegio del DUEÑO de la función (quien
+// aplicó la migración), no con el de `authenticated` -- pero solo después de
+// verificar, DENTRO de la función, que `auth.uid() = p_caller_id`, que
+// `p_caller_id` es superadmin real, y que existe una `rentas.break_glass_session`
+// VIGENTE (sin cerrar, sin vencer) para exactamente ese actor+organización.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { BreakGlassRentasDataRepository } from "./data-repository.ts";
 import type { BreakGlassReservaResumen } from "./tipos.ts";
@@ -30,16 +46,10 @@ interface ReservaRow {
 export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasDataRepository {
   constructor(private readonly db: TenantDbSession) {}
 
-  async listReservasTenant(organizationId: string): Promise<readonly BreakGlassReservaResumen[]> {
+  async listReservasTenant(organizationId: string, callerId: string): Promise<readonly BreakGlassReservaResumen[]> {
     const { rows } = await this.db.query<ReservaRow>(
-      `select o.id as ocupacion_id, o.property_id, o.unidad_id,
-              lower(o.rango)::text as check_in, upper(o.rango)::text as check_out,
-              o.estado, g.nombre as huesped_nombre, g.contacto as huesped_contacto
-       from rentas.ocupacion o
-       left join rentas.guest_minimo g on g.id = o.huesped_minimo_id
-       where o.organization_id = $1 and o.capa = 'reserva'
-       order by lower(o.rango) desc;`,
-      [organizationId],
+      `select * from rentas.list_reservas_for_break_glass($1, $2);`,
+      [callerId, organizationId],
     );
     return rows.map((r) => ({
       ocupacionId: r.ocupacion_id,

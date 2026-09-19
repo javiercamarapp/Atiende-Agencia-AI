@@ -70,3 +70,51 @@ export class BreakGlassAuditWriteFailedError extends BreakGlassError {
     this.cause = cause;
   }
 }
+
+/**
+ * `durationMinutes` fuera de `[BREAK_GLASS_MIN_DURATION_MINUTES,
+ * BREAK_GLASS_MAX_DURATION_MINUTES]`, ausente, o no entero. Mismo criterio que
+ * `BreakGlassReasonRequiredError`: se lanza ANTES de tocar la base -- el CHECK de
+ * la migración (`expires_at <= opened_at + interval '4 hours'`) es defensa en
+ * profundidad, no la única barrera.
+ */
+export class BreakGlassDurationInvalidError extends BreakGlassError {
+  readonly minMinutes: number;
+  readonly maxMinutes: number;
+
+  constructor(minMinutes: number, maxMinutes: number) {
+    super(
+      `La duración de un acceso de romper-cristal debe ser un número entero de minutos entre ${minMinutes} y ${maxMinutes}.`,
+      "break_glass_duration_invalid",
+    );
+    this.minMinutes = minMinutes;
+    this.maxMinutes = maxMinutes;
+  }
+}
+
+/**
+ * Sin ninguna `rentas.break_glass_session` VIGENTE (sin cerrar, sin vencer) para
+ * el actor+organización que pide leer datos de tenant -- el requisito central de
+ * esta fase ("las lecturas SOLO mientras haya un acceso activo y vigente").
+ * `apps/api` traduce este error a 403 explícito.
+ */
+export class BreakGlassNoActiveSessionError extends BreakGlassError {
+  constructor() {
+    super(
+      "Sin acceso de romper-cristal activo y vigente para esta organización -- abre uno antes de leer datos del tenant.",
+      "break_glass_no_active_session",
+    );
+  }
+}
+
+/** `sessionId` inexistente, de otro actor, o ya cerrado -- `close` nunca cierra a
+ *  nombre de otro superadmin ni "recierra" una ventana ya cerrada (ver el trigger
+ *  de inmutabilidad parcial en la migración). */
+export class BreakGlassSessionNotFoundError extends BreakGlassError {
+  constructor() {
+    super(
+      "Sesión de romper-cristal no encontrada, ajena, o ya cerrada.",
+      "break_glass_session_not_found",
+    );
+  }
+}

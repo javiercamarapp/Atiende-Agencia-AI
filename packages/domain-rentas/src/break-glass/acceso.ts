@@ -88,7 +88,7 @@ export async function leerReservasTenantBreakGlass(
   return leerDatosTenantBreakGlass(
     auditRepo,
     { ...input, resourceType: "reservas" },
-    () => dataRepo.listReservasTenant(input.organizationId),
+    () => dataRepo.listReservasTenant(input.organizationId, input.actor.userId),
     (data) => ({ total: data.length, ocupacionIds: data.map((r) => r.ocupacionId) }),
     nowMs,
   );

@@ -65,7 +65,16 @@ import {
 } from "@atiende/domain-citas";
 import { PostgresLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { PostgresDespachosRepository } from "@atiende/domain-despachos";
-import { CanalMensajeriaPartnerPendiente, PostgresRentasRepository, PostgresRentasCalendarSyncRepository, PostgresRentasMensajeriaRepository, RealIcalFeedPort } from "@atiende/domain-rentas";
+import {
+  CanalMensajeriaPartnerPendiente,
+  PostgresBreakGlassAuditRepository,
+  PostgresBreakGlassRentasDataRepository,
+  PostgresBreakGlassSessionRepository,
+  PostgresRentasRepository,
+  PostgresRentasCalendarSyncRepository,
+  PostgresRentasMensajeriaRepository,
+  RealIcalFeedPort,
+} from "@atiende/domain-rentas";
 import { openManagedPostgres, PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 import { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
@@ -338,6 +347,15 @@ export function buildProductionDeps(): AppDeps {
     // production/rentas-onboarding-repository.ts para el detalle completo del gap y
     // su solución real conocida).
     rentasOnboardingRepo: createProductionRentasOnboardingRepo(),
+    // Fase 10b -- "romper cristal" (ver packages/domain-rentas/migrations/
+    // 018_break_glass_wiring.sql). Las 3 fábricas reciben la sesión RLS por-request
+    // (`c.get("db")`, abierta como el superadmin real por
+    // routes/superadmin-break-glass.ts) -- nunca `engine.admin`/sistema; la
+    // autorización real vive dentro de las funciones `security definer` que cada
+    // adaptador invoca.
+    rentasBreakGlassSessionRepo: (db) => new PostgresBreakGlassSessionRepository(db),
+    rentasBreakGlassAuditRepo: (db) => new PostgresBreakGlassAuditRepository(db),
+    rentasBreakGlassDataRepo: (db) => new PostgresBreakGlassRentasDataRepository(db),
     llmGateway,
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
     // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.

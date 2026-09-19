@@ -299,7 +299,7 @@ describe("leerReservasTenantBreakGlass -- la composición concreta para resource
       new Map([[randomUUID(), [reserva()]]]),
     );
     let seLlamoAlDataRepo = false;
-    const dataRepoEspia = { listReservasTenant: async (id: string) => { seLlamoAlDataRepo = true; return dataRepo.listReservasTenant(id); } };
+    const dataRepoEspia = { listReservasTenant: async (id: string, callerId: string) => { seLlamoAlDataRepo = true; return dataRepo.listReservasTenant(id, callerId); } };
 
     await expect(
       leerReservasTenantBreakGlass(auditRepo, dataRepoEspia, { actor: ACTOR, organizationId: randomUUID(), reason: "no" }, NOW),

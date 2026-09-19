@@ -16,6 +16,13 @@ export interface BreakGlassAuditRepository {
    *  "parcial" o silencioso; `leerDatosTenantBreakGlass` depende de que un `throw`
    *  aquí sea la única señal de fallo (ver BreakGlassAuditWriteFailedError). */
   record(entry: NewBreakGlassAuditEntry): Promise<BreakGlassAuditEntry>;
+  /** Lista la bitácora del PROPIO actor, más reciente primero -- para la pantalla
+   *  "/superadmin/break-glass" (sección "vista de la bitácora"). El adaptador de
+   *  Postgres real no necesita ninguna función `security definer` nueva para esto:
+   *  la policy de SELECT que `012_break_glass_audit.sql` ya otorgó
+   *  (`actor_user_id = auth.uid()`) alcanza siempre que la sesión sea la del propio
+   *  actor (mismo criterio que el resto de este puerto). */
+  listForActor(actorUserId: string): Promise<readonly BreakGlassAuditEntry[]>;
 }
 
 /**
@@ -73,5 +80,9 @@ export class InMemoryBreakGlassAuditRepository implements BreakGlassAuditReposit
     };
     this.entries.push(persisted);
     return persisted;
+  }
+
+  async listForActor(actorUserId: string): Promise<readonly BreakGlassAuditEntry[]> {
+    return this.entries.filter((e) => e.actorUserId === actorUserId).sort((a, b) => b.seq - a.seq);
   }
 }

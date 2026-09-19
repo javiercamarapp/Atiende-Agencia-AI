@@ -7,7 +7,19 @@ import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type { CitasConversationGuard, CitasRepository, ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, ResolveCalendarPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { DespachosRepository } from "@atiende/domain-despachos";
-import type { CalendarSyncPort, CanalMensajeria, CanalMensajeriaCodigo, RentasCalendarSyncRepository, RentasMensajeriaRepository, RentasOnboardingRepository, RentasOwnerPortalRepository, RentasRepository } from "@atiende/domain-rentas";
+import type {
+  BreakGlassAuditRepository,
+  BreakGlassRentasDataRepository,
+  BreakGlassSessionRepository,
+  CalendarSyncPort,
+  CanalMensajeria,
+  CanalMensajeriaCodigo,
+  RentasCalendarSyncRepository,
+  RentasMensajeriaRepository,
+  RentasOnboardingRepository,
+  RentasOwnerPortalRepository,
+  RentasRepository,
+} from "@atiende/domain-rentas";
 import type { LlmGateway } from "@atiende/agent-core";
 import type { WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import type { CustomerLookup, StripeClient } from "@atiende/billing";
@@ -201,6 +213,22 @@ export interface AppDeps {
    * `notProductionReady` completo (puerto ENTERO bloqueado, no solo 3 métodos como
    * `rentasOwnerPortalRepo` -- ver production/rentas-onboarding-repository.ts). */
   readonly rentasOnboardingRepo: (db: TenantDbSession) => RentasOnboardingRepository;
+  /** Fase 10b -- "romper cristal" (break-glass): abrir/listar/cerrar una ventana de
+   * acceso de emergencia (`rentas.break_glass_session`) y auditar cada lectura de
+   * tenant que ocurre mientras esa ventana está vigente (`rentas.
+   * break_glass_access_log`, inmutable desde `012_break_glass_audit.sql`). 3 fábricas
+   * por-request, MISMO criterio que `rentasOwnerPortalRepo`: la sesión con la que
+   * `apps/api` las construye debe ser SIEMPRE la del superadmin real
+   * (`engine.withAppSession({ userId: callerId })`, ver routes/superadmin-break-
+   * glass.ts) -- las 5 funciones `security definer` que estos 3 puertos consumen
+   * (`rentas.open_break_glass_session`/`list_break_glass_sessions_for_superadmin`/
+   * `close_break_glass_session`/`list_reservas_for_break_glass`, más el INSERT de
+   * `break_glass_access_log`) exigen `auth.uid() = p_caller_id` por dentro -- una
+   * sesión de sistema siempre sería rechazada con 42501, nunca "0 resultados"
+   * silencioso (ver packages/domain-rentas/migrations/018_break_glass_wiring.sql). */
+  readonly rentasBreakGlassSessionRepo: (db: TenantDbSession) => BreakGlassSessionRepository;
+  readonly rentasBreakGlassAuditRepo: (db: TenantDbSession) => BreakGlassAuditRepository;
+  readonly rentasBreakGlassDataRepo: (db: TenantDbSession) => BreakGlassRentasDataRepository;
   /** Gateway LLM real compartido (packages/agent-core::LlmGateway), construido por
    * `production/llm-gateway.ts::buildProductionLlmGateway` SOLO SI al menos un
    * proveedor (Anthropic/OpenAI/OpenRouter) tiene API key configurada -- ver ese

@@ -82,4 +82,21 @@ export class PostgresBreakGlassAuditRepository implements BreakGlassAuditReposit
     }
     return mapRow(row);
   }
+
+  async listForActor(actorUserId: string): Promise<readonly BreakGlassAuditEntry[]> {
+    // Sin función security definer -- la policy de SELECT de
+    // 012_break_glass_audit.sql (`actor_user_id = auth.uid()`) ya alcanza, siempre
+    // que `this.db` sea la sesión del propio actor (ver la advertencia de sesión de
+    // la cabecera de este archivo). `actorUserId` se pasa igual como filtro
+    // explícito -- defensa en profundidad, nunca "trae todo y confía en RLS".
+    const { rows } = await this.db.query<BreakGlassAccessLogRow>(
+      `select id, actor_user_id, actor_email, organization_id, reason, resource_type,
+              resource_scope, result_summary, occurred_at::text as occurred_at, seq, prev_hash, hash
+       from rentas.break_glass_access_log
+       where actor_user_id = $1
+       order by seq desc;`,
+      [actorUserId],
+    );
+    return rows.map(mapRow);
+  }
 }
