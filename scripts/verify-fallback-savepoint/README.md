@@ -68,8 +68,12 @@ corre los 15 checks, y limpia todo al salir (incluso si falla).
 
 ## CI
 
-Integrado como un paso aparte del job "Postgres real (gate)" en
+Integrado como un JOB aparte (`fallback-savepoint-gate`) en el mismo workflow
 `.github/workflows/postgres-real-gate.yml` (no vía la auto-detección de
-`run-gate.mjs`, por las razones de arriba) — cualquier regresión en el
-mecanismo SAVEPOINT o en el fix real de `markAppointmentGoogleSyncInvalid`
-rompe el build.
+`run-gate.mjs`, por las razones de arriba, y no como un paso dentro del job
+existente `postgres-real-gate` — cada uno levanta su propio Postgres efímero) —
+cualquier regresión en el mecanismo SAVEPOINT o en el fix real de
+`markAppointmentGoogleSyncInvalid` rompe el build. Si el repositorio tiene
+protección de rama con checks requeridos para mergear a `main`, hay que
+agregar el nombre de este job nuevo (`fallback-savepoint-gate`) a esa lista —
+de lo contrario el check corre pero no bloquea merges.

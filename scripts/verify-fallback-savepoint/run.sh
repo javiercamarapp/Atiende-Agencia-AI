@@ -16,8 +16,10 @@
 #   2. El escenario 3 (23514 de citas) necesita la base SIN la migración 019
 #      aplicada -- el framework genérico aplica SIEMPRE todas las migraciones.
 # Por eso este script hace su PROPIO pass/fail (grep sobre la salida real de psql,
-# entre marcadores \echo de pg-scenarios.sql) y se invoca como un paso APARTE del
-# job "Postgres real (gate)" en .github/workflows/postgres-real-gate.yml — ver ese
+# entre marcadores \echo de pg-scenarios.sql) y se invoca desde un JOB APARTE
+# (fallback-savepoint-gate) del mismo workflow .github/workflows/postgres-real-
+# gate.yml -- NUNCA como un paso dentro del job existente "Postgres real (gate)"
+# (postgres-real-gate); cada job levanta su propio Postgres efímero. Ver ese
 # archivo para cómo queda integrado al gate de CI.
 #
 # Los tres archivos SQL de este directorio se llaman pg-bootstrap.sql/

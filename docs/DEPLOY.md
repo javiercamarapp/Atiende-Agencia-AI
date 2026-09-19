@@ -228,10 +228,14 @@ lote (ej. el cron de reconciliación de citas):
   (que SÍ están exentos del bloqueo de "transacción abortada") ANTES de
   correr el camino de respaldo — usa `runWithSavepointFallback`
   (`@atiende/db`) en vez de repetir el patrón a mano; ya lo usan
-  `domain-citas/src/postgres-repository.ts` (`upsertCustomer`,
-  `markAppointmentGoogleSyncInvalid`) y
+  `domain-citas/src/postgres-repository.ts` (`markAppointmentGoogleSyncInvalid`,
+  `resolveProviderCalendarRefreshToken`, `runWithRowSavepoint`) y
   `packages/db/src/postgres-core-repository.ts` (`findStaffForOrgAdmin`,
-  `isStaffOrgMember`).
+  `isStaffOrgMember`, `recordBillingWebhookEvent`,
+  `listBillingWebhookLogForSuperadmin`). `upsertCustomer` (mismo archivo,
+  `sp_upsert_customer_race`) sigue con el `SAVEPOINT`/`ROLLBACK TO SAVEPOINT`
+  manual anterior a este helper — no migrado por este PR, mismo mecanismo,
+  distinta implementación.
 - **Defensa de último recurso en el motor**: `withAppSession` detecta si el
   `COMMIT` final devolvió el tag `ROLLBACK` (en vez de `COMMIT`) y lanza un
   error explícito — convierte cualquier catch futuro que se olvide del

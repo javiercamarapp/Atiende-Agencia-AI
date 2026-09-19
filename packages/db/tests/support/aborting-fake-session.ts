@@ -14,7 +14,7 @@
 // prueba, sin una dependencia cruzada nueva solo para esto).
 //
 // Regla real de Postgres que este doble modela (verificada en `scripts/verify-
-// fallback-savepoint/assertions.sql` contra Postgres real, no solo aquí):
+// fallback-savepoint/pg-scenarios.sql` contra Postgres real, no solo aquí):
 //   - Una consulta (`query`) dentro de una transacción que lanza un error dentro de
 //     UN bloque de transacción deja esa transacción "abortada".
 //   - Mientras está abortada, CUALQUIER `query()` posterior lanza SQLSTATE 25P02
