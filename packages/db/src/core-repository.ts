@@ -95,6 +95,19 @@ export interface StaffInviteRow {
   readonly createdAt: string;
 }
 
+/** Fase 3 caller-binding (ver `packages/db/migrations/0017_caller_binding_fase3.sql`)
+ *  — fila mínima que devuelve `core.find_staff_for_org_admin`: un admin YA
+ *  autenticado busca a OTRO usuario por correo (para invitarlo o detectar que ya es
+ *  staff de su organización). Deliberadamente SIN `passwordHash`/`createdVia`/
+ *  `emailVerifiedAt`/`sessionsRevokedAt` (a diferencia de `StaffUserRow`) — esta
+ *  búsqueda nunca sirve para login, solo para que un admin vea si ya existe una
+ *  cuenta con ese correo. */
+export interface OrgAdminStaffLookupRow {
+  readonly id: string;
+  readonly email: string;
+  readonly fullName: string;
+}
+
 /** Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido
  *  no tiene UI"): fila mínima de un miembro YA aceptado (`core.membership`, no una
  *  invitación pendiente) de una organización, para poblar un selector real (ej. "qué
@@ -630,6 +643,25 @@ export interface CoreStaffRepository {
     newPlatformRole: "owner" | "admin" | "member" | "viewer",
     newVerticalRole: string,
   ): Promise<OrganizationMemberWithRoleRow>;
+  /** Fase 3 caller-binding (hallazgo de seguridad, ver `packages/db/migrations/
+   *  0017_caller_binding_fase3.sql`) — reemplaza el uso "administración" de
+   *  `CoreRepository.findStaffByEmail` (sesión de sistema, ahora bloqueada para
+   *  cualquier `auth.uid()` real): `admin-staff.ts` de las 5 verticales con alta de
+   *  staff busca aquí a un usuario por correo ANTES de invitarlo, para detectar una
+   *  cuenta ya existente (de cualquier organización) sin exponer `passwordHash` ni
+   *  el resto de `StaffUserRow`. Autoridad real DENTRO de `core.find_staff_for_org_
+   *  admin` (nunca solo la capa TS): exige que el caller (`auth.uid()`, la sesión
+   *  real por-request que abre esta interfaz) sea owner/admin de
+   *  `organizationId` — mismo umbral que `updateMemberVerticalRole`. `null` si no
+   *  existe ningún `core.staff_user` con ese correo. */
+  findStaffForOrgAdmin(organizationId: string, email: string): Promise<OrgAdminStaffLookupRow | null>;
+  /** Complementa a `findStaffForOrgAdmin` — ¿`targetUserId` (normalmente el `id` que
+   *  acaba de devolver esa búsqueda) ya es miembro de `organizationId`? Reemplaza el
+   *  uso "administración" de `CoreRepository.findMembershipsByUserId(existingStaff.
+   *  id).some(m => m.organizationId === organizationId)` — sin exponer la lista
+   *  completa de membresías (de CUALQUIER organización) del target. Mismo umbral de
+   *  autoridad que `findStaffForOrgAdmin`. */
+  isStaffOrgMember(organizationId: string, targetUserId: string): Promise<boolean>;
 }
 
 /** Lanzado por `acceptStaffInvite` cuando el token no existe, ya no está pendiente, o

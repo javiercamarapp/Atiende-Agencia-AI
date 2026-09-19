@@ -25,6 +25,7 @@ import type {
   CreateStaffInviteInput,
   MembershipRow,
   NotificationRow,
+  OrgAdminStaffLookupRow,
   OrganizationBillingRow,
   OrganizationMemberRow,
   OrganizationMemberWithRoleRow,
@@ -300,6 +301,21 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     const staff = this.staffById.get(targetUserId);
     if (!staff) throw new Error(`membership apunta a staff_user inexistente "${targetUserId}"`);
     return { userId: staff.id, email: staff.email, fullName: staff.fullName, platformRole: updated.platformRole, verticalRole: updated.verticalRole, propertyIds: updated.propertyIds };
+  }
+
+  // Fase 3 caller-binding — en memoria no hay ninguna sesión/RLS que emular (mismo
+  // criterio que el resto de esta clase): la autoridad real (`auth.uid()` owner/
+  // admin de `organizationId`) vive en `core.find_staff_for_org_admin`, ya
+  // verificada por Postgres real (ver `scripts/verify-caller-binding-fase3/`) — este
+  // adaptador solo necesita el mismo lookup por correo, GLOBAL (no acotado a la
+  // organización, mismo criterio que `findStaffByEmail`), sin `passwordHash`.
+  async findStaffForOrgAdmin(_organizationId: string, email: string): Promise<OrgAdminStaffLookupRow | null> {
+    const staff = await this.findStaffByEmail(email);
+    return staff ? { id: staff.id, email: staff.email, fullName: staff.fullName } : null;
+  }
+
+  async isStaffOrgMember(organizationId: string, targetUserId: string): Promise<boolean> {
+    return this.memberships.some((m) => m.organizationId === organizationId && m.userId === targetUserId);
   }
 
   // ---- CoreRepository (sesión de sistema, igual que login) ----

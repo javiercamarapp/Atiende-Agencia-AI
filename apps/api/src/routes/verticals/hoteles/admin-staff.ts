@@ -84,10 +84,23 @@ export function hotelesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     // Ya es staff de esta organización -> conflicto explícito en vez de una
     // invitación fantasma que nunca podría "vincularse" dos veces al mismo membership.
-    const existingStaff = await deps.coreRepo.findStaffByEmail(email);
+    //
+    // Hallazgo de seguridad (Fase 3 caller-binding, ver `packages/db/migrations/
+    // 0017_caller_binding_fase3.sql`): ANTES, este lookup por correo pasaba por
+    // `deps.coreRepo` (sesión de sistema fija, `core.find_staff_by_email`/
+    // `find_memberships_by_user_id` sin atar a `auth.uid()`) -- ahora esas dos
+    // funciones son de solo-sistema, así que aquí se usa `deps.coreStaffRepo(c.get
+    // ("db"))` (sesión REAL por-request, `auth.uid()` = este admin autenticado) +
+    // las funciones nuevas `core.find_staff_for_org_admin`/`core.is_staff_org_
+    // member_for_org_admin`, que exigen DENTRO de la función que el caller sea
+    // owner/admin de `organizationId` -- defensa en profundidad real, no solo el
+    // `assertVerticalRole(STAFF_INVITE_ROLES)` de arriba. `existingStaff` nunca trae
+    // `passwordHash` (a diferencia del `StaffUserRow` que devolvía `findStaffByEmail`).
+    const staffRepo = deps.coreStaffRepo(c.get("db"));
+    const existingStaff = await staffRepo.findStaffForOrgAdmin(organizationId, email);
     if (existingStaff) {
-      const memberships = await deps.coreRepo.findMembershipsByUserId(existingStaff.id);
-      if (memberships.some((m) => m.organizationId === organizationId)) {
+      const alreadyMember = await staffRepo.isStaffOrgMember(organizationId, existingStaff.id);
+      if (alreadyMember) {
         throw Errors.conflict("Ese correo ya es staff de esta organización.");
       }
     }

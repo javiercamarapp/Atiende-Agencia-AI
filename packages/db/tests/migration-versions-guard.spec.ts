@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  findDuplicateInternalNumbers,
   findDuplicateVersions,
   findMirrorDivergences,
+  findNewInternalNumberDuplicates,
   formatGuardReport,
   hasProblems,
   runMigrationVersionGuard,
@@ -141,6 +143,59 @@ describe("findMirrorDivergences", () => {
   });
 });
 
+describe("findDuplicateInternalNumbers", () => {
+  it("reproduce el caso real del 19-sep-2026 (PR #149): dos migraciones nuevas eligen el mismo número interno en el mismo paquete", () => {
+    const packagesRoot = makeTempDir("packages-internal-dup-");
+    const hotelesDir = path.join(packagesRoot, "domain-hoteles", "migrations");
+    mkdirSync(hotelesDir, { recursive: true });
+    writeSql(hotelesDir, "022_hoteles_sistema_voz_whatsapp_escritura.sql", "select 1;");
+    writeSql(hotelesDir, "023_night_audit_sistema_escritura.sql", "select 2;");
+    writeSql(hotelesDir, "023_hoteles_caller_binding_fase3.sql", "select 3;");
+
+    const duplicates = findDuplicateInternalNumbers([packagesRoot]);
+
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0]?.number).toBe("023");
+    expect(duplicates[0]?.files).toEqual(["023_hoteles_caller_binding_fase3.sql", "023_night_audit_sistema_escritura.sql"]);
+  });
+
+  it("no reporta nada cuando dos PAQUETES distintos reutilizan el mismo número (la ambigüedad real es DENTRO de un mismo paquete)", () => {
+    const packagesRoot = makeTempDir("packages-internal-ok-");
+    const citasDir = path.join(packagesRoot, "domain-citas", "migrations");
+    const hotelesDir = path.join(packagesRoot, "domain-hoteles", "migrations");
+    mkdirSync(citasDir, { recursive: true });
+    mkdirSync(hotelesDir, { recursive: true });
+    writeSql(citasDir, "014_grants.sql", "select 1;");
+    writeSql(hotelesDir, "014_grants.sql", "select 2;");
+
+    expect(findDuplicateInternalNumbers([packagesRoot])).toEqual([]);
+  });
+
+  it("no reporta nada contra un paquete con numeración sana (sin colisiones)", () => {
+    const packagesRoot = makeTempDir("packages-internal-clean-");
+    const dir = path.join(packagesRoot, "db", "migrations");
+    mkdirSync(dir, { recursive: true });
+    writeSql(dir, "0001_a.sql", "select 1;");
+    writeSql(dir, "0002_b.sql", "select 2;");
+
+    expect(findDuplicateInternalNumbers([packagesRoot])).toEqual([]);
+  });
+});
+
+describe("findNewInternalNumberDuplicates", () => {
+  it("filtra las colisiones YA conocidas (grandfathered) y deja pasar solo las nuevas", () => {
+    const repoRoot = "/repo";
+    const duplicates = [
+      { dir: "/repo/packages/db/migrations", number: "0015", files: ["0015_a.sql", "0015_b.sql"] },
+      { dir: "/repo/packages/domain-hoteles/migrations", number: "099", files: ["099_a.sql", "099_b.sql"] },
+    ];
+
+    const nuevas = findNewInternalNumberDuplicates(duplicates, repoRoot);
+
+    expect(nuevas).toEqual([{ dir: "/repo/packages/domain-hoteles/migrations", number: "099", files: ["099_a.sql", "099_b.sql"] }]);
+  });
+});
+
 describe("runMigrationVersionGuard / hasProblems / formatGuardReport", () => {
   it("combina ambos checks y hasProblems() refleja el resultado", () => {
     const migrationsDir = makeTempDir("guard-combined-");
@@ -153,11 +208,33 @@ describe("runMigrationVersionGuard / hasProblems / formatGuardReport", () => {
     expect(hasProblems(result)).toBe(true);
     expect(result.duplicates).toHaveLength(1);
     expect(result.divergences).toHaveLength(0);
+    expect(result.internalNumberDuplicates).toHaveLength(0);
 
     const report = formatGuardReport(result);
     expect(report).toContain("versión duplicada");
     expect(report).toContain("20240101000010_a.sql");
     expect(report).toContain("20240101000010_b.sql");
+  });
+
+  it("hasProblems() es true por un número interno duplicado NUEVO, aunque los otros dos checks estén limpios", () => {
+    const migrationsDir = makeTempDir("guard-internal-dup-");
+    const packagesRoot = makeTempDir("packages-guard-internal-dup-");
+    const hotelesDir = path.join(packagesRoot, "domain-hoteles", "migrations");
+    mkdirSync(hotelesDir, { recursive: true });
+    writeSql(hotelesDir, "099_a.sql", "select 1;");
+    writeSql(hotelesDir, "099_b.sql", "select 2;");
+
+    const result = runMigrationVersionGuard(migrationsDir, [packagesRoot]);
+
+    expect(result.duplicates).toHaveLength(0);
+    expect(result.divergences).toHaveLength(0);
+    expect(result.internalNumberDuplicates).toHaveLength(1);
+    expect(hasProblems(result)).toBe(true);
+
+    const report = formatGuardReport(result);
+    expect(report).toContain("número interno duplicado");
+    expect(report).toContain("099_a.sql");
+    expect(report).toContain("099_b.sql");
   });
 
   it("hasProblems() es false y el reporte queda vacío contra un árbol sano", () => {
