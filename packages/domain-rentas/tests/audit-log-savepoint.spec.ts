@@ -1,7 +1,8 @@
 // r5 -- bitácora de auditoría del staff: regresión para
-// `PostgresRentasRepository.registrarAuditoria`. Un doble de prueba de
-// `TenantDbSession` que SÍ modela el comportamiento real de Postgres (mismo patrón
-// EXACTO que domain-restaurantes/tests/upsert-customer-savepoint.spec.ts y
+// `PostgresRentasRepository.registrarAuditoria` Y (no bloqueante #1 de revisión r5)
+// `.listAuditoria`. Un doble de prueba de `TenantDbSession` que SÍ modela el
+// comportamiento real de Postgres (mismo patrón EXACTO que
+// domain-restaurantes/tests/upsert-customer-savepoint.spec.ts y
 // domain-citas/tests/upsert-customer-savepoint.spec.ts): una vez que una consulta
 // dentro de una transacción lanza un error, CUALQUIER consulta posterior sin haber
 // pasado por `ROLLBACK TO SAVEPOINT` falla con 25P02 "current transaction is
@@ -9,14 +10,24 @@
 // aborto) NO puede reproducir el bug real que este fix corrige -- ver el comentario
 // de cabecera de esos dos archivos.
 //
-// Escenario real que esto reproduce: `rentas.record_audit_log` no existe todavía en
-// la base (SQLSTATE 42883, base sin migrar -- ver AGENTS.md de esta fase). La acción
-// de negocio (p.ej. `UPDATE rentas.tarifa_base`) YA CORRIÓ y tuvo éxito ANTES de
-// llamar a `registrarAuditoria`, en la MISMA transacción de request
-// (`ManagedPostgresEngine.withAppSession`). Sin el SAVEPOINT de este fix, el 42883 de
-// la bitácora deja la transacción ABORTADA -- y el `commit` final del request (aquí
-// simulado con una query cualquiera después) fallaría con 25P02, revirtiendo la
-// acción de negocio que ya se había completado con éxito.
+// Escenario real que esto reproduce (escritura): `rentas.record_audit_log` no
+// existe todavía en la base (SQLSTATE 42883, base sin migrar -- ver AGENTS.md de
+// esta fase). La acción de negocio (p.ej. `UPDATE rentas.tarifa_base`) YA CORRIÓ y
+// tuvo éxito ANTES de llamar a `registrarAuditoria`, en la MISMA transacción de
+// request (`ManagedPostgresEngine.withAppSession`). Sin el SAVEPOINT de este fix, el
+// 42883 de la bitácora deja la transacción ABORTADA -- y el `commit` final del
+// request (aquí simulado con una query cualquiera después) fallaría con 25P02,
+// revirtiendo la acción de negocio que ya se había completado con éxito.
+//
+// Escenario real que esto reproduce (lectura, `listAuditoria`, corrección de
+// revisión r5 -- no bloqueante #1): la tabla `rentas.audit_log` todavía no existe
+// (SQLSTATE 42P01, base sin migrar) cuando el staff abre la pantalla de Auditoría.
+// El código de lectura era correcto por inspección (usa SAVEPOINT / ROLLBACK TO
+// SAVEPOINT igual que la escritura), pero no tenía NINGÚN test con
+// `AbortAwareFakeSession`: `apps/api/tests/rentas-auditoria.spec.ts` corre contra el
+// repo en memoria (que siempre devuelve `disponible:true`) y
+// `packages/domain-rentas/tests/audit-log-savepoint.spec.ts` solo cubría
+// `registrarAuditoria`.
 import { describe, expect, it } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { PostgresRentasRepository } from "../src/postgres-repository.ts";
@@ -24,6 +35,12 @@ import { PostgresRentasRepository } from "../src/postgres-repository.ts";
 function pgUndefinedFunction(): Error & { code: string } {
   const err = new Error('function rentas.record_audit_log(uuid, text, text, uuid, text, text, text) does not exist') as Error & { code: string };
   err.code = "42883";
+  return err;
+}
+
+function pgUndefinedTable(): Error & { code: string } {
+  const err = new Error('relation "rentas.audit_log" does not exist') as Error & { code: string };
+  err.code = "42P01";
   return err;
 }
 
@@ -45,6 +62,20 @@ class AbortAwareFakeSession implements TenantDbSession {
     if (normalized.startsWith("select rentas.record_audit_log")) {
       this.aborted = true;
       throw pgUndefinedFunction();
+    }
+    // `listAuditoria` -- la tabla todavía no existe (base sin migrar): el `count(*)`
+    // es la PRIMERA query de la lectura, así que basta con que ella falle para
+    // reproducir el mismo aborto de transacción que la escritura.
+    if (normalized.startsWith("select count(*)::text as total from rentas.audit_log")) {
+      this.aborted = true;
+      throw pgUndefinedTable();
+    }
+    if (normalized.startsWith("select id, actor_user_id, action, entity_type")) {
+      // Solo se alcanza en el camino feliz (tabla SÍ existe) -- si el fix de
+      // SAVEPOINT fallara y esta query corriera tras el 42P01 de arriba sin
+      // recuperar la transacción, `this.aborted` seguiría en `true` y esto
+      // lanzaría 25P02 en vez de devolver filas, delatando el bug.
+      return { rows: [] as unknown as T[] };
     }
     // Representa CUALQUIER sentencia posterior en la misma transacción compartida --
     // el `commit;` final de `ManagedPostgresEngine.withAppSession`, o cualquier otra
@@ -109,6 +140,45 @@ describe("PostgresRentasRepository.registrarAuditoria — recuperación de 42883
           await session.query("select rentas.record_audit_log($1,$2,$3,$4,$5,$6,$7);", []);
         } catch {
           // el código viejo no hacía nada aquí -- solo dejaba `aborted` en true.
+        }
+        return session.query("select 1 as siguiente_query_del_request;");
+      })(),
+    ).rejects.toMatchObject({ code: "25P02" });
+  });
+});
+
+describe("PostgresRentasRepository.listAuditoria — recuperación de 42P01 con SAVEPOINT (no bloqueante #1 de revisión r5)", () => {
+  it("tabla sin migrar: devuelve disponible:false (nunca lanza) y deja la transacción recuperada para la query siguiente", async () => {
+    const session = new AbortAwareFakeSession();
+    const repo = new PostgresRentasRepository(session);
+
+    await expect(repo.listAuditoria("org-1", {}, { limit: 25, offset: 0 })).resolves.toEqual({
+      disponible: false,
+      items: [],
+      total: 0,
+      nextOffset: null,
+    });
+
+    // Misma pareja SAVEPOINT/ROLLBACK TO SAVEPOINT que la escritura, con su propio
+    // nombre de savepoint de lectura (sp_rentas_audit_log_read) -- confirma que el
+    // fix de LECTURA usa el mecanismo real, no solo que el resultado final coincida.
+    expect(session.calls).toContain("savepoint sp_rentas_audit_log_read");
+    expect(session.calls).toContain("rollback to savepoint sp_rentas_audit_log_read");
+    expect(session.calls).toContain("release savepoint sp_rentas_audit_log_read");
+
+    // La transacción quedó recuperada -- una query posterior (el resto del handler
+    // del GET /admin/auditoria) NO ve 25P02.
+    await expect(session.query("select 1 as siguiente_query_del_request;")).resolves.toEqual({ rows: [{ ok: true }] });
+  });
+
+  it("sin el SAVEPOINT, la misma secuencia SÍ deriva en 25P02 (prueba de que el bug de lectura sería real)", async () => {
+    const session = new AbortAwareFakeSession();
+    await expect(
+      (async () => {
+        try {
+          await session.query("select count(*)::text as total from rentas.audit_log where organization_id = $1;", []);
+        } catch {
+          // reproduce el código sin recuperación: no hace nada con el error.
         }
         return session.query("select 1 as siguiente_query_del_request;");
       })(),
