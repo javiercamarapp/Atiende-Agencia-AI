@@ -193,3 +193,32 @@ export interface NewCollectionEventInput {
   readonly canal: CollectionEventChannel;
   readonly respuesta: string | null;
 }
+
+/**
+ * Fila que devuelve `DespachosRepository.systemListPendingReceivablesForReminders`
+ * -- combina, para UNA property, la cartera pendiente (`receivable`) con el folio
+ * fiscal/total del `invoice` asociado (antes exigía un `findInvoice` aparte por
+ * cada fila) -- exclusiva del barrido de sistema
+ * (`apps/worker/src/jobs/despachos/cobranza-reminders.ts`, ver
+ * `despachos.system_list_pending_receivables_with_invoice`, migración 009). El
+ * staff sigue usando `listReceivables`/`findInvoice` por separado, sin cambio.
+ */
+export interface ReceivableReminderRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly invoiceId: string;
+  readonly fechaVencimiento: string;
+  readonly clienteNombre: string | null;
+  readonly clienteEmail: string | null;
+  readonly facturaFolioFiscal: string;
+  readonly facturaTotal: number;
+}
+
+/** Input de `DespachosRepository.systemRecordCollectionEvent` -- igual que
+ * `NewCollectionEventInput` más `eventDate` (fecha de negocio del barrido,
+ * `YYYY-MM-DD` -- inyectada por el caller, nunca `now()` interno, para que el
+ * dedupe sea determinista en pruebas). Exclusivo del barrido de sistema. */
+export interface NewSystemCollectionEventInput extends NewCollectionEventInput {
+  readonly eventDate: string;
+}

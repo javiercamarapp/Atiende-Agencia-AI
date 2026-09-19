@@ -15,7 +15,9 @@ import type {
   NewInvoiceInput,
   NewInvoiceReviewInput,
   NewReceivableInput,
+  NewSystemCollectionEventInput,
   ReceivableRecord,
+  ReceivableReminderRow,
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
@@ -171,6 +173,25 @@ export interface DespachosRepository {
    * ANY($1)`) para el historial de TODAS las cuentas de una lista, en vez de un
    * `listCollectionEvents` por cuenta. El llamador agrupa por `receivableId`. */
   listCollectionEventsForReceivables(propertyId: string, receivableIds: readonly string[]): Promise<readonly CollectionEventRecord[]>;
+
+  // ---- Flujos de sistema (cron `cobranza-reminders`, `withAppSession({ userId:
+  // null })`) -- hallazgo de auditoría (severidad ALTA, "flujos de sistema
+  // bloqueados en escritura"): `listReceivables`/`findInvoice`/`insertCollectionEvent`
+  // de arriba son código COMPARTIDO con el staff autenticado (panel de cartera +
+  // `POST .../recordatorio`, ver `apps/api/src/routes/verticals/despachos/
+  // cobranza.ts`) -- sustituirlos habría roto ese camino. Los 2 métodos de abajo son
+  // EXCLUSIVOS del barrido de sistema (`apps/worker/src/jobs/despachos/cobranza-
+  // reminders.ts`, ver migración 009 para el detalle completo). ----
+  /** Cartera pendiente de UNA property + folio fiscal/total del invoice asociado, en
+   * una sola consulta (evita el `findInvoice` por fila que exigía el camino de
+   * staff) -- mismo criterio de `filter.pendiente=true` de `listReceivables`. */
+  systemListPendingReceivablesForReminders(propertyId: string): Promise<readonly ReceivableReminderRow[]>;
+  /** Registra el evento de recordatorio de cobranza de forma idempotente
+   * (best-effort, ver header de la migración 009) para UN (receivable, etapa,
+   * `eventDate`) -- `null` si ya se había registrado esa combinación (dedupe, no
+   * error). Nunca usado para `etapa: 'respuesta'` (esa sigue siendo
+   * `insertCollectionEvent`, camino de staff). */
+  systemRecordCollectionEvent(input: NewSystemCollectionEventInput): Promise<CollectionEventRecord | null>;
 
   // ---- Infraestructura de correo (hallazgo de auditoría, severidad ALTA: "despachos
   // no tiene ninguna infraestructura de correo, mientras citas/rentas/licitaciones sí

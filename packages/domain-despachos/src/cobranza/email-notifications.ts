@@ -25,7 +25,7 @@ import { construirCorreoCobranza } from "./email-templates.ts";
 import { formatMontoCobranza } from "./templates.ts";
 import type { CobranzaReminderStage } from "./templates.ts";
 import type { DespachosRepository } from "../repository.ts";
-import type { ReceivableRecord } from "../types.ts";
+import type { ReceivableReminderRow, ReceivableRecord } from "../types.ts";
 
 export interface CollectionReminderEmailResult {
   readonly enqueued: boolean;
@@ -95,6 +95,77 @@ export async function tryEnqueueCollectionReminderEmail(repo: DespachosRepositor
     return await enqueueCollectionReminderEmailCore(repo, receivable, factura, stage, diasVencido);
   } catch (err) {
     console.error("cobranza/email-notifications: best-effort reminder enqueue failed:", err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Variantes de SOLO SISTEMA (`@atiende/worker::runCobranzaReminderSweep`,
+// `withAppSession({ userId: null })`) -- hallazgo de auditoría (severidad
+// ALTA, "flujos de sistema bloqueados en escritura", ver migración
+// `009_despachos_sistema_cobranza_escritura.sql`): `repo.insertCollectionEvent`
+// de arriba es código COMPARTIDO con el staff autenticado (`POST .../
+// cuentas/:id/recordatorio`, camino manual, YA funciona hoy) -- sustituirlo
+// directo habría roto ese camino. Estas 2 funciones son EXACTAMENTE
+// `enqueueCollectionReminderEmailCore`/`tryEnqueueCollectionReminderEmail`
+// de arriba, con `repo.systemRecordCollectionEvent` (exclusivo de sistema,
+// idempotente) en vez de `repo.insertCollectionEvent`, y
+// `ReceivableReminderRow` (la fila ya combinada con el invoice, ver
+// `repo.systemListPendingReceivablesForReminders`) en vez de
+// `ReceivableRecord` + `FacturaCobranza` por separado -- el motor de
+// contenido/envío (`construirCorreoCobranza`/`repo.enqueueMessagingOutbox`,
+// éste último YA funciona para ambos caminos desde
+// `007_email_outbox_authenticated_grants.sql`) es el MISMO, nunca
+// reimplementado.
+// ---------------------------------------------------------------------------
+export async function enqueueCollectionReminderEmailForSystemCore(
+  repo: DespachosRepository,
+  receivable: ReceivableReminderRow,
+  stage: CobranzaReminderStage,
+  diasVencido: number,
+  eventDateIso: string,
+): Promise<CollectionReminderEmailResult> {
+  await repo.systemRecordCollectionEvent({
+    organizationId: receivable.organizationId,
+    propertyId: receivable.propertyId,
+    receivableId: receivable.id,
+    etapa: stage,
+    canal: "email",
+    respuesta: null,
+    eventDate: eventDateIso,
+  });
+
+  if (!receivable.clienteEmail) return { enqueued: false, reason: "no_email" };
+
+  const vars = {
+    nombreEmpresa: receivable.clienteNombre ?? "Cliente",
+    monto: formatMontoCobranza(receivable.facturaTotal),
+    diasVencido: String(diasVencido),
+    facturaId: receivable.facturaFolioFiscal,
+  };
+  const correo = construirCorreoCobranza(stage, vars);
+
+  await repo.enqueueMessagingOutbox(receivable.organizationId, "email", `cobranza.${stage}`, `cobranza:${stage}:${receivable.id}`, {
+    to: receivable.clienteEmail,
+    subject: correo.asunto,
+    html: correo.html,
+    text: correo.texto,
+  });
+  return { enqueued: true };
+}
+
+/** Envoltura best-effort -- mismo criterio que `tryEnqueueCollectionReminderEmail`. */
+export async function tryEnqueueCollectionReminderEmailForSystem(
+  repo: DespachosRepository,
+  receivable: ReceivableReminderRow,
+  stage: CobranzaReminderStage,
+  diasVencido: number,
+  eventDateIso: string,
+): Promise<CollectionReminderEmailResult | null> {
+  try {
+    return await enqueueCollectionReminderEmailForSystemCore(repo, receivable, stage, diasVencido, eventDateIso);
+  } catch (err) {
+    console.error("cobranza/email-notifications: best-effort system reminder enqueue failed:", err);
     return null;
   }
 }

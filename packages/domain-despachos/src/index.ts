@@ -394,10 +394,12 @@ export type {
   DeadlineEscalationRecord,
   ReceivableRecord,
   NewReceivableInput,
+  ReceivableReminderRow,
   CollectionEventStage,
   CollectionEventChannel,
   CollectionEventRecord,
   NewCollectionEventInput,
+  NewSystemCollectionEventInput,
 } from "./types.ts";
 
 export type { DespachosRepository, InvoicePage, OrganizationNotificationRecipient, EmailOutboxJobRow } from "./repository.ts";
@@ -418,7 +420,12 @@ export { enqueueEscalationEmailCore, tryEnqueueEscalationEmail } from "./vencimi
 export type { EscalationEmailEnqueueResult } from "./vencimientos/email-notifications.ts";
 export { construirCorreoCobranza } from "./cobranza/email-templates.ts";
 export type { Correo as CorreoCobranza } from "./cobranza/email-templates.ts";
-export { enqueueCollectionReminderEmailCore, tryEnqueueCollectionReminderEmail } from "./cobranza/email-notifications.ts";
+export {
+  enqueueCollectionReminderEmailCore,
+  tryEnqueueCollectionReminderEmail,
+  enqueueCollectionReminderEmailForSystemCore,
+  tryEnqueueCollectionReminderEmailForSystem,
+} from "./cobranza/email-notifications.ts";
 export type { CollectionReminderEmailResult, FacturaCobranza } from "./cobranza/email-notifications.ts";
 export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "./email-dispatch.ts";
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
