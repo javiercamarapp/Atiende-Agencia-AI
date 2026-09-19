@@ -19,6 +19,7 @@ import type { RangoFechas } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { triggerRentasEmailDispatchInline } from "./email-dispatch.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -155,6 +156,10 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // huespedContacto (o sin huésped adjunto) simplemente no encola nada — ver
       // @atiende/domain-rentas::enqueueReservaEmailCore.
       await tryEnqueueReservaEmail(repo, organizationId, "reserva.creada", resultado.ocupacionId);
+      // Cierre del hallazgo "rentas no tiene disparo inline de correo" (ver
+      // ./email-dispatch.ts::triggerRentasEmailDispatchInline) — mismo `repo`/
+      // transacción del request, best-effort real.
+      await triggerRentasEmailDispatchInline(deps, repo);
 
       return c.json({ id: resultado.ocupacionId, conflictosCapaCruzada: resultado.conflictosCapaCruzada.length }, 201);
     } catch (err) {

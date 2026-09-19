@@ -18,6 +18,7 @@ import type { FiscalDeadlineRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { triggerDespachosEmailDispatchInline } from "./notifications.ts";
 
 interface CalcularBody {
   readonly year?: unknown;
@@ -124,6 +125,10 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     // convierte esta respuesta en un error.
     const organization = await repo.findOrganizationById(deadline.organizationId);
     const notificacion = await tryEnqueueEscalationEmail(repo, deadline, decision, organization?.name ?? "tu despacho", dias);
+    // Cierre del hallazgo "despachos no tiene disparo inline de correo" (ver
+    // ./notifications.ts::triggerDespachosEmailDispatchInline) — mismo `repo`/
+    // transacción del request, best-effort real.
+    await triggerDespachosEmailDispatchInline(deps, repo);
 
     return c.json(
       {

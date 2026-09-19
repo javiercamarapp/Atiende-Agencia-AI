@@ -10,11 +10,59 @@
 // resumen; esto es un barrido periódico, no una operación que deba tumbar el
 // scheduler) pero NUNCA marca ningún job 'sent' sin que Resend en verdad lo haya
 // aceptado.
+//
+// Cierre del hallazgo "rentas no tiene disparo inline de correo, solo el cron
+// diario de vercel.json::crons -- un correo encolado puede tardar hasta ~24h en
+// salir": mismo principio EXACTO que
+// `../hoteles/email-dispatch.ts::triggerHotelesEmailDispatchInline` (leído
+// primero como plantilla) — `triggerRentasEmailDispatchInline` (exportada
+// abajo) recibe el MISMO `rentasRepo` ya abierto en la transacción/sesión del
+// caller (nunca abre una sesión nueva) y hace un best-effort real: un fallo
+// aquí NUNCA se propaga -- el correo ya quedó en el outbox y el cron diario
+// (red de seguridad de respaldo) lo recoge después. Se llama justo después de
+// encolar un correo real en `./reservas.ts` (tryEnqueueReservaEmail al crear
+// una reserva directa) y en `./checkin-recordatorio.ts` (el barrido periódico
+// de `runRecordatorioCheckInCore`, un cron SEPARADO del de email-dispatch).
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-rentas";
+import type { EmailDispatchSummary as RentasEmailDispatchSummary, RentasRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+
+/** Mismo criterio que INLINE_BATCH_SIZE de hoteles/email-dispatch.ts. */
+const INLINE_BATCH_SIZE = 5;
+
+/** Cuerpo real de la ruta de cron — extraído para que
+ *  `triggerRentasEmailDispatchInline` no duplique la llamada a
+ *  `dispatchPendingEmailJobs`; a diferencia del disparo inline, ESTA función
+ *  abre su propia sesión de sistema (correcto para el cron). */
+export async function runRentasEmailDispatch(deps: AppDeps): Promise<RentasEmailDispatchSummary> {
+  return deps.engine.withAppSession({ userId: null }, async (db) => {
+    const rentasRepo = deps.rentasRepo(db);
+    return dispatchPendingEmailJobs(rentasRepo, deps.env.resend);
+  });
+}
+
+/**
+ * Disparo inline best-effort — mismo principio que
+ * `triggerHotelesEmailDispatchInline` de hoteles/email-dispatch.ts: llamar
+ * justo después de que la vertical haya encolado (o no) un correo real,
+ * pasando el MISMO `rentasRepo` ya abierto en la transacción/sesión de ESE
+ * request (nunca una sesión nueva). Un fallo aquí NUNCA se propaga al caller
+ * HTTP — el correo ya quedó en el outbox y el cron diario (red de seguridad
+ * de respaldo) lo recoge después.
+ */
+export async function triggerRentasEmailDispatchInline(deps: AppDeps, rentasRepo: RentasRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
+  try {
+    const summary = await dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize });
+    if (summary.dead > 0) {
+      console.error(`rentas email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
+    }
+  } catch (err) {
+    console.error("rentas email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+  }
+}
 
 export function rentasEmailDispatchRoutes(deps: AppDeps): Hono {
   const app = new Hono();
@@ -25,17 +73,14 @@ export function rentasEmailDispatchRoutes(deps: AppDeps): Hono {
     // Ruta interna de scheduler, sin authMiddleware/dbSession -- barre TODA la
     // plataforma (channel='email' del outbox no está particionado por
     // organización), misma sesión de sistema que ical-sync-cron.ts.
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
-      const rentasRepo = deps.rentasRepo(db);
-      const summary = await dispatchPendingEmailJobs(rentasRepo, deps.env.resend);
-      return c.json({
-        ok: true,
-        processed: summary.processed,
-        sent: summary.sent,
-        failed: summary.failed,
-        dead: summary.dead,
-        errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
-      });
+    const summary = await runRentasEmailDispatch(deps);
+    return c.json({
+      ok: true,
+      processed: summary.processed,
+      sent: summary.sent,
+      failed: summary.failed,
+      dead: summary.dead,
+      errors: summary.errors.map((e) => ({ job_id: e.jobId, error: e.error })),
     });
   });
 
