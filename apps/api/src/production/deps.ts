@@ -75,6 +75,7 @@ import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-rep
 import { createProductionRentasOnboardingRepo } from "./rentas-onboarding-repository.ts";
 import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
+import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { notProductionReady } from "./not-ready.ts";
 import {
@@ -240,7 +241,17 @@ export function buildProductionDeps(): AppDeps {
     // hallazgo) `apps/api/.../hoteles/cfdi.ts` ahora traduce ese
     // `PortUnavailableError`/`AggregateError` a un 503 `service_unavailable`
     // explícito en vez de dejar que `app.onError` lo aplane a un 500 genérico.
-    hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter()),
+    //
+    // Fix hallazgo auditoría (rubro 6, ALTA) — `DualPacCfdiPort` ya NO usa un `Map`
+    // de proceso para su idempotencia por folio (TOCTOU real: doble timbrado
+    // fiscal si dos requests concurrentes tocan el mismo folio, agravado por Fluid
+    // Compute, que reutiliza esta MISMA instancia -- y por tanto el mismo `Map` --
+    // entre requests concurrentes de tenants distintos). `ProductionCfdiFolioReservationStore`
+    // (`./cfdi-folio-reservation-store.ts`) reserva el folio atómicamente en
+    // Postgres (`mcp_cfdi.folio_stamp_reservation`, ver
+    // `packages/mcp-servers/cfdi/migrations/001_folio_stamp_reservation.sql`)
+    // ANTES de invocar al PAC -- la única forma correcta de cerrar esa carrera.
+    hotelesCfdiPort: new DualPacCfdiPort(new FinkokAdapter(), new SwSapienAdapter(), { reservationStore: new ProductionCfdiFolioReservationStore(engine) }),
     // Adaptador real (ya NO `notProductionReady`) — cierra el gap propio de hoteles
     // que la migración 008 de domain-despachos dejaba explícitamente pendiente (ver
     // `packages/domain-hoteles/migrations/017_fraude_audit_log.sql`): mientras este
