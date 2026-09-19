@@ -347,6 +347,25 @@ export interface HotelesRepository {
   findCfdiEmision(propertyId: string, cfdiId: string): Promise<CfdiEmisionRecord | null>;
   listCfdiEmisiones(propertyId: string, filter?: { readonly folioId?: string }): Promise<readonly CfdiEmisionRecord[]>;
   updateCfdiEmisionCancelacion(cfdiId: string, status: CfdiEmisionRecord["status"]): Promise<void>;
+  /**
+   * Localiza + aplica la transición de estado de un evento de webhook ENTRANTE
+   * del PAC (`apps/api/src/routes/verticals/hoteles/cfdi-webhook.ts`), por
+   * `uuidFiscal` en vez de por `id`+`propertyId` — el PAC no manda sesión de
+   * usuario ni `organizationId`/`propertyId`, así que ninguno de los otros
+   * métodos de esta sección (todos requieren `propertyId`, protegidos por RLS de
+   * `hoteles.can_access_money`) sirven aquí. `null` si el UUID fiscal no
+   * corresponde a ningún CFDI conocido de esta plataforma — el llamador debe
+   * responder 2xx sin reintento (nunca se debe hacer que el PAC reintente por
+   * siempre un UUID que esta plataforma nunca va a reconocer).
+   *
+   * MISMA semántica de transición que `updateCfdiEmisionCancelacion`
+   * (`canceledAt` solo se sella al ENTRAR a 'cancelado', nunca se vuelve a tocar
+   * si ya estaba cancelado) — nunca una lógica paralela — lo que además hace que
+   * reintentar el MISMO evento (mismo `status`) sea idempotente por diseño: un
+   * segundo `applyCfdiWebhookStatus(uuid, 'cancelado')` no mueve `canceledAt` ni
+   * ningún otro campo.
+   */
+  applyCfdiWebhookStatus(uuidFiscal: string, status: CfdiEmisionRecord["status"]): Promise<CfdiEmisionRecord | null>;
 
   // ---- Fase 7 — descubrimiento de organización/property para el panel web de staff ----
 

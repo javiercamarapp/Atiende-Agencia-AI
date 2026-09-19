@@ -1343,6 +1343,24 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     this.cfdiEmisiones.set(cfdiId, { ...record, status, canceledAt: status === "cancelado" ? new Date().toISOString() : record.canceledAt });
   }
 
+  // Espejo en memoria de `hoteles.apply_cfdi_webhook_status` (postgres-repository.ts
+  // vía packages/domain-hoteles/migrations/020_cfdi_webhook_status_security_definer.sql)
+  // — sin RLS que bypassear aquí, pero MISMA semántica de transición que
+  // `updateCfdiEmisionCancelacion`: `canceledAt` solo se sella al ENTRAR a
+  // 'cancelado' (nunca se re-toca si ya estaba cancelado -- por eso reintentar el
+  // MISMO evento del webhook es un no-op idempotente).
+  async applyCfdiWebhookStatus(uuidFiscal: string, status: CfdiEmisionRecord["status"]): Promise<CfdiEmisionRecord | null> {
+    const record = [...this.cfdiEmisiones.values()].find((c) => c.uuidFiscal === uuidFiscal);
+    if (!record) return null;
+    const updated: CfdiEmisionRecord = {
+      ...record,
+      status,
+      canceledAt: status === "cancelado" && record.status !== "cancelado" ? new Date().toISOString() : record.canceledAt,
+    };
+    this.cfdiEmisiones.set(record.id, updated);
+    return updated;
+  }
+
   // ---- HotelesRepository: Fase 7 — descubrimiento de organización/property ----
 
   async findOrganizationBySlug(slug: string): Promise<HotelOrganizationSummary | null> {
