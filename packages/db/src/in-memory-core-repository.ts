@@ -18,6 +18,7 @@ import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
+  BillingWebhookEventSummaryRow,
   CoreRepository,
   CoreStaffRepository,
   CreateProspectoInput,
@@ -31,6 +32,7 @@ import type {
   RevokeRefreshTokenInput,
   StaffInviteRow,
   StaffUserRow,
+  SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
   UpsertOrganizationBillingInput,
 } from "./core-repository.ts";
@@ -119,8 +121,13 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     string,
     Omit<OrganizationBillingRow, "organizationId" | "vertical" | "ownerEmail">
   >();
-  // Ledger anti-duplicado — mismo dato que `core.billing_webhook_event`.
-  private readonly seenBillingWebhookEventIds = new Set<string>();
+  // Ledger anti-duplicado — mismo dato que `core.billing_webhook_event`
+  // (event_id + processed_at). `Map` en vez de `Set` (a diferencia de la
+  // versión original de este archivo) porque `listRecentBillingWebhookEventsForSuperadmin`/
+  // `countBillingWebhookEventsForSuperadmin` necesitan de verdad el timestamp
+  // real de cada evento, no solo si ya se vio -- mismo dato, misma fuente de
+  // verdad, sin un mapa aparte.
+  private readonly seenBillingWebhookEventIds = new Map<string, string>();
   // Ledger anti-reordenamiento — mismo dato que `core.billing_entity_order`.
   private readonly billingEntityOrder = new Map<string, number>();
 
@@ -639,7 +646,7 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
 
   async markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark> {
     if (this.seenBillingWebhookEventIds.has(eventId)) return "duplicado";
-    this.seenBillingWebhookEventIds.add(eventId);
+    this.seenBillingWebhookEventIds.set(eventId, new Date().toISOString());
     return "nuevo";
   }
 
@@ -649,5 +656,54 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
 
   async sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     this.billingEntityOrder.set(entityId, createdUnix);
+  }
+
+  // ---- /superadmin/facturacion — ver el contrato completo en
+  // `core-repository.ts`. En memoria no hay ninguna sesión/RLS que emular
+  // (mismo criterio que el resto de este archivo): solo espeja el chequeo
+  // `is_platform_superadmin` que las funciones SQL reales aplican DENTRO. ----
+
+  async listOrganizationBillingForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationBillingRow[]> {
+    if (!this.platformSuperadmins.has(callerId)) return [];
+    const staffCounts = new Map<string, number>();
+    for (const m of this.memberships) {
+      staffCounts.set(m.organizationId, (staffCounts.get(m.organizationId) ?? 0) + 1);
+    }
+    return [...this.organizations.values()]
+      .map((org) => {
+        const billing = this.organizationBilling.get(org.id);
+        const lastAppliedEventUnix = billing?.stripeCustomerId ? (this.billingEntityOrder.get(billing.stripeCustomerId) ?? null) : null;
+        return {
+          organizationId: org.id,
+          vertical: org.vertical,
+          name: org.name,
+          slug: org.slug,
+          orgStatus: org.status ?? "active",
+          createdAt: org.createdAt ?? new Date(0).toISOString(),
+          billingStatus: billing?.status ?? "sin_suscripcion",
+          seats: billing?.seats ?? 0,
+          staffCount: staffCounts.get(org.id) ?? 0,
+          priceId: billing?.priceId ?? null,
+          stripeCustomerId: billing?.stripeCustomerId ?? null,
+          stripeSubscriptionId: billing?.stripeSubscriptionId ?? null,
+          currentPeriodEnd: billing?.currentPeriodEnd ?? null,
+          lastAppliedEventUnix,
+        };
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async listRecentBillingWebhookEventsForSuperadmin(callerId: string, limit: number): Promise<readonly BillingWebhookEventSummaryRow[]> {
+    if (!this.platformSuperadmins.has(callerId)) return [];
+    const bounded = Math.max(1, Math.min(Math.trunc(limit) || 20, 200));
+    return [...this.seenBillingWebhookEventIds.entries()]
+      .map(([eventId, processedAt]) => ({ eventId, processedAt }))
+      .sort((a, b) => b.processedAt.localeCompare(a.processedAt))
+      .slice(0, bounded);
+  }
+
+  async countBillingWebhookEventsForSuperadmin(callerId: string): Promise<number> {
+    if (!this.platformSuperadmins.has(callerId)) return 0;
+    return this.seenBillingWebhookEventIds.size;
   }
 }

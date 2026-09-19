@@ -459,6 +459,73 @@ export interface CoreRepository {
   getBillingEntityOrder(entityId: string): Promise<number | null>;
   /** Adaptador `LedgerStore.sellarOrden`. */
   sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void>;
+
+  // ---- Pantalla /superadmin/facturacion — lectura agregada de la suscripción
+  // SaaS propia de Atiende por organización (asientos contratados/staff real,
+  // estado, antigüedad) + diagnóstico de webhook. MISMO criterio de
+  // autorización que `listAllOrganizationsForSuperadmin`/`listProspectosForSuperadmin`
+  // (chequeo real DENTRO de la función SQL, `callerId` nunca decide nada del
+  // lado TS; un caller no-superadmin obtiene arreglos vacíos/0, nunca un error
+  // que confirme/niegue si hay datos). Ver
+  // `packages/db/migrations/0013_superadmin_facturacion.sql` para el porqué de
+  // cada campo, en particular el límite honesto documentado ahí sobre
+  // `core.billing_webhook_event` (sin `organization_id`/tipo/resultado — un
+  // feed de PLATAFORMA, nunca "por organización", y solo eventos ya aplicados
+  // con éxito, nunca los rechazados). ----
+
+  /** Una fila por organización de las 6 verticales (join de
+   *  `core.organization`+`core.organization_billing`+conteo real de
+   *  `core.membership`) — el cálculo de MRR/reconciliación per-seat vive en
+   *  TS (`apps/api/src/routes/superadmin-facturacion.ts`, usando
+   *  `@atiende/billing::calcularPerSeat` + las constantes `SEAT_*` conocidas
+   *  por vertical), nunca aquí: esta función solo resuelve datos reales
+   *  persistidos, ningún precio. */
+  listOrganizationBillingForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationBillingRow[]>;
+  /** Últimos `limit` eventos de webhook de Stripe ya aplicados con éxito
+   *  (`core.billing_webhook_event`, ver el límite honesto documentado en la
+   *  migración) — feed de PLATAFORMA, más recientes primero. */
+  listRecentBillingWebhookEventsForSuperadmin(callerId: string, limit: number): Promise<readonly BillingWebhookEventSummaryRow[]>;
+  /** Conteo total (no acotado por `limit`) de eventos de webhook ya
+   *  aplicados con éxito — para el stat card de la pantalla. */
+  countBillingWebhookEventsForSuperadmin(callerId: string): Promise<number>;
+}
+
+/** Fila de `core.list_organization_billing_for_superadmin` — join de
+ *  organización + billing (si existe) + conteo real de staff (`core.membership`).
+ *  `stripeCustomerId`/`stripeSubscriptionId`/`priceId`/`currentPeriodEnd` `null`
+ *  y `billingStatus === "sin_suscripcion"` = la organización nunca inició un
+ *  checkout todavía (mismo `left join` que `core.get_organization_billing_info`).
+ *  `lastAppliedEventUnix` viene de `core.billing_entity_order` (cruzado por
+ *  `stripe_customer_id`) — `null` si la organización no tiene customer de
+ *  Stripe todavía, o si nunca se aplicó ningún evento real. */
+export interface SuperadminOrganizationBillingRow {
+  readonly organizationId: string;
+  readonly vertical: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly orgStatus: "trial" | "active" | "suspended";
+  /** ISO 8601 — antigüedad de la organización (`core.organization.created_at`). */
+  readonly createdAt: string;
+  readonly billingStatus: OrganizationBillingRow["status"];
+  /** Asientos CONTRATADOS (última `quantity` real que Stripe reportó,
+   *  `core.organization_billing.seats`) — `0` si la organización nunca inició
+   *  un checkout. */
+  readonly seats: number;
+  /** Staff real (`count(*)` de `core.membership` de esta organización) —
+   *  misma fuente que `countStaffByOrganizationForSuperadmin`. */
+  readonly staffCount: number;
+  readonly priceId: string | null;
+  readonly stripeCustomerId: string | null;
+  readonly stripeSubscriptionId: string | null;
+  readonly currentPeriodEnd: string | null;
+  readonly lastAppliedEventUnix: number | null;
+}
+
+/** Fila de `core.list_recent_billing_webhook_events_for_superadmin`. */
+export interface BillingWebhookEventSummaryRow {
+  readonly eventId: string;
+  /** ISO 8601. */
+  readonly processedAt: string;
 }
 
 /** Fila real de `core.prospecto` — ver el comentario de cabecera de la migración

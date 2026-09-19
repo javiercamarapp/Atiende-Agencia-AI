@@ -17,6 +17,7 @@ import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
+  BillingWebhookEventSummaryRow,
   CoreRepository,
   CoreStaffRepository,
   CreateProspectoInput,
@@ -31,6 +32,7 @@ import type {
   StaffInviteRow,
   StaffInviteStatus,
   StaffUserRow,
+  SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
   UpsertOrganizationBillingInput,
 } from "./core-repository.ts";
@@ -232,6 +234,44 @@ function mapOrganizationBilling(row: OrganizationBillingRawRow): OrganizationBil
     seats: row.seats,
     status: row.status,
     currentPeriodEnd: row.current_period_end,
+  };
+}
+
+// `core.list_organization_billing_for_superadmin` — ver
+// `packages/db/migrations/0013_superadmin_facturacion.sql`.
+interface OrganizationBillingSuperadminRawRow {
+  readonly organization_id: string;
+  readonly vertical: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly org_status: SuperadminOrganizationRow["status"];
+  readonly created_at: string;
+  readonly billing_status: OrganizationBillingRow["status"];
+  readonly seats: number;
+  readonly staff_count: string;
+  readonly price_id: string | null;
+  readonly stripe_customer_id: string | null;
+  readonly stripe_subscription_id: string | null;
+  readonly current_period_end: string | null;
+  readonly last_applied_event_unix: string | null;
+}
+
+function mapOrganizationBillingSuperadmin(row: OrganizationBillingSuperadminRawRow): SuperadminOrganizationBillingRow {
+  return {
+    organizationId: row.organization_id,
+    vertical: row.vertical,
+    name: row.name,
+    slug: row.slug,
+    orgStatus: row.org_status,
+    createdAt: row.created_at,
+    billingStatus: row.billing_status,
+    seats: row.seats,
+    staffCount: Number(row.staff_count),
+    priceId: row.price_id,
+    stripeCustomerId: row.stripe_customer_id,
+    stripeSubscriptionId: row.stripe_subscription_id,
+    currentPeriodEnd: row.current_period_end,
+    lastAppliedEventUnix: row.last_applied_event_unix === null || row.last_applied_event_unix === undefined ? null : Number(row.last_applied_event_unix),
   };
 }
 
@@ -685,5 +725,35 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   async sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     await this.db.query(`select core.seal_billing_entity_order($1, $2);`, [entityId, createdUnix]);
+  }
+
+  // ---- /superadmin/facturacion — ver el contrato completo (y el límite honesto
+  // sobre `core.billing_webhook_event`) en `core-repository.ts` y
+  // `packages/db/migrations/0013_superadmin_facturacion.sql`. ----
+
+  async listOrganizationBillingForSuperadmin(callerId: string): Promise<readonly SuperadminOrganizationBillingRow[]> {
+    const { rows } = await this.db.query<OrganizationBillingSuperadminRawRow>(
+      `select organization_id, vertical, name, slug, org_status, created_at, billing_status, seats, staff_count,
+              price_id, stripe_customer_id, stripe_subscription_id, current_period_end, last_applied_event_unix
+       from core.list_organization_billing_for_superadmin($1);`,
+      [callerId],
+    );
+    return rows.map(mapOrganizationBillingSuperadmin);
+  }
+
+  async listRecentBillingWebhookEventsForSuperadmin(callerId: string, limit: number): Promise<readonly BillingWebhookEventSummaryRow[]> {
+    const { rows } = await this.db.query<{ event_id: string; processed_at: string }>(
+      `select event_id, processed_at from core.list_recent_billing_webhook_events_for_superadmin($1, $2);`,
+      [callerId, Math.trunc(limit)],
+    );
+    return rows.map((r) => ({ eventId: r.event_id, processedAt: r.processed_at }));
+  }
+
+  async countBillingWebhookEventsForSuperadmin(callerId: string): Promise<number> {
+    const { rows } = await this.db.query<{ count_billing_webhook_events_for_superadmin: string }>(
+      `select core.count_billing_webhook_events_for_superadmin($1) as count_billing_webhook_events_for_superadmin;`,
+      [callerId],
+    );
+    return Number(rows[0]?.count_billing_webhook_events_for_superadmin ?? 0);
   }
 }
