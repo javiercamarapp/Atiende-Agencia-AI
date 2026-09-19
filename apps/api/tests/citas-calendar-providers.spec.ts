@@ -96,6 +96,67 @@ describe("Fase 6 §2 — conectar/desconectar CalDAV por proveedor", () => {
     expect(res.status).toBe(400);
   });
 
+  // Hallazgo de auditoría (ALTO, SSRF real y explotable) — antes de este cambio,
+  // el único chequeo era `/^https:\/\//`, así que CUALQUIERA de las URLs de abajo
+  // (todas empiezan con "https://") se guardaba sin problema, y quedaba lista
+  // para que `RealCalDavPort` emitiera peticiones HTTP reales contra
+  // infraestructura interna (incluida la metadata de nube). Ver
+  // packages/domain-citas/tests/net-validar-url-caldav.spec.ts para la prueba
+  // unitaria pura de cada rango bloqueado; aquí se confirma que la ruta HTTP
+  // real (no solo la función interna) rechaza con 400, y que la URL NUNCA queda
+  // guardada.
+  it("(b) una IP literal privada/loopback/link-local/metadata en calendar_collection_url se rechaza con 400 y no se guarda", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    for (const url of ["https://127.0.0.1/dav/", "https://169.254.169.254/latest/meta-data/", "https://10.0.0.5/dav/", "https://172.16.0.5/dav/", "https://192.168.1.5/dav/", "https://[::1]/dav/"]) {
+      const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/connect`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${ctx.staff.owner.token}` },
+        body: JSON.stringify({ calendar_collection_url: url, username: "x@y.com", password: "app-password-real" }),
+      });
+      expect(res.status, `esperaba 400 para ${url}`).toBe(400);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe("validation_error");
+    }
+
+    const account = await ctx.citasRepo.findProviderCalDavAccount(ctx.providerId);
+    expect(account).toBeNull();
+  });
+
+  it("(c) DNS rebinding: un hostname sin pinta de privado que resuelve (vía DNS) a una IP privada se rechaza con 400", async () => {
+    // El resolver DNS falso de este test simula el escenario real de ataque: un
+    // hostname público en apariencia ("calendario.ejemplo-atacante.com") que en
+    // el momento de conectar resuelve a una IP interna. La validación por STRING
+    // original (`/^https:\/\//`) nunca habría detectado esto -- solo resolver DNS
+    // de verdad lo revela.
+    const ctx = await buildCitasTestContext(buildApp, { caldavDnsResolver: (hostname) => (hostname === "calendario.ejemplo-atacante.com" ? ["10.0.0.5"] : ["203.0.113.10"]) });
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/connect`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${ctx.staff.owner.token}` },
+      body: JSON.stringify({ calendar_collection_url: "https://calendario.ejemplo-atacante.com/dav/x/", username: "x@y.com", password: "app-password-real" }),
+    });
+    expect(res.status).toBe(400);
+    const account = await ctx.citasRepo.findProviderCalDavAccount(ctx.providerId);
+    expect(account).toBeNull();
+  });
+
+  it("(a) con el mismo resolver DNS falso, un hostname que resuelve a IP pública se conecta con normalidad", async () => {
+    const ctx = await buildCitasTestContext(buildApp, { caldavDnsResolver: (hostname) => (hostname === "calendario.ejemplo-atacante.com" ? ["10.0.0.5"] : ["203.0.113.10"]) });
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/providers/${ctx.providerId}/caldav/connect`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${ctx.staff.owner.token}` },
+      body: JSON.stringify({ calendar_collection_url: "https://caldav.fastmail.com/dav/calendars/user/x@y.com/abc/", username: "x@y.com", password: "app-password-real" }),
+    });
+    expect(res.status).toBe(200);
+    const account = await ctx.citasRepo.findProviderCalDavAccount(ctx.providerId);
+    expect(account?.syncStatus).toBe("connected");
+  });
+
   it("desconectar marca sync_status='disconnected'", async () => {
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);

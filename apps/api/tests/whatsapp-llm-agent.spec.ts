@@ -178,6 +178,9 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     citasGoogleTokenExchange: async () => {
       throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de restaurantes).");
     },
+    citasCaldavUrlValidator: async () => {
+      throw new Error("citasCaldavUrlValidator no está configurado en este fixture (agente de WhatsApp de restaurantes).");
+    },
     licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
     despachosRepo: (_db) => new InMemoryDespachosRepository(),
     despachosAuditSink: new InMemoryAuditSink(),
@@ -360,6 +363,9 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
       citasGoogleCalendarPortResolver: createGoogleCalendarPortResolver(new InMemoryCitasRepository(), null),
       citasGoogleTokenExchange: async () => {
         throw new Error("citasGoogleTokenExchange no está configurado en este fixture (agente de WhatsApp de restaurantes).");
+      },
+      citasCaldavUrlValidator: async () => {
+        throw new Error("citasCaldavUrlValidator no está configurado en este fixture (agente de WhatsApp de restaurantes).");
       },
       licitacionesRepo: (_db) => new InMemoryLicitacionesRepository(),
       despachosRepo: (_db) => new InMemoryDespachosRepository(),

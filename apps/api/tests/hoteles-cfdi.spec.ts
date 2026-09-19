@@ -457,3 +457,32 @@ describe("hallazgo auditoría -- 'en_proceso_cancelacion' ya no es un callejón 
     expect(body.code).toBe("service_unavailable");
   });
 });
+
+// Hallazgo de auditoría (ALTO, "packages/core-ratelimit cataloga la categoría
+// 'mcp:cfdi' pero ningún handler real la invocaba" -- ver
+// packages/core-ratelimit/src/endpoint-policy.ts y el comentario de cabecera de
+// apps/api/src/routes/verticals/hoteles/cfdi.ts). El backend en memoria de
+// @atiende/core-ratelimit se resetea antes de cada test (ver
+// test-setup/reset-rate-limiter.ts) para que este límite no interfiera con el resto
+// de la suite de este archivo.
+describe("rate limiting real en mcp:cfdi (POST .../folios/:folioId/cfdi)", () => {
+  it("más de 20 intentos en la misma ventana desde la misma IP+property responde 429 -- antes de este fix nunca limitaba nada", async () => {
+    const app = buildApp(ctx.deps);
+
+    let lastStatus = 0;
+    for (let i = 0; i < 21; i += 1) {
+      // Body deliberadamente incompleto (sin rfcReceptor/usoCfdi): lo único que
+      // importa aquí es que el conteo del rate limiter ocurre ANTES de validar el
+      // body -- los primeros 20 intentos deben fallar por validación (400), nunca
+      // por límite; el intento 21 debe fallar por límite (429), nunca llegar a
+      // validar el body.
+      const res = await app.request(
+        `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cfdi`,
+        authedJson(ctx.staff.owner.token, {}, { "idempotency-key": `cfdi-ratelimit-${i}` }),
+      );
+      lastStatus = res.status;
+      if (i < 20) expect(res.status).toBe(400);
+    }
+    expect(lastStatus).toBe(429);
+  });
+});

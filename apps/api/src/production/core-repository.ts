@@ -105,6 +105,14 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).consumeMagicLinkToken(tokenHash));
   }
 
+  createAuthExchangeCode(input: { readonly staffId: string; readonly codeHash: string; readonly expiresAt: string }): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).createAuthExchangeCode(input));
+  }
+
+  consumeAuthExchangeCode(codeHash: string): Promise<StaffUserRow | null> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).consumeAuthExchangeCode(codeHash));
+  }
+
   isPlatformSuperadmin(staffId: string): Promise<boolean> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).isPlatformSuperadmin(staffId));
   }

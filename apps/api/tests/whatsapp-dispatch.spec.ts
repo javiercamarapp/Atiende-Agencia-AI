@@ -81,6 +81,9 @@ function buildDispatchTestContext(opts: { readonly withDispatcher: boolean; read
     citasGoogleTokenExchange: async () => {
       throw new Error("no debería llamarse en este fixture");
     },
+    citasCaldavUrlValidator: async () => {
+      throw new Error("no debería llamarse en este fixture");
+    },
     licitacionesRepo: (_db) => licitacionesRepoUnused,
     despachosRepo: (_db) => despachosRepoUnused,
     despachosAuditSink: new InMemoryAuditSink(),

@@ -97,3 +97,41 @@ describe("POST /v1/restaurantes/whatsapp/webhook — verificación HMAC sobre by
     expect(conversation).toHaveLength(3);
   });
 });
+
+// Hallazgo de auditoría (ALTO, "packages/core-ratelimit cataloga la categoría
+// 'conversation:inbound-webhook' pero ningún webhook real la invocaba" -- ver
+// packages/core-ratelimit/src/endpoint-policy.ts y el comentario de cabecera de
+// apps/api/src/routes/verticals/restaurantes/whatsapp.ts). El backend en memoria de
+// @atiende/core-ratelimit se resetea antes de cada test (ver
+// test-setup/reset-rate-limiter.ts) para que este límite no interfiera con el resto
+// de la suite.
+describe("rate limiting real en conversation:inbound-webhook (POST /v1/restaurantes/whatsapp/webhook)", () => {
+  it("más de 120 llamadas en la misma ventana desde el mismo phone_number_id+IP responde 429 -- antes de este fix nunca limitaba nada", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+    const payload = metaPayload();
+
+    let lastStatus = 0;
+    for (let i = 0; i < 121; i += 1) {
+      const res = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(payload));
+      lastStatus = res.status;
+      if (i < 120) expect(res.status).toBe(200);
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it("un número de WhatsApp DISTINTO tiene su propio cupo -- no se agota por la ráfaga de otro phone_number_id", async () => {
+    const { deps } = await buildTestDeps();
+    const app = buildApp(deps);
+
+    for (let i = 0; i < 120; i += 1) {
+      await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(metaPayload({ phoneNumberId: "numero-agotado" })));
+    }
+    expect((await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(metaPayload({ phoneNumberId: "numero-agotado" })))).status).toBe(429);
+
+    // phone_number_id distinto (aunque no configurado en la plataforma -- 200 ack
+    // silencioso): su propio cupo sigue intacto.
+    const otroNumero = await app.request("/v1/restaurantes/whatsapp/webhook", signedPostInit(metaPayload({ phoneNumberId: "numero-no-configurado" })));
+    expect(otroNumero.status).toBe(200);
+  });
+});

@@ -129,6 +129,8 @@ orden interno de cada una tal como está numerado en su propia carpeta.
 
 112. `supabase/migrations/20240101000112_0010_platform_superadmin.sql` — back office de plataforma, cruzado a las 6 verticales (`apps/api/src/routes/superadmin.ts`, `apps/web/src/superadmin/**`). Rol nuevo (`core.platform_superadmin`, tabla aparte de `core.membership.platform_role` — ese es DENTRO de una organización, esto es "ve TODAS de TODAS las verticales"). Alta inicial: `core.staff_user` real para `javiercamaraportepetit@gmail.com` (entra por Google/magic link, sin password) vinculado a la tabla de superadmins. Tres funciones `security definer` (`core.is_platform_superadmin`, `core.list_all_organizations_for_superadmin`, `core.count_staff_by_organization_for_superadmin`) — el chequeo de autorización vive DENTRO de cada función (un caller que no es superadmin obtiene 0 filas/`false`, nunca un error que confirme/niegue datos), mismo patrón sin `service_role` que las migraciones 110/111. `GET /auth/me` ahora incluye `isPlatformSuperadmin`; el puente compartido de login (`shell/GoogleCallback.tsx`) redirige a `/superadmin` en vez del landing normal de una vertical cuando es `true`. Alcance de este pase: solo lectura (listar organizaciones + conteo de staff) — ninguna acción de escritura todavía. Probado 3/3 en memoria (superadmin real ve todo, staff normal 403, sin token 401) **y verificado contra Postgres de producción real** (superadmin ve una organización de prueba insertada en vivo, un caller aleatorio ve 0 — limpiado después).
 
+120. `supabase/migrations/20240101000120_001_folio_stamp_reservation.sql` — fix hallazgo auditoría (rubro 6, ALTA): `packages/mcp-servers/cfdi/migrations/001_folio_stamp_reservation.sql`, primera migración del paquete `@atiende/mcp-cfdi` (schema propio `mcp_cfdi`, sin RLS a propósito — ver cabecera de la migración). Reemplaza el `Map` de proceso (`InMemoryIdempotencyStore`) que `DualPacCfdiPort.timbrar` usaba como idempotencia por folio — un TOCTOU real (doble timbrado fiscal ante el SAT si dos requests concurrentes tocan el mismo folio) agravado por Fluid Compute (una instancia reutilizada entre requests de tenants distintos comparte el mismo `Map`) — por una reserva atómica real (`mcp_cfdi.folio_stamp_reservation`, `INSERT ... ON CONFLICT`, ver `apps/api/src/production/cfdi-folio-reservation-store.ts`). (Nota: esta lista de "Orden actual" ya estaba desactualizada respecto al conteo real de archivos en esta carpeta antes de esta entrada — 119 migraciones existían con esta lista documentando solo hasta la 112 — no se reconcilia el historial completo aquí, solo se usa el siguiente timestamp libre real, `20240101000120`, verificado con `ls` justo antes de elegirlo.)
+
 ## Si agregas una migración nueva a un paquete
 
 1. Crea la migración normalmente dentro de `packages/<paquete>/migrations/`.
@@ -145,3 +147,16 @@ orden interno de cada una tal como está numerado en su propia carpeta.
    nunca dejes una colisión sin resolver.
 3. No edites el contenido SQL al copiarlo: debe ser una copia exacta del original.
 4. Actualiza este README si cambia el conteo total o el orden de una vertical.
+
+`supabase/migrations/20240101000120_0008_auth_exchange_code.sql` — hallazgo de
+auditoría (P2, "tokens de sesión completos en query params de URL, riesgo de
+filtración vía Referer/historial/logs"): `GET /auth/google/callback` y
+`GET /auth/magic-link/verify` ponían el JWT de acceso y el refresh token REALES en
+la URL del redirect 302 hacia el frontend. Agrega `core.auth_exchange_code`
+(mismo mecanismo de un solo uso que `core.magic_link_token`, ver la cabecera del
+propio archivo SQL para el detalle) — ambos callbacks ahora redirigen con un
+código opaco de 60s de vida, y `POST /auth/exchange-code` (nuevo, en
+`apps/api/src/routes/auth.ts`) lo canjea por `{token, refreshToken}` en el BODY de
+una respuesta JSON, nunca en otra URL. `GoogleCallback.tsx` (compartido por las 6
+verticales, también usado por magic-link) actualizado para llamar a ese endpoint
+al montar antes de persistir sesión.
