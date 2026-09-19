@@ -10,7 +10,22 @@
 // (nunca reutiliza una conexión entre requests, correcto para el `pg.Pool` de
 // `ManagedPostgresEngine`) y delega en un `PostgresCoreRepository` construido sobre esa
 // sesión efímera.
-import type { AcceptStaffInviteInput, AcceptStaffInviteResult, CoreRepository, CreateProspectoInput, MembershipRow, NotificationRow, ProspectoRow, RevokeRefreshTokenInput, StaffInviteRow, StaffUserRow, SuperadminOrganizationRow } from "@atiende/db";
+import type {
+  AcceptStaffInviteInput,
+  AcceptStaffInviteResult,
+  BillingWebhookEventMark,
+  CoreRepository,
+  CreateProspectoInput,
+  MembershipRow,
+  NotificationRow,
+  OrganizationBillingRow,
+  ProspectoRow,
+  RevokeRefreshTokenInput,
+  StaffInviteRow,
+  StaffUserRow,
+  SuperadminOrganizationRow,
+  UpsertOrganizationBillingInput,
+} from "@atiende/db";
 import { PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
 
@@ -150,5 +165,35 @@ export class ProductionCoreRepository implements CoreRepository {
   // `p_caller_id` explícito (ver migración 0014).
   ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).ensureDemoAccessForSuperadmin(callerId, vertical));
+  }
+
+  // Suscripción SaaS propia de Atiende — sesión de sistema igual que el resto de
+  // este archivo: `POST /billing/checkout` valida autoridad con `callerId`
+  // explícito DENTRO de la función SQL (mismo criterio que `isPlatformSuperadmin`
+  // de arriba); `POST /billing/webhook` no tiene ningún `callerId` de staff que
+  // pasar (su autoridad real es la firma HMAC de Stripe, ya verificada por el
+  // caller HTTP antes de llegar aquí).
+  getOrganizationBillingForCheckout(callerId: string, organizationId: string): Promise<OrganizationBillingRow> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).getOrganizationBillingForCheckout(callerId, organizationId));
+  }
+
+  getOrganizationBillingForWebhook(organizationId: string): Promise<OrganizationBillingRow | null> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).getOrganizationBillingForWebhook(organizationId));
+  }
+
+  upsertOrganizationBilling(input: UpsertOrganizationBillingInput): Promise<OrganizationBillingRow> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).upsertOrganizationBilling(input));
+  }
+
+  markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).markBillingWebhookEventSeen(eventId));
+  }
+
+  getBillingEntityOrder(entityId: string): Promise<number | null> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).getBillingEntityOrder(entityId));
+  }
+
+  sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).sealBillingEntityOrder(entityId, createdUnix));
   }
 }

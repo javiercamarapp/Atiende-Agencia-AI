@@ -71,7 +71,14 @@ export interface ApiEnv {
    * configurada todavía -- fail-closed explícito, mismo criterio que
    * `resend`/`googleOAuth` de arriba: sin ella, `hotelesPaymentsPort` sigue
    * siendo `notProductionReady` (503 honesto), nunca finge un cobro exitoso. */
-  readonly stripe: { readonly secretKey: string | null };
+  /** `webhookSecret` (`whsec_...`) es un secreto DISTINTO de `secretKey` --
+   * Stripe lo emite por separado, uno por endpoint de webhook configurado en el
+   * dashboard (Developers -> Webhooks), y NO se rota junto con `secretKey`.
+   * Usado por `POST /billing/webhook` (`apps/api/src/routes/billing.ts`) vía
+   * `@atiende/billing::verificarFirmaWebhookStripe` -- `null` = webhook sin
+   * configurar en este entorno, la ruta responde 503 honesto (mismo criterio
+   * que `secretKey` de arriba), NUNCA procesa un evento sin firma verificada. */
+  readonly stripe: { readonly secretKey: string | null; readonly webhookSecret: string | null };
   /** Hallazgo de auditoría (invitación de staff sin canal de envío real) —
    * origen público real de la app (`apps/web`) para armar el enlace de
    * activación que va DENTRO del correo de invitación (`/aceptar-invitacion?
@@ -143,7 +150,7 @@ export function loadApiEnv(): ApiEnv {
       issuer: process.env.GOOGLE_STAFF_ISSUER ?? "https://accounts.google.com",
     },
     resend: { apiKey: process.env.RESEND_API_KEY ?? null, from: process.env.RESEND_FROM_EMAIL ?? "atiende <notificaciones@atiende.ai>" },
-    stripe: { secretKey: process.env.STRIPE_SECRET_KEY ?? null },
+    stripe: { secretKey: process.env.STRIPE_SECRET_KEY ?? null, webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? null },
     appBaseUrl: (process.env.APP_BASE_URL ?? "https://app.atiende.ai").replace(/\/+$/, ""),
     rentasOwnerJwtSecret: requireEnv("RENTAS_OWNER_JWT_SECRET"),
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),

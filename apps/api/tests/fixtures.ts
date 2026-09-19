@@ -41,7 +41,7 @@ export const TEST_ENV: ApiEnv = {
   // domain-citas/src/email-dispatch.ts); las pruebas que sí necesitan un envío
   // exitoso construyen su propio AppDeps con `resend.apiKey` fijo.
   resend: { apiKey: null, from: "atiende <notificaciones@atiende.ai>" },
-  stripe: { secretKey: null },
+  stripe: { secretKey: null, webhookSecret: null },
   appBaseUrl: "https://app.test.invalid",
   rentasOwnerJwtSecret: "test-rentas-owner-jwt-secret",
   rentasOwnerAccessTokenTtlSeconds: 900,
