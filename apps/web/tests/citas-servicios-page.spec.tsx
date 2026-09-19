@@ -32,12 +32,23 @@ const CTX: CitasShellContext = {
   token: "tok-123",
   propertyId: "prop-1",
   orgSlug: "demo",
+  orgId: "org-1",
   role: "owner",
   staffFullName: "Sam Demo",
   staffEmail: "sam@example.com",
 };
 
-const SERVICIO_ROW_CORTE = {
+interface ServiceApiRowFixture {
+  readonly id: string;
+  readonly name: string;
+  readonly duration_minutes: number;
+  readonly buffer_minutes_before: number;
+  readonly buffer_minutes_after: number;
+  readonly price_cents: number | null;
+  readonly is_active: boolean;
+}
+
+const SERVICIO_ROW_CORTE: ServiceApiRowFixture = {
   id: "svc-1",
   name: "Corte de cabello",
   duration_minutes: 30,
@@ -47,7 +58,7 @@ const SERVICIO_ROW_CORTE = {
   is_active: true,
 };
 
-const SERVICIO_ROW_SIN_PRECIO = {
+const SERVICIO_ROW_SIN_PRECIO: ServiceApiRowFixture = {
   id: "svc-2",
   name: "Consulta inicial",
   duration_minutes: 15,
@@ -66,7 +77,7 @@ async function esperarCarga(): Promise<void> {
 
 describe("ServiciosListPage (citas)", () => {
   interface Handlers {
-    services?: readonly (typeof SERVICIO_ROW_CORTE)[] | (() => readonly (typeof SERVICIO_ROW_CORTE)[]);
+    services?: readonly ServiceApiRowFixture[] | (() => readonly ServiceApiRowFixture[]);
     servicesOk?: boolean;
   }
 
@@ -185,7 +196,7 @@ describe("ServiciosListPage (citas)", () => {
 
 describe("ServicioFichaPage (citas)", () => {
   interface Handlers {
-    service?: typeof SERVICIO_ROW_CORTE | (() => typeof SERVICIO_ROW_CORTE);
+    service?: ServiceApiRowFixture | (() => ServiceApiRowFixture);
     serviceOk?: boolean;
   }
 

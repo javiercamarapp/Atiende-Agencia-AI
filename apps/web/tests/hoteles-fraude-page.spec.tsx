@@ -25,7 +25,6 @@ import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
-let promptMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   toastMock.success.mockClear();
@@ -114,7 +113,7 @@ describe("FraudePage (hoteles)", () => {
     rendered = renderPage();
     expect(rendered.container.textContent).toContain("Cargando alertas");
     await esperarCarga();
-    expect(fetchMock.mock.calls[0][0]).toBe("https://api.test/hoteles/prop-1/fraude/alertas?estado=pendiente");
+    expect(fetchMock.mock.calls[0]![0]).toBe("https://api.test/hoteles/prop-1/fraude/alertas?estado=pendiente");
   });
 
   it("estado vacío honesto cuando no hay alertas en el filtro", async () => {
@@ -202,7 +201,7 @@ describe("FraudePage (hoteles)", () => {
 
   it("cancelar el prompt de decisión (window.prompt -> null) NUNCA llama a la API — hallazgo de auditoría ya corregido", async () => {
     stubFetch({});
-    promptMock = vi.spyOn(window, "prompt").mockReturnValue(null);
+    const promptMock = vi.spyOn(window, "prompt").mockReturnValue(null);
     rendered = renderPage();
     await esperarCarga();
 

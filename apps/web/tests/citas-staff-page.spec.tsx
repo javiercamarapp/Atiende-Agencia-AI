@@ -28,7 +28,7 @@ function jsonResponse(body: unknown, ok = true): Response {
 }
 
 function ctx(role: string): CitasShellContext {
-  return { apiBaseUrl: "https://api.test", token: "tok-123", propertyId: "prop-1", orgSlug: "demo", role, staffFullName: "Sam Demo", staffEmail: "sam@example.com" } as CitasShellContext;
+  return { apiBaseUrl: "https://api.test", token: "tok-123", propertyId: "prop-1", orgSlug: "demo", orgId: "org-1", role, staffFullName: "Sam Demo", staffEmail: "sam@example.com" } as CitasShellContext;
 }
 
 const INVITE_PENDIENTE: StaffInvite = { id: "inv-1", email: "nuevo@example.com", verticalRole: "staff", propertyIds: null, status: "pending", expiresAt: "2026-09-25T00:00:00.000Z", createdAt: "2026-09-18T00:00:00.000Z" };
