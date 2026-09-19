@@ -12,9 +12,34 @@
 // `restaurantes.claim_email_outbox_batch`, que solo reclama `attempts < 5`) o
 // 'dead' tras agotar intentos — un correo JAMÁS se marca 'sent' sin que Resend
 // en verdad lo haya aceptado.
+//
+// Seguimiento del PR #166 (auditoría a2b, CRÍTICO) — ANTES de este fix,
+// `dispatchPendingEmailJobs` llamaba `repo.claimEmailOutboxBatch(batchSize)`
+// SIEMPRE, incluso sin `RESEND_API_KEY`: el claim es CROSS-TENANT (reclama de
+// TODAS las organizaciones) y el claim mismo YA cuenta como un intento
+// (`attempts += 1` dentro de la función SQL, ver su migración). Con
+// producción sin la key configurada, cada invocación --el cron diario Y,
+// desde #166, el drenado post-commit de CADA acción de staff-- quemaba un
+// intento de CADA correo pendiente de CADA organización; 5 invocaciones
+// bastaban para dejar todos los correos pendientes de la plataforma en
+// 'dead' para siempre, sin que Resend jamás hubiera visto ninguno. Fix: sin
+// `apiKey`, `dispatchPendingEmailJobs` devuelve `{ ...summary vacío,
+// notConfigured: true }` de inmediato, SIN llamar al claim -- cero jobs
+// reclamados, cero intentos quemados.
 import type { RestaurantesRepository, EmailOutboxJobRow } from "./repository.ts";
 
 export const MAX_EMAIL_DISPATCH_ATTEMPTS = 5;
+
+/** Timeout por request individual a Resend -- sin esto, un `fetch` colgado
+ * (Resend caído a medias, red lenta) podía bloquear indefinidamente el
+ * drenado post-commit que corre con `await` antes de que la respuesta HTTP
+ * del staff se transmita (ver comentario de `dbSession` en
+ * `packages/core-auth/src/middleware.ts`), acercando cada vez más el request
+ * al límite de 30s de una función de Vercel. No garantiza por sí solo que el
+ * lote completo quede bajo 30s (ver knownGaps del PR), pero acota cada
+ * intento individual y dispara el mismo camino de reintento/backoff que
+ * cualquier otro fallo de Resend. */
+export const RESEND_FETCH_TIMEOUT_MS = 8_000;
 
 export interface ResendConfig {
   readonly apiKey: string | null;
@@ -51,6 +76,7 @@ export async function sendEmailOutboxJob(fetchImpl: typeof fetch, job: EmailOutb
       "Idempotency-Key": `outbox/${job.id}`,
     },
     body: JSON.stringify({ from: config.from, to: payload.to, subject: payload.subject, html: payload.html, text: typeof payload.text === "string" ? payload.text : undefined }),
+    signal: AbortSignal.timeout(RESEND_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -65,10 +91,17 @@ export interface EmailDispatchSummary {
   failed: number;
   dead: number;
   errors: { jobId: string; error: string }[];
+  /** true cuando NO hay `RESEND_API_KEY` configurada -- `dispatchPendingEmailJobs`
+   * devolvió esto de inmediato SIN llamar a `repo.claimEmailOutboxBatch` (ver
+   * comentario de cabecera del archivo). Los crons `/internal/*\/email-dispatch`
+   * usan este flag para responder 200 con un estado explícito "no configurado"
+   * en vez de tratarlo como un fallo real -- pegar la API key nunca debe
+   * encontrar el outbox ya vaciado de intentos. */
+  notConfigured: boolean;
 }
 
 function emptySummary(): EmailDispatchSummary {
-  return { processed: 0, sent: 0, failed: 0, dead: 0, errors: [] };
+  return { processed: 0, sent: 0, failed: 0, dead: 0, errors: [], notConfigured: false };
 }
 
 /**
@@ -81,6 +114,13 @@ function emptySummary(): EmailDispatchSummary {
  * con datos raros nunca tumba el lote completo de los demás.
  */
 export async function dispatchPendingEmailJobs(repo: RestaurantesRepository, config: ResendConfig, opts: { readonly fetchImpl?: typeof fetch; readonly batchSize?: number } = {}): Promise<EmailDispatchSummary> {
+  // Fix a2b (CRÍTICO) -- ver comentario de cabecera: sin proveedor configurado
+  // NUNCA se reclama el lote (cross-tenant, cuenta intento), pase lo que pase
+  // con `batchSize`/`fetchImpl`.
+  if (!config.apiKey) {
+    return { ...emptySummary(), notConfigured: true };
+  }
+
   const fetchImpl = opts.fetchImpl ?? fetch;
   const batchSize = opts.batchSize ?? 25;
   const summary = emptySummary();

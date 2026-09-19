@@ -77,18 +77,25 @@ async function seedOrderWithEmail(fixture: ReturnType<typeof buildRestaurantFixt
 }
 
 describe("dispatchPendingEmailJobs", () => {
-  it("sin RESEND_API_KEY: reclama el lote (encolado real por createOrder al dejar correo), cada job falla explícito, se marca 'failed' (reintentable) — NUNCA 'sent'", async () => {
+  it("fix a2b (CRÍTICO): sin RESEND_API_KEY, NO reclama nada — cero intentos quemados, el job queda intacto en 'pending'", async () => {
     const fixture = buildRestaurantFixture();
     await seedOrderWithEmail(fixture);
+    const attemptsBefore = fixture.repo.getOutbox().find((o) => o.eventType === "order.created.email")?.attempts ?? 0;
 
     const summary = await dispatchPendingEmailJobs(fixture.repo, { apiKey: null, from: "a@b.com" });
 
-    expect(summary.processed).toBe(1);
+    expect(summary.notConfigured).toBe(true);
+    expect(summary.processed).toBe(0);
     expect(summary.sent).toBe(0);
-    expect(summary.failed).toBe(1);
+    expect(summary.failed).toBe(0);
     expect(summary.dead).toBe(0);
+    // El punto central del fix: SIN proveedor configurado, `claimEmailOutboxBatch`
+    // (cross-tenant, cuenta intento) nunca se llama -- el job sigue 'pending' con
+    // el mismo `attempts` de antes (antes de este fix, 5 corridas sin key
+    // bastaban para dejarlo 'dead' sin que Resend jamás lo hubiera visto).
     const job = fixture.repo.getOutbox().find((o) => o.eventType === "order.created.email");
-    expect(job?.status).toBe("failed");
+    expect(job?.status).toBe("pending");
+    expect(job?.attempts).toBe(attemptsBefore);
   });
 
   it("con RESEND_API_KEY real (fetch fake exitoso): marca 'sent' de verdad", async () => {
@@ -98,25 +105,27 @@ describe("dispatchPendingEmailJobs", () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ id: "resend-id" }), { status: 200 })) as typeof fetch;
     const summary = await dispatchPendingEmailJobs(fixture.repo, { apiKey: "re_test_key", from: "a@b.com" }, { fetchImpl });
 
+    expect(summary.notConfigured).toBe(false);
     expect(summary.sent).toBe(1);
     const job = fixture.repo.getOutbox().find((o) => o.eventType === "order.created.email");
     expect(job?.status).toBe("sent");
   });
 
-  it("agota los reintentos reales y termina en 'dead' tras MAX_EMAIL_DISPATCH_ATTEMPTS", async () => {
+  it("agota los reintentos reales y termina en 'dead' tras MAX_EMAIL_DISPATCH_ATTEMPTS (con proveedor configurado, Resend siempre en error)", async () => {
     const fixture = buildRestaurantFixture();
     await seedOrderWithEmail(fixture);
+    const fetchImpl = (async () => new Response("Resend caído", { status: 500 })) as typeof fetch;
 
     let lastSummary;
     for (let i = 0; i < MAX_EMAIL_DISPATCH_ATTEMPTS; i++) {
-      lastSummary = await dispatchPendingEmailJobs(fixture.repo, { apiKey: null, from: "a@b.com" });
+      lastSummary = await dispatchPendingEmailJobs(fixture.repo, { apiKey: "re_test_key", from: "a@b.com" }, { fetchImpl });
     }
     expect(lastSummary!.dead).toBe(1);
     const job = fixture.repo.getOutbox().find((o) => o.eventType === "order.created.email");
     expect(job?.status).toBe("dead");
 
     // Un job 'dead' nunca se vuelve a reclamar en corridas futuras.
-    const afterDead = await dispatchPendingEmailJobs(fixture.repo, { apiKey: null, from: "a@b.com" });
+    const afterDead = await dispatchPendingEmailJobs(fixture.repo, { apiKey: "re_test_key", from: "a@b.com" }, { fetchImpl });
     expect(afterDead.processed).toBe(0);
   });
 
@@ -124,7 +133,8 @@ describe("dispatchPendingEmailJobs", () => {
     const fixture = buildRestaurantFixture();
     await fixture.repo.enqueueMessagingOutbox(fixture.organizationId, "whatsapp", "order.status.preparando", "order-status:some-id:preparando", { to: "5599998888", phone_number_id: "pn-1", body: "tu pedido va en camino" });
 
-    const summary = await dispatchPendingEmailJobs(fixture.repo, { apiKey: null, from: "a@b.com" });
+    const fetchImpl = (async () => new Response(JSON.stringify({ id: "resend-id" }), { status: 200 })) as typeof fetch;
+    const summary = await dispatchPendingEmailJobs(fixture.repo, { apiKey: "re_test_key", from: "a@b.com" }, { fetchImpl });
     expect(summary.processed).toBe(0);
     const whatsappJob = fixture.repo.getOutbox().find((o) => o.channel === "whatsapp");
     expect(whatsappJob?.status).toBe("pending"); // nunca tocado por el dispatcher de correo.

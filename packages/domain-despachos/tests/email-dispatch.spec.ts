@@ -64,19 +64,26 @@ describe("sendEmailOutboxJob", () => {
 });
 
 describe("dispatchPendingEmailJobs", () => {
-  it("sin RESEND_API_KEY: reclama el lote, cada job falla explícito, se marca 'failed' (reintentable) — NUNCA 'sent'", async () => {
+  it("fix a2b (CRÍTICO): sin RESEND_API_KEY, NO reclama nada — cero intentos quemados, el job queda intacto en 'pending'", async () => {
     const repo = new InMemoryDespachosRepository();
     const organizationId = randomUUID();
     await repo.enqueueMessagingOutbox(organizationId, "email", "vencimiento.escalado", "dedupe-1", { to: "cliente@example.com", subject: "Asunto", html: "<p>hola</p>", text: "hola" });
+    const attemptsBefore = repo.getMessagingOutbox().find((o) => o.dedupeKey === "dedupe-1")?.attempts ?? 0;
 
     const summary = await dispatchPendingEmailJobs(repo, { apiKey: null, from: "a@b.com" });
 
-    expect(summary.processed).toBe(1);
+    expect(summary.notConfigured).toBe(true);
+    expect(summary.processed).toBe(0);
     expect(summary.sent).toBe(0);
-    expect(summary.failed).toBe(1);
+    expect(summary.failed).toBe(0);
     expect(summary.dead).toBe(0);
+    // El punto central del fix: SIN proveedor configurado, `claimEmailOutboxBatch`
+    // (cross-tenant, cuenta intento) nunca se llama -- el job sigue 'pending' con
+    // el mismo `attempts` de antes (antes de este fix, 5 corridas sin key
+    // bastaban para dejarlo 'dead' sin que Resend jamás lo hubiera visto).
     const job = repo.getMessagingOutbox().find((o) => o.dedupeKey === "dedupe-1");
-    expect(job?.status).toBe("failed");
+    expect(job?.status).toBe("pending");
+    expect(job?.attempts).toBe(attemptsBefore);
   });
 
   it("con RESEND_API_KEY real (fetch fake exitoso): marca 'sent' de verdad", async () => {
@@ -87,25 +94,27 @@ describe("dispatchPendingEmailJobs", () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ id: "resend-id" }), { status: 200 })) as typeof fetch;
     const summary = await dispatchPendingEmailJobs(repo, { apiKey: "re_test_key", from: "a@b.com" }, { fetchImpl });
 
+    expect(summary.notConfigured).toBe(false);
     expect(summary.sent).toBe(1);
     const job = repo.getMessagingOutbox().find((o) => o.dedupeKey === "dedupe-2");
     expect(job?.status).toBe("sent");
   });
 
-  it("agota los reintentos reales y termina en 'dead' tras MAX_EMAIL_DISPATCH_ATTEMPTS", async () => {
+  it("agota los reintentos reales y termina en 'dead' tras MAX_EMAIL_DISPATCH_ATTEMPTS (con proveedor configurado, Resend siempre en error)", async () => {
     const repo = new InMemoryDespachosRepository();
     const organizationId = randomUUID();
     await repo.enqueueMessagingOutbox(organizationId, "email", "vencimiento.escalado", "dedupe-3", { to: "cliente@example.com", subject: "Asunto", html: "<p>hola</p>", text: "hola" });
+    const fetchImpl = (async () => new Response("Resend caído", { status: 500 })) as typeof fetch;
 
     let lastSummary;
     for (let i = 0; i < MAX_EMAIL_DISPATCH_ATTEMPTS; i++) {
-      lastSummary = await dispatchPendingEmailJobs(repo, { apiKey: null, from: "a@b.com" });
+      lastSummary = await dispatchPendingEmailJobs(repo, { apiKey: "re_test_key", from: "a@b.com" }, { fetchImpl });
     }
     expect(lastSummary!.dead).toBe(1);
     const job = repo.getMessagingOutbox().find((o) => o.dedupeKey === "dedupe-3");
     expect(job?.status).toBe("dead");
 
-    const afterDead = await dispatchPendingEmailJobs(repo, { apiKey: null, from: "a@b.com" });
+    const afterDead = await dispatchPendingEmailJobs(repo, { apiKey: "re_test_key", from: "a@b.com" }, { fetchImpl });
     expect(afterDead.processed).toBe(0);
   });
 
