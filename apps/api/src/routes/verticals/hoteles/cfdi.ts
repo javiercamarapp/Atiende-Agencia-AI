@@ -19,7 +19,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
-import { PortUnavailableError } from "@atiende/mcp-cfdi";
+import { CfdiFolioStampingInProgressError, PortUnavailableError } from "@atiende/mcp-cfdi";
 import {
   CFDI_HOSPEDAJE_ROLES,
   IdempotencyConflictError,
@@ -333,6 +333,7 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.json(result.body as object, result.status as 201);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
+      if (err instanceof CfdiFolioStampingInProgressError) throw Errors.cfdiTimbradoEnCurso();
       if (isPacUnavailableError(err)) throw pacUnavailableApiError("timbrar el CFDI de hospedaje");
       throw err;
     }
@@ -419,6 +420,7 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.json(result.body as object, result.status as 201);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
+      if (err instanceof CfdiFolioStampingInProgressError) throw Errors.cfdiTimbradoEnCurso();
       if (isPacUnavailableError(err)) throw pacUnavailableApiError("timbrar el complemento de pago");
       throw err;
     }

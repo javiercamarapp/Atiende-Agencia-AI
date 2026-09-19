@@ -1,13 +1,19 @@
 // "Sign in with Google" — recorre el flujo completo (`GET /auth/google/iniciar` ->
-// autorización -> `GET /auth/google/callback`) contra un servidor OAuth de Google
-// FALSO local (ver `tests/support/fakeGoogleOAuth.ts`, mismo mecanismo ya probado en
-// atiende-hoteles) -- sin red ni credenciales reales de Google. Cubre el camino feliz
-// (staff ya invitado, primera vinculación y login subsecuente con el `sub` ya
-// vinculado) y los rechazos honestos (correo no invitado, nonce no coincide, Google
-// no configurado).
+// autorización -> `GET /auth/google/callback` -> `POST /auth/exchange-code`) contra
+// un servidor OAuth de Google FALSO local (ver `tests/support/fakeGoogleOAuth.ts`,
+// mismo mecanismo ya probado en atiende-hoteles) -- sin red ni credenciales reales
+// de Google. Cubre el camino feliz (staff ya invitado, primera vinculación y login
+// subsecuente con el `sub` ya vinculado) y los rechazos honestos (correo no
+// invitado, nonce no coincide, Google no configurado).
+//
+// Hallazgo de auditoría (P2, "tokens de sesión completos en query params de URL")
+// — desde esta pasada, el callback YA NO pone `token`/`refreshToken` reales en el
+// redirect: pone un `code` de intercambio opaco de un solo uso que
+// `POST /auth/exchange-code` canjea por la sesión real (ver el comentario de
+// cabecera de `packages/db/migrations/0008_auth_exchange_code.sql`).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
-import { buildTestDeps } from "./fixtures.ts";
+import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
 import { startFakeGoogleOAuthServer, type FakeGoogleOAuthServer } from "./support/fakeGoogleOAuth.ts";
 
 let fakeGoogle: FakeGoogleOAuthServer;
@@ -51,7 +57,7 @@ function testDepsWithFakeGoogle(deps: Awaited<ReturnType<typeof buildTestDeps>>[
 }
 
 describe("GET /auth/google/iniciar + /auth/google/callback", () => {
-  it("staff YA invitado (correo con cuenta de contraseña) -- primer login con Google vincula la identidad y emite sesión real", async () => {
+  it("staff YA invitado (correo con cuenta de contraseña) -- primer login con Google vincula la identidad y emite un código de intercambio, NUNCA el token real, en la URL", async () => {
     const base = await buildTestDeps();
     const deps = testDepsWithFakeGoogle(base.deps);
     const app = buildApp(deps);
@@ -64,8 +70,17 @@ describe("GET /auth/google/iniciar + /auth/google/callback", () => {
 
     const finalUrl = new URL(callback.headers.get("location")!);
     expect(finalUrl.pathname).toBe("/restaurantes/auth/google/callback");
-    const token = finalUrl.searchParams.get("token");
-    const refreshToken = finalUrl.searchParams.get("refreshToken");
+    const exchangeCode = finalUrl.searchParams.get("code");
+    expect(exchangeCode).toBeTruthy();
+    // Hallazgo de auditoría: el token/refreshToken reales NUNCA aparecen en la URL.
+    expect(finalUrl.searchParams.get("token")).toBeNull();
+    expect(finalUrl.searchParams.get("refreshToken")).toBeNull();
+
+    // El frontend (GoogleCallback.tsx) canjea ese código de inmediato -- nunca lee
+    // un token directo de la URL.
+    const exchange = await app.request("/auth/exchange-code", jsonRequestInit({ code: exchangeCode }));
+    expect(exchange.status).toBe(200);
+    const { token, refreshToken } = (await exchange.json()) as { token: string; refreshToken: string };
     expect(token).toBeTruthy();
     expect(refreshToken).toBeTruthy();
 
@@ -75,7 +90,24 @@ describe("GET /auth/google/iniciar + /auth/google/callback", () => {
     expect(((await me.json()) as { email: string }).email).toBe(base.ownerEmail);
   });
 
-  it("segundo login con la MISMA cuenta de Google (sub ya vinculado) también emite sesión, sin volver a tocar el correo", async () => {
+  it("el código de intercambio del callback de Google no puede canjearse dos veces (consumo atómico de un solo uso)", async () => {
+    const base = await buildTestDeps();
+    const deps = testDepsWithFakeGoogle(base.deps);
+    const app = buildApp(deps);
+
+    fakeGoogle.setNextUser({ sub: "google-sub-replay", email: base.ownerEmail, emailVerified: true });
+    const { code, state } = await autorizarConGoogle(app, "restaurantes");
+    const callback = await app.request(`/auth/google/callback?code=${code}&state=${state}`);
+    const exchangeCode = new URL(callback.headers.get("location")!).searchParams.get("code");
+
+    const primero = await app.request("/auth/exchange-code", jsonRequestInit({ code: exchangeCode }));
+    expect(primero.status).toBe(200);
+
+    const segundo = await app.request("/auth/exchange-code", jsonRequestInit({ code: exchangeCode }));
+    expect(segundo.status).toBe(401);
+  });
+
+  it("segundo login con la MISMA cuenta de Google (sub ya vinculado) también emite un código de intercambio válido, sin volver a tocar el correo", async () => {
     const base = await buildTestDeps();
     const deps = testDepsWithFakeGoogle(base.deps);
     const app = buildApp(deps);
@@ -88,7 +120,12 @@ describe("GET /auth/google/iniciar + /auth/google/callback", () => {
     const callback = await app.request(`/auth/google/callback?code=${segundo.code}&state=${segundo.state}`);
     expect(callback.status).toBe(302);
     const finalUrl = new URL(callback.headers.get("location")!);
-    expect(finalUrl.searchParams.get("token")).toBeTruthy();
+    const exchangeCode = finalUrl.searchParams.get("code");
+    expect(exchangeCode).toBeTruthy();
+
+    const exchange = await app.request("/auth/exchange-code", jsonRequestInit({ code: exchangeCode }));
+    expect(exchange.status).toBe(200);
+    expect(((await exchange.json()) as { token: string }).token).toBeTruthy();
   });
 
   it("correo de Google sin ninguna cuenta de staff existente -- rechazo honesto (nunca crea una organización nueva)", async () => {

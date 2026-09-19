@@ -26,7 +26,7 @@ import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
 import { logEvent } from "../logger.ts";
-import { issueSession } from "./auth.ts";
+import { EXCHANGE_CODE_TTL_MS } from "./auth.ts";
 import type { AppDeps } from "../deps.ts";
 
 const MAGIC_LINK_TTL_MS = 15 * 60_000;
@@ -154,10 +154,22 @@ export function authMagicLinkRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       return c.redirect(url.toString(), 302);
     }
 
-    const session = await issueSession(deps, staff.id, staff.email, staff.fullName);
+    // Hallazgo de auditoría (P2, "tokens de sesión completos en query params de
+    // URL") -- mismo fix que `auth-google.ts::callback`, ver el comentario de
+    // cabecera de `packages/db/migrations/0008_auth_exchange_code.sql`. NUNCA
+    // se pone el JWT real en esta URL -- solo un código de intercambio opaco de
+    // un solo uso y 60s de vida, que `GoogleCallback.tsx` (el mismo puente
+    // compartido que ya usa Google, ver comentario de cabecera del archivo)
+    // canjea de inmediato vía `POST /auth/exchange-code`.
+    const { tokenPlain: exchangeCode, tokenHash: exchangeCodeHash } = generateInviteToken();
+    await deps.coreRepo.createAuthExchangeCode({
+      staffId: staff.id,
+      codeHash: exchangeCodeHash,
+      expiresAt: new Date(Date.now() + EXCHANGE_CODE_TTL_MS).toISOString(),
+    });
+
     const url = new URL(`/${vertical}/auth/google/callback`, deps.env.appBaseUrl);
-    url.searchParams.set("token", session.token);
-    url.searchParams.set("refreshToken", session.refreshToken);
+    url.searchParams.set("code", exchangeCode);
     return c.redirect(url.toString(), 302);
   });
 

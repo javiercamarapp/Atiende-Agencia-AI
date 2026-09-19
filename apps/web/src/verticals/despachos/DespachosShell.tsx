@@ -84,7 +84,7 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
-import { DashboardHeader, NotificationBell, Sidebar, type SidebarSection } from "@atiende/ui";
+import { AtiendeWordmark, DashboardHeader, MobileHeader, NotificationBell, Sidebar, type SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
@@ -345,26 +345,40 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
         hotelSelector={contribuyenteSelector}
       />
 
+      {/* Hallazgo de auditoría (severidad ALTA, "en viewport móvil el usuario ve el
+          contenido sin logo/menú/logout"): mismo síntoma exacto que
+          RestaurantesShell.tsx/RentasShell.tsx -- el <Sidebar> compartido es
+          `hidden md:flex` y este Shell nunca importaba/renderizaba MobileHeader.
+          Sin BottomNav a propósito (12 destinos, ver NAV_ITEMS arriba): mismo
+          criterio ya aplicado en HotelesShell.tsx (13 destinos) -- una barra de
+          ≤5 ítems no puede representar honestamente 12 secciones fiscales/contables
+          sin privilegiar arbitrariamente unas sobre otras, así que el acceso móvil a
+          TODAS las secciones (incluida "Staff") sigue siendo el acordeón completo
+          del propio Sidebar (desktop) más el selector de contribuyente aquí. */}
+      <MobileHeader title={<AtiendeWordmark className="scale-90 origin-left" />} action={contribuyenteSelector} />
+
       <div className="flex-1 min-w-0 flex flex-col">
-        <DashboardHeader
-          variant="vertical"
-          icon={<Briefcase className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-          title={`Despachos · ${activeBranch?.name ?? orgSlug}`}
-          fecha={fechaCortaEsMx()}
-          notificationBell={
-            <NotificationBell
-              items={notif.items}
-              unreadCount={notif.unreadCount}
-              loading={notif.loading}
-              onOpenChange={(open) => {
-                if (open) notif.refetch();
-              }}
-              onMarkRead={notif.onMarkRead}
-              onMarkAllRead={notif.onMarkAllRead}
-            />
-          }
-          chatButton={<BotonChatDatos />}
-        />
+        <div className="hidden md:block">
+          <DashboardHeader
+            variant="vertical"
+            icon={<Briefcase className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+            title={`Despachos · ${activeBranch?.name ?? orgSlug}`}
+            fecha={fechaCortaEsMx()}
+            notificationBell={
+              <NotificationBell
+                items={notif.items}
+                unreadCount={notif.unreadCount}
+                loading={notif.loading}
+                onOpenChange={(open) => {
+                  if (open) notif.refetch();
+                }}
+                onMarkRead={notif.onMarkRead}
+                onMarkAllRead={notif.onMarkAllRead}
+              />
+            }
+            chatButton={<BotonChatDatos />}
+          />
+        </div>
         {/* DashboardHeader no tiene slot propio para este aviso -- mismo criterio que
             RentasShell.tsx: se conserva como anuncio accesible en vez de perderlo. */}
         {loggingOut && (
@@ -385,7 +399,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
             `useEffect` con `propertyId` en su arreglo de dependencias) no cambian de
             comportamiento: un remount con las mismas dependencias dispara el mismo
             fetch que ya disparaban. */}
-        <main key={propertyId} className="flex-1 overflow-auto pb-6">
+        <main key={propertyId} className="flex-1 overflow-auto pb-6 pt-20 md:pt-0">
           {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
         </main>
       </div>

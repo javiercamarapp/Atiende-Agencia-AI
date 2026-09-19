@@ -130,5 +130,19 @@ export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     }
   });
 
+  // "Entrar a los otros paneles" (ver supabase/migrations/20240101000119_0014_
+  // superadmin_demo_access.sql para el diseño completo): asegura una organización
+  // DEMO real para `vertical` + membresía real del superadmin en ella (idempotente,
+  // NUNCA toca datos de un cliente real). El frontend encadena la respuesta con el
+  // POST /auth/select-org YA existente (mismo Bearer, misma sesión) para obtener un
+  // token real del Shell de esa vertical -- esta ruta NUNCA emite un token por su
+  // cuenta, solo prepara el terreno.
+  app.post("/superadmin/paneles/:vertical/entrar", async (c) => {
+    const vertical = c.req.param("vertical");
+    if (!VERTICALES_VALIDAS.has(vertical)) throw Errors.validation("vertical inválida");
+    const { organizationId, slug } = await deps.coreRepo.ensureDemoAccessForSuperadmin(c.get("userId"), vertical);
+    return c.json({ organizationId, slug });
+  });
+
   return app;
 }

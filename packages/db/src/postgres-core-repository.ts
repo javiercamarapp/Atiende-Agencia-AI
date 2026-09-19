@@ -441,6 +441,19 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
     return rows[0] ? mapStaff(rows[0]) : null;
   }
 
+  async createAuthExchangeCode(input: { readonly staffId: string; readonly codeHash: string; readonly expiresAt: string }): Promise<void> {
+    await this.db.query(`select core.create_auth_exchange_code($1, $2, $3);`, [input.staffId, input.codeHash, input.expiresAt]);
+  }
+
+  async consumeAuthExchangeCode(codeHash: string): Promise<StaffUserRow | null> {
+    const { rows } = await this.db.query<StaffUserRawRow>(
+      `select id, email, full_name, password_hash, created_via, email_verified_at, sessions_revoked_at
+       from core.consume_auth_exchange_code($1);`,
+      [codeHash],
+    );
+    return rows[0] ? mapStaff(rows[0]) : null;
+  }
+
   async isPlatformSuperadmin(staffId: string): Promise<boolean> {
     const { rows } = await this.db.query<{ is_platform_superadmin: boolean }>(`select core.is_platform_superadmin($1) as is_platform_superadmin;`, [staffId]);
     return rows[0]?.is_platform_superadmin ?? false;
@@ -542,5 +555,15 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       if (code === "P0002") throw new ProspectoNotFoundError();
       throw err;
     }
+  }
+
+  async ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }> {
+    const { rows } = await this.db.query<{ demo_organization_id: string; demo_slug: string }>(
+      `select demo_organization_id, demo_slug from core.ensure_demo_access_for_superadmin($1, $2);`,
+      [callerId, vertical],
+    );
+    const row = rows[0];
+    if (!row) throw new Error("ensure_demo_access_for_superadmin no devolvió ninguna fila.");
+    return { organizationId: row.demo_organization_id, slug: row.demo_slug };
   }
 }

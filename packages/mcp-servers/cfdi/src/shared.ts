@@ -141,6 +141,115 @@ export class InMemoryIdempotencyStore<T> implements IdempotencyStore<T> {
   }
 }
 
+// ---- folio-reservation.ts ----
+//
+// Fix hallazgo auditoría (rubro 6, ALTA) — `DualPacCfdiPort.timbrar` usaba
+// `InMemoryIdempotencyStore` (un `Map` de proceso) como ÚNICA protección contra
+// timbrar dos veces el mismo folio. Eso es un TOCTOU real: entre el `get()` (cache
+// miss) y el `set()` posterior a que el PAC responda hay un `await` real (la
+// llamada de red al PAC) — dos llamadas concurrentes a `timbrar()` con el mismo
+// folio pueden pasar el `get()` ANTES de que cualquiera de las dos llegue a
+// `set()`, y ambas terminan llamando al PAC de verdad (doble timbrado fiscal). El
+// `Map` tampoco sobrevive un reinicio de proceso NI se comparte entre instancias
+// distintas (este monorepo corre en Vercel con Fluid Compute, que sí reutiliza una
+// misma instancia — y por tanto el mismo `Map` — entre requests concurrentes de
+// tenants DISTINTOS, pero nunca lo comparte entre instancias separadas).
+//
+// `FolioReservationStore` reemplaza ese `Map` por una RESERVA ATÓMICA (constraint
+// único a nivel de almacenamiento -- nunca un check-then-insert en dos pasos desde
+// la aplicación, mismo criterio que `LedgerStore.marcarVisto` en
+// `packages/billing/src/ledger.ts` y que `PostgresHotelesRepository.withIdempotency`/
+// `insertReservation` en `packages/domain-hoteles/src/postgres-repository.ts`) que
+// se pide ANTES de invocar al PAC, no después.
+
+export type FolioReservationOutcome<T> =
+  | { readonly kind: "reserved" }
+  | { readonly kind: "completed"; readonly value: T }
+  /** Otro proceso tiene una reserva VIVA (no vencida) de este folio ahora mismo —
+   *  ver `DualPacCfdiPort` para la política elegida ante esto (falla rápido, no
+   *  espera/reintenta: ver comentario de cabecera de ese archivo). */
+  | { readonly kind: "in_progress" };
+
+export interface FolioReservationStore<T> {
+  /**
+   * Intenta reservar `folio` ATÓMICAMENTE antes de invocar un sistema externo no
+   * idempotente. Dos llamadas concurrentes con el mismo `folio` deben producir
+   * exactamente un `"reserved"` y el resto `"in_progress"`/`"completed"` — un
+   * dedupe que primero lee y luego escribe (dos pasos separados desde la
+   * aplicación) reintroduce exactamente la misma carrera que este store existe
+   * para cerrar.
+   */
+  reserve(folio: string): Promise<FolioReservationOutcome<T>>;
+  /** Marca `folio` como completado con éxito, persistiendo `value` — un
+   *  `reserve()` posterior del mismo folio siempre debe responder `"completed"`
+   *  con este mismo `value`, nunca repetir el trabajo externo. */
+  complete(folio: string, value: T): Promise<void>;
+  /** Libera la reserva de `folio` tras un fallo del trabajo externo (ambos PAC
+   *  fallaron) -- un `reserve()` posterior debe volver a ver `"reserved"` en vez
+   *  de quedar bloqueado para siempre por un error transitorio. */
+  fail(folio: string): Promise<void>;
+  /** Lectura de solo observación (nunca reserva ni muta nada): el `value` ya
+   *  persistido si `folio` está `"completed"`, o `undefined` si no existe o sigue
+   *  `"pending"`. Existe para diagnóstico/pruebas (ver
+   *  `DualPacCfdiPort.usedSecondaryFor`) -- el flujo real de `timbrar()` nunca la
+   *  necesita, siempre pasa por `reserve()`. */
+  peek(folio: string): Promise<T | undefined>;
+}
+
+export interface InMemoryFolioReservationOptions {
+  /** Cuánto tiempo (ms) se considera viva una reserva `"pending"` antes de
+   *  tratarla como abandonada (el proceso que la tomó murió a medio timbrado, o
+   *  nunca llamó `complete`/`fail`) y dejar que un `reserve()` posterior la
+   *  reclame como si fuera nueva. Default 2 minutos: generosamente por encima de
+   *  cualquier timeout HTTP razonable de un PAC real. */
+  readonly staleAfterMs?: number;
+}
+
+type InMemoryReservationRow<T> = { readonly status: "pending"; readonly reservedAt: number } | { readonly status: "completed"; readonly value: T };
+
+/**
+ * Implementación en memoria: referencia de la semántica exacta que un adaptador
+ * real (Postgres, ver `apps/api/src/production/cfdi-folio-reservation-store.ts`)
+ * debe respetar, y default de `DualPacCfdiPort` para que los adaptadores
+ * Fake/tests sigan funcionando sin construir un store aparte. Aunque Node.js es de
+ * un solo hilo, el `Map` SÍ es seguro ante la carrera de este archivo porque
+ * `reserve()` nunca hace `await` entre el `get()` y el `set()` -- toda la sección
+ * crítica corre síncrona dentro de la función `async`, sin ceder el control al
+ * event loop, igual que un `INSERT ... ON CONFLICT` real corre atómico dentro de
+ * Postgres.
+ */
+export class InMemoryFolioReservationStore<T> implements FolioReservationStore<T> {
+  private readonly rows = new Map<string, InMemoryReservationRow<T>>();
+  private readonly staleAfterMs: number;
+
+  constructor(options: InMemoryFolioReservationOptions = {}) {
+    this.staleAfterMs = options.staleAfterMs ?? 2 * 60 * 1000;
+  }
+
+  async reserve(folio: string): Promise<FolioReservationOutcome<T>> {
+    const existing = this.rows.get(folio);
+    if (!existing || (existing.status === "pending" && Date.now() - existing.reservedAt > this.staleAfterMs)) {
+      this.rows.set(folio, { status: "pending", reservedAt: Date.now() });
+      return { kind: "reserved" };
+    }
+    if (existing.status === "completed") return { kind: "completed", value: existing.value };
+    return { kind: "in_progress" };
+  }
+
+  async complete(folio: string, value: T): Promise<void> {
+    this.rows.set(folio, { status: "completed", value });
+  }
+
+  async fail(folio: string): Promise<void> {
+    this.rows.delete(folio);
+  }
+
+  async peek(folio: string): Promise<T | undefined> {
+    const row = this.rows.get(folio);
+    return row?.status === "completed" ? row.value : undefined;
+  }
+}
+
 // ---- credentials.ts ----
 
 export interface CredentialCheck {

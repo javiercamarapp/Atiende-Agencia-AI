@@ -90,6 +90,14 @@ export class ProductionCoreRepository implements CoreRepository {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).consumeMagicLinkToken(tokenHash));
   }
 
+  createAuthExchangeCode(input: { readonly staffId: string; readonly codeHash: string; readonly expiresAt: string }): Promise<void> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).createAuthExchangeCode(input));
+  }
+
+  consumeAuthExchangeCode(codeHash: string): Promise<StaffUserRow | null> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).consumeAuthExchangeCode(codeHash));
+  }
+
   isPlatformSuperadmin(staffId: string): Promise<boolean> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).isPlatformSuperadmin(staffId));
   }
@@ -135,5 +143,12 @@ export class ProductionCoreRepository implements CoreRepository {
 
   updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).updateProspectoForSuperadmin(callerId, prospectoId, estado, notas));
+  }
+
+  // "Entrar a los otros paneles" — sesión de sistema igual que el resto de este
+  // archivo: `core.ensure_demo_access_for_superadmin` es `security definer` con
+  // `p_caller_id` explícito (ver migración 0014).
+  ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).ensureDemoAccessForSuperadmin(callerId, vertical));
   }
 }

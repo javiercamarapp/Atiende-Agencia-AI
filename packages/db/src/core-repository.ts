@@ -262,6 +262,25 @@ export interface CoreRepository {
    *  se usó, o venció -- el caller decide qué mensaje mostrar (nunca distingue
    *  cuál de los tres casos fue, para no dar pistas a un atacante). */
   consumeMagicLinkToken(tokenHash: string): Promise<StaffUserRow | null>;
+  /** Hallazgo de auditoría (P2, "tokens de sesión completos en query params de
+   *  URL"): patrón "authorization code" para AMBOS callbacks de login sin
+   *  contraseña (`apps/api/src/routes/auth-google.ts`/`auth-magic-link.ts`) —
+   *  el redirect 302 hacia el frontend pone este código opaco de un solo uso en
+   *  vez del token/refreshToken reales. Mismo mecanismo EXACTO que
+   *  `createMagicLinkToken` (`@atiende/core-auth::generateInviteToken`, solo se
+   *  persiste el HASH), TTL deliberadamente corto (segundos, no minutos —
+   *  `EXCHANGE_CODE_TTL_MS` en `routes/auth.ts`) porque el frontend lo canjea de
+   *  inmediato al montar (`GoogleCallback.tsx`). Nunca persiste el JWT en sí —
+   *  solo `staffId` — el token/refreshToken reales se generan recién al canjear
+   *  (`issueSession`, siempre fresco contra las membresías actuales). */
+  createAuthExchangeCode(input: { readonly staffId: string; readonly codeHash: string; readonly expiresAt: string }): Promise<void>;
+  /** Consume atómicamente un código de intercambio: si estaba `pending` y no
+   *  había vencido, lo marca `used` y devuelve el staff al que pertenece — en la
+   *  MISMA operación, sin ventana de carrera entre leer y marcar usado (mismo
+   *  patrón que `consumeMagicLinkToken`). `null` si el código no existe, ya se
+   *  usó, o venció — el caller (`POST /auth/exchange-code`) nunca distingue cuál
+   *  de los tres casos fue. */
+  consumeAuthExchangeCode(codeHash: string): Promise<StaffUserRow | null>;
   /** Back office de plataforma (`apps/web/src/superadmin/**`) — `true` si este
    *  staff está en `core.platform_superadmin` (rol cruzado a las 6
    *  verticales, distinto de `core.membership.platform_role` que es DENTRO de
@@ -314,6 +333,15 @@ export interface CoreRepository {
    *  cual). Lanza `ProspectoNotFoundError` si el id no existe (SQLSTATE P0002, ver
    *  `core.update_prospecto_for_superadmin`). */
   updateProspectoForSuperadmin(callerId: string, prospectoId: string, estado: string | null, notas: string | null): Promise<ProspectoRow>;
+  /** "Entrar a los otros paneles" (ver `supabase/migrations/20240101000119_0014_
+   *  superadmin_demo_access.sql`) — NO es un mecanismo de impersonación nuevo: crea,
+   *  de forma idempotente, una organización DEMO real para `vertical` (si no existe
+   *  todavía) y una fila real de `core.membership` que vincula a `callerId` con ella
+   *  (rol de acceso total real de esa vertical). El caller HTTP encadena esto con el
+   *  `POST /auth/select-org` YA existente para obtener una sesión real del Shell de
+   *  esa vertical — cero superficie de autorización nueva, mismo modelo que protege
+   *  a cualquier cliente real. */
+  ensureDemoAccessForSuperadmin(callerId: string, vertical: string): Promise<{ readonly organizationId: string; readonly slug: string }>;
 }
 
 /** Fila real de `core.prospecto` — ver el comentario de cabecera de la migración

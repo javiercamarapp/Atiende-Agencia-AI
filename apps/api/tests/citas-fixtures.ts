@@ -3,12 +3,13 @@
 // proveedor/servicio/horario real, exactamente como lo haría un seed contra las
 // migraciones SQL reales de packages/domain-citas/migrations/.
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
-import type { ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, GoogleCalendarPort } from "@atiende/domain-citas";
+import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createGoogleCalendarPortResolver, crearValidadorUrlCaldav, InMemoryCitasRepository } from "@atiende/domain-citas";
+import type { ExchangeAuthorizationCodeInput, ExchangeAuthorizationCodeResult, GoogleCalendarPort, ResolverDns } from "@atiende/domain-citas";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import { InMemoryDespachosRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
@@ -58,6 +59,32 @@ export interface CitasTestContextOptions {
    * credenciales reales.
    */
   readonly googleCalendarPort?: GoogleCalendarPort;
+  /**
+   * Hallazgo de auditoría (ALTO, SSRF) — resolver DNS falso para
+   * `citasCaldavUrlValidator` (`crearValidadorUrlCaldav`, ver
+   * @atiende/domain-citas/src/net/validar-url-caldav.ts). Por defecto
+   * (`resolverDnsFalsoPorDefecto` abajo) un hostname que YA es una IP literal se
+   * devuelve tal cual (igual que el `dns.lookup` real, que nunca toca la red para
+   * un literal) — así los tests de IPs privadas literales SÍ se rechazan sin
+   * configurar nada; cualquier otro hostname "resuelve" a `203.0.113.10` (RFC
+   * 5737 TEST-NET-3, documentalmente pública), así los tests existentes que
+   * conectan un CalDAV con un hostname real (`caldav.fastmail.com`, etc.) pasan
+   * la validación sin tocar la red ni depender de que ese dominio siga
+   * resolviendo igual. Los tests de SSRF pasan este `caldavDnsResolver` para
+   * simular DNS rebinding: un hostname que no tiene pinta de privado pero
+   * resuelve a una IP privada/loopback/metadata.
+   */
+  readonly caldavDnsResolver?: ResolverDns;
+}
+
+const IP_PUBLICA_DE_PRUEBA = "203.0.113.10"; // RFC 5737 TEST-NET-3 -- reservada para documentación, nunca enrutable, pero NO cae en ningún rango que `validarIpPermitida` bloquee (no es privada/loopback/link-local/metadata), así que sirve como "IP pública" determinista de prueba.
+
+/** Mismo criterio que `dns.lookup` real: un hostname que ya es una IP literal
+ * (v4 o v6) se devuelve tal cual, sin inventar nada -- necesario para que los
+ * tests de IPs privadas LITERALES en la URL (127.0.0.1, 169.254.169.254, etc.)
+ * se rechacen incluso con este resolver falso. */
+function resolverDnsFalsoPorDefecto(hostname: string): string[] {
+  return isIP(hostname) !== 0 ? [hostname] : [IP_PUBLICA_DE_PRUEBA];
 }
 
 export async function buildCitasTestContext(buildApp: BuildAppFn, options: CitasTestContextOptions = {}): Promise<CitasTestContext> {
@@ -132,6 +159,7 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     citasConversationGuard: createDefaultConversationGuard(),
     citasGoogleCalendarPortResolver,
     citasGoogleTokenExchange,
+    citasCaldavUrlValidator: crearValidadorUrlCaldav({ resolverDns: options.caldavDnsResolver ?? resolverDnsFalsoPorDefecto }),
     licitacionesRepo: (_db) => licitacionesRepoUnused,
     despachosRepo: (_db) => despachosRepoUnused,
     despachosAuditSink: new InMemoryAuditSink(),

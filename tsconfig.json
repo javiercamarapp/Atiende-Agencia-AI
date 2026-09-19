@@ -4,15 +4,30 @@
     "types": ["node"],
     "baseUrl": "."
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts", "apps/*/src/**/*.ts", "apps/*/tests/**/*.ts", "scripts/**/*.ts", "api/**/*.ts", "test-setup/**/*.ts"],
-  // `packages/ui` es el único paquete de `packages/*` con componentes React (.tsx) —
-  // este tsconfig raíz es para el resto del monorepo (backend puro, sin `jsx`
-  // configurado a propósito). Sin esta exclusión, `packages/ui/src/index.ts` (un
-  // .ts real, sí incluido arriba) arrastra sus imports .tsx al cierre de esta
-  // compilación y el propio tsc falla con TS6142 ("--jsx no está configurado") —
-  // `packages/ui` ya tiene su PROPIO tsconfig.json (jsx: "react-jsx",
-  // moduleResolution: "Bundler") y `npm run typecheck --workspaces --if-present`
-  // (el segundo paso de `npm run typecheck` raíz) ya lo verifica por separado con
-  // esa configuración correcta — nada queda sin revisar.
+  "include": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts", "apps/api/src/**/*.ts", "apps/api/tests/**/*.ts", "apps/worker/src/**/*.ts", "apps/worker/tests/**/*.ts", "scripts/**/*.ts", "api/**/*.ts", "test-setup/**/*.ts"],
+  // Este tsconfig raíz es para el monorepo backend puro (sin `jsx` configurado a
+  // propósito) — sólo `apps/api` y `apps/worker` están listados arriba, NO
+  // `apps/web`. `apps/web` ya tiene su PROPIO tsconfig.json (jsx: "react-jsx",
+  // moduleResolution: "Bundler") que incluye tanto sus .ts como sus .tsx, y
+  // `npm run typecheck --workspaces --if-present` (el segundo paso de
+  // `npm run typecheck` raíz) ya lo corre completo con esa configuración correcta.
+  //
+  // Por qué esto importa aquí y no es sólo estilo: `exclude` NO evita que un
+  // archivo entre al programa de tsc cuando otro archivo SÍ incluido lo importa
+  // (ni siquiera un `import type`) — `exclude` sólo filtra qué matchea el propio
+  // glob de `include`. Antes, `apps/web/src/**/*.ts` sí estaba en `include`, y
+  // un solo `import type { X } from "@atiende/ui"` en un .ts de apps/web (p.ej.
+  // apps/web/src/lib/useNotifications.ts) bastaba para que tsc resolviera
+  // el entry point real de "@atiende/ui" (./src/index.ts) y, desde ahí, sus
+  // imports relativos a los .tsx de packages/ui/src/components/**  —el
+  // `"packages/ui/src/**"` de `exclude` de abajo no detenía esa cadena, porque
+  // esos .tsx no entraban por el glob de `include`, entraban por ser
+  // dependencias de un archivo que sí estaba incluido. Con `jsx` sin configurar
+  // a propósito en este tsconfig raíz, tsc fallaba con 26 TS6142 aunque
+  // packages/ui SIGUE cubierto por su propio typecheck. El fix real es no darle
+  // a este programa ningún punto de entrada que pueda alcanzar transitivamente
+  // un .tsx de packages/ui — es decir, no incluir apps/web aquí (ya cubierta
+  // por completo en su propio paso) — no bajar strictness ni forzar el error
+  // con `as any`.
   "exclude": ["**/node_modules/**", "**/dist/**", "packages/ui/src/**"]
 }
