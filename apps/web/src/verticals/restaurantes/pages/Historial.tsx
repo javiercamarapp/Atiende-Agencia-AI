@@ -28,6 +28,7 @@ import {
 import { ChevronDown } from "lucide-react";
 import { fetchOrders, ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
+import { medianocheLocalUTC, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ALL_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema"];
@@ -59,10 +60,18 @@ export function HistorialPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
     setLoading(true);
     setError(null);
     try {
+      // Bug real (revisión de PR #164, "no bloqueante" #2, punto 4 del encargo original):
+      // `new Date(dateFrom).toISOString()` sobre "YYYY-MM-DD" de estos `<input
+      // type="date">` daba la medianoche UTC de ese día -- 18:00 CDMX del día ANTERIOR
+      // (UTC-6). El servidor filtra `created_at >= dateFrom`/`created_at < dateTo`
+      // (postgres-repository.ts) contra el día de calendario del NEGOCIO: "hasta el 15"
+      // debía incluir TODO el 15 local y en cambio excluía el día completo. `dateTo` usa
+      // la medianoche del día SIGUIENTE como límite exclusivo (`medianocheLocalUTC` es un
+      // instante concreto, no puede ser "inclusive" para un rango de timestamps reales).
       const page = await fetchOrders(fetch, apiBaseUrl, token, propertyId, {
         status: statusFilter || undefined,
-        dateFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
-        dateTo: dateTo ? new Date(dateTo).toISOString() : undefined,
+        dateFrom: dateFrom ? medianocheLocalUTC(dateFrom).toISOString() : undefined,
+        dateTo: dateTo ? medianocheLocalUTC(sumarDiasFechaSolo(dateTo, 1)).toISOString() : undefined,
         limit: 20,
         cursor: reset ? undefined : cursor,
       });
