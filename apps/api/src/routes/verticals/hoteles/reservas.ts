@@ -415,7 +415,7 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const asOfDate = typeof raw.asOfDate === "string" && DATE_RE.test(raw.asOfDate) ? raw.asOfDate : null;
 
     const repo = deps.hotelesRepo(c.get("db"));
-    const procesadas = await runNoShowSweep(repo, { organizationId, propertyId, asOfDate });
+    const procesadas = await runNoShowSweep(repo, { organizationId, propertyId, asOfDate, session: "staff" });
 
     return c.json({ procesadas: procesadas.length, detalle: procesadas });
   });

@@ -11,6 +11,7 @@ import type {
   ConversationMessage,
   ContactoNoOperativoRecord,
   DiscountChargeForFraudScan,
+  DueNoShowReservationForSystem,
   ExpenseEntryRecord,
   FnbOrderRecord,
   FolioRecord,
@@ -38,6 +39,8 @@ import type {
   NewRoomInput,
   NewRoomTypeInput,
   NewStaffScheduleInput,
+  NewSystemNightAuditChargeInput,
+  NewSystemNoShowApplicationInput,
   NightAuditRunRecord,
   NightlyRateRecord,
   PlExpenseByDateRow,
@@ -50,6 +53,7 @@ import type {
   RoomTypeSummary,
   GuestSummary,
   StaffScheduleRecord,
+  SystemNoShowApplicationResult,
   TaxConfigRecord,
   VoiceAgentConfig,
   WhatsAppPropertyRoute,
@@ -444,6 +448,63 @@ export interface HotelesRepository {
   sumChargesByConceptForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>>;
   sumPaymentsByMethodForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>>;
 
+  // ---- Fase 6b — flujos de sistema de night-audit/no-show
+  // (migrations/023_night_audit_sistema_escritura.sql). EXCLUSIVOS de
+  // `apps/worker/src/jobs/hoteles/{night-audit,no-show}.ts` bajo `session: "sistema"`
+  // (cableados SOLO en la ruta interna gateada por secreto,
+  // `POST /internal/hoteles/night-audit`) -- el camino de staff (disparo manual de
+  // night-audit, `POST .../reservas/procesar-no-show`) sigue usando los métodos
+  // ORIGINALES de arriba, sin ningún cambio. `runNightAuditForProperty`/
+  // `runNoShowSweep` (apps/worker) reciben `session: "staff" | "sistema"` y deciden en
+  // tiempo de ejecución cuál juego de métodos invocar -- ver el header de la migración
+  // 023 para el análisis completo de por qué (código COMPARTIDO entre ambos caminos,
+  // tablas de dinero, ninguna policy de INSERT/UPDATE/DELETE de
+  // reservation/folio/charge/payment se abre a sesión de sistema). ----
+
+  /** Espejo system-only de `listInHouseReservationsForNightAudit` -- misma forma de
+   *  retorno, respaldado por `hoteles.system_list_in_house_reservations_for_night_audit`
+   *  (security definer, solo-sistema). */
+  systemListInHouseReservationsForNightAudit(
+    propertyId: string,
+    businessDate: string,
+  ): Promise<readonly { reservationId: string; folioId: string | null; nightlyPrice: number | null }[]>;
+
+  /** Espejo system-only de `loadTaxConfig` -- lanza el MISMO error si la property no
+   *  tiene `hoteles.tax_config` sembrado. Compartida por night-audit y no-show. */
+  systemLoadTaxConfig(propertyId: string): Promise<TaxConfigRecord>;
+
+  /** Espejo system-only de `sumChargesByConceptForBusinessDate`/
+   *  `sumPaymentsByMethodForBusinessDate` -- insumo de
+   *  `NightAuditSummary.cargosPorConcepto`/`pagosPorMetodo` bajo sesión de sistema. */
+  systemSumChargesByConceptForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>>;
+  systemSumPaymentsByMethodForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>>;
+
+  /** Postea el cargo de hospedaje de la noche bajo sesión de sistema -- misma
+   *  idempotencia que `postNightlyHospedajeCharge` (índice único parcial
+   *  `charge_folio_stay_date_hospedaje_idx`), pero la función SQL detrás de este
+   *  método ADEMÁS valida que `reservationId` pertenezca a `propertyId`/
+   *  `organizationId` y esté en un estado que admite el cargo, y que `folioId` sea el
+   *  folio PRIMARIO de esa reserva -- invariantes que la policy de staff resolvía vía
+   *  RLS y que aquí debe validar la función misma (la sesión de sistema no tiene
+   *  `auth.uid()`). */
+  systemPostNightAuditCharge(input: NewSystemNightAuditChargeInput): Promise<{ id: string; createdAt: string; isNew: boolean }>;
+
+  /** Candidatas a no-show, versión MÍNIMA system-only -- ver
+   *  `DueNoShowReservationForSystem` (types.ts) para por qué expone solo 3 campos en
+   *  vez del `ReservationRecord` completo que devuelve `findDueNoShowReservations`. */
+  systemFindDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly DueNoShowReservationForSystem[]>;
+
+  /** Aplica no-show COMPLETO a una reserva bajo sesión de sistema -- transición
+   *  'confirmada'->'no_show' (reclamo atómico, `null` si perdió la carrera) + libera
+   *  disponibilidad de todas las noches + asegura folio primario + postea la
+   *  penalización YA CALCULADA (`netAmount`/`taxAmount`, nunca recalculada aquí) --
+   *  TODO en una sola operación atómica (a diferencia del camino de staff, que sigue
+   *  siendo `transitionReservation`+`releaseAvailability`+`ensurePrimaryFolio`+
+   *  `insertCharge` como 4 pasos separados, sin cambio). `null` si la reserva ya no
+   *  estaba en 'confirmada' (carrera perdida, mismo criterio de no-op que
+   *  `transitionReservation`). */
+  systemApplyNoShow(input: NewSystemNoShowApplicationInput): Promise<SystemNoShowApplicationResult | null>;
+
   // ---- Fase 6 — REQ-HK-011: tickets de mantenimiento ----
 
   insertMaintenanceTicket(input: NewMaintenanceTicketInput): Promise<MaintenanceTicketRecord>;
@@ -651,6 +712,12 @@ export type { RoomTypeSummary, GuestSummary, RoomSummary, NewRoomTypeInput, NewR
 export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
 export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";
 export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";
+export type {
+  DueNoShowReservationForSystem,
+  NewSystemNightAuditChargeInput,
+  NewSystemNoShowApplicationInput,
+  SystemNoShowApplicationResult,
+} from "./types.ts";
 export type { HotelOrganizationSummary, PropertySummary } from "./types.ts";
 export type {
   MaintenanceTicketRecord,

@@ -15,6 +15,14 @@
 // Ambas superficies llaman la MISMA lógica de orquestación
 // (`runNightAuditForProperty`/`runNightAuditSweep`, @atiende/worker) -- ninguna ruta
 // HTTP reimplementa el posteo de cargos/no-shows por su cuenta.
+//
+// Fase 6b (flujos de sistema, migrations/023_night_audit_sistema_escritura.sql): la
+// ruta 1 corre bajo sesión de sistema (`withAppSession({ userId: null })`, sin
+// `auth.uid()`) -- pasa `session: "sistema"` (vía `runNightAuditSweep`, que SIEMPRE
+// corre en ese modo, ver su comentario de cabecera en @atiende/worker). La ruta 2
+// corre bajo sesión de staff autenticado real -- pasa `session: "staff"`,
+// LITERALMENTE el mismo comportamiento que antes de esta fase, sin ningún cambio.
+
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -105,7 +113,7 @@ export function hotelesNightAuditRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       businessDate = raw.businessDate;
     }
 
-    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate });
+    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate, session: "staff" });
     return c.json(serializeSummary(summary), 200);
   });
 
