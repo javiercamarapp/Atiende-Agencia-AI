@@ -6,6 +6,7 @@
 // `licitaciones.can_access_org`/`can_write_org`/`can_decide_org`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
@@ -2257,7 +2258,17 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   async receivablesSummary(organizationId: string, tenderId: string): Promise<ReceivablesSummary> {
     const invoices = await this.listContractInvoices(organizationId, tenderId);
-    const today = new Date().toISOString().slice(0, 10);
+    // Bug real (revisión r6, misma causa raíz que `apps/api/.../despachos/
+    // vencimientos.ts::todayIso` -- ver su comentario de cabecera): "hoy" para decidir
+    // pendiente/vencido usaba `new Date().toISOString().slice(0, 10)` (día UTC del
+    // proceso), corrido un día adelante del real en CDMX entre las 18:00 y las 23:59 hora
+    // local. Mismo fix en las 3 firmas de abajo (`scanRenewalAlerts`/
+    // `systemScanRenewalAlerts`/`listOverdueContractInvoices`) -- todas usan
+    // `@atiende/core-tenancy::hoyFechaNegocio()` como default cuando el caller no inyecta
+    // un `todayIsoDate` explícito (los tests SÍ lo inyectan; el cron real de
+    // `apps/worker/src/jobs/licitaciones/alert-notifications.ts` NO, así que es el
+    // default el que corre en producción).
+    const today = hoyFechaNegocio();
     const totals = summarizeReceivables(
       invoices.map((inv) => ({ amount: inv.amount, dueDate: inv.dueDate, paidAt: inv.paidAt })),
       today,
@@ -2394,7 +2405,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   async scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
     const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
-    const today = input.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const today = input.todayIsoDate ?? hoyFechaNegocio();
 
     const contractsRes = await this.db.query<{ id: string; tender_id: string; end_date: string }>(
       `select id, tender_id, end_date::text as end_date from licitaciones.contract
@@ -2430,7 +2441,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   // staff autenticado real (`POST .../renewals/scan`) -- sin cambio.
   async systemScanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
     const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
-    const today = input.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const today = input.todayIsoDate ?? hoyFechaNegocio();
 
     const contractsRes = await this.db.query<{ out_contract_id: string; out_tender_id: string; out_end_date: string }>(
       `select * from licitaciones.system_list_renewal_candidate_contracts($1);`,
@@ -2520,7 +2531,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   // tabla (bloqueado por `can_access_org` bajo sesión de sistema, sin escape
   // hatch). Sin cambio de contrato TypeScript -- mismo método, misma firma.
   async listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]> {
-    const today = todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const today = todayIsoDate ?? hoyFechaNegocio();
     const { rows } = await this.db.query<{ out_id: string; out_contract_id: string; out_tender_id: string; out_concepto: string; out_amount: string; out_due_date: string; out_days_overdue: number }>(
       `select * from licitaciones.system_list_overdue_contract_invoices($1, $2::date);`,
       [organizationId, today],
