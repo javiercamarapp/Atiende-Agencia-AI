@@ -25,6 +25,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from "@atiende/ui";
 import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
 
@@ -62,6 +66,169 @@ interface ReservaResumen {
   readonly huespedNombre: string | null;
   readonly huespedContacto: string | null;
 }
+
+// Fase 10c -- lectores restantes del break-glass (ver packages/domain-rentas/src/
+// break-glass/tipos.ts para el tipo real que cada uno espeja; los nombres de campo
+// son EXACTAMENTE los que c.json() serializa desde esas interfaces TS, ver
+// apps/api/src/routes/superadmin-break-glass.ts::registrarLectorTenant).
+interface FinanzasResumen {
+  readonly id: string;
+  readonly ocupacionId: string;
+  readonly propertyId: string;
+  readonly moneda: string;
+  readonly montoBrutoCentavos: number;
+  readonly netoCentavos: number;
+  readonly createdAtMs: number;
+}
+
+interface PayoutResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly canalId: string;
+  readonly referenciaExterna: string | null;
+  readonly moneda: string;
+  readonly montoTotalCentavos: number;
+  readonly fechaPayout: string;
+}
+
+interface PricingResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly precioNocheCentavos: number;
+  readonly moneda: string;
+  readonly vigenteDesde: string;
+}
+
+interface MensajeriaResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly canalCodigo: string;
+  readonly huespedNombre: string | null;
+  readonly fechaCheckIn: string | null;
+  readonly fechaCheckOut: string | null;
+  readonly reservaConfirmada: boolean;
+}
+
+interface LimpiezaResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly tipo: string;
+  readonly estado: string;
+  readonly prioridad: string;
+  readonly programadaPara: string;
+}
+
+/** `urlImportacionEnmascarada` -- NUNCA la URL completa, ver el comentario de
+ *  cabecera de `rentas.list_sync_ical_for_break_glass` (020_break_glass_lectores.sql). */
+interface SyncIcalResumen {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly unidadId: string;
+  readonly canalId: string;
+  readonly urlImportacionEnmascarada: string;
+  readonly activo: boolean;
+  readonly intentosFallidosConsecutivos: number;
+  readonly motivoCuarentena: string | null;
+}
+
+function centavosAMoneda(centavos: number, moneda: string): string {
+  return `${(centavos / 100).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda}`;
+}
+
+/** Un recurso del break-glass -- ruta de API (`path`), clave del JSON de
+ *  respuesta (`jsonKey`), etiqueta de pestaña, y cómo pintar una fila de su
+ *  propio tipo. Mismo orden que `registrarLectorTenant` en la API. */
+interface RecursoBreakGlass {
+  readonly key: string;
+  readonly path: string;
+  readonly jsonKey: string;
+  readonly etiqueta: string;
+  readonly renderFila: (item: Record<string, unknown>) => string;
+  readonly mensajeVacio: string;
+}
+
+const RECURSOS: readonly RecursoBreakGlass[] = [
+  {
+    key: "reservas",
+    path: "reservas",
+    jsonKey: "reservas",
+    etiqueta: "Reservas",
+    mensajeVacio: "El tenant no tiene reservas directas registradas.",
+    renderFila: (i) => {
+      const r = i as unknown as ReservaResumen;
+      return `${r.checkIn} → ${r.checkOut} · ${r.estado} · ${r.huespedNombre ?? "sin nombre registrado"}`;
+    },
+  },
+  {
+    key: "finanzas",
+    path: "finanzas",
+    jsonKey: "finanzas",
+    etiqueta: "Finanzas",
+    mensajeVacio: "El tenant no tiene movimiento financiero por reserva registrado.",
+    renderFila: (i) => {
+      const r = i as unknown as FinanzasResumen;
+      return `Bruto ${centavosAMoneda(r.montoBrutoCentavos, r.moneda)} · Neto ${centavosAMoneda(r.netoCentavos, r.moneda)}`;
+    },
+  },
+  {
+    key: "payouts",
+    path: "payouts",
+    jsonKey: "payouts",
+    etiqueta: "Payouts",
+    mensajeVacio: "El tenant no tiene payouts por canal registrados.",
+    renderFila: (i) => {
+      const r = i as unknown as PayoutResumen;
+      return `${r.fechaPayout} · ${centavosAMoneda(r.montoTotalCentavos, r.moneda)}${r.referenciaExterna ? ` · ${r.referenciaExterna}` : ""}`;
+    },
+  },
+  {
+    key: "pricing",
+    path: "pricing",
+    jsonKey: "pricing",
+    etiqueta: "Pricing",
+    mensajeVacio: "El tenant no tiene tarifa base registrada.",
+    renderFila: (i) => {
+      const r = i as unknown as PricingResumen;
+      return `Desde ${r.vigenteDesde} · ${centavosAMoneda(r.precioNocheCentavos, r.moneda)}/noche`;
+    },
+  },
+  {
+    key: "mensajeria",
+    path: "mensajeria",
+    jsonKey: "mensajeria",
+    etiqueta: "Mensajería",
+    mensajeVacio: "El tenant no tiene conversaciones con huéspedes registradas.",
+    renderFila: (i) => {
+      const r = i as unknown as MensajeriaResumen;
+      return `${r.canalCodigo} · ${r.huespedNombre ?? "sin nombre registrado"}${r.reservaConfirmada ? " · reserva confirmada" : ""}`;
+    },
+  },
+  {
+    key: "limpieza",
+    path: "limpieza",
+    jsonKey: "limpieza",
+    etiqueta: "Limpieza/mantenimiento",
+    mensajeVacio: "El tenant no tiene tareas de limpieza/mantenimiento/inspección registradas.",
+    renderFila: (i) => {
+      const r = i as unknown as LimpiezaResumen;
+      return `${r.programadaPara} · ${r.tipo} · ${r.estado} (${r.prioridad})`;
+    },
+  },
+  {
+    key: "sync_ical",
+    path: "sync-ical",
+    jsonKey: "syncIcal",
+    etiqueta: "Sync iCal",
+    mensajeVacio: "El tenant no tiene feeds de sincronización de calendario conectados.",
+    renderFila: (i) => {
+      const r = i as unknown as SyncIcalResumen;
+      return `${r.urlImportacionEnmascarada} · ${r.activo ? "activo" : "inactivo"}${r.motivoCuarentena ? ` · en cuarentena: ${r.motivoCuarentena}` : ""}`;
+    },
+  },
+];
 
 const DURACIONES = [
   { minutos: 15, etiqueta: "15 minutos" },
@@ -116,10 +283,35 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
 
   const [cerrando, setCerrando] = useState<string | null>(null);
 
-  const [reservasSesionId, setReservasSesionId] = useState<string | null>(null);
-  const [reservas, setReservas] = useState<readonly ReservaResumen[] | null>(null);
-  const [reservasError, setReservasError] = useState<string | null>(null);
-  const [reservasCargando, setReservasCargando] = useState(false);
+  // Fase 10c -- panel de datos del tenant, generalizado a los 7 recursos de
+  // RECURSOS (antes solo cubría reservas). `datosPanelSesionId` es la sesión
+  // activa cuyo panel está abierto (o null si está cerrado); `recursoActivo` es
+  // la pestaña seleccionada dentro de ese panel; `filtroPropertyId` es el
+  // filtro opcional por propiedad, compartido por las 7 pestañas del MISMO
+  // panel (se limpia al cambiar de sesión). Cada recurso se cachea por separado
+  // en `datosPorRecurso`/`errorPorRecurso` -- cambiar de pestaña no vuelve a
+  // pedir un recurso ya leído en esta sesión de UI, salvo que cambie el filtro
+  // por propiedad (`datosPorRecurso` se limpia en ese caso).
+  const [datosPanelSesionId, setDatosPanelSesionId] = useState<string | null>(null);
+  const [recursoActivo, setRecursoActivo] = useState<string>(RECURSOS[0]!.key);
+  const [filtroPropertyId, setFiltroPropertyId] = useState("");
+  // `filtroPropertyIdAplicado` -- el valor de `filtroPropertyId` que ya generó
+  // la última lectura de datos (fix hallazgo de revisión real, no bloqueante
+  // 8: `onBlur` disparaba una lectura nueva aunque el valor no hubiera
+  // cambiado -- cada blur sin cambios reales consumía una fila de la
+  // bitácora inalterable y una operación del rate-limit compartido
+  // BREAK_GLASS_RATE_LIMIT sin ninguna razón).
+  const [filtroPropertyIdAplicado, setFiltroPropertyIdAplicado] = useState("");
+  const [datosPorRecurso, setDatosPorRecurso] = useState<Record<string, readonly Record<string, unknown>[] | null>>({});
+  const [errorPorRecurso, setErrorPorRecurso] = useState<Record<string, string | null>>({});
+  // Fase 10c, fix hallazgo de revisión real (bloqueante 3) -- `disponible:
+  // false` (lector no disponible: falta aplicar packages/domain-rentas/
+  // migrations/020_break_glass_lectores.sql en la base real) es un estado
+  // DISTINTO de "el tenant no tiene datos de este tipo" (`mensajeVacio` de
+  // cada RECURSO). `undefined` = todavía no se sabe (nunca se leyó este
+  // recurso en este panel).
+  const [disponiblePorRecurso, setDisponiblePorRecurso] = useState<Record<string, boolean | undefined>>({});
+  const [cargandoRecurso, setCargandoRecurso] = useState<string | null>(null);
 
   async function cargar() {
     setError(null);
@@ -188,23 +380,67 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
     }
   }
 
-  async function verReservas(sesion: Sesion) {
-    if (reservasSesionId === sesion.id) {
-      setReservasSesionId(null);
+  function togglePanelDatos(sesion: Sesion) {
+    if (datosPanelSesionId === sesion.id) {
+      setDatosPanelSesionId(null);
       return;
     }
-    setReservasSesionId(sesion.id);
-    setReservas(null);
-    setReservasError(null);
-    setReservasCargando(true);
+    setDatosPanelSesionId(sesion.id);
+    setRecursoActivo(RECURSOS[0]!.key);
+    setFiltroPropertyId("");
+    setFiltroPropertyIdAplicado("");
+    setDatosPorRecurso({});
+    setErrorPorRecurso({});
+    setDisponiblePorRecurso({});
+    void leerRecurso(sesion, RECURSOS[0]!, "");
+  }
+
+  async function leerRecurso(sesion: Sesion, recurso: RecursoBreakGlass, propertyId: string) {
+    setCargandoRecurso(recurso.key);
+    setErrorPorRecurso((prev) => ({ ...prev, [recurso.key]: null }));
     try {
-      const r = await fetchJson<{ reservas: ReservaResumen[] }>(apiBaseUrl, token, `/superadmin/break-glass/organizaciones/${sesion.organizationId}/reservas`);
-      setReservas(r.reservas);
+      const qs = propertyId.trim() ? `?propertyId=${encodeURIComponent(propertyId.trim())}` : "";
+      const r = await fetchJson<Record<string, Record<string, unknown>[]> & { disponible?: boolean }>(
+        apiBaseUrl,
+        token,
+        `/superadmin/break-glass/organizaciones/${sesion.organizationId}/${recurso.path}${qs}`,
+      );
+      setDatosPorRecurso((prev) => ({ ...prev, [recurso.key]: r[recurso.jsonKey] ?? [] }));
+      // `disponible` viaja en TODAS las respuestas desde el fix del bloqueante
+      // 3 -- `?? true` es solo defensa ante una API vieja/servidor no
+      // actualizado (nunca el caso normal), para no mostrar "no disponible"
+      // por error de lectura de un campo ausente.
+      setDisponiblePorRecurso((prev) => ({ ...prev, [recurso.key]: r.disponible ?? true }));
     } catch (err) {
-      setReservasError(err instanceof Error ? err.message : "No se pudieron leer las reservas del tenant.");
+      setErrorPorRecurso((prev) => ({ ...prev, [recurso.key]: err instanceof Error ? err.message : `No se pudo leer "${recurso.etiqueta}" del tenant.` }));
     } finally {
-      setReservasCargando(false);
+      setCargandoRecurso(null);
     }
+  }
+
+  function cambiarRecursoActivo(sesion: Sesion, key: string) {
+    setRecursoActivo(key);
+    if (datosPorRecurso[key] === undefined) {
+      const recurso = RECURSOS.find((r) => r.key === key);
+      if (recurso) void leerRecurso(sesion, recurso, filtroPropertyId);
+    }
+  }
+
+  function aplicarFiltroPropiedad(sesion: Sesion, propertyId: string) {
+    setFiltroPropertyId(propertyId);
+    // Fix hallazgo de revisión real (no bloqueante 8): `onBlur` disparaba una
+    // lectura nueva -- fila nueva en la bitácora inalterable + una operación
+    // del rate-limit compartido -- aunque el valor no hubiera cambiado desde
+    // la última vez que sí se aplicó (recorrer las 7 pestañas y perder el foco
+    // del input sin tocarlo ya generaba 7 lecturas de más). Si el valor
+    // (recortado) es el mismo que ya está aplicado, no se repite la lectura.
+    if (propertyId.trim() === filtroPropertyIdAplicado.trim()) return;
+    setFiltroPropertyIdAplicado(propertyId);
+    setDatosPorRecurso({});
+    setErrorPorRecurso({});
+    setDisponiblePorRecurso({});
+    const recurso = RECURSOS.find((r) => r.key === recursoActivo) ?? RECURSOS[0]!;
+    void leerRecurso(sesion, recurso, propertyId);
   }
 
   if (error && !sesiones) return <EstadoError mensaje={error} onReintentar={() => void cargar()} />;
@@ -276,9 +512,9 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
                         <TableCell>
                           <div className="flex items-center gap-1.5 justify-end">
                             {s.activa && (
-                              <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => void verReservas(s)}>
+                              <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => togglePanelDatos(s)}>
                                 <Clock className="w-3.5 h-3.5" strokeWidth={1.75} />
-                                {reservasSesionId === s.id ? "Ocultar reservas" : "Ver reservas"}
+                                {datosPanelSesionId === s.id ? "Ocultar datos del tenant" : "Ver datos del tenant"}
                               </Button>
                             )}
                             {s.activa && (
@@ -289,25 +525,68 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
                           </div>
                         </TableCell>
                       </TableRow>
-                      {reservasSesionId === s.id && (
+                      {datosPanelSesionId === s.id && (
                         <TableRow>
-                          <TableCell colSpan={5} className="bg-muted/30">
-                            {reservasCargando && <p className="text-xs text-muted-foreground p-2">Leyendo reservas del tenant…</p>}
-                            {reservasError && (
-                              <p role="alert" className="text-xs text-destructive p-2">
-                                {reservasError}
-                              </p>
-                            )}
-                            {reservas && reservas.length === 0 && <p className="text-xs text-muted-foreground p-2">El tenant no tiene reservas directas registradas.</p>}
-                            {reservas && reservas.length > 0 && (
-                              <div className="p-2 flex flex-col gap-1">
-                                {reservas.map((r) => (
-                                  <div key={r.ocupacionId} className="text-xs text-foreground">
-                                    {r.checkIn} → {r.checkOut} · {r.estado} · {r.huespedNombre ?? "sin nombre registrado"}
-                                  </div>
-                                ))}
+                          <TableCell colSpan={5} className="bg-muted/30 p-3">
+                            <div className="flex flex-col gap-3">
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`break-glass-property-filter-${s.id}`} className="text-xs text-muted-foreground whitespace-nowrap">
+                                  Filtrar por propiedad (opcional)
+                                </Label>
+                                <Input
+                                  id={`break-glass-property-filter-${s.id}`}
+                                  value={filtroPropertyId}
+                                  onChange={(e) => setFiltroPropertyId(e.target.value)}
+                                  onBlur={() => aplicarFiltroPropiedad(s, filtroPropertyId)}
+                                  onKeyDown={(e) => e.key === "Enter" && aplicarFiltroPropiedad(s, filtroPropertyId)}
+                                  placeholder="uuid de la propiedad"
+                                  className="h-7 max-w-xs text-xs"
+                                />
                               </div>
-                            )}
+                              <Tabs value={recursoActivo} onValueChange={(key) => cambiarRecursoActivo(s, key)}>
+                                <TabsList className="h-9 flex-wrap">
+                                  {RECURSOS.map((r) => (
+                                    <TabsTrigger key={r.key} value={r.key} className="text-xs px-2.5 py-1">
+                                      {r.etiqueta}
+                                    </TabsTrigger>
+                                  ))}
+                                </TabsList>
+                                {RECURSOS.map((r) => {
+                                  const datos = datosPorRecurso[r.key];
+                                  const err = errorPorRecurso[r.key];
+                                  const disponible = disponiblePorRecurso[r.key];
+                                  return (
+                                    <TabsContent key={r.key} value={r.key}>
+                                      {cargandoRecurso === r.key && <p className="text-xs text-muted-foreground p-2">Leyendo {r.etiqueta.toLowerCase()} del tenant…</p>}
+                                      {err && (
+                                        <p role="alert" className="text-xs text-destructive p-2">
+                                          {err}
+                                        </p>
+                                      )}
+                                      {/* Fix hallazgo de revisión real (bloqueante 3): "no disponible" (falta
+                                          aplicar la migración 020 en la base real) es un estado DISTINTO de
+                                          "el tenant no tiene datos de este tipo" -- un operador investigando
+                                          una emergencia necesita saber cuál de los dos está viendo. */}
+                                      {!err && cargandoRecurso !== r.key && datos && datos.length === 0 && disponible === false && (
+                                        <p role="status" className="text-xs text-amber-600 dark:text-amber-500 p-2">
+                                          Este lector todavía no está disponible en esta base (falta aplicar la migración correspondiente) -- no se sabe si el tenant tiene datos de este tipo.
+                                        </p>
+                                      )}
+                                      {!err && cargandoRecurso !== r.key && datos && datos.length === 0 && disponible !== false && <p className="text-xs text-muted-foreground p-2">{r.mensajeVacio}</p>}
+                                      {!err && datos && datos.length > 0 && (
+                                        <div className="p-2 flex flex-col gap-1">
+                                          {datos.map((item, idx) => (
+                                            <div key={typeof item.id === "string" ? item.id : typeof item.ocupacionId === "string" ? item.ocupacionId : idx} className="text-xs text-foreground">
+                                              {r.renderFila(item)}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </TabsContent>
+                                  );
+                                })}
+                              </Tabs>
+                            </div>
                           </TableCell>
                         </TableRow>
                       )}
