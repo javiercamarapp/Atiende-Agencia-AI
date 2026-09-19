@@ -158,7 +158,18 @@ begin
 end;
 $$;
 
-revoke all on function core.record_billing_webhook_event(text, text, uuid, text, text) from public;
+-- Revisión de PR #153 (bloqueante 4): revocar solo de `public` no basta --
+-- un caller `anon` TAMBIÉN tiene `auth.uid() is null` (mismo valor que un
+-- caller de sistema sin sesión), así que el GRANT es la ÚNICA barrera real
+-- contra `anon` frente al guard `auth.uid() is not null` de arriba. `core`
+-- está expuesto por PostgREST (`supabase/config.toml`) y, como documentan
+-- `0016_superadmin_acciones.sql` (comentario de cabecera) y
+-- `0009_billing_saas_schema.sql`, un `ALTER DEFAULT PRIVILEGES` preexistente
+-- en el Supabase real de este proyecto podría conceder `EXECUTE` directo a
+-- `anon` sobre funciones nuevas del schema `core` -- revocar de `public` NO
+-- retira ese default privilege. Revocar EXPLÍCITAMENTE de `anon` (además de
+-- `public`) es la mitigación disponible desde esta migración.
+revoke all on function core.record_billing_webhook_event(text, text, uuid, text, text) from public, anon;
 grant execute on function core.record_billing_webhook_event(text, text, uuid, text, text) to authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -235,5 +246,7 @@ as $$
   offset greatest(0, coalesce(p_offset, 0));
 $$;
 
-revoke all on function core.list_billing_webhook_log_for_superadmin(uuid, text, text, uuid, timestamptz, timestamptz, integer, integer) from public;
+-- Mismo motivo que el revoke de `record_billing_webhook_event` arriba: revocar
+-- también de `anon` explícitamente, no solo de `public`.
+revoke all on function core.list_billing_webhook_log_for_superadmin(uuid, text, text, uuid, timestamptz, timestamptz, integer, integer) from public, anon;
 grant execute on function core.list_billing_webhook_log_for_superadmin(uuid, text, text, uuid, timestamptz, timestamptz, integer, integer) to authenticated;
