@@ -11,6 +11,12 @@ exacto** detrás del hallazgo de auditoría a1b:
 - Más `apps/api/src/routes/verticals/citas/reminders.ts` y
   `apps/api/src/routes/verticals/rentas/ical-sync-cron.ts` (mismo patrón,
   encontrado en la búsqueda del punto 4 de la tarea)
+- Corrección posterior (revisor independiente, mismo PR): `packages/domain-rentas/src/checkin-reminders.ts::runRecordatorioCheckInCore`
+  (el cuerpo original de este PR afirmaba, FALSO, que este cron "no requiere
+  el fix"), `apps/worker/src/jobs/licitaciones/deadline-reminders.ts::runDeadlineReminderSweep`
+  y `apps/worker/src/jobs/licitaciones/discover-tenders.ts::runDiscoverTendersSweep`
+  (transacción por FUENTE, no solo por organización -- ver el comentario de
+  cabecera de ese archivo)
 
 Todos compartían el mismo defecto: **una sola transacción de Postgres para
 TODO el barrido** (`engine.withAppSession`) + `try`/`catch` **por unidad**
@@ -74,10 +80,12 @@ de la salida de `psql`).
 
 No repite la cobertura de los tests unitarios de
 `apps/worker/tests/{night-audit-job,despachos-cobranza-reminders-job,
-alert-notifications-job}.spec.ts` (describe
-`"r4-fix-crons-transaccion-por-unidad"`), que ejercitan el código TypeScript
-real (`runNightAuditSweep`/`runCobranzaReminderSweep`/
-`runAlertNotificationSweep`) contra un engine fake transaccional. Este script
+alert-notifications-job,deadline-reminders-job,discover-tenders-job}.spec.ts`
+y `packages/domain-rentas/tests/checkin-reminders.spec.ts` (describe
+`"r4-fix-crons-transaccion-por-unidad"` en cada uno), que ejercitan el código
+TypeScript real (`runNightAuditSweep`/`runCobranzaReminderSweep`/
+`runAlertNotificationSweep`/`runDeadlineReminderSweep`/`runDiscoverTendersSweep`/
+`runRecordatorioCheckInCore`) contra un engine fake transaccional. Este script
 prueba el mecanismo de Postgres puro, sin TypeScript de por medio -- las dos
 verificaciones son complementarias, no redundantes (el test unitario prueba
 que el CÓDIGO llama a `withRepo` correctamente; este script prueba que la
