@@ -25,8 +25,8 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { DashboardHeader, EstadoError, NotificationBell, Sidebar } from "@atiende/ui";
-import type { SidebarSection } from "@atiende/ui";
+import { AtiendeWordmark, BottomNav, DashboardHeader, EstadoError, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
 import type { LoginSession } from "../../lib/auth-client.ts";
@@ -104,6 +104,29 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
     });
   }
   return sections;
+}
+
+// Hallazgo de auditoría (severidad ALTA, "en viewport móvil el usuario ve el
+// contenido sin logo/menú/logout": este Shell nunca importaba/renderizaba
+// MobileHeader/BottomNav, a diferencia de CitasShell.tsx/LicitacionesShell.tsx —
+// el <Sidebar> compartido es `hidden md:flex` (packages/ui/src/components/
+// Sidebar.tsx), así que en mobile no quedaba NINGÚN nav): subconjunto operativo
+// (≤5 ítems, mismo criterio ya documentado en BottomNav.tsx/CitasShell.tsx: más
+// de 5 deja de ser usable con el pulgar) — Panel/Pedidos/Historial/Productos/
+// Clientes, el día a día real del manager en el piso; Promociones/Sucursales
+// (tareas de configuración, no operación diaria) y Staff (ya oculto en el
+// Sidebar para quien no sea owner/admin) se quedan fuera de la barra, mismo
+// trade-off que CitasShell.tsx aplicó (dropea Disponibilidad/Staff del Sidebar
+// completo). Ningún ítem nuevo: los 5 ya existen en `buildSections`.
+function buildMobileItems(orgSlug: string): BottomNavItem[] {
+  const base = `/restaurantes/${orgSlug}`;
+  return [
+    { to: base, label: "Panel", icon: LayoutDashboard },
+    { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
+    { to: `${base}/historial`, label: "Historial", icon: History },
+    { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
+    { to: `${base}/clientes`, label: "Clientes", icon: Users },
+  ];
 }
 
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
@@ -289,41 +312,50 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
     <div className="min-h-screen bg-background flex gap-3 p-3">
       <Sidebar sections={sections} user={{ email: session.email, rol: role }} onLogout={() => void handleLogout()} hotelSelector={sucursalSelector} />
 
+      <MobileHeader
+        title={<AtiendeWordmark className="scale-90 origin-left" />}
+        action={<div className="flex items-center gap-2">{branches.length > 1 ? sucursalSelector : null}</div>}
+      />
+
       <div className="flex-1 min-w-0 flex flex-col gap-3">
-        <DashboardHeader
-          variant="vertical"
-          icon={<UtensilsCrossed className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-          title={
-            <span className="min-w-0 flex flex-col">
-              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Restaurantes · {orgSlug}</span>
-              <span className="text-sm font-medium text-foreground truncate">{activeBranch.name}</span>
-            </span>
-          }
-          fecha={fechaCortaEsMx()}
-          notificationBell={
-            <NotificationBell
-              items={notif.items}
-              unreadCount={notif.unreadCount}
-              loading={notif.loading}
-              onOpenChange={(open) => {
-                if (open) notif.refetch();
-              }}
-              onMarkRead={notif.onMarkRead}
-              onMarkAllRead={notif.onMarkAllRead}
-            />
-          }
-          chatButton={<BotonChatDatos />}
-        />
+        <div className="hidden md:block">
+          <DashboardHeader
+            variant="vertical"
+            icon={<UtensilsCrossed className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+            title={
+              <span className="min-w-0 flex flex-col">
+                <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground truncate">Restaurantes · {orgSlug}</span>
+                <span className="text-sm font-medium text-foreground truncate">{activeBranch.name}</span>
+              </span>
+            }
+            fecha={fechaCortaEsMx()}
+            notificationBell={
+              <NotificationBell
+                items={notif.items}
+                unreadCount={notif.unreadCount}
+                loading={notif.loading}
+                onOpenChange={(open) => {
+                  if (open) notif.refetch();
+                }}
+                onMarkRead={notif.onMarkRead}
+                onMarkAllRead={notif.onMarkAllRead}
+              />
+            }
+            chatButton={<BotonChatDatos />}
+          />
+        </div>
 
         {/* `key={propertyId}` fuerza a React a desmontar/remontar las páginas hijas
             cuando la sucursal activa cambia DENTRO de la misma instancia de Shell
             (selector, sin navegar) — mismo criterio que HotelesShell.tsx: cualquier
             página que cachee en su propio useState un resultado calculado para la
             sucursal anterior queda cubierta sin tener que auditarlas una por una. */}
-        <main key={propertyId} className="flex-1 min-w-0 overflow-auto rounded-2xl border border-border bg-card">
+        <main key={propertyId} className="flex-1 min-w-0 overflow-auto rounded-2xl border border-border bg-card pt-20 pb-24 md:pt-0 md:pb-0">
           {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
         </main>
       </div>
+
+      <BottomNav items={buildMobileItems(orgSlug)} />
     </div>
   );
 }

@@ -91,8 +91,8 @@ import {
   Tag,
   Wallet,
 } from "lucide-react";
-import { DashboardHeader, EstadoCargando, EstadoError, EstadoVacio, NotificationBell, Sidebar } from "@atiende/ui";
-import type { SidebarSection } from "@atiende/ui";
+import { AtiendeWordmark, BottomNav, DashboardHeader, EstadoCargando, EstadoError, EstadoVacio, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { useNotifications } from "../../lib/useNotifications.ts";
@@ -136,6 +136,29 @@ function buildSections(orgSlug: string): SidebarSection[] {
         { to: ruta("finanzas"), label: "Finanzas", icon: Wallet },
       ],
     },
+  ];
+}
+
+// Hallazgo de auditoría (severidad ALTA, "en viewport móvil el usuario ve el
+// contenido sin logo/menú/logout": este Shell nunca importaba/renderizaba
+// MobileHeader/BottomNav, a diferencia de CitasShell.tsx/LicitacionesShell.tsx --
+// el <Sidebar> compartido es `hidden md:flex`, así que en mobile no quedaba
+// NINGÚN nav): subconjunto operativo (≤5 ítems, mismo criterio que
+// CitasShell.tsx -- más de 5 deja de ser usable con el pulgar) -- Resumen/
+// Calendario/Aprobaciones/Mis tareas/Precios cubren el día a día real en piso
+// (incluido el rol `limpieza`, cuyo único panel funcional es "Mis tareas", ver
+// pages/MisTareas.tsx). Finanzas/Sincronización iCal (back-office, tareas de
+// configuración puntual) se quedan fuera de la barra -- mismo trade-off que
+// CitasShell.tsx aplicó al dropear Disponibilidad/Staff. Ningún ítem nuevo: los
+// 5 ya existen en `buildSections`.
+function buildMobileItems(orgSlug: string): BottomNavItem[] {
+  const ruta = (sufijo: string) => `/rentas/${orgSlug}${sufijo ? `/${sufijo}` : ""}`;
+  return [
+    { to: ruta(""), label: "Resumen", icon: LayoutDashboard },
+    { to: ruta("calendario"), label: "Calendario", icon: CalendarDays },
+    { to: ruta("aprobaciones"), label: "Aprobaciones", icon: Inbox },
+    { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
+    { to: ruta("precios"), label: "Precios", icon: Tag },
   ];
 }
 
@@ -331,30 +354,41 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
         onLogout={handleLogout}
         hotelSelector={hotelSelector}
       />
+
+      <MobileHeader
+        title={<AtiendeWordmark className="scale-90 origin-left" />}
+        action={<div className="flex items-center gap-2">{properties.length > 1 ? hotelSelector : null}</div>}
+      />
+
       <div className="flex-1 min-w-0 flex flex-col gap-3">
-        <DashboardHeader
-          variant="vertical"
-          icon={<Home className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
-          title={org?.nombre ?? orgSlug}
-          fecha={fechaCortaEsMx()}
-          notificationBell={
-            <NotificationBell
-              items={notif.items}
-              unreadCount={notif.unreadCount}
-              loading={notif.loading}
-              onOpenChange={(open) => {
-                if (open) notif.refetch();
-              }}
-              onMarkRead={notif.onMarkRead}
-              onMarkAllRead={notif.onMarkAllRead}
-            />
-          }
-          chatButton={<BotonChatDatos />}
-        />
-        <main className="flex-1 min-w-0 rounded-2xl border border-border bg-card p-6 overflow-auto">
+        <div className="hidden md:block">
+          <DashboardHeader
+            variant="vertical"
+            icon={<Home className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} />}
+            title={org?.nombre ?? orgSlug}
+            fecha={fechaCortaEsMx()}
+            notificationBell={
+              <NotificationBell
+                items={notif.items}
+                unreadCount={notif.unreadCount}
+                loading={notif.loading}
+                onOpenChange={(open) => {
+                  if (open) notif.refetch();
+                }}
+                onMarkRead={notif.onMarkRead}
+                onMarkAllRead={notif.onMarkAllRead}
+              />
+            }
+            chatButton={<BotonChatDatos />}
+          />
+        </div>
+        <main className="flex-1 min-w-0 rounded-2xl border border-border bg-card p-6 pt-20 pb-24 md:pt-6 md:pb-6 overflow-auto">
           {children({ apiBaseUrl, token: session.token, propertyId, setPropertyId: handleSelectProperty, properties, orgSlug, session })}
         </main>
       </div>
+
+      <BottomNav items={buildMobileItems(orgSlug)} />
+
       {loggingOut && <span className="sr-only" role="status">Cerrando sesión…</span>}
     </div>
   );
