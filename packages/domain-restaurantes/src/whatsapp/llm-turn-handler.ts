@@ -392,62 +392,72 @@ async function executeToolCall(
 ): Promise<ToolExecutionOutcome> {
   const { organizationId, phone, name, input } = args;
   try {
-    switch (name) {
-      case "buscar_sucursal_cercana": {
-        const match = await findNearestBranch(repo, { organizationId, colonia: String(input.colonia ?? "") });
-        const result = match.found
-          ? { encontrada: true, branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, colonia_reconocida: match.recognizedZoneName }
-          : { encontrada: false, mensaje: match.message };
-        return { result, orderId: null, propertyId: null };
+    // Bloqueante de re-revisión (PR #158, r3) -- SAVEPOINT propio por tool call (ver
+    // el comentario de cabecera de `RestaurantesRepository.runWithRowSavepoint`):
+    // sin esto, un error real de Postgres dentro de CUALQUIER case de abajo (ej.
+    // `PT409` de `createOrderIdempotent` sin SAVEPOINT propio, ver postgres-
+    // repository.ts) dejaría ABORTADA la transacción completa de `withAppSession`
+    // para el resto del loop y para el commit final -- este `catch` de aquí abajo lo
+    // convierte en una respuesta de error normal, pero sin SAVEPOINT eso era una
+    // ilusión a nivel JS: Postgres real seguía viendo la transacción abortada.
+    return await repo.runWithRowSavepoint(async () => {
+      switch (name) {
+        case "buscar_sucursal_cercana": {
+          const match = await findNearestBranch(repo, { organizationId, colonia: String(input.colonia ?? "") });
+          const result = match.found
+            ? { encontrada: true, branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, colonia_reconocida: match.recognizedZoneName }
+            : { encontrada: false, mensaje: match.message };
+          return { result, orderId: null, propertyId: null };
+        }
+        case "buscar_producto": {
+          const branchSlug = String(input.branch_slug ?? "");
+          const branch = await repo.findBranch(organizationId, { slug: branchSlug });
+          if (!branch) return { result: { error: `Sucursal '${branchSlug}' no encontrada` }, orderId: null, propertyId: null };
+          const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: String(input.query ?? "") });
+          const result = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation }));
+          return { result, orderId: null, propertyId: null };
+        }
+        case "cotizar_pedido": {
+          const quote = await quoteOrder(repo, {
+            organizationId,
+            branchSlug: String(input.branch_slug ?? ""),
+            items: toRequestedItems(input.items),
+            adultConfirmed: input.adult_confirmed === true,
+          });
+          return { result: { quote: quoteToWire(quote) }, orderId: null, propertyId: null };
+        }
+        case "crear_pedido": {
+          const order = await createOrder(repo, {
+            organizationId,
+            branchSlug: String(input.branch_slug ?? ""),
+            customerName: String(input.customer_name ?? ""),
+            customerPhone: phone,
+            customerAddress: typeof input.customer_address === "string" ? input.customer_address : undefined,
+            items: toRequestedItems(input.items),
+            source: "whatsapp",
+            notes: typeof input.notes === "string" ? input.notes : undefined,
+            paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
+            adultConfirmed: input.adult_confirmed === true,
+            requestedComplements: Array.isArray(input.requested_complements) ? (input.requested_complements as readonly RequestedComplement[]) : undefined,
+            omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
+          });
+          return { result: { order: orderToWire(order) }, orderId: order.id, propertyId: order.propertyId };
+        }
+        case "registrar_contacto": {
+          await registerCallbackRequest(repo, {
+            organizationId,
+            customerName: String(input.customer_name ?? ""),
+            customerPhone: phone,
+            reason: typeof input.reason === "string" ? input.reason : undefined,
+            message: typeof input.message === "string" ? input.message : undefined,
+            source: "whatsapp",
+          });
+          return { result: { ok: true }, orderId: null, propertyId: null };
+        }
+        default:
+          return { result: { error: `Herramienta desconocida: ${name}` }, orderId: null, propertyId: null };
       }
-      case "buscar_producto": {
-        const branchSlug = String(input.branch_slug ?? "");
-        const branch = await repo.findBranch(organizationId, { slug: branchSlug });
-        if (!branch) return { result: { error: `Sucursal '${branchSlug}' no encontrada` }, orderId: null, propertyId: null };
-        const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: String(input.query ?? "") });
-        const result = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation }));
-        return { result, orderId: null, propertyId: null };
-      }
-      case "cotizar_pedido": {
-        const quote = await quoteOrder(repo, {
-          organizationId,
-          branchSlug: String(input.branch_slug ?? ""),
-          items: toRequestedItems(input.items),
-          adultConfirmed: input.adult_confirmed === true,
-        });
-        return { result: { quote: quoteToWire(quote) }, orderId: null, propertyId: null };
-      }
-      case "crear_pedido": {
-        const order = await createOrder(repo, {
-          organizationId,
-          branchSlug: String(input.branch_slug ?? ""),
-          customerName: String(input.customer_name ?? ""),
-          customerPhone: phone,
-          customerAddress: typeof input.customer_address === "string" ? input.customer_address : undefined,
-          items: toRequestedItems(input.items),
-          source: "whatsapp",
-          notes: typeof input.notes === "string" ? input.notes : undefined,
-          paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
-          adultConfirmed: input.adult_confirmed === true,
-          requestedComplements: Array.isArray(input.requested_complements) ? (input.requested_complements as readonly RequestedComplement[]) : undefined,
-          omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
-        });
-        return { result: { order: orderToWire(order) }, orderId: order.id, propertyId: order.propertyId };
-      }
-      case "registrar_contacto": {
-        await registerCallbackRequest(repo, {
-          organizationId,
-          customerName: String(input.customer_name ?? ""),
-          customerPhone: phone,
-          reason: typeof input.reason === "string" ? input.reason : undefined,
-          message: typeof input.message === "string" ? input.message : undefined,
-          source: "whatsapp",
-        });
-        return { result: { ok: true }, orderId: null, propertyId: null };
-      }
-      default:
-        return { result: { error: `Herramienta desconocida: ${name}` }, orderId: null, propertyId: null };
-    }
+    });
   } catch (err) {
     return { result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" }, orderId: null, propertyId: null };
   }
