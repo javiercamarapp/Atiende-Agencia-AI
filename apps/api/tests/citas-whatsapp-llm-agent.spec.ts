@@ -17,7 +17,7 @@ import {
   InMemoryCitasRepository,
   type WhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import { InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyRestaurantesTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -161,6 +161,7 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
+    llmUsageRepo: new InMemoryLlmUsageRepository(),
   };
 }
 

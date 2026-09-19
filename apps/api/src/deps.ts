@@ -1,4 +1,4 @@
-import type { CoreRepository, CoreStaffRepository } from "@atiende/db";
+import type { CoreRepository, CoreStaffRepository, LlmUsageRepository } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
@@ -212,6 +212,19 @@ export interface AppDeps {
    * por-request para su propio repo (ver comentario de `turnHandler` arriba); ellos
    * reciben el mismo gateway ya cerrado en el closure que arma `production/deps.ts`. */
   readonly llmGateway: LlmGateway | undefined;
+  /** Control de gasto de API de LLM (back office de plataforma, ver
+   *  `routes/superadmin-llm-usage.ts`) — objeto FIJO (sesión de sistema),
+   *  MISMO patrón que `coreRepo`: las funciones SQL que consume
+   *  (`core.list_llm_usage_by_organization_for_superadmin`/etc.) son
+   *  `security definer` con `p_caller_id` explícito, nunca dependen de
+   *  `auth.uid()`. DISTINTO de `llmGateway` de arriba (ese es el motor de
+   *  llamadas real; este es el puerto de lectura/escritura del back office
+   *  sobre el gasto YA registrado + los topes configurables) — ambos comparten
+   *  la misma fuente de datos en Postgres (`core.llm_usage_daily`/
+   *  `core.llm_org_budget`/`core.llm_platform_budget`) pero nunca la misma
+   *  instancia de objeto (`llmGateway` corre dentro de agent-core, agnóstico
+   *  de Postgres a propósito). */
+  readonly llmUsageRepo: LlmUsageRepository;
   /** Dispatcher REAL compartido de WhatsApp saliente (@atiende/whatsapp-gateway) —
    *  drena `messaging_outbox` de las 3 verticales (citas/hoteles/restaurantes) vía
    *  Graph API real, consumido SOLO por `POST /internal/whatsapp/dispatch`

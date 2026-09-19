@@ -56,6 +56,48 @@ export function isBudgetExceededError(err: unknown): err is GatewayBudgetExceede
 }
 
 /**
+ * Tope MENSUAL, persistente entre instancias (`org-monthly-budget.ts`) —
+ * DISTINTO de `GatewayBudgetExceededError` (ese es el tope diario/de-corrida,
+ * en memoria de proceso, defensa en profundidad por-instancia, ver
+ * `budget.ts`). Este es el control de gasto REAL que el back office de
+ * plataforma (control de gasto de API de LLM) expone y edita — se lanza ANTES
+ * de llamar al proveedor, nunca después, mismo criterio "reserva-antes-de-
+ * gastar" que el resto del gateway.
+ *
+ * `scope: 'organization'` — la organización (tenant) agotó su tope mensual
+ * configurable. `scope: 'platform'` — se agotó el tope global de plataforma
+ * (protege el gasto TOTAL entre todas las organizaciones, independiente de
+ * que cada una individualmente esté por debajo de su propio tope).
+ */
+export class MonthlyBudgetExceededError extends GatewayError {
+  constructor(
+    readonly scope: 'organization' | 'platform',
+    readonly organizationId: string,
+    readonly requestedMicroUsd: number,
+    readonly limitMicroUsd: number,
+  ) {
+    super(
+      scope === 'organization'
+        ? `tope mensual de la organización "${organizationId}" agotado: se requieren ${requestedMicroUsd} micro-USD y el tope configurado es ${limitMicroUsd} micro-USD`
+        : `tope mensual GLOBAL de la plataforma agotado (organización "${organizationId}" fue la que lo tocó): se requieren ${requestedMicroUsd} micro-USD y el tope de plataforma es ${limitMicroUsd} micro-USD`,
+      false,
+    );
+  }
+}
+
+/** Mismo motivo/mismo patrón que `isBudgetExceededError` — reconoce el tope
+ *  mensual aunque viaje envuelto en otro error. */
+export function isMonthlyBudgetExceededError(err: unknown): err is MonthlyBudgetExceededError {
+  let cur: unknown = err;
+  for (let depth = 0; depth < 6 && cur && typeof cur === 'object'; depth++) {
+    if (cur instanceof MonthlyBudgetExceededError) return true;
+    if ((cur as { name?: unknown }).name === 'MonthlyBudgetExceededError') return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
  * El gate de residencia bloqueó la ruta: ningún proveedor de la escalera
  * cumple `countryOfResidence === requiredCountry` con el gate activo.
  * Puerto de `NoCompliantProviderError` en

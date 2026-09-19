@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryLlmUsageRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -51,6 +51,7 @@ export const TEST_ENV: ApiEnv = {
 
 export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo: InMemoryRestaurantesRepository; organizationId: string; propertyId: string; products: Record<string, string>; ownerEmail: string; ownerPassword: string }> {
   const coreRepo = new InMemoryCoreRepository();
+  const llmUsageRepo = new InMemoryLlmUsageRepository();
   const restaurantesRepo = new InMemoryRestaurantesRepository();
 
   const organizationId = randomUUID();
@@ -95,6 +96,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
   });
   coreRepo.addOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
   coreRepo.addMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
+  llmUsageRepo.seedOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes" });
 
   const hotelesRepo = new InMemoryHotelesRepository();
   const citasRepo = new InMemoryCitasRepository();
@@ -143,6 +145,7 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     rentasCanalMensajeria: (canal) => new SimuladorCanalMensajeria(canal),
     rentasIcalFeedPort: new FakeIcalFeedPort(),
     llmGateway: undefined,
+    llmUsageRepo,
   };
 
   return { deps, restaurantesRepo, organizationId, propertyId, products: { tacosPastor, cocaCola }, ownerEmail, ownerPassword };

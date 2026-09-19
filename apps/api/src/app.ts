@@ -12,6 +12,7 @@ import { authGoogleRoutes } from "./routes/auth-google.ts";
 import { authMagicLinkRoutes } from "./routes/auth-magic-link.ts";
 import { superadminRoutes } from "./routes/superadmin.ts";
 import { superadminIntegracionesRoutes } from "./routes/superadmin-integraciones.ts";
+import { superadminLlmUsageRoutes } from "./routes/superadmin-llm-usage.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
@@ -58,6 +59,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", authMagicLinkRoutes(deps));
   app.route("/", superadminRoutes(deps));
   app.route("/", superadminIntegracionesRoutes(deps));
+  app.route("/", superadminLlmUsageRoutes(deps));
   app.route("/", notificationsRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
