@@ -1207,6 +1207,15 @@ export class InMemoryCitasRepository implements CitasRepository {
       .map((a) => this.toAppointmentSyncRow(a));
   }
 
+  // No-op real: sin una transacción/conexión Postgres real que proteger, no hay
+  // nada que aislar con un SAVEPOINT -- ver el comentario de cabecera de
+  // `runWithRowSavepoint` en `repository.ts`. `fn` corre directo y su error (si lo
+  // hay) se repropaga tal cual, mismo comportamiento observable que tendría un
+  // SAVEPOINT+ROLLBACK TO SAVEPOINT real desde el punto de vista del caller.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return fn();
+  }
+
   private updateAppointmentSyncFields(appointmentId: string, patch: Partial<Pick<AppointmentRecord, "googleEventId" | "googleSyncStatus" | "googleSyncAttempts" | "googleSyncNextRetryAt" | "googleSyncError">>): void {
     const appointment = this.appointments.get(appointmentId);
     if (!appointment) return;

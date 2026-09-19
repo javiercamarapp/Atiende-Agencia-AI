@@ -193,6 +193,28 @@ export interface RestaurantesRepository {
   ): Promise<readonly ConversationMessage[]>;
   finishWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string, status: "processed" | "failed", errorClass: string | null): Promise<void>;
   markInboundEventFailed(organizationId: string, messageId: string, errorClass: string): Promise<void>;
+  /** Re-revisión de PR #158 (r3, blocker) — `executeToolCall` (whatsapp/llm-turn-
+   * handler.ts) corre DENTRO de la misma transacción de `withAppSession` que abre el
+   * webhook completo (apps/api/src/production/deps.ts) y ya envuelve toda tool call
+   * en un `try/catch` que traga CUALQUIER error, incluido un error real de Postgres
+   * (una tool contra una función/tabla/columna que la migración pendiente todavía no
+   * creó, o cualquier código de negocio como `PT409` de `createOrderIdempotent` sin
+   * SAVEPOINT propio). Sin aislar cada tool call, ese error deja ABORTADA la
+   * transacción del turno completo: hoy (sin la defensa del motor) el commit final
+   * se silencia a un ROLLBACK y el cliente de WhatsApp igual recibe su respuesta;
+   * con la defensa (`AbortedTransactionCommitError`, `managed-postgres-engine.ts`)
+   * ese mismo commit LANZA, el webhook responde 500 a Meta, Meta reintenta sin tope
+   * y cada reintento re-corre el turno LLM completo sin que el cliente reciba
+   * respuesta jamás. Mismo patrón/mismo helper que
+   * `PostgresCitasRepository.runWithRowSavepoint` (`@atiende/domain-citas`, ver su
+   * comentario de cabecera para el diseño completo del helper): aísla el cuerpo de
+   * UNA tool call con un SAVEPOINT propio -- si falla, `ROLLBACK TO SAVEPOINT` deja
+   * la transacción del turno utilizable de nuevo (el commit final SÍ corre como
+   * `COMMIT` real) y el mismo error se repropaga tal cual al `catch` de
+   * `executeToolCall`, que ya lo convierte en una respuesta de error normal para el
+   * cliente -- nunca enmascara el fallo, solo evita que tumbe el resto del turno.
+   * No-op en `InMemoryRestaurantesRepository` (sin transacción real que aislar). */
+  runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T>;
 
   // ---- KPIs de admin (Fase 3 — ver diseño §2, únicas rutas de staff autenticado de
   // este vertical hasta ahora). `propertyIds`: null = sin restricción (agrega TODA la

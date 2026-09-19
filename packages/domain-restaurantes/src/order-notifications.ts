@@ -25,6 +25,7 @@
 // pedido — best-effort real, nunca deben tumbar la operación principal (crear el
 // pedido, mover el estado) solo porque el AVISO falló. Mismo patrón exacto que
 // `@atiende/domain-citas::appointment-email-notifications.ts::tryEnqueueAppointmentEmail`.
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { correoConfirmacionPedido } from "./emails/order-templates.ts";
 import type { Order, OrderStatus } from "./types.ts";
 import type { RestaurantesRepository, StaffOrderNotificationEventType } from "./repository.ts";
@@ -112,17 +113,72 @@ export async function notifyCustomerOnOrderStatusChangeCore(repo: RestaurantesRe
   return { enqueued: true };
 }
 
+const NOTIFY_SAVEPOINT_NAME = "sp_order_notify_best_effort";
+
+/**
+ * Envuelve un best-effort en SAVEPOINT/ROLLBACK TO SAVEPOINT cuando corre dentro de
+ * la MISMA transacción que el caller (mismo patrón exacto que `triggerInline` de
+ * `apps/api/src/routes/internal/whatsapp-dispatch.ts`, hotfix auditoría a2b sobre
+ * PR #169 — Blocker A). `changeOrderStatus`/`changeAssignedOrderStatus`
+ * (order-lifecycle.ts) persisten el nuevo estado del pedido ANTES de llamar a
+ * `tryNotify*` — en sesión de STAFF (admin-orders.ts/repartidor-orders.ts) ese
+ * UPDATE vive en la MISMA transacción que este best-effort. Sin este SAVEPOINT, un
+ * fallo real dentro del best-effort (p.ej. el SELECT de
+ * `resolveActiveWhatsAppPhoneNumberId` contra `restaurantes.whatsapp_channel_config`
+ * sin GRANT `select` a `authenticated` en la base real sin migrar, ver
+ * postgres-repository.ts:631 y supabase/migrations/
+ * 20240101000140_017_restaurantes_sistema_whatsapp_channel_config.sql) deja la
+ * transacción COMPLETA abortada (25P02) — el `commit;` posterior de
+ * `managed-postgres-engine.ts` se convierte en un ROLLBACK silencioso y el cambio
+ * de estado del pedido, ya "persistido" antes en la misma transacción, se pierde
+ * con una respuesta 2xx. El SAVEPOINT va DENTRO del try, mismo criterio que
+ * `triggerInline`: si `db` ya traía la transacción abortada por una causa AJENA a
+ * este best-effort, el propio `SAVEPOINT` también lanza 25P02 — se traga aquí
+ * también, nunca se relanza (no es responsabilidad de este best-effort arreglar un
+ * abort previo). Cuando `db` no se pasa (callers de sesión de SISTEMA, p.ej.
+ * `createOrder`, donde este best-effort no comparte transacción con ninguna
+ * escritura de negocio que deba protegerse) corre sin SAVEPOINT, igual que antes.
+ */
+async function runNotifyBestEffort(db: TenantDbSession | undefined, fn: () => Promise<void>, onError: (err: unknown) => void): Promise<void> {
+  if (!db) {
+    try {
+      await fn();
+    } catch (err) {
+      onError(err);
+    }
+    return;
+  }
+  try {
+    await db.exec(`SAVEPOINT ${NOTIFY_SAVEPOINT_NAME}`);
+    await fn();
+    await db.exec(`RELEASE SAVEPOINT ${NOTIFY_SAVEPOINT_NAME}`);
+  } catch (err) {
+    try {
+      await db.exec(`ROLLBACK TO SAVEPOINT ${NOTIFY_SAVEPOINT_NAME}`);
+      await db.exec(`RELEASE SAVEPOINT ${NOTIFY_SAVEPOINT_NAME}`);
+    } catch (recoveryErr) {
+      // Si el propio SAVEPOINT nunca llegó a crearse (transacción ya abortada de
+      // entrada), este ROLLBACK TO también falla -- se traga aquí a propósito,
+      // igual que triggerInline.
+      console.error("order-notifications: fallo recuperando el SAVEPOINT del best-effort (no debería pasar):", recoveryErr);
+    }
+    onError(err);
+  }
+}
+
 /** Variante best-effort — la que de verdad llaman `order-lifecycle.ts::changeOrderStatus`
  * y `changeAssignedOrderStatus` (el único choke point real de TODA transición de
  * estado, venga del panel admin o del repartidor, ver ambos archivos): un fallo real
  * al encolar el aviso NUNCA debe revertir la transición de estado que sí es la
- * operación de negocio solicitada. */
-export async function tryNotifyCustomerOnOrderStatusChange(repo: RestaurantesRepository, order: Order): Promise<void> {
-  try {
-    await notifyCustomerOnOrderStatusChangeCore(repo, order);
-  } catch (err) {
-    console.error("order-notifications: best-effort customer WhatsApp enqueue failed:", err);
-  }
+ * operación de negocio solicitada. `db` (opcional) es el MISMO `TenantDbSession` de
+ * la transacción del caller -- ver `runNotifyBestEffort` para por qué hace falta en
+ * sesión de staff (Blocker A, revisión de PR #169). */
+export async function tryNotifyCustomerOnOrderStatusChange(repo: RestaurantesRepository, order: Order, db?: TenantDbSession): Promise<void> {
+  await runNotifyBestEffort(
+    db,
+    () => notifyCustomerOnOrderStatusChangeCore(repo, order).then(() => undefined),
+    (err) => console.error("order-notifications: best-effort customer WhatsApp enqueue failed:", err),
+  );
 }
 
 async function enqueueStaffNotification(repo: RestaurantesRepository, order: Order, eventType: StaffOrderNotificationEventType, message: string): Promise<void> {
@@ -152,12 +208,12 @@ export async function notifyStaffOrderProblemCore(repo: RestaurantesRepository, 
   await enqueueStaffNotification(repo, order, "order.problema", `Incidencia en el pedido de ${order.customerName}${branchSuffix(order)}${order.incidentNote ? `: ${order.incidentNote}` : "."}`);
 }
 
-export async function tryNotifyStaffOrderProblem(repo: RestaurantesRepository, order: Order): Promise<void> {
-  try {
-    await notifyStaffOrderProblemCore(repo, order);
-  } catch (err) {
-    console.error("order-notifications: best-effort staff order.problema failed:", err);
-  }
+export async function tryNotifyStaffOrderProblem(repo: RestaurantesRepository, order: Order, db?: TenantDbSession): Promise<void> {
+  await runNotifyBestEffort(
+    db,
+    () => notifyStaffOrderProblemCore(repo, order),
+    (err) => console.error("order-notifications: best-effort staff order.problema failed:", err),
+  );
 }
 
 /**

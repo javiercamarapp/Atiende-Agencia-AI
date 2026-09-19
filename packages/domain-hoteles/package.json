@@ -13,6 +13,7 @@
   "dependencies": {
     "@atiende/billing": "*",
     "@atiende/core-tenancy": "*",
+    "@atiende/db": "*",
     "@atiende/whatsapp-gateway": "*"
   }
 }
