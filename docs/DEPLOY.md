@@ -74,10 +74,13 @@ mensajería de rentas, y 3 métodos del portal de onboarding de rentas).
 
 Actualizado (barrido de documentación, rondas 13/14/16): esta sección describía 9
 migraciones "todavía dispersas, ninguna copiada a `supabase/migrations/`" — eso
-también quedó resuelto. `supabase/migrations/` ya contiene 109 archivos
-(`20240101000001_...` a `20240101000109_...`, orden alfabético de nombre =
-orden de aplicación, mismo criterio que documentaba esta sección), copia de TODAS
-las migraciones reales de `packages/db/migrations/`,
+también quedó resuelto. `supabase/migrations/` ya contiene todas las migraciones
+reales consolidadas (orden alfabético de nombre = orden de aplicación, mismo
+criterio que documentaba esta sección) — el conteo exacto se pudre rápido con
+el ritmo de esta rama, así que no lo repitas de memoria: corre
+`ls supabase/migrations/*.sql | wc -l` (132 al 19-sep-2026) o lee
+`supabase/migrations/README.md`, que trae el detalle archivo por archivo y el
+mismo comando. Es copia de TODAS las migraciones reales de `packages/db/migrations/`,
 `packages/core-conversation/migrations/` y de los 6 `packages/domain-*/migrations/`
 a la fecha. Cada archivo fuente sigue viviendo en su paquete de origen (fuente
 canónica, ver `packages/db/README.md` para la convención de numeración por bloques)
@@ -119,13 +122,71 @@ npx supabase link --project-ref <tu-project-ref>
 Reemplaza también `project_id` en `supabase/config.toml` por ese mismo ref.
 
 ### (c) Aplicar las migraciones — gratis, PERO revisa el Paso 0.3 primero
-`supabase/migrations/` ya trae las 109 migraciones consolidadas (nada que copiar a
-mano) — **decide qué hacer con la tabla `conversations` faltante** que bloquea
+`supabase/migrations/` ya trae todas las migraciones consolidadas (nada que copiar
+a mano, ver arriba para cómo confirmar el conteo vigente) — **decide qué hacer con
+la tabla `conversations` faltante** que bloquea
 `packages/core-conversation/migrations/001_conversation_state_cas.sql` (crearla en
 una migración nueva antes de esa, o dejarla sin aplicar hasta que exista) y corre:
 ```bash
 npx supabase db push
 ```
+
+**Orden de despliegue cuando una migración cambia a la vez SQL y la sesión con
+que la API la invoca** — lección real de esta rama (migraciones
+`20240101000127_0011_superadmin_caller_binding.sql`,
+`20240101000128_0012_caller_binding_fase2.sql` y
+`20240101000129_018_break_glass_wiring.sql`, ver `supabase/migrations/README.md`
+para el detalle de cada una): esas tres migraciones atan funciones `security
+definer` existentes a `auth.uid() = p_caller_id` (o `auth.uid() is null` para
+las de sesión de sistema), y el código de `apps/api` (`production/
+core-repository.ts`, `production/llm-usage-repository.ts`, rutas de
+break-glass) se actualizó en la MISMA rama para abrir la sesión Postgres con el
+`userId`/`callerId` real en vez de una sesión de sistema con el id pasado solo
+como parámetro plano.
+
+- **Mergear el PR a `main` NO aplica sus migraciones a la base real** — eso
+  solo pasa cuando alguien corre `supabase db push` (o el gate de CI las aplica
+  contra el Postgres efímero de la prueba, nunca contra el proyecto real) a
+  mano. Los dos pasos (deploy de código en Vercel y `supabase db push`) son
+  independientes y no ocurren automáticamente juntos.
+- **Orden correcto: despliega primero el código nuevo de `apps/api`, aplica la
+  migración después.** Con el código viejo (sesión de sistema, `userId: null`)
+  contra las funciones YA endurecidas por la migración, cualquier llamada real
+  de superadmin/break-glass se rompe (`auth.uid()` NULL nunca es igual a
+  `p_caller_id`) — un apagón evitable. Con el código nuevo desplegado primero
+  (ya abre la sesión con el id real) y la migración vieja todavía sin aplicar,
+  todo sigue funcionando exactamente igual que antes (las funciones sin el
+  guard nuevo no verifican `auth.uid()`, así que un `p_caller_id` correcto pasa
+  igual) — no hay ventana rota. Aplicar la migración después solo cierra el
+  hueco de seguridad, sin tocar ningún comportamiento legítimo ya validado por
+  el código ya desplegado.
+- Este mismo criterio aplica a cualquier migración futura que ate una función
+  `security definer` a `auth.uid()`: si el caller (TypeScript) también cambia
+  en la misma rama, despliega el caller primero.
+
+**Dos guards que corren en CI antes de tocar Postgres, no solo de memoria:**
+
+- `npm run verify:migration-versions` (`scripts/verify-migration-versions/`) —
+  falla si dos archivos de `supabase/migrations/` comparten prefijo de
+  timestamp (colisión real, ya pasó varias veces en esta rama con PRs
+  paralelos) o si un espejo diverge en contenido de su fuente real en
+  `packages/*/migrations/`. Corre como paso propio de
+  `.github/workflows/postgres-real-gate.yml`, antes de instalar `psql` y
+  esperar a que el servicio Postgres levante — falla rápido y barato.
+- El **gate de Postgres real** (`scripts/verify-real-postgres-ci/`,
+  `run-gate.mjs`) descubre y corre automáticamente cualquier `scripts/verify-*/`
+  con el contrato de 3 archivos (`bootstrap.sql`/`post-migrations.sql`/
+  `assertions.sql`) — se agregan seguido, así que esta lista se desactualiza
+  fácil; hoy son `verify-caller-binding-fase2`, `verify-hoteles-sql-critico`,
+  `verify-llm-usage-budget-guard`, `verify-outbox-grants`,
+  `verify-rentas-break-glass`, `verify-rentas-cron-rls`,
+  `verify-restaurantes-sql`, `verify-superadmin-caller-binding`,
+  `verify-superadmin-facturacion` (ver el
+  `README.md` de cada uno). Levanta un cluster Postgres efímero real
+  (`initdb`/`pg_ctl`/`psql`), aplica las migraciones desde cero (132 al
+  19-sep-2026) y corre
+  cada escenario como su propia aserción pass/fail — nunca contra el proyecto
+  Supabase real de producción, y nunca lectura humana de la salida de `psql`.
 
 ### (d) Copiar `.env.example` a `.env` y pegar las keys reales — gratis
 ```bash
