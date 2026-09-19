@@ -159,7 +159,7 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // Cierre del hallazgo "rentas no tiene disparo inline de correo" (ver
       // ./email-dispatch.ts::triggerRentasEmailDispatchInline) — mismo `repo`/
       // transacción del request, best-effort real.
-      await triggerRentasEmailDispatchInline(deps, repo);
+      await triggerRentasEmailDispatchInline(deps, db, repo);
 
       return c.json({ id: resultado.ocupacionId, conflictosCapaCruzada: resultado.conflictosCapaCruzada.length }, 201);
     } catch (err) {
