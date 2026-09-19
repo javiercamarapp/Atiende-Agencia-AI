@@ -332,6 +332,63 @@ describe("GET /superadmin/facturacion/webhooks-bitacora", () => {
     expect(res.status).toBe(400);
   });
 
+  // Revisión de PR #153 (bloqueante 3): `Date.parse` acepta entradas laxas
+  // (p.ej. "2026", solo el año) que Postgres SÍ rechaza como `timestamptz`
+  // real (22007) -- la ruta normaliza a ISO completo ANTES de que el filtro
+  // llegue al repositorio, así que una fecha laxa pero parseable nunca debe
+  // tumbar la request con un error.
+  it("una fecha laxa pero parseable (solo el año) se normaliza a ISO completo, sin 500", async () => {
+    const base = await buildTestDeps();
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+    const res = await app.request("/superadmin/facturacion/webhooks-bitacora?desde=2026", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(200);
+  });
+
+  // Revisión de PR #153 (bloqueante 3): un `organizationId` parcial/no-UUID
+  // (p.ej. mientras el usuario todavía teclea en el filtro de la UI) llegaba
+  // crudo hasta el parámetro `uuid` de la función SQL -> Postgres 22P02 ->
+  // 500 genérico. Debe rechazarse ANTES, con 400 explícito.
+  it("un organizationId que no es UUID responde 400 (nunca deja que Postgres decida)", async () => {
+    const base = await buildTestDeps();
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+    const res = await app.request("/superadmin/facturacion/webhooks-bitacora?organizationId=no-es-un-uuid", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(400);
+  });
+
+  it("un organizationId parcial (UUID incompleto, típico de estar tecleando) también responde 400", async () => {
+    const base = await buildTestDeps();
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+    const res = await app.request("/superadmin/facturacion/webhooks-bitacora?organizationId=00000000-0000-0000-0000", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(400);
+  });
+
+  // Revisión de PR #153 (bloqueante 1): el único caso `disponible: false` que
+  // existía en el repo era un stub de fetch de UI
+  // (`apps/web/tests/superadmin-facturacion-page.spec.tsx:222`), que no
+  // ejerce el repositorio real -- este SÍ ejercita la ruta completa contra un
+  // repositorio que simula la migración `0018_billing_webhook_registro.sql`
+  // sin aplicar.
+  it("cuando el repositorio reporta disponible:false (migración sin aplicar), la ruta responde 200 con 'no disponible aún', nunca 500", async () => {
+    const base = await buildTestDeps();
+    const coreRepo = base.deps.coreRepo as InMemoryCoreRepository;
+    const { token } = await makeSuperadmin(base);
+    const originalMethod = coreRepo.listBillingWebhookLogForSuperadmin.bind(coreRepo);
+    coreRepo.listBillingWebhookLogForSuperadmin = async (callerId, filters) => {
+      await originalMethod(callerId, filters);
+      return { disponible: false, rows: [], total: 0 };
+    };
+    const app = buildApp(base.deps);
+
+    const res = await app.request("/superadmin/facturacion/webhooks-bitacora", { headers: { authorization: `Bearer ${token}` } });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { disponible: boolean; rows: unknown[]; total: number };
+    expect(body).toEqual({ disponible: false, rows: [], total: 0 });
+  });
+
   it("sin ninguna fila todavía, responde vacío honesto (disponible: true, total: 0) -- nunca un error", async () => {
     const base = await buildTestDeps();
     const { token } = await makeSuperadmin(base);

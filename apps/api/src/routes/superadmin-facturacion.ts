@@ -71,9 +71,32 @@ const RESULTADOS_BITACORA_VALIDOS: ReadonlySet<BillingWebhookLogResult> = new Se
 const DEFAULT_BITACORA_LIMIT = 50;
 const MAX_BITACORA_LIMIT = 200;
 
+// Revisión de PR #153 (bloqueante 3): `Date.parse` acepta entradas laxas
+// (p.ej. `"2026"`) que Postgres SÍ rechaza al llegar como `timestamptz`
+// (SQLSTATE 22007), lo que `postgres-core-repository.ts` repropaga tal cual
+// -> `app.onError` lo vuelve un 500 `internal_error` genérico en una pantalla
+// de diagnóstico de cobros. Devolver el string ISO normalizado (nunca el raw
+// del query param) hace que el valor que llega a Postgres sea SIEMPRE una
+// fecha real ya validada en esta capa -- un 400 explícito en vez de un 500.
 function parseFechaQuery(raw: string | undefined, field: string): string | undefined {
   if (raw === undefined) return undefined;
-  if (Number.isNaN(Date.parse(raw))) throw Errors.validation(`${field} debe ser una fecha ISO 8601 válida.`);
+  const parsed = Date.parse(raw);
+  if (Number.isNaN(parsed)) throw Errors.validation(`${field} debe ser una fecha ISO 8601 válida.`);
+  return new Date(parsed).toISOString();
+}
+
+// Revisión de PR #153 (bloqueante 3): `organizationId` llega crudo del query
+// string hasta el parámetro `uuid` de `core.list_billing_webhook_log_for_
+// superadmin`. Un valor parcial/no-UUID (p.ej. mientras el usuario todavía
+// está tecleando en el input de la UI) NO es SQLSTATE 42883 (el fallback de
+// compatibilidad de base sin migrar) sino 22P02 (`invalid_text_representation`),
+// que `postgres-core-repository.ts` repropaga tal cual -> 500 genérico.
+// Validar el formato AQUÍ devuelve un 400 explícito en vez de dejar que
+// Postgres sea quien decida.
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function parseOrganizationIdQuery(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  if (!UUID_REGEX.test(raw)) throw Errors.validation("organizationId debe ser un UUID válido.");
   return raw;
 }
 
@@ -267,7 +290,7 @@ export function superadminFacturacionRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const filters: BillingWebhookLogFilters = {
       result: rawResult as BillingWebhookLogResult | undefined,
       eventType: c.req.query("eventType"),
-      organizationId: c.req.query("organizationId"),
+      organizationId: parseOrganizationIdQuery(c.req.query("organizationId")),
       desde: parseFechaQuery(c.req.query("desde"), "desde"),
       hasta: parseFechaQuery(c.req.query("hasta"), "hasta"),
       limit,
