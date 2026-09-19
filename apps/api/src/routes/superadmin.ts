@@ -12,10 +12,12 @@
 // defensa en profundidad (responde 403 explícito en vez de simplemente "0
 // resultados", mejor UX de error), nunca la única autoridad real.
 import { Hono } from "hono";
+import type { Context, Next } from "hono";
 import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ProspectoNotFoundError } from "@atiende/db";
 import type { ProspectoRow } from "@atiende/db";
+import { ImpersonationWriteBlockedError, blockWritesWhileImpersonating } from "@atiende/core-authz";
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
 
@@ -76,6 +78,45 @@ export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     }
     await next();
   });
+  // Bloque C -- "por defecto SOLO LECTURA" mientras haya una sesión de
+  // impersonación activa (ver packages/core-authz/src/impersonation/
+  // write-guard.ts y 0020_superadmin_impersonacion.sql).
+  //
+  // IMPORTANTE (hallazgo real durante esta misma tarea, no teórico): Hono
+  // trata `app.use("/superadmin/*", mw)` como un patrón que matchea CUALQUIER
+  // ruta bajo `/superadmin/` en la app COMPUESTA final -- no solo las que
+  // define ESTE archivo. `/superadmin/break-glass/*`, `/superadmin/
+  // facturacion/*`, `/superadmin/impersonacion/*`, etc. viven en sus PROPIOS
+  // Hono sub-apps (otros archivos), montados aparte en `app.ts` -- pero
+  // igual comparten el prefijo `/superadmin/`. Un `app.use("/superadmin/*",
+  // ...)` aquí las habría interceptado TAMBIÉN (se verificó con un test que
+  // fallaba: la propia ruta "terminar sesión" de impersonación quedaba
+  // bloqueada por su PROPIA sesión activa). Por eso el guard se monta en las
+  // rutas EXACTAS que este archivo en particular declara como mutantes, nunca
+  // por prefijo amplio.
+  const impersonationWriteGuard = blockWritesWhileImpersonating<CoreAuthHonoEnv>({
+    isImpersonating: async (c) => {
+      const callerId = c.get("userId");
+      const result = await deps.engine.withAppSession({ userId: callerId }, (db) => deps.impersonationRepo(db).getActiveSession(callerId));
+      return result.availability === "available" && result.session !== null;
+    },
+  });
+  // `ImpersonationWriteBlockedError` (core-authz) no es un `ApiError` (core-auth)
+  // -- el `onError` global de apps/api/src/app.ts solo traduce `ApiError` a un
+  // JSON con status real; sin este adaptador caería a 500 genérico. Mismo
+  // criterio que el resto de `errors.ts`: cada error de negocio se traduce
+  // explícitamente, nunca se deja caer al catch-all.
+  const impersonationWriteGuardMiddleware = async (c: Context<CoreAuthHonoEnv>, next: Next) => {
+    try {
+      await impersonationWriteGuard(c, next);
+    } catch (err) {
+      if (err instanceof ImpersonationWriteBlockedError) throw Errors.forbidden(err.message);
+      throw err;
+    }
+  };
+  app.use("/superadmin/prospectos", impersonationWriteGuardMiddleware);
+  app.use("/superadmin/prospectos/:id", impersonationWriteGuardMiddleware);
+  app.use("/superadmin/paneles/:vertical/entrar", impersonationWriteGuardMiddleware);
 
   app.get("/superadmin/organizations", async (c) => {
     const callerId = c.get("userId");

@@ -339,21 +339,43 @@ export class PostgresImpersonationRepository implements ImpersonationRepository 
 export class InMemoryImpersonationRepository implements ImpersonationRepository {
   private readonly sessions = new Map<string, ImpersonationSessionRow>();
   private readonly auditLog: ImpersonationAuditEntryRow[] = [];
+  private readonly organizations = new Set<string>();
+  private readonly superadmins = new Map<string, string | null>(); // userId -> email
+  private readonly organizationsWithSuperadminMember = new Set<string>();
+  private readonly staffEmails = new Map<string, string>();
   private seq = 0;
 
-  constructor(
-    private readonly deps: {
-      readonly isPlatformSuperadmin: (userId: string) => boolean;
-      readonly organizationExists: (organizationId: string) => boolean;
-      readonly organizationHasSuperadminMember: (organizationId: string) => boolean;
-      readonly staffEmail: (userId: string) => string | null;
-      readonly now?: () => number;
-      readonly sessionDurationMs?: number;
-    },
-  ) {}
+  constructor(private readonly opts: { readonly now?: () => number; readonly sessionDurationMs?: number } = {}) {}
+
+  /** Sembrado explícito -- ver comentario de cabecera de la clase: este fake es
+   *  autosuficiente (no depende de los mapas privados de `InMemoryCoreRepository`),
+   *  mismo criterio que `InMemoryBreakGlassSessionRepository` de `@atiende/domain-rentas`. */
+  seedOrganization(organizationId: string): void {
+    this.organizations.add(organizationId);
+  }
+  seedStaff(userId: string, email: string | null): void {
+    if (email) this.staffEmails.set(userId, email);
+  }
+  seedPlatformSuperadmin(userId: string, email: string | null = null): void {
+    this.superadmins.set(userId, email);
+    if (email) this.staffEmails.set(userId, email);
+  }
+  /** Marca que `organizationId` tiene a un superadmin de plataforma como
+   *  `core.membership` -- el escenario que `start_impersonation_session`
+   *  debe rechazar ("nunca impersonar a otro superadmin"). */
+  seedOrganizationHasSuperadminMember(organizationId: string): void {
+    this.organizationsWithSuperadminMember.add(organizationId);
+  }
+
+  private isPlatformSuperadmin(userId: string): boolean {
+    return this.superadmins.has(userId);
+  }
+  private staffEmail(userId: string): string | null {
+    return this.staffEmails.get(userId) ?? this.superadmins.get(userId) ?? null;
+  }
 
   private now(): number {
-    return this.deps.now?.() ?? Date.now();
+    return this.opts.now?.() ?? Date.now();
   }
 
   private nextId(): string {
@@ -361,17 +383,17 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
   }
 
   async startSession(callerId: string, organizationId: string, reason: string) {
-    if (!this.deps.isPlatformSuperadmin(callerId)) {
+    if (!this.isPlatformSuperadmin(callerId)) {
       throw new ImpersonationForbiddenError("solo un superadmin de plataforma real puede iniciar una impersonación");
     }
     const trimmed = reason?.trim() ?? "";
     if (trimmed.length < 20) {
       throw new ImpersonationReasonInvalidError("motivo obligatorio (mínimo 20 caracteres)");
     }
-    if (!this.deps.organizationExists(organizationId)) {
+    if (!this.organizations.has(organizationId)) {
       throw new ImpersonationNotFoundError(`la organización ${organizationId} no existe`);
     }
-    if (this.deps.organizationHasSuperadminMember(organizationId)) {
+    if (this.organizationsWithSuperadminMember.has(organizationId)) {
       throw new ImpersonationForbiddenError("no se puede impersonar una organización que tiene a otro superadmin de plataforma como miembro");
     }
     const nowMs = this.now();
@@ -385,11 +407,11 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
     const session: ImpersonationSessionRow = {
       id: this.nextId(),
       actorUserId: callerId,
-      actorEmail: this.deps.staffEmail(callerId),
+      actorEmail: this.staffEmail(callerId),
       organizationId,
       reason: trimmed,
       startedAtMs: nowMs,
-      expiresAtMs: nowMs + (this.deps.sessionDurationMs ?? 15 * 60_000),
+      expiresAtMs: nowMs + (this.opts.sessionDurationMs ?? 15 * 60_000),
     };
     this.sessions.set(session.id, session);
     this.auditLog.push({
@@ -454,13 +476,13 @@ export class InMemoryImpersonationRepository implements ImpersonationRepository 
   }
 
   async listSessions(callerId: string, limit = 100) {
-    if (!this.deps.isPlatformSuperadmin(callerId)) return { availability: "available" as const, sessions: [] };
+    if (!this.isPlatformSuperadmin(callerId)) return { availability: "available" as const, sessions: [] };
     const sessions = [...this.sessions.values()].sort((a, b) => b.startedAtMs - a.startedAtMs).slice(0, limit);
     return { availability: "available" as const, sessions };
   }
 
   async listAuditLog(callerId: string, limit = 200) {
-    if (!this.deps.isPlatformSuperadmin(callerId)) return { availability: "available" as const, entries: [] };
+    if (!this.isPlatformSuperadmin(callerId)) return { availability: "available" as const, entries: [] };
     const entries = [...this.auditLog].sort((a, b) => b.occurredAtMs - a.occurredAtMs).slice(0, limit);
     return { availability: "available" as const, entries };
   }
