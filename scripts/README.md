@@ -1,17 +1,44 @@
 # scripts
 
-Reservado para `check-migraciones.ts` y `check-runtime-flags.ts` (portados de `hoteles/scripts`) cuando exista `packages/db` con migraciones reales que revisar. Aún no construido.
+Ya NO es una carpeta reservada — este README decía "Reservado para
+`check-migraciones.ts`/`check-runtime-flags.ts`... Aún no construido", lo cual
+dejó de ser cierto hace varias fases. Contenido real hoy:
 
-## verify-outbox-grants/, verify-rentas-cron-rls/
+## `build-vercel-function.mjs`
+
+Empaqueta `apps/api` como la función serverless de Vercel (`api/index.ts` →
+`apps/api/src/vercel.ts`) — ver el comentario de cabecera del propio archivo y
+`docs/DEPLOY.md`.
+
+## `verify-migration-versions/`
+
+Guard puro (sin Postgres) que corre dentro de `npm run test:unit` Y como su
+propio paso de CI (`npm run verify:migration-versions`, antes de levantar
+Postgres): detecta prefijos de timestamp duplicados en `supabase/migrations/`
+y divergencias entre esa carpeta y su fuente real en `packages/*/migrations/`.
+Ver su propio `README.md`.
+
+## `verify-env/`
+
+`npm run verify:env` — expone en CLI el mismo cálculo que
+`GET /superadmin/integraciones` (`apps/api/src/integrations-status.ts`): qué
+variables de entorno reales hacen falta en ESTE entorno, sin imprimir valores.
+Ver `docs/CREDENCIALES.md` y su propio `README.md`.
+
+## `verify-outbox-grants/`, `verify-rentas-cron-rls/`, `verify-llm-usage-budget-guard/`, `verify-superadmin-caller-binding/`, `verify-caller-binding-fase2/`, `verify-rentas-break-glass/`, `verify-superadmin-facturacion/`, `verify-hoteles-sql-critico/`, `verify-restaurantes-sql/`
 
 Verificaciones contra Postgres **real** (RLS + GRANT reales — no el repositorio
 en memoria que usa `npm test`) de fixes puntuales ya auditados. Cada una trae su
 propio `run.sh` para correrla a mano localmente — ver el `README.md` de cada
 directorio.
 
-## verify-real-postgres-ci/
+## `verify-real-postgres-ci/`
 
 Convierte cualquier `verify-*/` de arriba (y cualquier `verify-*/` que se agregue
-después con el mismo contrato de 3 archivos) en el gate automático de CI que
-corre `.github/workflows/postgres-real-gate.yml` en cada PR/push — ver su propio
-README.
+después con el mismo contrato de 3 archivos — `bootstrap.sql`/
+`post-migrations.sql`/`assertions.sql`) en el gate automático de CI que corre
+`.github/workflows/postgres-real-gate.yml` en cada PR/push, descubriéndolas
+solas sin tocar el workflow — ver su propio README.
+
+Si agregas un `verify-*/` nuevo con ese mismo contrato, súmalo a la lista de
+arriba en tu misma pasada de documentación.
