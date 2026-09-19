@@ -234,7 +234,7 @@ export type { ReservaEmailEvent, ReservaEmailResult } from "./reserva-email-noti
 export { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "./email-dispatch.ts";
 export type { EmailDispatchSummary, ResendConfig } from "./email-dispatch.ts";
 export { runRecordatorioCheckInCore } from "./checkin-reminders.ts";
-export type { RecordatorioCheckInSummary } from "./checkin-reminders.ts";
+export type { RecordatorioCheckInSummary, WithRentasRepo } from "./checkin-reminders.ts";
 
 // ---------------------------------------------------------------------------
 // Onboarding self-serve del tenant de rentas (Fase 11) -- ver src/onboarding/*.
