@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryLicitacionesRepository } from "@atiende/domain-licitaciones";
 import type { LicitacionesRepository, TenderUpsertInput } from "@atiende/domain-licitaciones";
 import { runDeadlineReminderSweep } from "../src/jobs/licitaciones/deadline-reminders.ts";
+import { makeAbortSimulatingRepo, makePerCallTransactionalWithRepo, simulateSingleSharedTransaction } from "./support/fake-transactional-engine.ts";
 
 let repo: InMemoryLicitacionesRepository;
 let organizationId: string;
@@ -38,7 +39,7 @@ describe("runDeadlineReminderSweep", () => {
     const now = new Date("2026-09-14T12:00:00-06:00");
     const { tender } = await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-1", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
 
-    const sweep = await runDeadlineReminderSweep(repo, { now: () => now });
+    const sweep = await runDeadlineReminderSweep((fn) => fn(repo), { now: () => now });
     expect(sweep).toEqual([{ organizationId, scanned: 1, created: 1 }]);
 
     const reminders = await repo.listTenderDeadlineReminders(organizationId);
@@ -53,7 +54,7 @@ describe("runDeadlineReminderSweep", () => {
     await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-lejos", submissionDeadline: "2026-12-01T00:00:00-06:00" }));
     await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-vencido", submissionDeadline: "2026-09-01T00:00:00-06:00" }));
 
-    const sweep = await runDeadlineReminderSweep(repo, { now: () => now });
+    const sweep = await runDeadlineReminderSweep((fn) => fn(repo), { now: () => now });
     expect(sweep).toEqual([{ organizationId, scanned: 0, created: 0 }]);
   });
 
@@ -72,7 +73,7 @@ describe("runDeadlineReminderSweep", () => {
     const cancelled = await repo.findTender(organizationId, tender.id);
     expect(cancelled!.status).toBe("no_go"); // no_go SÍ debe seguir recordándose (no es terminal) -- confirma el fixture antes de la aserción real de abajo.
 
-    const sweep = await runDeadlineReminderSweep(repo, { now: () => now });
+    const sweep = await runDeadlineReminderSweep((fn) => fn(repo), { now: () => now });
     expect(sweep[0]!.created).toBe(1); // no_go no está excluido -- solo cancelled/lost/won/submitted lo están (ver scanUpcomingDeadlineReminders).
   });
 
@@ -80,8 +81,8 @@ describe("runDeadlineReminderSweep", () => {
     const now = new Date("2026-09-14T12:00:00-06:00");
     await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-1", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
 
-    await runDeadlineReminderSweep(repo, { now: () => now });
-    const second = await runDeadlineReminderSweep(repo, { now: () => new Date(now.getTime() + 60_000) });
+    await runDeadlineReminderSweep((fn) => fn(repo), { now: () => now });
+    const second = await runDeadlineReminderSweep((fn) => fn(repo), { now: () => new Date(now.getTime() + 60_000) });
     expect(second).toEqual([{ organizationId, scanned: 1, created: 0 }]);
     expect(await repo.listTenderDeadlineReminders(organizationId)).toHaveLength(1);
   });
@@ -89,7 +90,7 @@ describe("runDeadlineReminderSweep", () => {
   it("acknowledgeTenderDeadlineReminder marca el recordatorio como reconocido", async () => {
     const now = new Date("2026-09-14T12:00:00-06:00");
     await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-1", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
-    await runDeadlineReminderSweep(repo, { now: () => now });
+    await runDeadlineReminderSweep((fn) => fn(repo), { now: () => now });
     const [reminder] = await repo.listTenderDeadlineReminders(organizationId);
     const actorId = randomUUID();
 
@@ -115,10 +116,77 @@ describe("runDeadlineReminderSweep", () => {
       },
     } as unknown as LicitacionesRepository;
 
-    const sweep = await runDeadlineReminderSweep(brokenRepo);
+    const sweep = await runDeadlineReminderSweep((fn) => fn(brokenRepo));
     const failed = sweep.find((r) => r.organizationId === organizationId)!;
     const ok = sweep.find((r) => r.organizationId === org2)!;
     expect(failed.error).toBe("fallo simulado");
     expect(ok.error).toBeUndefined();
+  });
+});
+
+// r4-fix-crons-transaccion-por-unidad (corrección de PR #163, bloqueante #2a) --
+// reproduce el bug real (transacción compartida para TODO el barrido) que este
+// archivo tenía sin corregir, y prueba que el fix (transacción POR organización) lo
+// cierra. Mismo mecanismo que apps/worker/tests/night-audit-job.spec.ts.
+describe("r4-fix-crons-transaccion-por-unidad -- transacción por organización (reproduce el bug + prueba el fix)", () => {
+  let orgB: string;
+  const now = new Date("2026-09-14T12:00:00-06:00");
+
+  beforeEach(async () => {
+    // organizationId (del beforeEach de arriba) = "A". B falla, y el bug es que su
+    // fallo nunca debería contagiar al recordatorio YA COMMITEADO de A.
+    await repo.upsertTenderManual(organizationId, baseInput({ externalId: "EXP-a", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
+    orgB = randomUUID();
+    repo.seedOrganization({ id: orgB, slug: "org-b", name: "Org B" });
+    await repo.upsertTenderManual(orgB, baseInput({ externalId: "EXP-b", submissionDeadline: "2026-09-16T18:00:00-06:00" }));
+  });
+
+  it("ANTES del fix (patrón reconstruido): un error SQL real en B revierte en silencio también el recordatorio YA COMMITEADO de A", async () => {
+    const { proxy, isAborted } = makeAbortSimulatingRepo(repo, (method, args) => method === "scanUpcomingDeadlineReminders" && args[0] === orgB, "40P01: deadlock detected (SQL real simulado)");
+
+    // Reconstruye LITERALMENTE el bucle pre-fix de `runDeadlineReminderSweep`: una
+    // sola `repo` (sesión) para TODAS las organizaciones, con el MISMO try/catch por
+    // organización que el código real ya tenía (eso nunca cambió -- lo que cambió es
+    // que esa transacción ya no se comparte entre organizaciones).
+    async function legacySweepAllOrgsInOneSession(repoForEverything: LicitacionesRepository) {
+      const orgs = await repoForEverything.listActiveOrganizations();
+      const out: { organizationId: string; created: number; error?: string }[] = [];
+      for (const org of orgs) {
+        try {
+          const result = await repoForEverything.scanUpcomingDeadlineReminders(org.id, { nowIso: now.toISOString() });
+          out.push({ organizationId: org.id, created: result.created });
+        } catch (err) {
+          out.push({ organizationId: org.id, created: 0, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return out;
+    }
+
+    await simulateSingleSharedTransaction(repo, isAborted, () => legacySweepAllOrgsInOneSession(proxy));
+
+    // COMMIT sobre una transacción abortada devuelve ROLLBACK sin lanzar -- el
+    // recordatorio real de A, ya creado, se pierde con el resto del barrido.
+    expect(await repo.listTenderDeadlineReminders(organizationId)).toHaveLength(0);
+  });
+
+  it("DESPUÉS del fix (código real): el mismo error SQL en B se aísla -- A SÍ conserva su recordatorio real, solo B se reporta como fallo", async () => {
+    const { proxy, reset } = makeAbortSimulatingRepo(repo, (method, args) => method === "scanUpcomingDeadlineReminders" && args[0] === orgB, "40P01: deadlock detected (SQL real simulado)");
+    const perCallTxn = makePerCallTransactionalWithRepo(repo);
+    const withRepo = async <T>(fn: (r: LicitacionesRepository) => Promise<T>): Promise<T> => {
+      try {
+        return await perCallTxn(() => fn(proxy));
+      } finally {
+        reset();
+      }
+    };
+
+    const sweep = await runDeadlineReminderSweep(withRepo, { now: () => now });
+    const resultA = sweep.find((r) => r.organizationId === organizationId)!;
+    const resultB = sweep.find((r) => r.organizationId === orgB)!;
+    expect(resultA.error).toBeUndefined();
+    expect(resultA.created).toBe(1);
+    expect(resultB.error).toContain("40P01");
+
+    expect(await repo.listTenderDeadlineReminders(organizationId)).toHaveLength(1);
   });
 });

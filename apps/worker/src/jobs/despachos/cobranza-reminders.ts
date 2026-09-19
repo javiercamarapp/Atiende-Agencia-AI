@@ -36,8 +36,25 @@
 // `tryEnqueueCollectionReminderEmailForSystem` -- exclusivas de este barrido,
 // respaldadas por funciones `security definer` de solo-sistema (ver esa
 // migración) -- el panel/`/recordatorio` de staff siguen sin cambios.
-import { diasVencidoCartera, etapaRecordatorioCobranzaHoy, tryEnqueueCollectionReminderEmailForSystem } from "@atiende/domain-despachos";
+import { diasVencidoCartera, enqueueCollectionReminderEmailForSystemCore, etapaRecordatorioCobranzaHoy } from "@atiende/domain-despachos";
 import type { DespachosRepository } from "@atiende/domain-despachos";
+
+/**
+ * r4-fix-crons-transaccion-por-unidad (auditoría a1b #2, MEDIA): runner de
+ * sesión inyectado -- CADA llamada abre (o reutiliza, en tests) su PROPIA
+ * transacción, nunca una compartida para todo el barrido. Antes de este fix,
+ * `runCobranzaReminderSweep` recibía un `DespachosRepository` YA ligado a una
+ * única transacción abierta por la ruta para TODAS las organizaciones -- un
+ * error SQL real en una organización dejaba esa transacción ABORTADA
+ * (Postgres 25P02); las organizaciones siguientes fallaban en cascada, y el
+ * COMMIT final devolvía `ROLLBACK` SIN lanzar, revirtiendo en silencio TODO el
+ * barrido (incluidos recordatorios de cobranza ya encolados de organizaciones
+ * anteriores) -- y como `etapaRecordatorioCobranzaHoy` decide por offset EXACTO
+ * de días, ese recordatorio revertido NUNCA se reintenta mañana: se pierde.
+ * Ver `WithHotelesRepo` en `../hoteles/night-audit.ts` para el detalle
+ * completo del mecanismo (mismo patrón exacto).
+ */
+export type WithDespachosRepo = <T>(fn: (repo: DespachosRepository) => Promise<T>) => Promise<T>;
 
 export interface RunCobranzaReminderSweepOptions {
   /** Inyectable SOLO para pruebas deterministas -- por defecto la fecha real de hoy. */
@@ -57,7 +74,12 @@ export interface CobranzaReminderSweepResult {
   readonly error?: string;
 }
 
-async function sweepProperty(repo: DespachosRepository, propertyId: string, todayIso: string): Promise<CobranzaReminderPropertyResult> {
+/** Exportada SOLO para que
+ *  `apps/worker/tests/despachos-cobranza-reminders-job.spec.ts` pueda
+ *  reconstruir el bucle PRE-fix (una sola sesión compartida para todo el
+ *  barrido) en su prueba de regresión -- ningún caller de producción la
+ *  importa directo, siempre a través de `runCobranzaReminderSweep`. */
+export async function sweepProperty(repo: DespachosRepository, propertyId: string, todayIso: string): Promise<CobranzaReminderPropertyResult> {
   // `systemListPendingReceivablesForReminders` ya trae el folio fiscal/total del
   // invoice asociado (join interno, security definer) -- ya no hace falta un
   // `findInvoice` aparte por cuenta (antes bloqueado igual bajo sesión de sistema).
@@ -71,8 +93,24 @@ async function sweepProperty(repo: DespachosRepository, propertyId: string, toda
     remindersDue += 1;
 
     const diasVencido = diasVencidoCartera(receivable.fechaVencimiento, todayIso);
-    const resultado = await tryEnqueueCollectionReminderEmailForSystem(repo, receivable, etapa, diasVencido, todayIso);
-    if (resultado?.enqueued) emailsEnqueued += 1;
+    // r4-fix-crons-transaccion-por-unidad (auditoría a1b #2, MEDIA, "PEOR de lo
+    // reportado"): antes se usaba `tryEnqueueCollectionReminderEmailForSystem`
+    // (variante best-effort que atrapa CUALQUIER error, incluido un error SQL
+    // real de `systemRecordCollectionEvent`/`enqueueMessagingOutbox`, y
+    // devuelve `null`) -- un error SQL ahí quedaba invisible: no aparecía en
+    // `failures[]`, la ruta respondía `ok:true`, y (con la transacción
+    // compartida de antes) el COMMIT final revertía TODO el barrido en
+    // silencio. Con la transacción POR organización de este fix, un error real
+    // aquí debe PROPAGARSE -- lo captura el catch por organización de
+    // `runCobranzaReminderSweep` (que reporta el error real en `failures[]` y
+    // hace ROLLBACK limpio de SOLO esa organización, vía `withRepo`), nunca se
+    // traga en silencio. El correo best-effort (nunca se manda dos veces por
+    // un reintento) sigue siendo el criterio correcto para el ENVÍO real
+    // (`email-dispatch.ts`/Resend) -- lo que cambia es que escribir el evento
+    // de auditoría/encolar en el outbox SÍ debe poder fallar la corrida de esa
+    // organización si Postgres realmente falló.
+    const resultado = await enqueueCollectionReminderEmailForSystemCore(repo, receivable, etapa, diasVencido, todayIso);
+    if (resultado.enqueued) emailsEnqueued += 1;
   }
 
   return { propertyId, receivablesScanned: pendientes.length, remindersDue, emailsEnqueued };
@@ -83,19 +121,26 @@ async function sweepProperty(repo: DespachosRepository, propertyId: string, toda
  * Aislamiento COMPLETO por organización (mismo criterio que
  * `runAlertNotificationSweep`): un tenant con datos raros en cualquiera de
  * sus properties nunca detiene el barrido de las demás organizaciones.
+ *
+ * r4-fix-crons-transaccion-por-unidad: `listActiveOrganizations()` corre en su
+ * propia transacción corta, y CADA organización corre la suya -- ver
+ * `WithDespachosRepo` arriba para la razón exacta.
  */
-export async function runCobranzaReminderSweep(repo: DespachosRepository, options: RunCobranzaReminderSweepOptions = {}): Promise<readonly CobranzaReminderSweepResult[]> {
+export async function runCobranzaReminderSweep(withRepo: WithDespachosRepo, options: RunCobranzaReminderSweepOptions = {}): Promise<readonly CobranzaReminderSweepResult[]> {
   const todayIso = options.todayIsoDate ?? new Date().toISOString().slice(0, 10);
-  const organizations = await repo.listActiveOrganizations();
+  const organizations = await withRepo((repo) => repo.listActiveOrganizations());
   const results: CobranzaReminderSweepResult[] = [];
 
   for (const org of organizations) {
     try {
-      const properties = await repo.listPropertiesForOrganization(org.id);
-      const propertyResults: CobranzaReminderPropertyResult[] = [];
-      for (const property of properties) {
-        propertyResults.push(await sweepProperty(repo, property.propertyId, todayIso));
-      }
+      const propertyResults = await withRepo(async (repo) => {
+        const properties = await repo.listPropertiesForOrganization(org.id);
+        const out: CobranzaReminderPropertyResult[] = [];
+        for (const property of properties) {
+          out.push(await sweepProperty(repo, property.propertyId, todayIso));
+        }
+        return out;
+      });
       results.push({ organizationId: org.id, properties: propertyResults });
     } catch (err) {
       results.push({ organizationId: org.id, properties: [], error: err instanceof Error ? err.message : String(err) });

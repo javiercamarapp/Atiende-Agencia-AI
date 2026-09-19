@@ -30,11 +30,16 @@
 // (a diferencia de las otras dos, no hay una tabla de "alerta ya emitida"
 // intermedia -- el propio outbox cumple ese rol).
 //
-// Todas las funciones "core" pueden lanzar (dejan ver el error real); las
-// variantes `try*` son las que de verdad llama el job de apps/worker --
-// best-effort real, un fallo al ENCOLAR el aviso nunca debe tumbar el
-// barrido de las demás organizaciones (mismo patrón exacto que
-// `domain-rentas::tryEnqueueReservaEmail`/`domain-restaurantes::tryNotifyStaffNewOrder`).
+// Todas las funciones "core" pueden lanzar (dejan ver el error real). Las
+// variantes `try*` de abajo existían para uso best-effort, pero
+// r4-fix-crons-transaccion-por-unidad (re-revisión, bloqueante #3) las retiró de
+// `jobs/licitaciones/alert-notifications.ts`: tragaban un error SQL real dentro
+// de la transacción por organización sin savepoint (COMMIT sobre sesión abortada
+// = ROLLBACK silencioso, reportado como "ok"). El job real ahora llama SIEMPRE
+// las variantes `*Core` de arriba, dejando que el catch por organización YA
+// existente en el job las capture y las cuente como fallo real. `try*` se deja
+// exportado (sin caller de producción) por si algún consumidor futuro necesita
+// el criterio best-effort explícitamente, con esta advertencia.
 import { correoAlertaRenovacion, correoFacturaVencida, correoRecordatorioPlazo } from "./emails/alert-templates.ts";
 import type { LicitacionesRepository, OverdueContractInvoiceAlert, RenewalAlertRecord, TenderDeadlineReminderRecord } from "./repository.ts";
 
@@ -95,7 +100,7 @@ export async function enqueueOverdueInvoiceEmailsCore(repo: LicitacionesReposito
   return { recipients: recipients.length, enqueued };
 }
 
-/** Variante best-effort de `enqueueDeadlineReminderEmailsCore` -- la que de verdad llama el barrido de `apps/worker` (ver `jobs/licitaciones/alert-notifications.ts`): un fallo real al encolar el correo NUNCA debe tumbar el resto del barrido de esta organización ni de las demás. */
+/** Variante best-effort de `enqueueDeadlineReminderEmailsCore`. Ya NO la llama el barrido de `apps/worker` (ver comentario de cabecera del archivo, r4-fix-crons-transaccion-por-unidad) -- tragaba errores SQL reales dentro de la transacción por organización sin savepoint. Se conserva exportada sin caller de producción. */
 export async function tryEnqueueDeadlineReminderEmails(repo: LicitacionesRepository, organizationId: string, reminders: readonly TenderDeadlineReminderRecord[]): Promise<AlertEmailEnqueueResult> {
   try {
     return await enqueueDeadlineReminderEmailsCore(repo, organizationId, reminders);
