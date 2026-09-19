@@ -40,11 +40,46 @@ desconectado de toda ruta HTTP") y corrige, de paso, el criterio débil de
    (`break_glass_access_log`) abiertas contra SU organización — escenarios
    24/25.
 
-25 escenarios en total (ver `assertions.sql` para el detalle exacto de cada
-uno) — cada uno corre en su propio `begin; ... rollback;`; las fixtures (2
-superadmins reales, 1 staff sin membresías, 1 staff con membership real, 3
-ventanas de acceso en 3 estados distintos, 1 fila de bitácora, 1 reserva real)
-persisten (insertadas directo, como el superusuario que corre el script).
+25 escenarios cubren `018_break_glass_wiring.sql` (ver `assertions.sql` para el
+detalle exacto de cada uno) — cada uno corre en su propio `begin; ...
+rollback;`; las fixtures (2 superadmins reales, 1 staff sin membresías, 1
+staff con membership real, 3 ventanas de acceso en 3 estados distintos, 1 fila
+de bitácora, 1 reserva real) persisten (insertadas directo, como el
+superusuario que corre el script).
+
+## Fase 10c -- los 6 lectores restantes (escenarios 26-53)
+
+`020_break_glass_lectores.sql` agrega 6 funciones `security definer` nuevas
+(`list_{finanzas,payouts,pricing,mensajeria,limpieza,sync_ical}_for_break_glass`)
+más una nueva sobrecarga de 5 parámetros de `list_reservas_for_break_glass`
+(filtro opcional por propiedad + paginado con tope). Los escenarios 26-53
+verifican, contra Postgres real, el MISMO criterio de autorización que las
+funciones de `018_break_glass_wiring.sql` ya tenían, para cada una de las 7
+funciones (las 6 nuevas + reservas actualizada):
+
+- **Sin ningún acceso** para la organización -- RECHAZADO.
+- **Acceso VENCIDO** (expirado, nunca cerrado a mano) -- RECHAZADO.
+- **Acceso ACTIVO real** -- SÍ devuelve la fila real de la fixture
+  correspondiente (`reserva_financiero`/`payout_canal`/`tarifa_base`/
+  `conversacion`/`tarea_operativa`/`canal_feed_externo`).
+- **Staff con membership real** (no superadmin) -- RECHAZADO, aunque exista
+  una ventana activa de OTRO actor sobre esa misma organización.
+- **`anon`** no puede ni ejecutar la función -- probado una vez
+  (representativo, `list_finanzas_for_break_glass`, escenario 30): las otras 5
+  funciones tienen el mismo `revoke all ... from public` + `grant execute ...
+  to authenticated`, verificado letra por letra en la migración.
+- **Filtro por propiedad que NO pertenece a la organización** -- RECHAZADO
+  (`P0002`) -- probado en `list_finanzas_for_break_glass` (escenario 31) y en
+  la nueva sobrecarga de `list_reservas_for_break_glass` (escenario 53).
+- **Enmascarado real del feed iCal** (escenario 50): la fixture de
+  `canal_feed_externo.url_importacion` lleva un token de un solo uso embebido
+  en el query string (`?s=tok_secreto_de_un_solo_uso_...`, el caso real de una
+  OTA) -- el escenario verifica que `list_sync_ical_for_break_glass` NUNCA
+  devuelve ese token, solo esquema+host.
+- **Filtro por propiedad de `reservas`** (escenario 52): la nueva sobrecarga
+  de 5 parámetros SÍ filtra por `property_id` cuando se declara.
+
+53 escenarios en total.
 
 ## Cómo correrlo
 
@@ -101,19 +136,21 @@ ahora sí funciona.
 
 ## Fuera de alcance de este fix (documentado, no ignorado)
 
-- **Lecturas más allá de `reservas`.** El dominio (`packages/domain-rentas/src/
-  break-glass/tipos.ts`, comentario de `BreakGlassReservaResumen`) previó
-  categorías adicionales (`finanzas`, `owner_statements`, `payouts`,
-  `pricing`, `mensajeria`, `limpieza`, `sync_ical`) como `resourceType`
-  válidos en la bitácora, pero solo `reservas` tiene hoy un lector concreto
-  (`leerReservasTenantBreakGlass`/`rentas.list_reservas_for_break_glass`).
-  Agregar cada categoría adicional es una extensión de este mismo mecanismo
-  (nueva función `security definer` + nuevo método de
-  `BreakGlassRentasDataRepository`), no un rediseño — se deja para una PR de
-  seguimiento dedicada cuando exista un caso de uso real que la pida (mismo
-  criterio de "un flujo a la vez" que ya documenta `data-repository.ts`).
-- **Alcance por propiedad.** `resourceScope` (jsonb, p. ej.
-  `{"propertyId": "..."}`) viaja tal cual a la bitácora, pero
-  `list_reservas_for_break_glass` no lo usa todavía para filtrar — lee TODO
-  el tenant. Acotar por propiedad es una extensión del mismo lector, no un
-  cambio de esquema.
+- **`owner_statements` como categoría propia.** `BREAK_GLASS_RESOURCE_TYPES`
+  sigue previendo `owner_statements` como valor válido de bitácora (además de
+  `finanzas`, que sí tiene lector desde Fase 10c) — `rentas.owner_statement`
+  no tiene un lector de break-glass dedicado todavía (el gap de negocio que
+  `finanzas` ya cierra — movimiento por reserva — se consideró más urgente que
+  el resumen agregado por periodo del owner). Agregarlo es una extensión del
+  mismo mecanismo, no un rediseño.
+- **Paginado más allá del tope.** Los 7 lectores de tenant limitan a 200
+  filas por página (`BREAK_GLASS_LECTOR_LIMIT_MAX`) — un tenant con más de
+  200 filas de un recurso en un solo acceso de romper-cristal necesita varias
+  llamadas con `?offset=` creciente; no hay un mecanismo de "traer todo" de
+  una sola vez, deliberado (romper-cristal es investigación puntual, no un
+  export masivo).
+
+Fase 10c (esta iteración) ya cerró lo que este README documentaba antes como
+fuera de alcance: los 6 lectores adicionales (`finanzas`, `payouts`,
+`pricing`, `mensajeria`, `limpieza`, `sync_ical`) y el filtro opcional por
+propiedad en los 7 lectores — ver la sección de arriba.
