@@ -54,3 +54,12 @@ export {
   InMemoryLlmUsageRepository,
 } from "./llm-usage-repository.ts";
 export type { InMemoryLlmUsageOrganization } from "./llm-usage-repository.ts";
+export type {
+  SaludRepository,
+  CronHeartbeatStatus,
+  RecordCronHeartbeatInput,
+  CronHeartbeatRow,
+  OutboxQueueHealthRow,
+  LicitacionesFuenteRunRow,
+} from "./salud-repository.ts";
+export { PostgresSaludRepository, InMemorySaludRepository } from "./salud-repository.ts";
