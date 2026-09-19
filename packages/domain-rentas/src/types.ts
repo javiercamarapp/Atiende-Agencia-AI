@@ -402,3 +402,64 @@ export interface IncidenciaMantenimientoRecord {
   readonly reportadoPor: string | null;
   readonly creadoEn: string;
 }
+
+// ---------------------------------------------------------------------------
+// Bitácora de auditoría del staff (r5) -- ver
+// migrations/021_rentas_audit_log.sql. `membership` está reservado en el catálogo
+// aunque hoy ningún caller real lo usa (rentas todavía no tiene ruta de gestión de
+// membership/rol de staff -- ver comentario de cabecera de esa migración).
+// ---------------------------------------------------------------------------
+export type RentasAuditEntityType = "pricing" | "reserva" | "payout" | "owner_statement" | "membership" | "canal";
+
+export interface RegistrarAuditoriaInput {
+  readonly organizationId: string;
+  /** Usado SOLO por `InMemoryRentasRepository` (sin `auth.uid()`) para poblar
+   *  `actorUserId` en sus fixtures de prueba. `PostgresRentasRepository` lo IGNORA
+   *  por completo al armar la llamada SQL -- `rentas.record_audit_log` (security
+   *  definer) captura el actor real vía `auth.uid()` dentro de la función, nunca
+   *  confía en un parámetro de este lado (ver comentario de cabecera de
+   *  postgres-repository.ts y de migrations/021_rentas_audit_log.sql). */
+  readonly actorUserId: string;
+  readonly action: string;
+  readonly entityType: RentasAuditEntityType;
+  readonly entityId: string | null;
+  readonly campo?: string | null;
+  readonly antes?: string | null;
+  readonly despues?: string | null;
+}
+
+export interface RentasAuditLogRow {
+  readonly id: string;
+  readonly actorUserId: string;
+  readonly action: string;
+  readonly entityType: string;
+  readonly entityId: string | null;
+  readonly campo: string | null;
+  readonly antes: string | null;
+  readonly despues: string | null;
+  readonly createdAtMs: number;
+}
+
+export interface RentasAuditLogFiltro {
+  readonly entityType?: RentasAuditEntityType | null;
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly desde?: string | null;
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly hasta?: string | null;
+}
+
+export interface RentasAuditLogPaginacion {
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+export interface RentasAuditLogPagina {
+  /** `false` cuando `rentas.audit_log`/`rentas.record_audit_log` todavía no existen
+   *  en esta base (SQLSTATE 42883/42P01/42703, ver postgres-repository.ts) -- la
+   *  pantalla debe mostrar "no disponible aún", nunca confundirlo con una bitácora
+   *  real pero vacía (`disponible: true, items: []`). */
+  readonly disponible: boolean;
+  readonly items: readonly RentasAuditLogRow[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}

@@ -206,6 +206,20 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         throw Errors.rentasUnidadNoDisponible(resultado.conflicto.conflictoId);
       }
 
+      // r5 -- bitácora de auditoría (modificación de reserva). Nunca rompe esta
+      // request si falla -- ver comentario de cabecera de
+      // PostgresRentasRepository.registrarAuditoria.
+      await repo.registrarAuditoria({
+        organizationId: unidad.organizationId,
+        actorUserId: c.get("userId"),
+        action: "reserva.modificada",
+        entityType: "reserva",
+        entityId: ocupacionId,
+        campo: "rango_fechas",
+        antes: null,
+        despues: `${resultado.rangoEfectivo.inicio} a ${resultado.rangoEfectivo.fin}`,
+      });
+
       return c.json({ id: resultado.ocupacionId, rango: resultado.rangoEfectivo, conflictosCapaCruzada: resultado.conflictosCapaCruzada.length }, 200);
     } catch (err) {
       if (err instanceof RentasDomainError) throw mapRentasDomainError(err);
@@ -230,6 +244,17 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     try {
       const resultado = await cancelarOcupacion(db, ocupacionId);
+      // r5 -- bitácora de auditoría (cancelación de reserva).
+      await repo.registrarAuditoria({
+        organizationId: unidad.organizationId,
+        actorUserId: c.get("userId"),
+        action: "reserva.cancelada",
+        entityType: "reserva",
+        entityId: ocupacionId,
+        campo: "estado",
+        antes: resultado.estadoAnterior,
+        despues: "cancelado",
+      });
       return c.json({ id: ocupacionId, estado: "cancelado", estadoAnterior: resultado.estadoAnterior }, 200);
     } catch (err) {
       if (err instanceof RentasDomainError) throw mapRentasDomainError(err);
