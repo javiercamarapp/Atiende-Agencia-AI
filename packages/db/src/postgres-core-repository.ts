@@ -13,6 +13,7 @@
 // `AppDeps.coreStaffRepo`, ver `apps/api/src/production/deps.ts`) — quien decide eso es
 // el caller, nunca esta clase.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "./savepoint-fallback.ts";
 import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
@@ -482,44 +483,63 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   // aplicada", nunca para enmascarar un fallo real. Advertencia en stderr una sola
   // vez por proceso (`warnMissingOrgAdminFunctionsOnce`), para que quede evidencia en
   // logs de que la migración sigue pendiente sin inundar la salida en cada request.
+  // Hallazgo ALTO de auditoría (a1, r3, verificado contra main en b4e5a83) — el
+  // catch de 42883 de arriba NUNCA tenía SAVEPOINT: en Postgres real, el error de
+  // `core.find_staff_for_org_admin($1, $2)` deja la transacción del request
+  // ABORTADA (ver diseño completo en `../savepoint-fallback.ts`), así que las DOS
+  // consultas del camino de respaldo (`assertCallerIsOrgAdminForFallback` +
+  // `core.find_staff_by_email`) fallaban con SQLSTATE 25P02 -- un 500 genérico, no
+  // el 404/lista-vacía honesta que este fallback dice cubrir. Exactamente el mismo
+  // síntoma que el comentario de cabecera de `findStaffForOrgAdmin` describe como
+  // el problema a resolver ("invitar/administrar staff quedó roto en las 5
+  // verticales"), pero sin arreglarlo de verdad contra la base real sin migrar.
   async findStaffForOrgAdmin(organizationId: string, email: string): Promise<OrgAdminStaffLookupRow | null> {
-    try {
-      const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
-        `select id, email, full_name from core.find_staff_for_org_admin($1, $2);`,
-        [organizationId, email],
-      );
-      const row = rows[0];
-      return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
-    } catch (err) {
-      if (!isUndefinedFunctionError(err)) throw err;
-      warnMissingOrgAdminFunctionsOnce();
-      await this.assertCallerIsOrgAdminForFallback(organizationId);
-      const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
-        `select id, email, full_name from core.find_staff_by_email($1);`,
-        [email],
-      );
-      const row = rows[0];
-      return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
+          `select id, email, full_name from core.find_staff_for_org_admin($1, $2);`,
+          [organizationId, email],
+        );
+        const row = rows[0];
+        return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
+      },
+      isRecoverable: isUndefinedFunctionError,
+      fallback: async () => {
+        warnMissingOrgAdminFunctionsOnce();
+        await this.assertCallerIsOrgAdminForFallback(organizationId);
+        const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
+          `select id, email, full_name from core.find_staff_by_email($1);`,
+          [email],
+        );
+        const row = rows[0];
+        return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
+      },
+    });
   }
 
+  // Mismo hallazgo/mismo fix que findStaffForOrgAdmin de arriba.
   async isStaffOrgMember(organizationId: string, targetUserId: string): Promise<boolean> {
-    try {
-      const { rows } = await this.db.query<{ is_staff_org_member_for_org_admin: boolean }>(
-        `select core.is_staff_org_member_for_org_admin($1, $2) as is_staff_org_member_for_org_admin;`,
-        [organizationId, targetUserId],
-      );
-      return rows[0]?.is_staff_org_member_for_org_admin ?? false;
-    } catch (err) {
-      if (!isUndefinedFunctionError(err)) throw err;
-      warnMissingOrgAdminFunctionsOnce();
-      await this.assertCallerIsOrgAdminForFallback(organizationId);
-      const { rows } = await this.db.query<{ organization_id: string }>(
-        `select organization_id from core.find_memberships_by_user_id($1);`,
-        [targetUserId],
-      );
-      return rows.some((r) => r.organization_id === organizationId);
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ is_staff_org_member_for_org_admin: boolean }>(
+          `select core.is_staff_org_member_for_org_admin($1, $2) as is_staff_org_member_for_org_admin;`,
+          [organizationId, targetUserId],
+        );
+        return rows[0]?.is_staff_org_member_for_org_admin ?? false;
+      },
+      isRecoverable: isUndefinedFunctionError,
+      fallback: async () => {
+        warnMissingOrgAdminFunctionsOnce();
+        await this.assertCallerIsOrgAdminForFallback(organizationId);
+        const { rows } = await this.db.query<{ organization_id: string }>(
+          `select organization_id from core.find_memberships_by_user_id($1);`,
+          [targetUserId],
+        );
+        return rows.some((r) => r.organization_id === organizationId);
+      },
+    });
   }
 
   // Autorización de respaldo (solo se usa dentro del fallback de arriba): replica,
