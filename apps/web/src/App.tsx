@@ -30,6 +30,7 @@ import { SuperAdminIntegracionesPage } from "./superadmin/pages/Integraciones.ts
 import { SuperAdminFacturacionPage } from "./superadmin/pages/Facturacion.tsx";
 import { SuperAdminSaludPage } from "./superadmin/pages/Salud.tsx";
 import { SuperAdminResumenPage } from "./superadmin/pages/Resumen.tsx";
+import { SuperAdminAccionesPage } from "./superadmin/pages/Acciones.tsx";
 import { Toaster } from "@atiende/ui";
 import { HotelesLoginPage } from "./verticals/hoteles/pages/Login.tsx";
 import { HotelesShell } from "./verticals/hoteles/HotelesShell.tsx";
@@ -271,6 +272,15 @@ function SuperAdminResumenRoute() {
   return (
     <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
       {(ctx) => <SuperAdminResumenPage {...ctx} />}
+    </SuperAdminShell>
+  );
+}
+
+function SuperAdminAccionesRoute() {
+  const navigate = useNavigate();
+  return (
+    <SuperAdminShell apiBaseUrl={API_BASE_URL} onRequireLogin={() => navigate("/", { replace: true })}>
+      {(ctx) => <SuperAdminAccionesPage {...ctx} />}
     </SuperAdminShell>
   );
 }
@@ -647,6 +657,7 @@ export function App() {
         <Route path="/superadmin/facturacion" element={<SuperAdminFacturacionRoute />} />
         <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
         <Route path="/superadmin/resumen" element={<SuperAdminResumenRoute />} />
+        <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
         <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
         <Route path="/superadmin/integraciones" element={<SuperAdminIntegracionesRoute />} />
         <Route path="/:vertical/auth/google/callback" element={<GoogleCallbackRoute />} />
