@@ -1102,6 +1102,14 @@ export class InMemoryCitasRepository implements CitasRepository {
     return this.phoneNumberIdToOrg.get(phoneNumberId) ?? null;
   }
 
+  /** f2-citas-whatsapp-config-sesion-sistema — el doble en memoria no tiene
+   * RLS que simular: misma implementación que `resolveOrganizationByPhoneNumberId`
+   * (ver el comentario largo de `repository.ts` para por qué Postgres real sí
+   * distingue las dos). */
+  async resolveOrganizationByPhoneNumberIdAsSystem(phoneNumberId: string): Promise<string | null> {
+    return this.resolveOrganizationByPhoneNumberId(phoneNumberId);
+  }
+
   async claimWhatsAppMessage(organizationId: string, messageId: string, _phoneHash: string): Promise<boolean> {
     void organizationId;
     return this.whatsappLock.run(`event:${messageId}`, async () => {

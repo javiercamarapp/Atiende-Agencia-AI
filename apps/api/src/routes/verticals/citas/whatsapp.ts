@@ -86,7 +86,14 @@ export function citasWhatsAppRoutes(deps: AppDeps): Hono {
     // públicas/de sistema de este vertical.
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const citasRepo = deps.citasRepo(db);
-      const organizationId = phoneNumberId ? await citasRepo.resolveOrganizationByPhoneNumberId(phoneNumberId) : null;
+      // f2-citas-whatsapp-config-sesion-sistema — esta sesión es SIEMPRE de
+      // SISTEMA (`userId: null`, Meta no manda ningún usuario autenticado):
+      // `resolveOrganizationByPhoneNumberId` (variante de STAFF, RLS de
+      // membership sobre `citas.whatsapp_config`) SIEMPRE devolvía 0 filas
+      // aquí -- ningún mensaje entrante de WhatsApp de citas resolvía jamás
+      // una organización contra Postgres real. Ver el comentario largo de
+      // `repository.ts::resolveOrganizationByPhoneNumberIdAsSystem`.
+      const organizationId = phoneNumberId ? await citasRepo.resolveOrganizationByPhoneNumberIdAsSystem(phoneNumberId) : null;
       if (!phoneNumberId || !organizationId) {
         // Número no configurado en la plataforma: ack silencioso, no reintento.
         return c.json({ ok: true });

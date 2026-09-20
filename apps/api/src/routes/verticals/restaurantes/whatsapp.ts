@@ -107,6 +107,16 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         // (ver whatsapp/inbound.ts) y `POST /internal/whatsapp/dispatch`
         // (@atiende/whatsapp-gateway::WhatsAppOutboundDispatcher) lo drena de
         // verdad vía Graph API.
+        //
+        // Fase 2 (integridad) — tope de reintentos (`migrations/
+        // 020_whatsapp_retry_cap.sql`): un mensaje que agotó `MAX_WHATSAPP_ATTEMPTS`
+        // ya no lo reclama `claimWhatsAppMessage` (`restaurantes.
+        // claim_whatsapp_message` lo transiciona a `attempts_exhausted`) --
+        // `outcome.retryable` viene `false` para ese caso EXACTAMENTE igual que para
+        // un mensaje ya `'processed'` (`handleInboundWhatsAppMessage` corta con
+        // `claimed = false` antes de tocar `turnHandler`), así que este loop ya
+        // responde 200 a Meta sin ningún cambio aquí -- Meta deja de reintentar, sin
+        // volver a gastar ningún turno de LLM.
         if (outcome.retryable) hadRetryableFailure = true;
       }
 

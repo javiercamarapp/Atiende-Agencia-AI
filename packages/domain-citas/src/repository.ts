@@ -690,6 +690,31 @@ export interface CitasRepository {
   // resuelve el número de WhatsApp de la organización, el dedupe de mensaje
   // at-least-once y el historial de conversación persistido. ----
   resolveOrganizationByPhoneNumberId(phoneNumberId: string): Promise<string | null>;
+  /** f2-citas-whatsapp-config-sesion-sistema — mismo gap de RLS que
+   * `resolveActiveWhatsAppPhoneNumberIdAsSystem`, en la dirección INVERSA:
+   * el webhook entrante de WhatsApp (`apps/api/.../citas/whatsapp.ts`) abre
+   * su PROPIA sesión de sistema (`deps.engine.withAppSession({ userId: null
+   * }, ...)`, sin `authMiddleware`/JWT — Meta no manda ningún usuario
+   * autenticado) y usa `resolveOrganizationByPhoneNumberId` (SELECT plano
+   * contra `citas.whatsapp_config`, policy de RLS solo de staff) como PRIMERA
+   * consulta de esa sesión, para rutear el mensaje entrante a la
+   * organización dueña de ese `phone_number_id`. Bajo `auth.uid()` null esa
+   * policy SIEMPRE deniega -- 0 filas, en silencio -- así que ESTE webhook
+   * jamás resolvía ninguna organización: cada mensaje entrante de WhatsApp
+   * de citas caía en la rama "número no configurado" (`apps/api/.../citas/
+   * whatsapp.ts`, `ack silencioso, no reintento`) sin importar qué tan bien
+   * configurado estuviera el negocio -- el gap inverso, documentado como
+   * pendiente por la migración 021 (`021_whatsapp_config_sistema_lectura.sql`,
+   * comentario de cabecera). Arreglo: función `security definer` de
+   * SOLO-SISTEMA `citas.system_resolve_organization_by_whatsapp_phone_number_id`
+   * (migración `022_whatsapp_config_organizacion_sistema_lectura.sql`), mismo
+   * patrón EXACTO que `system_resolve_active_whatsapp_phone_number_id` (021)
+   * -- guard `auth.uid() is null`, revoke de `public`/`anon`/`authenticated` +
+   * grant execute a `authenticated`, devuelve únicamente `organization_id`.
+   * Compatibilidad con la base sin migrar: implementación Postgres degrada a
+   * `null` (SQLSTATE 42883) -- el MISMO "número no configurado" honesto de
+   * hoy, nunca un 500. */
+  resolveOrganizationByPhoneNumberIdAsSystem(phoneNumberId: string): Promise<string | null>;
   claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean>;
   appendWhatsAppUserMessageOnce(organizationId: string, phone: string, message: ConversationMessage): Promise<readonly ConversationMessage[]>;
   whatsappAppendTurn(

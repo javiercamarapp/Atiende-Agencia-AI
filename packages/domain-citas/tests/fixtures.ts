@@ -4,8 +4,14 @@
 import { randomUUID } from "node:crypto";
 import { InMemoryCitasRepository } from "../src/in-memory-repository.ts";
 
-export function buildCitasFixture() {
-  const repo = new InMemoryCitasRepository();
+/** f2-citas-whatsapp-config-sesion-sistema — `repoOverride` deja inyectar un
+ * doble que EXTIENDE `InMemoryCitasRepository` (ver
+ * `support/throws-on-staff-whatsapp-repo.ts`) para hacer visible, en tests que
+ * no requieren Postgres real, cuál variante de `resolveActiveWhatsAppPhoneNumberId*`
+ * llama de verdad un caller que corre en sesión de sistema -- por defecto (sin
+ * argumento) el comportamiento es IDÉNTICO al de antes. */
+export function buildCitasFixture(repoOverride?: InMemoryCitasRepository) {
+  const repo = repoOverride ?? new InMemoryCitasRepository();
 
   const organizationId = randomUUID();
   repo.seedOrganization({ id: organizationId, slug: "clinica-dental-sonrisas", name: "Clínica Dental Sonrisas", defaultTimezone: "America/Merida" });
