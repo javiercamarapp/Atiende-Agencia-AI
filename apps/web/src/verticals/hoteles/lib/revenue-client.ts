@@ -86,3 +86,141 @@ export interface RegisterBacktestInput {
 export async function registerRevenueBacktest(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: RegisterBacktestInput): Promise<RevenueBacktestRun> {
   return sendJson<RevenueBacktestRun>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/backtests`, token, "POST", input);
 }
+
+// ---------------------------------------------------------------------------
+// Fase 10 — motor de recomendaciones de tarifa v1 (packages/domain-hoteles/
+// migrations/029_rate_recommendation_engine.sql +
+// apps/api/.../revenue-recomendaciones.ts). Consume el desglose TAL CUAL lo
+// arma el servidor (RateRecommendationResult.desglose) -- esta pantalla nunca
+// reinterpreta ni resume las señales, solo las presenta: "nunca una caja negra".
+// ---------------------------------------------------------------------------
+export type RateRecommendationStatus = "pendiente" | "aprobada" | "aplicada" | "descartada" | "expirada";
+
+export const RATE_RECOMMENDATION_STATUS_LABELS: Record<RateRecommendationStatus, string> = {
+  pendiente: "Pendiente",
+  aprobada: "Aprobada (el sistema la aplicará)",
+  aplicada: "Aplicada",
+  descartada: "Descartada",
+  expirada: "Expirada",
+};
+
+export interface RateRecommendation {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly roomTypeId: string;
+  readonly fecha: string;
+  readonly currentBarPrice: number;
+  readonly recommendedPrice: number;
+  readonly suggestedMinStay: number;
+  readonly desglose: Record<string, unknown>;
+  readonly estado: RateRecommendationStatus;
+  readonly aprobadaPor: string | null;
+  readonly aprobadaEn: string | null;
+  readonly aplicadaPor: string | null;
+  readonly aplicadaEn: string | null;
+  readonly descartadaPor: string | null;
+  readonly descartadaEn: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface RateRecommendationCursor {
+  readonly cursorFecha: string;
+  readonly cursorRoomTypeId: string;
+  readonly cursorId: string;
+}
+
+export async function fetchRateRecommendations(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  opts: { readonly estado?: RateRecommendationStatus; readonly limit?: number; readonly cursor?: RateRecommendationCursor } = {},
+): Promise<{ readonly recomendaciones: readonly RateRecommendation[]; readonly nextCursor: RateRecommendationCursor | null }> {
+  const params = new URLSearchParams();
+  if (opts.estado) params.set("estado", opts.estado);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.cursor) {
+    params.set("cursorFecha", opts.cursor.cursorFecha);
+    params.set("cursorRoomTypeId", opts.cursor.cursorRoomTypeId);
+    params.set("cursorId", opts.cursor.cursorId);
+  }
+  const qs = params.toString();
+  return fetchJson(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/recomendaciones${qs ? `?${qs}` : ""}`, token);
+}
+
+export async function approveRateRecommendation(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, id: string): Promise<RateRecommendation> {
+  return sendJson<RateRecommendation>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/recomendaciones/${id}/aprobar`, token, "POST", {});
+}
+
+export async function discardRateRecommendation(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, id: string): Promise<RateRecommendation> {
+  return sendJson<RateRecommendation>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/recomendaciones/${id}/descartar`, token, "POST", {});
+}
+
+export interface PricingRule {
+  readonly floorPrice: number;
+  readonly ceilingPrice: number | null;
+  readonly dayOfWeekMultiplier: readonly number[];
+  readonly minStayDefault: number;
+  readonly minStayOnHighDemand: number;
+  readonly esDefault: boolean;
+}
+
+export async function fetchPricingRule(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, roomTypeId: string): Promise<PricingRule> {
+  return fetchJson(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/pricing-rule/${roomTypeId}`, token);
+}
+
+export async function savePricingRule(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  roomTypeId: string,
+  input: { readonly floorPrice: number; readonly ceilingPrice: number; readonly dayOfWeekMultiplier: readonly number[]; readonly minStayDefault: number; readonly minStayOnHighDemand: number },
+): Promise<PricingRule> {
+  return sendJson<PricingRule>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/pricing-rule/${roomTypeId}`, token, "PUT", input);
+}
+
+export interface LocalEvent {
+  readonly id: string;
+  readonly nombre: string;
+  readonly fechaInicio: string;
+  readonly fechaFin: string;
+  readonly impacto: "alza_demanda" | "baja_demanda";
+  readonly magnitudPct: number;
+}
+
+export async function fetchLocalEvents(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, desde: string, hasta: string): Promise<readonly LocalEvent[]> {
+  return fetchJson(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/local-events?desde=${desde}&hasta=${hasta}`, token);
+}
+
+export async function createLocalEvent(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  input: { readonly nombre: string; readonly fechaInicio: string; readonly fechaFin: string; readonly impacto: "alza_demanda" | "baja_demanda"; readonly magnitudPct: number },
+): Promise<LocalEvent> {
+  return sendJson<LocalEvent>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/local-events`, token, "POST", input);
+}
+
+export interface CompetitorRate {
+  readonly id: string;
+  readonly competidor: string;
+  readonly fecha: string;
+  readonly tarifa: number;
+}
+
+export async function fetchCompetitorRates(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, fecha: string): Promise<readonly CompetitorRate[]> {
+  return fetchJson(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/competitor-rates?fecha=${fecha}`, token);
+}
+
+export async function createCompetitorRate(
+  fetchImpl: typeof fetch,
+  apiBaseUrl: string,
+  token: string,
+  propertyId: string,
+  input: { readonly competidor: string; readonly fecha: string; readonly tarifa: number },
+): Promise<CompetitorRate> {
+  return sendJson<CompetitorRate>(fetchImpl, `${apiBaseUrl}/hoteles/${propertyId}/revenue/competitor-rates`, token, "POST", input);
+}

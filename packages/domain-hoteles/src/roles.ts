@@ -133,6 +133,17 @@ export const REVENUE_AUTOPILOT_APPROVAL_ROLES: readonly HotelRole[] = ["owner"];
 // de revenue, mismo criterio que NIGHT_AUDIT_ROLES: owner/gm/accountant.
 export const REVENUE_BACKTEST_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
 
+// Fase 10 (motor de recomendaciones de tarifa) — aprobar/descartar una recomendación
+// individual en gate "propone" es la misma decisión de gobierno que mover el gate
+// (REVENUE_GATE_MANAGE_ROLES): owner/gm. Configurar floor/ceiling/multiplicador DOW/
+// LOS por room_type (`hoteles.pricing_rule`) es igual de estricto, mismo criterio.
+export const REVENUE_RECOMMENDATION_APPROVE_ROLES: readonly HotelRole[] = ["owner", "gm"];
+export const REVENUE_PRICING_RULES_MANAGE_ROLES: readonly HotelRole[] = ["owner", "gm"];
+// Capturar una tarifa de competidor o registrar un evento local es dato operativo de
+// revenue, mismo nivel que correr un backtest (REVENUE_BACKTEST_ROLES): owner/gm/
+// accountant -- nunca frontdesk/housekeeping/maintenance/fnb.
+export const REVENUE_DATA_CAPTURE_ROLES: readonly HotelRole[] = ["owner", "gm", "accountant"];
+
 // Fase 10 (REQ-BO-010, P0) — back-office financiero: P&L USALI + punto de equilibrio
 // dinámico. Ver/registrar el lado de GASTOS revela costos/nómina/márgenes del
 // negocio -- MÁS estricto que MONEY_ROLES (nunca frontdesk/reservations/fnb, que sí

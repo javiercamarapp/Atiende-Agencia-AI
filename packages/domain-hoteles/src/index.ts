@@ -84,6 +84,9 @@ export {
   REVENUE_GATE_MANAGE_ROLES,
   REVENUE_AUTOPILOT_APPROVAL_ROLES,
   REVENUE_BACKTEST_ROLES,
+  REVENUE_RECOMMENDATION_APPROVE_ROLES,
+  REVENUE_PRICING_RULES_MANAGE_ROLES,
+  REVENUE_DATA_CAPTURE_ROLES,
   PL_ROLES,
   REPUTACION_SUBMIT_ROLES,
   REPUTACION_VIEW_ROLES,
@@ -95,7 +98,7 @@ export type { HotelRole } from "./roles.ts";
 export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
 export type { StaffInviteCorreo } from "./emails/staff-invite-template.ts";
 
-export { IdempotencyConflictError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError } from "./errors.ts";
+export { IdempotencyConflictError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, RateEngineUnavailableError } from "./errors.ts";
 
 // ---- Fase 5 — H16-014/REQ-REC-014: fraude interno (SOLO los 2 patrones que operan
 // sobre folioEngine.ts ya portado; ver domain-hoteles/src/fraude/deteccion.ts para
@@ -162,6 +165,18 @@ export type {
 
 export type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, EmailOutboxJobRow, ReservationPage } from "./repository.ts";
 export type { RevenueGateRecord, RevenueBacktestRunRecord, NewRevenueBacktestRunInput } from "./repository.ts";
+export type {
+  PricingRuleRecord,
+  NewPricingRuleInput,
+  LocalEventRecord,
+  NewLocalEventInput,
+  LocalEventImpacto,
+  CompetitorRateRecord,
+  NewCompetitorRateInput,
+  RateRecommendationRecord,
+  NewRateRecommendationInput,
+  RateRecommendationStatus,
+} from "./repository.ts";
 export { InMemoryHotelesRepository } from "./in-memory-repository.ts";
 export { PostgresHotelesRepository } from "./postgres-repository.ts";
 
@@ -339,6 +354,57 @@ export type {
 
 export { BenchmarkGuardError, assertBenchmarkQueryAllowed } from "./revenue/compsetGuard.ts";
 export type { BenchmarkQueryRequest } from "./revenue/compsetGuard.ts";
+
+// ---- Fase 10 hoteles — motor de recomendaciones de tarifa v1 (ver
+// packages/domain-hoteles/README.md §Fase 10 para el resumen de alcance). ----
+export {
+  computeEasterSunday,
+  nthWeekdayOfMonth,
+  isTransmisionPoderEjecutivoYear,
+  getFederalHolidays,
+  getTemporadaAltaRanges,
+  evaluateDemandaFecha,
+  SUMMER_BREAK_APPROXIMATION_NOTE,
+} from "./revenue/calendarioMexico.ts";
+export type {
+  FederalHolidayKind,
+  FederalHoliday,
+  TemporadaAltaTipo,
+  TemporadaAlta,
+  DemandaFechaEvaluation,
+} from "./revenue/calendarioMexico.ts";
+
+export {
+  PickupSignalError,
+  computePickupSignal,
+} from "./revenue/pickupSignal.ts";
+export type {
+  PickupHistoricalSample,
+  PickupSignalInput,
+  PickupSignalResult,
+} from "./revenue/pickupSignal.ts";
+
+export {
+  PricingRulesError,
+  DEFAULT_PRICING_RULES,
+  assertValidPricingRules,
+  applyPricingRules,
+} from "./revenue/pricingRules.ts";
+export type {
+  PricingRules,
+  PricingRuleApplication,
+} from "./revenue/pricingRules.ts";
+
+export {
+  RateRecommendationEngineError,
+  computeRateRecommendation,
+} from "./revenue/rateRecommendationEngine.ts";
+export type {
+  CompsetRateSample,
+  LocalEventInput,
+  RateRecommendationSignalsInput,
+  RateRecommendationResult,
+} from "./revenue/rateRecommendationEngine.ts";
 
 // ---- Fase 10 — REQ-BO-010 (P0): back-office financiero, P&L USALI + punto de
 // equilibrio dinámico (capa pura). Forecast de 90 días y proyección de caja a 13
