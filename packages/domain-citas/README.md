@@ -477,16 +477,21 @@ corrían sueltos (sin SAVEPOINT propio) dentro de un catch-que-traga, en LOS
 `syncOneAppointmentRow` — ahora una única llamada a `runWithRowSavepoint`
 envuelve la lectura Y el intento de sincronización.
 
-**Verificación:** `scripts/verify-citas-lista-de-espera-sistema/` (22/22
-escenarios contra Postgres real tras la corrección post-revisión -- antes
-16/16, solo para (A); ahora también cubre (A2): fixture con `whatsapp_config`
-real para dos organizaciones, positivo/cross-tenant/negativos para
-`citas.system_resolve_active_whatsapp_phone_number_id`, y el flujo completo
--- se libera un horario, sesión de staff confirma; una sesión de sistema
-NUEVA lee la lista de espera, RESUELVE EL TELÉFONO, reclama y encola, las dos
-funciones de sistema invocadas de verdad -- controles negativos de
-staff/anon, cross-tenant, y el escenario de "esquema a medias" que elimina
-AMBAS funciones para reproducir las migraciones 020 y 021 sin aplicar).
+**Verificación:** `scripts/verify-citas-lista-de-espera-sistema/` (24/24
+bloques begin/rollback contra Postgres real tras la corrección post-revisión
+-- antes 16/16, solo para (A); ahora también cubre (A2): fixture con
+`whatsapp_config` real para dos organizaciones, positivo/cross-tenant/
+negativos para `citas.system_resolve_active_whatsapp_phone_number_id`, y el
+flujo completo -- se libera un horario, sesión de staff confirma; una sesión
+de sistema NUEVA lee la lista de espera, RESUELVE EL TELÉFONO, reclama y
+encola, las dos funciones de sistema invocadas de verdad -- controles
+negativos de staff/anon, cross-tenant, y el escenario de "esquema a medias"
+que elimina AMBAS funciones para reproducir las migraciones 020 y 021 sin
+aplicar. Los controles negativos (staff/anon, para ambas funciones) ya no
+aceptan "cualquier error": confirman el SQLSTATE EXACTO vía bloques
+`do $$ ... exception when sqlstate ... $$;`, y el de `anon` confirma además
+con `has_function_privilege` que el rechazo es por el REVOKE de EXECUTE, no
+por falta de USAGE en el schema).
 `packages/domain-citas/tests/postgres-repository-waitlist-system-savepoint.spec.ts`
 y `postgres-repository-whatsapp-config-system-savepoint.spec.ts` cubren el
 fallback de compatibilidad con `AbortAwareFakeSession`.

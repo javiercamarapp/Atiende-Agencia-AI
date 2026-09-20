@@ -39,8 +39,10 @@
 --   4-5.   El fix (A): la función de sistema SÍ ve al candidato de su
 --          organización, NUNCA al de otra (cross-tenant del fix).
 --   6-7.   Controles negativos obligatorios (A): un staff autenticado real NO
---          puede llamar la función de sistema (42501); `anon` tampoco (sin
---          GRANT).
+--          puede llamar la función de sistema; `anon` tampoco (sin GRANT) --
+--          ambos confirman el SQLSTATE EXACTO 42501 (nunca "cualquier error"),
+--          y 7 además confirma con `has_function_privilege` que el rechazo es
+--          por el REVOKE de EXECUTE (no por falta de USAGE en el schema).
 --   8.     Columnas `date` (`preferred_date_from`/`preferred_date_to`) vuelven
 --          como texto ISO comparable (regla dura #6 -- ver postgres-repository.ts).
 --   9.     El gap (A2) SIGUE existiendo a nivel de SELECT plano sobre
@@ -49,9 +51,8 @@
 --   10-11. El fix (A2): la función de sistema resuelve el `phone_number_id`
 --          REAL de cada organización (10: A, 11: B) -- nunca cruza tenant
 --          (el parámetro `organization_id` sigue acotando el resultado).
---   12-13. Controles negativos obligatorios (A2): un staff autenticado real NO
---          puede llamar la función de sistema (42501); `anon` tampoco (sin
---          GRANT).
+--   12-13. Controles negativos obligatorios (A2): mismo criterio EXACTO que
+--          6-7, para la función de whatsapp_config.
 --   14a-e. FLUJO ENTERO real: se libera un horario (cancelar desde el panel,
 --          sesión de staff, transacción propia que SÍ confirma) -> una sesión
 --          de SISTEMA nueva lee la lista de espera (función 020), resuelve el
@@ -183,19 +184,49 @@ rollback;
 
 -- ============================================================================
 -- 6-7. Controles negativos obligatorios (fix A) -- staff real / anon.
+--
+-- Corrección post-revisión (no-bloqueante #3 señalado por el revisor
+-- independiente): el gate (`run-gate.mjs::deriveExpectation`, kind:'error')
+-- acepta CUALQUIER error de Postgres en un bloque `as should_fail` -- nunca
+-- confirmaba el SQLSTATE exacto (42501). Estos dos escenarios ahora envuelven
+-- la llamada en un bloque `do $$ ... exception when sqlstate '42501' then
+-- null; end $$;` -- si Postgres lanza CUALQUIER otro código (o si la llamada
+-- tiene éxito), el `raise exception` explícito de abajo revienta el bloque y
+-- el gate lo reporta como fallo real (ya no hay alias `should_fail`: estos
+-- pasan a ser escenarios "success" que solo completan sin error cuando el
+-- SQLSTATE exacto coincidió). El 7 además confirma con
+-- `has_function_privilege` que el rechazo es por el REVOKE de EXECUTE
+-- específicamente (nunca por falta de USAGE en el schema `citas`, que
+-- produciría el mismo SQLSTATE 42501 por una razón distinta).
 -- ============================================================================
 
-\echo '=== 6. (negativo) un STAFF autenticado real de A NO puede llamar la función de sistema -- guard auth.uid() is null, rechaza incluso al dueño legítimo de los datos (should_fail, 42501) ==='
+\echo '=== 6. (negativo, SQLSTATE exacto) un STAFF autenticado real de A NO puede llamar la función de sistema -- guard auth.uid() is null, rechaza incluso al dueño legítimo de los datos, con el código EXACTO 42501 que la función lanza (using errcode) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
-select citas.system_load_live_waitlist_candidates('00000000-0000-0000-0000-0000000000f2') as should_fail;
+do $$
+begin
+  perform citas.system_load_live_waitlist_candidates('00000000-0000-0000-0000-0000000000f2');
+  raise exception 'BLOQUEANTE: se esperaba SQLSTATE 42501 (guard auth.uid() is null) pero la llamada tuvo éxito -- el guard no está rechazando a un staff real';
+exception
+  when sqlstate '42501' then null; -- esperado: exactamente el código que la función lanza con "using errcode"
+end $$;
 rollback;
 
-\echo '=== 7. (negativo) anon no tiene GRANT execute sobre la función de sistema (should_fail) ==='
+\echo '=== 7. (negativo, SQLSTATE exacto + causa raíz confirmada) anon no tiene GRANT execute sobre la función de sistema -- 42501 exacto, Y confirmado que es el REVOKE de EXECUTE (nunca falta de USAGE en el schema) ==='
+begin;
+select (not has_function_privilege('anon', 'citas.system_load_live_waitlist_candidates(uuid)', 'execute'))::int as anon_sin_grant_execute_confirmado_deberia_ser_1;
+rollback;
+
 begin;
 set local role anon;
-select citas.system_load_live_waitlist_candidates('00000000-0000-0000-0000-0000000000f2') as should_fail;
+do $$
+begin
+  perform citas.system_load_live_waitlist_candidates('00000000-0000-0000-0000-0000000000f2');
+  raise exception 'BLOQUEANTE: se esperaba SQLSTATE 42501 (sin GRANT execute) pero la llamada tuvo éxito';
+exception
+  when sqlstate '42501' then null; -- esperado: mismo código, esta vez por el REVOKE de EXECUTE (confirmado arriba con has_function_privilege), no por falta de USAGE en el schema
+end $$;
 rollback;
 
 -- ============================================================================
@@ -238,17 +269,33 @@ select set_config('request.jwt.claim.sub', '', true);
 select (citas.system_resolve_active_whatsapp_phone_number_id('00000000-0000-0000-0000-0000000000f4') = 'phone-f2-b')::int as sistema_funcion_whatsapp_resuelve_b_deberia_ser_1;
 rollback;
 
-\echo '=== 12. (negativo) un STAFF autenticado real de A NO puede llamar la función de sistema de whatsapp_config -- guard auth.uid() is null (should_fail, 42501) ==='
+\echo '=== 12. (negativo, SQLSTATE exacto) un STAFF autenticado real de A NO puede llamar la función de sistema de whatsapp_config -- guard auth.uid() is null, código EXACTO 42501 (mismo criterio que 6) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
-select citas.system_resolve_active_whatsapp_phone_number_id('00000000-0000-0000-0000-0000000000f2') as should_fail;
+do $$
+begin
+  perform citas.system_resolve_active_whatsapp_phone_number_id('00000000-0000-0000-0000-0000000000f2');
+  raise exception 'BLOQUEANTE: se esperaba SQLSTATE 42501 (guard auth.uid() is null) pero la llamada tuvo éxito';
+exception
+  when sqlstate '42501' then null;
+end $$;
 rollback;
 
-\echo '=== 13. (negativo) anon no tiene GRANT execute sobre la función de sistema de whatsapp_config (should_fail) ==='
+\echo '=== 13. (negativo, SQLSTATE exacto + causa raíz confirmada) anon no tiene GRANT execute sobre la función de sistema de whatsapp_config -- 42501 exacto, confirmado que es el REVOKE de EXECUTE (mismo criterio que 7) ==='
+begin;
+select (not has_function_privilege('anon', 'citas.system_resolve_active_whatsapp_phone_number_id(uuid)', 'execute'))::int as anon_sin_grant_execute_whatsapp_confirmado_deberia_ser_1;
+rollback;
+
 begin;
 set local role anon;
-select citas.system_resolve_active_whatsapp_phone_number_id('00000000-0000-0000-0000-0000000000f2') as should_fail;
+do $$
+begin
+  perform citas.system_resolve_active_whatsapp_phone_number_id('00000000-0000-0000-0000-0000000000f2');
+  raise exception 'BLOQUEANTE: se esperaba SQLSTATE 42501 (sin GRANT execute) pero la llamada tuvo éxito';
+exception
+  when sqlstate '42501' then null;
+end $$;
 rollback;
 
 -- ============================================================================
@@ -325,18 +372,30 @@ rollback;
 drop function citas.system_load_live_waitlist_candidates(uuid);
 drop function citas.system_resolve_active_whatsapp_phone_number_id(uuid);
 
-\echo '=== 15a. ESQUEMA A MEDIAS: llamar system_load_live_waitlist_candidates (ya no existe) lanza SQLSTATE 42883 (undefined_function) -- exactamente lo que isUndefinedFunctionError/runWithSavepointFallback capturan en postgres-repository.ts (should_fail) ==='
+\echo '=== 15a. (SQLSTATE exacto) ESQUEMA A MEDIAS: llamar system_load_live_waitlist_candidates (ya no existe) lanza EXACTAMENTE 42883 (undefined_function) -- lo que isUndefinedFunctionError/runWithSavepointFallback capturan en postgres-repository.ts ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select citas.system_load_live_waitlist_candidates('00000000-0000-0000-0000-0000000000f2') as should_fail;
+do $$
+begin
+  perform citas.system_load_live_waitlist_candidates('00000000-0000-0000-0000-0000000000f2');
+  raise exception 'BLOQUEANTE: se esperaba SQLSTATE 42883 (función eliminada) pero la llamada tuvo éxito -- ¿el DROP de arriba no corrió?';
+exception
+  when sqlstate '42883' then null; -- exactamente lo que isUndefinedFunctionError reconoce
+end $$;
 rollback;
 
-\echo '=== 15b. ESQUEMA A MEDIAS: llamar system_resolve_active_whatsapp_phone_number_id (ya no existe) lanza el MISMO SQLSTATE 42883 (should_fail) ==='
+\echo '=== 15b. (SQLSTATE exacto) ESQUEMA A MEDIAS: llamar system_resolve_active_whatsapp_phone_number_id (ya no existe) lanza el MISMO 42883 ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-select citas.system_resolve_active_whatsapp_phone_number_id('00000000-0000-0000-0000-0000000000f2') as should_fail;
+do $$
+begin
+  perform citas.system_resolve_active_whatsapp_phone_number_id('00000000-0000-0000-0000-0000000000f2');
+  raise exception 'BLOQUEANTE: se esperaba SQLSTATE 42883 (función eliminada) pero la llamada tuvo éxito -- ¿el DROP de arriba no corrió?';
+exception
+  when sqlstate '42883' then null;
+end $$;
 rollback;
 
 \echo '=== 15c. ESQUEMA A MEDIAS: el staff SIGUE viendo su propio candidato tal cual (ninguna de las dos migraciones nuevas tocó ninguna policy de staff -- vacío honesto, nunca una regresión, deberia_ser_1) ==='
@@ -346,11 +405,17 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3
 select count(*) as esquema_a_medias_staff_sigue_viendo_su_candidato_deberia_ser_1 from citas.appointment_waitlist where id = '00000000-0000-0000-0000-0000000000f9';
 rollback;
 
-\echo '=== 15d. ESQUEMA A MEDIAS: el guard de claim_waitlist_notification_slot (migración 015, YA aplicada desde antes) sigue intacto -- sesión de staff sigue rechazada con 42501 (should_fail) ==='
+\echo '=== 15d. (SQLSTATE exacto) ESQUEMA A MEDIAS: el guard de claim_waitlist_notification_slot (migración 015, YA aplicada desde antes) sigue intacto -- sesión de staff sigue rechazada con EXACTAMENTE 42501 ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
-select citas.claim_waitlist_notification_slot('00000000-0000-0000-0000-0000000000f9', 3) as should_fail;
+do $$
+begin
+  perform citas.claim_waitlist_notification_slot('00000000-0000-0000-0000-0000000000f9', 3);
+  raise exception 'BLOQUEANTE: se esperaba SQLSTATE 42501 (guard auth.uid() is null de claim_waitlist_notification_slot) pero la llamada tuvo éxito';
+exception
+  when sqlstate '42501' then null;
+end $$;
 rollback;
 
-\echo '=== FIN -- 22 bloques begin/rollback en total (2 control staff, 1 gap A, 2 fix A, 2 negativos A, 1 fecha, 1 gap A2, 2 fix A2, 2 negativos A2, 5 flujo completo, 4 esquema-a-medias) = 22/22. Los escenarios 6, 7, 12, 13, 15a, 15b y 15d terminan en ERROR a propósito (should_fail); todos los demás deben completar sin error. ==='
+\echo '=== FIN -- 24 bloques begin/rollback en total (2 control staff, 1 gap A, 2 fix A, 2 negativos A [7 en 2 bloques], 1 fecha, 1 gap A2, 2 fix A2, 2 negativos A2 [13 en 2 bloques], 5 flujo completo, 4 esquema-a-medias) = 24/24. Corrección post-revisión (no-bloqueante #3): 6, 7, 12, 13, 15a, 15b y 15d ya NO usan el alias `should_fail` (el gate aceptaba cualquier error) -- ahora son bloques `do $$ ... exception when sqlstate ... $$;` que solo completan sin error cuando Postgres lanzó EXACTAMENTE el SQLSTATE esperado; cualquier otro código (o un éxito inesperado) hace que el `raise exception` explícito revienta el bloque y el gate lo reporta como fallo real. ==='
