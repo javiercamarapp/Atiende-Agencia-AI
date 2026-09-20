@@ -56,6 +56,20 @@ describe("SuperAdminImpersonacionPage", () => {
     expect(rendered.container.textContent).toContain("Sin eventos de impersonación registrados");
   });
 
+  it("durante la carga inicial (antes de resolver el fetch), 'Iniciar impersonación' NUNCA aparece habilitado en el DOM -- re-revisión hallazgo 8 (el `available` inicial en memoria arranca en `false`, nunca `true`, y el `return` de EstadoCargando de abajo evita que el botón exista en ese momento)", async () => {
+    stubFetch({});
+    rendered = renderPage();
+    // Sin ningún `await`/flush todavía -- exactamente la ventana de carga
+    // inicial que el hallazgo 8 señalaba como habilitada por error.
+    expect(rendered.container.textContent).toContain("Cargando impersonación");
+    const iniciarBtnDuranteCarga = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Iniciar impersonación"));
+    expect(iniciarBtnDuranteCarga).toBeUndefined();
+
+    await esperarCarga();
+    const iniciarBtnTrasCargar = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Iniciar impersonación"));
+    expect(iniciarBtnTrasCargar!.disabled).toBe(false);
+  });
+
   it("estado de error cuando el fetch falla -- nunca se queda atorado en 'Cargando'", async () => {
     fetchMock = vi.fn(async () => {
       throw new Error("network down");
