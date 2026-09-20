@@ -407,9 +407,11 @@ export interface IncidenciaMantenimientoRecord {
 // Bitácora de auditoría del staff (r5) -- ver
 // migrations/021_rentas_audit_log.sql. `membership` está reservado en el catálogo
 // aunque hoy ningún caller real lo usa (rentas todavía no tiene ruta de gestión de
-// membership/rol de staff -- ver comentario de cabecera de esa migración).
+// membership/rol de staff -- ver comentario de cabecera de esa migración, sigue
+// vigente tras f3-rentas-bitacora-y-guards). `bloqueo`/`owner_credential` -- ver
+// migrations/023_rentas_audit_log_cobertura_completa.sql.
 // ---------------------------------------------------------------------------
-export type RentasAuditEntityType = "pricing" | "reserva" | "payout" | "owner_statement" | "membership" | "canal";
+export type RentasAuditEntityType = "pricing" | "reserva" | "payout" | "owner_statement" | "membership" | "canal" | "bloqueo" | "owner_credential";
 
 export interface RegistrarAuditoriaInput {
   readonly organizationId: string;

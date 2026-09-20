@@ -46,17 +46,24 @@ on conflict do nothing;
 insert into core.staff_user (id, email, full_name, created_via) values
   ('00000000-0000-0000-0000-000000000011', 'admin-org-a@example.com', 'Admin Org A', 'seed'),
   ('00000000-0000-0000-0000-000000000012', 'operador-org-a@example.com', 'Operador Org A', 'seed'),
-  ('00000000-0000-0000-0000-000000000013', 'admin-org-b@example.com', 'Admin Org B (ajeno)', 'seed')
+  ('00000000-0000-0000-0000-000000000013', 'admin-org-b@example.com', 'Admin Org B (ajeno)', 'seed'),
+  -- f3-rentas-bitacora-y-guards -- staff 14: rol `limpieza` real de la Org A, FUERA
+  -- del techo mínimo que 023_rentas_audit_log_cobertura_completa.sql exige para
+  -- escribir en la bitácora (ver el comentario de cabecera de esa migración) --
+  -- el escenario "rol insuficiente rechazado".
+  ('00000000-0000-0000-0000-000000000014', 'limpieza-org-a@example.com', 'Limpieza Org A', 'seed')
 on conflict do nothing;
 
 -- staff 11: admin_gestora real de la Org A (el único rol con acceso de lectura a la
 -- bitácora). staff 12: staff REAL de la Org A, pero SIN el rol admin_gestora (el
 -- escenario "staff sin rol admin no lee"). staff 13: admin_gestora real, pero de la
 -- Org B -- el actor "cross-tenant" que intenta tocar la bitácora de la Org A.
+-- staff 14: `limpieza` real de la Org A -- ver comentario de arriba.
 insert into core.membership (user_id, organization_id, property_ids, platform_role, vertical_role) values
   ('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-0000000000a1', null, 'admin', 'admin_gestora'),
   ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-0000000000a1', null, 'member', 'operador:acceso_total'),
-  ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-0000000000a2', null, 'admin', 'admin_gestora')
+  ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-0000000000a2', null, 'admin', 'admin_gestora'),
+  ('00000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-0000000000a1', null, 'member', 'limpieza')
 on conflict do nothing;
 
 -- Fixture persistente para los escenarios de LECTURA/append-only de abajo --
@@ -324,6 +331,43 @@ select (
   (select array_agg(despues) from pagina_1) || (select array_agg(despues) from pagina_2)
   = array['pag-6','pag-5','pag-4','pag-3','pag-2','pag-1']
 )::int as paginacion_sin_repetir_ni_perder_deberia_ser_1;
+rollback;
+
+\echo ''
+\echo '=== 11) f3-rentas-bitacora-y-guards -- validacion de ROL en la escritura (023_rentas_audit_log_cobertura_completa.sql) ==='
+\echo ''
+
+\echo '--- 19. operador:acceso_total (staff 12, real member de la Org A) SI puede escribir -- esta en el techo minimo (CANCELAR_ROLES/ESCRITURA_CALENDARIO_ROLES ya lo permiten en TypeScript) ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000012', true);
+select rentas.record_audit_log(
+  '00000000-0000-0000-0000-0000000000a1',
+  'bloqueo.cancelado',
+  'bloqueo',
+  null,
+  'estado',
+  'confirmado',
+  'cancelado'
+) as nuevo_id;
+rollback;
+
+\echo '--- 20. rol insuficiente rechazado: limpieza (staff 14, real member de la Org A, membership real -- NO es un caso cross-tenant) NO puede escribir en la bitacora -- ningun modulo de limpieza llama a esta funcion hoy (verificado contra el codigo real, ver cabecera de 023) ---'
+begin;
+-- as should_fail (rol insuficiente, SQLSTATE 42501 -- mismo codigo que el rechazo
+-- cross-tenant del escenario 4, pero por una razon DISTINTA: aqui el actor SI
+-- pertenece a la organizacion, solo que su rol no alcanza).
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000014', true);
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'x', 'pricing', null, null, null, 'intento con rol insuficiente') as should_fail;
+rollback;
+
+\echo '--- 21. catalogo ampliado: entity_type = bloqueo / owner_credential (f3-rentas-bitacora-y-guards) son aceptados -- nunca rechazados por el CHECK ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'bloqueo.cancelado', 'bloqueo', null, 'estado', 'confirmado', 'cancelado') as nuevo_id_bloqueo;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'owner_credential.alta', 'owner_credential', null, 'portal_invite', null, 'vence 2026-12-31') as nuevo_id_owner_credential;
 rollback;
 
 -- NOTA -- esquema intermedio (021 aplicada, 022 no, ver migrations/
