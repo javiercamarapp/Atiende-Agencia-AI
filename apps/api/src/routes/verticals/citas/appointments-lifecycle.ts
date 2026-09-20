@@ -321,6 +321,24 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
 
     try {
       const appointment = await cancelAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
+
+      // FASE 3 (producto) — "cancelación ... forzada de una cita por staff (no
+      // por el cliente)" (ver packages/domain-citas/migrations/
+      // 023_citas_audit_log.sql). Solo esta ruta (panel, JWT de staff real) --
+      // nunca la cancelación del agente de voz/WhatsApp de arriba (sesión de
+      // sistema, a nombre del cliente, fuera del alcance de esta fase). Best-
+      // effort real, nunca revierte la cancelación ya aplicada.
+      await citasRepo.registrarAuditoria({
+        organizationId,
+        actorUserId: userId,
+        action: "cita.cancelada_por_staff",
+        entityType: "cita",
+        entityId: appointment.id,
+        campo: "status",
+        antes: null,
+        despues: appointment.status,
+      });
+
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.cancelled", appointment.id);
       await triggerCitasEmailDispatchInline(deps, c.get("db"), citasRepo);
       // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento

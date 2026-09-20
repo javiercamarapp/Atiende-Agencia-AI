@@ -28,6 +28,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CalendarRange,
+  ClipboardList,
   Scissors,
   Settings,
   ShieldCheck,
@@ -105,6 +106,11 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
         { to: `${base}/staff`, label: "Staff", icon: ShieldCheck },
+        // FASE 3 (producto) — bitácora de auditoría del staff (ver
+        // packages/domain-citas/migrations/023_citas_audit_log.sql). Solo
+        // owner/admin la ven con datos reales -- `AuditoriaPage` misma gatea su
+        // propio contenido por rol (mismo criterio que restaurantes/rentas).
+        { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardList },
       ],
     },
   ];

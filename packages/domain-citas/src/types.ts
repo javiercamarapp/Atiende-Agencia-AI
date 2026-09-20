@@ -279,3 +279,71 @@ export interface ReassignAppointmentPayload {
   readonly actorChannel?: AppointmentActorChannel;
   readonly actorNote?: string;
 }
+
+// ---------------------------------------------------------------------------
+// FASE 3 (producto) — bitácora de auditoría del staff, ver
+// migrations/023_citas_audit_log.sql. Mismo shape exacto que
+// domain-restaurantes/src/types.ts (RegistrarAuditoriaInput/RestaurantesAuditLog*)
+// — copiado a propósito para que las verticales se lean igual, ver el comentario
+// de cabecera de esa migración para el porqué de cada corrección que nace
+// resuelta aquí (orden total desde el día uno, validación de rol). Catálogo
+// cerrado de 5 categorías (ver el comentario de cabecera de
+// apps/api/src/routes/verticals/citas/auditoria.ts para el detalle completo por
+// ruta): 'servicio' (tarifa), 'cita' (cancelación/reagendo forzado por staff),
+// 'staff' (invitación/baja/cambio de rol), 'configuracion' (horarios/
+// disponibilidad/tenant_config — WhatsApp/voz reservados sin caller todavía, ver
+// knownGaps del PR), 'lista_espera' (resolución manual del broadcast).
+// ---------------------------------------------------------------------------
+export type CitasAuditEntityType = "servicio" | "cita" | "staff" | "configuracion" | "lista_espera";
+
+export interface RegistrarCitasAuditoriaInput {
+  readonly organizationId: string;
+  /** Usado SOLO por `InMemoryCitasRepository` (sin `auth.uid()`) para poblar
+   *  `actorUserId` en sus fixtures de prueba. `PostgresCitasRepository` lo
+   *  IGNORA por completo al armar la llamada SQL -- `citas.record_audit_log`
+   *  (security definer) captura el actor real vía `auth.uid()` dentro de la
+   *  función, nunca confía en un parámetro de este lado. */
+  readonly actorUserId: string;
+  readonly action: string;
+  readonly entityType: CitasAuditEntityType;
+  readonly entityId: string | null;
+  readonly campo?: string | null;
+  readonly antes?: string | null;
+  readonly despues?: string | null;
+}
+
+export interface CitasAuditLogRow {
+  readonly id: string;
+  readonly actorUserId: string;
+  readonly action: string;
+  readonly entityType: string;
+  readonly entityId: string | null;
+  readonly campo: string | null;
+  readonly antes: string | null;
+  readonly despues: string | null;
+  readonly createdAtMs: number;
+}
+
+export interface CitasAuditLogFiltro {
+  readonly entityType?: CitasAuditEntityType | null;
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly desde?: string | null;
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly hasta?: string | null;
+}
+
+export interface CitasAuditLogPaginacion {
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+export interface CitasAuditLogPagina {
+  /** `false` cuando `citas.audit_log`/`citas.record_audit_log` todavía no existen
+   *  en esta base (SQLSTATE 42883/42P01/42703, ver postgres-repository.ts) -- la
+   *  pantalla debe mostrar "no disponible aún", nunca confundirlo con una
+   *  bitácora real pero vacía (`disponible: true, items: []`). */
+  readonly disponible: boolean;
+  readonly items: readonly CitasAuditLogRow[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}

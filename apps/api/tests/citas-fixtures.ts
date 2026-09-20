@@ -39,6 +39,12 @@ export interface CitasTestContext {
    * tests puedan seguir llamando directamente al repo en memoria sin pasar por una
    * ruta HTTP (`deps.citasRepo` ahora es una fábrica `(db) => CitasRepository`). */
   readonly citasRepo: InMemoryCitasRepository;
+  /** FASE 3 (producto) — expuestos (ya existían como variables locales de esta
+   * función) para que un test pueda sembrar una SEGUNDA organización/staff de
+   * prueba (ej. cross-tenant de la bitácora de auditoría, ver
+   * apps/api/tests/citas-auditoria.spec.ts) sin duplicar todo este fixture. */
+  readonly coreRepo: InMemoryCoreRepository;
+  readonly engine: InMemoryTenancyEngine;
   readonly organizationId: string;
   readonly propertyId: string;
   readonly providerId: string;
@@ -50,6 +56,10 @@ export interface CitasTestContext {
      * STAFF_INVITE_ROLES (owner/admin), para los tests de admin-staff.ts que
      * verifican que "staff" nunca puede invitar. */
     readonly staffMember: { readonly id: string; readonly email: string; readonly password: string; readonly token: string };
+    /** FASE 3 (producto) — verticalRole "admin" real de la MISMA organización --
+     * usado por citas-auditoria.spec.ts para verificar que "admin" (no solo
+     * "owner") también puede leer la bitácora. */
+    readonly admin: { readonly id: string; readonly email: string; readonly password: string; readonly token: string };
   };
 }
 
@@ -149,6 +159,15 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
   engine.seedMembership({ userId: staffMemberId, organizationId, platformRole: "member", verticalRole: "staff", propertyIds: null });
   engine.seedMembership({ userId: ownerId, organizationId, platformRole: "owner", verticalRole: "owner", propertyIds: null });
 
+  // FASE 3 (producto) — "admin" real de la MISMA organización, ver
+  // citas-auditoria.spec.ts::"admin (no solo owner) también puede leer".
+  const adminId = randomUUID();
+  const adminEmail = "admin@clinica-dental-sonrisas.mx";
+  const adminPassword = "correcto-caballo-batería";
+  coreRepo.addStaff({ id: adminId, email: adminEmail, fullName: "Admin", passwordHash: await hashPassword(adminPassword), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+  coreRepo.addMembership({ userId: adminId, organizationId, platformRole: "admin", verticalRole: "admin", propertyIds: null });
+  engine.seedMembership({ userId: adminId, organizationId, platformRole: "admin", verticalRole: "admin", propertyIds: null });
+
   // Fase 3 — `createGoogleCalendarPortResolver` real (resolución de cuenta
   // conectada + rotación de refresh token) con un `createPort` inyectado: si el
   // test pasó un `googleCalendarPort`, se usa ese (nunca red real); si no,
@@ -237,10 +256,13 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
   const app = buildApp(deps);
   const ownerToken = await signInAndGetToken(app, ownerEmail, ownerPassword);
   const staffMemberToken = await signInAndGetToken(app, staffMemberEmail, staffMemberPassword);
+  const adminToken = await signInAndGetToken(app, adminEmail, adminPassword);
 
   return {
     deps,
     citasRepo,
+    coreRepo,
+    engine,
     organizationId,
     propertyId,
     providerId,
@@ -248,6 +270,7 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     staff: {
       owner: { id: ownerId, email: ownerEmail, password: ownerPassword, token: ownerToken },
       staffMember: { id: staffMemberId, email: staffMemberEmail, password: staffMemberPassword, token: staffMemberToken },
+      admin: { id: adminId, email: adminEmail, password: adminPassword, token: adminToken },
     },
   };
 }
