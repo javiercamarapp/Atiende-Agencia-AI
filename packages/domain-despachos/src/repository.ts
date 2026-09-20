@@ -219,6 +219,23 @@ export interface DespachosRepository {
    * `despachos.claim_email_outbox_batch` (migración 005). */
   claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
   completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
+
+  /** Auditoría a3, hallazgo confirmado #5/#2 -- aísla un best-effort (hoy solo
+   * `vencimientos/email-notifications.ts::tryEnqueueEscalationEmail`) con un
+   * SAVEPOINT propio dentro de la MISMA transacción que ya persistió la escritura de
+   * negocio real (`vencimientos.ts::escalar` hace `insertEscalation` +
+   * `updateDeadlineEstado` ANTES de llamar a este best-effort, misma sesión de
+   * staff). Sin este SAVEPOINT, un error real de Postgres dentro del correo (deadlock,
+   * timeout, `42501` si `auth.uid()` no es miembro) deja la transacción COMPLETA
+   * abortada (25P02) -- el escalamiento ya "persistido" se pierde con un `commit;`
+   * que `managed-postgres-engine.ts` convierte en `ROLLBACK` silencioso
+   * (`AbortedTransactionCommitError`). Mismo patrón/mismo helper
+   * (`runWithSavepointFallback` de `@atiende/db`, `isRecoverable: () => true`,
+   * `fallback` que relanza) que `HotelesRepository.runWithRowSavepoint`/
+   * `RestaurantesRepository.runWithRowSavepoint`/`PostgresCitasRepository.
+   * runWithRowSavepoint` -- ver su comentario de cabecera para el diseño completo.
+   * No-op en `InMemoryDespachosRepository` (sin transacción real que aislar). */
+  runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 /** Staff `owner`/`admin` real de una organización — el "responsable" al que se le

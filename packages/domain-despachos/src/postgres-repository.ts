@@ -3,6 +3,7 @@
 // consume `core-auth/src/middleware.ts`). Ejecuta las queries reales contra el
 // esquema `despachos` de migrations/001 (RLS real vía `core.has_property_access`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import type { HallazgoCfdi } from "@atiende/billing";
 import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import type { DespachosRepository, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
@@ -858,5 +859,23 @@ export class PostgresDespachosRepository implements DespachosRepository {
 
   async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
     await this.db.query(`select despachos.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
+  }
+
+  // Aislamiento del best-effort de correo (ver el comentario de cabecera de
+  // `runWithRowSavepoint` en `repository.ts` para el diseño completo) -- mismo
+  // `runWithSavepointFallback` que `PostgresHotelesRepository`/
+  // `PostgresRestaurantesRepository`, con `isRecoverable` fijo en `true` y un
+  // `fallback` que simplemente relanza el mismo error DESPUÉS de que
+  // `ROLLBACK TO SAVEPOINT` ya dejó la transacción utilizable para el `commit;` real
+  // que sigue.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: fn,
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
   }
 }
