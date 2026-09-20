@@ -225,4 +225,21 @@ describe("PostgresBreakGlassRentasDataRepository -- los 6 lectores nuevos, fallb
 
     await expect(repo.listPayoutsTenant(ORG_ID, CALLER_ID)).rejects.toMatchObject({ code: "57P01" });
   });
+
+  // f3-rentas-bitacora-y-guards -- regression guard del guard endurecido (hallazgo
+  // de la revisión de #179, "guard 42883 a secas"): un 42883 de "operator does not
+  // exist" (bug REAL de tipos en la consulta) es SQLSTATE 42883, IGUAL que
+  // "función no existe" -- pero NUNCA debe tratarse como "migración pendiente". El
+  // guard viejo (`code === "42883"`, sin más) enmascaraba este caso exacto como si
+  // fuera un vacío honesto por migración sin aplicar -- este test habría FALLADO
+  // contra ese guard viejo (habría resuelto `disponible:false` en vez de
+  // rechazar).
+  it("listFinanzasTenant: 42883 de 'operator does not exist' (bug real de tipos, NUNCA migración pendiente) se repropaga tal cual -- nunca se confunde con 'función no existe'", async () => {
+    const operatorBug = new Error("operator does not exist: uuid = text") as Error & { code: string };
+    operatorBug.code = "42883";
+    const session = abortableFakeSession([{ match: /^select \* from rentas\.list_finanzas_for_break_glass/, respond: () => operatorBug }]);
+    const repo = new PostgresBreakGlassRentasDataRepository(session);
+
+    await expect(repo.listFinanzasTenant(ORG_ID, CALLER_ID)).rejects.toMatchObject({ code: "42883", message: "operator does not exist: uuid = text" });
+  });
 });

@@ -28,7 +28,7 @@
 // repo en memoria (que siempre devuelve `disponible:true`) y
 // `packages/domain-rentas/tests/audit-log-savepoint.spec.ts` solo cubría
 // `registrarAuditoria`.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { PostgresRentasRepository } from "../src/postgres-repository.ts";
 
@@ -144,6 +144,64 @@ describe("PostgresRentasRepository.registrarAuditoria — recuperación de 42883
         return session.query("select 1 as siguiente_query_del_request;");
       })(),
     ).rejects.toMatchObject({ code: "25P02" });
+  });
+});
+
+// f3-rentas-bitacora-y-guards -- regression guard del guard endurecido (hallazgo de
+// la revisión de #179, "guard 42883 a secas"): un 42883 de "operator does not
+// exist" (bug REAL de tipos, nunca migración pendiente) NUNCA debe clasificarse
+// como "rentas.record_audit_log no existe todavía" -- eso ocultaría un bug real
+// detrás de un mensaje de "compatibilidad con la base sin migrar". El
+// comportamiento OBSERVABLE (nunca lanza, la transacción queda recuperada) es
+// igual en ambos casos por diseño (`registrarAuditoria` es best-effort real, ver
+// su comentario de cabecera) -- lo que este test verifica es que la RAMA de
+// clasificación es la correcta (advertencia de "error inesperado", nunca la de
+// "no disponible todavía"), inspeccionando qué advertencia se emitió.
+describe("PostgresRentasRepository.registrarAuditoria — un 42883 de bug real de tipos NUNCA se confunde con 'migración pendiente'", () => {
+  it("clasifica un 'operator does not exist' como error inesperado (console.error), nunca como 'no disponible' (console.warn)", async () => {
+    class OperatorBugFakeSession implements TenantDbSession {
+      async query<T>(sql: string): Promise<{ rows: T[] }> {
+        const normalized = sql.trim().toLowerCase();
+        if (normalized.startsWith("select rentas.record_audit_log")) {
+          const err = new Error("operator does not exist: uuid = text") as Error & { code: string };
+          err.code = "42883";
+          throw err;
+        }
+        return { rows: [] as unknown as T[] };
+      }
+      async exec(): Promise<void> {}
+    }
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const session = new OperatorBugFakeSession();
+      const repo = new PostgresRentasRepository(session);
+
+      // Nunca lanza -- best-effort real, mismo contrato que el resto de esta
+      // función (ver su comentario de cabecera).
+      await expect(
+        repo.registrarAuditoria({
+          organizationId: "org-1",
+          actorUserId: "staff-1",
+          action: "pricing.tarifa_base.actualizada",
+          entityType: "pricing",
+          entityId: "unidad-1",
+          campo: null,
+          antes: null,
+          despues: null,
+        }),
+      ).resolves.toBeUndefined();
+
+      // La advertencia de "no disponible todavía" (compatibilidad) NUNCA se
+      // emitió -- este NO es un caso de migración pendiente.
+      expect(warnSpy).not.toHaveBeenCalled();
+      // En cambio, sí se registró como error inesperado para diagnóstico.
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("fallo inesperado al escribir en rentas.audit_log"), expect.objectContaining({ message: "operator does not exist: uuid = text" }));
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 });
 
