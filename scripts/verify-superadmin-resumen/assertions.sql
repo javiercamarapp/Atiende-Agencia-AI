@@ -389,13 +389,67 @@ rollback;
 -- (mensajes exactos verificados con `initdb`/`pg_ctl` efímero, 19-sep-2026 --
 -- ver también la prueba unitaria que fija este texto en
 -- `packages/db/tests/sql-errors.spec.ts`).
+--
+-- CORRECCIÓN (revisor independiente del PR #179, bloqueante #1): `as
+-- should_fail` le dice a `run-gate.mjs::deriveExpectation` que clasifique el
+-- escenario como kind "error" -- ESE chequeo pasa con CUALQUIER error de
+-- psql (division by zero, error de sintaxis, lo que sea), nunca valida
+-- SQLSTATE ni el texto del mensaje (ver `run-gate.mjs::runScenario`, rama
+-- `expectation.kind === "error"`: solo mira si el `try` lanzó o no). Con la
+-- forma anterior, 37/38 pasaban en CI aunque Postgres cambiara de mensaje o
+-- de SQLSTATE -- no demostraban lo que el comentario de arriba y el cuerpo
+-- del PR afirmaban. Los 2 escenarios de abajo NO usan `should_fail`: cada
+-- uno es su propio `do $$ ... $$` que atrapa la excepción con `exception
+-- when others`, lee `returned_sqlstate`/`message_text` con `get stacked
+-- diagnostics`, y hace `raise exception` (que SÍ tumba el `do` con
+-- ON_ERROR_STOP=1) si el SQLSTATE o la forma del mensaje no coinciden EXACTO
+-- con lo esperado -- así, si Postgres alguna vez reportara este caso de otra
+-- forma, el gate automático (no una lectura humana) lo detectaría. Sin
+-- alias `should_fail`/`deberia_ser_N` ninguno de los dos, así que
+-- `deriveExpectation` los clasifica "success": el escenario PASA solo si el
+-- bloque `do $$ ... $$` completa sin lanzar (es decir, si las 2
+-- validaciones internas de arriba SÍ se cumplieron).
 
-\echo '=== 37. HALLAZGO ENDURECIDO: comparar uuid = text (AMBOS lados con tipo YA conocido, sin margen para coaccion implicita de literal) falla con SQLSTATE 42883 "operator does not exist" -- NUNCA debe clasificarse como migracion pendiente ==='
+\echo '=== 37. HALLAZGO ENDURECIDO: comparar uuid = text (AMBOS lados con tipo YA conocido, sin margen para coaccion implicita de literal) falla con SQLSTATE 42883, mensaje EXACTO "operator does not exist: uuid = text" -- verificado por el propio gate (no solo por terminar en error), NUNCA debe clasificarse como migracion pendiente ==='
 begin;
-select '00000000-0000-0000-0000-0000000000f3'::uuid = 'no-es-un-uuid-valido'::text as should_fail;
+do $$
+declare
+  v_state text;
+  v_msg text;
+begin
+  begin
+    perform '00000000-0000-0000-0000-0000000000f3'::uuid = 'no-es-un-uuid-valido'::text;
+    raise exception 'se esperaba que comparar uuid = text fallara con SQLSTATE 42883, pero la consulta no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42883' then
+      raise exception 'se esperaba SQLSTATE 42883 (undefined_function/operator), se obtuvo % con mensaje: %', v_state, v_msg;
+    end if;
+    if v_msg !~ '^operator does not exist: uuid = text' then
+      raise exception 'se esperaba el mensaje EXACTO "operator does not exist: uuid = text", se obtuvo: %', v_msg;
+    end if;
+  end;
+end $$;
 rollback;
 
-\echo '=== 38. Contraste: una funcion REALMENTE inexistente falla con el MISMO SQLSTATE 42883 pero mensaje "function ... does not exist" -- este SI es el caso de migracion pendiente ==='
+\echo '=== 38. Contraste: una funcion REALMENTE inexistente falla con el MISMO SQLSTATE 42883 pero mensaje EXACTO "function ... does not exist" -- este SI es el caso de migracion pendiente, verificado por el propio gate ==='
 begin;
-select * from core.funcion_que_no_existe_para_verificar_el_mensaje_de_42883() as should_fail;
+do $$
+declare
+  v_state text;
+  v_msg text;
+begin
+  begin
+    perform * from core.funcion_que_no_existe_para_verificar_el_mensaje_de_42883();
+    raise exception 'se esperaba que llamar una funcion inexistente fallara con SQLSTATE 42883, pero la consulta no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42883' then
+      raise exception 'se esperaba SQLSTATE 42883 (undefined_function), se obtuvo % con mensaje: %', v_state, v_msg;
+    end if;
+    if v_msg !~ '^function\s+\S+\(.*\)\s+does not exist' then
+      raise exception 'se esperaba un mensaje con la forma "function ...(...) does not exist" (la misma que packages/db/src/sql-errors.ts::UNDEFINED_FUNCTION_MESSAGE_RE exige), se obtuvo: %', v_msg;
+    end if;
+  end;
+end $$;
 rollback;

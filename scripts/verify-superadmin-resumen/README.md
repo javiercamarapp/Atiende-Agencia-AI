@@ -58,7 +58,14 @@ escrituras de SOLO-SISTEMA + 2 lecturas para el back office).
    real que `packages/db/src/sql-errors.ts::isUndefinedFunctionError`/
    `isMigrationPendingError` usan para no confundir un bug real de tipos con
    una migración sin aplicar (ver `packages/db/tests/sql-errors.spec.ts` para
-   la prueba unitaria que fija el texto exacto de ambos mensajes).
+   la prueba unitaria que fija el texto exacto de ambos mensajes). **Cada uno
+   es un `do $$ ... $$` que atrapa la excepción con `get stacked
+   diagnostics` y compara SQLSTATE/mensaje EXACTO** -- no un `as
+   should_fail` a secas (ese alias solo le dice al gate automático que
+   termine en CUALQUIER error, sin mirar cuál; ver la corrección del
+   19-sep en el propio `assertions.sql`, comentario justo antes del
+   escenario 37, para el detalle de por qué la forma anterior no demostraba
+   nada de esto).
 
 ## Hallazgos reales durante el desarrollo de este script (ambos corregidos)
 
@@ -112,7 +119,10 @@ automáticamente (cualquier `scripts/verify-*/` con
 `bootstrap.sql`+`post-migrations.sql`+`assertions.sql`) y lo corre en CI
 contra el servicio `postgres:` de GitHub Actions — sin intervención manual.
 
-Corrida real más reciente (local, Postgres efímero vía `initdb`/`pg_ctl`):
-**36/36 escenarios pasaron** — los 12 marcados `should_fail` terminaron en
-`ERROR` (código `42501` para las funciones de sistema, "permission denied"
-para `anon`), los 24 restantes devolvieron los valores reales esperados.
+Corrida real más reciente (local, vía `scripts/verify-real-postgres-ci/
+run-gate.mjs` -- el mismo gate automático que corre en CI, no solo lectura
+humana de `run.sh`): **38/38 escenarios OK**. Confirmado además que el gate
+SÍ detecta una regresión real: forzar a mano el mensaje esperado del
+escenario 37 a un texto distinto del que Postgres realmente reporta lo hace
+fallar (`37/38`, `GATE FALLIDO`) -- no un chequeo que pasa con cualquier
+salida.
