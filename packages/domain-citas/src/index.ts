@@ -159,6 +159,7 @@ export {
   MAX_LISTA_ESPERA_LIMIT,
   MAX_WAITLIST_NOTIFICATIONS,
   notifyWaitlistAfterReschedule,
+  previewListaEspera,
   runConfirmacionCitaCore,
   runListaEsperaCore,
   runOptimizadorCore,
@@ -166,7 +167,7 @@ export {
   timeWindowFor,
   tryNotifyWaitlistOfFreedSlot,
 } from "./reminders.ts";
-export type { ConfirmacionCitaSummary, ListaEsperaEvent, ListaEsperaSummary, OptimizadorResult, TimeWindow } from "./reminders.ts";
+export type { ConfirmacionCitaSummary, ListaEsperaEvent, ListaEsperaPreview, ListaEsperaSummary, OptimizadorResult, TimeWindow } from "./reminders.ts";
 
 // ---- Fase 6 §1 — guardia de crisis + FAQs canónicas por rubro ----
 export {

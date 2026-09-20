@@ -17,6 +17,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
+import { isMigrationPendingError } from "@atiende/db";
 import type { DailyOpsSummaryRow } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
@@ -61,6 +62,30 @@ export function superadminResumenRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     await next();
   });
 
+  // Hallazgo de auditoría (revisores del 19-sep, rubro A): la base Supabase
+  // real NO tiene aplicada la migración del resumen diario
+  // (`supabase/migrations/20240101000138_*`), así que
+  // `deps.resumenDiarioRepo.listDailyOpsSummariesForSuperadmin`/`get
+  // DailyOpsSummaryForSuperadmin` (`ProductionResumenDiarioRepository`, ver
+  // su comentario de cabecera) lanzan con SQLSTATE 42883 (`core.list_daily_
+  // ops_summaries_for_superadmin`/`core.get_daily_ops_summary_for_superadmin`
+  // no existen todavía) -- sin este guard, estas 2 rutas daban 500 en vez de
+  // un vacío honesto (`{ disponible: false }`, NUNCA ceros que parezcan
+  // datos reales, mismo criterio que `POST /superadmin/resumen/generar` ya
+  // usaba más abajo). El `try/catch` va AQUÍ, envolviendo la llamada COMPLETA
+  // al repositorio -- cada una de las 2 lecturas abre su PROPIA transacción
+  // nueva (`ProductionResumenDiarioRepository::listDailyOpsSummariesFor
+  // Superadmin/getDailyOpsSummaryForSuperadmin`, `engine.withAppSession` por
+  // llamada, ver su comentario de cabecera), así que este catch corre
+  // DESPUÉS de que esa transacción YA terminó (con un `rollback;` limpio si
+  // `fn()` lanzó, ver `managed-postgres-engine.ts::withAppSession`) -- NUNCA
+  // dentro de ella, así que NO hace falta ningún SAVEPOINT (a diferencia de
+  // un fallback que siguiera consultando DENTRO de una transacción
+  // compartida ya abortada, ver la REGLA DURA de transacciones del repo).
+  // `isMigrationPendingError` (endurecido, `@atiende/db`) distingue esto de
+  // un `42883` real de "operator does not exist" (bug de tipos) -- ese caso
+  // SIGUE propagándose como error real (nunca se confunde con "migración
+  // pendiente").
   app.get("/superadmin/resumen", async (c) => {
     const rawLimit = c.req.query("limit");
     let limit = DEFAULT_LIMIT;
@@ -69,16 +94,31 @@ export function superadminResumenRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       if (!Number.isInteger(parsed) || parsed < 1) throw Errors.validation("limit debe ser un entero >= 1.");
       limit = Math.min(parsed, MAX_LIMIT);
     }
-    const resumenes = await deps.resumenDiarioRepo.listDailyOpsSummariesForSuperadmin(c.get("userId"), limit);
-    return c.json({ resumenes: resumenes.map(serializeResumen) });
+    let resumenes: readonly DailyOpsSummaryRow[];
+    try {
+      resumenes = await deps.resumenDiarioRepo.listDailyOpsSummariesForSuperadmin(c.get("userId"), limit);
+    } catch (err) {
+      if (!isMigrationPendingError(err, "core.list_daily_ops_summaries_for_superadmin")) throw err;
+      return c.json({ disponible: false, resumenes: [] });
+    }
+    return c.json({ disponible: true, resumenes: resumenes.map(serializeResumen) });
   });
 
   app.get("/superadmin/resumen/:fecha", async (c) => {
     const fecha = c.req.param("fecha");
     if (!FECHA_RE.test(fecha)) throw Errors.validation("fecha debe tener formato YYYY-MM-DD.");
-    const resumen = await deps.resumenDiarioRepo.getDailyOpsSummaryForSuperadmin(c.get("userId"), fecha);
+    let resumen: DailyOpsSummaryRow | null;
+    try {
+      resumen = await deps.resumenDiarioRepo.getDailyOpsSummaryForSuperadmin(c.get("userId"), fecha);
+    } catch (err) {
+      if (!isMigrationPendingError(err, "core.get_daily_ops_summary_for_superadmin")) throw err;
+      // 200 honesto, NUNCA un 404 -- un 404 aquí afirmaría "se consultó y no
+      // hay resumen para esa fecha", cuando en realidad no se pudo consultar
+      // nada todavía.
+      return c.json({ disponible: false, resumen: null });
+    }
     if (!resumen) throw Errors.notFound(`No hay un resumen guardado para ${fecha}.`);
-    return c.json({ resumen: serializeResumen(resumen) });
+    return c.json({ disponible: true, resumen: serializeResumen(resumen) });
   });
 
   // "Generar ahora" -- ejecuta el MISMO agregador que el cron

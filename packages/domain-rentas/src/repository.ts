@@ -88,6 +88,10 @@ export interface RentasRepository {
   listBloqueos(propertyId: string, unidadId: string): Promise<readonly BloqueoRecord[]>;
 
   // ---- Pricing / cotización (flujo 2) — SOLO lectura, ninguna escritura de precio ----
+  /** "Vigente hoy" se resuelve con el día de NEGOCIO (`@atiende/core-tenancy::
+   *  hoyFechaNegocio()`) dentro de cada implementación -- nunca con `current_date`/el
+   *  reloj UTC crudo del proceso (bug real, ver comentario de cabecera de
+   *  `PostgresRentasRepository.loadPricingContext`). */
   loadPricingContext(propertyId: string, unidadId: string): Promise<ContextoPricingUnidad | null>;
   loadReglaCanalPricing(unidadId: string, canalCodigo: string): Promise<ReglaCanal | null>;
 

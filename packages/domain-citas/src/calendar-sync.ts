@@ -397,10 +397,6 @@ export async function syncPendingAppointmentsMultiProvider(repo: CitasRepository
 export async function tryTriggerCalendarSync(repo: CitasRepository, resolveSyncPort: ResolveCalendarSyncPort, appointmentId: string, now: Date = new Date()): Promise<SyncSummary> {
   const summary = emptySummary();
   try {
-    const row = await repo.loadAppointmentSyncRow(appointmentId);
-    if (!row) return summary;
-    if (row.googleSyncStatus !== "pending" && row.googleSyncStatus !== "pending_cancel") return summary;
-    summary.processed = 1;
     // Hallazgo CRÍTICO de auditoría (a1, r3) — defensa añadida junto con el motor
     // (`managed-postgres-engine.ts::withAppSession`, que ahora lanza explícito si
     // detecta que la transacción terminó abortada): este `catch` es best-effort A
@@ -418,7 +414,21 @@ export async function tryTriggerCalendarSync(repo: CitasRepository, resolveSyncP
     // ambos: aísla el intento de sincronización, la cita ya escrita antes de esta
     // llamada queda intacta, y el `catch` de abajo sigue absorbiendo el fallo tal
     // como el diseño original pedía.
-    await repo.runWithRowSavepoint(() => syncOneAppointmentRow(repo, resolveSyncPort, row, now, summary));
+    //
+    // f2-citas-lista-de-espera, hallazgo (C) residual — `repo.loadAppointmentSyncRow`
+    // (el SELECT plano de abajo) corría SUELTO, ANTES del SAVEPOINT, dentro de este
+    // mismo catch-que-traga: un error real de Postgres en esa lectura (probabilidad
+    // baja, mismo argumento que el resto del barrido #4) quedaba sin recuperación.
+    // Ahora el SAVEPOINT envuelve la lectura Y el intento de sincronización -- una
+    // sola transacción aislada, en vez de dos (la lectura desprotegida + el intento
+    // ya protegido de antes).
+    await repo.runWithRowSavepoint(async () => {
+      const row = await repo.loadAppointmentSyncRow(appointmentId);
+      if (!row) return;
+      if (row.googleSyncStatus !== "pending" && row.googleSyncStatus !== "pending_cancel") return;
+      summary.processed = 1;
+      await syncOneAppointmentRow(repo, resolveSyncPort, row, now, summary);
+    });
   } catch (err) {
     console.error("tryTriggerCalendarSync: fallo best-effort, el cron de reconciliación lo recogerá:", err);
   }

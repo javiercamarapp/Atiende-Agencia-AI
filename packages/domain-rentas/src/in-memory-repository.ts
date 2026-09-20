@@ -21,6 +21,7 @@
 // blob pre-armado -- así, una escritura real (POST tarifa-base/temporadas/...) se
 // refleja de inmediato en una cotización posterior, exactamente como en producción.
 import { randomUUID } from "node:crypto";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { InMemoryRentasCalendarStore } from "./calendar-store.ts";
 import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
@@ -165,10 +166,6 @@ interface StoredPayout {
   referenciaExterna: string | null;
   lineas: LineaConciliada[];
   creadoEn: string;
-}
-
-function hoyIso(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function mismoPeriodo(a: RangoFechas, b: RangoFechas): boolean {
@@ -409,7 +406,12 @@ export class InMemoryRentasRepository implements RentasRepository {
     const unidad = this.calendarStore.findUnidad(propertyId, unidadId);
     if (!unidad) return null;
 
-    const hoy = hoyIso();
+    // Paridad con `PostgresRentasRepository.loadPricingContext` (ver su comentario de
+    // cabecera): "hoy" es el día de NEGOCIO (`hoyFechaNegocio()`), nunca el día UTC
+    // crudo del proceso -- antes este repo en memoria usaba `new Date().toISOString()`
+    // (día UTC), reproduciendo el MISMO bug que Postgres real corregía con
+    // `current_date` de la sesión.
+    const hoy = hoyFechaNegocio();
     const bases = [...(this.tarifaBase.get(unidadId)?.values() ?? [])].filter((b) => b.vigenteDesde <= hoy);
     if (bases.length === 0) return null;
     const vigente = bases.sort((a, b) => (a.vigenteDesde < b.vigenteDesde ? 1 : a.vigenteDesde > b.vigenteDesde ? -1 : 0))[0]!;

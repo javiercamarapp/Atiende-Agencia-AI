@@ -94,6 +94,25 @@ describe("SuperAdminResumenPage", () => {
     expect(rendered.container.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it("disponible:false (migración del resumen diario sin aplicar en este entorno) -- estado 'no disponible aún', NUNCA el estado vacío normal ni un error", async () => {
+    stubFetch({ lista: { disponible: false, resumenes: [] } });
+    rendered = renderPage();
+    await esperarCarga();
+    expect(rendered.container.textContent).toContain("todavía no está disponible en este entorno");
+    expect(rendered.container.textContent).not.toContain("Aún no hay resúmenes");
+    expect(rendered.container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("disponible:false -- el botón 'Generar ahora' queda deshabilitado (hallazgo no-bloqueante #5, revisor del PR #179: antes seguía habilitado, un clic disparaba un 503 real)", async () => {
+    stubFetch({ lista: { disponible: false, resumenes: [] } });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const boton = Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent?.includes("Generar ahora"));
+    expect(boton).toBeDefined();
+    expect(boton!.disabled).toBe(true);
+  });
+
   it("con un resumen real -- muestra la narrativa, la etiqueta 'generado por' y los números reales", async () => {
     stubFetch({ lista: { resumenes: [RESUMEN_REAL] } });
     rendered = renderPage();

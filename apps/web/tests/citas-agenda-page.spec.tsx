@@ -76,6 +76,11 @@ interface Handlers {
   providers?: readonly (typeof PROVIDER)[];
   services?: readonly (typeof SERVICE)[];
   waitlist?: unknown[];
+  /** Corrección bloqueante de la ronda 2 de revisión del PR #180 — permite a
+   * un test simular la base sin migrar (`queued: false, reason:
+   * "not_available_yet"`) en vez del default (`queued: true`, base ya
+   * migrada). */
+  broadcastResponse?: unknown;
 }
 
 function stubFetch(handlers: Handlers) {
@@ -83,7 +88,10 @@ function stubFetch(handlers: Handlers) {
     const method = init?.method ?? "GET";
     if (url.includes("/providers")) return jsonResponse({ providers: handlers.providers ?? [] });
     if (url.includes("/services") && !url.includes("appointments")) return jsonResponse({ services: handlers.services ?? [] });
-    if (url.includes("/waitlist/broadcast")) return jsonResponse({ notified: 1, candidates_considered: 2, skipped_no_whatsapp_config: 1 });
+    // Corrección post-revisión de f2-citas-lista-de-espera (hallazgo B) — el
+    // body real ya no trae `notified` (el efecto corre post-commit) y
+    // `skipped_no_whatsapp_config` es `boolean`, no `number`.
+    if (url.includes("/waitlist/broadcast")) return jsonResponse(handlers.broadcastResponse ?? { queued: true, candidates_considered: 2, skipped_no_whatsapp_config: false });
     if (url.includes("/waitlist")) return jsonResponse({ waitlist: handlers.waitlist ?? [] });
     if (method === "GET" && url.includes("/appointments")) {
       const list = typeof handlers.appointments === "function" ? handlers.appointments() : (handlers.appointments ?? []);
@@ -229,5 +237,63 @@ describe("AgendaPage (citas)", () => {
     const body = JSON.parse(call![1].body as string);
     expect(body).toMatchObject({ provider_id: "prov-1", service_id: "svc-1", customer_name: "Pedro Sánchez", customer_phone: "5533334444" });
     expect(body.starts_at).toBeTruthy();
+  });
+
+  // Corrección de un no-bloqueante del veredicto de la ronda 2 ("ningún test
+  // afirma el texto renderizado del broadcast") — el bug de la ronda 1
+  // ('Avisados: undefined de N') se habría colado igual con la cobertura
+  // anterior (solo mockeaba el fetch, nunca leía el DOM tras el click).
+  const WAITLIST_ROW = {
+    id: "wl-1",
+    position: 1,
+    customer_name: "Cliente en espera",
+    customer_phone: "5511112222",
+    provider_id: null,
+    service_id: null,
+    preferred_date_from: null,
+    preferred_date_to: null,
+    preferred_time_window: null,
+    notified_count: 0,
+    created_at: "2026-09-01T10:00:00.000Z",
+  };
+
+  async function clickAvisar(): Promise<void> {
+    const avisarBtn = [...rendered!.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Avisar a la lista de espera"))!;
+    await act(async () => {
+      avisarBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+  }
+
+  it("'Avisar a la lista de espera' con queued:true real muestra 'Aviso encolado para N candidatos' — nunca una cifra inventada", async () => {
+    stubFetch({ appointments: [], waitlist: [WAITLIST_ROW], broadcastResponse: { queued: true, candidates_considered: 2, skipped_no_whatsapp_config: false } });
+    rendered = renderPage();
+    await esperarCarga();
+
+    await clickAvisar();
+
+    const text = rendered.container.textContent!;
+    expect(text).toContain("Aviso encolado para 2 candidatos considerados; se procesa en segundo plano.");
+    expect(text).not.toContain("undefined");
+    expect(text).not.toContain("todavía no está disponible");
+  });
+
+  // Corrección bloqueante de la ronda 2 — con la base sin migrar (probe de
+  // catálogo en `false`, admin.ts responde `queued:false` +
+  // `reason:"not_available_yet"`), el panel NUNCA debe decir "Aviso
+  // encolado" (sería la misma confirmación falsa que la ronda 2 encontró):
+  // debe mostrar el mensaje honesto de "todavía no está disponible".
+  it("'Avisar a la lista de espera' con queued:false (base sin migrar) muestra el mensaje honesto, NUNCA 'Aviso encolado'", async () => {
+    stubFetch({ appointments: [], waitlist: [WAITLIST_ROW], broadcastResponse: { queued: false, reason: "not_available_yet", candidates_considered: 0, skipped_no_whatsapp_config: false } });
+    rendered = renderPage();
+    await esperarCarga();
+
+    await clickAvisar();
+
+    const text = rendered.container.textContent!;
+    expect(text).toContain("todavía no está disponible");
+    expect(text).not.toContain("Aviso encolado");
   });
 });
