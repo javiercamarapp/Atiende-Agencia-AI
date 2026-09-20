@@ -127,37 +127,58 @@ export async function handleInboundWhatsAppMessage(
   try {
     const guardResult = await withConversationLock(
       { lockStore: guard.lockStore, stateMachine: guard.stateMachine, tenantId: organizationId, customerKey: phoneHash, conversationId: `${organizationId}:${phoneHash}` },
-      async () => {
-        const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
-        const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
+      // Hallazgo de revisores (19-sep-2026, mismo defecto que expuso PR #158 en los
+      // 3 turn handlers): TODO este bloque corre en la ÚNICA transacción del
+      // request (`ManagedPostgresEngine.withAppSession`, un solo `begin ... commit`).
+      // `runCrisisGuardrail`, `appendWhatsAppUserMessageOnce`, `turnHandler.
+      // handleInboundMessage`, `whatsappAppendTurn` y `enqueueMessagingOutbox`
+      // pueden lanzar un error real de Postgres (SQLSTATE, no un `throw` de
+      // negocio) que deja la transacción ABORTADA (25P02) — sin `SAVEPOINT`, el
+      // `catch` de abajo (y el `finishWhatsAppMessage("processed", ...)` que
+      // corría después de este bloque) reutilizarían esa MISMA sesión abortada,
+      // fallarían también con 25P02, el error escaparía sin marcar nada, el
+      // `COMMIT` de `withAppSession` lanzaría `AbortedTransactionCommitError` ->
+      // 500 a Meta -> reintentos sin tope que re-corren el turno completo del LLM
+      // (gasto real) mientras el cliente nunca recibe respuesta.
+      // `runWithRowSavepoint` (mismo helper que ya protege `executeToolCall` en
+      // llm-turn-handler.ts) deja la sesión UTILIZABLE de nuevo antes de
+      // repropagar. `finishWhatsAppMessage("processed", ...)` se movió DENTRO de
+      // este bloque (antes corría después del guard, sin ninguna protección) para
+      // que también quede cubierto por el mismo SAVEPOINT.
+      () =>
+        repo.runWithRowSavepoint(async () => {
+          const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
+          const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
-        // Fase 6 §1 — guardia de crisis: capa DETERMINISTA que corre ANTES de
-        // llamar al LLM. Un mensaje real de crisis en un rubro de salud nunca sigue
-        // la conversación normal — se responde con el mensaje de crisis TAL CUAL
-        // (nunca reformulado/resumido por el agente) y la escalación humana ya
-        // quedó registrada, sin importar qué haría el turn handler con ese mismo
-        // mensaje.
-        const crisisCheck = await runCrisisGuardrail(repo, organizationId, phone, body);
-        const turn = crisisCheck.triggered
-          ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
-          : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
+          // Fase 6 §1 — guardia de crisis: capa DETERMINISTA que corre ANTES de
+          // llamar al LLM. Un mensaje real de crisis en un rubro de salud nunca sigue
+          // la conversación normal — se responde con el mensaje de crisis TAL CUAL
+          // (nunca reformulado/resumido por el agente) y la escalación humana ya
+          // quedó registrada, sin importar qué haría el turn handler con ese mismo
+          // mensaje.
+          const crisisCheck = await runCrisisGuardrail(repo, organizationId, phone, body);
+          const turn = crisisCheck.triggered
+            ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
+            : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
 
-        const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
-        await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.appointmentId ? "completed" : "active", turn.appointmentId, turn.propertyId);
+          const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
+          await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.appointmentId ? "completed" : "active", turn.appointmentId, turn.propertyId);
 
-        // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
-        // solo se guardaba en el historial de la conversación y nunca llegaba de
-        // verdad al cliente (ver @atiende/whatsapp-gateway/README.md). `dedupeKey`
-        // por `messageId` hace este encolado idempotente ante un reintento at-least-once
-        // de Meta: `claimWhatsAppMessage` ya bloquea el reproceso, pero esta clave es
-        // una segunda capa por si algún día este método se llama fuera de ese guard.
-        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
-          to: phone,
-          phone_number_id: phoneNumberId,
-          body: turn.reply,
-        });
-        return turn;
-      },
+          // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
+          // solo se guardaba en el historial de la conversación y nunca llegaba de
+          // verdad al cliente (ver @atiende/whatsapp-gateway/README.md). `dedupeKey`
+          // por `messageId` hace este encolado idempotente ante un reintento at-least-once
+          // de Meta: `claimWhatsAppMessage` ya bloquea el reproceso, pero esta clave es
+          // una segunda capa por si algún día este método se llama fuera de ese guard.
+          await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
+            to: phone,
+            phone_number_id: phoneNumberId,
+            body: turn.reply,
+          });
+
+          await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
+          return turn;
+        }),
     );
 
     if (!guardResult.locked) {
@@ -168,7 +189,6 @@ export async function handleInboundWhatsAppMessage(
       return { ok: false, retryable: true };
     }
 
-    await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
     return { ok: true, retryable: false, reply: guardResult.result?.reply };
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
