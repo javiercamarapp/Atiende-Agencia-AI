@@ -6,9 +6,9 @@
 // `licitaciones.can_access_org`/`can_write_org`/`can_decide_org`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
-import { runWithSavepointFallback } from "@atiende/db";
-import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenantConfigNotMigratedError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
   ApprovedRateCreateInput,
@@ -25,6 +25,8 @@ import type {
   IdempotencyParams,
   IdempotentResult,
   LicitacionesRepository,
+  LicitacionesTenantConfigPatch,
+  LicitacionesTenantConfigRecord,
   MatchingProfileUpsertInput,
   RecordTenderVersionResult,
   TenderAuditLogEntry,
@@ -708,6 +710,122 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [organizationId],
     );
     return rows.map((row) => ({ propertyId: row.property_id, name: row.name }));
+  }
+
+  // ==========================================================================
+  // FASE 3 (producto) — zona horaria por negocio: `licitaciones.tenant_config`
+  // (migración 027). Licitaciones NO tenía ninguna tabla de configuración
+  // propia hasta esta migración (a diferencia de `citas.tenant_config`/
+  // `rentas.property_config`) — ver el comentario de cabecera de
+  // `LicitacionesTenantConfigRecord` en repository.ts para el porqué.
+  //
+  // COMPATIBILIDAD CON LA BASE SIN MIGRAR: la migración 027 no se aplica al
+  // mergear (REGLA DURA del repo) -- `licitaciones.tenant_config` no existe
+  // todavía en la base real, así que CUALQUIER select/insert/update contra
+  // ella falla con SQLSTATE 42P01 (`undefined_table`) hasta que se aplique.
+  // Las 3 llamadas de abajo (`findTenantConfig`/`upsertTenantConfig`/
+  // `resolveOrganizationTimezoneForToday`) corren siempre dentro de la MISMA
+  // transacción compartida del request (`ManagedPostgresEngine.withAppSession`,
+  // ver AGENTS.md) -- un try/catch simple sin SAVEPOINT dejaría la transacción
+  // ABORTADA para cualquier query posterior del mismo handler (25P02 en la
+  // siguiente consulta, `COMMIT` degradado a `ROLLBACK` silencioso). Las tres
+  // usan `runWithSavepointFallback` (`@atiende/db`) -- nunca un try/catch a
+  // mano.
+  // ==========================================================================
+
+  /** Lectura -- nunca lanza. Sin fila (organización real sin configurar
+   * todavía) o sin tabla (42P01, base sin migrar) degradan IGUAL a
+   * `{ timezone: null }` -- un "vacío honesto" (nunca simula un valor
+   * inventado), consistente con `resolverZonaHorariaNegocio(null)` cayendo al
+   * default de plataforma en el llamador. */
+  async findTenantConfig(organizationId: string): Promise<LicitacionesTenantConfigRecord> {
+    return runWithSavepointFallback<LicitacionesTenantConfigRecord>({
+      session: this.db,
+      savepointName: "sp_licitaciones_find_tenant_config",
+      primary: async () => {
+        const { rows } = await this.db.query<{ timezone: string | null }>(`select timezone from licitaciones.tenant_config where organization_id = $1;`, [organizationId]);
+        return { organizationId, timezone: rows[0]?.timezone ?? null };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ organizationId, timezone: null }),
+    });
+  }
+
+  /** Escritura -- upsert real (nunca requiere que la fila exista antes, mismo
+   * `insert ... on conflict do update` que `PostgresCitasRepository.
+   * upsertTenantConfig`). A diferencia de `findTenantConfig`, una escritura
+   * NUNCA puede fingir que guardó un valor que la base no puede persistir
+   * todavía -- sin tabla (42P01) relanza `TenantConfigNotMigratedError`
+   * (la ruta la traduce a 503, ver admin.ts), nunca un 200 falso ni un 500
+   * genérico. */
+  async upsertTenantConfig(organizationId: string, patch: LicitacionesTenantConfigPatch): Promise<LicitacionesTenantConfigRecord> {
+    return runWithSavepointFallback<LicitacionesTenantConfigRecord>({
+      session: this.db,
+      savepointName: "sp_licitaciones_upsert_tenant_config",
+      primary: async () => {
+        const { rows } = await this.db.query<{ timezone: string | null }>(
+          `insert into licitaciones.tenant_config (organization_id, timezone) values ($1, $2)
+           on conflict (organization_id) do update
+             set timezone = case when $3::boolean then $2 else licitaciones.tenant_config.timezone end,
+                 updated_at = now()
+           returning timezone;`,
+          [organizationId, patch.timezone ?? null, "timezone" in patch],
+        );
+        return { organizationId, timezone: rows[0]?.timezone ?? null };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async (err) => {
+        if (isMigrationPendingError(err)) throw new TenantConfigNotMigratedError();
+        throw err;
+      },
+    });
+  }
+
+  /**
+   * ÚNICO punto de `PostgresLicitacionesRepository` que resuelve "hoy" para
+   * cálculos de negocio (facturación/renovaciones) -- envuelve
+   * `findTenantConfig` + `@atiende/core-tenancy::resolverZonaHorariaNegocio` +
+   * `hoyFechaNegocio`, para que ningún caller (`createApprovedRate`/
+   * `createContractInvoice`/`listContractInvoices`/`markContractInvoicePaid`/
+   * `receivablesSummary`/`scanRenewalAlerts`/`systemScanRenewalAlerts`/
+   * `listOverdueContractInvoices`, todos abajo) llame a `hoyFechaNegocio()`
+   * pelón (default de plataforma hardcodeado) nunca más.
+   *
+   * Caller de SISTEMA (`userId: null`, ver `systemScanRenewalAlerts`/
+   * `listOverdueContractInvoices`, exclusivas del barrido de
+   * `apps/worker/.../alert-notifications.ts`): `findTenantConfig` (arriba) lee
+   * `licitaciones.tenant_config` DIRECTO contra la tabla, protegida por la
+   * policy RLS "staff ve tenant_config de su organización"
+   * (`m.user_id = auth.uid()`, migración 027) -- bajo sesión de sistema
+   * `auth.uid()` es `null`, así que esa policy NUNCA hace match y el select
+   * devuelve SIEMPRE 0 filas (nunca un error, RLS filtra en silencio), lo que
+   * `findTenantConfig` ya trata igual que "organización sin configurar" ->
+   * `timezone: null` -> default de plataforma. Eso sería un bug real para una
+   * organización de sistema con timezone SÍ configurado (el barrido calcularía
+   * "hoy" mal para esa organización) -- por eso este método usa la función
+   * `security definer` de solo-sistema `licitaciones.
+   * system_get_organization_timezone` (mismo patrón exacto que
+   * `system_list_renewal_candidate_contracts`/`system_record_renewal_alert`/
+   * `system_list_overdue_contract_invoices` de la migración 025) cuando
+   * `isSystemSession` es `true`, que bypassa RLS con el mismo guard
+   * `auth.uid() is not null -> raise 42501` que esas tres.
+   */
+  private async resolveOrganizationTimezoneForToday(organizationId: string, isSystemSession: boolean): Promise<string> {
+    if (!isSystemSession) {
+      const config = await this.findTenantConfig(organizationId);
+      return hoyFechaNegocio(resolverZonaHorariaNegocio(config.timezone));
+    }
+    const timezone = await runWithSavepointFallback<string | null>({
+      session: this.db,
+      savepointName: "sp_licitaciones_system_get_org_timezone",
+      primary: async () => {
+        const { rows } = await this.db.query<{ timezone: string | null }>(`select licitaciones.system_get_organization_timezone($1) as timezone;`, [organizationId]);
+        return rows[0]?.timezone ?? null;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => null,
+    });
+    return hoyFechaNegocio(resolverZonaHorariaNegocio(timezone));
   }
 
   async findTender(organizationId: string, tenderId: string): Promise<TenderRecord | null> {
@@ -1461,7 +1579,11 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     // sin `validFrom` explícito en el body (`POST .../company/rates`) se persistía
     // vigente un día antes de tiempo. Resuelto UNA vez en TS con
     // `@atiende/core-tenancy::hoyFechaNegocio()` -- el SQL ya no llama `current_date`.
-    const validFrom = input.validFrom ?? hoyFechaNegocio();
+    // FASE 3 (producto) -- ahora resuelve la zona horaria REAL de esta organización
+    // (`resolveOrganizationTimezoneForToday`, nunca el default de plataforma solo).
+    // Caller SIEMPRE de staff autenticado (`POST .../company/rates`, verificado con
+    // `grep -rn` -- sin invocación de sistema) -- `isSystemSession: false`.
+    const validFrom = input.validFrom ?? (await this.resolveOrganizationTimezoneForToday(organizationId, false));
     const { rows } = await this.db.query<{ id: string; concept: string; unit_price: string; approval_status: ApprovedRateRecord["approvalStatus"]; valid_from: string; valid_until: string | null }>(
       `insert into licitaciones.approved_rate (organization_id, concept, unit_price, approval_status, valid_from, valid_until)
        values ($1, $2, $3, $4, $5::date, $6)
@@ -2335,7 +2457,9 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
        returning ${CONTRACT_INVOICE_COLUMNS};`,
       [organizationId, contract.id, input.concepto, input.amount, input.invoiceVerifiedOn, due.dueDate, due.legalReference, input.actorId],
     );
-    return mapContractInvoice(rows[0]!, hoyFechaNegocio());
+    // FASE 3 (producto) -- caller SIEMPRE de staff autenticado (`POST .../contracts/
+    // :tenderId/invoices`, sin invocación de sistema) -- `isSystemSession: false`.
+    return mapContractInvoice(rows[0]!, await this.resolveOrganizationTimezoneForToday(organizationId, false));
   }
 
   async listContractInvoices(organizationId: string, tenderId: string): Promise<readonly ContractInvoiceRecord[]> {
@@ -2344,7 +2468,9 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       `select ${CONTRACT_INVOICE_COLUMNS} from licitaciones.contract_invoice where organization_id = $1 and contract_id = $2 order by invoice_verified_on asc;`,
       [organizationId, contract.id],
     );
-    const today = hoyFechaNegocio();
+    // FASE 3 (producto) -- caller SIEMPRE de staff autenticado (`GET .../invoices`,
+    // `receivablesSummary`, ambos de staff) -- `isSystemSession: false`.
+    const today = await this.resolveOrganizationTimezoneForToday(organizationId, false);
     return rows.map((row) => mapContractInvoice(row, today));
   }
 
@@ -2355,7 +2481,8 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [invoiceId, organizationId, contract.id],
     );
     if (rows.length === 0) throw new Error(`Factura "${invoiceId}" no encontrada para el contrato de la convocatoria "${tenderId}".`);
-    return mapContractInvoice(rows[0]!, hoyFechaNegocio());
+    // FASE 3 (producto) -- caller SIEMPRE de staff autenticado -- `isSystemSession: false`.
+    return mapContractInvoice(rows[0]!, await this.resolveOrganizationTimezoneForToday(organizationId, false));
   }
 
   async receivablesSummary(organizationId: string, tenderId: string): Promise<ReceivablesSummary> {
@@ -2365,12 +2492,14 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     // pendiente/vencido usaba `new Date().toISOString().slice(0, 10)` (día UTC del
     // proceso), corrido un día adelante del real en CDMX entre las 18:00 y las 23:59 hora
     // local. Mismo fix en las 3 firmas de abajo (`scanRenewalAlerts`/
-    // `systemScanRenewalAlerts`/`listOverdueContractInvoices`) -- todas usan
-    // `@atiende/core-tenancy::hoyFechaNegocio()` como default cuando el caller no inyecta
-    // un `todayIsoDate` explícito (los tests SÍ lo inyectan; el cron real de
+    // `systemScanRenewalAlerts`/`listOverdueContractInvoices`) -- FASE 3 (producto) las
+    // reforzó más: en vez del default fijo de plataforma, resuelven la zona horaria REAL
+    // de la organización (`resolveOrganizationTimezoneForToday`) cuando el caller no
+    // inyecta un `todayIsoDate` explícito (los tests SÍ lo inyectan; el cron real de
     // `apps/worker/src/jobs/licitaciones/alert-notifications.ts` NO, así que es el
-    // default el que corre en producción).
-    const today = hoyFechaNegocio();
+    // default el que corre en producción). Caller de este método SIEMPRE de staff
+    // autenticado -- `isSystemSession: false`.
+    const today = await this.resolveOrganizationTimezoneForToday(organizationId, false);
     const totals = summarizeReceivables(
       invoices.map((inv) => ({ amount: inv.amount, dueDate: inv.dueDate, paidAt: inv.paidAt })),
       today,
@@ -2507,7 +2636,10 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   async scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
     const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
-    const today = input.todayIsoDate ?? hoyFechaNegocio();
+    // FASE 3 (producto) -- caller SIEMPRE de staff autenticado (`POST .../renewals/scan`,
+    // sin invocación de sistema -- ver `systemScanRenewalAlerts` para el camino de
+    // sistema) -- `isSystemSession: false`.
+    const today = input.todayIsoDate ?? (await this.resolveOrganizationTimezoneForToday(organizationId, false));
 
     const contractsRes = await this.db.query<{ id: string; tender_id: string; end_date: string }>(
       `select id, tender_id, end_date::text as end_date from licitaciones.contract
@@ -2543,7 +2675,12 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   // staff autenticado real (`POST .../renewals/scan`) -- sin cambio.
   async systemScanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
     const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
-    const today = input.todayIsoDate ?? hoyFechaNegocio();
+    // FASE 3 (producto) -- exclusiva del barrido de sistema (verificado, ver comentario
+    // de cabecera de este método) -- `isSystemSession: true` (usa la función `security
+    // definer` de solo-sistema `licitaciones.system_get_organization_timezone`, nunca el
+    // select directo bloqueado por RLS bajo sesión de sistema -- ver
+    // `resolveOrganizationTimezoneForToday`).
+    const today = input.todayIsoDate ?? (await this.resolveOrganizationTimezoneForToday(organizationId, true));
 
     const contractsRes = await this.db.query<{ out_contract_id: string; out_tender_id: string; out_end_date: string }>(
       `select * from licitaciones.system_list_renewal_candidate_contracts($1);`,
@@ -2633,7 +2770,9 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   // tabla (bloqueado por `can_access_org` bajo sesión de sistema, sin escape
   // hatch). Sin cambio de contrato TypeScript -- mismo método, misma firma.
   async listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]> {
-    const today = todayIsoDate ?? hoyFechaNegocio();
+    // FASE 3 (producto) -- exclusiva del barrido de sistema (ver comentario de cabecera
+    // de este método) -- `isSystemSession: true`.
+    const today = todayIsoDate ?? (await this.resolveOrganizationTimezoneForToday(organizationId, true));
     const { rows } = await this.db.query<{ out_id: string; out_contract_id: string; out_tender_id: string; out_concepto: string; out_amount: string; out_due_date: string; out_days_overdue: number }>(
       `select * from licitaciones.system_list_overdue_contract_invoices($1, $2::date);`,
       [organizationId, today],

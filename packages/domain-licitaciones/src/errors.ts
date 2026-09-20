@@ -161,3 +161,21 @@ export class CompanyDataNotFoundError extends Error {
     this.name = "CompanyDataNotFoundError";
   }
 }
+
+/**
+ * FASE 3 (producto, zona horaria por negocio, migración 027): lanzado por
+ * `PostgresLicitacionesRepository.upsertTenantConfig` cuando `licitaciones.
+ * tenant_config` todavía no existe en la base real (SQLSTATE 42P01 — la
+ * migración no se aplica al mergear, ver REGLA DURA de compatibilidad del
+ * repo). Una ESCRITURA nunca puede fingir que guardó un valor que la base no
+ * puede persistir todavía — a diferencia de `findTenantConfig` (una lectura,
+ * que sí degrada a `timezone: null` en silencio), este error se propaga hasta
+ * la ruta (`apps/api/.../licitaciones/admin.ts`), que lo traduce a 503
+ * (`Errors.serviceUnavailable`) en vez de un 500 genérico o un 200 falso.
+ */
+export class TenantConfigNotMigratedError extends Error {
+  constructor(message = "La configuración de zona horaria de la organización todavía no está disponible en esta base de datos (migración pendiente de aplicar).") {
+    super(message);
+    this.name = "TenantConfigNotMigratedError";
+  }
+}
