@@ -173,12 +173,12 @@ values ('00000000-0000-0000-0000-0000000000fa', '00000000-0000-0000-0000-0000000
 reset role;
 select set_config('request.jwt.claim.sub', '', false);
 
-\echo '--- 4. frontdesk (rol insuficiente) NO puede aprobar la recomendacion de PA -- RECHAZADO ---'
+\echo '--- 4. frontdesk (rol insuficiente) NO puede aprobar la recomendacion de PA -- la policy de UPDATE filtra en silencio (USING falso = 0 filas afectadas, NUNCA una excepcion -- a diferencia de un trigger de bloqueo, RLS en UPDATE simplemente no encuentra la fila), el estado NUNCA cambia ---'
 begin;
--- as should_fail
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000043', true);
 update hoteles.rate_recommendation set estado = 'aprobada' where id = '00000000-0000-0000-0000-0000000000fa';
+select (estado = 'pendiente')::int as estado_sin_cambiar_por_frontdesk_deberia_ser_1 from hoteles.rate_recommendation where id = '00000000-0000-0000-0000-0000000000fa';
 rollback;
 
 \echo ''
@@ -192,12 +192,13 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000044
 select count(*) as filas_visibles_deberia_ser_0 from hoteles.rate_recommendation where id = '00000000-0000-0000-0000-0000000000fa';
 rollback;
 
-\echo '--- 6. owner de la Org B tampoco puede aprobarla -- RECHAZADO (no pertenece a esa property) ---'
+\echo '--- 6. owner de la Org B tampoco puede aprobarla -- la policy de UPDATE filtra en silencio (no pertenece a esa property, USING falso = 0 filas, NUNCA una excepcion), el estado NUNCA cambia (verificado con "reset role" -- vuelve al superusuario de la conexion, que bypassa RLS y SI ve la fila real) ---'
 begin;
--- as should_fail
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000044', true);
 update hoteles.rate_recommendation set estado = 'aprobada' where id = '00000000-0000-0000-0000-0000000000fa';
+reset role;
+select (estado = 'pendiente')::int as estado_sin_cambiar_por_org_ajena_deberia_ser_1 from hoteles.rate_recommendation where id = '00000000-0000-0000-0000-0000000000fa';
 rollback;
 
 \echo ''

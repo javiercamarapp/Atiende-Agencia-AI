@@ -59,7 +59,7 @@ describe("GET /superadmin/salud", () => {
     const res = await app.request("/superadmin/salud/crons", { headers: { authorization: `Bearer ${token}` } });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { crons: Array<{ cronName: string; estado: string; heartbeat: unknown }> };
-    expect(body.crons.length).toBe(19);
+    expect(body.crons.length).toBe(20);
     for (const cron of body.crons) {
       expect(cron.estado).toBe("sin_latido");
       expect(cron.heartbeat).toBeNull();
