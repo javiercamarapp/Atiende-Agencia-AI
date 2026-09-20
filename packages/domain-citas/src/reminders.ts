@@ -246,7 +246,13 @@ export async function runOptimizadorCore(repo: CitasRepository, organizationId: 
 
   if (matches.length === 0) return { matched: false, reason: "no_match" };
 
-  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(organizationId);
+  // Corrección post-revisión de f2-citas-lista-de-espera — MISMO gap de RLS
+  // que arriba (hallazgo A), un paso más adelante: `resolveActiveWhatsAppPhoneNumberId`
+  // (SELECT plano, RLS de staff) también devolvía 0 filas en sesión de
+  // sistema, incluso con la migración 020 ya aplicada -- ningún aviso podía
+  // salir nunca. Ver `repository.ts::resolveActiveWhatsAppPhoneNumberIdAsSystem`
+  // y la migración 021_whatsapp_config_sistema_lectura.sql.
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId);
   if (!phoneNumberId) return { matched: false, reason: "no_whatsapp_config" };
 
   const winner = matches[0]!;
@@ -420,7 +426,11 @@ export async function runListaEsperaCore(
   const summary: ListaEsperaSummary = { notified: 0, candidatesConsidered: filtered.length, skippedNoWhatsappConfig: false };
   if (filtered.length === 0) return summary;
 
-  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(organizationId);
+  // Corrección post-revisión de f2-citas-lista-de-espera — mismo motivo que en
+  // `runOptimizadorCore` de arriba: este caller corre en sesión de sistema
+  // (post-commit, ver `admin.ts::runCitasListaEsperaBroadcastAfterCommit`),
+  // así que necesita la variante de sistema, nunca la de staff.
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId);
   if (!phoneNumberId) {
     summary.skippedNoWhatsappConfig = true;
     return summary;

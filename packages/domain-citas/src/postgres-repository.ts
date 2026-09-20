@@ -974,6 +974,34 @@ export class PostgresCitasRepository implements CitasRepository {
     });
   }
 
+  /** Corrección post-revisión de f2-citas-lista-de-espera — ver el comentario
+   * largo de `repository.ts::resolveActiveWhatsAppPhoneNumberIdAsSystem` y de
+   * la migración `021_whatsapp_config_sistema_lectura.sql`. Mismo mecanismo
+   * SAVEPOINT/SQLSTATE que `loadLiveWaitlistCandidatesAsSystem` (020): si la
+   * migración 021 todavía no está aplicada (42883, `undefined_function`),
+   * degrada a `null` -- el MISMO comportamiento honesto de hoy
+   * (`no_whatsapp_config`/`skippedNoWhatsappConfig:true`, nunca un 500). */
+  async resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId: string): Promise<string | null> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ system_resolve_active_whatsapp_phone_number_id: string | null }>(
+          `select citas.system_resolve_active_whatsapp_phone_number_id($1) as system_resolve_active_whatsapp_phone_number_id;`,
+          [organizationId],
+        );
+        return rows[0]?.system_resolve_active_whatsapp_phone_number_id ?? null;
+      },
+      isRecoverable: isUndefinedFunctionError,
+      fallback: (err) => {
+        console.warn(
+          "resolveActiveWhatsAppPhoneNumberIdAsSystem: citas.system_resolve_active_whatsapp_phone_number_id no existe todavía (SQLSTATE 42883, migración 021 pendiente de aplicar) -- degradando a null, mismo comportamiento honesto de hoy:",
+          err instanceof Error ? err.message : err,
+        );
+        return Promise.resolve(null);
+      },
+    });
+  }
+
   async claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean> {
     const { rows } = await this.db.query<{ id: string | null }>(`select (citas.claim_waitlist_notification_slot($1, $2)).id as id;`, [waitlistId, maxNotifications]);
     return rows[0]?.id != null;

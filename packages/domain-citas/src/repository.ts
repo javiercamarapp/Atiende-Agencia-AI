@@ -643,6 +643,19 @@ export interface CitasRepository {
    * la base sin migrar: implementación Postgres degrada a `[]` (SQLSTATE
    * 42883), nunca un 500. */
   loadLiveWaitlistCandidatesAsSystem(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
+  /** Corrección post-revisión de f2-citas-lista-de-espera — igual que
+   * `loadLiveWaitlistCandidatesAsSystem`, pero para el paso INMEDIATO siguiente
+   * (resolver a qué `phone_number_id` mandar el aviso): `citas.whatsapp_config`
+   * también solo tiene policy de RLS de staff (membership), así que
+   * `resolveActiveWhatsAppPhoneNumberId` (SELECT plano) SIEMPRE devuelve `null`
+   * bajo sesión de sistema, incluso con la migración 020 ya aplicada -- ver
+   * migración 021_whatsapp_config_sistema_lectura.sql. Mismos dos callers reales
+   * que `loadLiveWaitlistCandidatesAsSystem` (runOptimizadorCore/
+   * runListaEsperaCore, ambos sesión de sistema); `previewListaEspera` (staff,
+   * vista previa de solo lectura) sigue usando `resolveActiveWhatsAppPhoneNumberId`.
+   * Compatibilidad con la base sin migrar: implementación Postgres degrada a
+   * `null` (SQLSTATE 42883), nunca un 500. */
+  resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId: string): Promise<string | null>;
   claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean>;
 
   // ---- Idempotencia/rate-limit (transversal) ----

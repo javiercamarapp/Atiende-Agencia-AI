@@ -1020,6 +1020,14 @@ export class InMemoryCitasRepository implements CitasRepository {
     return this.loadLiveWaitlistCandidates(organizationId);
   }
 
+  /** Corrección post-revisión de f2-citas-lista-de-espera — el doble en
+   * memoria no tiene RLS que simular: misma implementación que
+   * `resolveActiveWhatsAppPhoneNumberId` (ver el comentario largo de
+   * `repository.ts` para por qué Postgres real sí distingue las dos). */
+  async resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId: string): Promise<string | null> {
+    return this.resolveActiveWhatsAppPhoneNumberId(organizationId);
+  }
+
   async claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean> {
     const row = this.waitlist.get(waitlistId);
     if (!row || row.status !== "active" || row.notifiedCount >= maxNotifications) return false;
