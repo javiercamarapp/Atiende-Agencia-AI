@@ -413,10 +413,13 @@ export interface PromotionPatch {
 // domain-rentas/src/types.ts (RegistrarAuditoriaInput/RentasAuditLog*) — copiado
 // a propósito para que ambas verticales se lean igual, ver comentario de cabecera
 // de esa migración para las 2 correcciones que nacen resueltas aquí (orden total
-// desde el día uno, validación de rol). 'configuracion' está reservado en el
-// catálogo aunque hoy ningún caller real lo usa (restaurantes todavía no tiene
-// ninguna ruta que edite WhatsApp/voz/horarios/zonas de entrega — ver comentario
-// de cabecera de esa migración).
+// desde el día uno, validación de rol). 'configuracion' ya tiene caller real
+// desde FASE 3 (producto): `admin-config.ts::PUT .../admin/config/whatsapp` y
+// `POST`/`DELETE .../admin/config/zonas` — ver `migrations/
+// 021_restaurantes_config_editable_y_search_path_fix.sql`. Horarios de
+// atención/configuración de voz siguen sin ruta (ninguna tabla existe todavía
+// en el schema base para ninguno de los dos — ver el comentario de cabecera de
+// esa migración).
 // ---------------------------------------------------------------------------
 export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion";
 
