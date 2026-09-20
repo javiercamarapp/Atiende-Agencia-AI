@@ -2208,6 +2208,47 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return Number(rows[0]?.total ?? 0);
   }
 
+  // ---- Fase 10 — señal de pickup del motor de recomendaciones de tarifa (ver
+  // comentario de cabecera en repository.ts sobre por qué se reconstruye de
+  // hoteles.reservation en vez de hoteles.availability.booked_rooms). ----
+
+  async countOnTheBooksRoomsAsOf(propertyId: string, roomTypeId: string, fecha: string, asOfIso: string): Promise<number> {
+    const { rows } = await this.db.query<{ n: string }>(
+      `select count(*)::text as n
+       from hoteles.reservation
+       where property_id = $1 and room_type_id = $2 and status <> 'cancelada'
+         and check_in_date <= $3::date and check_out_date > $3::date
+         and created_at <= $4::timestamptz;`,
+      [propertyId, roomTypeId, fecha, asOfIso],
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  async listPickupHistoricalSamples(
+    propertyId: string,
+    roomTypeId: string,
+    leadTimeDays: number,
+    desde: string,
+    hasta: string,
+  ): Promise<readonly { readonly fecha: string; readonly onTheBooksRooms: number }[]> {
+    const { rows } = await this.db.query<{ fecha: string; on_the_books_rooms: string }>(
+      `with dias as (
+         select d::date as fecha, (d::date - $3 * interval '1 day') as as_of
+         from generate_series($4::date, $5::date, interval '1 day') as d
+       )
+       select dias.fecha::text as fecha, count(r.id)::text as on_the_books_rooms
+       from dias
+       left join hoteles.reservation r
+         on r.property_id = $1 and r.room_type_id = $2 and r.status <> 'cancelada'
+        and r.check_in_date <= dias.fecha and r.check_out_date > dias.fecha
+        and r.created_at <= dias.as_of
+       group by dias.fecha
+       order by dias.fecha asc;`,
+      [propertyId, roomTypeId, leadTimeDays, desde, hasta],
+    );
+    return rows.map((r) => ({ fecha: r.fecha, onTheBooksRooms: Number(r.on_the_books_rooms) }));
+  }
+
   // ============================================================================
   // Fase 12 — dispatcher real de correo al huésped (ver migrations/014_email_outbox_dispatch.sql)
   // ============================================================================
@@ -2617,6 +2658,25 @@ export class PostgresHotelesRepository implements HotelesRepository {
       fallback: (err) => {
         console.warn("findRateRecommendation: hoteles.rate_recommendation no existe todavía (migración 029 pendiente) -- degradando a null:", err instanceof Error ? err.message : err);
         return Promise.resolve(null);
+      },
+    });
+  }
+
+  async hasActiveRateRecommendation(propertyId: string, roomTypeId: string, fecha: string): Promise<boolean> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ one: number }>(
+          `select 1 as one from hoteles.rate_recommendation
+           where property_id = $1 and room_type_id = $2 and fecha = $3::date and estado in ('pendiente', 'aprobada') limit 1;`,
+          [propertyId, roomTypeId, fecha],
+        );
+        return rows.length > 0;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn("hasActiveRateRecommendation: hoteles.rate_recommendation no existe todavía (migración 029 pendiente) -- degradando a false:", err instanceof Error ? err.message : err);
+        return Promise.resolve(false);
       },
     });
   }

@@ -653,6 +653,34 @@ export interface HotelesRepository {
    *  inventario por noche). */
   sumAvailableRoomNightsForDateRange(propertyId: string, desde: string, hasta: string): Promise<number>;
 
+  // ---- Fase 10 — señal de pickup del motor de recomendaciones de tarifa: se
+  // reconstruye de `hoteles.reservation` (check_in_date/check_out_date/created_at),
+  // NUNCA una fuente de datos nueva -- `hoteles.availability.booked_rooms` es solo
+  // el conteo ACTUAL (no guarda historial de cuánto llevaba reservado en el
+  // pasado), así que la única forma honesta de reconstruir "cuánto llevaba
+  // reservada esta fecha A N días de anticipación" -- tanto hoy como en fechas
+  // pasadas -- es contar reservas reales cuyo `created_at` ya había ocurrido para
+  // ese corte, mismo criterio para AMBAS mediciones (actual e histórica), nunca dos
+  // fuentes distintas. ----
+
+  /** Habitaciones en libro (reservas no canceladas cuyo rango [check_in,check_out)
+   *  cubre `fecha`) medidas COMO SI fuera el momento `asOfIso` -- para "ahora mismo"
+   *  el llamador pasa `new Date().toISOString()`; para una fecha histórica pasa el
+   *  momento exacto que corresponde a la anticipación que se está reconstruyendo. */
+  countOnTheBooksRoomsAsOf(propertyId: string, roomTypeId: string, fecha: string, asOfIso: string): Promise<number>;
+  /** Una fila por cada fecha pasada en `[desde,hasta)`, con el on-the-books medido a
+   *  la MISMA anticipación (`leadTimeDays`) que la medición actual -- insumo directo
+   *  de `PickupSignalInput.historicalSamples` (pickupSignal.ts decide ahí cuáles usar
+   *  según día de la semana). Una sola consulta agregada, no N llamadas a
+   *  `countOnTheBooksRoomsAsOf`. */
+  listPickupHistoricalSamples(
+    propertyId: string,
+    roomTypeId: string,
+    leadTimeDays: number,
+    desde: string,
+    hasta: string,
+  ): Promise<readonly { readonly fecha: string; readonly onTheBooksRooms: number }[]>;
+
   // ---- Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management: wiring de
   // `hoteles.revenue_engine_gate`/`hoteles.revenue_backtest_run` (migrations/
   // 011_revenue_engine_gate.sql). Gap real verificado antes de esta fase: la
@@ -717,6 +745,12 @@ export interface HotelesRepository {
     opts: { readonly estado?: RateRecommendationStatus; readonly limit: number; readonly beforeCursor?: { readonly fecha: string; readonly roomTypeId: string; readonly id: string } },
   ): Promise<readonly RateRecommendationRecord[]>;
   findRateRecommendation(id: string): Promise<RateRecommendationRecord | null>;
+  /** true si YA existe una recomendación "pendiente"/"aprobada" para esta
+   *  property/room_type/fecha (el índice único parcial de migrations/029 lo
+   *  impediría de todos modos -- este método evita el trabajo de calcular una
+   *  señal que se descartaría, y evita depender de capturar 23505 para saber por
+   *  qué se saltó una fecha). */
+  hasActiveRateRecommendation(propertyId: string, roomTypeId: string, fecha: string): Promise<boolean>;
   /** SIEMPRE sesión de sistema (el cron de cómputo) -- el trigger real
    *  (`rate_recommendation_status_guard`) rechaza cualquier otro caller. */
   insertRateRecommendationAsSystem(input: NewRateRecommendationInput): Promise<RateRecommendationRecord>;

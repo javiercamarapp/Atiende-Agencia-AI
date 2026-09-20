@@ -20,6 +20,7 @@ import { hotelesAdminCatalogoRoutes } from "./admin-catalogo.ts";
 import { hotelesAdminStaffRoutes } from "./admin-staff.ts";
 import { hotelesRevenueRoutes } from "./revenue.ts";
 import { hotelesRevenueRecomendacionesRoutes } from "./revenue-recomendaciones.ts";
+import { hotelesRevenueRecommendationsCronRoutes } from "./revenue-recommendations-cron.ts";
 import { hotelesReputacionRoutes } from "./reputacion.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -60,6 +61,7 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // recomendación (pickup/evento/compset), sobre el gate/backtest de arriba --
   // ver revenue-recomendaciones.ts y migrations/029_rate_recommendation_engine.sql.
   app.route("/", hotelesRevenueRecomendacionesRoutes(deps));
+  app.route("/", hotelesRevenueRecommendationsCronRoutes(deps));
   // Fase 11/13 — REQ-CRM-002/003: reputación/CRM -- wiring HTTP real del
   // clasificador + índice agregado (dominio y modelo de datos ya existían desde
   // Fase 11; esta rama agrega el primer invocador real, ver reputacion.ts).

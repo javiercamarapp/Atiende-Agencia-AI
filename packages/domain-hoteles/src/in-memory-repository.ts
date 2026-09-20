@@ -1954,6 +1954,40 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return total;
   }
 
+  // ---- Fase 10 — señal de pickup (ver comentario de cabecera en repository.ts). ----
+
+  private countOnTheBooks(propertyId: string, roomTypeId: string, fecha: string, asOfIso: string): number {
+    let count = 0;
+    for (const r of this.reservations.values()) {
+      if (r.propertyId !== propertyId || r.roomTypeId !== roomTypeId || r.status === "cancelada") continue;
+      if (r.checkInDate <= fecha && r.checkOutDate > fecha && r.createdAt <= asOfIso) count += 1;
+    }
+    return count;
+  }
+
+  async countOnTheBooksRoomsAsOf(propertyId: string, roomTypeId: string, fecha: string, asOfIso: string): Promise<number> {
+    return this.countOnTheBooks(propertyId, roomTypeId, fecha, asOfIso);
+  }
+
+  async listPickupHistoricalSamples(
+    propertyId: string,
+    roomTypeId: string,
+    leadTimeDays: number,
+    desde: string,
+    hasta: string,
+  ): Promise<readonly { readonly fecha: string; readonly onTheBooksRooms: number }[]> {
+    const samples: { fecha: string; onTheBooksRooms: number }[] = [];
+    const cursor = new Date(`${desde}T00:00:00Z`);
+    const end = new Date(`${hasta}T00:00:00Z`);
+    while (cursor <= end) {
+      const fecha = cursor.toISOString().slice(0, 10);
+      const asOf = new Date(cursor.getTime() - leadTimeDays * 24 * 60 * 60 * 1000).toISOString();
+      samples.push({ fecha, onTheBooksRooms: this.countOnTheBooks(propertyId, roomTypeId, fecha, asOf) });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return samples;
+  }
+
   // ============================================================================
   // Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management.
   // ============================================================================
@@ -2193,6 +2227,13 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return this.rateRecommendations.get(id) ?? null;
   }
 
+  async hasActiveRateRecommendation(propertyId: string, roomTypeId: string, fecha: string): Promise<boolean> {
+    for (const r of this.rateRecommendations.values()) {
+      if (r.propertyId === propertyId && r.roomTypeId === roomTypeId && r.fecha === fecha && (r.estado === "pendiente" || r.estado === "aprobada")) return true;
+    }
+    return false;
+  }
+
   async insertRateRecommendationAsSystem(input: NewRateRecommendationInput): Promise<RateRecommendationRecord> {
     const now = new Date().toISOString();
     const record: RateRecommendationRecord = {
@@ -2241,6 +2282,40 @@ export class InMemoryHotelesRepository implements HotelesRepository {
 
   async applyRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord> {
     const existing = this.mustFindRateRecommendation(id);
+    // Réplica MÍNIMA (no exhaustiva, ver comentario de cabecera de la sección) de
+    // la guarda de variación que el trigger real SIEMPRE aplica incluso en
+    // autopilot pleno (migrations/029, "guarda de seguridad deliberada de v1") --
+    // sin esto, un test/caller que ejercite el cron completo (no solo la ruta
+    // HTTP) contra el repositorio en memoria no podría distinguir "aplicó" de
+    // "el trigger real lo hubiera rechazado".
+    const gate = this.revenueGates.get(existing.propertyId);
+    if (gate) {
+      const variationPct = (Math.abs(existing.recommendedPrice - existing.currentBarPrice) / Math.max(existing.currentBarPrice, 0.01)) * 100;
+      if (variationPct > gate.proponeMaxVariationPct + 1e-6) {
+        throw new Error(
+          `variacion_excede_limite: el cambio propuesto (${variationPct.toFixed(2)} por ciento) excede el limite vigente de +-${gate.proponeMaxVariationPct} por ciento (propone_max_variation_pct)`,
+        );
+      }
+    }
+    // Efecto REAL, mismo criterio que `hoteles.system_apply_rate_recommendation`
+    // (migrations/029): escribe la tarifa BAR real, preservando closedToArrival/
+    // closedToDeparture si ya había una fila para esa fecha (reutiliza el mismo
+    // upsert que la ruta de catálogo admin ya usa).
+    const key = `${existing.propertyId}:${existing.roomTypeId}`;
+    const rates = this.nightlyRates.get(key) ?? [];
+    const prior = rates.find((r) => r.date === existing.fecha);
+    await this.upsertRatePlanRange({
+      organizationId: existing.organizationId,
+      propertyId: existing.propertyId,
+      roomTypeId: existing.roomTypeId,
+      startDate: existing.fecha,
+      endDate: existing.fecha,
+      price: existing.recommendedPrice,
+      currency: "MXN",
+      minStay: existing.suggestedMinStay,
+      closedToArrival: prior?.closedToArrival ?? false,
+      closedToDeparture: prior?.closedToDeparture ?? false,
+    });
     const updated: RateRecommendationRecord = { ...existing, estado: "aplicada", aplicadaPor: null, aplicadaEn: new Date().toISOString(), updatedAt: new Date().toISOString() };
     this.rateRecommendations.set(id, updated);
     return updated;
