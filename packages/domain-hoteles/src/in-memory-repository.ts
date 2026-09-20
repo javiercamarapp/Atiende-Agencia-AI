@@ -321,6 +321,11 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly guestReviewActions = new Map<string, GuestReviewActionRecord>();
   private readonly guestReviewResponses = new Map<string, GuestReviewResponseRecord>();
 
+  // ---- FASE 3 (producto) — zona horaria por negocio: equivalente en memoria de
+  // `hoteles.property_config.timezone` (migrations/030). key: propertyId, valor
+  // CRUDO (nunca resuelto al default aquí, mismo contrato que la fila real). ----
+  private readonly propertyTimezoneByProperty = new Map<string, string>();
+
   // ---- Fase 6 — H5/REQ-REV-013 night audit + REQ-HK-008/011 housekeeping ----
   private readonly activeHotelProperties = new Map<string, ActiveHotelProperty>(); // key: propertyId
   private readonly nightAuditRuns = new Map<string, NightAuditRunRecord>(); // key: propertyId:businessDate
@@ -407,9 +412,12 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   /** Fase 6 — equivalente en memoria de `core.organization`/`core.property` con
    *  `vertical='hoteles'`/`status='active'` -- insumo de
    *  `listActiveHotelProperties()` (ruta interna de barrido de night-audit, mismo
-   *  patrón que `InMemoryCitasRepository`'s organizaciones activas). */
-  seedActiveHotelProperty(organizationId: string, propertyId: string): void {
-    this.activeHotelProperties.set(propertyId, { organizationId, propertyId });
+   *  patrón que `InMemoryCitasRepository`'s organizaciones activas). `timezone`
+   *  (FASE 3 producto, opcional) -- `null`/omitido reproduce una property sin zona
+   *  horaria configurada todavía (el caso normal, cae al default de plataforma). */
+  seedActiveHotelProperty(organizationId: string, propertyId: string, timezone: string | null = null): void {
+    this.activeHotelProperties.set(propertyId, { organizationId, propertyId, timezone });
+    if (timezone !== null) this.propertyTimezoneByProperty.set(propertyId, timezone);
   }
 
   /** Fase 9 (REQ-REV-003) — SOLO para pruebas: escribe directo el gate de revenue
@@ -1484,6 +1492,27 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return { id: propertyId, name: p.name, organizationId: p.organizationId };
   }
 
+  // ---- FASE 3 (producto) — zona horaria por negocio (equivalente en memoria de
+  // hoteles.property_config.timezone, migrations/030). ----
+
+  async findPropertyTimezone(propertyId: string): Promise<string | null> {
+    return this.propertyTimezoneByProperty.get(propertyId) ?? null;
+  }
+
+  async upsertPropertyTimezone(propertyId: string, organizationId: string, timezone: string | null, actorUserId: string): Promise<void> {
+    void organizationId; // espejo del trigger real (property_config_guard): lo deriva de core.property, no confía en el parámetro.
+    void actorUserId; // espejo del trigger real: updated_by = auth.uid().
+    if (timezone === null) {
+      this.propertyTimezoneByProperty.delete(propertyId);
+    } else {
+      this.propertyTimezoneByProperty.set(propertyId, timezone);
+    }
+    // Mantiene en sincronía la vista `listActiveHotelProperties()` (join real en
+    // Postgres) -- solo si la property ya está sembrada como activa.
+    const active = this.activeHotelProperties.get(propertyId);
+    if (active) this.activeHotelProperties.set(propertyId, { ...active, timezone });
+  }
+
   // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
 
   async listActiveHotelProperties(): Promise<readonly ActiveHotelProperty[]> {
@@ -2334,10 +2363,9 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return updated;
   }
 
-  async listExpirableRateRecommendationsAsSystem(propertyId: string): Promise<readonly RateRecommendationRecord[]> {
-    const today = hoyFechaNegocio();
+  async listExpirableRateRecommendationsAsSystem(propertyId: string, todayIso: string): Promise<readonly RateRecommendationRecord[]> {
     return [...this.rateRecommendations.values()].filter(
-      (r) => r.propertyId === propertyId && (r.estado === "pendiente" || r.estado === "aprobada") && r.fecha < today,
+      (r) => r.propertyId === propertyId && (r.estado === "pendiente" || r.estado === "aprobada") && r.fecha < todayIso,
     );
   }
 

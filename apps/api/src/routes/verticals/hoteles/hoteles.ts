@@ -17,6 +17,7 @@ import { hotelesAsistenciaRoutes } from "./asistencia.ts";
 import { hotelesPlRoutes } from "./pl.ts";
 import { hotelesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { hotelesAdminCatalogoRoutes } from "./admin-catalogo.ts";
+import { hotelesPropertyConfigRoutes } from "./property-config.ts";
 import { hotelesAdminStaffRoutes } from "./admin-staff.ts";
 import { hotelesRevenueRoutes } from "./revenue.ts";
 import { hotelesRevenueRecomendacionesRoutes } from "./revenue-recomendaciones.ts";
@@ -47,6 +48,10 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Fix hallazgo CRÍTICO — alta REAL de catálogo (tipos de habitación/habitaciones
   // físicas/tarifas), ver admin-catalogo.ts.
   app.route("/", hotelesAdminCatalogoRoutes(deps));
+  // FASE 3 (producto) — zona horaria por negocio: GET/PUT
+  // /hoteles/:propertyId/configuracion (owner/gm), ver property-config.ts y
+  // migrations/030_zona_horaria_property.sql.
+  app.route("/", hotelesPropertyConfigRoutes(deps));
   // Fix hallazgo auditoría (rubro 1, "completitud funcional" — alta de cliente de
   // principio a fin: organización + property + STAFF + primera venta): hoteles era
   // la única de las 6 verticales sin forma de invitar staff adicional, ver

@@ -19,16 +19,37 @@
 // criterio ya aplicado en HotelesShell.tsx/Login.tsx; los mensajes de éxito
 // transitorios ("Tipo de habitación creado.", etc.) ahora usan `toast` en vez de
 // un banner persistente, ya que son avisos de un solo uso, no estado de página.
+//
+// FASE 3 (producto) — ZONA HORARIA POR NEGOCIO: agrega la sección "Zona horaria"
+// (mismo Card/rol que el resto de esta pantalla, owner/gm vía CATALOGO_NAV_ROLES en
+// HotelesShell.tsx -- configurar la zona horaria es la MISMA decisión
+// administrativa que gestionar el catálogo, ver migrations/
+// 030_zona_horaria_property.sql). El `<select>` solo ofrece los 6 timezones IANA
+// más comunes de México (CONVENIENCIA de UI) -- el backend
+// (property-config.ts::requireTimeZoneOrNull) valida CUALQUIER timezone IANA real,
+// nunca restringe a esta lista.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle, EstadoError, Input, Label, toast } from "@atiende/ui";
 import { createRateRange, createRoom, createRoomType, fetchAllRooms } from "../lib/catalogo-client.ts";
+import { fetchPropertyConfig, updatePropertyTimezone } from "../lib/property-config-client.ts";
+import type { PropertyConfigResult } from "../lib/property-config-client.ts";
 import { fetchRoomTypes } from "../lib/reservas-client.ts";
 import type { RoomOption, RoomTypeOption } from "../lib/reservas-client.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 const selectClass =
   "mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
+const TIMEZONES_MEXICO_COMUNES: readonly { readonly value: string; readonly label: string }[] = [
+  { value: "America/Mexico_City", label: "Ciudad de México (centro, sur, sureste)" },
+  { value: "America/Cancun", label: "Cancún / Quintana Roo" },
+  { value: "America/Tijuana", label: "Tijuana / Baja California" },
+  { value: "America/Chihuahua", label: "Chihuahua" },
+  { value: "America/Hermosillo", label: "Hermosillo / Sonora" },
+  { value: "America/Mazatlan", label: "Mazatlán / Baja California Sur, Sinaloa" },
+];
+const ZONA_HORARIA_SIN_CONFIGURAR = "";
 
 export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellContext) {
   const [roomTypes, setRoomTypes] = useState<readonly RoomTypeOption[] | null>(null);
@@ -49,6 +70,44 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
   useEffect(() => {
     void reload();
   }, [apiBaseUrl, token, propertyId]);
+
+  // ---- FASE 3 (producto) — zona horaria por negocio ----
+  const [propertyConfig, setPropertyConfig] = useState<PropertyConfigResult | null>(null);
+  const [zonaSeleccionada, setZonaSeleccionada] = useState<string>(ZONA_HORARIA_SIN_CONFIGURAR);
+  const [guardandoZona, setGuardandoZona] = useState(false);
+  const [errorZona, setErrorZona] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    fetchPropertyConfig(fetch, apiBaseUrl, token, propertyId)
+      .then((config) => {
+        if (cancelado) return;
+        setPropertyConfig(config);
+        setZonaSeleccionada(config.timezone ?? ZONA_HORARIA_SIN_CONFIGURAR);
+      })
+      .catch((err) => {
+        if (!cancelado) setErrorZona(err instanceof Error ? err.message : "No se pudo cargar la zona horaria.");
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [apiBaseUrl, token, propertyId]);
+
+  async function handleGuardarZona(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorZona(null);
+    setGuardandoZona(true);
+    try {
+      const timezone = zonaSeleccionada === ZONA_HORARIA_SIN_CONFIGURAR ? null : zonaSeleccionada;
+      const config = await updatePropertyTimezone(fetch, apiBaseUrl, token, propertyId, timezone);
+      setPropertyConfig(config);
+      toast.success(timezone ? `Zona horaria guardada: ${timezone}.` : "Zona horaria limpiada -- vuelve a usar el default de plataforma.");
+    } catch (err) {
+      setErrorZona(err instanceof Error ? err.message : "No se pudo guardar la zona horaria.");
+    } finally {
+      setGuardandoZona(false);
+    }
+  }
 
   // ---- Formulario: crear tipo de habitación ----
   const [nombreTipo, setNombreTipo] = useState("");
@@ -135,6 +194,42 @@ export function CatalogoPage({ apiBaseUrl, token, propertyId }: HotelesShellCont
       </header>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void reload()} />}
+
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle className="text-base">Zona horaria</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Decide qué día calendario es "hoy" para el night-audit, vencimientos y el motor de recomendaciones de tarifa de esta property. Sin
+            configurar, se usa el default de plataforma ({propertyConfig?.timezonePorDefecto ?? "America/Mexico_City"}) — un hotel en Cancún,
+            Tijuana o Los Cabos debería configurar la suya.
+          </p>
+          {propertyConfig && (
+            <p className="text-xs text-foreground">
+              Zona en uso hoy: <strong>{propertyConfig.timezoneEfectiva}</strong>
+              {propertyConfig.timezone === null && " (sin configurar, default de plataforma)"}
+            </p>
+          )}
+          <form onSubmit={handleGuardarZona} className="flex flex-col gap-3">
+            <div>
+              <Label htmlFor="cat-zona-horaria">Zona horaria IANA</Label>
+              <select id="cat-zona-horaria" value={zonaSeleccionada} onChange={(e) => setZonaSeleccionada(e.target.value)} className={selectClass}>
+                <option value={ZONA_HORARIA_SIN_CONFIGURAR}>Sin configurar (usa el default de plataforma)</option>
+                {TIMEZONES_MEXICO_COMUNES.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {errorZona && <p role="alert" className="text-sm text-destructive">{errorZona}</p>}
+            <Button type="submit" disabled={guardandoZona}>
+              {guardandoZona ? "Guardando…" : "Guardar zona horaria"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card className="max-w-lg">
         <CardHeader>

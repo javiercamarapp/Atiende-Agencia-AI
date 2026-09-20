@@ -397,3 +397,41 @@ describe("InMemoryHotelesRepository.searchGuests", () => {
     expect(huespedes).toHaveLength(3);
   });
 });
+
+// FASE 3 (producto) — ZONA HORARIA POR NEGOCIO (migrations/030_zona_horaria_property.sql):
+// equivalente en memoria de `hoteles.property_config.timezone`.
+describe("InMemoryHotelesRepository -- findPropertyTimezone/upsertPropertyTimezone", () => {
+  it("sin configurar, devuelve null -- nunca inventa el default de plataforma aquí (eso es resolverZonaHorariaNegocio)", async () => {
+    const repo = new InMemoryHotelesRepository();
+    await expect(repo.findPropertyTimezone(PROPERTY)).resolves.toBeNull();
+  });
+
+  it("upsert guarda el valor, findPropertyTimezone lo devuelve tal cual", async () => {
+    const repo = new InMemoryHotelesRepository();
+    await repo.upsertPropertyTimezone(PROPERTY, ORG, "America/Cancun", "actor-1");
+    await expect(repo.findPropertyTimezone(PROPERTY)).resolves.toBe("America/Cancun");
+  });
+
+  it("upsert con timezone:null limpia una configuración previa de vuelta a 'sin configurar'", async () => {
+    const repo = new InMemoryHotelesRepository();
+    await repo.upsertPropertyTimezone(PROPERTY, ORG, "America/Tijuana", "actor-1");
+    await repo.upsertPropertyTimezone(PROPERTY, ORG, null, "actor-1");
+    await expect(repo.findPropertyTimezone(PROPERTY)).resolves.toBeNull();
+  });
+
+  it("listActiveHotelProperties refleja el timezone configurado -- efecto real, no solo el getter aislado", async () => {
+    const repo = new InMemoryHotelesRepository();
+    repo.seedActiveHotelProperty(ORG, PROPERTY);
+    await repo.upsertPropertyTimezone(PROPERTY, ORG, "America/Hermosillo", "actor-1");
+    const properties = await repo.listActiveHotelProperties();
+    expect(properties.find((p) => p.propertyId === PROPERTY)).toMatchObject({ timezone: "America/Hermosillo" });
+  });
+
+  it("seedActiveHotelProperty con timezone directo produce el mismo efecto que seed + upsert por separado", async () => {
+    const repo = new InMemoryHotelesRepository();
+    repo.seedActiveHotelProperty(ORG, PROPERTY, "America/Mazatlan");
+    await expect(repo.findPropertyTimezone(PROPERTY)).resolves.toBe("America/Mazatlan");
+    const properties = await repo.listActiveHotelProperties();
+    expect(properties.find((p) => p.propertyId === PROPERTY)).toMatchObject({ timezone: "America/Mazatlan" });
+  });
+});

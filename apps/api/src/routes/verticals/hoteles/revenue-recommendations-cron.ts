@@ -25,7 +25,7 @@
 // También expira (estado "expirada") las recomendaciones "pendiente"/"aprobada"
 // cuya fecha ya pasó sin que nadie actuara -- limpieza de sistema, misma sesión.
 import { Hono } from "hono";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import {
   computePickupSignal,
   computeRateRecommendation,
@@ -80,7 +80,7 @@ export interface RateRecommendationSweepPropertyResult {
   readonly error: string | null;
 }
 
-async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: string): Promise<RateRecommendationSweepPropertyResult> {
+async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: string, propertyTimezone: string | null): Promise<RateRecommendationSweepPropertyResult> {
   try {
     return await deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.hotelesRepo(db);
@@ -89,7 +89,15 @@ async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: 
         return { organizationId, propertyId, skippedReason: "sin_gate_inicializado" as const, fechasEvaluadas: 0, insertadas: 0, autoAplicadas: 0, autoAplicacionRechazada: 0, expiradas: 0, error: null };
       }
 
-      const today = hoyFechaNegocio();
+      // FASE 3 (producto) zona horaria por negocio: cada property de un barrido
+      // resuelve SU PROPIA zona (nunca el default de plataforma a secas) -- una
+      // property en Cancún calcula "hoy" (y por lo tanto todo el horizonte de 45
+      // días de leadTimeDays) distinto que una en CDMX en el MISMO instante de
+      // corrida del cron. `propertyTimezone` es el valor CRUDO de
+      // `hoteles.property_config.timezone` (ya resuelto por
+      // `runRateRecommendationSweep` vía `listActiveHotelProperties()`), este es el
+      // ÚNICO punto que lo resuelve a un timezone usable.
+      const today = hoyFechaNegocio(resolverZonaHorariaNegocio(propertyTimezone));
       const roomTypes = await repo.listRoomTypes(propertyId);
 
       let fechasEvaluadas = 0;
@@ -174,7 +182,7 @@ async function sweepProperty(deps: AppDeps, organizationId: string, propertyId: 
         }
       }
 
-      const expirables = await repo.listExpirableRateRecommendationsAsSystem(propertyId);
+      const expirables = await repo.listExpirableRateRecommendationsAsSystem(propertyId, today);
       for (const rec of expirables) {
         await repo.expireRateRecommendationAsSystem(rec.id);
       }
@@ -200,7 +208,11 @@ export async function runRateRecommendationSweep(deps: AppDeps): Promise<readonl
   const properties = await deps.engine.withAppSession({ userId: null }, (db) => deps.hotelesRepo(db).listActiveHotelProperties());
   const results: RateRecommendationSweepPropertyResult[] = [];
   for (const p of properties) {
-    results.push(await sweepProperty(deps, p.organizationId, p.propertyId));
+    // FASE 3 (producto) zona horaria por negocio -- `p.timezone` ya trae el valor
+    // CRUDO de `hoteles.property_config.timezone` (join hecho en
+    // `listActiveHotelProperties()`); se resuelve POR CADA property dentro de este
+    // loop, nunca una sola vez para todo el barrido.
+    results.push(await sweepProperty(deps, p.organizationId, p.propertyId, p.timezone));
   }
   return results;
 }

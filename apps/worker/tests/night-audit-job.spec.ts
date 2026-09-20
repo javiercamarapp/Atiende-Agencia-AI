@@ -116,6 +116,42 @@ describe("runNightAuditSweep", () => {
     expect(results[0]!.summary?.anomalies[0]).toMatchObject({ type: "sin_tarifa" });
   });
 
+  // FASE 3 (producto) — zona horaria por negocio (migrations/030_zona_horaria_property.sql):
+  // antes de esta fase, `runNightAuditSweep` usaba `DEFAULT_PROPERTY_TIMEZONE` (CDMX)
+  // para TODAS las properties sin importar dónde estuvieran de verdad. Este caso
+  // demuestra el EFECTO real, en el MISMO instante, de que cada property ahora
+  // resuelve su propia zona: instante verificado con `Intl.DateTimeFormat` antes de
+  // escribir este test (ver comentario inline) -- 2026-09-10T08:30:00Z es 02:30 en
+  // CDMX (UTC-6, la property por defecto de este archivo, sin timezone configurada)
+  // pero 03:30 en Cancún (UTC-5, sin horario de verano) -- una ya pasó el umbral de
+  // las 03:00 hora local y la otra no, EXACTAMENTE al mismo tiempo real.
+  it("FASE 3 zona horaria por negocio: a la MISMA hora UTC, una property en Cancún ya pasó el umbral de las 03:00 mientras la de CDMX (default) todavía no", async () => {
+    const cancunPropertyId = randomUUID();
+    const cancunRoomTypeId = randomUUID();
+    repo.seedActiveHotelProperty(organizationId, cancunPropertyId, "America/Cancun");
+    repo.seedTaxConfig(cancunPropertyId, { ivaRate: 0.16, ishRate: 0.03, discountThreshold: 500 });
+    repo.seedRoomType(cancunPropertyId, cancunRoomTypeId);
+    repo.seedNightlyRates(cancunPropertyId, cancunRoomTypeId, [{ date: "2026-09-09", price: 1000, minStay: 1, closedToArrival: false, closedToDeparture: false }]);
+    const reservation = await repo.insertReservation({ organizationId, propertyId: cancunPropertyId, roomTypeId: cancunRoomTypeId, guestId: null, checkInDate: "2026-09-08", checkOutDate: "2026-09-11", totalAmount: 3000 });
+    await repo.transitionReservation(cancunPropertyId, reservation.id, ["confirmada"], "check_in", null);
+    await repo.transitionReservation(cancunPropertyId, reservation.id, ["check_in"], "en_estancia", null);
+    await repo.ensurePrimaryFolio(cancunPropertyId, organizationId, reservation.id);
+
+    // 2026-09-10T08:30:00Z == 02:30 hora CDMX (antes del umbral) == 03:30 hora Cancún
+    // (ya pasó el umbral) -- verificado con Intl.DateTimeFormat antes de escribir este test.
+    const now = () => new Date("2026-09-10T08:30:00Z");
+
+    const results = await runNightAuditSweep((fn) => fn(repo), { now });
+
+    const cdmxResult = results.find((r) => r.propertyId === propertyId)!; // property por defecto de este archivo -- sin timezone configurada, cae a CDMX.
+    const cancunResult = results.find((r) => r.propertyId === cancunPropertyId)!;
+    expect(cdmxResult).toMatchObject({ ran: false, skippedReason: "fuera_de_horario" });
+    expect(cancunResult.ran).toBe(true);
+    expect(cancunResult.businessDate).toBe("2026-09-09");
+    expect(cancunResult.summary?.postedCharges).toHaveLength(1);
+    expect(cancunResult.summary?.postedCharges[0]).toMatchObject({ reservationId: reservation.id, amount: 1000 });
+  });
+
   it("antes del umbral, omite la property con razón 'fuera_de_horario' sin tocar nada", async () => {
     // 2026-09-10T06:00:00Z == 00:00 hora CDMX -- antes de las 03:00.
     const now = () => new Date("2026-09-10T06:00:00Z");

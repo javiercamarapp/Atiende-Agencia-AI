@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { runWithSavepointFallback, isMigrationPendingError } from "@atiende/db";
-import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, RateEngineUnavailableError } from "./errors.ts";
+import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, PropertyConfigUnavailableError, RateEngineUnavailableError } from "./errors.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -1732,20 +1732,80 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return row ? { id: row.id, name: row.name, organizationId: row.organization_id } : null;
   }
 
+  // ---- FASE 3 (producto) — zona horaria por negocio (migrations/
+  // 030_zona_horaria_property.sql). REGLA DURA DE COMPATIBILIDAD: toda lectura
+  // degrada honesto (null / default de plataforma) si 030 aún no está aplicada
+  // (42883/42P01/42703 -- `runWithSavepointFallback` + `isMigrationPendingError`,
+  // mismo patrón que `findPricingRule` de 029). ----
+
+  async findPropertyTimezone(propertyId: string): Promise<string | null> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ timezone: string | null }>(`select timezone from hoteles.property_config where property_id = $1;`, [propertyId]);
+        return rows[0]?.timezone ?? null;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn("findPropertyTimezone: hoteles.property_config no existe todavía (migración 030 pendiente) -- degradando a null:", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
+  }
+
+  async upsertPropertyTimezone(propertyId: string, organizationId: string, timezone: string | null, actorUserId: string): Promise<void> {
+    void actorUserId; // el trigger fija updated_by = auth.uid() (migrations/030), no confía en este parámetro.
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        await this.db.query(
+          `insert into hoteles.property_config (property_id, organization_id, timezone) values ($1, $2, $3)
+           on conflict (property_id) do update set timezone = excluded.timezone;`,
+          [propertyId, organizationId, timezone],
+        );
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => {
+        throw new PropertyConfigUnavailableError("upsertPropertyTimezone");
+      },
+    });
+  }
+
   // ---- HotelesRepository: Fase 6 — H5/REQ-REV-013 night audit propio ----
 
   async listActiveHotelProperties(): Promise<readonly ActiveHotelProperty[]> {
     // Mismo patrón exacto que `CitasRepository.listActiveOrganizations()`
     // (apps/api/src/routes/verticals/citas/reminders.ts): ejecutado bajo
     // `engine.withAppSession({ userId: null }, ...)` desde la ruta interna de
-    // barrido, sin `auth.uid()` real.
-    const { rows } = await this.db.query<{ organization_id: string; property_id: string }>(
-      `select p.id as property_id, p.organization_id
-       from core.property p
-       join core.organization o on o.id = p.organization_id
-       where o.vertical = 'hoteles' and o.status = 'active' and p.status = 'active';`,
-    );
-    return rows.map((r) => ({ organizationId: r.organization_id, propertyId: r.property_id }));
+    // barrido, sin `auth.uid()` real. `timezone` (FASE 3 producto) viene de un LEFT
+    // JOIN contra `hoteles.property_config` -- si esa tabla todavía no existe
+    // (migración 030 pendiente), degrada a `timezone: null` para TODAS las
+    // properties (el llamador resuelve el default de plataforma igual que si nunca
+    // hubiera join, vía `resolverZonaHorariaNegocio()`).
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ organization_id: string; property_id: string; timezone: string | null }>(
+          `select p.id as property_id, p.organization_id, pc.timezone
+           from core.property p
+           join core.organization o on o.id = p.organization_id
+           left join hoteles.property_config pc on pc.property_id = p.id
+           where o.vertical = 'hoteles' and o.status = 'active' and p.status = 'active';`,
+        );
+        return rows.map((r) => ({ organizationId: r.organization_id, propertyId: r.property_id, timezone: r.timezone }));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: async (err) => {
+        console.warn("listActiveHotelProperties: hoteles.property_config no existe todavía (migración 030 pendiente) -- degradando timezone:null para todas las properties:", err instanceof Error ? err.message : err);
+        const { rows } = await this.db.query<{ organization_id: string; property_id: string }>(
+          `select p.id as property_id, p.organization_id
+           from core.property p
+           join core.organization o on o.id = p.organization_id
+           where o.vertical = 'hoteles' and o.status = 'active' and p.status = 'active';`,
+        );
+        return rows.map((r) => ({ organizationId: r.organization_id, propertyId: r.property_id, timezone: null }));
+      },
+    });
   }
 
   async listInHouseReservationsForNightAudit(
@@ -2733,15 +2793,20 @@ export class PostgresHotelesRepository implements HotelesRepository {
     return this.transitionRateRecommendation(id, "expirada", "expireRateRecommendationAsSystem");
   }
 
-  async listExpirableRateRecommendationsAsSystem(propertyId: string): Promise<readonly RateRecommendationRecord[]> {
+  async listExpirableRateRecommendationsAsSystem(propertyId: string, todayIso: string): Promise<readonly RateRecommendationRecord[]> {
+    // FASE 3 (producto, zona horaria por negocio): `todayIso` SIEMPRE lo resuelve el
+    // llamador (`sweepProperty` en revenue-recommendations-cron.ts) vía
+    // `resolverZonaHorariaNegocio()`/`hoyFechaNegocio()` -- este SQL ya NO llama
+    // `current_date` (día UTC de la SESIÓN de Postgres, mismo bug de "un día
+    // adelante" que el resto del repo ya corrigió, ver fecha-negocio.ts).
     return runWithSavepointFallback({
       session: this.db,
       primary: async () => {
         const { rows } = await this.db.query<RateRecommendationRow>(
           `select ${this.RATE_RECOMMENDATION_COLUMNS} from hoteles.rate_recommendation
-           where property_id = $1 and estado in ('pendiente', 'aprobada') and fecha < current_date
+           where property_id = $1 and estado in ('pendiente', 'aprobada') and fecha < $2::date
            order by fecha asc, room_type_id asc, id asc;`,
-          [propertyId],
+          [propertyId, todayIso],
         );
         return rows.map((r) => this.toRateRecommendationRecord(r));
       },

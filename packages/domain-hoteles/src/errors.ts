@@ -42,3 +42,17 @@ export class RateEngineUnavailableError extends Error {
     this.name = "RateEngineUnavailableError";
   }
 }
+
+/** FASE 3 (producto) zona horaria por negocio: una ESCRITURA de
+ *  `hoteles.property_config` (configurar la zona horaria de una property) contra una
+ *  base cuya migración 030 aún no está aplicada (42883/42P01/42703). Mismo criterio
+ *  que `RateEngineUnavailableError` -- una escritura no tiene ningún "camino
+ *  anterior" al que caer (la tabla simplemente no existía antes de esta fase); la
+ *  LECTURA (`findPropertyTimezone`) sí degrada honesto a `null`, ver
+ *  `postgres-repository.ts`. La ruta HTTP mapea esto a 503, nunca a un 500 crudo. */
+export class PropertyConfigUnavailableError extends Error {
+  constructor(operation: string) {
+    super(`La configuración de property (zona horaria) aún no está disponible en esta base (migración pendiente) -- operación: ${operation}.`);
+    this.name = "PropertyConfigUnavailableError";
+  }
+}

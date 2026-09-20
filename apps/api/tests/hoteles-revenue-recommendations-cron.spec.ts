@@ -3,7 +3,7 @@
 // hoteles.reservation + evento + compset + reglas -> hoteles.rate_recommendation,
 // y en autopilot -> hoteles.rate_plan real), no solo "no hubo 500".
 import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import { runRateRecommendationSweep } from "../src/routes/verticals/hoteles/revenue-recommendations-cron.ts";
@@ -215,6 +215,57 @@ describe("runRateRecommendationSweep — gate 'autopilot': aplica de verdad dent
 
     const rates = await ctx.hotelesRepo.loadNightlyRates(ctx.propertyId, ctx.roomTypeId, fecha, fecha);
     expect(rates[0]!.price).toBe(2000); // sin cambio -- el rechazo del trigger real se respeta.
+  });
+});
+
+// FASE 3 (producto) — zona horaria por negocio (migrations/030_zona_horaria_property.sql):
+// antes de esta fase, `sweepProperty` calculaba "hoy" SIEMPRE con
+// `hoyFechaNegocio()` sin zona (default de plataforma) sin importar dónde estuviera
+// la property real. Este bloque demuestra el EFECTO real, en el MISMO instante: una
+// property en Cancún (UTC-5, sin horario de verano) calcula un "hoy" distinto que la
+// misma property con la zona por defecto (CDMX, UTC-6) -- instante verificado con
+// `Intl.DateTimeFormat` antes de escribir este test (ver comentario inline).
+describe("FASE 3 — zona horaria por negocio: 'hoy' del motor de tarifas depende de la property, no del default de plataforma", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("con reloj falso, la MISMA property calcula un horizonte de fechas distinto según su zona configurada", async () => {
+    // 2026-01-01T05:30:00.000Z == 2025-12-31 23:30 en America/Mexico_City (CDMX,
+    // UTC-6) == 2026-01-01 00:30 en America/Cancun (UTC-5) -- "hoy" difiere un día
+    // calendario completo en el MISMO instante real.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T05:30:00.000Z"));
+
+    ctx.hotelesRepo.seedRevenueGate(ctx.propertyId, ctx.organizationId, { gate: "shadow" });
+
+    // Corrida 1 -- property SIN timezone configurada (cae al default de plataforma,
+    // CDMX): "hoy" = 2025-12-31, así que leadTimeDays=1 evalúa la fecha 2026-01-01.
+    const fechaCdmx = "2026-01-01";
+    ctx.hotelesRepo.seedNightlyRates(ctx.propertyId, ctx.roomTypeId, [{ date: fechaCdmx, price: 2000, minStay: 1, closedToArrival: false, closedToDeparture: false }]);
+    const resultsCdmx = await runRateRecommendationSweep(ctx.deps);
+    const mineCdmx = resultsCdmx.find((r) => r.propertyId === ctx.propertyId)!;
+    expect(mineCdmx.insertadas).toBe(1);
+    const recsAfterCdmx = await ctx.hotelesRepo.listRateRecommendations(ctx.propertyId, { limit: 50 });
+    expect(recsAfterCdmx.find((r) => r.fecha === fechaCdmx)).toBeDefined();
+
+    // Configura AHORA la property a Cancún (mismo endpoint que usaría owner/gm --
+    // ver property-config.ts) -- MISMO instante real (el reloj falso no avanzó).
+    await ctx.hotelesRepo.upsertPropertyTimezone(ctx.propertyId, ctx.organizationId, "America/Cancun", ctx.staff.owner.id);
+
+    // Corrida 2 -- MISMO instante real, pero "hoy" ahora es 2026-01-01 (Cancún) --
+    // leadTimeDays=1 evalúa la fecha 2026-01-02, un día DESPUÉS de la corrida CDMX.
+    const fechaCancun = "2026-01-02";
+    ctx.hotelesRepo.seedNightlyRates(ctx.propertyId, ctx.roomTypeId, [{ date: fechaCancun, price: 2200, minStay: 1, closedToArrival: false, closedToDeparture: false }]);
+    const resultsCancun = await runRateRecommendationSweep(ctx.deps);
+    const mineCancun = resultsCancun.find((r) => r.propertyId === ctx.propertyId)!;
+    expect(mineCancun.insertadas).toBe(1); // solo la fecha NUEVA (fechaCdmx ya tiene una 'pendiente' sin resolver).
+
+    const recsAfterCancun = await ctx.hotelesRepo.listRateRecommendations(ctx.propertyId, { limit: 50 });
+    expect(recsAfterCancun.find((r) => r.fecha === fechaCancun)).toBeDefined();
+    // La recomendación de la corrida CDMX sigue ahí, intacta -- cambiar la zona de la
+    // property no reescribe el pasado, solo cambia el "hoy" de las corridas futuras.
+    expect(recsAfterCancun.find((r) => r.fecha === fechaCdmx)).toBeDefined();
   });
 });
 

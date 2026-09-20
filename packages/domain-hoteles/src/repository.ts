@@ -408,11 +408,34 @@ export interface HotelesRepository {
    *  organización — insumo del selector de property del panel de staff. */
   listPropertiesForOrganization(organizationId: string): Promise<readonly PropertySummary[]>;
 
+  // ---- FASE 3 (producto) — zona horaria por negocio (migrations/
+  // 030_zona_horaria_property.sql, `hoteles.property_config.timezone`). Devuelve
+  // SIEMPRE el valor CRUDO guardado (o `null` si no hay fila / la columna todavía no
+  // existe en una base sin migrar) -- NUNCA resuelve el default aquí, eso es
+  // responsabilidad exclusiva de `@atiende/core-tenancy::resolverZonaHorariaNegocio()`
+  // en el llamador (mismo contrato que `CitasRepository.findPropertyTimezone`, leído
+  // primero como plantilla). ----
+
+  /** `null` si la property no configuró una zona horaria propia todavía, o si
+   *  `hoteles.property_config` no existe en esta base (SQLSTATE 42P01/42703,
+   *  migración 030 pendiente de aplicar) -- degrada honesto, nunca lanza. */
+  findPropertyTimezone(propertyId: string): Promise<string | null>;
+  /** Upsert por `property_id` (PK de la tabla) -- `timezone: null` limpia la
+   *  configuración de vuelta al default de plataforma (columna nullable, sin
+   *  `on conflict do nothing`: un `null` explícito SÍ debe sobrescribir un valor
+   *  previo). Valida el formato IANA ANTES de llegar aquí la ruta HTTP (mismo
+   *  criterio que `citas/admin.ts::optionalTimeZone`) -- esta capa no vuelve a
+   *  validar contenido. */
+  upsertPropertyTimezone(propertyId: string, organizationId: string, timezone: string | null, actorUserId: string): Promise<void>;
+
   // ---- Fase 6 — H5/REQ-REV-013: night audit propio ----
 
   /** Properties de hoteles activas -- insumo de la ruta interna de barrido
    *  (`POST /internal/hoteles/night-audit`), mismo patrón que
-   *  `CitasRepository.listActiveOrganizations()`. */
+   *  `CitasRepository.listActiveOrganizations()`. `timezone` (FASE 3 producto) es el
+   *  valor CRUDO de `hoteles.property_config.timezone` (o `null`) -- el llamador del
+   *  barrido resuelve el default POR CADA property dentro de su propio loop vía
+   *  `resolverZonaHorariaNegocio()`, nunca aquí. */
   listActiveHotelProperties(): Promise<readonly ActiveHotelProperty[]>;
 
   /** Reservas "en casa" la noche de `businessDate` (check-in ya hecho, check-out
@@ -455,10 +478,11 @@ export interface HotelesRepository {
   listNightAuditRuns(propertyId: string, limit?: number): Promise<readonly NightAuditRunRecord[]>;
 
   /** Resumen de caja del día -- cargos por concepto / pagos por método, agrupados por
-   *  la FECHA DE NEGOCIO (hora local `timezone`, ver
-   *  `night-audit/engine.ts::DEFAULT_PROPERTY_TIMEZONE`), nunca por `created_at::date`
-   *  crudo en UTC del servidor (un cargo de las 23:00 hora local puede caer en el día
-   *  calendario siguiente en UTC). */
+   *  la FECHA DE NEGOCIO (hora local `timezone` -- FASE 3 producto, resuelta por el
+   *  llamador vía `resolverZonaHorariaNegocio()`, ver
+   *  `night-audit/engine.ts::DEFAULT_PROPERTY_TIMEZONE` solo para el default de
+   *  plataforma), nunca por `created_at::date` crudo en UTC del servidor (un cargo
+   *  de las 23:00 hora local puede caer en el día calendario siguiente en UTC). */
   sumChargesByConceptForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>>;
   sumPaymentsByMethodForBusinessDate(propertyId: string, businessDate: string, timezone: string): Promise<Readonly<Record<string, number>>>;
 
@@ -767,8 +791,14 @@ export interface HotelesRepository {
    *  de la migración 029. */
   applyRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord>;
   /** Recomendaciones "pendiente"/"aprobada" cuya `fecha` ya pasó -- candidatas a
-   *  expirar (limpieza de sistema, ver cron). */
-  listExpirableRateRecommendationsAsSystem(propertyId: string): Promise<readonly RateRecommendationRecord[]>;
+   *  expirar (limpieza de sistema, ver cron). `todayIso` es SIEMPRE resuelto por el
+   *  llamador vía `resolverZonaHorariaNegocio()`/`hoyFechaNegocio()` -- FASE 3 (zona
+   *  horaria por negocio, r-hoteles): antes de este parámetro, esta consulta usaba
+   *  `current_date` (día UTC de la SESIÓN de Postgres) directo en SQL, el mismo bug
+   *  de "un día adelante entre las 18:00 y las 23:59 hora local" que
+   *  `@atiende/core-tenancy::hoyFechaNegocio()` ya corrige en todos los demás sitios
+   *  de este repo -- nunca vuelvas a comparar contra `current_date` en SQL aquí. */
+  listExpirableRateRecommendationsAsSystem(propertyId: string, todayIso: string): Promise<readonly RateRecommendationRecord[]>;
   expireRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord>;
 
   // ---- Fase 11/13 (REQ-CRM-002/003) — reputación/CRM: wiring de

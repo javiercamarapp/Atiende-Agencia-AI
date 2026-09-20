@@ -257,6 +257,7 @@ número de cierre.
 | 133 `016_known_zone_authenticated_grant.sql` | Hallazgo real de `verify-restaurantes-sql` (primera vez que el repositorio Postgres de restaurantes se ejercitó contra Postgres real, no el mirror en memoria): `restaurantes.known_zone` tenía RLS habilitado pero sin policy ni GRANT a `authenticated`/`anon` — a diferencia de todas las demás tablas del paquete. |
 | 134 | Sin usar — timestamp saltado, no un archivo borrado (mismo caso que 126). |
 | 135 `0014_superadmin_salud_operativa.sql` | Primera pieza de "Salud operativa" del superadmin: latidos de los 17 crons de `vercel.json` (`withHeartbeat`), salud de las 6 colas `messaging_outbox` (WhatsApp/email) y estado de las fuentes de licitaciones — el superadmin antes no tenía forma de saber si un cron dejó de correr o una cola quedó atascada sin drenar. |
+| 185 `030_zona_horaria_property.sql` | Fase 3 (producto) zona horaria por negocio, parte hoteles: `hoteles.property_config` (timezone IANA nullable, sin default en SQL — el default vive en `resolverZonaHorariaNegocio()`) conectado a night-audit, al motor de recomendaciones de tarifa y a no-show. |
 
 Si vuelves a auditar este README, agrega una fila breve por cada migración
 nueva a esta tabla (no hace falta reproducir la prosa extensa de las fases
