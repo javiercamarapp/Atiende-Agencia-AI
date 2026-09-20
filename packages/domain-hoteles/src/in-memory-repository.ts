@@ -68,6 +68,15 @@ import type {
   RevenueGateRecord,
   RevenueBacktestRunRecord,
   NewRevenueBacktestRunInput,
+  PricingRuleRecord,
+  NewPricingRuleInput,
+  LocalEventRecord,
+  NewLocalEventInput,
+  CompetitorRateRecord,
+  NewCompetitorRateInput,
+  RateRecommendationRecord,
+  NewRateRecommendationInput,
+  RateRecommendationStatus,
   GuestReviewRecord,
   NewGuestReviewInput,
   GuestReviewActionRecord,
@@ -335,6 +344,10 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   // las reglas de gobierno reales (90 días en shadow/backtest+aprobación de owner). ----
   private readonly revenueGates = new Map<string, RevenueGateRecord>(); // key: propertyId
   private readonly revenueBacktestRuns = new Map<string, RevenueBacktestRunRecord[]>(); // key: propertyId
+  private readonly pricingRules = new Map<string, PricingRuleRecord>(); // key: roomTypeId
+  private readonly localEvents = new Map<string, LocalEventRecord[]>(); // key: propertyId
+  private readonly competitorRates = new Map<string, CompetitorRateRecord[]>(); // key: propertyId
+  private readonly rateRecommendations = new Map<string, RateRecommendationRecord>(); // key: id
 
   // ---- Fase 7 — descubrimiento de organización/property para el panel web de staff
   // (espejo de solo-lectura de `core.organization`/`core.property`, ver
@@ -1954,6 +1967,40 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return total;
   }
 
+  // ---- Fase 10 — señal de pickup (ver comentario de cabecera en repository.ts). ----
+
+  private countOnTheBooks(propertyId: string, roomTypeId: string, fecha: string, asOfIso: string): number {
+    let count = 0;
+    for (const r of this.reservations.values()) {
+      if (r.propertyId !== propertyId || r.roomTypeId !== roomTypeId || r.status === "cancelada") continue;
+      if (r.checkInDate <= fecha && r.checkOutDate > fecha && r.createdAt <= asOfIso) count += 1;
+    }
+    return count;
+  }
+
+  async countOnTheBooksRoomsAsOf(propertyId: string, roomTypeId: string, fecha: string, asOfIso: string): Promise<number> {
+    return this.countOnTheBooks(propertyId, roomTypeId, fecha, asOfIso);
+  }
+
+  async listPickupHistoricalSamples(
+    propertyId: string,
+    roomTypeId: string,
+    leadTimeDays: number,
+    desde: string,
+    hasta: string,
+  ): Promise<readonly { readonly fecha: string; readonly onTheBooksRooms: number }[]> {
+    const samples: { fecha: string; onTheBooksRooms: number }[] = [];
+    const cursor = new Date(`${desde}T00:00:00Z`);
+    const end = new Date(`${hasta}T00:00:00Z`);
+    while (cursor <= end) {
+      const fecha = cursor.toISOString().slice(0, 10);
+      const asOf = new Date(cursor.getTime() - leadTimeDays * 24 * 60 * 60 * 1000).toISOString();
+      samples.push({ fecha, onTheBooksRooms: this.countOnTheBooks(propertyId, roomTypeId, fecha, asOf) });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return samples;
+  }
+
   // ============================================================================
   // Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management.
   // ============================================================================
@@ -2097,6 +2144,208 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     list.push(record);
     this.revenueBacktestRuns.set(input.propertyId, list);
     return record;
+  }
+
+  // ============================================================================
+  // Fase 10 — motor de recomendaciones de tarifa v1. Réplica SIMPLIFICADA de la
+  // máquina de estados real de migrations/029 (no reaplica RLS ni el trigger SQL
+  // completo -- mismo criterio que el resto de este adaptador para
+  // revenue_engine_gate arriba); sirve para tests deterministas de la ruta HTTP,
+  // NUNCA para verificar RLS/GRANT reales (eso es scripts/verify-hoteles-motor-tarifas/).
+  // ============================================================================
+
+  async findPricingRule(roomTypeId: string): Promise<PricingRuleRecord | null> {
+    return this.pricingRules.get(roomTypeId) ?? null;
+  }
+
+  async upsertPricingRule(input: NewPricingRuleInput, actorUserId: string): Promise<PricingRuleRecord> {
+    const now = new Date().toISOString();
+    const existing = this.pricingRules.get(input.roomTypeId);
+    const record: PricingRuleRecord = {
+      id: existing?.id ?? randomUUID(),
+      propertyId: input.propertyId,
+      roomTypeId: input.roomTypeId,
+      floorPrice: input.floorPrice,
+      ceilingPrice: input.ceilingPrice,
+      dayOfWeekMultiplier: input.dayOfWeekMultiplier,
+      minStayDefault: input.minStayDefault,
+      minStayOnHighDemand: input.minStayOnHighDemand,
+      updatedBy: actorUserId,
+      updatedAt: now,
+      createdAt: existing?.createdAt ?? now,
+    };
+    this.pricingRules.set(input.roomTypeId, record);
+    return record;
+  }
+
+  async listLocalEvents(propertyId: string, desde: string, hasta: string): Promise<readonly LocalEventRecord[]> {
+    const events = this.localEvents.get(propertyId) ?? [];
+    return events.filter((e) => e.fechaInicio <= hasta && e.fechaFin >= desde).sort((a, b) => (a.fechaInicio < b.fechaInicio ? -1 : 1));
+  }
+
+  async insertLocalEvent(input: NewLocalEventInput, actorUserId: string): Promise<LocalEventRecord> {
+    const record: LocalEventRecord = {
+      id: randomUUID(),
+      propertyId: input.propertyId,
+      nombre: input.nombre,
+      fechaInicio: input.fechaInicio,
+      fechaFin: input.fechaFin,
+      impacto: input.impacto,
+      magnitudPct: input.magnitudPct,
+      registradoPor: actorUserId,
+      createdAt: new Date().toISOString(),
+    };
+    const list = this.localEvents.get(input.propertyId) ?? [];
+    list.push(record);
+    this.localEvents.set(input.propertyId, list);
+    return record;
+  }
+
+  async listCompetitorRates(propertyId: string, fecha: string): Promise<readonly CompetitorRateRecord[]> {
+    const rates = this.competitorRates.get(propertyId) ?? [];
+    return rates.filter((r) => r.fecha === fecha).sort((a, b) => (a.capturadaEn < b.capturadaEn ? 1 : -1));
+  }
+
+  async insertCompetitorRate(input: NewCompetitorRateInput, actorUserId: string): Promise<CompetitorRateRecord> {
+    const record: CompetitorRateRecord = {
+      id: randomUUID(),
+      propertyId: input.propertyId,
+      competidor: input.competidor,
+      fecha: input.fecha,
+      tarifa: input.tarifa,
+      capturadaPor: actorUserId,
+      capturadaEn: new Date().toISOString(),
+    };
+    const list = this.competitorRates.get(input.propertyId) ?? [];
+    list.push(record);
+    this.competitorRates.set(input.propertyId, list);
+    return record;
+  }
+
+  async listRateRecommendations(
+    propertyId: string,
+    opts: { readonly estado?: RateRecommendationStatus; readonly limit: number; readonly beforeCursor?: { readonly fecha: string; readonly roomTypeId: string; readonly id: string } },
+  ): Promise<readonly RateRecommendationRecord[]> {
+    let list = [...this.rateRecommendations.values()].filter((r) => r.propertyId === propertyId);
+    if (opts.estado) list = list.filter((r) => r.estado === opts.estado);
+    list.sort((a, b) => (a.fecha !== b.fecha ? (a.fecha < b.fecha ? 1 : -1) : a.roomTypeId !== b.roomTypeId ? (a.roomTypeId < b.roomTypeId ? -1 : 1) : a.id < b.id ? -1 : 1));
+    if (opts.beforeCursor) {
+      const { fecha, roomTypeId, id } = opts.beforeCursor;
+      list = list.filter((r) => (r.fecha !== fecha ? r.fecha < fecha : r.roomTypeId !== roomTypeId ? r.roomTypeId > roomTypeId : r.id > id));
+    }
+    return list.slice(0, opts.limit);
+  }
+
+  async findRateRecommendation(id: string): Promise<RateRecommendationRecord | null> {
+    return this.rateRecommendations.get(id) ?? null;
+  }
+
+  async hasActiveRateRecommendation(propertyId: string, roomTypeId: string, fecha: string): Promise<boolean> {
+    for (const r of this.rateRecommendations.values()) {
+      if (r.propertyId === propertyId && r.roomTypeId === roomTypeId && r.fecha === fecha && (r.estado === "pendiente" || r.estado === "aprobada")) return true;
+    }
+    return false;
+  }
+
+  async insertRateRecommendationAsSystem(input: NewRateRecommendationInput): Promise<RateRecommendationRecord> {
+    const now = new Date().toISOString();
+    const record: RateRecommendationRecord = {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      propertyId: input.propertyId,
+      roomTypeId: input.roomTypeId,
+      fecha: input.fecha,
+      currentBarPrice: input.currentBarPrice,
+      recommendedPrice: input.recommendedPrice,
+      suggestedMinStay: input.suggestedMinStay,
+      desglose: input.desglose,
+      estado: "pendiente",
+      aprobadaPor: null,
+      aprobadaEn: null,
+      aplicadaPor: null,
+      aplicadaEn: null,
+      descartadaPor: null,
+      descartadaEn: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.rateRecommendations.set(record.id, record);
+    return record;
+  }
+
+  private mustFindRateRecommendation(id: string): RateRecommendationRecord {
+    const existing = this.rateRecommendations.get(id);
+    if (!existing) throw new Error(`recomendacion_invalida: ${id} no existe`);
+    return existing;
+  }
+
+  async approveRateRecommendation(id: string, actorUserId: string): Promise<RateRecommendationRecord> {
+    const existing = this.mustFindRateRecommendation(id);
+    const updated: RateRecommendationRecord = { ...existing, estado: "aprobada", aprobadaPor: actorUserId, aprobadaEn: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    this.rateRecommendations.set(id, updated);
+    return updated;
+  }
+
+  async discardRateRecommendation(id: string, actorUserId: string): Promise<RateRecommendationRecord> {
+    const existing = this.mustFindRateRecommendation(id);
+    const updated: RateRecommendationRecord = { ...existing, estado: "descartada", descartadaPor: actorUserId, descartadaEn: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    this.rateRecommendations.set(id, updated);
+    return updated;
+  }
+
+  async applyRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord> {
+    const existing = this.mustFindRateRecommendation(id);
+    // Réplica MÍNIMA (no exhaustiva, ver comentario de cabecera de la sección) de
+    // la guarda de variación que el trigger real SIEMPRE aplica incluso en
+    // autopilot pleno (migrations/029, "guarda de seguridad deliberada de v1") --
+    // sin esto, un test/caller que ejercite el cron completo (no solo la ruta
+    // HTTP) contra el repositorio en memoria no podría distinguir "aplicó" de
+    // "el trigger real lo hubiera rechazado".
+    const gate = this.revenueGates.get(existing.propertyId);
+    if (gate) {
+      const variationPct = (Math.abs(existing.recommendedPrice - existing.currentBarPrice) / Math.max(existing.currentBarPrice, 0.01)) * 100;
+      if (variationPct > gate.proponeMaxVariationPct + 1e-6) {
+        throw new Error(
+          `variacion_excede_limite: el cambio propuesto (${variationPct.toFixed(2)} por ciento) excede el limite vigente de +-${gate.proponeMaxVariationPct} por ciento (propone_max_variation_pct)`,
+        );
+      }
+    }
+    // Efecto REAL, mismo criterio que `hoteles.system_apply_rate_recommendation`
+    // (migrations/029): escribe la tarifa BAR real, preservando closedToArrival/
+    // closedToDeparture si ya había una fila para esa fecha (reutiliza el mismo
+    // upsert que la ruta de catálogo admin ya usa).
+    const key = `${existing.propertyId}:${existing.roomTypeId}`;
+    const rates = this.nightlyRates.get(key) ?? [];
+    const prior = rates.find((r) => r.date === existing.fecha);
+    await this.upsertRatePlanRange({
+      organizationId: existing.organizationId,
+      propertyId: existing.propertyId,
+      roomTypeId: existing.roomTypeId,
+      startDate: existing.fecha,
+      endDate: existing.fecha,
+      price: existing.recommendedPrice,
+      currency: "MXN",
+      minStay: existing.suggestedMinStay,
+      closedToArrival: prior?.closedToArrival ?? false,
+      closedToDeparture: prior?.closedToDeparture ?? false,
+    });
+    const updated: RateRecommendationRecord = { ...existing, estado: "aplicada", aplicadaPor: null, aplicadaEn: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    this.rateRecommendations.set(id, updated);
+    return updated;
+  }
+
+  async listExpirableRateRecommendationsAsSystem(propertyId: string): Promise<readonly RateRecommendationRecord[]> {
+    const today = hoyFechaNegocio();
+    return [...this.rateRecommendations.values()].filter(
+      (r) => r.propertyId === propertyId && (r.estado === "pendiente" || r.estado === "aprobada") && r.fecha < today,
+    );
+  }
+
+  async expireRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord> {
+    const existing = this.mustFindRateRecommendation(id);
+    const updated: RateRecommendationRecord = { ...existing, estado: "expirada", updatedAt: new Date().toISOString() };
+    this.rateRecommendations.set(id, updated);
+    return updated;
   }
 
   // ============================================================================

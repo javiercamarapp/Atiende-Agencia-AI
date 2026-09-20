@@ -61,6 +61,15 @@ import type {
   RevenueGateRecord,
   RevenueBacktestRunRecord,
   NewRevenueBacktestRunInput,
+  PricingRuleRecord,
+  NewPricingRuleInput,
+  LocalEventRecord,
+  NewLocalEventInput,
+  CompetitorRateRecord,
+  NewCompetitorRateInput,
+  RateRecommendationRecord,
+  NewRateRecommendationInput,
+  RateRecommendationStatus,
   GuestReviewRecord,
   NewGuestReviewInput,
   GuestReviewActionRecord,
@@ -645,6 +654,34 @@ export interface HotelesRepository {
    *  inventario por noche). */
   sumAvailableRoomNightsForDateRange(propertyId: string, desde: string, hasta: string): Promise<number>;
 
+  // ---- Fase 10 — señal de pickup del motor de recomendaciones de tarifa: se
+  // reconstruye de `hoteles.reservation` (check_in_date/check_out_date/created_at),
+  // NUNCA una fuente de datos nueva -- `hoteles.availability.booked_rooms` es solo
+  // el conteo ACTUAL (no guarda historial de cuánto llevaba reservado en el
+  // pasado), así que la única forma honesta de reconstruir "cuánto llevaba
+  // reservada esta fecha A N días de anticipación" -- tanto hoy como en fechas
+  // pasadas -- es contar reservas reales cuyo `created_at` ya había ocurrido para
+  // ese corte, mismo criterio para AMBAS mediciones (actual e histórica), nunca dos
+  // fuentes distintas. ----
+
+  /** Habitaciones en libro (reservas no canceladas cuyo rango [check_in,check_out)
+   *  cubre `fecha`) medidas COMO SI fuera el momento `asOfIso` -- para "ahora mismo"
+   *  el llamador pasa `new Date().toISOString()`; para una fecha histórica pasa el
+   *  momento exacto que corresponde a la anticipación que se está reconstruyendo. */
+  countOnTheBooksRoomsAsOf(propertyId: string, roomTypeId: string, fecha: string, asOfIso: string): Promise<number>;
+  /** Una fila por cada fecha pasada en `[desde,hasta)`, con el on-the-books medido a
+   *  la MISMA anticipación (`leadTimeDays`) que la medición actual -- insumo directo
+   *  de `PickupSignalInput.historicalSamples` (pickupSignal.ts decide ahí cuáles usar
+   *  según día de la semana). Una sola consulta agregada, no N llamadas a
+   *  `countOnTheBooksRoomsAsOf`. */
+  listPickupHistoricalSamples(
+    propertyId: string,
+    roomTypeId: string,
+    leadTimeDays: number,
+    desde: string,
+    hasta: string,
+  ): Promise<readonly { readonly fecha: string; readonly onTheBooksRooms: number }[]>;
+
   // ---- Fase 9 (REQ-REV-003/004/005/007) — motor de revenue management: wiring de
   // `hoteles.revenue_engine_gate`/`hoteles.revenue_backtest_run` (migrations/
   // 011_revenue_engine_gate.sql). Gap real verificado antes de esta fase: la
@@ -674,6 +711,66 @@ export interface HotelesRepository {
   setRevenueGateOwnerApproval(propertyId: string, granted: boolean, actorUserId: string): Promise<RevenueGateRecord>;
   listRevenueBacktestRuns(propertyId: string): Promise<readonly RevenueBacktestRunRecord[]>;
   insertRevenueBacktestRun(input: NewRevenueBacktestRunInput): Promise<RevenueBacktestRunRecord>;
+
+  // ---- Fase 10 — motor de recomendaciones de tarifa v1 (migrations/
+  // 029_rate_recommendation_engine.sql). REGLA DURA DE COMPATIBILIDAD: toda
+  // lectura degrada a un vacío honesto (lista vacía / null) si la migración aún no
+  // está aplicada (42883/42P01/42703, vía `runWithSavepointFallback` +
+  // `isMigrationPendingError`) -- ver `postgres-repository.ts` para el detalle. ----
+
+  /** `null` si el room_type no tiene reglas configuradas -- el llamador (motor de
+   *  cómputo) usa `DEFAULT_PRICING_RULES` en ese caso, nunca inventa un default
+   *  distinto aquí. */
+  findPricingRule(roomTypeId: string): Promise<PricingRuleRecord | null>;
+  /** Upsert por `room_type_id` (unique de la migración) -- crea o reemplaza la
+   *  configuración vigente, nunca acumula historial (a diferencia de
+   *  local_event/competitor_rate, que SÍ son append-only). */
+  upsertPricingRule(input: NewPricingRuleInput, actorUserId: string): Promise<PricingRuleRecord>;
+
+  /** Eventos locales de `propertyId` cuyo rango [fechaInicio,fechaFin] se traslapa
+   *  con [desde,hasta] -- el motor de cómputo solo necesita los relevantes a la
+   *  fecha que está evaluando. */
+  listLocalEvents(propertyId: string, desde: string, hasta: string): Promise<readonly LocalEventRecord[]>;
+  insertLocalEvent(input: NewLocalEventInput, actorUserId: string): Promise<LocalEventRecord>;
+
+  listCompetitorRates(propertyId: string, fecha: string): Promise<readonly CompetitorRateRecord[]>;
+  insertCompetitorRate(input: NewCompetitorRateInput, actorUserId: string): Promise<CompetitorRateRecord>;
+
+  /** Listado paginado con orden TOTAL (fecha desc, room_type_id, id) -- mismo
+   *  criterio de paginación estable que `listAuditoria` de otras verticales.
+   *  `beforeCursor` es el `(fecha, roomTypeId, id)` de la última fila de la página
+   *  anterior (keyset, nunca OFFSET -- estable aunque se inserten filas nuevas
+   *  entre páginas). */
+  listRateRecommendations(
+    propertyId: string,
+    opts: { readonly estado?: RateRecommendationStatus; readonly limit: number; readonly beforeCursor?: { readonly fecha: string; readonly roomTypeId: string; readonly id: string } },
+  ): Promise<readonly RateRecommendationRecord[]>;
+  findRateRecommendation(id: string): Promise<RateRecommendationRecord | null>;
+  /** true si YA existe una recomendación "pendiente"/"aprobada" para esta
+   *  property/room_type/fecha (el índice único parcial de migrations/029 lo
+   *  impediría de todos modos -- este método evita el trabajo de calcular una
+   *  señal que se descartaría, y evita depender de capturar 23505 para saber por
+   *  qué se saltó una fecha). */
+  hasActiveRateRecommendation(propertyId: string, roomTypeId: string, fecha: string): Promise<boolean>;
+  /** SIEMPRE sesión de sistema (el cron de cómputo) -- el trigger real
+   *  (`rate_recommendation_status_guard`) rechaza cualquier otro caller. */
+  insertRateRecommendationAsSystem(input: NewRateRecommendationInput): Promise<RateRecommendationRecord>;
+  /** Sesión de STAFF (owner/gm) -- solo cambia el estado a "aprobada"/"descartada".
+   *  El trigger real exige que el gate esté en "propone" para aprobar (para
+   *  descartar, cualquier gate). NUNCA escribe `hoteles.rate_plan` -- ver
+   *  `applyRateRecommendationAsSystem`. */
+  approveRateRecommendation(id: string, actorUserId: string): Promise<RateRecommendationRecord>;
+  discardRateRecommendation(id: string, actorUserId: string): Promise<RateRecommendationRecord>;
+  /** SIEMPRE sesión de sistema -- única vía que escribe la tarifa BAR real
+   *  (`hoteles.system_apply_rate_recommendation`, security definer, solo-sistema).
+   *  Ni siquiera owner/gm puede invocar esto directo -- ver comentario de cabecera
+   *  de la migración 029. */
+  applyRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord>;
+  /** Recomendaciones "pendiente"/"aprobada" cuya `fecha` ya pasó -- candidatas a
+   *  expirar (limpieza de sistema, ver cron). */
+  listExpirableRateRecommendationsAsSystem(propertyId: string): Promise<readonly RateRecommendationRecord[]>;
+  expireRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord>;
+
   // ---- Fase 11/13 (REQ-CRM-002/003) — reputación/CRM: wiring de
   // hoteles.guest_review/hoteles.guest_review_action (migrations/013_reputacion.sql)
   // + hoteles.guest_review_response (migrations/021_reputacion_respuestas.sql). Gap
@@ -779,4 +876,16 @@ export type {
   NewStaffScheduleInput,
 } from "./types.ts";
 export type { RevenueGateRecord, RevenueBacktestRunRecord, NewRevenueBacktestRunInput } from "./types.ts";
+export type {
+  PricingRuleRecord,
+  NewPricingRuleInput,
+  LocalEventRecord,
+  NewLocalEventInput,
+  LocalEventImpacto,
+  CompetitorRateRecord,
+  NewCompetitorRateInput,
+  RateRecommendationRecord,
+  NewRateRecommendationInput,
+  RateRecommendationStatus,
+} from "./types.ts";
 export type { GuestReviewResponseRecord, NewGuestReviewResponseInput } from "./types.ts";

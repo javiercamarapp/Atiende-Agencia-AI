@@ -64,6 +64,7 @@
     { "path": "/internal/rentas/checkout-sweep", "schedule": "50 14 * * *" },
     { "path": "/internal/whatsapp/dispatch", "schedule": "55 14 * * *" },
     { "path": "/internal/superadmin/resumen-diario", "schedule": "0 15 * * *" },
-    { "path": "/internal/superadmin/mantenimiento", "schedule": "5 15 * * *" }
+    { "path": "/internal/superadmin/mantenimiento", "schedule": "5 15 * * *" },
+    { "path": "/internal/hoteles/revenue-recommendations", "schedule": "10 15 * * *" }
   ]
 }
