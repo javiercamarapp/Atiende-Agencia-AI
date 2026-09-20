@@ -20,7 +20,7 @@
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import {
   ALL_VERTICALS,
   AppointmentConflictError,
@@ -670,7 +670,17 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     // real, ocultando del panel la excepción de HOY (el filtro es `>= todayIso`, así que
     // un `todayIso` de mañana excluye la fila de hoy). Ahora usa
     // `@atiende/core-tenancy::hoyFechaNegocio()`.
-    const todayIso = hoyFechaNegocio();
+    //
+    // No bloqueante #1 de la revisión de PR #171: este handler ya tiene `provider`
+    // (con `propertyId`) y `citasRepo` ya expone `findPropertyTimezone` -- citas SÍ
+    // guarda una zona horaria real por property (`citas.property_config.timezone`,
+    // ver postgres-repository.ts), a diferencia de la mayoría de las verticales que
+    // hoy no tienen esa columna. Un negocio de citas en Tijuana/Cancún con su zona
+    // real configurada ya no usa CDMX -- `resolverZonaHorariaNegocio` (defensa en
+    // profundidad, ver su comentario) cae al default si el valor guardado no fuera
+    // un timezone IANA válido.
+    const propertyTimezone = resolverZonaHorariaNegocio(await citasRepo.findPropertyTimezone(provider.propertyId, organizationId));
+    const todayIso = hoyFechaNegocio(propertyTimezone);
     const overrides = await citasRepo.listAvailabilityOverrides(providerId, todayIso);
     return c.json({ availability_overrides: overrides.map(serializeAvailabilityOverride) });
   });
