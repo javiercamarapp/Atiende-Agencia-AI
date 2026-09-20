@@ -234,6 +234,62 @@ describe("dbSession — postCommitTasks (arreglo de fondo, auditoría a2)", () =
     const res = await app.request("/properties/p1/ping", { headers: { authorization: `Bearer ${token}`, "x-property-id": "p1" } });
     expect(res.status).toBe(200);
   });
+
+  // Interacción explícita con PR #158 (SAVEPOINT real para el fallback por SQLSTATE)
+  // -- la defensa del motor (`AbortedTransactionCommitError`,
+  // `@atiende/db::managed-postgres-engine.ts`) lanza DESPUÉS de que `fn(session)` ya
+  // resolvió normalmente (el handler de la ruta respondió 200/201 sin lanzar), justo
+  // cuando el propio `COMMIT` descubre que la transacción quedó abortada por un catch
+  // sin SAVEPOINT en el camino que se acaba de ejecutar -- un escenario DISTINTO del
+  // "handler lanza" de arriba (ahí `fn` nunca llega a resolver). Ninguna prueba de
+  // este archivo hasta ahora cubría ese caso puntual. `AbortedTransactionCommitError`
+  // vive en `@atiende/db`, un paquete que `core-auth` no importa en producción (ver
+  // `package.json` -- nunca se agrega una dependencia nueva solo para un test); este
+  // doble local reproduce el mismo contrato exacto (throw DESPUÉS de que `fn`
+  // resuelve) sin esa dependencia cruzada.
+  class FakeAbortedTransactionCommitError extends Error {
+    constructor() {
+      super('withAppSession: la transacción terminó ABORTADA pero fn() no lanzó ningún error -- COMMIT devolvió "ROLLBACK"');
+      this.name = "AbortedTransactionCommitError";
+    }
+  }
+
+  function commitAbortedEngine(): TenancyEngine {
+    return {
+      async withAppSession(_claims, fn) {
+        const session: TenantDbSession = {
+          query: async () => ({ rows: [{ organization_id: "org-real", platform_role: "owner", vertical_role: "gm" }] as never[] }),
+          exec: async () => undefined,
+        };
+        // `fn` (next() + el handler de la ruta) resuelve SIN lanzar -- la respuesta
+        // 200 ya se armó -- pero el `COMMIT` real descubre la transacción abortada y
+        // lanza DESPUÉS, tal como hace `ManagedPostgresEngine.withAppSession` real.
+        await fn(session);
+        throw new FakeAbortedTransactionCommitError();
+      },
+    };
+  }
+
+  it("NO corre la tarea post-commit cuando withAppSession lanza AbortedTransactionCommitError DESPUÉS de que el handler ya resolvió (defensa del motor, PR #158)", async () => {
+    const engine = commitAbortedEngine();
+    let ran = false;
+    const app = buildAppWithPostCommitRoute(engine, async () => {
+      ran = true;
+    });
+    const token = await validToken();
+    const res = await app.request("/properties/p1/ping", { headers: { authorization: `Bearer ${token}`, "x-property-id": "p1" } });
+    // El error de `withAppSession` propaga fuera de `dbSession` (nada lo atrapa entre
+    // el `await engine.withAppSession(...)` y el loop de `postCommitTasks`) -- Hono
+    // lo entrega a `app.onError`, que aquí no reconoce `FakeAbortedTransactionCommitError`
+    // como `ApiError` y responde 500 (mismo criterio que produciría el error real).
+    expect(res.status).toBe(500);
+    // La aserción que de verdad importa: "solo tras un commit real" sigue siendo
+    // cierto incluso cuando `fn()` resolvió sin lanzar -- la tarea post-commit NUNCA
+    // corre, porque el `for` que la ejecuta vive DESPUÉS del `await
+    // engine.withAppSession(...)` sin ningún `try/catch` que lo proteja: un throw ahí
+    // (sea por un handler que falló o por la defensa del motor) salta ese loop entero.
+    expect(ran).toBe(false);
+  });
 });
 
 describe("authMiddleware", () => {

@@ -284,63 +284,75 @@ async function executeToolCall(
   const { organizationId, phone, name, input } = args;
   const noFailure = { appointmentId: null, propertyId: null, isEscalatingFailure: false };
   try {
-    switch (name) {
-      case "listar_servicios": {
-        const services = await repo.listActiveServices(organizationId);
-        return { result: services.map((s) => ({ id: s.id, name: s.name, duration_minutes: s.durationMinutes, price_cents: s.priceCents })), ...noFailure };
-      }
-      case "listar_proveedores": {
-        const serviceId = typeof input.service_id === "string" && input.service_id.trim() ? input.service_id : undefined;
-        const providers = await repo.listActiveProviders(organizationId, serviceId);
-        return { result: providers.map((p) => ({ id: p.id, display_name: p.displayName, role_label: p.roleLabel })), ...noFailure };
-      }
-      case "consultar_disponibilidad": {
-        const { slots } = await queryAvailability(repo, {
-          organizationId,
-          providerId: String(input.provider_id ?? ""),
-          serviceId: String(input.service_id ?? ""),
-          dateStr: String(input.date ?? ""),
-        });
-        return { result: { slots: slots.map(slotToWire) }, ...noFailure };
-      }
-      case "crear_cita": {
-        const appointment = await createAppointment(repo, {
-          organizationId,
-          providerId: String(input.provider_id ?? ""),
-          serviceId: String(input.service_id ?? ""),
-          customerName: String(input.customer_name ?? ""),
-          customerPhone: phone,
-          startsAt: String(input.starts_at ?? ""),
-          notes: typeof input.notes === "string" ? input.notes : undefined,
-          source: "whatsapp",
-        });
-        return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
-      }
-      case "buscar_mis_citas": {
-        const { appointments } = await findAppointmentsForCustomerPhone(repo, organizationId, phone);
-        return {
-          result: { appointments: appointments.map((a) => ({ appointment_id: a.appointmentId, provider_id: a.providerId, service_id: a.serviceId, starts_at: a.startsAt, ends_at: a.endsAt, status: a.status })) },
-          ...noFailure,
-        };
-      }
-      case "cancelar_cita": {
-        const appointment = await cancelAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? "") });
-        return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
-      }
-      case "reagendar_cita": {
-        try {
-          const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: "whatsapp" });
-          return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
-        } catch (err) {
-          if (err instanceof AppointmentAlternativesError) {
-            return { result: { error: err.message, alternative_slots: err.alternativeSlots.map((s) => ({ starts_at: s.startsAt, ends_at: s.endsAt })) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
-          }
-          throw err;
+    // Bloqueante de re-revisión (PR #158, r3) -- SAVEPOINT propio por tool call (ver
+    // el comentario de cabecera de `CitasRepository.runWithRowSavepoint`): sin esto,
+    // un error real de Postgres dentro de CUALQUIER case de abajo (incluidos los que
+    // ya se resuelven a una excepción de negocio típica como AppointmentConflictError/
+    // AppointmentNotFoundError -- ver `resolveCancelOutcome`/`resolveRescheduleOutcome`
+    // en appointments.ts, que YA corren dentro de la transacción del turno) dejaría
+    // ABORTADA la transacción completa de `withAppSession` para el resto del loop y
+    // para el commit final -- este `catch` de aquí abajo lo convierte en una
+    // respuesta de error normal (`domainErrorMessage`), pero sin SAVEPOINT eso era
+    // una ilusión a nivel JS: Postgres real seguía viendo la transacción abortada.
+    return await repo.runWithRowSavepoint(async () => {
+      switch (name) {
+        case "listar_servicios": {
+          const services = await repo.listActiveServices(organizationId);
+          return { result: services.map((s) => ({ id: s.id, name: s.name, duration_minutes: s.durationMinutes, price_cents: s.priceCents })), ...noFailure };
         }
+        case "listar_proveedores": {
+          const serviceId = typeof input.service_id === "string" && input.service_id.trim() ? input.service_id : undefined;
+          const providers = await repo.listActiveProviders(organizationId, serviceId);
+          return { result: providers.map((p) => ({ id: p.id, display_name: p.displayName, role_label: p.roleLabel })), ...noFailure };
+        }
+        case "consultar_disponibilidad": {
+          const { slots } = await queryAvailability(repo, {
+            organizationId,
+            providerId: String(input.provider_id ?? ""),
+            serviceId: String(input.service_id ?? ""),
+            dateStr: String(input.date ?? ""),
+          });
+          return { result: { slots: slots.map(slotToWire) }, ...noFailure };
+        }
+        case "crear_cita": {
+          const appointment = await createAppointment(repo, {
+            organizationId,
+            providerId: String(input.provider_id ?? ""),
+            serviceId: String(input.service_id ?? ""),
+            customerName: String(input.customer_name ?? ""),
+            customerPhone: phone,
+            startsAt: String(input.starts_at ?? ""),
+            notes: typeof input.notes === "string" ? input.notes : undefined,
+            source: "whatsapp",
+          });
+          return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
+        }
+        case "buscar_mis_citas": {
+          const { appointments } = await findAppointmentsForCustomerPhone(repo, organizationId, phone);
+          return {
+            result: { appointments: appointments.map((a) => ({ appointment_id: a.appointmentId, provider_id: a.providerId, service_id: a.serviceId, starts_at: a.startsAt, ends_at: a.endsAt, status: a.status })) },
+            ...noFailure,
+          };
+        }
+        case "cancelar_cita": {
+          const appointment = await cancelAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? "") });
+          return { result: { appointment: appointmentToWire(appointment) }, appointmentId: appointment.id, propertyId: appointment.propertyId, isEscalatingFailure: false };
+        }
+        case "reagendar_cita": {
+          try {
+            const outcome = await rescheduleAppointment(repo, { organizationId, appointmentId: String(input.appointment_id ?? ""), newStartsAt: String(input.new_starts_at ?? ""), actorChannel: "whatsapp" });
+            return { result: { appointment: appointmentToWire(outcome.appointment) }, appointmentId: outcome.appointment.id, propertyId: outcome.appointment.propertyId, isEscalatingFailure: false };
+          } catch (err) {
+            if (err instanceof AppointmentAlternativesError) {
+              return { result: { error: err.message, alternative_slots: err.alternativeSlots.map((s) => ({ starts_at: s.startsAt, ends_at: s.endsAt })) }, appointmentId: null, propertyId: null, isEscalatingFailure: true };
+            }
+            throw err;
+          }
+        }
+        default:
+          return { result: { error: `Herramienta desconocida: ${name}` }, ...noFailure };
       }
-      default:
-        return { result: { error: `Herramienta desconocida: ${name}` }, ...noFailure };
-    }
+    });
   } catch (err) {
     const escalating = name === "crear_cita" || name === "reagendar_cita";
     return { result: { error: domainErrorMessage(err) }, appointmentId: null, propertyId: null, isEscalatingFailure: escalating };
@@ -387,8 +399,13 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
       // Fase 6 §1 — el rubro real (para las FAQs canónicas del prompt) es best-effort:
       // si `citas.tenant_config` todavía no tiene fila para esta organización, el
       // agente sigue funcionando igual, solo sin ese grounding extra (ver
-      // verticalFaqsBlock).
-      const tenantConfig = await repo.findTenantConfig(organizationId).catch(() => null);
+      // verticalFaqsBlock). No-bloqueante de re-revisión (PR #158, r3): este
+      // `.catch(() => null)` corre en la MISMA sesión del turno, ANTES del loop de
+      // tool-use — sin SAVEPOINT, cualquier error real de Postgres aquí (mismo
+      // riesgo que `executeToolCall`) dejaría abortada la transacción para TODO el
+      // resto del turno, incluidas las tool calls que sí importan. Mismo
+      // `runWithRowSavepoint` que el resto de este archivo.
+      const tenantConfig = await repo.runWithRowSavepoint(() => repo.findTenantConfig(organizationId)).catch(() => null);
       const systemPrompt = buildSystemPrompt(config, customer, now(), tenantConfig?.rubro ?? null);
       const normalizedPhone = normalizePhone(phone);
 

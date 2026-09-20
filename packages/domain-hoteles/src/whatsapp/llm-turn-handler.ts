@@ -168,64 +168,73 @@ async function executeToolCall(
 ): Promise<ToolExecutionOutcome> {
   const { organizationId, propertyId, phone, name, input } = args;
   try {
-    switch (name) {
-      case "crear_ticket_huesped_fnb": {
-        const mensaje = typeof input.mensaje === "string" ? input.mensaje.trim() : "";
-        if (!mensaje) return { result: { error: "mensaje es requerido para registrar el pedido" }, fnbOrderId: null };
-        const habitacion = typeof input.habitacion === "string" && input.habitacion.trim() ? input.habitacion.trim() : null;
-        const notes = habitacion ? `Habitación declarada por el huésped vía WhatsApp: ${habitacion}` : null;
-        const { allergyDeclared, declaredVia } = resolveAllergyDeclared({
-          structuredFlag: input.alergia_declarada === true,
-          freeTextFields: [mensaje, notes],
-        });
-        const order = await repo.insertFnbOrder({
-          organizationId,
-          propertyId,
-          roomId: null,
-          items: [{ nombre: mensaje }],
-          notes,
-          allergyDeclared,
-          allergyDeclaredVia: declaredVia,
-          createdBy: null, // actor system:whatsapp — sin staff humano logueado (diseño §1).
-        });
-        return { result: { ticket: serializeFnbOrder(order) }, fnbOrderId: order.id };
+    // Bloqueante de re-revisión (PR #158, r3) -- SAVEPOINT propio por tool call (ver
+    // el comentario de cabecera de `HotelesRepository.runWithRowSavepoint`): sin
+    // esto, un error real de Postgres dentro de CUALQUIER case de abajo dejaría
+    // ABORTADA la transacción completa de `withAppSession` para el resto del loop y
+    // para el commit final -- este `catch` de aquí abajo lo convierte en una
+    // respuesta de error normal, pero sin SAVEPOINT eso era una ilusión a nivel JS:
+    // Postgres real seguía viendo la transacción abortada.
+    return await repo.runWithRowSavepoint(async () => {
+      switch (name) {
+        case "crear_ticket_huesped_fnb": {
+          const mensaje = typeof input.mensaje === "string" ? input.mensaje.trim() : "";
+          if (!mensaje) return { result: { error: "mensaje es requerido para registrar el pedido" }, fnbOrderId: null };
+          const habitacion = typeof input.habitacion === "string" && input.habitacion.trim() ? input.habitacion.trim() : null;
+          const notes = habitacion ? `Habitación declarada por el huésped vía WhatsApp: ${habitacion}` : null;
+          const { allergyDeclared, declaredVia } = resolveAllergyDeclared({
+            structuredFlag: input.alergia_declarada === true,
+            freeTextFields: [mensaje, notes],
+          });
+          const order = await repo.insertFnbOrder({
+            organizationId,
+            propertyId,
+            roomId: null,
+            items: [{ nombre: mensaje }],
+            notes,
+            allergyDeclared,
+            allergyDeclaredVia: declaredVia,
+            createdBy: null, // actor system:whatsapp — sin staff humano logueado (diseño §1).
+          });
+          return { result: { ticket: serializeFnbOrder(order) }, fnbOrderId: order.id };
+        }
+        case "crear_ticket_mantenimiento": {
+          const titulo = typeof input.titulo === "string" ? input.titulo.trim() : "";
+          const descripcion = typeof input.descripcion === "string" ? input.descripcion.trim() : "";
+          if (!titulo || !descripcion) return { result: { error: "titulo y descripcion son requeridos para registrar el ticket" }, fnbOrderId: null };
+          const habitacion = typeof input.habitacion === "string" && input.habitacion.trim() ? input.habitacion.trim() : null;
+          const severidad = input.severidad === "alta" || input.severidad === "media" || input.severidad === "baja" ? input.severidad : "media";
+          const ticket = await repo.insertMaintenanceTicket({
+            organizationId,
+            propertyId,
+            roomId: null, // el agente de WhatsApp no resuelve `roomCode` -> `room_id` (sin ese lookup en esta fase); `habitacion` declarada queda en la descripción, nunca inventada como FK.
+            title: titulo,
+            description: habitacion ? `${descripcion} (habitación declarada por el huésped vía WhatsApp: ${habitacion})` : descripcion,
+            origin: "huesped",
+            severity: severidad,
+            estimatedCost: 0,
+            createdBy: null, // actor system:whatsapp — sin staff humano logueado (mismo criterio que crear_ticket_huesped_fnb).
+          });
+          return { result: { ticket: { id: ticket.id, severidad: ticket.severity } }, fnbOrderId: null };
+        }
+        case "registrar_contacto_no_operativo": {
+          const motivo = typeof input.motivo === "string" ? input.motivo.trim() : "";
+          if (!motivo) return { result: { error: "motivo es requerido" }, fnbOrderId: null };
+          await registerContactoNoOperativo(repo, {
+            organizationId,
+            propertyId,
+            guestPhone: phone,
+            guestName: null,
+            reason: motivo,
+            message: typeof input.resumen === "string" ? input.resumen.trim() : null,
+            source: "whatsapp",
+          });
+          return { result: { ok: true }, fnbOrderId: null };
+        }
+        default:
+          return { result: { error: `Herramienta desconocida: ${name}` }, fnbOrderId: null };
       }
-      case "crear_ticket_mantenimiento": {
-        const titulo = typeof input.titulo === "string" ? input.titulo.trim() : "";
-        const descripcion = typeof input.descripcion === "string" ? input.descripcion.trim() : "";
-        if (!titulo || !descripcion) return { result: { error: "titulo y descripcion son requeridos para registrar el ticket" }, fnbOrderId: null };
-        const habitacion = typeof input.habitacion === "string" && input.habitacion.trim() ? input.habitacion.trim() : null;
-        const severidad = input.severidad === "alta" || input.severidad === "media" || input.severidad === "baja" ? input.severidad : "media";
-        const ticket = await repo.insertMaintenanceTicket({
-          organizationId,
-          propertyId,
-          roomId: null, // el agente de WhatsApp no resuelve `roomCode` -> `room_id` (sin ese lookup en esta fase); `habitacion` declarada queda en la descripción, nunca inventada como FK.
-          title: titulo,
-          description: habitacion ? `${descripcion} (habitación declarada por el huésped vía WhatsApp: ${habitacion})` : descripcion,
-          origin: "huesped",
-          severity: severidad,
-          estimatedCost: 0,
-          createdBy: null, // actor system:whatsapp — sin staff humano logueado (mismo criterio que crear_ticket_huesped_fnb).
-        });
-        return { result: { ticket: { id: ticket.id, severidad: ticket.severity } }, fnbOrderId: null };
-      }
-      case "registrar_contacto_no_operativo": {
-        const motivo = typeof input.motivo === "string" ? input.motivo.trim() : "";
-        if (!motivo) return { result: { error: "motivo es requerido" }, fnbOrderId: null };
-        await registerContactoNoOperativo(repo, {
-          organizationId,
-          propertyId,
-          guestPhone: phone,
-          guestName: null,
-          reason: motivo,
-          message: typeof input.resumen === "string" ? input.resumen.trim() : null,
-          source: "whatsapp",
-        });
-        return { result: { ok: true }, fnbOrderId: null };
-      }
-      default:
-        return { result: { error: `Herramienta desconocida: ${name}` }, fnbOrderId: null };
-    }
+    });
   } catch (err) {
     return { result: { error: err instanceof Error ? err.message : "Error interno al ejecutar la herramienta" }, fnbOrderId: null };
   }

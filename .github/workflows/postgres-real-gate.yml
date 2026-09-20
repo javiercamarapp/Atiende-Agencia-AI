@@ -68,6 +68,16 @@ name: Postgres real (gate)
 #   cada assertions.sql documenta en su propio README.
 # - NO hace build ni deploy de nada (Vercel u otro): este workflow es
 #   exclusivamente de tests, no tiene ningún paso de publicación.
+#
+# Segundo job — fallback-savepoint-gate (agregado en la corrección de
+# runWithSavepointFallback, auditoría a1)
+# ------------------------------------------------------------------------------
+# scripts/verify-fallback-savepoint/ NO cabe en el contrato genérico de arriba
+# (necesita ver un COMMIT real y aplicar las migraciones SALTÁNDOSE una a
+# propósito) — corre como un job APARTE, con su propio Postgres efímero vía
+# initdb (mismo patrón que scripts/verify-caller-binding-fase3/run.sh), nunca vía
+# el servicio `postgres:` ni `run-gate.mjs`. Ver scripts/verify-fallback-savepoint/
+# README.md para el detalle completo de qué demuestra y por qué.
 on:
   pull_request:
   push:
@@ -134,3 +144,50 @@ jobs:
 
       - name: Migraciones reales + gate de assertions RLS/GRANT (todos los scripts/verify-*/)
         run: node scripts/verify-real-postgres-ci/run-gate.mjs
+
+  fallback-savepoint-gate:
+    name: SAVEPOINT real para fallback por SQLSTATE (scripts/verify-fallback-savepoint)
+    runs-on: ubuntu-latest
+    # Job APARTE, sin el servicio `postgres:` de arriba: scripts/verify-fallback-
+    # savepoint/run.sh levanta su PROPIO Postgres efímero vía initdb (mismo patrón
+    # que scripts/verify-caller-binding-fase3/run.sh) porque necesita aplicar
+    # supabase/migrations/*.sql SALTÁNDOSE una a propósito (la 019, para reproducir
+    # la base SIN esa migración) y ver el tag de comando de un COMMIT real —
+    # ninguna de las dos cosas es posible con el runner genérico
+    # scripts/verify-real-postgres-ci/run-gate.mjs que usa el job de arriba (ver
+    # scripts/verify-fallback-savepoint/README.md para el detalle completo).
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirmar initdb/pg_ctl/psql disponibles
+        run: |
+          if ! command -v initdb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql
+          fi
+          # El paquete `postgresql` de Ubuntu/Debian NO pone initdb/pg_ctl en PATH
+          # (viven en /usr/lib/postgresql/<version>/bin/, solo psql/pg_config
+          # quedan en PATH vía los wrappers pg_wrapper) -- a diferencia de Homebrew
+          # en macOS, donde `verify-caller-binding-fase3/run.sh` y este mismo
+          # script ya corren tal cual localmente. Se agrega a GITHUB_PATH (no solo
+          # a este step) para que el siguiente step también los vea.
+          if ! command -v initdb >/dev/null 2>&1; then
+            # /usr/lib/postgresql/<version>/bin/initdb -- 3 niveles bajo
+            # /usr/lib/postgresql (<version>/bin/initdb), no 2 (esa profundidad
+            # es el directorio bin/, no el binario).
+            PG_BIN="$(dirname "$(find /usr/lib/postgresql -maxdepth 3 -name initdb -print -quit)")"
+            if [ -z "$PG_BIN" ] || [ "$PG_BIN" = "." ]; then
+              echo "verify-fallback-savepoint (CI): no se encontró initdb bajo /usr/lib/postgresql tras instalar el paquete postgresql -- ¿cambió el layout del paquete?" >&2
+              find /usr/lib/postgresql -maxdepth 3 >&2 || true
+              exit 1
+            fi
+            echo "$PG_BIN" >> "$GITHUB_PATH"
+            export PATH="$PG_BIN:$PATH"
+          fi
+          initdb --version
+          pg_ctl --version
+          psql --version
+
+      - name: scripts/verify-fallback-savepoint/run.sh
+        run: bash scripts/verify-fallback-savepoint/run.sh

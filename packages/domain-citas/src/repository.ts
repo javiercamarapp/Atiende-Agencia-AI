@@ -571,6 +571,21 @@ export interface CitasRepository {
    * como "elegible de inmediato", ver diseño §5/§8), más viejas primero — el mismo
    * subconjunto real que recorre `syncPendingAppointments`. */
   loadPendingGoogleSyncAppointments(limit: number, nowIso: string): Promise<readonly AppointmentSyncRow[]>;
+  /** Hallazgo CRÍTICO de auditoría (a1, r3) — `syncPendingAppointmentsMultiProvider`
+   * procesa un LOTE de citas de varios tenants en UNA sola transacción (ver
+   * `apps/api/.../citas/google-calendar-sync.ts`). Sin aislar cada fila, una fila
+   * "venenosa" (cualquier error no capturado por `syncOneAppointmentRow`, ej. si su
+   * propio `markAppointmentGoogleSyncInvalid` fallara con un código que el fallback
+   * de arriba no reconoce) deja ABORTADA la transacción del LOTE completo — todas
+   * las marcas `synced`/`deleted` de las filas YA procesadas en esta misma corrida
+   * se revierten en silencio (mismo mecanismo que el fix de `markAppointmentGoogleSync
+   * Invalid`), mientras que los eventos externos de esas filas YA se crearon en
+   * Google/Cal.com/CalDAV — al no ser idempotente `createEvent`, la siguiente corrida
+   * los duplica. Postgres real: correr `fn` protegido por un SAVEPOINT propio deja el
+   * resto del lote intacto ante CUALQUIER error de una fila — implementación real en
+   * `PostgresCitasRepository` (vía `runWithSavepointFallback`, `@atiende/db`); no-op
+   * en `InMemoryCitasRepository` (sin transacción real que aislar). */
+  runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T>;
   markAppointmentGoogleSynced(appointmentId: string, googleEventId: string, attempts: number): Promise<void>;
   markAppointmentGoogleSyncDeleted(appointmentId: string, attempts: number): Promise<void>;
   markAppointmentGoogleSyncSkipped(appointmentId: string): Promise<void>;

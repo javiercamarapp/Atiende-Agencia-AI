@@ -18,6 +18,31 @@
 import pg from "pg";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 
+/**
+ * Hallazgo CRÍTICO de auditoría (a1, r3) — defensa de último recurso EN EL MOTOR.
+ * En Postgres real, un `COMMIT` sobre una transacción ABORTADA (cualquier error
+ * dentro del bloque que un `catch` haya atrapado sin `SAVEPOINT`, ver `../savepoint-
+ * fallback.ts` para el mecanismo completo) NO lanza error: el servidor lo trata como
+ * un `ROLLBACK` implícito y devuelve ese mismo tag de comando (`"ROLLBACK"`, nunca
+ * `"COMMIT"`) — sin esta defensa, `withAppSession` de abajo devolvería `result`
+ * normalmente y el handler HTTP respondería 200/201 con TODO lo escrito en el
+ * request revertido en silencio.
+ */
+export class AbortedTransactionCommitError extends Error {
+  constructor(commandTag: string) {
+    super(
+      `withAppSession: la transacción terminó ABORTADA pero fn() no lanzó ningún error -- ` +
+        `COMMIT devolvió el tag de comando "${commandTag}" en vez de "COMMIT" (Postgres trata un ` +
+        `COMMIT sobre una transacción abortada como ROLLBACK implícito, sin lanzar error). Esto ` +
+        `significa que algún catch dentro de fn() atrapó un error de Postgres SIN usar ` +
+        `runWithSavepointFallback (@atiende/db) -- revisa los catches de SQLSTATE (42883/42P01/` +
+        `42703/23514/...) en el camino que se acaba de ejecutar; sin SAVEPOINT, este request habría ` +
+        `respondido 200/201 con todo revertido en silencio.`,
+    );
+    this.name = "AbortedTransactionCommitError";
+  }
+}
+
 export interface ManagedPostgresConfig {
   /** Cadena de conexión completa (la que Supabase muestra en Project Settings →
    *  Database → Connection string). Si se pasa, tiene prioridad sobre host/port/etc. */
@@ -142,10 +167,20 @@ export function openManagedPostgres(config: ManagedPostgresConfig): ManagedPostg
         await client.query("select set_config('request.jwt.claim.sub', $1, true);", [claims.userId ?? ""]);
         const session = wrapPgClient(client);
         const result = await fn(session);
-        await client.query("commit;");
+        const commitResult = await client.query("commit;");
         client.release();
+        if (commitResult.command !== "COMMIT") {
+          // La transacción ya terminó (Postgres ya hizo el ROLLBACK implícito al
+          // procesar el COMMIT) -- no queda nada que revertir ni un cliente que
+          // liberar de nuevo, por eso este throw vive DENTRO del try, después de
+          // `client.release()`, y el catch de abajo lo distingue explícitamente
+          // para no repetir `rollback;`/`release` sobre un cliente ya devuelto al
+          // pool.
+          throw new AbortedTransactionCommitError(commitResult.command);
+        }
         return result;
       } catch (err) {
+        if (err instanceof AbortedTransactionCommitError) throw err;
         await client.query("rollback;").catch(() => undefined);
         client.release(err instanceof Error ? err : new Error(String(err)));
         throw err;

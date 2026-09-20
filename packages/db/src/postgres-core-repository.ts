@@ -13,6 +13,7 @@
 // `AppDeps.coreStaffRepo`, ver `apps/api/src/production/deps.ts`) — quien decide eso es
 // el caller, nunca esta clase.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "./savepoint-fallback.ts";
 import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
@@ -534,44 +535,63 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   // aplicada", nunca para enmascarar un fallo real. Advertencia en stderr una sola
   // vez por proceso (`warnMissingOrgAdminFunctionsOnce`), para que quede evidencia en
   // logs de que la migración sigue pendiente sin inundar la salida en cada request.
+  // Hallazgo ALTO de auditoría (a1, r3, verificado contra main en b4e5a83) — el
+  // catch de 42883 de arriba NUNCA tenía SAVEPOINT: en Postgres real, el error de
+  // `core.find_staff_for_org_admin($1, $2)` deja la transacción del request
+  // ABORTADA (ver diseño completo en `../savepoint-fallback.ts`), así que las DOS
+  // consultas del camino de respaldo (`assertCallerIsOrgAdminForFallback` +
+  // `core.find_staff_by_email`) fallaban con SQLSTATE 25P02 -- un 500 genérico, no
+  // el 404/lista-vacía honesta que este fallback dice cubrir. Exactamente el mismo
+  // síntoma que el comentario de cabecera de `findStaffForOrgAdmin` describe como
+  // el problema a resolver ("invitar/administrar staff quedó roto en las 5
+  // verticales"), pero sin arreglarlo de verdad contra la base real sin migrar.
   async findStaffForOrgAdmin(organizationId: string, email: string): Promise<OrgAdminStaffLookupRow | null> {
-    try {
-      const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
-        `select id, email, full_name from core.find_staff_for_org_admin($1, $2);`,
-        [organizationId, email],
-      );
-      const row = rows[0];
-      return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
-    } catch (err) {
-      if (!isUndefinedFunctionError(err)) throw err;
-      warnMissingOrgAdminFunctionsOnce();
-      await this.assertCallerIsOrgAdminForFallback(organizationId);
-      const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
-        `select id, email, full_name from core.find_staff_by_email($1);`,
-        [email],
-      );
-      const row = rows[0];
-      return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
+          `select id, email, full_name from core.find_staff_for_org_admin($1, $2);`,
+          [organizationId, email],
+        );
+        const row = rows[0];
+        return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
+      },
+      isRecoverable: isUndefinedFunctionError,
+      fallback: async () => {
+        warnMissingOrgAdminFunctionsOnce();
+        await this.assertCallerIsOrgAdminForFallback(organizationId);
+        const { rows } = await this.db.query<{ id: string; email: string; full_name: string }>(
+          `select id, email, full_name from core.find_staff_by_email($1);`,
+          [email],
+        );
+        const row = rows[0];
+        return row ? { id: row.id, email: row.email, fullName: row.full_name } : null;
+      },
+    });
   }
 
+  // Mismo hallazgo/mismo fix que findStaffForOrgAdmin de arriba.
   async isStaffOrgMember(organizationId: string, targetUserId: string): Promise<boolean> {
-    try {
-      const { rows } = await this.db.query<{ is_staff_org_member_for_org_admin: boolean }>(
-        `select core.is_staff_org_member_for_org_admin($1, $2) as is_staff_org_member_for_org_admin;`,
-        [organizationId, targetUserId],
-      );
-      return rows[0]?.is_staff_org_member_for_org_admin ?? false;
-    } catch (err) {
-      if (!isUndefinedFunctionError(err)) throw err;
-      warnMissingOrgAdminFunctionsOnce();
-      await this.assertCallerIsOrgAdminForFallback(organizationId);
-      const { rows } = await this.db.query<{ organization_id: string }>(
-        `select organization_id from core.find_memberships_by_user_id($1);`,
-        [targetUserId],
-      );
-      return rows.some((r) => r.organization_id === organizationId);
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ is_staff_org_member_for_org_admin: boolean }>(
+          `select core.is_staff_org_member_for_org_admin($1, $2) as is_staff_org_member_for_org_admin;`,
+          [organizationId, targetUserId],
+        );
+        return rows[0]?.is_staff_org_member_for_org_admin ?? false;
+      },
+      isRecoverable: isUndefinedFunctionError,
+      fallback: async () => {
+        warnMissingOrgAdminFunctionsOnce();
+        await this.assertCallerIsOrgAdminForFallback(organizationId);
+        const { rows } = await this.db.query<{ organization_id: string }>(
+          `select organization_id from core.find_memberships_by_user_id($1);`,
+          [targetUserId],
+        );
+        return rows.some((r) => r.organization_id === organizationId);
+      },
+    });
   }
 
   // Autorización de respaldo (solo se usa dentro del fallback de arriba): replica,
@@ -899,54 +919,85 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   // ---- Bitácora de webhooks (`0018_billing_webhook_registro.sql`) — ver el
   // contrato completo (best-effort en escritura, "vacío honesto" en lectura
-  // ante SQLSTATE 42883) en `core-repository.ts`. ----
+  // ante SQLSTATE 42883) en `core-repository.ts`.
+  //
+  // Hallazgo BLOQUEANTE de revisión (PR #158, ronda 1) — ambos métodos corrían
+  // dentro del `withAppSession` propio de su caller (`apps/api/src/production/
+  // core-repository.ts`) con un `try/catch` SIMPLE alrededor de la query, sin
+  // `SAVEPOINT`: exactamente el mismo defecto que `findStaffForOrgAdmin`/
+  // `isStaffOrgMember` de arriba describían como corregido, pero introducido de
+  // nuevo por `feat(billing): registra cada intento de webhook` (main, DESPUÉS de
+  // la base de esta rama). Contra la base real sin la migración 0018, el catch de
+  // 42883 sin SAVEPOINT dejaba la transacción del request ABORTADA; antes de la
+  // defensa `managed-postgres-engine.ts::withAppSession` (este mismo PR) eso era
+  // inofensivo por pura coincidencia (ninguna otra query corría después en la
+  // misma sesión), pero con la defensa activa el `COMMIT` sobre esa transacción
+  // abortada devuelve el tag `ROLLBACK` y dispara `AbortedTransactionCommitError`:
+  // `GET /superadmin/facturacion` (bitácora) pasa de "no disponible" honesto a 500
+  // contra la base real, y cada webhook de Stripe entrante deja un
+  // `AbortedTransactionCommitError` en stderr (lo sigue absorbiendo
+  // `registrarWebhook`, `apps/api/src/routes/billing.ts`, así que el webhook en sí
+  // no se rompe). Mismo fix que arriba: `runWithSavepointFallback`. ----
 
   async recordBillingWebhookEvent(input: RecordBillingWebhookEventInput): Promise<void> {
-    try {
-      await this.db.query(`select core.record_billing_webhook_event($1, $2, $3, $4, $5);`, [
-        input.providerEventId,
-        input.eventType,
-        input.organizationId,
-        input.result,
-        input.reason,
-      ]);
-    } catch (err) {
-      if (isUndefinedFunctionError(err)) {
-        warnMissingBillingWebhookLogOnce();
-        return;
-      }
+    await runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        await this.db.query(`select core.record_billing_webhook_event($1, $2, $3, $4, $5);`, [
+          input.providerEventId,
+          input.eventType,
+          input.organizationId,
+          input.result,
+          input.reason,
+        ]);
+      },
       // Best-effort por contrato (ver el comentario de cabecera de
       // `CoreRepository.recordBillingWebhookEvent` en `core-repository.ts`):
-      // CUALQUIER otro error (p.ej. una desconexión transitoria) se registra
-      // en stderr para diagnóstico, pero NUNCA se repropaga -- esta escritura
-      // jamás debe tumbar la respuesta real de `POST /billing/webhook`.
-      console.error("PostgresCoreRepository.recordBillingWebhookEvent: escritura best-effort falló (no bloquea el webhook):", err);
-    }
+      // SIEMPRE recuperable -- ningún error de esta escritura debe tumbar la
+      // respuesta real de `POST /billing/webhook`. El `ROLLBACK TO SAVEPOINT` dentro
+      // de `runWithSavepointFallback` deja la sesión utilizable de nuevo sin
+      // importar el código de error (a diferencia del `try/catch` simple anterior).
+      isRecoverable: () => true,
+      fallback: async (err) => {
+        if (isUndefinedFunctionError(err)) {
+          warnMissingBillingWebhookLogOnce();
+          return;
+        }
+        // CUALQUIER otro error (p.ej. una desconexión transitoria) se registra en
+        // stderr para diagnóstico, pero NUNCA se repropaga -- mismo contrato que
+        // antes de este fix.
+        console.error("PostgresCoreRepository.recordBillingWebhookEvent: escritura best-effort falló (no bloquea el webhook):", err);
+      },
+    });
   }
 
   async listBillingWebhookLogForSuperadmin(callerId: string, filters: BillingWebhookLogFilters): Promise<BillingWebhookLogPage> {
-    try {
-      const { rows } = await this.db.query<BillingWebhookLogRawRow>(
-        `select id, provider_event_id, event_type, organization_id, organization_name, organization_slug, result, reason, created_at, total_count
-         from core.list_billing_webhook_log_for_superadmin($1, $2, $3, $4, $5, $6, $7, $8);`,
-        [
-          callerId,
-          filters.result ?? null,
-          filters.eventType ?? null,
-          filters.organizationId ?? null,
-          filters.desde ?? null,
-          filters.hasta ?? null,
-          Math.trunc(filters.limit),
-          Math.trunc(filters.offset),
-        ],
-      );
-      const total = rows[0] ? Number(rows[0].total_count) : 0;
-      return { disponible: true, rows: rows.map(mapBillingWebhookLog), total };
-    } catch (err) {
-      if (!isUndefinedFunctionError(err)) throw err;
-      warnMissingBillingWebhookLogOnce();
-      return { disponible: false, rows: [], total: 0 };
-    }
+    return runWithSavepointFallback<BillingWebhookLogPage>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<BillingWebhookLogRawRow>(
+          `select id, provider_event_id, event_type, organization_id, organization_name, organization_slug, result, reason, created_at, total_count
+           from core.list_billing_webhook_log_for_superadmin($1, $2, $3, $4, $5, $6, $7, $8);`,
+          [
+            callerId,
+            filters.result ?? null,
+            filters.eventType ?? null,
+            filters.organizationId ?? null,
+            filters.desde ?? null,
+            filters.hasta ?? null,
+            Math.trunc(filters.limit),
+            Math.trunc(filters.offset),
+          ],
+        );
+        const total = rows[0] ? Number(rows[0].total_count) : 0;
+        return { disponible: true, rows: rows.map(mapBillingWebhookLog), total };
+      },
+      isRecoverable: isUndefinedFunctionError,
+      fallback: async () => {
+        warnMissingBillingWebhookLogOnce();
+        return { disponible: false, rows: [], total: 0 };
+      },
+    });
   }
 
   // ---- /superadmin/facturacion — ver el contrato completo (y el límite honesto

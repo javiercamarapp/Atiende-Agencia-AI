@@ -264,3 +264,77 @@ select rentas.record_audit_log(
 select char_length(despues) as despues_truncado_deberia_ser_500
 from rentas.audit_log where entity_id = '00000000-0000-0000-0000-0000000000c3';
 rollback;
+
+\echo ''
+\echo '=== 10) orden total DETERMINISTA dentro de UNA transaccion (r6, migrations/022_rentas_audit_log_orden_determinista.sql) ==='
+\echo ''
+\echo 'Bug real que esto reproduce: now() (created_at, 021) es CONSTANTE dentro de'
+\echo 'una transaccion de Postgres -- varias filas de bitacora escritas en la MISMA'
+\echo 'transaccion (una accion de staff que audita 2+ cambios, o un batch) quedan'
+\echo 'con el MISMO created_at. order by created_at desc, seq desc (022) desempata'
+\echo 'con la columna secuencial -- esto demuestra que el orden es TOTAL (exacto,'
+\echo 'nunca al azar) y que la paginacion por offset sobre ese empate es ESTABLE.'
+\echo ''
+
+\echo '--- 17. 5 filas de la MISMA transaccion (mismo created_at, confirmado abajo) -- el orden exacto por seq desc es siempre orden-5..orden-1 ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'orden-1') as id_1;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'orden-2') as id_2;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'orden-3') as id_3;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'orden-4') as id_4;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'orden-5') as id_5;
+-- Confirma la PREMISA del bug real -- si esto alguna vez dejara de ser 1 (p.ej.
+-- una versión futura de Postgres cambiara la semántica de now()), el resto de
+-- este escenario dejaría de probar lo que dice probar.
+select (count(distinct created_at) = 1)::int as un_solo_created_at_para_las_5_filas_deberia_ser_1
+from rentas.audit_log where organization_id = '00000000-0000-0000-0000-0000000000a1' and despues like 'orden-%';
+-- El desempate por `seq desc` da el orden EXACTO inverso de escritura (más
+-- reciente = escrita AL ÚLTIMO = seq más alto), no un orden físico arbitrario.
+select (array_agg(despues order by created_at desc, seq desc) = array['orden-5','orden-4','orden-3','orden-2','orden-1'])::int as orden_total_exacto_deberia_ser_1
+from rentas.audit_log where organization_id = '00000000-0000-0000-0000-0000000000a1' and despues like 'orden-%';
+rollback;
+
+\echo '--- 18. paginacion por offset ESTABLE sobre el mismo empate: 6 filas de la MISMA transaccion, 2 paginas de 3 -- la union es EXACTA, sin repetir ni perder ninguna fila ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000011', true);
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'pag-1') as id_1;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'pag-2') as id_2;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'pag-3') as id_3;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'pag-4') as id_4;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'pag-5') as id_5;
+select rentas.record_audit_log('00000000-0000-0000-0000-0000000000a1', 'pricing.tarifa_base.actualizada', 'pricing', null, null, null, 'pag-6') as id_6;
+-- Misma consulta EXACTA (dos veces, con LIMIT/OFFSET distintos) que
+-- PostgresRentasRepository.listAuditoria arma para la pantalla de Auditoria --
+-- si el orden no fuera TOTAL, la segunda pagina podria repetir una fila de la
+-- primera (o saltarse una) porque Postgres es libre de reordenar los empatados
+-- entre dos ejecuciones del mismo plan.
+with pagina_1 as (
+  select despues from rentas.audit_log
+  where organization_id = '00000000-0000-0000-0000-0000000000a1' and despues like 'pag-%'
+  order by created_at desc, seq desc limit 3 offset 0
+), pagina_2 as (
+  select despues from rentas.audit_log
+  where organization_id = '00000000-0000-0000-0000-0000000000a1' and despues like 'pag-%'
+  order by created_at desc, seq desc limit 3 offset 3
+)
+select (
+  (select array_agg(despues) from pagina_1) || (select array_agg(despues) from pagina_2)
+  = array['pag-6','pag-5','pag-4','pag-3','pag-2','pag-1']
+)::int as paginacion_sin_repetir_ni_perder_deberia_ser_1;
+rollback;
+
+-- NOTA -- esquema intermedio (021 aplicada, 022 no, ver migrations/
+-- 022_rentas_audit_log_orden_determinista.sql): este runner (`run-gate.mjs`)
+-- SIEMPRE aplica TODAS las migraciones de supabase/migrations/ en orden, sin
+-- forma de saltarse una a propósito (ver el comentario de cabecera de ese
+-- script) -- así que el caso "022 no aplicada todavía" no puede reproducirse
+-- AQUÍ contra Postgres real. Esa cobertura vive en
+-- packages/domain-rentas/tests/audit-log-savepoint.spec.ts
+-- (`SchemaParcial021SinSeqFakeSession`, con `AbortAwareFakeSession` como
+-- patrón) -- mismo criterio que el resto de "compatibilidad con la base sin
+-- migrar" de esta fase, que tampoco se prueba contra Postgres real (ver el
+-- comentario equivalente en la migración 021 -- ningún escenario de este
+-- archivo prueba SQLSTATE 42883/42P01 tampoco, por la misma razón).

@@ -43,8 +43,10 @@ export type { SeedOrganization, SeedMembership } from "./in-memory-core-reposito
 export { PostgresCoreRepository } from "./postgres-core-repository.ts";
 export { InMemoryTenancyEngine } from "./in-memory-tenancy-engine.ts";
 export type { SeedTenancyProperty, SeedTenancyMembership } from "./in-memory-tenancy-engine.ts";
-export { openManagedPostgres } from "./managed-postgres-engine.ts";
+export { openManagedPostgres, AbortedTransactionCommitError } from "./managed-postgres-engine.ts";
 export type { ManagedPostgresConfig, ManagedPostgresEngine } from "./managed-postgres-engine.ts";
+export { runWithSavepointFallback } from "./savepoint-fallback.ts";
+export type { SavepointFallbackOptions } from "./savepoint-fallback.ts";
 export type {
   LlmUsageRepository,
   LlmUsageEventInput,
@@ -118,3 +120,11 @@ export {
   PostgresImpersonationRepository,
   InMemoryImpersonationRepository,
 } from "./impersonation-repository.ts";
+export type {
+  AuthzAuditAvailability,
+  AuthzAuditDecision,
+  AuthzAuditLogEntryInput,
+  AuthzAuditLogRow,
+  AuthzAuditRepository,
+} from "./authz-audit-repository.ts";
+export { PostgresAuthzAuditRepository, InMemoryAuthzAuditRepository } from "./authz-audit-repository.ts";

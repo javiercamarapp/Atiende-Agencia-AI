@@ -212,6 +212,60 @@ cambio — ver el comentario de cabecera de ese workflow.**
   cada escenario como su propia aserción pass/fail — nunca contra el proyecto
   Supabase real de producción, y nunca lectura humana de la salida de `psql`.
 
+**Todo fallback por SQLSTATE dentro de una transacción exige SAVEPOINT** —
+lección real de la auditoría a1 (hallazgos CRÍTICO/ALTO corregidos vía
+`runWithSavepointFallback`, `packages/db/src/savepoint-fallback.ts`; ver
+`scripts/verify-fallback-savepoint/` para la demostración a nivel SQL). Ya
+quedó establecido arriba que el código nuevo debe capturar el SQLSTATE de
+una función/tabla/columna que solo existe tras una migración pendiente
+(`42883`/`42P01`/`42703`) o de un CHECK que un valor nuevo todavía no cubre
+(`23514`, u otro código de negocio equivalente) y degradar al camino
+anterior — eso sigue siendo correcto. Lo que un `try/catch` simple **no**
+resuelve es que ese fallback corre **dentro de la MISMA transacción** del
+request (`ManagedPostgresEngine.withAppSession`, un solo `begin...commit`
+por request — ver `packages/db/src/managed-postgres-engine.ts`) o de un
+lote (ej. el cron de reconciliación de citas):
+
+- En Postgres real, **cualquier error dentro de un bloque de transacción la
+  deja "abortada"** — la SIGUIENTE consulta (el propio camino de respaldo)
+  falla con `25P02` ("current transaction is aborted, commands ignored
+  until end of transaction block"), sin importar que sea una consulta
+  totalmente distinta a la que falló.
+- Un **`COMMIT` sobre una transacción abortada NO lanza error**: Postgres
+  lo trata como `ROLLBACK` implícito y devuelve ESE tag de comando. El
+  handler HTTP responde 200/201 normalmente, con TODO lo escrito en el
+  request revertido **en silencio** — el caso real que motivó este PR:
+  una cita, su correo encolado y su rate-limit revertidos sin que el
+  cliente ni los logs lo noten.
+- **La solución**: envolver el camino primario en `SAVEPOINT`, y ante un
+  error recuperable hacer `ROLLBACK TO SAVEPOINT` + `RELEASE SAVEPOINT`
+  (que SÍ están exentos del bloqueo de "transacción abortada") ANTES de
+  correr el camino de respaldo — usa `runWithSavepointFallback`
+  (`@atiende/db`) en vez de repetir el patrón a mano; ya lo usan
+  `domain-citas/src/postgres-repository.ts` (`markAppointmentGoogleSyncInvalid`,
+  `resolveProviderCalendarRefreshToken`, `resolveProviderCalComApiKey`,
+  `resolveProviderCalDavPassword`, `runWithRowSavepoint`),
+  `domain-restaurantes/src/postgres-repository.ts`/`domain-hoteles/src/
+  postgres-repository.ts` (`runWithRowSavepoint`, mismo helper que citas) y
+  `packages/db/src/postgres-core-repository.ts` (`findStaffForOrgAdmin`,
+  `isStaffOrgMember`, `recordBillingWebhookEvent`,
+  `listBillingWebhookLogForSuperadmin`). `upsertCustomer` (mismo archivo,
+  `sp_upsert_customer_race`) sigue con el `SAVEPOINT`/`ROLLBACK TO SAVEPOINT`
+  manual anterior a este helper — no migrado por este PR, mismo mecanismo,
+  distinta implementación.
+- **Defensa de último recurso en el motor**: `withAppSession` detecta si el
+  `COMMIT` final devolvió el tag `ROLLBACK` (en vez de `COMMIT`) y lanza un
+  error explícito — convierte cualquier catch futuro que se olvide del
+  SAVEPOINT en un 500 ruidoso en vez de un 200/201 silenciosamente
+  incorrecto. Si un flujo legítimo dependía de tragarse un error sin
+  SAVEPOINT (ej. una sincronización "best-effort" que nunca debe tumbar el
+  request, o un tool call de un agente de WhatsApp con LLM real que corre
+  DENTRO del `withAppSession` del turno completo — ver `executeToolCall` en
+  cada `domain-*/src/whatsapp/llm-turn-handler.ts`), la corrección es agregar
+  SAVEPOINT a ESE flujo (ver `tryTriggerCalendarSync`/
+  `CitasRepository.runWithRowSavepoint`, y su equivalente por tool call en
+  los 3 turn handlers de WhatsApp), nunca relajar esta defensa.
+
 ### (d) Copiar `.env.example` a `.env` y pegar las keys reales — gratis
 ```bash
 cp .env.example .env

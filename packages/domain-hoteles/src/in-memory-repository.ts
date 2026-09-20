@@ -1183,6 +1183,15 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     row.claimedAt = null;
   }
 
+  // No-op real: sin una transacción/conexión Postgres real que proteger, no hay
+  // nada que aislar con un SAVEPOINT -- ver el comentario de cabecera de
+  // `runWithRowSavepoint` en `repository.ts`. `fn` corre directo y su error (si lo
+  // hay) se repropaga tal cual, mismo comportamiento observable que tendría un
+  // SAVEPOINT+ROLLBACK TO SAVEPOINT real desde el punto de vista del caller.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return fn();
+  }
+
   // ---- Fase 12 — dispatcher real de correo (migrations/014), acotado a
   // channel='email' -- mismo `outbox` Map de arriba, mismo criterio de "nunca
   // toca una fila channel='whatsapp'" que la migración SQL real. A diferencia de

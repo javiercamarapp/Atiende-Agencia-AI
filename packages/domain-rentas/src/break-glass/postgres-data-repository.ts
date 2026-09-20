@@ -166,6 +166,39 @@ function resolverLimite(paginacion: BreakGlassLectorPaginacion | undefined): { l
   };
 }
 
+// Hallazgo BAJA confirmado de la auditoría a2 (evidencia:
+// auditoria-a2-resultado.json, tercer elemento de `confirmed`): los 7
+// lectores devuelven como máximo `limit` filas (las más recientes) sin
+// indicar si hay más -- un superadmin investigando un incidente cree que vio
+// todo el tenant. Arreglo: pedir `limit + 1` filas reales ("peek") a la MISMA
+// función SQL que ya acepta `p_limit` (sin migración nueva, sin un `COUNT(*)`
+// aparte -- mandato de la tarea, "sin una consulta cara"), y recortar la fila
+// de más ANTES de mapear/devolver -- nunca llega a `datos` ni a la bitácora
+// de auditoría (`acceso.ts` audita `resultado.datos`, no las filas crudas de
+// Postgres).
+//
+// CASO LÍMITE documentado y aceptado (mismo criterio ya aplicado en
+// PostgresAuthzAuditRepository.list, ver packages/db/src/authz-audit-repository.ts):
+// las 7 funciones de `020_break_glass_lectores.sql` acotan `p_limit` con
+// `least(coalesce(p_limit, 100), 200)` DENTRO de la función -- un tope duro
+// que esta capa no puede pedirle que ignore. Cuando el llamador ya pide
+// exactamente `BREAK_GLASS_LECTOR_LIMIT_MAX` (200, el tope), pedir 201 no
+// sirve de nada (la función lo acotaría de vuelta a 200) -- el "peek" queda
+// deshabilitado en ese único caso límite y `hasMore` puede reportar `false`
+// aunque exista una página 201+. No afecta el caso normal (default 100).
+function queryLimitConPeek(limit: number): number {
+  return limit < BREAK_GLASS_LECTOR_LIMIT_MAX ? limit + 1 : limit;
+}
+
+/** Recorta la fila de más del "peek" (si la hubo) y calcula `hasMore` --
+ *  compartido por los 7 métodos de abajo. `rows` ya viene en el orden que la
+ *  función SQL define (más reciente primero); recortar del FINAL preserva ese
+ *  orden para las filas que sí se devuelven. */
+function partirConHasMore<T>(rows: readonly T[], limit: number): { readonly filas: readonly T[]; readonly hasMore: boolean } {
+  const hasMore = rows.length > limit;
+  return { filas: hasMore ? rows.slice(0, limit) : rows, hasMore };
+}
+
 // Hallazgo de revisión real (ronda r5): `fecha_payout`/`vigente_desde`/
 // `fecha_check_in`/`fecha_check_out`/`programada_para` son columnas `date`
 // (OID 1082, sin componente de hora ni zona horaria) -- el parser default del
@@ -299,16 +332,17 @@ interface SyncIcalRow {
 export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasDataRepository {
   constructor(private readonly db: TenantDbSession) {}
 
-  async listReservasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassReservaResumen[]> {
+  async listReservasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassReservaResumen>> {
     const { limit, offset } = resolverLimite(paginacion);
     await this.db.exec("SAVEPOINT sp_break_glass_reservas");
     try {
       const { rows } = await this.db.query<ReservaRow>(
         `select * from rentas.list_reservas_for_break_glass($1, $2, $3, $4, $5);`,
-        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+        [callerId, organizationId, paginacion?.propertyId ?? null, queryLimitConPeek(limit), offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_reservas");
-      return rows.map(mapReservaRow);
+      const { filas, hasMore } = partirConHasMore(rows, limit);
+      return { disponible: true, datos: filas.map(mapReservaRow), hasMore };
     } catch (err) {
       // `p_property_id` con forma de UUID válida pero que no pertenece a esta
       // organización (P0002), o el resto de defensa en profundidad de la
@@ -345,7 +379,11 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
       const { rows } = await this.db.query<ReservaRow>(`select * from rentas.list_reservas_for_break_glass($1, $2);`, [callerId, organizationId]);
       const todas = rows.map(mapReservaRow);
       const filtradas = paginacion?.propertyId ? todas.filter((r) => r.propertyId === paginacion.propertyId) : todas;
-      return filtradas.slice(offset, offset + limit);
+      // Camino de respaldo: ya tiene el array COMPLETO en memoria (sin
+      // paginado del lado de Postgres), así que `hasMore` se calcula exacto,
+      // sin necesidad de ningún "peek" -- mismo criterio que el repositorio
+      // en memoria (InMemoryBreakGlassRentasDataRepository::paginar).
+      return { disponible: true, datos: filtradas.slice(offset, offset + limit), hasMore: filtradas.length > offset + limit };
     }
   }
 
@@ -355,12 +393,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     try {
       const { rows } = await this.db.query<FinanzasRow>(
         `select * from rentas.list_finanzas_for_break_glass($1, $2, $3, $4, $5);`,
-        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+        [callerId, organizationId, paginacion?.propertyId ?? null, queryLimitConPeek(limit), offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_finanzas");
+      const { filas, hasMore } = partirConHasMore(rows, limit);
       return {
         disponible: true,
-        datos: rows.map((r) => ({
+        hasMore,
+        datos: filas.map((r) => ({
           id: r.id,
           ocupacionId: r.ocupacion_id,
           propertyId: r.property_id,
@@ -393,7 +433,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return { disponible: false, datos: [] };
+      return { disponible: false, datos: [], hasMore: false };
     }
   }
 
@@ -403,12 +443,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     try {
       const { rows } = await this.db.query<PayoutRow>(
         `select * from rentas.list_payouts_for_break_glass($1, $2, $3, $4, $5);`,
-        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+        [callerId, organizationId, paginacion?.propertyId ?? null, queryLimitConPeek(limit), offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_payouts");
+      const { filas, hasMore } = partirConHasMore(rows, limit);
       return {
         disponible: true,
-        datos: rows.map((r) => ({
+        hasMore,
+        datos: filas.map((r) => ({
           id: r.id,
           propertyId: r.property_id,
           canalId: r.canal_id,
@@ -438,7 +480,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return { disponible: false, datos: [] };
+      return { disponible: false, datos: [], hasMore: false };
     }
   }
 
@@ -448,12 +490,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     try {
       const { rows } = await this.db.query<PricingRow>(
         `select * from rentas.list_pricing_for_break_glass($1, $2, $3, $4, $5);`,
-        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+        [callerId, organizationId, paginacion?.propertyId ?? null, queryLimitConPeek(limit), offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_pricing");
+      const { filas, hasMore } = partirConHasMore(rows, limit);
       return {
         disponible: true,
-        datos: rows.map((r) => ({
+        hasMore,
+        datos: filas.map((r) => ({
           id: r.id,
           propertyId: r.property_id,
           unidadId: r.unidad_id,
@@ -481,7 +525,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return { disponible: false, datos: [] };
+      return { disponible: false, datos: [], hasMore: false };
     }
   }
 
@@ -491,12 +535,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     try {
       const { rows } = await this.db.query<MensajeriaRow>(
         `select * from rentas.list_mensajeria_for_break_glass($1, $2, $3, $4, $5);`,
-        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+        [callerId, organizationId, paginacion?.propertyId ?? null, queryLimitConPeek(limit), offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_mensajeria");
+      const { filas, hasMore } = partirConHasMore(rows, limit);
       return {
         disponible: true,
-        datos: rows.map((r) => ({
+        hasMore,
+        datos: filas.map((r) => ({
           id: r.id,
           propertyId: r.property_id,
           unidadId: r.unidad_id,
@@ -527,7 +573,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return { disponible: false, datos: [] };
+      return { disponible: false, datos: [], hasMore: false };
     }
   }
 
@@ -537,12 +583,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     try {
       const { rows } = await this.db.query<LimpiezaRow>(
         `select * from rentas.list_limpieza_for_break_glass($1, $2, $3, $4, $5);`,
-        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+        [callerId, organizationId, paginacion?.propertyId ?? null, queryLimitConPeek(limit), offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_limpieza");
+      const { filas, hasMore } = partirConHasMore(rows, limit);
       return {
         disponible: true,
-        datos: rows.map((r) => ({
+        hasMore,
+        datos: filas.map((r) => ({
           id: r.id,
           propertyId: r.property_id,
           unidadId: r.unidad_id,
@@ -573,7 +621,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return { disponible: false, datos: [] };
+      return { disponible: false, datos: [], hasMore: false };
     }
   }
 
@@ -583,12 +631,14 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
     try {
       const { rows } = await this.db.query<SyncIcalRow>(
         `select * from rentas.list_sync_ical_for_break_glass($1, $2, $3, $4, $5);`,
-        [callerId, organizationId, paginacion?.propertyId ?? null, limit, offset],
+        [callerId, organizationId, paginacion?.propertyId ?? null, queryLimitConPeek(limit), offset],
       );
       await this.db.exec("RELEASE SAVEPOINT sp_break_glass_sync_ical");
+      const { filas, hasMore } = partirConHasMore(rows, limit);
       return {
         disponible: true,
-        datos: rows.map((r) => ({
+        hasMore,
+        datos: filas.map((r) => ({
           id: r.id,
           propertyId: r.property_id,
           unidadId: r.unidad_id,
@@ -620,7 +670,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
           "(SQLSTATE 42883) -- lector marcado como NO disponible (disponible: false), nunca como vacío real. " +
           "Aplica packages/domain-rentas/migrations/020_break_glass_lectores.sql para habilitarlo.",
       );
-      return { disponible: false, datos: [] };
+      return { disponible: false, datos: [], hasMore: false };
     }
   }
 }

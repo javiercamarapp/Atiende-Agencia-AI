@@ -370,7 +370,18 @@ export async function syncPendingAppointmentsMultiProvider(repo: CitasRepository
   const summary = emptySummary();
   summary.processed = pending.length;
   for (const row of pending) {
-    await syncOneAppointmentRow(repo, resolveSyncPort, row, now, summary);
+    try {
+      // Hallazgo CRÍTICO de auditoría (a1, r3) — SAVEPOINT por fila: una fila
+      // "venenosa" (cualquier error que escape de `syncOneAppointmentRow`, que ya
+      // captura los fallos de sincronización normales -- ver su propio try/catch)
+      // NUNCA debe revertir las marcas synced/deleted de las filas YA procesadas
+      // en esta misma corrida del batch (ver diseño completo en el comentario de
+      // cabecera de `CitasRepository.runWithRowSavepoint`, repository.ts).
+      await repo.runWithRowSavepoint(() => syncOneAppointmentRow(repo, resolveSyncPort, row, now, summary));
+    } catch (err) {
+      const message = err instanceof Error ? err.message.slice(0, 500) : "sync failed (fila venenosa, aislada del resto del batch)";
+      summary.errors.push({ appointmentId: row.id, error: message });
+    }
   }
   return summary;
 }
@@ -390,7 +401,24 @@ export async function tryTriggerCalendarSync(repo: CitasRepository, resolveSyncP
     if (!row) return summary;
     if (row.googleSyncStatus !== "pending" && row.googleSyncStatus !== "pending_cancel") return summary;
     summary.processed = 1;
-    await syncOneAppointmentRow(repo, resolveSyncPort, row, now, summary);
+    // Hallazgo CRÍTICO de auditoría (a1, r3) — defensa añadida junto con el motor
+    // (`managed-postgres-engine.ts::withAppSession`, que ahora lanza explícito si
+    // detecta que la transacción terminó abortada): este `catch` es best-effort A
+    // PROPÓSITO (crear/cancelar/reagendar la cita NUNCA debe fallar solo porque el
+    // calendario externo falló, ver diseño de cabecera del archivo) — pero corre
+    // en la MISMA transacción que la escritura real de la cita
+    // (`appointments.ts`/`appointments-lifecycle.ts`/`admin.ts`). Sin este
+    // SAVEPOINT, un error inesperado (no uno de los ya cubiertos por
+    // `syncOneAppointmentRow`) dejaría la transacción abortada y el `catch` de
+    // abajo la tragaría igual -- el `COMMIT` final devolvería `ROLLBACK` y, SIN la
+    // defensa del motor, la cita se habría revertido en silencio con 201 igual;
+    // CON la defensa del motor pero SIN este SAVEPOINT, el request fallaría con
+    // 500 aunque la cita en sí se haya creado bien (el motor no sabe distinguir
+    // "algo best-effort falló" de "se perdió la cita real"). El SAVEPOINT resuelve
+    // ambos: aísla el intento de sincronización, la cita ya escrita antes de esta
+    // llamada queda intacta, y el `catch` de abajo sigue absorbiendo el fallo tal
+    // como el diseño original pedía.
+    await repo.runWithRowSavepoint(() => syncOneAppointmentRow(repo, resolveSyncPort, row, now, summary));
   } catch (err) {
     console.error("tryTriggerCalendarSync: fallo best-effort, el cron de reconciliación lo recogerá:", err);
   }
