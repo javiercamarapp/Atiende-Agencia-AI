@@ -34,6 +34,7 @@ import {
   formatMoney,
 } from "@atiende/ui";
 import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { hoyFechaSolo, sumarDiasFechaSolo } from "../../lib/formato-fecha.ts";
 
 interface RangoFechas {
   readonly from: string;
@@ -84,14 +85,21 @@ function usd(microUsd: number): string {
   return `$${formatMoney(microUsd / 1_000_000, 2)}`;
 }
 
+// Bug real (barrido del hallazgo de auditoría a4, mismo patrón exacto que
+// Dashboard.tsx/hoteles): `from`/`to` SIEMPRE viajan explícitos en la query
+// string de `GET .../gasto-api/*` (`cargar()` de abajo), así que el default
+// UTC de `parseDateRange` en el servidor (superadmin-llm-usage.ts) nunca se
+// ejecuta desde esta pantalla -- `new Date().toISOString().slice(0, 10)` (día
+// UTC) precargaba MAÑANA en vez de HOY entre las 18:00 y las 23:59 hora de
+// CDMX (00:00-05:59 UTC). `hoyFechaSolo()`/`sumarDiasFechaSolo()`
+// (apps/web/src/lib/formato-fecha.ts) usan el día de calendario en
+// America/Mexico_City, nunca el día UTC.
 function hoyIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyFechaSolo();
 }
 
 function hace30DiasIso(): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 29);
-  return d.toISOString().slice(0, 10);
+  return sumarDiasFechaSolo(hoyFechaSolo(), -29);
 }
 
 function BarraTope({ pct, alerta }: { readonly pct: number; readonly alerta: boolean }) {
