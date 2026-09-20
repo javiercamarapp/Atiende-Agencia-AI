@@ -83,9 +83,10 @@ export async function enqueueEscalationEmailCore(repo: DespachosRepository, dead
  * `insertEscalation` + `updateDeadlineEstado`. Sin este SAVEPOINT, un error real de
  * Postgres dentro de `enqueueEscalationEmailCore`
  * (`despachos.enqueue_messaging_outbox`) deja la transacción COMPLETA abortada
- * (25P02) y el escalamiento ya "persistido" se pierde con un `commit;` que
- * `managed-postgres-engine.ts` convierte en `ROLLBACK` silencioso
- * (`AbortedTransactionCommitError`). `repo.runWithRowSavepoint` aísla el intento y
+ * (25P02) y el escalamiento ya "persistido" se pierde de todas formas, y el
+ * `commit;` que sigue en `managed-postgres-engine.ts` lo detecta y lanza
+ * `AbortedTransactionCommitError` (desde PR #158 esto es un 500 honesto, NUNCA un
+ * rollback silencioso con 2xx). `repo.runWithRowSavepoint` aísla el intento y
  * relanza el mismo error para que este `catch` lo siga tragando, con la sesión ya
  * recuperada.
  */

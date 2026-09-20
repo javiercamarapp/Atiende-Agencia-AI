@@ -129,9 +129,10 @@ const NOTIFY_SAVEPOINT_NAME = "sp_order_notify_best_effort";
  * postgres-repository.ts:631 y supabase/migrations/
  * 20240101000140_017_restaurantes_sistema_whatsapp_channel_config.sql) deja la
  * transacción COMPLETA abortada (25P02) — el `commit;` posterior de
- * `managed-postgres-engine.ts` se convierte en un ROLLBACK silencioso y el cambio
- * de estado del pedido, ya "persistido" antes en la misma transacción, se pierde
- * con una respuesta 2xx. El SAVEPOINT va DENTRO del try, mismo criterio que
+ * `managed-postgres-engine.ts` lo detecta y lanza `AbortedTransactionCommitError`
+ * (desde PR #158 esto es un 500 honesto, NUNCA un rollback silencioso con 2xx), y
+ * el cambio de estado del pedido, ya "persistido" antes en la misma transacción,
+ * se pierde de todas formas. El SAVEPOINT va DENTRO del try, mismo criterio que
  * `triggerInline`: si `db` ya traía la transacción abortada por una causa AJENA a
  * este best-effort, el propio `SAVEPOINT` también lanza 25P02 — se traga aquí
  * también, nunca se relanza (no es responsabilidad de este best-effort arreglar un

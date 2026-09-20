@@ -190,9 +190,10 @@ export async function enqueueGuestEmailCore(
  * `select hoteles.enqueue_messaging_outbox(...)` (postgres-repository.ts ~1399):
  * un error real de Postgres ahí (deadlock, timeout, `42501` si `auth.uid()` no
  * es miembro) sin este SAVEPOINT deja la transacción COMPLETA abortada (25P02) —
- * la reserva/folio/CFDI ya "persistido" antes se pierde con un `commit;` que
- * `managed-postgres-engine.ts` convierte en `ROLLBACK` silencioso
- * (`AbortedTransactionCommitError`). `repo.runWithRowSavepoint` (ya expuesto por
+ * la reserva/folio/CFDI ya "persistido" antes se pierde de todas formas, y el
+ * `commit;` que sigue en `managed-postgres-engine.ts` lo detecta y lanza
+ * `AbortedTransactionCommitError` (desde PR #158 esto es un 500 honesto, NUNCA un
+ * rollback silencioso con 2xx). `repo.runWithRowSavepoint` (ya expuesto por
  * `HotelesRepository`, ver postgres-repository.ts ~1426) aísla solo este
  * intento y relanza el mismo error para que este `catch` lo siga tragando, con
  * la sesión ya recuperada para el `commit;` real que sigue.

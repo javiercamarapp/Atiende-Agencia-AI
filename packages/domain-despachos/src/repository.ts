@@ -227,9 +227,10 @@ export interface DespachosRepository {
    * `updateDeadlineEstado` ANTES de llamar a este best-effort, misma sesión de
    * staff). Sin este SAVEPOINT, un error real de Postgres dentro del correo (deadlock,
    * timeout, `42501` si `auth.uid()` no es miembro) deja la transacción COMPLETA
-   * abortada (25P02) -- el escalamiento ya "persistido" se pierde con un `commit;`
-   * que `managed-postgres-engine.ts` convierte en `ROLLBACK` silencioso
-   * (`AbortedTransactionCommitError`). Mismo patrón/mismo helper
+   * abortada (25P02) -- el escalamiento ya "persistido" se pierde de todas formas, y
+   * el `commit;` que sigue en `managed-postgres-engine.ts` lo detecta y lanza
+   * `AbortedTransactionCommitError` (desde PR #158 esto es un 500 honesto, NUNCA un
+   * rollback silencioso con 2xx). Mismo patrón/mismo helper
    * (`runWithSavepointFallback` de `@atiende/db`, `isRecoverable: () => true`,
    * `fallback` que relanza) que `HotelesRepository.runWithRowSavepoint`/
    * `RestaurantesRepository.runWithRowSavepoint`/`PostgresCitasRepository.
