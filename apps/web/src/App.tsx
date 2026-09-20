@@ -107,6 +107,7 @@ import { DevolucionIvaPage } from "./verticals/despachos/pages/DevolucionIva.tsx
 import { BookkeepingPage } from "./verticals/despachos/pages/Bookkeeping.tsx";
 import { ContabilidadElectronicaPage } from "./verticals/despachos/pages/ContabilidadElectronica.tsx";
 import { StaffPage as DespachosStaffPage } from "./verticals/despachos/pages/Staff.tsx";
+import { ConfiguracionPage as DespachosConfiguracionPage } from "./verticals/despachos/pages/Configuracion.tsx";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -658,6 +659,7 @@ const DespachosDevolucionIvaRoute = shellRoute(DespachosShell, "/despachos/login
 const DespachosBookkeepingRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <BookkeepingPage {...ctx} />);
 const DespachosContabilidadElectronicaRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <ContabilidadElectronicaPage {...ctx} />);
 const DespachosStaffRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosStaffPage {...ctx} />);
+const DespachosConfiguracionRoute = shellRoute(DespachosShell, "/despachos/login", (ctx) => <DespachosConfiguracionPage {...ctx} />);
 
 export function App() {
   return (
@@ -781,6 +783,7 @@ export function App() {
         <Route path="/despachos/:orgSlug/bookkeeping" element={<DespachosBookkeepingRoute />} />
         <Route path="/despachos/:orgSlug/contabilidad-electronica" element={<DespachosContabilidadElectronicaRoute />} />
         <Route path="/despachos/:orgSlug/staff" element={<DespachosStaffRoute />} />
+        <Route path="/despachos/:orgSlug/configuracion" element={<DespachosConfiguracionRoute />} />
         <Route path="/" element={<SeleccionarVerticalPage />} />
       </Routes>
     </BrowserRouter>

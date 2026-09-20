@@ -242,3 +242,16 @@ export interface DespachosAuditLogPage {
   readonly total: number;
   readonly nextOffset: number | null;
 }
+
+/** Fila de `despachos.property_config` (migración 012, FASE 3 producto -- zona
+ * horaria por negocio), ya mapeada a camelCase. `zonaHoraria` es `null` cuando la
+ * property nunca configuró una zona real todavía (fila ausente) -- el caller SIEMPRE
+ * resuelve el default de plataforma vía
+ * `@atiende/core-tenancy::resolverZonaHorariaNegocio(config?.zonaHoraria)`, nunca
+ * hardcodea `"America/Mexico_City"` directo (ver el comentario de cabecera de esa
+ * función). */
+export interface DespachosPropertyConfigRecord {
+  readonly propertyId: string;
+  readonly organizationId: string;
+  readonly zonaHoraria: string | null;
+}

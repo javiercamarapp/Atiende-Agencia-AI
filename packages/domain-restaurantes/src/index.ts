@@ -2,6 +2,7 @@ export type {
   Branch,
   BranchProductState,
   BranchSummary,
+  BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
   Category,

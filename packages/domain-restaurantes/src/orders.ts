@@ -4,6 +4,7 @@
 // un total mandado por el cliente/LLM (guardia anti-alucinación de precio, ver
 // product-search.ts::resolveOrderItemsAgainstProducts).
 import { createHash } from "node:crypto";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
@@ -247,7 +248,17 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
     if (!promotion) {
       throw new OrderValidationError(`El código "${payload.promoCode}" no existe.`);
     }
-    const applied = applyPromotionToOrderTotal(total, promotion, new Date());
+    // FASE 3 (producto) — hasta esta fase, la vigencia por día/hora de una
+    // promoción (`daysOfWeek`/`startTime`/`endTime`) se evaluaba con
+    // `now.getDay()`/`now.getHours()`/`now.getMinutes()`, componentes UTC del
+    // reloj del PROCESO en Vercel — nunca la hora local del negocio (ver el
+    // comentario de cabecera de `promotions.ts::assertPromotionApplicable`).
+    // `findBranchZonaHoraria` es una consulta AISLADA (no reusa `findBranch` /
+    // el `branch` ya resuelto arriba) para no ensanchar el tipo `Branch`
+    // público, usado en muchos otros call-sites — ver el comentario de
+    // cabecera de la migración 022.
+    const zonaHoraria = resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria);
+    const applied = applyPromotionToOrderTotal(total, promotion, new Date(), zonaHoraria);
     total = applied.total;
     discount = applied.discount;
     appliedPromotion = promotion;

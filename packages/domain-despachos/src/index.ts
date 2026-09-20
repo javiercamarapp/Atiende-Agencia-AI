@@ -118,6 +118,8 @@ export {
   ADMIN_ROLES,
   STAFF_INVITE_ROLES,
   PLATFORM_ROLE_BY_VERTICAL_ROLE,
+  VER_CONFIGURACION_ROLES,
+  GESTIONAR_CONFIGURACION_ROLES,
 } from "./roles.ts";
 export type { DespachosRole } from "./roles.ts";
 
@@ -250,6 +252,7 @@ export {
   TransicionPaqueteContabilidadInvalidaError,
   ReceivableAlreadyExistsError,
   ReceivableAlreadyPaidError,
+  DespachosConfigUnavailableError,
 } from "./errors.ts";
 
 // ---- Contabilidad electrónica SAT — catálogo/balanza/paquete Anexo 24
@@ -400,6 +403,7 @@ export type {
   CollectionEventRecord,
   NewCollectionEventInput,
   NewSystemCollectionEventInput,
+  DespachosPropertyConfigRecord,
 } from "./types.ts";
 
 export type { DespachosRepository, InvoicePage, OrganizationNotificationRecipient, EmailOutboxJobRow } from "./repository.ts";
