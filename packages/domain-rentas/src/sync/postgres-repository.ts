@@ -148,11 +148,27 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
     };
   }
 
+  // Hallazgo de auditoría (a3, ALTA, verificado contra Postgres real) — el INSERT
+  // original omitía `organization_id`/`property_id`, columnas NOT NULL sin default de
+  // `rentas.evento_canal_importado` (supabase/migrations/20240101000057_008_ical_sync_
+  // schema.sql:56-75; solo esa migración y la 094 tocan la tabla, y la 094 solo agrega
+  // policies/grants). Contra Postgres real, TODO upsert con `sobrescribirVersion=true`
+  // (el camino real de "aplicar"/"eco") disparaba 23502 antes siquiera de evaluar el
+  // `ON CONFLICT` — el import de rentas NUNCA funcionó contra la base real, solo contra
+  // el repositorio en memoria de los tests (que no valida NOT NULL). Fix: derivar el
+  // tenant de la unidad con un JOIN, igual que ya hace `crearReservaConfirmada`
+  // (aplicacion/reservas.ts) al leer `rentas.unidad` en la MISMA sesión de sistema —
+  // esa lectura ya tiene RLS/GRANT reales (escape hatch `auth.uid() is null`,
+  // supabase/migrations/20240101000094_015_cron_publico_rls_escape_hatch.sql). Nunca se
+  // vuelven a escribir en el UPDATE del `ON CONFLICT`: el tenant de una unidad no
+  // cambia, así que solo se fija en el INSERT inicial.
   async upsertEventoImportado(unidadId: string, canalId: string, entrada: EntradaUpsertEventoImportado): Promise<void> {
     if (entrada.sobrescribirVersion) {
       await this.db.query(
-        `INSERT INTO rentas.evento_canal_importado (unidad_id, canal_id, uid_evento, sequence, dtstamp, hash_contenido, ocupacion_id, ultima_accion)
-         SELECT $1, $2, $3, $4, $5, $6, $7, $8
+        `INSERT INTO rentas.evento_canal_importado (organization_id, property_id, unidad_id, canal_id, uid_evento, sequence, dtstamp, hash_contenido, ocupacion_id, ultima_accion)
+         SELECT u.organization_id, u.property_id, $1, $2, $3, $4, $5, $6, $7, $8
+         FROM rentas.unidad u
+         WHERE u.id = $1
          ON CONFLICT (unidad_id, canal_id, uid_evento) DO UPDATE SET
            sequence = EXCLUDED.sequence, dtstamp = EXCLUDED.dtstamp, hash_contenido = EXCLUDED.hash_contenido,
            ocupacion_id = EXCLUDED.ocupacion_id, ultima_accion = EXCLUDED.ultima_accion, updated_at = now()`,
