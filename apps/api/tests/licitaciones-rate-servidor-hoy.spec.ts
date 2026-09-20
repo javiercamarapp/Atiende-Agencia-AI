@@ -28,12 +28,26 @@ describe("POST /licitaciones/:propertyId/company/rates -- default de validFrom u
     const res = await app.request(`/licitaciones/${ctx.propertyId}/company/rates`, authedJson(ctx.staff.writer.token, { concept: "consultoria_hora_servidor_hoy", unitPrice: "500.00" }));
     expect(res.status).toBe(201);
     const body = (await res.json()) as { validFrom: string };
-    // `InMemoryLicitacionesRepository` (backing de este test HTTP) devuelve la fecha
-    // tal cual (`hoyFechaNegocio()`, "YYYY-MM-DD") -- `dateColumnToExplicitOffsetIso`
-    // (el formato "...T00:00:00Z") es una normalización exclusiva de
-    // `PostgresLicitacionesRepository`, ver `company-data-postgres-date-contract.spec.ts`
-    // para ESE contrato.
-    expect(body.validFrom.slice(0, 10)).toBe("2026-01-01");
-    expect(body.validFrom.slice(0, 10)).not.toBe("2026-01-02");
+    // `InMemoryLicitacionesRepository` (backing de este test HTTP) agrega
+    // "T00:00:00Z" al día de negocio para tener la MISMA forma con offset
+    // horario explícito que `dateColumnToExplicitOffsetIso` produce sobre la
+    // respuesta real de Postgres (paridad exacta, no solo de día calendario --
+    // ver el comentario de cabecera de `createApprovedRate` en
+    // in-memory-repository.ts, y `company-data-postgres-date-contract.spec.ts`
+    // para el contrato del lado Postgres).
+    expect(body.validFrom).toBe("2026-01-01T00:00:00Z");
+  });
+
+  it("REGRESIÓN: el validFrom en memoria trae offset horario explícito y no viola `assertExplicitOffset` -- exactamente el 500 que este PR cerraba en `POST proposal/economic/generate` si el default vuelve a ser 'YYYY-MM-DD' pelón", async () => {
+    const ctx = await buildLicitacionesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(INSTANTE_1930_CDMX_DIA_1));
+
+    const res = await app.request(`/licitaciones/${ctx.propertyId}/company/rates`, authedJson(ctx.staff.writer.token, { concept: "consultoria_hora_offset_check", unitPrice: "300.00" }));
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { validFrom: string };
+    expect(body.validFrom).toMatch(/(?:Z|[+-]\d{2}:\d{2})$/);
   });
 });
