@@ -20,6 +20,7 @@ import { despachosAdminRoutes } from "./admin.ts";
 import { despachosAdminStaffRoutes } from "./admin-staff.ts";
 import { despachosNotificationsRoutes } from "./notifications.ts";
 import { despachosCobranzaRoutes } from "./cobranza.ts";
+import { despachosConfiguracionRoutes } from "./configuracion.ts";
 
 export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -53,5 +54,8 @@ export function despachosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Hallazgo de auditoría (severidad ALTA) — cobranza (Fase 10) tenía motor +
   // persistencia completos pero cero rutas HTTP y cero UI, ver cobranza.ts.
   app.route("/", despachosCobranzaRoutes(deps));
+  // FASE 3 (producto) — zona horaria por negocio (migración 012), ver
+  // configuracion.ts.
+  app.route("/", despachosConfiguracionRoutes(deps));
   return app;
 }

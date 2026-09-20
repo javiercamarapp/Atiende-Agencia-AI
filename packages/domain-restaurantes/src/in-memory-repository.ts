@@ -12,6 +12,7 @@ import type {
   Branch,
   BranchProductState,
   BranchSummary,
+  BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
   Category,
@@ -269,6 +270,12 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly whatsappConversations = new Map<string, StoredConversation>();
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
   private readonly staffOrderNotifications = new Map<string, StaffOrderNotificationRecord>();
+  // FASE 3 (producto) -- zona horaria por negocio (migración 022,
+  // `restaurantes.branch_detail.zona_horaria`). Mapa aparte (no una propiedad de
+  // `Branch`/`StoredBranch`) -- mismo criterio que `whatsappChannelConfig`/
+  // `knownZones`: `Branch` es un tipo público usado en muchos call-sites, esto es
+  // config editable aparte que solo un puñado de sitios necesita.
+  private readonly branchZonaHoraria = new Map<string, string | null>();
 
   // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----
   /** Expuesto también como referencia tipada directa (mismo criterio que
@@ -1431,6 +1438,20 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (idx < 0) return false;
     this.knownZones.splice(idx, 1);
     return true;
+  }
+
+  // ---- FASE 3 (producto) -- zona horaria por negocio (migración 022) ----
+  async findBranchZonaHoraria(propertyId: string): Promise<BranchTimezoneConfig> {
+    return { zonaHoraria: this.branchZonaHoraria.get(propertyId) ?? null };
+  }
+
+  async upsertBranchZonaHoraria(propertyId: string, zonaHoraria: string | null): Promise<BranchTimezoneConfig> {
+    // Mismo contrato que Postgres real (UPDATE, nunca upsert -- la fila de
+    // `branch_detail` de una property SIEMPRE existe, ver el comentario de
+    // cabecera de `PostgresRestaurantesRepository.upsertBranchZonaHoraria`).
+    if (!this.branches.has(propertyId)) throw new Error(`upsertBranchZonaHoraria: la property "${propertyId}" no existe.`);
+    this.branchZonaHoraria.set(propertyId, zonaHoraria);
+    return { zonaHoraria };
   }
 }
 

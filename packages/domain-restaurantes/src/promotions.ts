@@ -41,6 +41,45 @@ function minutesSinceMidnight(hhmm: string): number {
   return h * 60 + m;
 }
 
+const WEEKDAY_SHORT_TO_JS_DAY: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/** Cache por zona horaria, mismo criterio que
+ * `@atiende/core-tenancy::fecha-negocio.ts::formatterHoy` -- construir un
+ * `Intl.DateTimeFormat` no es gratis y esto corre en el camino caliente de
+ * crear un pedido. */
+const CACHE_FORMATTER_DIA_HORA: Map<string, Intl.DateTimeFormat> = new Map();
+
+function formatterDiaHora(zonaHoraria: string): Intl.DateTimeFormat {
+  let formatter = CACHE_FORMATTER_DIA_HORA.get(zonaHoraria);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", { timeZone: zonaHoraria, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+    CACHE_FORMATTER_DIA_HORA.set(zonaHoraria, formatter);
+  }
+  return formatter;
+}
+
+/**
+ * FASE 3 (producto) -- bug real corregido (revisión de esta fase): `now.getDay()`/
+ * `now.getHours()`/`now.getMinutes()` leen los componentes del reloj del PROCESO,
+ * NUNCA la hora local del negocio -- en Vercel (`TZ=UTC`) una promoción "viernes
+ * 18:00-23:00" evaluaba viernes 18:00-23:00 UTC (sábado 00:00-05:00 en
+ * America/Mexico_City), hasta 6 horas y potencialmente un día distinto del real.
+ * Este helper reemplaza esos 3 accesores por el día/hora REAL en la zona horaria
+ * de la property, vía `Intl.DateTimeFormat` (mismo patrón que
+ * `@atiende/core-tenancy::hoyFechaNegocio`). `% 24` en la hora es defensivo: la
+ * mayoría de los motores ICU dan "00" a medianoche con `hour12: false`, pero el
+ * estándar permite "24" -- verificado en Node/V8 (ICU) que da "00", nunca "24",
+ * antes de escribir este helper; el `% 24` no cambia ese caso y blinda contra un
+ * motor/versión de ICU que sí diera "24".
+ */
+function partesDeHoyEnZona(now: Date, zonaHoraria: string): { readonly dayOfWeek: number; readonly minutesSinceMidnight: number } {
+  const parts = formatterDiaHora(zonaHoraria).formatToParts(now);
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "Sun";
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return { dayOfWeek: WEEKDAY_SHORT_TO_JS_DAY[weekday] ?? 0, minutesSinceMidnight: hour * 60 + minute };
+}
+
 /**
  * Valida que una promoción sea aplicable AHORA, contra un total de pedido ya
  * calculado por el motor real — activa, dentro de starts_at/ends_at, dentro de
@@ -50,8 +89,15 @@ function minutesSinceMidnight(hhmm: string): number {
  * silenciosamente: cada rechazo nombra la razón real, para que la ruta HTTP (o el
  * agente de voz/WhatsApp) se lo explique al cliente en vez de un "código
  * inválido" genérico.
+ *
+ * `zonaHoraria` es la zona YA resuelta de la property (ver
+ * `@atiende/core-tenancy::resolverZonaHorariaNegocio`) -- `startsAt`/`endsAt` se
+ * siguen comparando por instante absoluto (`.getTime()`, sin bug de zona
+ * horaria: un instante UTC es el mismo instante en cualquier zona); solo
+ * `daysOfWeek`/`startTime`/`endTime` (hora de PARED del negocio) necesitan la
+ * zona real.
  */
-export function assertPromotionApplicable(promotion: Promotion, orderTotal: number, now: Date): void {
+export function assertPromotionApplicable(promotion: Promotion, orderTotal: number, now: Date, zonaHoraria: string): void {
   if (!promotion.isActive) {
     throw new PromotionError(`El código "${promotion.code}" ya no está activo.`);
   }
@@ -61,11 +107,11 @@ export function assertPromotionApplicable(promotion: Promotion, orderTotal: numb
   if (promotion.endsAt && now.getTime() > new Date(promotion.endsAt).getTime()) {
     throw new PromotionError(`El código "${promotion.code}" ya expiró.`);
   }
-  if (promotion.daysOfWeek && promotion.daysOfWeek.length > 0 && !promotion.daysOfWeek.includes(now.getDay())) {
+  const { dayOfWeek, minutesSinceMidnight: nowMinutes } = partesDeHoyEnZona(now, zonaHoraria);
+  if (promotion.daysOfWeek && promotion.daysOfWeek.length > 0 && !promotion.daysOfWeek.includes(dayOfWeek)) {
     throw new PromotionError(`El código "${promotion.code}" no aplica el día de hoy.`);
   }
   if (promotion.startTime !== null || promotion.endTime !== null) {
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
     const startMinutes = minutesSinceMidnight(promotion.startTime ?? "00:00");
     const endMinutes = minutesSinceMidnight(promotion.endTime ?? "23:59");
     const withinWindow = startMinutes <= endMinutes ? nowMinutes >= startMinutes && nowMinutes <= endMinutes : nowMinutes >= startMinutes || nowMinutes <= endMinutes;
@@ -93,10 +139,11 @@ export function computePromotionDiscount(promotion: Promotion, orderTotal: numbe
  * Aplica una promoción al total YA calculado por el motor de pedidos real (ver
  * orders.ts::prepareCreateOrder) — valida vigencia (`assertPromotionApplicable`,
  * lanza `PromotionError` si no aplica) y devuelve el nuevo total + el descuento
- * real. Nunca toca renglones/precios de producto.
+ * real. Nunca toca renglones/precios de producto. `zonaHoraria`: ver
+ * `assertPromotionApplicable`.
  */
-export function applyPromotionToOrderTotal(orderTotal: number, promotion: Promotion, now: Date): { readonly total: number; readonly discount: number } {
-  assertPromotionApplicable(promotion, orderTotal, now);
+export function applyPromotionToOrderTotal(orderTotal: number, promotion: Promotion, now: Date, zonaHoraria: string): { readonly total: number; readonly discount: number } {
+  assertPromotionApplicable(promotion, orderTotal, now, zonaHoraria);
   const discount = computePromotionDiscount(promotion, orderTotal);
   return { total: Math.round((orderTotal - discount) * 100) / 100, discount };
 }

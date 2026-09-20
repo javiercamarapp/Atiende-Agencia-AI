@@ -49,13 +49,18 @@ import type { DespachosRepository } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
 
 // Bug real (revisión r6, misma causa raíz que `./vencimientos.ts::todayIso` -- ver su
 // comentario de cabecera): "hoy" para `diasVencidoCartera`/`etapaRecordatorioCobranzaHoy`
 // usaba el día UTC del proceso, corrido un día adelante del real en CDMX entre las 18:00
 // y las 23:59 hora local. Ahora delega en `@atiende/core-tenancy::hoyFechaNegocio()`.
-function todayIso(): string {
-  return hoyFechaNegocio();
+//
+// FASE 3 (producto) — recibe la zona YA resuelta (`resolverZonaHorariaDespachosProperty`,
+// una consulta por request) en vez de asumir siempre el default de plataforma -- mismo
+// fix que `./vencimientos.ts::todayIso`.
+function todayIso(zonaHoraria: string): string {
+  return hoyFechaNegocio(zonaHoraria);
 }
 
 const FECHA_ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -164,7 +169,7 @@ export function despachosCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const pendienteParam = c.req.query("pendiente");
     const filter = pendienteParam === undefined ? undefined : { pendiente: pendienteParam === "true" };
-    const today = todayIso();
+    const today = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
 
     const cuentas = await repo.listReceivables(propertyId, filter);
     const { invoicesPorId, historialPorCuenta } = await enriquecerCartera(repo, propertyId, cuentas);
@@ -183,7 +188,7 @@ export function despachosCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     assertVerticalRole(c, VER_COBRANZA_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
     const propertyId = c.req.param("propertyId");
-    const today = todayIso();
+    const today = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
 
     const pendientes = await repo.listReceivables(propertyId, { pendiente: true });
     const { invoicesPorId, historialPorCuenta } = await enriquecerCartera(repo, propertyId, pendientes);
@@ -223,7 +228,7 @@ export function despachosCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     try {
       const receivable = await repo.registerReceivable({ organizationId, propertyId, invoiceId: invoice.id, fechaVencimiento: raw.fechaVencimiento, clienteNombre, clienteEmail });
-      const diasVencido = diasVencidoCartera(receivable.fechaVencimiento, todayIso());
+      const diasVencido = diasVencidoCartera(receivable.fechaVencimiento, todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId)));
       return c.json(serializeReceivable(receivable, invoice, diasVencido, scoreCobrabilidadCartera(diasVencido, [])), 201);
     } catch (err) {
       if (err instanceof ReceivableAlreadyExistsError) throw Errors.conflict(`Este CFDI ya tiene una cuenta por cobrar registrada (invoiceId: ${err.message}).`);
@@ -240,8 +245,13 @@ export function despachosCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const receivable = await repo.findReceivable(propertyId, receivableId);
     if (!receivable) throw Errors.notFound("Cuenta por cobrar no encontrada.");
-    const [invoice, eventos, historial] = await Promise.all([repo.findInvoice(propertyId, receivable.invoiceId), repo.listCollectionEvents(propertyId, receivableId), construirHistorial(repo, propertyId, receivableId)]);
-    const diasVencido = diasVencidoCartera(receivable.fechaVencimiento, todayIso());
+    const [invoice, eventos, historial, zonaHoraria] = await Promise.all([
+      repo.findInvoice(propertyId, receivable.invoiceId),
+      repo.listCollectionEvents(propertyId, receivableId),
+      construirHistorial(repo, propertyId, receivableId),
+      resolverZonaHorariaDespachosProperty(repo, propertyId),
+    ]);
+    const diasVencido = diasVencidoCartera(receivable.fechaVencimiento, todayIso(zonaHoraria));
     const score = receivable.pagadoEn ? 1 : scoreCobrabilidadCartera(diasVencido, historial);
 
     return c.json({
@@ -281,7 +291,8 @@ export function despachosCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     try {
       const updated = await repo.markReceivablePaid(propertyId, receivableId, pagadoEn, montoPagado);
       const invoice = await repo.findInvoice(propertyId, updated.invoiceId);
-      return c.json(serializeReceivable(updated, invoice, diasVencidoCartera(updated.fechaVencimiento, todayIso()), 1));
+      const hoy = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
+      return c.json(serializeReceivable(updated, invoice, diasVencidoCartera(updated.fechaVencimiento, hoy), 1));
     } catch (err) {
       if (err instanceof ReceivableAlreadyPaidError) throw Errors.conflict("Esta cuenta por cobrar ya estaba marcada como pagada.");
       throw err;
@@ -305,7 +316,7 @@ export function despachosCobranzaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (!invoice) throw Errors.conflict("El CFDI asociado a esta cuenta por cobrar ya no existe -- dato inconsistente, no se puede generar el recordatorio.");
 
     if (raw.stage !== undefined && !isCobranzaReminderStage(raw.stage)) throw Errors.validation(`stage: se esperaba una de ${COBRANZA_REMINDER_SEQUENCE.join(", ")}.`);
-    const today = todayIso();
+    const today = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
     const diasVencido = diasVencidoCartera(receivable.fechaVencimiento, today);
     const stage: CobranzaReminderStage = isCobranzaReminderStage(raw.stage) ? raw.stage : (etapaRecordatorioCobranzaHoy(receivable.fechaVencimiento, today) ?? etapaSugeridaPorAtraso(diasVencido));
 

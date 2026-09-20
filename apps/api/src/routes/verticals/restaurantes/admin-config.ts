@@ -32,7 +32,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { STAFF_INVITE_ROLES, RestaurantesConfigUnavailableError } from "@atiende/domain-restaurantes";
-import type { KnownZone } from "@atiende/domain-restaurantes";
+import type { BranchTimezoneConfig, KnownZone } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -48,6 +48,10 @@ interface CreateKnownZoneBody {
   readonly lng?: unknown;
 }
 
+interface UpsertZonaHorariaBody {
+  readonly zona_horaria?: unknown;
+}
+
 // `phone_number_id` real de Meta Cloud API es un identificador numérico de la
 // plataforma (no el número telefónico en sí) -- dígitos, longitud generosa
 // (Meta usa IDs de hasta ~20 dígitos hoy, este tope deja margen sin abrir la
@@ -58,16 +62,46 @@ function serializeKnownZone(zone: KnownZone) {
   return { id: zone.id, name: zone.name, lat: zone.lat, lng: zone.lng, createdAt: zone.createdAt };
 }
 
+/** FASE 3 (producto) -- mismo criterio EXACTO que `citas/admin.ts::optionalTimeZone`
+ * (leído primero como plantilla) -- valida que el string sea un timezone IANA real
+ * ANTES de escribir la fila. `null` es un valor válido explícito aquí (a
+ * diferencia de `optionalTimeZone`, que nunca acepta null porque su columna es
+ * NOT NULL con default) -- "borra la configuración, vuelve al default de
+ * plataforma", igual que `configuracion.ts` de despachos. */
+function optionalNullableTimeZone(value: unknown, field = "zona_horaria"): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string" || value.trim().length === 0 || value.length > 100) {
+    throw Errors.validation(`${field}: se esperaba un texto de 1 a 100 caracteres, o null.`);
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+  } catch {
+    throw Errors.validation(`${field}: "${value}" no es un timezone IANA válido (ej. "America/Mexico_City").`);
+  }
+  return value;
+}
+
+function serializeZonaHoraria(config: BranchTimezoneConfig) {
+  return { zonaHoraria: config.zonaHoraria };
+}
+
 export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
   const whatsappPath = "/v1/restaurantes/:propertyId/admin/config/whatsapp";
   const zonasPath = "/v1/restaurantes/:propertyId/admin/config/zonas";
   const zonaItemPath = "/v1/restaurantes/:propertyId/admin/config/zonas/:zoneId";
+  // FASE 3 (producto) -- zona horaria por negocio (migración 022,
+  // `restaurantes.branch_detail.zona_horaria`). A diferencia de whatsapp/zonas
+  // (organization-scoped), esto es POR SUCURSAL -- mismo grano que
+  // `findBranchZonaHoraria`/`upsertBranchZonaHoraria`.
+  const zonaHorariaPath = "/v1/restaurantes/:propertyId/admin/config/zona-horaria";
 
   app.use(whatsappPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(zonasPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
   app.use(zonaItemPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
+  app.use(zonaHorariaPath, authMiddleware(deps.env), dbSession(deps.engine), requirePropertyMembership("propertyId"));
 
   app.get(whatsappPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
@@ -189,6 +223,55 @@ export function restaurantesAdminConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     });
 
     return c.json({ ok: true });
+  });
+
+  // ---- FASE 3 (producto) -- zona horaria por negocio (migración 022). Nunca
+  // 404: una sucursal que nunca configuró zona horaria (columna NULL, o base sin
+  // la migración 022 -- ver `findBranchZonaHoraria`, degrada a null, nunca
+  // lanza) se ve como `zonaHoraria: null`, mismo criterio que
+  // `GET .../admin/config/whatsapp`. ----
+  app.get(zonaHorariaPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const propertyId = c.req.param("propertyId");
+    const config = await deps.restaurantesRepo(c.get("db")).findBranchZonaHoraria(propertyId);
+    return c.json(serializeZonaHoraria(config));
+  });
+
+  app.patch(zonaHorariaPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const propertyId = c.req.param("propertyId");
+    const staffId = c.get("userId");
+
+    const raw = await readJsonCapped<UpsertZonaHorariaBody>(c.req.raw, 1 * 1024);
+    const zonaHoraria = optionalNullableTimeZone(raw.zona_horaria);
+    if (zonaHoraria === undefined) throw Errors.validation("zona_horaria: campo requerido -- un timezone IANA (string) o null.");
+
+    const repo = deps.restaurantesRepo(c.get("db"));
+    const antes = await repo.findBranchZonaHoraria(propertyId);
+
+    let actualizado: BranchTimezoneConfig;
+    try {
+      actualizado = await repo.upsertBranchZonaHoraria(propertyId, zonaHoraria);
+    } catch (err) {
+      if (err instanceof RestaurantesConfigUnavailableError) throw Errors.serviceUnavailable(err.message);
+      throw err;
+    }
+
+    logEvent(c, "info", "restaurantes_admin_config_zona_horaria_actualizada", { actorUserId: staffId, organizationId, propertyId });
+
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: staffId,
+      action: "configuracion.zona_horaria_actualizada",
+      entityType: "configuracion",
+      entityId: propertyId,
+      campo: "zonaHoraria",
+      antes: antes.zonaHoraria,
+      despues: actualizado.zonaHoraria,
+    });
+
+    return c.json(serializeZonaHoraria(actualizado));
   });
 
   return app;

@@ -16,6 +16,7 @@ import type {
   Branch,
   BranchProductState,
   BranchSummary,
+  BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
   Category,
@@ -1634,6 +1635,49 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
       fallback: (err) => {
         advertirConfigEscrituraNoDisponible("known_zone", err);
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
+  // ---- FASE 3 (producto) -- zona horaria por negocio (migración 022,
+  // `restaurantes.branch_detail.zona_horaria`). Consulta AISLADA de `findBranch`
+  // (que no cambia -- `Branch` es un tipo público usado en muchos call-sites, ver
+  // el comentario de cabecera de la migración) -- corre DENTRO de la transacción
+  // de `prepareCreateOrder` (que sigue con el INSERT del pedido después), así que
+  // el `runWithSavepointFallback` de LECTURA es obligatorio (no opcional) aquí,
+  // mismo motivo que el resto de este archivo. ----
+  async findBranchZonaHoraria(propertyId: string): Promise<BranchTimezoneConfig> {
+    return runWithSavepointFallback<BranchTimezoneConfig>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_zona_horaria_read",
+      primary: async () => {
+        const { rows } = await this.db.query<{ zona_horaria: string | null }>(`select zona_horaria from restaurantes.branch_detail where property_id = $1;`, [propertyId]);
+        return { zonaHoraria: rows[0]?.zona_horaria ?? null };
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => ({ zonaHoraria: null }),
+    });
+  }
+
+  /** UPDATE real, nunca upsert -- la fila de `branch_detail` de una property
+   *  SIEMPRE existe (es la misma fila que resuelve `findBranch`, PK
+   *  `property_id`) -- ver el comentario de cabecera de la migración 022. */
+  async upsertBranchZonaHoraria(propertyId: string, zonaHoraria: string | null): Promise<BranchTimezoneConfig> {
+    return runWithSavepointFallback<BranchTimezoneConfig>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_zona_horaria_write",
+      primary: async () => {
+        const { rows } = await this.db.query<{ zona_horaria: string | null }>(
+          `update restaurantes.branch_detail set zona_horaria = $2 where property_id = $1 returning zona_horaria;`,
+          [propertyId, zonaHoraria],
+        );
+        if (!rows[0]) throw new Error(`upsertBranchZonaHoraria: la property "${propertyId}" no existe.`);
+        return { zonaHoraria: rows[0].zona_horaria };
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirConfigEscrituraNoDisponible("branch_detail.zona_horaria", err);
         throw new RestaurantesConfigUnavailableError();
       },
     });

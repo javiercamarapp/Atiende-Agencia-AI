@@ -11,6 +11,7 @@ import type {
   Branch,
   BranchProductState,
   BranchSummary,
+  BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
   Category,
@@ -454,6 +455,23 @@ export interface RestaurantesRepository {
    *  pertenecía a otra organización (nunca lanza por "no encontrado" -- el
    *  caller decide el 404, mismo contrato que `revokeStaffInvite`). */
   deleteKnownZone(organizationId: string, zoneId: string): Promise<boolean>;
+
+  // ---- FASE 3 (producto) -- zona horaria por negocio (migración 022,
+  // `restaurantes.branch_detail.zona_horaria`). A diferencia de whatsapp_channel_
+  // config/known_zone (organization-scoped), esto es POR SUCURSAL -- mismo grano
+  // que el resto de `branch_detail`. ----
+
+  /** `{ zonaHoraria: null }` cuando la sucursal nunca configuró una zona real
+   *  todavía -- nunca lanza por "no configurado" (mismo criterio "honesto" que
+   *  `getWhatsappChannelConfig`), NI cuando la base todavía no tiene la
+   *  migración 022 (degrada a `null`, ver
+   *  `PostgresRestaurantesRepository.findBranchZonaHoraria`). */
+  findBranchZonaHoraria(propertyId: string): Promise<BranchTimezoneConfig>;
+  /** UPDATE real (la fila de `branch_detail` de una property SIEMPRE existe --
+   *  es la misma fila que resuelve `findBranch`, nunca un upsert). Lanza
+   *  `RestaurantesConfigUnavailableError` (503 honesto vía la ruta HTTP) si la
+   *  base todavía no tiene la migración 022 aplicada. */
+  upsertBranchZonaHoraria(propertyId: string, zonaHoraria: string | null): Promise<BranchTimezoneConfig>;
 }
 
 /** Lanzado por `upsertWhatsappChannelConfig`/`createKnownZone`/`deleteKnownZone`

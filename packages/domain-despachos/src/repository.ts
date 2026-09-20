@@ -7,6 +7,7 @@ import type {
   CollectionEventRecord,
   DeadlineEscalationRecord,
   DespachosAuditLogPage,
+  DespachosPropertyConfigRecord,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
@@ -239,6 +240,23 @@ export interface DespachosRepository {
    * No-op en `InMemoryDespachosRepository` (sin transacción real que aislar). */
   runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T>;
 
+  // ---- FASE 3 (producto) -- zona horaria por negocio (migración 012): config
+  // real por property, ver el comentario de cabecera de la migración para el
+  // porqué de una tabla nueva en vez de una columna en `tenant_profile`. ----
+  /** `null` si la property nunca configuró una fila todavía (nunca 404 -- el
+   * caller resuelve el default de plataforma vía
+   * `resolverZonaHorariaNegocio(config?.zonaHoraria)`). Compat con la base sin
+   * migrar: el adaptador de Postgres degrada a `null` en 42P01/42883/42703
+   * (mismo criterio que el resto del repo, ver REGLA DURA de compatibilidad). */
+  findPropertyConfig(propertyId: string): Promise<DespachosPropertyConfigRecord | null>;
+  /** Upsert real (insert ... on conflict do update) -- una property puede no
+   * tener fila todavía la primera vez que su owner configura la zona horaria.
+   * `zonaHoraria: null` borra la configuración explícita (vuelve al default de
+   * plataforma). Lanza `DespachosConfigUnavailableError` (./errors.ts) si la base
+   * todavía no tiene la migración 012 aplicada -- la ruta HTTP lo traduce a un 503
+   * honesto, nunca un 500 crudo ni un upsert silenciosamente perdido. */
+  upsertPropertyConfigZonaHoraria(propertyId: string, organizationId: string, zonaHoraria: string | null): Promise<DespachosPropertyConfigRecord>;
+
   // ---- Bitácora de auditoría (f2-orden-total-bitacoras) ----
   /** Lectura PAGINADA de `despachos.audit_log` (008_despachos_audit_log.sql), más
    * reciente primero -- orden TOTAL desde el día uno (`created_at desc, seq desc`,
@@ -271,5 +289,5 @@ export interface EmailOutboxJobRow {
   readonly payload: Record<string, unknown>;
 }
 
-export type { InvoiceRecord, InvoiceReviewRecord, FiscalDeadlineRecord, DeadlineEscalationRecord, ReceivableRecord, CollectionEventRecord } from "./types.ts";
+export type { InvoiceRecord, InvoiceReviewRecord, FiscalDeadlineRecord, DeadlineEscalationRecord, ReceivableRecord, CollectionEventRecord, DespachosPropertyConfigRecord } from "./types.ts";
 export type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";

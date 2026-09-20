@@ -3,9 +3,9 @@
 // consume `core-auth/src/middleware.ts`). Ejecuta las queries reales contra el
 // esquema `despachos` de migrations/001 (RLS real vía `core.has_property_access`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { isNoUniqueOrExclusionConstraintError, runWithSavepointFallback } from "@atiende/db";
+import { isMigrationPendingError, isNoUniqueOrExclusionConstraintError, runWithSavepointFallback } from "@atiende/db";
 import type { HallazgoCfdi } from "@atiende/billing";
-import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
+import { DespachosConfigUnavailableError, InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import type { DespachosRepository, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CategoriaContable,
@@ -14,6 +14,7 @@ import type {
   CollectionEventStage,
   DeadlineEscalationRecord,
   DespachosAuditLogPage,
+  DespachosPropertyConfigRecord,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
@@ -1039,5 +1040,74 @@ export class PostgresDespachosRepository implements DespachosRepository {
 
     const items = rows.map(mapDespachosAuditLogRow);
     return { items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
+  }
+
+  // ---- FASE 3 (producto) -- zona horaria por negocio (migración 012) ----
+  /** `findPropertyConfig` corre SIEMPRE dentro de la transacción del request (que
+   * después sigue con más queries -- ver `vencimientos.ts`/`cobranza.ts`/
+   * `cierre-mensual.ts`, cada uno resuelve la zona horaria ANTES de sus escrituras
+   * de negocio reales). REGLA DURA de compatibilidad del repo: un `try/catch`
+   * simple sobre 42P01 dejaría la transacción ABORTADA (25P02) para esas queries
+   * posteriores -- `runWithSavepointFallback` es obligatorio aquí, nunca opcional,
+   * mismo motivo que documenta `createDeadline` arriba. Degrada a `null` (config
+   * "sin fila todavía", nunca un error) tanto si la TABLA no existe (42P01, base sin
+   * migrar) como si la COLUMNA no existe (42703, tabla vieja de un `create table`
+   * previo hipotético) -- `isMigrationPendingError` cubre ambos + 42883 (sin uso
+   * real aquí, no hay función de por medio, pero es el mismo helper compartido que
+   * el resto del repo). */
+  async findPropertyConfig(propertyId: string): Promise<DespachosPropertyConfigRecord | null> {
+    return runWithSavepointFallback<DespachosPropertyConfigRecord | null>({
+      session: this.db,
+      savepointName: "sp_despachos_property_config_read",
+      primary: async () => {
+        const { rows } = await this.db.query<{ property_id: string; organization_id: string; zona_horaria: string | null }>(
+          `select property_id, organization_id, zona_horaria from despachos.property_config where property_id = $1;`,
+          [propertyId],
+        );
+        if (!rows[0]) return null;
+        return { propertyId: rows[0].property_id, organizationId: rows[0].organization_id, zonaHoraria: rows[0].zona_horaria };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => null,
+    });
+  }
+
+  /** Upsert real (`on conflict (property_id) do update`) -- una property puede no
+   * tener fila todavía la primera vez que su owner configura la zona horaria (ver
+   * `findPropertyConfig`). A diferencia de `createDeadline` (42P10, índice
+   * `unique` ausente) el compromiso aquí es 42P01/42703 (tabla/columna ausente,
+   * migración 012 sin aplicar) -- nunca se puede "degradar" una ESCRITURA a la
+   * base vieja (no hay dónde guardarla), así que el `fallback` lanza
+   * `DespachosConfigUnavailableError` (503 honesto vía la ruta HTTP) en vez de
+   * simular éxito. Mismo criterio EXACTO que
+   * `PostgresRestaurantesRepository.upsertWhatsappChannelConfig`
+   * (`RestaurantesConfigUnavailableError`, leído primero como plantilla) --
+   * `runWithSavepointFallback` dejando la sesión utilizable de nuevo es lo que
+   * permite que la ruta siga (p. ej. para su propio log/respuesta de error) sin
+   * abortar el resto de la transacción del request. */
+  async upsertPropertyConfigZonaHoraria(propertyId: string, organizationId: string, zonaHoraria: string | null): Promise<DespachosPropertyConfigRecord> {
+    return runWithSavepointFallback<DespachosPropertyConfigRecord>({
+      session: this.db,
+      savepointName: "sp_despachos_property_config_write",
+      primary: async () => {
+        const { rows } = await this.db.query<{ property_id: string; organization_id: string; zona_horaria: string | null }>(
+          `insert into despachos.property_config (property_id, organization_id, zona_horaria, updated_at)
+           values ($1, $2, $3, now())
+           on conflict (property_id) do update set zona_horaria = excluded.zona_horaria, updated_at = excluded.updated_at
+           returning property_id, organization_id, zona_horaria;`,
+          [propertyId, organizationId, zonaHoraria],
+        );
+        return { propertyId: rows[0]!.property_id, organizationId: rows[0]!.organization_id, zonaHoraria: rows[0]!.zona_horaria };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: (err) => {
+        console.warn(
+          "PostgresDespachosRepository.upsertPropertyConfigZonaHoraria: despachos.property_config todavía no está disponible en esta base " +
+            "(SQLSTATE 42883/42P01/42703) -- aplica packages/domain-despachos/migrations/012_property_config_zona_horaria.sql (o su espejo en supabase/migrations/).",
+          err,
+        );
+        throw new DespachosConfigUnavailableError();
+      },
+    });
   }
 }

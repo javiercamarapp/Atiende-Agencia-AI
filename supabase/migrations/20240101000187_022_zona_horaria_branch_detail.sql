@@ -1,0 +1,44 @@
+-- FASE 3 (producto) — zona horaria por negocio, parte restaurantes (3 de 4; ver
+-- `packages/core-tenancy/src/fecha-negocio.ts::resolverZonaHorariaNegocio`, el ÚNICO
+-- punto de esta decisión, ya construido, y el espejo de esta misma migración para
+-- despachos en la misma tanda: `packages/domain-despachos/migrations/
+-- 012_property_config_zona_horaria.sql`).
+--
+-- Gap real verificado antes de escribir esta migración: `restaurantes` no tenía
+-- NINGUNA columna de zona horaria. A diferencia de despachos (que no tenía ninguna
+-- tabla de configuración por property y necesitó una tabla nueva), restaurantes SÍ
+-- tiene una desde Fase 1 -- `restaurantes.branch_detail` (001_restaurantes_schema.sql,
+-- property_id primary key, "branches (origen) -> core.property (genérico) +
+-- branch_detail (específico de restaurantes: slug/phone/address/lat/lng/
+-- display_order)") -- este es el lugar real, no uno inventado: agrega UNA columna a
+-- una tabla ya existente, mismo criterio que el resto de esta migración
+-- ("CONECTAR, no rediseñar el modelo de datos", ver el comentario de cabecera de
+-- `021_restaurantes_config_editable_y_search_path_fix.sql`).
+--
+-- `zona_horaria` NULLABLE, SIN default forzado en SQL (mandato explícito de esta
+-- fase) -- el default real de "sin configurar todavía" lo decide
+-- `resolverZonaHorariaNegocio()` (cae a `ZONA_HORARIA_NEGOCIO_DEFAULT`), nunca esta
+-- migración. Sin `check` de formato IANA -- esa validación vive en la capa de
+-- aplicación (`apps/api/.../restaurantes/admin-config.ts`, mismo criterio EXACTO que
+-- `citas/admin.ts::optionalTimeZone`) ANTES de escribir la fila, por el mismo motivo
+-- que documenta el espejo de despachos: un `check` en SQL solo valida el FORMATO,
+-- nunca si el nombre IANA existe de verdad.
+--
+-- RLS/GRANT -- `restaurantes.branch_detail` YA tiene `grant update ... to
+-- authenticated` + policy de UPDATE para "staff ve/actualiza detalle de sucursal de
+-- su organización" (`core.has_property_access`, migrations/007/014) desde antes de
+-- esta migración, SIN filtrar por `vertical_role` -- cualquier staff de la
+-- organización (no solo owner/admin) puede editar phone/address/lat/lng hoy. Se
+-- deja ASÍ a propósito para `zona_horaria` (ninguna policy nueva en este archivo):
+-- ampliar esa policy ya existente para exigir `vertical_role in ('owner', 'admin')`
+-- tocaría phone/address/lat/lng también, un cambio de alcance MÁS ANCHO que "zona
+-- horaria por negocio" que esta fase no debe colar sin mandato explícito. La
+-- restricción real a owner/gm que pide esta fase ("UI mínima para owner/gm") vive en
+-- la capa TS (`assertVerticalRole(STAFF_INVITE_ROLES)` en `admin-config.ts`, mismo
+-- techo EXACTO que ya usan `whatsapp_channel_config`/`known_zone` en ese mismo
+-- archivo) -- RLS sigue siendo la autoridad de AISLAMIENTO por organización/property
+-- (`core.has_property_access`), la capa TS es la autoridad de QUÉ ROL dentro de esa
+-- organización puede tocar esta configuración en particular, mismo principio de dos
+-- capas que el resto de este archivo.
+alter table restaurantes.branch_detail
+  add column zona_horaria text check (zona_horaria is null or zona_horaria <> '');
