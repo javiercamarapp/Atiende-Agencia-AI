@@ -1,0 +1,45 @@
+-- f2-orden-total-bitacoras -- mismo desempate estable y monótono que
+-- packages/domain-rentas/migrations/022_rentas_audit_log_orden_determinista.sql
+-- (PR #173) para `despachos.audit_log` (008_despachos_audit_log.sql).
+--
+-- A DIFERENCIA de rentas.audit_log en el momento de PR #173: `despachos.audit_log`
+-- hoy NO tiene ningún consumidor de lectura paginada -- se buscó explícitamente
+-- (`grep -rn "despachos.audit_log" apps/ packages/`) y el único código que la toca
+-- es la escritura (`despachos.record_audit_log`, vía `ProductionDespachosAuditSink`,
+-- sesión de sistema) y la policy de `select` para staff, sin ningún caller real
+-- todavía (ver el comentario de cierre de la propia 008: "Ninguna ruta HTTP la
+-- expone todavía"). Esta migración NO corrige un bug activo en producción -- deja
+-- lista la infraestructura de orden TOTAL (misma causa raíz que rentas: `now()` es
+-- constante dentro de una transacción, así que dos filas de bitácora escritas en la
+-- MISMA transacción compartirían `created_at` sin este desempate) para que el
+-- `listAuditLogPage` que este mismo PR agrega a `DespachosRepository` (y cualquier
+-- futuro panel de auditoría que lo consuma) nazca con orden determinista, en vez de
+-- repetir el mismo bug que rentas tuvo que corregir después.
+--
+-- Misma columna, mismo tipo, mismo criterio EXACTO que 022 de rentas -- ver ese
+-- archivo para el análisis completo (verificado a mano contra Postgres real: ALTER
+-- TABLE ... ADD COLUMN ... GENERATED ALWAYS AS IDENTITY sobre una tabla con filas
+-- existentes NO dispara ningún trigger BEFORE UPDATE/DELETE, la reescritura la hace
+-- el propio ALTER TABLE a nivel de heap).
+--
+-- COMPATIBILIDAD CON LA BASE SIN MIGRAR: `despachos.audit_log` (008) ya vive en
+-- producción desde hace muchas migraciones (posición ~92 de 164 en
+-- supabase/migrations/ al momento de escribir esto, muy por detrás del corte de
+-- "~30 migraciones atrás" que describe el estado real de la base) -- no hace falta
+-- ningún fallback para "la tabla no existe todavía" (42883/42P01), a diferencia de
+-- rentas (021 sí podía estar sin aplicar en ese momento). El ÚNICO caso nuevo que
+-- esta migración introduce es "008 aplicada, 011 (esta) no" -- `seq` no existe
+-- todavía y `order by ..., seq desc` lanzaría 42703 (undefined_column).
+-- `PostgresDespachosRepository.listAuditLogPage` cae al `order by created_at desc`
+-- de antes de esta migración vía `runWithSavepointFallback` (`@atiende/db`), nunca
+-- revienta ni revierte el resto de la transacción compartida del request.
+alter table despachos.audit_log add column seq bigint generated always as identity;
+
+-- El índice de 008 servía `order by created_at desc` -- se recrea para que Postgres
+-- pueda resolver `order by created_at desc, seq desc` (el nuevo orden total) con un
+-- index scan y no un sort adicional en memoria. `drop index` + `create index`
+-- (nunca `create index concurrently`, fuera de una transacción): esta migración
+-- corre dentro de la transacción normal del runner de migraciones, mismo criterio
+-- que 022 de rentas.
+drop index despachos.despachos_audit_log_org_created_idx;
+create index despachos_audit_log_org_created_idx on despachos.audit_log (organization_id, created_at desc, seq desc);

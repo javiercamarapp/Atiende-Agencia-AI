@@ -6,6 +6,7 @@
 import type {
   CollectionEventRecord,
   DeadlineEscalationRecord,
+  DespachosAuditLogPage,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
@@ -237,6 +238,19 @@ export interface DespachosRepository {
    * runWithRowSavepoint` -- ver su comentario de cabecera para el diseño completo.
    * No-op en `InMemoryDespachosRepository` (sin transacción real que aislar). */
   runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T>;
+
+  // ---- Bitácora de auditoría (f2-orden-total-bitacoras) ----
+  /** Lectura PAGINADA de `despachos.audit_log` (008_despachos_audit_log.sql), más
+   * reciente primero -- orden TOTAL desde el día uno (`created_at desc, seq desc`,
+   * migración 011): sin este desempate, `now()` (created_at) es CONSTANTE dentro de
+   * una transacción, así que dos entradas de auditoría escritas en la MISMA
+   * transacción de request podrían quedar en orden no determinista y paginar de
+   * forma inestable (mismo hallazgo que `packages/domain-rentas/migrations/
+   * 022_rentas_audit_log_orden_determinista.sql`, PR #173, aplicado aquí ANTES de
+   * que exista ningún consumidor real -- ver el comentario de cabecera de la
+   * migración 011). Hoy sin caller HTTP (mismo criterio que la propia 008: "ninguna
+   * ruta la expone todavía"); queda lista para un futuro panel de auditoría. */
+  listAuditLogPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<DespachosAuditLogPage>;
 }
 
 /** Staff `owner`/`admin` real de una organización — el "responsable" al que se le

@@ -27,6 +27,7 @@ import type {
   IdempotentResult,
   LicitacionesRepository,
   MatchingProfileUpsertInput,
+  TenderAuditLogPage,
   TenderResolutionCreateInput,
   TenderPage,
   TenderUpsertInput,
@@ -173,7 +174,12 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly mutex = new KeyedMutex();
   // ---- Fase 3: matching/scoring y go/no-go ----
   private readonly tenderByExternalKey = new Map<string, string>(); // `${orgId}:manual:${externalId}` -> tenderId (mismo alcance que tender_org_source_external_idx)
-  private readonly tenderAuditLog = new Map<string, { action: string; actorId: string; createdAt: string }[]>(); // tenderId -> entradas (historial)
+  // f2-orden-total-bitacoras -- `id`/`organizationId`/`createdAtMs`/`seq` agregados
+  // para soportar `listTenderAuditLogPage` (orden total, ver migrations/
+  // 026_tender_audit_log_orden_total_lectura_paginada.sql) sin romper
+  // `listTenderAuditLogForTests` (más abajo), que ya existía.
+  private readonly tenderAuditLog = new Map<string, { id: string; organizationId: string; action: string; actorId: string; createdAt: string; createdAtMs: number; seq: number }[]>(); // tenderId -> entradas (historial)
+  private tenderAuditLogSeq = 0;
   private readonly matchingProfiles = new Map<string, MatchingProfileRecord>(); // orgId -> perfil (singleton)
   private readonly goNoGoDecisions = new Map<string, GoNoGoDecisionRecord[]>(); // tenderId -> decisiones (historial, más reciente al final)
   // ---- Fase 16: resolución won/lost ----
@@ -369,7 +375,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
         updatedAt: nowIso,
       };
       this.tenders.set(existing.id, updated);
-      this.recordTenderAudit(existing.id, "tender.manual_upsert.updated", input.actorId);
+      this.recordTenderAudit(organizationId, existing.id, "tender.manual_upsert.updated", input.actorId);
       // Fase 5 pieza 1 (REQ-147): cada alta/actualización manual ES una
       // "corrida de ingesta" del único conector real hoy -- se registra tal
       // cual, con la MISMA forma que usaría un conector automatizado futuro.
@@ -400,15 +406,17 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     };
     this.tenders.set(created.id, created);
     if (externalKey) this.tenderByExternalKey.set(externalKey, created.id);
-    this.recordTenderAudit(created.id, "tender.manual_upsert.created", input.actorId);
+    this.recordTenderAudit(organizationId, created.id, "tender.manual_upsert.created", input.actorId);
     await this.recordManualSourceRun(organizationId, true);
     await this.recordTenderVersion(organizationId, created.id, input.actorId);
     return { tender: created, created: true, submissionDeadlineChanged: false };
   }
 
-  private recordTenderAudit(tenderId: string, action: string, actorId: string): void {
+  private recordTenderAudit(organizationId: string, tenderId: string, action: string, actorId: string): void {
     const list = this.tenderAuditLog.get(tenderId) ?? [];
-    list.push({ action, actorId, createdAt: new Date().toISOString() });
+    this.tenderAuditLogSeq += 1;
+    const createdAtMs = Date.now();
+    list.push({ id: randomUUID(), organizationId, action, actorId, createdAt: new Date(createdAtMs).toISOString(), createdAtMs, seq: this.tenderAuditLogSeq });
     this.tenderAuditLog.set(tenderId, list);
   }
 
@@ -502,7 +510,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     this.tenderChangeNotifications.set(organizationId, notifications);
 
     // Trazabilidad de quién disparó la corrida que produjo esta versión (alta manual o re-extracción de requisitos) -- reutiliza `tender_audit_log`, ya existente (Fase 3 §6), en vez de inventar un mecanismo nuevo.
-    this.recordTenderAudit(tenderId, "tender.version_recorded", actorId);
+    this.recordTenderAudit(organizationId, tenderId, "tender.version_recorded", actorId);
     const persisted: PersistedTenderVersion = { version: version.version, hash: version.hash, snapshot: version.snapshot, diff: version.diff, createdAt: version.createdAt };
     return { version: persisted, created: true, cascadedChanges, notification };
   }
@@ -566,6 +574,22 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   /** Solo pruebas/inspección -- no forma parte de `LicitacionesRepository` (ningún endpoint de Fase 3 la expone, ver diseño §6/§9). */
   listTenderAuditLogForTests(tenderId: string): readonly { action: string; actorId: string; createdAt: string }[] {
     return this.tenderAuditLog.get(tenderId) ?? [];
+  }
+
+  async listTenderAuditLogPage(organizationId: string, tenderId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderAuditLogPage> {
+    const { limit, offset } = opts;
+    // f2-orden-total-bitacoras -- desempate por `seq` cuando `createdAtMs` empata
+    // (ver el comentario de `tenderAuditLog` arriba) -- MISMO orden que
+    // `PostgresLicitacionesRepository.listTenderAuditLogPage` (`order by
+    // created_at desc, seq desc`).
+    const filtrados = (this.tenderAuditLog.get(tenderId) ?? [])
+      .filter((r) => r.organizationId === organizationId)
+      .sort((a, b) => b.createdAtMs - a.createdAtMs || b.seq - a.seq);
+    const total = filtrados.length;
+    const pagina = filtrados
+      .slice(offset, offset + limit)
+      .map(({ organizationId: _organizationId, createdAtMs: _createdAtMs, seq: _seq, ...row }) => ({ ...row, tenderId }));
+    return { items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
   }
 
   // ---- Fase 8: ingesta automática real (compras_mx_historico) + recordatorios de plazo ----

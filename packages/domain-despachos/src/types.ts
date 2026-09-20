@@ -222,3 +222,23 @@ export interface ReceivableReminderRow {
 export interface NewSystemCollectionEventInput extends NewCollectionEventInput {
   readonly eventDate: string;
 }
+
+/** Fila de `despachos.audit_log` (008_despachos_audit_log.sql), ya mapeada a
+ * camelCase -- ver `DespachosRepository.listAuditLogPage` (f2-orden-total-bitacoras).
+ * `payload` es el `AuthzAuditEntry` completo tal cual lo guardó
+ * `ProductionDespachosAuditSink` (nunca reinterpretado aquí). */
+export interface DespachosAuditLogEntry {
+  readonly id: string;
+  readonly actorUserId: string | null;
+  readonly action: string;
+  readonly payload: Record<string, unknown>;
+  readonly createdAt: string;
+}
+
+/** Página de `DespachosRepository.listAuditLogPage` -- mismo shape que
+ * `InvoicePage`/`RentasAuditLogPagina` (@atiende/domain-rentas). */
+export interface DespachosAuditLogPage {
+  readonly items: readonly DespachosAuditLogEntry[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}
