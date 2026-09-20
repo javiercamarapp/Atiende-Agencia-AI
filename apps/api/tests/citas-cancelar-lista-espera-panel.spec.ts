@@ -161,7 +161,11 @@ describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/canc
       { match: /from citas\.appointments where id = \$1 and organization_id = \$2/, respond: () => [cancelledAppointmentRow()] },
       { match: /from citas\.customers/, respond: () => [{ id: CUSTOMER_ID, organization_id: ORG_ID, full_name: "Cliente de prueba", phone: "5215500000000", email: null }] },
       { match: /from citas\.providers where id = \$1 and organization_id = \$2/, respond: () => [{ id: PROVIDER_ID, organization_id: ORG_ID, property_id: null, display_name: "Dr. Prueba", role_label: "Proveedor", is_active: true }] },
-      { match: /from citas\.appointment_waitlist/, respond: () => [{ id: WAITLIST_ID, customer_phone: "5215500000001", customer_name: "Candidato", notified_count: 0, provider_id: PROVIDER_ID, service_id: null, preferred_date_from: null, preferred_date_to: null, preferred_time_window: "any", created_at: "2027-01-01T00:00:00.000Z" }] },
+      // f2-citas-lista-de-espera, hallazgo (A): la lectura real ahora pasa por
+      // `citas.system_load_live_waitlist_candidates` (migración 020), no por un
+      // SELECT plano contra `citas.appointment_waitlist` (esa tabla solo tiene
+      // policy de RLS de staff -- en sesión de sistema devolvía 0 filas).
+      { match: /citas\.system_load_live_waitlist_candidates/, respond: () => [{ out_id: WAITLIST_ID, out_customer_phone: "5215500000001", out_customer_name: "Candidato", out_notified_count: 0, out_provider_id: PROVIDER_ID, out_service_id: null, out_preferred_date_from: null, out_preferred_date_to: null, out_preferred_time_window: "any", out_created_at: "2027-01-01T00:00:00.000Z" }] },
       { match: /from citas\.whatsapp_config/, respond: () => [{ phone_number_id: "phone-1" }] },
       // El corazón del hallazgo confirmado: SIEMPRE 42501 en sesión de staff.
       { match: /citas\.claim_waitlist_notification_slot/, respond: () => pgPermissionDenied() },
