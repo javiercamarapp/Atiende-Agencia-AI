@@ -1,17 +1,18 @@
 // AbortAwareFakeSession — doble de prueba GENÉRICO que reproduce la semántica REAL de
-// una transacción de Postgres, a diferencia del doble ad-hoc que ya existía en
-// `postgres-core-repository-org-admin-fallback.spec.ts` (fakeSession — despacha por
-// regex pero NUNCA queda "abortado": una consulta posterior a un error que ese doble
-// simulaba siempre respondía con normalidad, algo que Postgres real NUNCA hace). Esa
-// es la causa raíz por la que el bug de esta ronda (r3) pasó sin que ningún test lo
-// viera: `isUndefinedFunctionError`/los catch de 23514 se probaban contra una sesión
-// que jamás reproducía 25P02 ni el `COMMIT` que devuelve el tag `ROLLBACK`.
+// una transacción de Postgres, a diferencia de un doble ad-hoc que solo despache por
+// regex sin quedar "abortado": una consulta posterior a un error que ese tipo de doble
+// simularía siempre respondería con normalidad, algo que Postgres real NUNCA hace. Esa
+// es la causa raíz por la que un bug así puede pasar sin que ningún test lo vea:
+// catches de SQLSTATE se probarían contra una sesión que jamás reproduce 25P02 ni el
+// `COMMIT` que devuelve el tag `ROLLBACK`.
 //
-// Mismo doble, mismo criterio, que `domain-citas/tests/support/aborting-fake-
-// session.ts` (duplicado a propósito -- mismo patrón ya establecido por `domain-
-// restaurantes/tests/upsert-customer-savepoint.spec.ts` vs. `domain-citas/tests/
-// upsert-customer-savepoint.spec.ts`: cada paquete es dueño de sus propios dobles de
-// prueba, sin una dependencia cruzada nueva solo para esto).
+// Mismo doble, mismo criterio, que `packages/db/tests/support/aborting-fake-
+// session.ts` / `domain-citas/tests/support/aborting-fake-session.ts` /
+// `domain-hoteles/tests/support/aborting-fake-session.ts` /
+// `domain-restaurantes/tests/support/aborting-fake-session.ts` (duplicado a
+// propósito -- cada paquete es dueño de sus propios dobles de prueba, sin una
+// dependencia cruzada nueva solo para esto; ver auditoría a3, hallazgo confirmado
+// #5/#2, que introdujo `DespachosRepository.runWithRowSavepoint` y esta copia).
 //
 // Regla real de Postgres que este doble modela (verificada en `scripts/verify-
 // fallback-savepoint/pg-scenarios.sql` contra Postgres real, no solo aquí):
@@ -34,8 +35,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 
 export interface FakeSessionHandler {
   /** Sub-cadena/regex reconocible del SQL -- el primer handler cuyo `match` acierta
-   *  gana (mismo criterio que el `fakeSession` de postgres-core-repository-org-admin-
-   *  fallback.spec.ts). */
+   *  gana. */
   readonly match: RegExp;
   /** Devuelve las filas (para `query`) o `undefined` (para `exec`) en caso de éxito,
    *  o una instancia de `Error` para simular que la consulta falla -- ese error deja
