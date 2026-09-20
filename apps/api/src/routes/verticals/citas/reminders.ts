@@ -39,7 +39,7 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
       let processed = 0;
       let sent = 0;
       let sentEmail = 0;
-      const failures: { organization_id: string; error: string }[] = [];
+      const failures: { organization_id: string; appointment_id?: string; error: string }[] = [];
 
       // Un tenant con datos raros nunca tumba la corrida completa de los demás — se
       // captura y se sigue, se reporta en `failures[]` (ver diseño §5.3).
@@ -49,6 +49,18 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
           processed += summary.processed;
           sent += summary.sent;
           sentEmail += summary.sentEmail;
+          // Re-revisión a3 (bloqueante #1) — `runConfirmacionCitaCore` YA aísla cada
+          // cita venenosa con SAVEPOINT y no lanza para la organización completa
+          // (ver `failedAppointmentIds`/`failedAppointmentErrors`, domain-citas),
+          // así que este `catch` de arriba NUNCA ve esos errores. Sin este volcado
+          // explícito el cron respondía `ok:true, failures:[]` con el latido en
+          // verde aunque una cita real hubiera perdido su recordatorio para
+          // siempre (ventana ±30 min con cron diario = sin reintento) — mismo
+          // patrón que `google-calendar-sync.ts`/PR #163: cada fallo REAL por
+          // cita se vuelca a `failures[]` para que dispare `CronPartialFailureError`.
+          summary.failedAppointmentIds.forEach((appointmentId, i) => {
+            failures.push({ organization_id: org.id, appointment_id: appointmentId, error: summary.failedAppointmentErrors[i] ?? "error desconocido" });
+          });
         } catch (err) {
           failures.push({ organization_id: org.id, error: err instanceof Error ? err.message : String(err) });
         }
@@ -56,7 +68,12 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
 
       const response = c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, failures });
       if (failures.length > 0) {
-        throw new CronPartialFailureError(`confirmacion-cita: ${failures.length} de ${organizations.length} organizaciones fallaron`, response);
+        // `failures.length` mezcla organizaciones que lanzaron completas (catch de
+        // arriba) con citas individuales aisladas por SAVEPOINT dentro de una
+        // organización que sí completó -- "de N organizaciones" describe el universo
+        // recorrido, no que las N fallaran (mismo criterio que
+        // `discover-tenders`/PR #163, ver `licitaciones/discover.ts`).
+        throw new CronPartialFailureError(`confirmacion-cita: ${failures.length} fallo(s) real(es) de ${organizations.length} organizaciones`, response);
       }
       return response;
     })();

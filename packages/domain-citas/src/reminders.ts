@@ -53,9 +53,15 @@ export interface ConfirmacionCitaSummary {
    * `syncPendingAppointmentsMultiProvider`, ver `repository.ts::runWithRowSavepoint`)
    * — una cita "venenosa" ya NO revierte los recordatorios de las demás citas de
    * la MISMA organización que este loop ya había encolado con éxito antes de
-   * llegar a ella. El caller (`apps/api/.../citas/reminders.ts`) refleja esto en
-   * `failures[]`/`CronPartialFailureError`, nunca en silencio. */
+   * llegar a ella. El caller (`apps/api/.../citas/reminders.ts`) combina esto con
+   * `failedAppointmentErrors` (mismo índice) en `{appointment_id, error}` y lo
+   * vuelca a `failures[]`, que dispara `CronPartialFailureError` — nunca en
+   * silencio (mismo patrón que `google-calendar-sync.ts`/PR #163). */
   failedAppointmentIds: string[];
+  /** Mensaje de error real de Postgres para cada id de `failedAppointmentIds`,
+   * en el MISMO índice/orden — ambos arreglos se llenan juntos en el único
+   * `catch` de abajo, nunca por separado, así que no pueden desincronizarse. */
+  failedAppointmentErrors: string[];
 }
 
 /**
@@ -85,7 +91,7 @@ export interface ConfirmacionCitaSummary {
  * simplemente no le llega al cliente por WhatsApp hasta que exista esa plantilla.
  */
 export async function runConfirmacionCitaCore(repo: CitasRepository, organizationId: string, now: Date = new Date()): Promise<ConfirmacionCitaSummary> {
-  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, failedAppointmentIds: [] };
+  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, failedAppointmentIds: [], failedAppointmentErrors: [] };
 
   const windowStart = new Date(now.getTime() + REMINDER_HORIZON_MS - REMINDER_WINDOW_TOLERANCE_MS);
   const windowEnd = new Date(now.getTime() + REMINDER_HORIZON_MS + REMINDER_WINDOW_TOLERANCE_MS);
@@ -113,12 +119,25 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
     // abortarla completa (25P02) y perder en silencio los recordatorios ya
     // encolados de las citas anteriores de esta misma corrida.
     try {
+      // Re-revisión a3 (no bloqueante #5) — contadores LOCALES dentro del
+      // SAVEPOINT: si `markReminderSent` (o cualquier paso posterior a
+      // `enqueueMessagingOutbox`/`tryEnqueueAppointmentEmail`) falla, `catch` de
+      // abajo corre DESPUÉS de que `runWithRowSavepoint` ya hizo
+      // `ROLLBACK TO SAVEPOINT` -- el outbox de esta cita queda deshecho, pero
+      // antes estos contadores YA se habían sumado directo a `summary` dentro del
+      // callback, así que el resumen reportaba `sent`/`sentEmail` de algo que en
+      // realidad se revirtió. Solo se vuelcan a `summary` una vez, tras un
+      // `await` exitoso (sin throw) de todo el bloque.
+      let sentLocal = 0;
+      let sentEmailLocal = 0;
+      let skippedNoPhoneLocal = 0;
+
       await repo.runWithRowSavepoint(async () => {
         let remindedSomehow = false;
 
         if (phoneNumberId) {
           if (!apt.customerPhone) {
-            summary.skippedNoPhone += 1;
+            skippedNoPhoneLocal += 1;
           } else {
             let timeZone = timeZoneByProvider.get(apt.providerId);
             if (!timeZone) {
@@ -136,7 +155,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
               body: `${greeting}le recordamos su cita mañana a las ${time}. ¿Puede confirmar?`,
               buttons: ["Confirmar", "Cancelar", "Reagendar"],
             });
-            summary.sent += 1;
+            sentLocal += 1;
             remindedSomehow = true;
           }
         }
@@ -146,7 +165,7 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
         // nunca cuenta como error.
         const emailResult = await tryEnqueueAppointmentEmail(repo, organizationId, "appointment.reminder_24h", apt.appointmentId);
         if (emailResult?.enqueued) {
-          summary.sentEmail += 1;
+          sentEmailLocal += 1;
           remindedSomehow = true;
         }
 
@@ -162,9 +181,16 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
           await repo.markReminderSent(apt.appointmentId, now.toISOString());
         }
       });
+
+      // Solo se llega aquí si el bloque completo (incluido `markReminderSent`) NO
+      // lanzó -- nada de lo contado arriba fue revertido por un SAVEPOINT.
+      summary.sent += sentLocal;
+      summary.sentEmail += sentEmailLocal;
+      summary.skippedNoPhone += skippedNoPhoneLocal;
     } catch (err) {
       console.error(`reminders: la cita ${apt.appointmentId} falló con un error real de Postgres, aislada por SAVEPOINT -- se sigue con las demás citas de la organización:`, err);
       summary.failedAppointmentIds.push(apt.appointmentId);
+      summary.failedAppointmentErrors.push(err instanceof Error ? err.message : String(err));
     }
   }
 
