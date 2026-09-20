@@ -24,10 +24,15 @@ const CDMX_CSV_HEADER =
 /**
  * Fase 9 — el registro único ahora también incluye `nl_ocds`/`cdmx_ocds`
  * (conectores OCDS reales) y `aggregator` (gateado por credenciales que este
- * archivo NO configura a propósito, ver docs/CREDENCIALES.md). Este stub
- * distingue por URL para que la ingesta REAL de `compras_mx_historico` (lo
- * que este archivo prueba) no quede enmascarada por un fallo de red de los
- * otros 2 conectores nuevos. `aggregator` sigue fallando `not_configured` --
+ * archivo NO configura a propósito, ver docs/CREDENCIALES.md). Fase 13 agrega
+ * `yucatan_ocds`/`guadalajara_ocds` (misma plataforma "contratacionesabiertas",
+ * ver `connectors/ocds/contratacionesabiertas-connector.ts`) -- responden
+ * `/edca/fiscalYears` con un único año real y `/edca/contractingprocess/{year}`
+ * vacío, para que sean 'ok' con 0 candidatos (mismo criterio que nl_ocds/
+ * cdmx_ocds arriba: reales pero sin datos en este stub). Este stub distingue
+ * por URL para que la ingesta REAL de `compras_mx_historico` (lo que este
+ * archivo prueba) no quede enmascarada por un fallo de red de los otros 4
+ * conectores nuevos. `aggregator` sigue fallando `not_configured` --
  * intencional (REQ-150: nunca se configura solo para hacer pasar un test).
  */
 function stubFetchForDiscoverTenders(comprasMxCsv: string): ReturnType<typeof vi.fn> {
@@ -38,6 +43,10 @@ function stubFetchForDiscoverTenders(comprasMxCsv: string): ReturnType<typeof vi
     }
     if (url.includes("datos.cdmx.gob.mx")) {
       return new Response(`${CDMX_CSV_HEADER}\n`, { status: 200, headers: { "content-type": "text/csv" } });
+    }
+    if (url.includes("contratacionesabiertas")) {
+      if (url.endsWith("/edca/fiscalYears")) return new Response(JSON.stringify({ fiscalYears: [{ id: 1, year: 2025, status: true }] }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ arrayReleasePackage: [] }), { status: 200, headers: { "content-type": "application/json" } });
     }
     return new Response(comprasMxCsv, { status: 200 });
   });
@@ -135,6 +144,10 @@ describe("latido de /internal/licitaciones/discover-tenders -- 'not_configured' 
         const url = String(input);
         if (url.includes("api-ocds.nl.gob.mx")) return new Response(JSON.stringify({ current_page: 1, data: [], last_page: 1, per_page: 10, total: 0 }), { status: 200, headers: { "content-type": "application/json" } });
         if (url.includes("datos.cdmx.gob.mx")) return new Response(`${CDMX_CSV_HEADER}\n`, { status: 200, headers: { "content-type": "text/csv" } });
+        if (url.includes("contratacionesabiertas")) {
+          if (url.endsWith("/edca/fiscalYears")) return new Response(JSON.stringify({ fiscalYears: [{ id: 1, year: 2025, status: true }] }), { status: 200, headers: { "content-type": "application/json" } });
+          return new Response(JSON.stringify({ arrayReleasePackage: [] }), { status: 200, headers: { "content-type": "application/json" } });
+        }
         if (url.includes("aggregator.test")) return new Response(JSON.stringify({ items: [], nextCursor: null }), { status: 200, headers: { "content-type": "application/json" } });
         // compras_mx_historico -- fuente CONFIGURADA que falla de verdad (500 real).
         return new Response("boom", { status: 500 });
@@ -161,6 +174,10 @@ describe("latido de /internal/licitaciones/discover-tenders -- 'not_configured' 
         const url = String(input);
         if (url.includes("api-ocds.nl.gob.mx")) return new Response(JSON.stringify({ current_page: 1, data: [], last_page: 1, per_page: 10, total: 0 }), { status: 200, headers: { "content-type": "application/json" } });
         if (url.includes("datos.cdmx.gob.mx")) return new Response(`${CDMX_CSV_HEADER}\n`, { status: 200, headers: { "content-type": "text/csv" } });
+        if (url.includes("contratacionesabiertas")) {
+          if (url.endsWith("/edca/fiscalYears")) return new Response(JSON.stringify({ fiscalYears: [{ id: 1, year: 2025, status: true }] }), { status: 200, headers: { "content-type": "application/json" } });
+          return new Response(JSON.stringify({ arrayReleasePackage: [] }), { status: 200, headers: { "content-type": "application/json" } });
+        }
         // compras_mx_historico -- fuente configurada que falla de verdad; 'aggregator' sigue not_configured (sin credenciales en este test).
         return new Response("boom", { status: 500 });
       }),

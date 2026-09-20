@@ -19,6 +19,7 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HotelesFraudeAuditLogPage,
   HotelOrganizationSummary,
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
@@ -801,6 +802,21 @@ export interface HotelesRepository {
 
   insertGuestReviewResponse(input: NewGuestReviewResponseInput): Promise<GuestReviewResponseRecord>;
   listGuestReviewResponses(propertyId: string, reviewId: string): Promise<readonly GuestReviewResponseRecord[]>;
+
+  // ---- Bitácora de auditoría de fraude (f2-orden-total-bitacoras) ----
+  /** Lectura PAGINADA de `hoteles.fraude_audit_log` (017_fraude_audit_log.sql),
+   * más reciente primero -- orden TOTAL desde el día uno (`created_at desc, seq
+   * desc`, migración 028): sin este desempate, `now()` (created_at) es CONSTANTE
+   * dentro de una transacción, así que dos entradas de auditoría de fraude
+   * escritas en la MISMA transacción de request podrían quedar en orden no
+   * determinista y paginar de forma inestable (mismo hallazgo que
+   * `packages/domain-rentas/migrations/022_rentas_audit_log_orden_determinista.sql`,
+   * PR #173, y `packages/domain-despachos/migrations/011_despachos_audit_log_
+   * orden_total_lectura_paginada.sql`, aplicado aquí ANTES de que exista ningún
+   * consumidor real -- ver el comentario de cabecera de la migración 028). Hoy
+   * sin caller HTTP (mismo criterio que la propia 017: "ninguna ruta la expone
+   * todavía"); queda lista para un futuro panel de auditoría de fraude. */
+  listFraudeAuditLogPage(propertyId: string, opts: { readonly limit: number; readonly offset: number }): Promise<HotelesFraudeAuditLogPage>;
 }
 
 /** Fila de `hoteles.messaging_outbox` reclamada para despacho real — mismo shape
@@ -833,6 +849,7 @@ export type { ConversationMessage, ContactoNoOperativoRecord, NewContactoNoOpera
 export type { ReservationRecord, NewReservationInput, CancellationPolicyRecord } from "./types.ts";
 export type { RoomTypeSummary, GuestSummary, RoomSummary, NewRoomTypeInput, NewRoomInput, NewRatePlanRangeInput, NewGuestInput } from "./types.ts";
 export type { FraudAlertRecord, FraudAlertStatus, NewFraudAlertInput, DiscountChargeForFraudScan, ReopenedFolioChargeForFraudScan } from "./types.ts";
+export type { HotelesFraudeAuditLogEntry, HotelesFraudeAuditLogPage } from "./types.ts";
 export type { CfdiEmisionRecord, CfdiEmisionTipo, CfdiEmisionStatus, NewCfdiEmisionInput, HospedajeFiscalConfig } from "./types.ts";
 export type { NightAuditRunRecord, NightAuditRunStatus, ActiveHotelProperty } from "./types.ts";
 export type {

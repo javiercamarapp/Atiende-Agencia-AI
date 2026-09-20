@@ -164,6 +164,29 @@ describe("r5 — registro de auditoría en las rutas de escritura reales", () =>
     expect(nuevas[0]).toMatchObject({ entityType: "reserva", action: "reserva.cancelada", entityId: id, campo: "estado", antes: "confirmado", despues: "cancelado" });
   });
 
+  // f3-rentas-bitacora-y-guards -- 1 de los 4 huecos que esta fase cierra (ver
+  // migrations/023_rentas_audit_log_cobertura_completa.sql): movimiento
+  // financiero de una reserva (cargo/abono/ajuste). Reutiliza entityType='reserva'
+  // (misma entidad que reserva.modificada/cancelada de arriba).
+  it("POST .../reservas/:id/movimiento registra una fila de auditoría entityType=reserva", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const creada = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/reservas`, authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-06-01", fin: "2026-06-05" } }));
+    const { id } = (await creada.json()) as { id: string };
+    const antes = ctx.rentasRepo.auditLog.length;
+
+    const res = await app.request(
+      `/rentas/${ctx.propertyId}/reservas/${id}/movimiento`,
+      authedJson(ctx.staff.adminGestora.token, { moneda: "MXN", montoBrutoCentavos: 500000, comisionGestorBasisPoints: 1000, comisionGestorBase: "bruto", gastos: [], impuestos: [] }),
+    );
+    expect(res.status).toBe(201);
+
+    const nuevas = ctx.rentasRepo.auditLog.slice(antes);
+    expect(nuevas).toHaveLength(1);
+    expect(nuevas[0]).toMatchObject({ entityType: "reserva", action: "reserva.movimiento_financiero_registrado", entityId: id, campo: "montoBrutoCentavos,netoCentavos", antes: null });
+    expect(nuevas[0]!.despues).toContain("bruto=500000");
+  });
+
   it("POST .../payouts registra una fila de auditoría entityType=payout", async () => {
     const ctx = await buildRentasTestContext(buildApp);
     const app = buildApp(ctx.deps);
@@ -253,6 +276,42 @@ describe("r5 — registro de auditoría en las rutas de escritura reales", () =>
     expect(nuevas).toHaveLength(2);
     expect(nuevas[0]).toMatchObject({ entityType: "canal", action: "canal.ical_conectado" });
     expect(nuevas[1]).toMatchObject({ entityType: "canal", action: "canal.ical_desconectado" });
+  });
+
+  // f3-rentas-bitacora-y-guards -- 2 de los 4 huecos que esta fase cierra (ver
+  // migrations/023_rentas_audit_log_cobertura_completa.sql).
+  it("POST .../bloqueos/:id/cancelar registra una fila de auditoría entityType=bloqueo", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const creado = await app.request(
+      `/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/bloqueos`,
+      authedJson(ctx.staff.adminGestora.token, { rango: { inicio: "2026-07-01", fin: "2026-07-03" }, razon: "MANTENIMIENTO" }),
+    );
+    expect(creado.status).toBe(201);
+    const { id } = (await creado.json()) as { id: string };
+    const antes = ctx.rentasRepo.auditLog.length;
+
+    const res = await app.request(`/rentas/${ctx.propertyId}/unidades/${ctx.unidadId}/bloqueos/${id}/cancelar`, authedJson(ctx.staff.adminGestora.token, {}));
+    expect(res.status).toBe(200);
+
+    const nuevas = ctx.rentasRepo.auditLog.slice(antes);
+    expect(nuevas).toHaveLength(1);
+    expect(nuevas[0]).toMatchObject({ entityType: "bloqueo", action: "bloqueo.cancelado", entityId: id, campo: "estado", antes: "confirmado", despues: "cancelado" });
+  });
+
+  it("POST .../owners/:ownerId/portal-invite registra una fila de auditoría entityType=owner_credential", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const { ownerId } = await crearOwnerConUnidad(ctx);
+    const antes = ctx.rentasRepo.auditLog.length;
+
+    const res = await app.request(`/rentas/${ctx.propertyId}/owners/${ownerId}/portal-invite`, authedJson(ctx.staff.adminGestora.token, undefined, {}, "POST"));
+    expect(res.status).toBe(201);
+
+    const nuevas = ctx.rentasRepo.auditLog.slice(antes);
+    expect(nuevas).toHaveLength(1);
+    expect(nuevas[0]).toMatchObject({ entityType: "owner_credential", action: "owner_credential.alta", entityId: ownerId, campo: "portal_invite", antes: null });
+    expect(nuevas[0]!.despues).toContain("vence");
   });
 });
 

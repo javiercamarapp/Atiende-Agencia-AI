@@ -23,6 +23,8 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HotelesFraudeAuditLogEntry,
+  HotelesFraudeAuditLogPage,
   HotelOrganizationSummary,
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
@@ -280,6 +282,17 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   private readonly rooms = new Map<string, StoredRoom>(); // Fix hallazgo CRÍTICO — habitaciones físicas (hoteles.room).
   private readonly nightlyRates = new Map<string, NightlyRateRecord[]>(); // key: propertyId:roomTypeId
   private readonly idempotencyKeys = new Map<string, StoredIdempotencyRow>(); // key: organizationId:scope:key
+
+  /** Espejo en memoria de `hoteles.fraude_audit_log` -- f2-orden-total-bitacoras.
+   * Expuesto directo (mismo criterio que `InMemoryRentasRepository.auditLog`, PR
+   * #173, y `InMemoryDespachosRepository.auditLog`) para que un test pueda
+   * sembrar filas sin pasar por ninguna ruta HTTP (que hoy no existe -- la
+   * escritura real de producción es `ProductionHotelesFraudeAuditSink`, fuera de
+   * `HotelesRepository`; ver el comentario de cabecera de `listFraudeAuditLogPage`
+   * en `repository.ts`). `seq` es el desempate monótono EQUIVALENTE a la columna
+   * `seq bigint generated always as identity` de Postgres (migración 028). */
+  readonly fraudeAuditLog: (HotelesFraudeAuditLogEntry & { readonly propertyId: string; readonly createdAtMs: number; readonly seq: number })[] = [];
+  private fraudeAuditLogSeq = 0;
 
   // ---- Fase 3 — máquina de estados de reservas (H02) ----
   private readonly reservations = new Map<string, StoredReservation>();
@@ -2410,5 +2423,34 @@ export class InMemoryHotelesRepository implements HotelesRepository {
     return [...this.guestReviewResponses.values()]
       .filter((r) => r.propertyId === propertyId && r.reviewId === reviewId)
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  /** Siembra una fila para pruebas -- ver el comentario de `fraudeAuditLog` arriba. */
+  registrarFraudeAuditLogParaPruebas(input: { readonly propertyId: string; readonly actorUserId: string | null; readonly action: string; readonly payload?: Record<string, unknown> }): void {
+    this.fraudeAuditLogSeq += 1;
+    const createdAtMs = Date.now();
+    this.fraudeAuditLog.push({
+      id: randomUUID(),
+      propertyId: input.propertyId,
+      actorUserId: input.actorUserId,
+      action: input.action,
+      payload: input.payload ?? {},
+      createdAtMs,
+      createdAt: new Date(createdAtMs).toISOString(),
+      seq: this.fraudeAuditLogSeq,
+    });
+  }
+
+  async listFraudeAuditLogPage(propertyId: string, opts: { readonly limit: number; readonly offset: number }): Promise<HotelesFraudeAuditLogPage> {
+    const { limit, offset } = opts;
+    // f2-orden-total-bitacoras -- desempate por `seq` cuando `createdAtMs` empata
+    // -- MISMO orden que `PostgresHotelesRepository.listFraudeAuditLogPage`
+    // (`order by created_at desc, seq desc`).
+    const filtrados = this.fraudeAuditLog
+      .filter((r) => r.propertyId === propertyId)
+      .sort((a, b) => b.createdAtMs - a.createdAtMs || b.seq - a.seq);
+    const total = filtrados.length;
+    const pagina = filtrados.slice(offset, offset + limit).map(({ propertyId: _propertyId, createdAtMs: _createdAtMs, seq: _seq, ...row }) => row);
+    return { items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
   }
 }
