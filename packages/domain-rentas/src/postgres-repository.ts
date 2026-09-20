@@ -5,7 +5,7 @@
 // funciones propias del schema `rentas`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
-import { runWithSavepointFallback } from "@atiende/db";
+import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatement } from "./finanzas/statement.ts";
 import type { CandidataConciliacion, EstadoConciliacion, LineaConciliada } from "./finanzas/conciliacion.ts";
@@ -141,10 +141,25 @@ function mapReservaFinanciero(row: ReservaFinancieroRow): MovimientoFinancieroRe
 // migraciones atrás y nadie las aplica al mergear -- `rentas.record_audit_log`/
 // `rentas.audit_log` no existen todavía en ese estado, y Postgres real lanza
 // SQLSTATE 42883 (`undefined_function`)/42P01 (`undefined_table`)/42703
-// (`undefined_column`) en ese caso, MISMO código que
-// `break-glass/postgres-data-repository.ts::isUndefinedFunctionError` ya detecta
-// para su propio fallback (replicado aquí porque este archivo no importa ese
-// módulo).
+// (`undefined_column`) en ese caso.
+//
+// f3-rentas-bitacora-y-guards -- ENDURECIDO (hallazgo de la revisión de #179,
+// "guard 42883 a secas"): la comparación local `code === "42883"` de aquí
+// TRATABA CUALQUIER 42883 como "migración pendiente" -- pero Postgres reutiliza
+// ese mismo SQLSTATE para "operator does not exist: uuid = text" (un BUG REAL de
+// tipos en la consulta, nunca una migración sin aplicar), ver el comentario de
+// cabecera de `packages/db/src/sql-errors.ts` para la demostración completa
+// contra Postgres real. Un guard que confunda ambos casos ENMASCARA un bug de
+// tipos como si fuera "vacío honesto". Se reemplaza por
+// `isMigrationPendingError` (@atiende/db) -- la versión endurecida y compartida
+// que YA usa `packages/domain-citas/src/postgres-repository.ts` para el mismo
+// propósito exacto (bitácora de auditoría de citas) -- con
+// `expectedFunctionName = "rentas.record_audit_log"` en el único punto donde el
+// error puede venir de una llamada a función (`registrarAuditoria`, abajo); la
+// lectura (`listAuditoria`) nunca llama a ninguna función (solo hace `select`
+// directo contra la tabla), así que ahí se usa sin nombre esperado -- mismo
+// criterio que el propio `isMigrationPendingError` documenta (42P01/42703 no
+// tienen la ambigüedad de mensaje que 42883 sí tiene).
 // ---------------------------------------------------------------------------
 const RENTAS_AUDIT_LOG_SAVEPOINT = "sp_rentas_audit_log_write";
 const RENTAS_AUDIT_LOG_READ_SAVEPOINT = "sp_rentas_audit_log_read";
@@ -155,11 +170,6 @@ const RENTAS_AUDIT_LOG_READ_SAVEPOINT = "sp_rentas_audit_log_read";
 // 022 sin tumbar el resto de la lectura (la tabla/función SÍ existen, no es el
 // caso "no disponible" de RENTAS_AUDIT_LOG_READ_SAVEPOINT).
 const RENTAS_AUDIT_LOG_READ_ORDER_SAVEPOINT = "sp_rentas_audit_log_read_order";
-
-function esErrorCompatibilidadBaseSinMigrar(err: unknown): boolean {
-  const code = (err as { code?: string } | null)?.code;
-  return code === "42883" || code === "42P01" || code === "42703";
-}
 
 // r6 -- ver migrations/022_rentas_audit_log_orden_determinista.sql. Específico a
 // 42703 (`undefined_column`) -- exactamente el SQLSTATE que `order by ..., seq
@@ -1243,7 +1253,7 @@ export class PostgresRentasRepository implements RentasRepository {
       } catch (recoveryErr) {
         console.error("PostgresRentasRepository.registrarAuditoria: fallo al recuperar el SAVEPOINT tras un error de bitácora.", recoveryErr);
       }
-      if (esErrorCompatibilidadBaseSinMigrar(err)) {
+      if (isMigrationPendingError(err, "rentas.record_audit_log")) {
         advertirAuditLogEscrituraNoDisponible(err);
         return;
       }
@@ -1330,7 +1340,12 @@ export class PostgresRentasRepository implements RentasRepository {
         const items = rows.map(mapRentasAuditLogRow);
         return { disponible: true, items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
       },
-      isRecoverable: esErrorCompatibilidadBaseSinMigrar,
+      // Sin `expectedFunctionName`: este bloque nunca llama a ninguna función,
+      // solo hace `select`/`count(*)` directo contra `rentas.audit_log` -- 42883
+      // no puede originarse aquí (ningún operando de tipo ambiguo), así que la
+      // ambigüedad de mensaje que `expectedFunctionName` existe para resolver no
+      // aplica en este camino (ver cabecera de esta sección).
+      isRecoverable: isMigrationPendingError,
       fallback: (err) => {
         advertirAuditLogLecturaNoDisponible(err);
         return Promise.resolve({ disponible: false, items: [], total: 0, nextOffset: null });
