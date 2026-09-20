@@ -260,3 +260,45 @@ vertical.
 Migración nueva: `migrations/013_reputacion.sql` (Fase 11) +
 `migrations/021_reputacion_respuestas.sql` (Fase 13, columna/tabla de
 respuesta del staff a una reseña, la pieza que faltaba para "responder").
+
+## FASE 3 (producto) — zona horaria por negocio
+
+Gap real verificado antes de esta tarea (documentado explícito en el comentario de
+cabecera de `@atiende/core-tenancy::resolverZonaHorariaNegocio`, fecha-negocio.ts):
+`hoteles.*` no tenía NINGUNA columna de zona horaria por property — night-audit
+(`night-audit/engine.ts::DEFAULT_PROPERTY_TIMEZONE`), el motor de recomendaciones
+de tarifa (revenue-recommendations-cron.ts) y no-show (reservas.ts) calculaban
+"hoy" SIEMPRE con `America/Mexico_City`, sin importar que la property real
+estuviera en Cancún, Los Cabos, Tijuana o Puerto Vallarta.
+
+- `migrations/030_zona_horaria_property.sql` — `hoteles.property_config`
+  (`property_id` PK, `timezone` IANA NULLABLE **sin default en SQL** — el default
+  de plataforma vive únicamente en `resolverZonaHorariaNegocio()`, nunca duplicado
+  aquí). RLS: owner/gm configura (`hoteles.can_manage_catalog()`, ya existente
+  desde `018_admin_catalogo_alta.sql`), cualquier staff con acceso o la sesión de
+  SISTEMA lee (necesario para el `LEFT JOIN` de `listActiveHotelProperties()`).
+- `HotelesRepository.findPropertyTimezone`/`upsertPropertyTimezone` — REGLA DURA de
+  compatibilidad: degradan honesto (`null` / `PropertyConfigUnavailableError`) si
+  la migración 030 aún no está aplicada (42883/42P01/42703, vía
+  `runWithSavepointFallback` + `isMigrationPendingError`, mismo patrón que
+  `findPricingRule` de la Fase 10).
+- `ActiveHotelProperty.timezone` — `listActiveHotelProperties()` ahora trae el
+  valor crudo por property (LEFT JOIN); `runNightAuditSweep`
+  (`apps/worker/src/jobs/hoteles/night-audit.ts`) y `runRateRecommendationSweep`
+  (`apps/api/src/routes/verticals/hoteles/revenue-recommendations-cron.ts`)
+  resuelven la zona real POR CADA property DENTRO de su propio loop, nunca una
+  sola vez para todo el barrido.
+- `GET`/`PUT /hoteles/:propertyId/configuracion`
+  (`apps/api/src/routes/verticals/hoteles/property-config.ts`, owner/gm) — misma
+  validación IANA que `citas/admin.ts::optionalTimeZone` (`Intl.DateTimeFormat`,
+  nunca restringida a una lista cerrada). Pantalla: sección "Zona horaria" de
+  `apps/web/src/verticals/hoteles/pages/Catalogo.tsx` (mismo nav/rol que
+  gestión de catálogo) — el `<select>` solo ofrece los 6 timezones IANA más
+  comunes de México como conveniencia de UI.
+- No conectado en esta tarea (fuera de alcance, no un olvido): `citas`/`rentas` YA
+  tenían su propia columna real desde antes (`citas.property_config.timezone`,
+  `rentas.property_config.zona_horaria`) — esta tarea es la parte hoteles de una
+  serie de 4 (las otras 3 cubren despachos+restaurantes y licitaciones).
+
+Migración nueva: `migrations/030_zona_horaria_property.sql`. Verificación contra
+Postgres real: `scripts/verify-hoteles-zona-horaria/`.
