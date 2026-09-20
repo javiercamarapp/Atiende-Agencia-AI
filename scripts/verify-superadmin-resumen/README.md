@@ -16,7 +16,7 @@ escrituras de SOLO-SISTEMA + 2 lecturas para el back office).
 
 ## Qué demuestra
 
-38 escenarios (ver `assertions.sql` para el detalle exacto):
+42 escenarios (ver `assertions.sql` para el detalle exacto):
 
 1. **Las 11 funciones `*_for_system`**: una sesión de SISTEMA (`auth.uid()`
    null) SÍ puede leer — verificado contra datos reales sembrados (un latido
@@ -66,6 +66,25 @@ escrituras de SOLO-SISTEMA + 2 lecturas para el back office).
    19-sep en el propio `assertions.sql`, comentario justo antes del
    escenario 37, para el detalle de por qué la forma anterior no demostraba
    nada de esto).
+7. **Exigencia obligatoria del brief -- el SQL REAL del repositorio, en sus
+   DOS estados, contra Postgres real**: escenarios 39/40 ejecutan el TEXTO
+   SQL EXACTO que `PostgresResumenDiarioRepository.listDailyOpsSummariesFor
+   Superadmin`/`getDailyOpsSummaryForSuperadmin` emiten (mismas columnas,
+   mismo `fecha::text as fecha`) con la migración APLICADA, y confirman con
+   `pg_typeof` que la columna `fecha` resultante es de tipo Postgres `text`
+   en formato `YYYY-MM-DD` -- nunca `date` (que el driver `pg` real
+   convertiría a un objeto `Date` de JS, ver el comentario de cabecera de
+   `resumen-diario-repository.ts`). Escenarios 41/42 corren el MISMO SQL con
+   la función de nivel superior correspondiente ELIMINADA dentro de la
+   propia transacción del escenario (`drop function ...;`, revertido por el
+   `rollback;` final -- DDL es transaccional en Postgres, mismo criterio que
+   el precedente `scripts/verify-fallback-savepoint/` pero sin necesitar un
+   `run.sh` aparte) y confirman que el error real es SQLSTATE 42883 con el
+   NOMBRE REAL de la función en el mensaje -- exactamente lo que
+   `isMigrationPendingError(err, "core.list_daily_ops_summaries_for_superadmin")`/
+   `"core.get_daily_ops_summary_for_superadmin"` (`apps/api/src/routes/
+   superadmin-resumen.ts`) necesitan para clasificarlo como migración
+   pendiente en vez de un 500.
 
 ## Hallazgos reales durante el desarrollo de este script (ambos corregidos)
 
@@ -121,8 +140,8 @@ contra el servicio `postgres:` de GitHub Actions — sin intervención manual.
 
 Corrida real más reciente (local, vía `scripts/verify-real-postgres-ci/
 run-gate.mjs` -- el mismo gate automático que corre en CI, no solo lectura
-humana de `run.sh`): **38/38 escenarios OK**. Confirmado además que el gate
+humana de `run.sh`): **42/42 escenarios OK**. Confirmado además que el gate
 SÍ detecta una regresión real: forzar a mano el mensaje esperado del
 escenario 37 a un texto distinto del que Postgres realmente reporta lo hace
-fallar (`37/38`, `GATE FALLIDO`) -- no un chequeo que pasa con cualquier
+fallar (`41/42`, `GATE FALLIDO`) -- no un chequeo que pasa con cualquier
 salida.
