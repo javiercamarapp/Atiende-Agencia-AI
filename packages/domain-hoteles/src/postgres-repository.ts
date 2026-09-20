@@ -5,6 +5,7 @@
 // `core.has_property_access`/`hoteles.can_access_money`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { runWithSavepointFallback } from "@atiende/db";
 import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
@@ -1233,11 +1234,18 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   async findDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly ReservationRecord[]> {
+    // Bug real (camino de STAFF, `POST .../reservas/procesar-no-show` sin `asOfDate`
+    // en el body -- ver `apps/api/.../hoteles/reservas.ts`): `current_date` corre en
+    // la sesión de Postgres (UTC en Vercel); entre las 18:00 y las 23:59 CDMX el día
+    // UTC ya es MAÑANA, así que una reserva cuyo check-in es MAÑANA (CDMX) se
+    // reclamaba como no-show HOY, un día antes de tiempo. Resuelto UNA vez en TS con
+    // `@atiende/core-tenancy::hoyFechaNegocio()` -- el SQL ya no llama `current_date`.
+    const cutoff = asOfDate ?? hoyFechaNegocio();
     const { rows } = await this.db.query<ReservationRawRow>(
       `select ${RESERVATION_COLUMNS} from hoteles.reservation
-       where property_id = $1 and status = 'confirmada' and check_in_date <= coalesce($2::date, current_date)
+       where property_id = $1 and status = 'confirmada' and check_in_date <= $2::date
        order by check_in_date asc;`,
-      [propertyId, asOfDate],
+      [propertyId, cutoff],
     );
     return rows.map(mapReservation);
   }
