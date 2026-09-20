@@ -266,3 +266,67 @@ cita hasta que alguien insertara reglas por SQL directo.
   editable inline (agregar/editar/quitar regla por día) + sección de excepciones
   (agregar/editar/quitar un cierre u horario especial por fecha, con motivo
   opcional) — ver `apps/web/src/verticals/citas/lib/providers-client.ts`.
+
+## Fix auditoría a3 — SAVEPOINT en el aviso de lista de espera + gap de RLS nuevo (sin migración)
+
+Hallazgo confirmado (severidad ALTA): cancelar una cita desde el panel de staff
+respondía 500 y **revertía la propia cancelación** cuando existía un candidato
+activo en la lista de espera — `citas.claim_waitlist_notification_slot`
+siempre rechaza con 42501 en sesión de staff (`auth.uid()` no nulo, guard
+correcto: "solo para la sesión de sistema"), y ese error se tragaba **sin
+SAVEPOINT** dentro de `tryNotifyWaitlistOfFreedSlot`/`tryEnqueueAppointmentEmail`
+— dejaba la transacción del request abortada (25P02), y el `commit;` de
+`managed-postgres-engine.ts` sobre una transacción abortada revertía la
+cancelación en silencio. Arreglo: ambas envuelven su `*Core` con
+`repo.runWithRowSavepoint` (mismo helper que ya usa
+`syncPendingAppointmentsMultiProvider`); la ruta de cancelar del panel además
+mueve el aviso a `postCommitTasks` en sesión de sistema
+(`runCitasWaitlistNotifyAfterCancel`, mismo patrón que `runCitasEmailDispatch`
+de la auditoría a2). El resto de rutas de staff (confirmar/completar/no-show)
+no liberan ningún hueco de horario y nunca llamaban este aviso — no comparten
+el bug. El loop de recordatorio 24h (`runConfirmacionCitaCore`) también aísla
+ahora cada cita con su propio `runWithRowSavepoint` (hallazgo confirmado #7):
+una cita con un error real de Postgres ya no revierte los recordatorios de las
+demás citas de la misma organización en la misma corrida.
+
+**Corrección a un comentario de una migración YA publicada (inmutable, no se
+edita el archivo):** `packages/domain-citas/migrations/015_rpc_anti_duplicado_authenticated_grants.sql`
+(línea ~62-63, espejo real en `supabase/migrations/20240101000103_015_...sql`)
+afirma que "ninguna de las 10 [RPC de esa migración] tiene una sola ruta de
+staff que las invoque". Eso es **falso** para
+`citas.claim_waitlist_notification_slot`: la ruta de staff
+`POST .../appointments/:id/cancel` (`apps/api/.../appointments-lifecycle.ts`,
+vía `tryNotifyWaitlistAfterCancel` → `tryNotifyWaitlistOfFreedSlot` →
+`runOptimizadorCore`) sí la invoca — por eso el 42501 confirmado arriba es
+real y reproducible, no teórico. El comentario original describía la
+*intención* de diseño (una RPC de sesión de sistema, invocada solo por rutas
+de sistema); en la práctica, una ruta de staff termina llamándola de forma
+indirecta a través de un best-effort compartido. No se corrige el archivo de
+migración (inmutable, ya publicado) — esta nota es la corrección.
+
+**Gap de RLS nuevo, descubierto verificando este fix contra Postgres real (NO
+corregido en este PR — requiere una migración, fuera del alcance asignado):**
+mover el aviso a sesión de sistema evita el 500, pero **no logra que el aviso
+salga de verdad**, ni siquiera desde esa sesión de sistema post-commit. La
+única policy de `citas.appointment_waitlist`
+(`migrations/003_waitlist_and_rate_limit.sql`) exige
+`m.user_id = auth.uid()`; bajo sesión de sistema `auth.uid()` es `NULL`
+(mismo mecanismo que el gap ya documentado en el `README.md` raíz, "Sesión de
+sistema sin acceso a `core.property`") — así que **cualquier lectura directa**
+de esa tabla, incluida `loadLiveWaitlistCandidates` (que corre ANTES de
+siquiera llegar a `claim_waitlist_notification_slot`), devuelve **cero filas
+en silencio** bajo sesión de sistema. A diferencia de `citas.providers`, que
+sí tiene una segunda policy pública ("cualquiera puede ver proveedores
+activos") pensada exactamente para este caso, `citas.appointment_waitlist` no
+la tiene. Esto **ya afectaba, antes de este PR**, a los 2 callers que YA
+corrían enteros en sesión de sistema (cancelar/reagendar desde el agente de
+voz/WhatsApp, `apps/api/.../appointments-lifecycle.ts`, líneas ~168 y ~182) —
+no es una regresión de este fix. Verificado end-to-end contra Postgres real
+(no solo leído) en
+`scripts/verify-citas-cancelar-con-lista-de-espera/assertions.sql`, escenarios
+"GAP RLS": en sesión de staff el candidato es visible (1 fila); en sesión de
+sistema, el MISMO candidato es invisible (0 filas). Arreglo sugerido para un
+PR futuro CON migración: agregar a `citas.appointment_waitlist` una policy de
+sesión de sistema (`using (auth.uid() is null)`, análoga a las funciones
+`*_idempotent`) o una función `security definer` de lectura dedicada, en vez
+de aflojar el guard de `claim_waitlist_notification_slot`.
