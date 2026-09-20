@@ -147,6 +147,46 @@ describe("parsearIcs — fixtures reales RFC 5545", () => {
     expect(() => parsearIcs(ics)).toThrowError(IcsParseError);
   });
 
+  // Hallazgo de auditoría (a3, MEDIA) — `DTSTART:00000101` es sintácticamente válido
+  // según el regex de 4 dígitos (año "0000"), pero produce la fecha '0000-01-01', que
+  // Postgres real rechaza con 22008 en `daterange()` -- ver el comentario de cabecera
+  // de `validarComponentesFecha`. Se rechaza en el dominio, ANTES de cualquier SQL.
+  it("rechaza DTSTART con año '0000' (VALUE=DATE)", () => {
+    const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x@y\r\nDTSTAMP:20260601T000000Z\r\nDTSTART;VALUE=DATE:00000101\r\nEND:VEVENT\r\nEND:VCALENDAR";
+    expect(() => parsearIcs(ics)).toThrowError(IcsParseError);
+  });
+
+  it("rechaza DTSTART con año '0000' (DATE-TIME)", () => {
+    const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x@y\r\nDTSTAMP:20260601T000000Z\r\nDTSTART:00000101T000000Z\r\nEND:VEVENT\r\nEND:VCALENDAR";
+    expect(() => parsearIcs(ics)).toThrowError(IcsParseError);
+  });
+
+  // Hallazgo de auditoría (a3, MEDIA) — un SEQUENCE fuera de rango de `integer`
+  // (Postgres int4, máximo 2147483647 -- ver el comentario de cabecera del campo
+  // `sequence` en la normalización de abajo) pasaba el parser con `Number.isFinite` y
+  // reventaba `upsertEventoImportado` con 22003 contra Postgres real. Se descarta a
+  // `null` (equivalente a "sin SEQUENCE"), nunca aborta el evento completo por esto
+  // solo -- un canal real que manda un SEQUENCE corrupto no debería impedir importar
+  // la reserva.
+  it("descarta un SEQUENCE fuera de rango de int32 (queda null, no revienta el parseo)", () => {
+    const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x@y\r\nDTSTAMP:20260601T000000Z\r\nDTSTART;VALUE=DATE:20260601\r\nSEQUENCE:9999999999\r\nEND:VEVENT\r\nEND:VCALENDAR";
+    const resultado = parsearIcs(ics);
+    expect(resultado.eventos).toHaveLength(1);
+    expect(resultado.eventos[0]!.sequence).toBeNull();
+  });
+
+  it("descarta un SEQUENCE negativo (queda null)", () => {
+    const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x@y\r\nDTSTAMP:20260601T000000Z\r\nDTSTART;VALUE=DATE:20260601\r\nSEQUENCE:-1\r\nEND:VEVENT\r\nEND:VCALENDAR";
+    const resultado = parsearIcs(ics);
+    expect(resultado.eventos[0]!.sequence).toBeNull();
+  });
+
+  it("acepta un SEQUENCE válido en el borde superior de int32", () => {
+    const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x@y\r\nDTSTAMP:20260601T000000Z\r\nDTSTART;VALUE=DATE:20260601\r\nSEQUENCE:2147483647\r\nEND:VEVENT\r\nEND:VCALENDAR";
+    const resultado = parsearIcs(ics);
+    expect(resultado.eventos[0]!.sequence).toBe(2147483647);
+  });
+
   it("respeta el límite de tamaño en bytes", () => {
     const grande = "BEGIN:VCALENDAR\r\n" + "X-PADDING:" + "a".repeat(100) + "\r\n" + "END:VCALENDAR\r\n";
     expect(() => parsearIcs(grande, { maxBytes: 10, maxEventos: 5000, maxLongitudLineaDesplegada: 8000 })).toThrowError(IcsParseError);
