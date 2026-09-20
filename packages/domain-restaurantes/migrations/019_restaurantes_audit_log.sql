@@ -258,8 +258,16 @@ begin
 end;
 $$;
 
-revoke all on function restaurantes.record_audit_log(uuid, text, text, uuid, text, text, text) from public;
--- Mismo rol bajo el que corre TODO este archivo vía `ManagedPostgresEngine.
--- withAppSession` (siempre `set local role authenticated`) -- nunca `anon`, este
--- monorepo no usa ese rol.
+-- `from public, anon` -- no solo `public` -- porque `anon` SÍ se usa en este
+-- monorepo (`001_restaurantes_schema.sql` y `010_promotions.sql` otorgan
+-- SELECT a `anon` sobre catálogo público) y porque un `ALTER DEFAULT
+-- PRIVILEGES` preexistente en el Supabase real de este proyecto puede
+-- conceder EXECUTE directo a `anon` sobre una función NUEVA (ver
+-- `packages/db/migrations/0016_superadmin_acciones.sql`) -- un `revoke ...
+-- from public` no retira ese grant por defecto, hay que revocarlo también de
+-- `anon` explícitamente. No es explotable hoy (el guard `auth.uid() is null`
+-- de arriba rechaza a `anon` con 28000 de todas formas), pero la migración es
+-- inmutable una vez en `main` -- corregirlo después costaría una segunda
+-- migración.
+revoke all on function restaurantes.record_audit_log(uuid, text, text, uuid, text, text, text) from public, anon;
 grant execute on function restaurantes.record_audit_log(uuid, text, text, uuid, text, text, text) to authenticated;
