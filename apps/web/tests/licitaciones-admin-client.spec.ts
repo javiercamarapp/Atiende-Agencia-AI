@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LicitacionesAdminError, fetchBranches, fetchJson, postJson, putJson } from "../src/verticals/licitaciones/lib/admin-client.ts";
+import { LicitacionesAdminError, fetchBranches, fetchJson, fetchTenantConfig, postJson, putJson, updateTenantConfigTimezone } from "../src/verticals/licitaciones/lib/admin-client.ts";
 
 function fakeFetch(byUrl: Record<string, { status: number; body: unknown }>): typeof fetch {
   return vi.fn(async (input: string) => {
@@ -82,5 +82,42 @@ describe("fetchBranches", () => {
   it("404 -> LicitacionesAdminError", async () => {
     const fetchImpl = fakeFetch({ "/admin/branches": { status: 404, body: { message: 'Negocio "x" no encontrado o inactivo.' } } });
     await expect(fetchBranches(fetchImpl, "http://api.local", "tok", "x")).rejects.toThrow(LicitacionesAdminError);
+  });
+});
+
+// FASE 3 (producto) — zona horaria por negocio: GET/PATCH .../admin/tenant-config.
+describe("fetchTenantConfig / updateTenantConfigTimezone", () => {
+  it("fetchTenantConfig pide GET .../admin/tenant-config y devuelve {organizationId, timezone} camelCase", async () => {
+    const fetchImpl = fakeFetch({ "/admin/tenant-config": { status: 200, body: { tenant_config: { organization_id: "org-1", timezone: "America/Tijuana" } } } });
+    const result = await fetchTenantConfig(fetchImpl, "http://api.local", "tok", "empresa-de-prueba");
+    expect(result).toEqual({ organizationId: "org-1", timezone: "America/Tijuana" });
+    expect(fetchImpl).toHaveBeenCalledWith("http://api.local/v1/licitaciones/empresa-de-prueba/admin/tenant-config", expect.objectContaining({ headers: { authorization: "Bearer tok" } }));
+  });
+
+  it("fetchTenantConfig -- organización sin configurar todavía -- timezone: null (nunca un default inventado en el cliente)", async () => {
+    const fetchImpl = fakeFetch({ "/admin/tenant-config": { status: 200, body: { tenant_config: { organization_id: "org-1", timezone: null } } } });
+    const result = await fetchTenantConfig(fetchImpl, "http://api.local", "tok", "empresa-de-prueba");
+    expect(result.timezone).toBeNull();
+  });
+
+  it("updateTenantConfigTimezone manda PATCH con {timezone} y devuelve el valor guardado", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ tenant_config: { organization_id: "org-1", timezone: "America/Cancun" } }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+    const result = await updateTenantConfigTimezone(fetchImpl, "http://api.local", "tok", "empresa-de-prueba", "America/Cancun");
+    expect(result).toEqual({ organizationId: "org-1", timezone: "America/Cancun" });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://api.local/v1/licitaciones/empresa-de-prueba/admin/tenant-config",
+      expect.objectContaining({ method: "PATCH", headers: { authorization: "Bearer tok", "content-type": "application/json" }, body: JSON.stringify({ timezone: "America/Cancun" }) }),
+    );
+  });
+
+  it("updateTenantConfigTimezone con timezone=null manda {timezone: null} -- borra la configuración", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ tenant_config: { organization_id: "org-1", timezone: null } }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+    await updateTenantConfigTimezone(fetchImpl, "http://api.local", "tok", "empresa-de-prueba", null);
+    expect(fetchImpl).toHaveBeenCalledWith("http://api.local/v1/licitaciones/empresa-de-prueba/admin/tenant-config", expect.objectContaining({ body: JSON.stringify({ timezone: null }) }));
+  });
+
+  it("respuesta 403 (rol insuficiente) -> LicitacionesAdminError con el mensaje real del servidor", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "Solo el owner o un admin de la organización puede editar la zona horaria." }), { status: 403 })) as unknown as typeof fetch;
+    await expect(updateTenantConfigTimezone(fetchImpl, "http://api.local", "tok", "empresa-de-prueba", "America/Tijuana")).rejects.toThrow("Solo el owner o un admin");
   });
 });

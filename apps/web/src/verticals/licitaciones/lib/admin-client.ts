@@ -140,3 +140,29 @@ export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string,
   const body = await fetchJson<{ branches: readonly BranchOption[] }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${orgSlug}/admin/branches`, token);
   return body.branches;
 }
+
+// FASE 3 (producto) — zona horaria por negocio: GET/PATCH .../admin/tenant-config
+// (ver apps/api/.../licitaciones/admin.ts). `timezone: null` es un estado real y
+// válido (organización sin configurar todavía, o que explícitamente volvió al
+// default de plataforma) -- nunca se sustituye por un string vacío aquí.
+export interface TenantConfig {
+  readonly organizationId: string;
+  readonly timezone: string | null;
+}
+
+interface TenantConfigWire {
+  readonly organization_id: string;
+  readonly timezone: string | null;
+}
+
+export async function fetchTenantConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string): Promise<TenantConfig> {
+  const body = await fetchJson<{ tenant_config: TenantConfigWire }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${orgSlug}/admin/tenant-config`, token);
+  return { organizationId: body.tenant_config.organization_id, timezone: body.tenant_config.timezone };
+}
+
+/** `timezone: null` explícito borra la configuración (vuelve al default de
+ * plataforma) -- distinto de no llamar a esta función en absoluto. */
+export async function updateTenantConfigTimezone(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string, timezone: string | null): Promise<TenantConfig> {
+  const body = await patchJson<{ tenant_config: TenantConfigWire }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${orgSlug}/admin/tenant-config`, token, { timezone });
+  return { organizationId: body.tenant_config.organization_id, timezone: body.tenant_config.timezone };
+}

@@ -554,6 +554,37 @@ export interface OverdueContractInvoiceAlert {
   readonly daysOverdue: number;
 }
 
+/**
+ * FASE 3 (producto, zona horaria por negocio) — `licitaciones.tenant_config`
+ * (migración 027). A diferencia de `citas.tenant_config`/`rentas.
+ * property_config`, licitaciones NO tenía NINGUNA tabla de configuración
+ * propia de la organización hasta esta migración (`findOrganizationBySlug`/
+ * `listPropertiesForOrganization` leen directo de `core.organization`/
+ * `core.property`, el esquema núcleo compartido — ver comentario de cabecera
+ * de esos dos métodos en postgres-repository.ts). `timezone` NULLABLE a
+ * propósito (a diferencia de `citas.tenant_config.default_timezone`, `not
+ * null default 'America/Mexico_City'`): `null` es el estado real de TODA
+ * organización de licitaciones hoy (columna nueva, ninguna fila existe
+ * todavía) y se resuelve siempre vía `@atiende/core-tenancy::
+ * resolverZonaHorariaNegocio` (nunca un default hardcodeado aquí) — ver
+ * `PostgresLicitacionesRepository.resolveOrganizationTimezoneForToday`.
+ */
+export interface LicitacionesTenantConfigRecord {
+  readonly organizationId: string;
+  readonly timezone: string | null;
+}
+
+/** Patch parcial de `licitaciones.tenant_config` (panel admin, owner/admin
+ * únicamente — ver `STAFF_INVITE_ROLES` reusado como umbral de esta
+ * escritura en `apps/api/src/routes/verticals/licitaciones/admin.ts`).
+ * `timezone: null` explícito SÍ borra el valor guardado (vuelve al default
+ * de plataforma); `timezone` ausente dentro del patch deja el valor actual
+ * intacto (mismo criterio `seen`/ausente que `TenantConfigPatch` de
+ * domain-citas). */
+export interface LicitacionesTenantConfigPatch {
+  readonly timezone?: string | null;
+}
+
 export interface LicitacionesRepository {
   // ---- Fase 7 pieza 1: resolución de organización/property para el panel web ----
   /** Mismo rol que `CitasRepository.findOrganizationBySlug` — el panel solo conoce
@@ -565,6 +596,29 @@ export interface LicitacionesRepository {
    * panel igual lee la lista completa (mismo criterio que citas/restaurantes: nunca
    * asumir cardinalidad en el cliente). */
   listPropertiesForOrganization(organizationId: string): Promise<readonly { propertyId: string; name: string }[]>;
+
+  // ---- FASE 3 (producto) — zona horaria por negocio: `licitaciones.tenant_config` ----
+  /** Nunca 404 — una organización sin fila todavía (columna nueva, ver
+   * `LicitacionesTenantConfigRecord`) se ve como `timezone: null`, el mismo
+   * estado que refleja HOY toda organización real (mismo criterio "vacío
+   * honesto" que `findTenantConfig` de domain-citas para su propio caso
+   * "sin fila"). También cae aquí (mismo resultado `timezone: null`, nunca
+   * lanza) si `licitaciones.tenant_config` todavía no existe en la base real
+   * (SQLSTATE 42P01 — la migración 027 no se aplica al mergear, ver REGLA
+   * DURA de compatibilidad del repo). */
+  findTenantConfig(organizationId: string): Promise<LicitacionesTenantConfigRecord>;
+  /** Upsert real (nunca requiere que la fila exista antes) — port del mismo
+   * patrón `upsertTenantConfig` de domain-citas. Solo owner/admin llega aquí
+   * (aplicación, `assertVerticalRole(STAFF_INVITE_ROLES)` en admin.ts) —
+   * REFORZADO por RLS (`licitaciones.tenant_config` solo acepta INSERT/UPDATE
+   * de `vertical_role in ('owner','admin')`, ver migración 027) como defensa
+   * en profundidad real, no solo una promesa de la capa TS. Si la tabla
+   * todavía no existe en la base real (SQLSTATE 42P01), lanza
+   * `TenantConfigNotMigratedError` — una ESCRITURA nunca puede fingir que
+   * guardó algo que la base no puede persistir todavía (a diferencia de la
+   * lectura de `findTenantConfig`, que sí puede degradar a `null` en
+   * silencio); la ruta la traduce a 503 (`Errors.serviceUnavailable`). */
+  upsertTenantConfig(organizationId: string, patch: LicitacionesTenantConfigPatch): Promise<LicitacionesTenantConfigRecord>;
 
   // ---- Convocatoria / expediente (transversal) ----
   findTender(organizationId: string, tenderId: string): Promise<TenderRecord | null>;

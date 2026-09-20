@@ -170,7 +170,7 @@ export type {
   RequirementFulfillmentMapping,
 } from "./technical-proposal.ts";
 
-export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError, GoNoGoRejectedError } from "./errors.ts";
+export { IdempotencyConflictError, SubmissionDeadlineUnknownError, ReadinessStaleError, ApprovalRejectedError, GoNoGoRejectedError, TenantConfigNotMigratedError } from "./errors.ts";
 
 export type {
   LicitacionesRepository,
@@ -183,6 +183,8 @@ export type {
   TenderPage,
   MatchingProfileUpsertInput,
   GoNoGoDecisionCreateInput,
+  LicitacionesTenantConfigRecord,
+  LicitacionesTenantConfigPatch,
 } from "./repository.ts";
 export { InMemoryLicitacionesRepository } from "./in-memory-repository.ts";
 export { PostgresLicitacionesRepository, dateColumnToExplicitOffsetIso } from "./postgres-repository.ts";
