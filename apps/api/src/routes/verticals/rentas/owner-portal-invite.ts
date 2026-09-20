@@ -29,6 +29,7 @@ export function rentasOwnerPortalInviteRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const propertyId = c.req.param("propertyId");
     const ownerId = c.req.param("ownerId");
     const staffId = c.get("userId");
+    const organizationId = c.get("organizationId");
     const db = c.get("db");
 
     // Reutiliza EXACTAMENTE la misma verificación que ya hace finanzas-statements.ts
@@ -46,6 +47,25 @@ export function rentasOwnerPortalInviteRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     // mientras esa infraestructura no exista, mismo criterio que el resto de gaps
     // documentados en production/not-ready.ts.
     await deps.rentasOwnerPortalRepo(db).createPortalInvite({ ownerId, tokenHash, expiresAt, createdBy: staffId });
+
+    // f3-rentas-bitacora-y-guards -- bitácora de auditoría: "alta de acceso de un
+    // propietario (owner_credential)", uno de los 4 huecos que esta fase cierra
+    // (ver migrations/023_rentas_audit_log_cobertura_completa.sql). Nuevo
+    // `entity_type = 'owner_credential'`. NUNCA guarda el token ni el email del
+    // propietario (`OwnerRecord` ni siquiera expone un email, ver types.ts) --
+    // solo la vigencia, el resumen mínimo indispensable (mandato de la fase: "sin
+    // PII innecesaria ni payloads crudos"). Best-effort real, nunca revierte el
+    // invite ya creado.
+    await deps.rentasRepo(db).registrarAuditoria({
+      organizationId,
+      actorUserId: staffId,
+      action: "owner_credential.alta",
+      entityType: "owner_credential",
+      entityId: ownerId,
+      campo: "portal_invite",
+      antes: null,
+      despues: `vence ${expiresAt}`,
+    });
 
     // El envío por correo real queda fuera de fase (§8, sin proveedor SMTP en el
     // monorepo todavía) -- staff copia/pega este token en el mensaje que le mande al

@@ -24,7 +24,7 @@ import type { RentasAuditEntityType } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 
-const ENTITY_TYPES: readonly RentasAuditEntityType[] = ["pricing", "reserva", "payout", "owner_statement", "membership", "canal"];
+const ENTITY_TYPES: readonly RentasAuditEntityType[] = ["pricing", "reserva", "payout", "owner_statement", "membership", "canal", "bloqueo", "owner_credential"];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
