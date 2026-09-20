@@ -52,6 +52,21 @@ const STAFF_INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Enmascara el correo del invitado antes de guardarlo en la bitácora de
+ *  auditoría (`restaurantes.audit_log`, append-only e imborrable -- hallazgo
+ *  no bloqueante del revisor independiente del PR #183: el correo COMPLETO ahí
+ *  impide atender después una solicitud de borrado/ARCO sobre ese invitado, y
+ *  el correo ya es visible de todas formas en `GET .../staff/invitaciones`
+ *  mientras la invitación siga pendiente). Conserva el primer carácter + el
+ *  dominio completo -- suficiente para reconocer a quién se invitó en el
+ *  resumen, nunca el correo completo -- mismo criterio que
+ *  `apps/api/src/superadmin-acciones/resumen.ts::enmascararDestinatario`. */
+function enmascararCorreoInvitado(email: string): string {
+  const arroba = email.indexOf("@");
+  if (arroba <= 0) return "***";
+  return `${email[0]}***@${email.slice(arroba + 1)}`;
+}
+
 interface CreateInviteBody {
   readonly email?: unknown;
   readonly verticalRole?: unknown;
@@ -271,12 +286,12 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
     // FASE 3 (producto) — "invitación ... de staff" (ver
     // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
-    // Nunca guarda el correo completo del invitado en texto libre visible en la
-    // bitácora sin necesidad real -- aquí SÍ es el dato mínimo indispensable
-    // para saber a quién se invitó (mandato de la fase: "sin PII innecesaria",
-    // no "sin ningún dato identificador" -- a diferencia de un teléfono de
-    // comensal, un correo de STAFF es exactamente lo que esta acción necesita
-    // auditar). Best-effort real, nunca revierte la invitación ya creada.
+    // Correo ENMASCARADO (corrección de revisión sobre el PR #183, ver
+    // `enmascararCorreoInvitado` arriba) -- sigue siendo el dato mínimo
+    // indispensable para reconocer a quién se invitó (mandato de la fase: "sin
+    // PII innecesaria", no "sin ningún dato identificador"), pero nunca el
+    // correo completo en una tabla append-only que nadie puede borrar. Best-
+    // effort real, nunca revierte la invitación ya creada.
     await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
       organizationId,
       actorUserId: staffId,
@@ -285,7 +300,7 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       entityId: invite.id,
       campo: "email,verticalRole",
       antes: null,
-      despues: `${email} (${verticalRole})`,
+      despues: `${enmascararCorreoInvitado(email)} (${verticalRole})`,
     });
 
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);

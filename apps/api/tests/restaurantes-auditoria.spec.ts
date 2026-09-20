@@ -190,7 +190,10 @@ describe("FASE 3 — registro de auditoría en las rutas de escritura reales", (
     const nuevas = ctx.restaurantesRepo.auditLog.slice(antes);
     expect(nuevas).toHaveLength(1);
     expect(nuevas[0]).toMatchObject({ entityType: "staff", action: "staff.invitado", entityId: invite.id, actorUserId: ctx.staff.owner.id });
-    expect(nuevas[0]!.despues).toContain("nuevo@lostaquitos.mx");
+    // Correo ENMASCARADO en la bitácora (append-only, imborrable) -- hallazgo no
+    // bloqueante del revisor del PR #183 -- nunca el correo completo.
+    expect(nuevas[0]!.despues).toContain("n***@lostaquitos.mx");
+    expect(nuevas[0]!.despues).not.toContain("nuevo@lostaquitos.mx");
   });
 
   it("DELETE .../staff/invitaciones/:id registra staff.invitacion_revocada", async () => {
@@ -298,6 +301,41 @@ describe("FASE 3 — GET /v1/restaurantes/:propertyId/admin/auditoria", () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/auditoria?tipo=no-existe`, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(400);
+  });
+
+  // Regresión (revisor independiente del PR #183, no bloqueante #4): antes de este
+  // fix, "desde"/"hasta" solo validaban la FORMA (YYYY-MM-DD), así que una fecha de
+  // calendario inválida llegaba tal cual al `::timestamptz` de
+  // PostgresRestaurantesRepository.listAuditoria (SQLSTATE 22008, no recuperable
+  // por runWithSavepointFallback) y terminaba en 500 en vez de 400.
+  it("desde con fecha de calendario inválida (mes/día fuera de rango) -> 400, nunca 500", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/auditoria?desde=2026-13-45`, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(400);
+  });
+
+  it("hasta con 29 de febrero de un año NO bisiesto -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/auditoria?hasta=2026-02-29`, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(400);
+  });
+
+  // Regresión (no bloqueante #4): `Number.parseInt("12abc", 10)` devuelve 12 --
+  // antes de este fix, limit/offset aceptaban basura al final en vez de rechazarla.
+  it("limit con basura al final ('12abc') -> 400, no se trunca en 12", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/auditoria?limit=12abc`, authedGet(ctx.staff.owner.token));
+    expect(res.status).toBe(400);
+  });
+
+  it("offset negativo -> 400", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/auditoria?offset=-1`, authedGet(ctx.staff.owner.token));
     expect(res.status).toBe(400);
   });
 
