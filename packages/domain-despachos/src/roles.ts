@@ -168,6 +168,24 @@ export const GESTIONAR_COBRANZA_ROLES: readonly DespachosRole[] = ["admin", "con
 
 export const ADMIN_ROLES: readonly DespachosRole[] = ["admin"];
 
+/** FASE 3 (producto) -- zona horaria por negocio (migración 012). Quién puede VER
+ * la configuración de zona horaria de una property -- lectura de config ya
+ * persistida, mismo criterio que el resto de los `VER_*` de arriba
+ * (`auditor`/`readonly` sí pueden ver). */
+export const VER_CONFIGURACION_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
+
+/** Quién puede EDITAR la zona horaria de una property -- reservado a `admin` (el
+ * único "owner" real de despachos, ver `PLATFORM_ROLE_BY_VERTICAL_ROLE` abajo),
+ * mismo umbral que `CERRAR_PERIODO_ROLES`/`STAFF_INVITE_ROLES`: configuración de
+ * negocio (no catálogo/operación del día a día) reservada al techo real de la
+ * organización -- mismo criterio EXACTO que `restaurantes.STAFF_INVITE_ROLES` para
+ * `whatsapp_channel_config`/`known_zone`
+ * (migrations/021_restaurantes_config_editable_y_search_path_fix.sql). Idéntico a
+ * `ADMIN_ROLES` hoy -- constante propia (en vez de reusar `ADMIN_ROLES` directo en
+ * la ruta) para que un cambio futuro de "quién administra configuración" no tenga
+ * que adivinar si también debe mover el techo de `CERRAR_PERIODO_ROLES`. */
+export const GESTIONAR_CONFIGURACION_ROLES: readonly DespachosRole[] = ["admin"];
+
 /**
  * Hallazgo de auditoría (severidad ALTA, "Alta de organización/staff imposible
  * sin SQL") — quién puede invitar staff nuevo, mismo patrón que

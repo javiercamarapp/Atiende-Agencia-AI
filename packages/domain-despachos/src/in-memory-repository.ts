@@ -11,6 +11,7 @@ import type {
   DeadlineEscalationRecord,
   DespachosAuditLogEntry,
   DespachosAuditLogPage,
+  DespachosPropertyConfigRecord,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
@@ -43,6 +44,9 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly organizationIdBySlug = new Map<string, string>();
   private readonly despachosProperties = new Map<string, { propertyId: string; organizationId: string; name: string }>();
   private readonly receivables = new Map<string, ReceivableRecord>();
+  // FASE 3 (producto) -- zona horaria por negocio (migración 012), ver
+  // `repository.ts::findPropertyConfig`/`upsertPropertyConfigZonaHoraria`.
+  private readonly propertyConfigs = new Map<string, DespachosPropertyConfigRecord>();
 
   /** Espejo en memoria de `despachos.audit_log` -- f2-orden-total-bitacoras.
    * Expuesto directo (mismo criterio que `InMemoryRentasRepository.auditLog`, ver
@@ -633,5 +637,16 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   // desde el punto de vista del caller, sin transacción real que aislar en memoria.
   async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
     return fn();
+  }
+
+  // ---- FASE 3 (producto) -- zona horaria por negocio (migración 012) ----
+  async findPropertyConfig(propertyId: string): Promise<DespachosPropertyConfigRecord | null> {
+    return this.propertyConfigs.get(propertyId) ?? null;
+  }
+
+  async upsertPropertyConfigZonaHoraria(propertyId: string, organizationId: string, zonaHoraria: string | null): Promise<DespachosPropertyConfigRecord> {
+    const record: DespachosPropertyConfigRecord = { propertyId, organizationId, zonaHoraria };
+    this.propertyConfigs.set(propertyId, record);
+    return record;
   }
 }

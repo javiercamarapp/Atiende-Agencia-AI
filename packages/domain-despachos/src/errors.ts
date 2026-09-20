@@ -96,3 +96,19 @@ export class ReceivableAlreadyPaidError extends Error {
     this.name = "ReceivableAlreadyPaidError";
   }
 }
+
+// ---- FASE 3 (producto) -- zona horaria por negocio (migración 012) ----
+
+/** REGLA DURA de compatibilidad del repo: mergear a `main` despliega el código de
+ * inmediato pero la base real va migraciones atrás. Si `despachos.property_config`
+ * todavía no existe/no tiene el GRANT de escritura en la base real que atiende este
+ * request, `upsertPropertyConfigZonaHoraria` lanza esto en vez de un 500 crudo de
+ * Postgres -- la ruta HTTP lo traduce a un 503 honesto ("todavía no disponible"),
+ * mismo criterio que `RestaurantesConfigUnavailableError` (domain-restaurantes,
+ * leído primero como plantilla). */
+export class DespachosConfigUnavailableError extends Error {
+  constructor(message = "La configuración de zona horaria todavía no está disponible en esta base -- aplica la migración 012 (despachos.property_config).") {
+    super(message);
+    this.name = "DespachosConfigUnavailableError";
+  }
+}
