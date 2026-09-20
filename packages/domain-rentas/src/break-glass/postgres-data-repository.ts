@@ -177,15 +177,25 @@ function resolverLimite(paginacion: BreakGlassLectorPaginacion | undefined): { l
 // de auditoría (`acceso.ts` audita `resultado.datos`, no las filas crudas de
 // Postgres).
 //
-// CASO LÍMITE documentado y aceptado (mismo criterio ya aplicado en
-// PostgresAuthzAuditRepository.list, ver packages/db/src/authz-audit-repository.ts):
-// las 7 funciones de `020_break_glass_lectores.sql` acotan `p_limit` con
+// CASO LÍMITE (hallazgo real, auditoría a3 / PR #172 no-bloqueante 3): las 7
+// funciones de `020_break_glass_lectores.sql` acotan `p_limit` con
 // `least(coalesce(p_limit, 100), 200)` DENTRO de la función -- un tope duro
-// que esta capa no puede pedirle que ignore. Cuando el llamador ya pide
-// exactamente `BREAK_GLASS_LECTOR_LIMIT_MAX` (200, el tope), pedir 201 no
-// sirve de nada (la función lo acotaría de vuelta a 200) -- el "peek" queda
-// deshabilitado en ese único caso límite y `hasMore` puede reportar `false`
-// aunque exista una página 201+. No afecta el caso normal (default 100).
+// que esta capa NO puede pedirle que ignore sin una migración nueva de
+// `packages/domain-rentas/migrations/`, fuera de alcance de este archivo esta
+// tanda (otro constructor trabaja en el resto de `domain-rentas`, ver
+// AGENTS.md de la tarea -- a diferencia de `core.list_authz_audit_log_for_
+// superadmin`, que SÍ subió su tope duro interno a 201 en
+// `packages/db/migrations/0022_superadmin_bitacoras_endurecimiento.sql`
+// porque `packages/db/migrations` no tiene esa restricción de alcance esta
+// tanda). Cuando el llamador ya pide exactamente `BREAK_GLASS_LECTOR_LIMIT_MAX`
+// (200, el tope), pedir 201 no sirve de nada -- la función lo acotaría de
+// vuelta a 200 -- así que el "peek" real queda deshabilitado en ese único
+// caso límite. `partirConHasMore` (abajo) compensa con un `hasMore`
+// CONSERVADOR en ese caso: nunca un falso "ya viste todo" (el hallazgo real),
+// a costa de un posible falso "hay más" cuando el tenant tiene EXACTAMENTE
+// 200 filas -- tradeoff aceptado, documentado, y estrictamente mejor que el
+// comportamiento anterior (que SIEMPRE decía "no hay más" en este caso,
+// incluso con una fila 201+ real).
 function queryLimitConPeek(limit: number): number {
   return limit < BREAK_GLASS_LECTOR_LIMIT_MAX ? limit + 1 : limit;
 }
@@ -193,10 +203,25 @@ function queryLimitConPeek(limit: number): number {
 /** Recorta la fila de más del "peek" (si la hubo) y calcula `hasMore` --
  *  compartido por los 7 métodos de abajo. `rows` ya viene en el orden que la
  *  función SQL define (más reciente primero); recortar del FINAL preserva ese
- *  orden para las filas que sí se devuelven. */
+ *  orden para las filas que sí se devuelven.
+ *
+ *  `limit < BREAK_GLASS_LECTOR_LIMIT_MAX` (peek real, `rows` puede traer
+ *  `limit+1`): `hasMore` es EXACTO (`rows.length > limit`).
+ *
+ *  `limit === BREAK_GLASS_LECTOR_LIMIT_MAX` (tope duro, ver comentario de
+ *  `queryLimitConPeek` -- SIN peek real posible desde este archivo):
+ *  CONSERVADOR -- `rows.length >= limit` (la página vino exactamente llena).
+ *  Nunca un falso negativo ("no hay más" cuando sí las hay, el hallazgo
+ *  real); si el tenant tiene EXACTAMENTE 200 filas, esto da un falso
+ *  positivo ("hay más" cuando en realidad ya se vio todo) -- un botón
+ *  "Cargar más" que trae 0 filas nuevas es un costo aceptable frente a creer
+ *  que ya se vio todo un tenant que en realidad tiene más. */
 function partirConHasMore<T>(rows: readonly T[], limit: number): { readonly filas: readonly T[]; readonly hasMore: boolean } {
-  const hasMore = rows.length > limit;
-  return { filas: hasMore ? rows.slice(0, limit) : rows, hasMore };
+  if (limit < BREAK_GLASS_LECTOR_LIMIT_MAX) {
+    const hasMore = rows.length > limit;
+    return { filas: hasMore ? rows.slice(0, limit) : rows, hasMore };
+  }
+  return { filas: rows, hasMore: rows.length >= limit };
 }
 
 // Hallazgo de revisión real (ronda r5): `fecha_payout`/`vigente_desde`/
