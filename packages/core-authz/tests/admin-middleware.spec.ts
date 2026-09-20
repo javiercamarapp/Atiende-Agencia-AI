@@ -340,7 +340,7 @@ describe("requireAdminAccess — DenialAuditCoalescer: no persiste cada 429 repe
     const coalescer = new InMemoryDenialAuditCoalescer(10 * 60_000);
     const clock = { nowMs: Date.parse("2026-09-19T12:00:00.000Z") };
     const app = buildAppConReloj({ audit, rateLimiter, coalescer, clock });
-    const headers = { authorization: `Bearer ${await tokenFor("actor-403-repetido")}` };
+    const headers = { authorization: `Bearer ${await tokenFor("actor-repetido-sin-permiso")}` };
 
     await app.request("/admin/usuarios", { headers });
     await app.request("/admin/usuarios", { headers });
