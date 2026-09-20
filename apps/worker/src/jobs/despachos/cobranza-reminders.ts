@@ -36,6 +36,7 @@
 // `tryEnqueueCollectionReminderEmailForSystem` -- exclusivas de este barrido,
 // respaldadas por funciones `security definer` de solo-sistema (ver esa
 // migración) -- el panel/`/recordatorio` de staff siguen sin cambios.
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { diasVencidoCartera, enqueueCollectionReminderEmailForSystemCore, etapaRecordatorioCobranzaHoy } from "@atiende/domain-despachos";
 import type { DespachosRepository } from "@atiende/domain-despachos";
 
@@ -127,7 +128,15 @@ export async function sweepProperty(repo: DespachosRepository, propertyId: strin
  * `WithDespachosRepo` arriba para la razón exacta.
  */
 export async function runCobranzaReminderSweep(withRepo: WithDespachosRepo, options: RunCobranzaReminderSweepOptions = {}): Promise<readonly CobranzaReminderSweepResult[]> {
-  const todayIso = options.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+  // Bug real (revisión r6, misma causa raíz que `apps/api/.../despachos/vencimientos.ts::
+  // todayIso` -- ver su comentario de cabecera): el default de "hoy" del BARRIDO (cuando
+  // el caller -- el cron externo -- no inyecta `todayIsoDate`, que es el camino real de
+  // producción) usaba el día UTC del proceso, corrido un día adelante del real en CDMX
+  // entre las 18:00 y las 23:59 hora local -- el corte de "¿hoy toca recordatorio?" caía
+  // un día antes de tiempo en esa ventana. Ahora usa
+  // `@atiende/core-tenancy::hoyFechaNegocio()`. `options.todayIsoDate` sigue existiendo
+  // para inyección determinista en tests, sin cambio.
+  const todayIso = options.todayIsoDate ?? hoyFechaNegocio();
   const organizations = await withRepo((repo) => repo.listActiveOrganizations());
   const results: CobranzaReminderSweepResult[] = [];
 
