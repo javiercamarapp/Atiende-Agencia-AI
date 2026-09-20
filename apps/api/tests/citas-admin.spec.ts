@@ -779,6 +779,47 @@ describe("POST /v1/citas/properties/:propertyId/waitlist/broadcast — Fase 9", 
     });
     expect(res.status).toBe(403);
   });
+
+  // Corrección bloqueante de la ronda 2 de revisión del PR #180 — con la base
+  // sin migrar (020/021, el estado REAL de producción en el instante en que
+  // este PR se mergea) `previewListaEspera` veía candidatos reales igual (la
+  // variante de STAFF funciona sin ninguna migración) y esta ruta respondía
+  // `queued:true` con un conteo real que el post-commit en sesión de sistema
+  // jamás podría convertir en un aviso -- un éxito falso permanente. Este
+  // test afirma el EFECTO real, no solo la ausencia de un 500: con el probe
+  // de catálogo simulado en `false`, la ruta NO registra el postCommitTask
+  // (nada se reclama, nada se encola) y responde el motivo honesto.
+  it("corrección bloqueante ronda 2 — con las funciones de sistema NO disponibles (base sin migrar), responde queued:false SIN reclamar ni encolar nada", async () => {
+    const ctx = await buildCitasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const waitlistId = ctx.citasRepo.seedWaitlistEntry({
+      organizationId: ctx.organizationId,
+      customerPhone: "9990000003",
+      customerName: "Candidato que no debería recibir nada todavía",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    });
+    ctx.citasRepo.setSystemWaitlistFunctionsAvailable(false);
+
+    const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/waitlist/broadcast`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { queued: boolean; reason?: string; candidates_considered: number; skipped_no_whatsapp_config: boolean };
+    expect(body).toEqual({ queued: false, reason: "not_available_yet", candidates_considered: 0, skipped_no_whatsapp_config: false });
+
+    // El efecto real (lo que de verdad importa, no solo el código de estado):
+    // nada se reclamó ni se encoló -- el candidato sigue exactamente como
+    // estaba, sin ningún mensaje en el outbox.
+    expect(ctx.citasRepo.getOutbox()).toHaveLength(0);
+    expect(ctx.citasRepo.getWaitlistEntry(waitlistId)?.notifiedCount).toBe(0);
+  });
 });
 
 describe("POST/PATCH/DELETE /v1/citas/properties/:propertyId/providers/:providerId/availability-rules(/:ruleId) — Fase 10", () => {
