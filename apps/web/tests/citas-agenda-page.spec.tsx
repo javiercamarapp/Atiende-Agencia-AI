@@ -83,7 +83,10 @@ function stubFetch(handlers: Handlers) {
     const method = init?.method ?? "GET";
     if (url.includes("/providers")) return jsonResponse({ providers: handlers.providers ?? [] });
     if (url.includes("/services") && !url.includes("appointments")) return jsonResponse({ services: handlers.services ?? [] });
-    if (url.includes("/waitlist/broadcast")) return jsonResponse({ notified: 1, candidates_considered: 2, skipped_no_whatsapp_config: 1 });
+    // Corrección post-revisión de f2-citas-lista-de-espera (hallazgo B) — el
+    // body real ya no trae `notified` (el efecto corre post-commit) y
+    // `skipped_no_whatsapp_config` es `boolean`, no `number`.
+    if (url.includes("/waitlist/broadcast")) return jsonResponse({ queued: true, candidates_considered: 2, skipped_no_whatsapp_config: false });
     if (url.includes("/waitlist")) return jsonResponse({ waitlist: handlers.waitlist ?? [] });
     if (method === "GET" && url.includes("/appointments")) {
       const list = typeof handlers.appointments === "function" ? handlers.appointments() : (handlers.appointments ?? []);

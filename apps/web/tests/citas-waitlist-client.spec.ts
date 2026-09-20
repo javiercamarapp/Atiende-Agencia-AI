@@ -62,26 +62,34 @@ describe("fetchWaitlist", () => {
 });
 
 describe("broadcastWaitlist", () => {
+  // Corrección post-revisión de f2-citas-lista-de-espera (hallazgo B, revisor
+  // independiente del PR #180): estos dos tests mockeaban un body de servidor
+  // (`notified`, `skipped_no_whatsapp_config` como número) que la API real YA
+  // NO manda desde que el efecto se movió a post-commit en sesión de sistema
+  // (admin.ts responde `queued: true` + `skipped_no_whatsapp_config: boolean`)
+  // -- pasaban en verde contra un contrato que no existe, exactamente el
+  // defecto que dejaba a `waitlist-client.ts`/`Agenda.tsx` sin detectar en
+  // typecheck (el body llega tipado por un cast, nunca validado en runtime).
   it("POST con el body real (snake_case) y mapea el resumen (camelCase)", async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("http://api.local/v1/citas/properties/prop-1/waitlist/broadcast");
       expect(init?.method).toBe("POST");
       expect(JSON.parse(init!.body as string)).toEqual({ provider_id: "prov-1", service_id: "serv-1", limit: 10 });
-      return new Response(JSON.stringify({ notified: 3, candidates_considered: 5, skipped_no_whatsapp_config: 2 }), { status: 200 });
+      return new Response(JSON.stringify({ queued: true, candidates_considered: 5, skipped_no_whatsapp_config: false }), { status: 200 });
     }) as unknown as typeof fetch;
 
     const result = await broadcastWaitlist(fetchImpl, "http://api.local", "tok", "prop-1", { providerId: "prov-1", serviceId: "serv-1", limit: 10 });
-    expect(result).toEqual({ notified: 3, candidatesConsidered: 5, skippedNoWhatsappConfig: 2 });
+    expect(result).toEqual({ queued: true, candidatesConsidered: 5, skippedNoWhatsappConfig: false });
   });
 
   it("sin filtros manda el body con undefined (el servidor los ignora) y funciona igual", async () => {
     const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
       expect(JSON.parse(init!.body as string)).toEqual({ provider_id: undefined, service_id: undefined, limit: undefined });
-      return new Response(JSON.stringify({ notified: 0, candidates_considered: 0, skipped_no_whatsapp_config: 0 }), { status: 200 });
+      return new Response(JSON.stringify({ queued: true, candidates_considered: 0, skipped_no_whatsapp_config: true }), { status: 200 });
     }) as unknown as typeof fetch;
 
     const result = await broadcastWaitlist(fetchImpl, "http://api.local", "tok", "prop-1");
-    expect(result).toEqual({ notified: 0, candidatesConsidered: 0, skippedNoWhatsappConfig: 0 });
+    expect(result).toEqual({ queued: true, candidatesConsidered: 0, skippedNoWhatsappConfig: true });
   });
 
   it("400 -> error real (ej. provider_id que no pertenece al negocio)", async () => {
