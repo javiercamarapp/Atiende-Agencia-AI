@@ -10,7 +10,7 @@
 // (ver también `scripts/verify-superadmin-resumen/assertions.sql`, escenario
 // que reproduce ambos casos con el mismo texto real).
 import { describe, expect, it } from "vitest";
-import { isMigrationPendingError, isUndefinedColumnError, isUndefinedFunctionError, isUndefinedTableError } from "../src/sql-errors.ts";
+import { isMigrationPendingError, isNoUniqueOrExclusionConstraintError, isUndefinedColumnError, isUndefinedFunctionError, isUndefinedTableError } from "../src/sql-errors.ts";
 
 function pgError(code: string, message: string): Error & { code: string } {
   return Object.assign(new Error(message), { code });
@@ -68,6 +68,26 @@ describe("isUndefinedTableError / isUndefinedColumnError", () => {
   it("42703 -> true para isUndefinedColumnError", () => {
     expect(isUndefinedColumnError(pgError("42703", "column d.seq does not exist"))).toBe(true);
     expect(isUndefinedColumnError(pgError("42P01", "relation does not exist"))).toBe(false);
+  });
+});
+
+describe("isNoUniqueOrExclusionConstraintError -- 42P10 (ON CONFLICT sin índice unique todavía, f2-despachos-fiscal-deadline-unique)", () => {
+  it("42P10 -> true, sin ambigüedad de mensaje que revisar (verificado contra Postgres real)", () => {
+    expect(
+      isNoUniqueOrExclusionConstraintError(
+        pgError("42P10", "there is no unique or exclusion constraint matching the ON CONFLICT specification"),
+      ),
+    ).toBe(true);
+  });
+
+  it("código distinto de 42P10 -> false", () => {
+    expect(isNoUniqueOrExclusionConstraintError(pgError("23505", "duplicate key value violates unique constraint"))).toBe(false);
+  });
+
+  it("sin .code (no es un error de pg) -> false", () => {
+    expect(isNoUniqueOrExclusionConstraintError(new Error("boom"))).toBe(false);
+    expect(isNoUniqueOrExclusionConstraintError(null)).toBe(false);
+    expect(isNoUniqueOrExclusionConstraintError(undefined)).toBe(false);
   });
 });
 

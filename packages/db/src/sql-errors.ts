@@ -89,6 +89,19 @@ export function isUndefinedColumnError(err: unknown): boolean {
   return errorCode(err) === "42703";
 }
 
+/** SQLSTATE 42P10 (`invalid_column_reference`, el código que Postgres real usa para
+ *  "no unique or exclusion constraint matching the ON CONFLICT specification") -- lo
+ *  que lanza un `INSERT ... ON CONFLICT (col1, col2, ...) DO NOTHING/UPDATE` cuando
+ *  la migración que crea el índice/constraint `unique` sobre esas columnas todavía no
+ *  se aplicó a esta base (REGLA DURA de compatibilidad del repo: el código nuevo debe
+ *  seguir funcionando contra la base real sin migrar -- ver AGENTS.md). A diferencia
+ *  de 42883 (ver arriba), Postgres nunca reutiliza 42P10 para otro significado --
+ *  siempre es "el ON CONFLICT no tiene con qué casar", nunca un bug de tipos u otra
+ *  cosa -- así que, igual que 42P01/42703, no hace falta revisar el mensaje. */
+export function isNoUniqueOrExclusionConstraintError(err: unknown): boolean {
+  return errorCode(err) === "42P10";
+}
+
 /** Clasificación compartida de "migración pendiente" -- el trío de SQLSTATE
  *  que este monorepo ya usa en varios puertos para degradar a un vacío
  *  honesto contra la base real sin migrar (ver `authz-audit-repository.ts`/
