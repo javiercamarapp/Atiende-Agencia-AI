@@ -45,6 +45,7 @@ import {
 import { calcularIsrPf, calcularIsrPm, calcularIsrPmResico, fetchDiot } from "../lib/declaraciones-client.ts";
 import type { DiotAgregado, IsrResultado } from "../lib/declaraciones-client.ts";
 import { formatDiotTipoOperacion, formatMoney, formatTablaAplicadaIsr } from "../lib/format.ts";
+import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo conjunto que DECLARACIONES_ROLES (@atiende/domain-despachos/roles.ts) --
@@ -276,8 +277,14 @@ function IsrPmResicoForm({ ctx }: { ctx: DespachosShellContext }) {
 }
 
 function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
-  const now = new Date();
-  const defaultPeriodo = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  // Bug real (hallazgo de auditoría a4, dimensión web-contrato, severidad baja,
+  // mismo patrón exacto que Vencimientos.tsx/Nomina.tsx): precargar con
+  // `new Date().getUTCFullYear()`/`getUTCMonth()` usa el día UTC del navegador, no
+  // el día de calendario del negocio -- el último día del mes por la tarde/noche
+  // CDMX precargaba el MES SIGUIENTE (y el 31-dic el AÑO siguiente). `hoyFechaSolo()`
+  // (apps/web/src/lib/formato-fecha.ts, formato "YYYY-MM-DD") da el día de
+  // calendario en America/Mexico_City -- mismo helper que Dashboard.tsx/Pl.tsx.
+  const defaultPeriodo = hoyFechaSolo().slice(0, 7);
   const [periodo, setPeriodo] = useState(defaultPeriodo);
   const [agregado, setAgregado] = useState<DiotAgregado | null>(null);
   const [error, setError] = useState<string | null>(null);
