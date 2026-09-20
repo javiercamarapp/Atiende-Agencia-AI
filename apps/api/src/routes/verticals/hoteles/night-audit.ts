@@ -26,7 +26,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { NIGHT_AUDIT_ROLES, type HotelesRepository, type NightAuditSummary } from "@atiende/domain-hoteles";
 import { runNightAuditForProperty, runNightAuditSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
@@ -41,8 +41,12 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // el caller no lo manda) usaba el día UTC del proceso -- corrido un día adelante del real
 // en CDMX entre las 18:00 y las 23:59 hora local. Ahora usa
 // `@atiende/core-tenancy::hoyFechaNegocio()`.
-function todayIso(): string {
-  return hoyFechaNegocio();
+//
+// FASE 3 (producto) zona horaria por negocio: `timezone` es SIEMPRE resuelto por el
+// caller vía `resolverZonaHorariaNegocio(await repo.findPropertyTimezone(...))` --
+// nunca el default de plataforma a secas cuando la property configuró la suya.
+function todayIso(timezone: string): string {
+  return hoyFechaNegocio(timezone);
 }
 
 function serializeSummary(summary: NightAuditSummary) {
@@ -120,8 +124,15 @@ export function hotelesNightAuditRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const repo = deps.hotelesRepo(c.get("db"));
 
+    // FASE 3 (producto) zona horaria por negocio: resuelve la zona REAL de esta
+    // property (o el default de plataforma si no la configuró/la columna no existe
+    // todavía) ANTES de calcular el default de `businessDate` -- mismo criterio que
+    // `citas/admin.ts` (availability-overrides) resolviendo zona antes de
+    // `hoyFechaNegocio()`.
+    const timezone = resolverZonaHorariaNegocio(await repo.findPropertyTimezone(propertyId));
+
     const raw = (await c.req.json().catch(() => ({}))) as { businessDate?: unknown };
-    let businessDate = todayIso();
+    let businessDate = todayIso(timezone);
     if (raw.businessDate !== undefined) {
       if (typeof raw.businessDate !== "string" || !DATE_RE.test(raw.businessDate)) {
         throw Errors.validation("businessDate: formato esperado YYYY-MM-DD.");
@@ -129,7 +140,7 @@ export function hotelesNightAuditRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       businessDate = raw.businessDate;
     }
 
-    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate, session: "staff" });
+    const summary = await runNightAuditForProperty(repo, { organizationId, propertyId, businessDate, timezone, session: "staff" });
     return c.json(serializeSummary(summary), 200);
   });
 

@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ApiError } from "@atiende/core-auth";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import {
   ADMIN_ROLES,
   MANAGE_RESERVATIONS_ROLES,
@@ -421,9 +422,18 @@ export function hotelesReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const propertyId = c.req.param("propertyId");
     const organizationId = c.get("organizationId");
     const raw = await readJsonCapped<ProcesarNoShowBody>(c.req.raw, 1024);
-    const asOfDate = typeof raw.asOfDate === "string" && DATE_RE.test(raw.asOfDate) ? raw.asOfDate : null;
-
     const repo = deps.hotelesRepo(c.get("db"));
+
+    // FASE 3 (producto) zona horaria por negocio: si el caller no manda `asOfDate`
+    // explícito, el default YA NO es el default de plataforma a secas -- se resuelve
+    // la zona REAL de esta property (`hoteles.property_config.timezone`, o el
+    // default si no la configuró/la columna no existe todavía) y se calcula "hoy" en
+    // ESA zona (mismo criterio que `night-audit.ts`, disparo manual).
+    const asOfDate =
+      typeof raw.asOfDate === "string" && DATE_RE.test(raw.asOfDate)
+        ? raw.asOfDate
+        : hoyFechaNegocio(resolverZonaHorariaNegocio(await repo.findPropertyTimezone(propertyId)));
+
     const procesadas = await runNoShowSweep(repo, { organizationId, propertyId, asOfDate, session: "staff" });
 
     return c.json({ procesadas: procesadas.length, detalle: procesadas });

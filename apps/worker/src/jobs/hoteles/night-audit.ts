@@ -53,6 +53,7 @@
 // de este PR (sin ningún cambio de comportamiento); "sistema" usa los métodos
 // `systemXxx` nuevos, cableados SOLO desde la ruta interna de barrido (ver el header
 // de esa migración para el análisis completo).
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import {
   DEFAULT_PROPERTY_TIMEZONE,
   buildNightAuditSummary,
@@ -68,6 +69,14 @@ export interface RunNightAuditParams {
   readonly organizationId: string;
   readonly propertyId: string;
   readonly businessDate: string;
+  /** FASE 3 (producto) zona horaria por negocio -- timezone YA RESUELTO (vía
+   *  `resolverZonaHorariaNegocio()`) de la property, usado para agrupar el resumen de
+   *  caja del día (`sumChargesByConceptForBusinessDate`/
+   *  `sumPaymentsByMethodForBusinessDate`). Default `DEFAULT_PROPERTY_TIMEZONE`
+   *  (América/Ciudad de México) SOLO para no romper callers/tests existentes que
+   *  todavía no resuelven la zona real -- todo caller de producción (ruta HTTP de
+   *  disparo manual, `runNightAuditSweep` de abajo) SIEMPRE lo pasa explícito. */
+  readonly timezone?: string;
   /** "staff" -- disparo manual autenticado (`POST /hoteles/:propertyId/night-audit`),
    *  usa los métodos ORIGINALES del repositorio, SIN NINGÚN CAMBIO de comportamiento
    *  respecto a antes de Fase 6b. "sistema" -- ruta interna de barrido gateada por
@@ -136,15 +145,18 @@ export async function runNightAuditForProperty(repo: HotelesRepository, params: 
   });
   const noShows: NightAuditSummary["noShows"][number][] = noShowResults.map((r) => ({ reservationId: r.reservationId, chargeAmount: r.penalizacionNeta }));
 
-  // 3) Resumen de caja del día -- agrupado por fecha de negocio en la zona horaria de
-  //    la property (ver `DEFAULT_PROPERTY_TIMEZONE`: sin columna de timezone propia
-  //    todavía por property en `core.property`, gap declarado, no inventado).
+  // 3) Resumen de caja del día -- agrupado por fecha de negocio en la zona horaria
+  //    REAL de la property (FASE 3 producto, migrations/030_zona_horaria_property.sql)
+  //    -- `params.timezone` viene YA resuelto (`resolverZonaHorariaNegocio()`) del
+  //    llamador; `DEFAULT_PROPERTY_TIMEZONE` queda solo como último respaldo si algún
+  //    caller viejo no lo pasara todavía.
+  const timezone = params.timezone ?? DEFAULT_PROPERTY_TIMEZONE;
   const cargosPorConcepto = isSystem
-    ? await repo.systemSumChargesByConceptForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE)
-    : await repo.sumChargesByConceptForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE);
+    ? await repo.systemSumChargesByConceptForBusinessDate(params.propertyId, params.businessDate, timezone)
+    : await repo.sumChargesByConceptForBusinessDate(params.propertyId, params.businessDate, timezone);
   const pagosPorMetodo = isSystem
-    ? await repo.systemSumPaymentsByMethodForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE)
-    : await repo.sumPaymentsByMethodForBusinessDate(params.propertyId, params.businessDate, DEFAULT_PROPERTY_TIMEZONE);
+    ? await repo.systemSumPaymentsByMethodForBusinessDate(params.propertyId, params.businessDate, timezone)
+    : await repo.sumPaymentsByMethodForBusinessDate(params.propertyId, params.businessDate, timezone);
 
   const summary = buildNightAuditSummary({
     businessDate: params.businessDate,
@@ -225,20 +237,28 @@ export async function runNightAuditSweep(withRepo: WithHotelesRepo, options: Nig
   const results: NightAuditSweepResult[] = [];
 
   for (const property of properties) {
-    // Sin columna de timezone por property (`core.property`) todavía -- se usa el
-    // default declarado (ver `DEFAULT_PROPERTY_TIMEZONE`) para TODAS las properties
-    // por ahora, documentado como gap explícito, no un dato inventado por property.
-    if (!isPastNightAuditRunHour(now, DEFAULT_PROPERTY_TIMEZONE, runHourLocal)) {
+    // FASE 3 (producto) zona horaria por negocio (migrations/030): cada property
+    // resuelve SU PROPIA zona DENTRO del loop -- `property.timezone` es el valor
+    // CRUDO de `hoteles.property_config.timezone` (o `null` si no la configuró, o si
+    // la columna todavía no existe en una base sin migrar -- ver
+    // `listActiveHotelProperties()`); `resolverZonaHorariaNegocio()` es el ÚNICO
+    // punto que lo resuelve a un timezone usable, cayendo al default de plataforma
+    // (`DEFAULT_PROPERTY_TIMEZONE`) cuando no hay una configurada. Antes de esta
+    // fase, TODAS las properties cerraban con CDMX sin importar dónde estuvieran de
+    // verdad (Cancún/Los Cabos/Tijuana/Puerto Vallarta) -- ver el brief de la tarea.
+    const timezone = resolverZonaHorariaNegocio(property.timezone);
+    if (!isPastNightAuditRunHour(now, timezone, runHourLocal)) {
       results.push({ organizationId: property.organizationId, propertyId: property.propertyId, ran: false, skippedReason: "fuera_de_horario" });
       continue;
     }
-    const businessDate = businessDateToClose(now, DEFAULT_PROPERTY_TIMEZONE);
+    const businessDate = businessDateToClose(now, timezone);
     try {
       const summary = await withRepo((repo) =>
         runNightAuditForProperty(repo, {
           organizationId: property.organizationId,
           propertyId: property.propertyId,
           businessDate,
+          timezone,
           session: "sistema",
         }),
       );
