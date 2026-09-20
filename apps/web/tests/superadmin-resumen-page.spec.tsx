@@ -103,6 +103,16 @@ describe("SuperAdminResumenPage", () => {
     expect(rendered.container.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it("disponible:false -- el botón 'Generar ahora' queda deshabilitado (hallazgo no-bloqueante #5, revisor del PR #179: antes seguía habilitado, un clic disparaba un 503 real)", async () => {
+    stubFetch({ lista: { disponible: false, resumenes: [] } });
+    rendered = renderPage();
+    await esperarCarga();
+
+    const boton = Array.from(rendered.container.querySelectorAll("button")).find((b) => b.textContent?.includes("Generar ahora"));
+    expect(boton).toBeDefined();
+    expect(boton!.disabled).toBe(true);
+  });
+
   it("con un resumen real -- muestra la narrativa, la etiqueta 'generado por' y los números reales", async () => {
     stubFetch({ lista: { resumenes: [RESUMEN_REAL] } });
     rendered = renderPage();

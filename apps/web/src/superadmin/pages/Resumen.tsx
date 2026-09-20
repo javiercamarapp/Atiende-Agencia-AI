@@ -246,7 +246,13 @@ export function SuperAdminResumenPage({ apiBaseUrl, token }: { readonly apiBaseU
           <h1 className="text-2xl font-semibold text-foreground">Resumen diario</h1>
           <p className="text-sm text-muted-foreground mt-1">Un minuto para saber cómo amaneció la plataforma — informativo, no ejecuta ninguna acción.</p>
         </div>
-        <Button type="button" onClick={() => void generarAhora()} disabled={generando} className="gap-2">
+        <Button
+          type="button"
+          onClick={() => void generarAhora()}
+          disabled={generando || !disponible}
+          title={!disponible ? "El resumen diario automático todavía no está disponible en este entorno -- falta aplicar una migración pendiente." : undefined}
+          className="gap-2"
+        >
           <RefreshCw className={`w-4 h-4 ${generando ? "animate-spin" : ""}`} strokeWidth={1.75} />
           {generando ? "Generando…" : "Generar ahora"}
         </Button>
