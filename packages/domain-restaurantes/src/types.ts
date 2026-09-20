@@ -507,3 +507,15 @@ export interface NewKnownZoneInput {
   readonly lat: number;
   readonly lng: number;
 }
+
+/** FASE 3 (producto) -- zona horaria por negocio (migración 022,
+ * `restaurantes.branch_detail.zona_horaria`). `null` cuando la sucursal nunca
+ * configuró una zona real todavía (o la columna aún no existe en la base --
+ * ver `PostgresRestaurantesRepository.findBranchZonaHoraria`, degrada a `null`
+ * en 42501/42883/42P01/42703, NUNCA lanza) -- el caller SIEMPRE resuelve el
+ * default de plataforma vía
+ * `@atiende/core-tenancy::resolverZonaHorariaNegocio(config.zonaHoraria)`,
+ * nunca hardcodea `"America/Mexico_City"` directo. */
+export interface BranchTimezoneConfig {
+  readonly zonaHoraria: string | null;
+}
