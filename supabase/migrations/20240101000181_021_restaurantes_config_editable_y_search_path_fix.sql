@@ -36,19 +36,22 @@
 -- MANAGER_ROLES (que sí incluye "staff", ver `restaurantes.categories`/
 -- `products` -- catálogo del día a día). Config de canal/zonas es más
 -- sensible y menos frecuente que precios/disponibilidad -- mismo umbral que
--- `STAFF_INVITE_ROLES` (gestión de staff). La policy RLS de abajo, sin
--- embargo, NO puede leer `vertical_role` de un string opaco a `core` con la
--- misma granularidad que la capa TS (`assertVerticalRole(STAFF_INVITE_
--- ROLES)`, ver `admin-config.ts`) -- se acota con el patrón YA usado por
--- `categories`/`products` (`exists (... core.membership ...)`, sin filtro de
--- rol) como defensa en profundidad de "solo staff de ESTA organización",
--- dejando el filtro fino owner/admin a la capa TS (igual que
--- `restaurantes.record_audit_log` deja el filtro closed-set de
--- `entity_type` a la tabla, y la capa TS decide CUÁNDO se llama con cada
--- uno) -- documentado explícitamente para que quede claro que NO es un
--- descuido: replicar el filtro exacto owner/admin en SQL exigiría leer
--- `vertical_role` (string libre de cada vertical, `core` es opaco a su
--- significado) contra una lista cerrada que solo la capa TS conoce.
+-- `STAFF_INVITE_ROLES` (gestión de staff).
+--
+-- A diferencia de `categories`/`products` (`exists (... core.membership
+-- ...)`, sin filtro de rol -- cualquier MANAGER_ROLES gestiona catálogo), la
+-- policy de ESTE archivo SÍ filtra `vertical_role` directamente en el SQL,
+-- replicando el filtro exacto owner/admin de la capa TS: este schema
+-- (`restaurantes`) NO es `core` -- es dueño de sus propias policies sobre sus
+-- propias tablas y SÍ conoce el significado de sus valores de
+-- `vertical_role` ('owner'/'admin'/'staff'/'repartidor', ver
+-- `domain-restaurantes/src/roles.ts`), exactamente igual que
+-- `restaurantes.record_audit_log` ya compara `v_vertical_role in ('owner',
+-- 'admin', 'staff')` en PL/pgSQL (`migrations/019`) -- ningún motivo real
+-- para NO hacer lo mismo aquí en la policy. RLS real, no solo la capa TS, es
+-- la autoridad -- la capa TS (`assertVerticalRole(STAFF_INVITE_ROLES)` en
+-- `admin-config.ts`) queda como defensa en profundidad / mejor mensaje de
+-- error, mismo principio del resto del repo.
 
 create or replace function restaurantes.audit_log_block_mutation()
 returns trigger
@@ -70,21 +73,21 @@ $$;
 --    caso de uso.
 -- ---------------------------------------------------------------------------
 drop policy if exists "staff conecta whatsapp de su organización" on restaurantes.whatsapp_channel_config;
-create policy "staff conecta whatsapp de su organización" on restaurantes.whatsapp_channel_config for insert
+create policy "owner/admin conecta whatsapp de su organización" on restaurantes.whatsapp_channel_config for insert
   with check (exists (
     select 1 from core.membership m
-    where m.organization_id = whatsapp_channel_config.organization_id and m.user_id = auth.uid()
+    where m.organization_id = whatsapp_channel_config.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')
   ));
 
 drop policy if exists "staff actualiza whatsapp de su organización" on restaurantes.whatsapp_channel_config;
-create policy "staff actualiza whatsapp de su organización" on restaurantes.whatsapp_channel_config for update
+create policy "owner/admin actualiza whatsapp de su organización" on restaurantes.whatsapp_channel_config for update
   using (exists (
     select 1 from core.membership m
-    where m.organization_id = whatsapp_channel_config.organization_id and m.user_id = auth.uid()
+    where m.organization_id = whatsapp_channel_config.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')
   ))
   with check (exists (
     select 1 from core.membership m
-    where m.organization_id = whatsapp_channel_config.organization_id and m.user_id = auth.uid()
+    where m.organization_id = whatsapp_channel_config.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')
   ));
 
 grant insert, update on restaurantes.whatsapp_channel_config to authenticated;
@@ -97,17 +100,17 @@ grant insert, update on restaurantes.whatsapp_channel_config to authenticated;
 --    consistente con no exponer un PATCH sin caller real todavía).
 -- ---------------------------------------------------------------------------
 drop policy if exists "staff agrega zonas conocidas de su organización" on restaurantes.known_zone;
-create policy "staff agrega zonas conocidas de su organización" on restaurantes.known_zone for insert
+create policy "owner/admin agrega zonas conocidas de su organización" on restaurantes.known_zone for insert
   with check (exists (
     select 1 from core.membership m
-    where m.organization_id = known_zone.organization_id and m.user_id = auth.uid()
+    where m.organization_id = known_zone.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')
   ));
 
 drop policy if exists "staff borra zonas conocidas de su organización" on restaurantes.known_zone;
-create policy "staff borra zonas conocidas de su organización" on restaurantes.known_zone for delete
+create policy "owner/admin borra zonas conocidas de su organización" on restaurantes.known_zone for delete
   using (exists (
     select 1 from core.membership m
-    where m.organization_id = known_zone.organization_id and m.user_id = auth.uid()
+    where m.organization_id = known_zone.organization_id and m.user_id = auth.uid() and m.vertical_role in ('owner', 'admin')
   ));
 
 grant insert, delete on restaurantes.known_zone to authenticated;
