@@ -1,9 +1,23 @@
--- f2-current-date-fecha-negocio (revisión del 19-sep): ejerce, contra Postgres REAL
--- (no el repositorio en memoria, que nunca ejecuta SQL), el SQL EXACTO -- copiado
--- literal de los 4 sitios corregidos, no reescrito de memoria -- que antes llamaba
--- `current_date` (día UTC de la SESIÓN de Postgres) para decidir "hoy" y ahora recibe
--- ese día como parámetro explícito ($n::date), resuelto UNA vez en TypeScript con
--- `@atiende/core-tenancy::hoyFechaNegocio()`:
+-- f2-current-date-fecha-negocio (revisión del 19-sep, corregido tras revisión del
+-- 20-sep -- ver hallazgo no-bloqueante 1 de esa ronda): ejerce, contra Postgres REAL
+-- (no el repositorio en memoria, que nunca ejecuta SQL), una ADAPTACIÓN del SQL de
+-- los 4 sitios corregidos -- NO una copia literal carácter por carácter (usa una
+-- expresión en vez de `$n::date`, `count(*)` en vez de las columnas reales, y omite
+-- `ORDER BY`/`LIMIT` del sweep) -- que antes llamaba `current_date` (día UTC de la
+-- SESIÓN de Postgres) para decidir "hoy" y ahora recibe ese día como parámetro
+-- explícito ($n::date), resuelto UNA vez en TypeScript con
+-- `@atiende/core-tenancy::hoyFechaNegocio()`. Este script por sí solo NO detecta una
+-- regresión que reintroduzca `current_date` en el `.ts` (los escenarios 1/3/5 de
+-- abajo insertan con `current_date` y comparan contra `current_date - 1`: dan 0 con
+-- CUALQUIER timezone, sea cual sea el SQL real) -- ese guard de deriva vive en los
+-- tests de TypeScript que capturan el parámetro real que llega a `db.query`
+-- (`packages/domain-hoteles/tests/postgres-repository-fecha-negocio-param.spec.ts`,
+-- `packages/domain-rentas/tests/postgres-repository-fecha-negocio-param.spec.ts`,
+-- `packages/domain-licitaciones/tests/postgres-repository-fecha-negocio-param.spec.ts`),
+-- que sí afirman `sql` y `params` tal cual salen del código real. Lo que ESTE script
+-- sí verifica, que esos tests no pueden (no hay Postgres real en vitest): que la
+-- FORMA del SQL (columnas `date`, casts, comparación de rangos) se comporta como se
+-- espera contra un servidor real, sitio por sitio:
 --   1. `packages/domain-hoteles/src/postgres-repository.ts::findDueNoShowReservations`
 --   2. `packages/domain-rentas/src/postgres-repository.ts::loadPricingContext`
 --   3. `packages/domain-rentas/src/limpieza/aplicacion/tareas.ts::procesarCheckoutsPendientes`
