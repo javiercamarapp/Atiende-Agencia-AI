@@ -19,12 +19,38 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
-import { Info, MapPin, MessageCircle, Trash2 } from "lucide-react";
-import { createKnownZone, deleteKnownZone, fetchKnownZones, fetchWhatsappConfig, updateWhatsappConfig } from "../lib/config-client.ts";
-import type { KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
+import { Clock, Info, MapPin, MessageCircle, Trash2 } from "lucide-react";
+import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
+import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
+
+// FASE 3 (producto) -- "select de timezone IANA común en México" (mandato
+// explícito de esta fase) -- mismo criterio de validación en el servidor
+// (Intl.DateTimeFormat, ver admin-config.ts::optionalNullableTimeZone) que
+// citas/admin.ts::optionalTimeZone, pero aquí SÍ como `<select>` con las 6 zonas
+// reales del país (citas usa un Input libre -- ver su Configuracion.tsx) --
+// ninguna otra existe hoy que un negocio mexicano real necesite.
+const ZONA_HORARIA_OPTIONS: readonly { readonly value: string; readonly label: string }[] = [
+  { value: "America/Mexico_City", label: "Ciudad de México (America/Mexico_City)" },
+  { value: "America/Cancun", label: "Cancún (America/Cancun)" },
+  { value: "America/Tijuana", label: "Tijuana (America/Tijuana)" },
+  { value: "America/Chihuahua", label: "Chihuahua (America/Chihuahua)" },
+  { value: "America/Hermosillo", label: "Hermosillo (America/Hermosillo)" },
+  { value: "America/Mazatlan", label: "Mazatlán (America/Mazatlan)" },
+];
+
+/** Valor especial del `<select>` para "sin configurar" (`zonaHoraria: null` real)
+ * -- nunca se manda como timezone IANA, `handleSaveZonaHoraria` lo traduce a
+ * `null` antes de llamar a la API. */
+const SIN_CONFIGURAR = "";
+
+/** Mismo alto/radio/anillo de foco que el `Input` real de @atiende/ui, para el
+ * `<select>` que se queda nativo (el design system no exporta un Select) --
+ * mismo criterio EXACTO que `citas/pages/Configuracion.tsx::SELECT_CLASS`. */
+const SELECT_CLASS =
+  "h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
@@ -41,19 +67,27 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
   const [creatingZone, setCreatingZone] = useState(false);
   const [deletingZoneId, setDeletingZoneId] = useState<string | null>(null);
 
+  const [zonaHoraria, setZonaHoraria] = useState<BranchTimezoneConfig | null>(null);
+  const [zonaHorariaSelect, setZonaHorariaSelect] = useState<string>(SIN_CONFIGURAR);
+  const [savingZonaHoraria, setSavingZonaHoraria] = useState(false);
+  const [zonaHorariaSaved, setZonaHorariaSaved] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
     if (!canManage) return;
     setError(null);
     try {
-      const [config, zonasList] = await Promise.all([
+      const [config, zonasList, timezoneConfig] = await Promise.all([
         fetchWhatsappConfig(fetch, apiBaseUrl, token, propertyId),
         fetchKnownZones(fetch, apiBaseUrl, token, propertyId),
+        fetchBranchTimezone(fetch, apiBaseUrl, token, propertyId),
       ]);
       setWhatsapp(config);
       setPhoneNumberId(config.phoneNumberId ?? "");
       setZonas(zonasList);
+      setZonaHoraria(timezoneConfig);
+      setZonaHorariaSelect(timezoneConfig.zonaHoraria ?? SIN_CONFIGURAR);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la configuración.");
     }
@@ -76,6 +110,22 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
       setError(err instanceof Error ? err.message : "No se pudo guardar el número de WhatsApp.");
     } finally {
       setSavingWhatsapp(false);
+    }
+  }
+
+  async function handleSaveZonaHoraria(e: FormEvent) {
+    e.preventDefault();
+    setSavingZonaHoraria(true);
+    setZonaHorariaSaved(false);
+    setError(null);
+    try {
+      const updated = await updateBranchTimezone(fetch, apiBaseUrl, token, propertyId, zonaHorariaSelect === SIN_CONFIGURAR ? null : zonaHorariaSelect);
+      setZonaHoraria(updated);
+      setZonaHorariaSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la zona horaria.");
+    } finally {
+      setSavingZonaHoraria(false);
     }
   }
 
@@ -168,6 +218,49 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role }: Resta
             </form>
           )}
           {whatsapp && !whatsapp.phoneNumberId && <p className="mt-2 text-xs text-muted-foreground">Todavía no hay ningún número conectado.</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="p-4 pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <Clock className="h-4 w-4" strokeWidth={1.75} />
+            Zona horaria
+          </CardTitle>
+          <CardDescription>
+            De qué hora local se toma "hoy" para el horario de atención y la vigencia de tus promociones (día de la semana, franja horaria). Sin configurar, se usa el default de la plataforma
+            (Ciudad de México).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {!zonaHoraria && !error && <EstadoCargando etiqueta="Cargando…" />}
+          {zonaHoraria && (
+            <form onSubmit={handleSaveZonaHoraria} className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="config-zona-horaria">Zona horaria de esta sucursal</Label>
+                <select
+                  id="config-zona-horaria"
+                  value={zonaHorariaSelect}
+                  onChange={(e) => {
+                    setZonaHorariaSelect(e.target.value);
+                    setZonaHorariaSaved(false);
+                  }}
+                  className={`${SELECT_CLASS} w-auto min-w-[280px]`}
+                >
+                  <option value={SIN_CONFIGURAR}>Usar el default de la plataforma (Ciudad de México)</option>
+                  {ZONA_HORARIA_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button type="submit" disabled={savingZonaHoraria}>
+                {savingZonaHoraria ? "Guardando…" : "Guardar"}
+              </Button>
+              {zonaHorariaSaved && <Badge variant="secondary">Guardado</Badge>}
+            </form>
+          )}
         </CardContent>
       </Card>
 
