@@ -5,9 +5,14 @@
 // best-effort + marcar enviado solo tras encolar con éxito), adaptado a que
 // domain-rentas trabaja check-in como una FECHA de calendario (`YYYY-MM-DD`, ver
 // tipos.ts::FechaLocal), no un timestamp con hora -- así que la ventana "24-48h
-// antes" se expresa en días de calendario `[hoy+1, hoy+2]`, calculada con el mismo
-// `Date.UTC` puro de fechas.ts (README Fase 1 §1-#8: domain-rentas nunca convierte
-// zona horaria de pared, los 3 flujos originales no lo necesitan).
+// antes" se expresa en días de calendario `[hoy+1, hoy+2]`. La ARITMÉTICA sobre esos
+// días de calendario (sumar/restar días) sigue siendo el mismo `Date.UTC` puro de
+// fechas.ts (README Fase 1 §1-#8: domain-rentas nunca convierte zona horaria de
+// pared PARA ESO, los 3 flujos originales no lo necesitan) -- pero el PUNTO DE
+// PARTIDA ("qué día es hoy", a partir del instante real `now`) SÍ es una conversión
+// de zona horaria real y SÍ la necesitaba (bug real corregido en la auditoría
+// f3-zona-horaria-citas-rentas, ver el comentario de `hoyDeNegocio` más abajo) --
+// nunca fue parte de la excepción que documenta el README.
 //
 // Barrido GLOBAL de la plataforma (sin loop por organización) -- mismo criterio que
 // `rentasIcalSyncCronRoutes::listFeedsActivos`: cada ocupación se procesa
@@ -38,6 +43,7 @@
 // transacción, y el catch por candidata del loop de abajo SÍ aísla de verdad: su
 // propio ROLLBACK nunca toca las candidatas ya comprometidas (COMMIT real) de las
 // anteriores.
+import { ZONA_HORARIA_NEGOCIO_DEFAULT } from "@atiende/core-tenancy";
 import { enqueueReservaEmailCore } from "./reserva-email-notifications.ts";
 import { sumarDias } from "./fechas.ts";
 import type { RentasRepository } from "./repository.ts";
@@ -52,8 +58,32 @@ export interface RecordatorioCheckInSummary {
   fallos: number;
 }
 
-function hoyUtc(now: Date): FechaLocal {
-  return now.toISOString().slice(0, 10);
+// auditoría f3-zona-horaria-citas-rentas -- bug real confirmado: "hoy" para la
+// ventana `[hoy+1, hoy+2]` de este barrido usaba el día UTC CRUDO del proceso
+// (`now.toISOString().slice(0,10)`, la función se llamaba literal `hoyUtc`) --
+// exactamente el mismo bug de fondo que documenta `@atiende/core-tenancy::
+// fecha-negocio.ts` (entre las 18:00 y las 23:59 CDMX, el día UTC ya es MAÑANA),
+// nunca corregido en este archivo pese a que el resto del paquete ya usa
+// `hoyFechaNegocio()`. No se llama a `hoyFechaNegocio()` directo porque ese
+// helper SIEMPRE lee `new Date()` internamente (no acepta un `now` inyectado) y
+// este archivo depende de poder inyectar `now` para sus pruebas con reloj falso
+// (ver checkin-reminders.spec.ts) -- se reimplementa aquí el mismo criterio
+// (`Intl.DateTimeFormat` "en-CA", nunca `toISOString()`), aplicado al `now`
+// inyectado en vez de a un `new Date()` interno.
+//
+// Zona real POR PROPERTY: `listReservasProximasACheckIn` es un barrido GLOBAL de
+// la plataforma con una ÚNICA ventana de fechas para TODAS las organizaciones en
+// una sola query (ver el comentario de cabecera de ese método) -- `ReservaProximaCheckIn`
+// no expone `propertyId` ni la fecha real de check-in de cada candidata, así que
+// hoy no hay forma de resolver una zona por-property ANTES de esta query sin
+// agregar esas columnas y re-filtrar cada candidata después de traerla (rediseño
+// real del barrido, fuera de alcance de este fix puntual -- ver knownGaps del
+// PR). Se usa el default de plataforma (`ZONA_HORARIA_NEGOCIO_DEFAULT`), que es
+// estrictamente mejor que el día UTC crudo para CUALQUIER property (CDMX o no).
+const FORMATTER_HOY_DE_NEGOCIO = new Intl.DateTimeFormat("en-CA", { timeZone: ZONA_HORARIA_NEGOCIO_DEFAULT, year: "numeric", month: "2-digit", day: "2-digit" });
+
+function hoyDeNegocio(now: Date): FechaLocal {
+  return FORMATTER_HOY_DE_NEGOCIO.format(now);
 }
 
 /**
@@ -75,7 +105,7 @@ function hoyUtc(now: Date): FechaLocal {
  * corre en su propia transacción corta, y CADA candidata corre la suya.
  */
 export async function runRecordatorioCheckInCore(withRepo: WithRentasRepo, now: Date = new Date()): Promise<RecordatorioCheckInSummary> {
-  const hoy = hoyUtc(now);
+  const hoy = hoyDeNegocio(now);
   const desdeFecha = sumarDias(hoy, 1);
   const hastaFecha = sumarDias(hoy, 2);
 
