@@ -20,6 +20,7 @@
 import { Hono } from "hono";
 import { authMiddleware, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import {
   ALL_VERTICALS,
   AppointmentConflictError,
@@ -663,7 +664,23 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const provider = await citasRepo.findProvider(organizationId, providerId);
     if (!provider) throw Errors.notFound("Proveedor no encontrado.");
 
-    const todayIso = new Date().toISOString().slice(0, 10);
+    // Bug real (revisión r6, misma causa raíz que `../despachos/vencimientos.ts::todayIso`
+    // -- ver su comentario de cabecera): "hoy" usaba el día UTC del proceso -- entre las
+    // 18:00 y las 23:59 de CDMX (00:00-05:59 UTC) el corte quedaba un día adelante del
+    // real, ocultando del panel la excepción de HOY (el filtro es `>= todayIso`, así que
+    // un `todayIso` de mañana excluye la fila de hoy). Ahora usa
+    // `@atiende/core-tenancy::hoyFechaNegocio()`.
+    //
+    // No bloqueante #1 de la revisión de PR #171: este handler ya tiene `provider`
+    // (con `propertyId`) y `citasRepo` ya expone `findPropertyTimezone` -- citas SÍ
+    // guarda una zona horaria real por property (`citas.property_config.timezone`,
+    // ver postgres-repository.ts), a diferencia de la mayoría de las verticales que
+    // hoy no tienen esa columna. Un negocio de citas en Tijuana/Cancún con su zona
+    // real configurada ya no usa CDMX -- `resolverZonaHorariaNegocio` (defensa en
+    // profundidad, ver su comentario) cae al default si el valor guardado no fuera
+    // un timezone IANA válido.
+    const propertyTimezone = resolverZonaHorariaNegocio(await citasRepo.findPropertyTimezone(provider.propertyId, organizationId));
+    const todayIso = hoyFechaNegocio(propertyTimezone);
     const overrides = await citasRepo.listAvailabilityOverrides(providerId, todayIso);
     return c.json({ availability_overrides: overrides.map(serializeAvailabilityOverride) });
   });

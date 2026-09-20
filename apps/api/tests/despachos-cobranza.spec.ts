@@ -9,6 +9,7 @@
 // primero como plantilla).
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
@@ -43,10 +44,19 @@ async function ingestarCfdiIngreso(overrides: Record<string, unknown> = {}) {
   });
 }
 
+// Bug real de este fixture (encontrado corriendo la suite completa de la corrección de
+// revisión de PR #171, exactamente entre las 18:00 y las 23:59 CDMX -- la misma ventana
+// horaria que el resto de este PR corrige en código de PRODUCCIÓN): esta función restaba
+// días sobre el día UTC del reloj real del proceso (`new Date()`), mientras el servidor
+// (`cobranza/engine.ts`) calcula "días vencido" contra el día de NEGOCIO
+// (`hoyFechaNegocio()`, ya corregido en este PR). En esa ventana los dos "hoy" difieren
+// en un día -- `diasVencido` esperado (`45`) no coincidía con el real (`44`), un test
+// FLAKY dependiente de la hora real a la que corre CI. Ancla la resta al mismo "hoy de
+// negocio" que usa el servidor, con aritmética de calendario pura (`Date.UTC` sobre los
+// componentes del string, nunca la hora de pared real del proceso).
 function fechaHace(dias: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - dias);
-  return d.toISOString().slice(0, 10);
+  const [y, m, d] = hoyFechaNegocio().split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d - dias)).toISOString().slice(0, 10);
 }
 
 describe("POST /despachos/:propertyId/cobranza/cuentas -- arranca el reloj de cobranza", () => {

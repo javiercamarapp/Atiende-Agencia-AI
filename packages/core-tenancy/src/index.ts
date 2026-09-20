@@ -20,3 +20,5 @@ export {
   assertPlatformRole,
   buildTenantSessionClaims,
 } from "./session.ts";
+
+export { ZONA_HORARIA_NEGOCIO_DEFAULT, hoyFechaNegocio, resolverZonaHorariaNegocio } from "./fecha-negocio.ts";

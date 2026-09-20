@@ -4,7 +4,7 @@
 // migraciones SQL reales de packages/domain-citas/migrations/.
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
-import { hashPassword, InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -224,6 +224,8 @@ export async function buildCitasTestContext(buildApp: BuildAppFn, options: Citas
     // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
     // impersonación.
     impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
+    authzAuditSink: new InMemoryAuditSink(),
+    authzAuditRepo: (_db) => new InMemoryAuthzAuditRepository(),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     saludRepo: new InMemorySaludRepository(),

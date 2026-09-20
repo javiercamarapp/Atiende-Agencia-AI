@@ -16,6 +16,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { encontrarMinStaySolapada, encontrarTemporadaSolapada, esRangoValido, PRICING_ESCRITURA_ROLES } from "@atiende/domain-rentas";
 import type { RangoFechas, RentasRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
@@ -78,8 +79,18 @@ function requireDiaSemanaOptional(value: unknown): number | null {
   return value;
 }
 
+// Bug real (revisión r6, misma causa raíz que `../despachos/vencimientos.ts::todayIso` --
+// ver su comentario de cabecera): el default de `vigenteDesde` (cuando el caller no lo
+// manda) usaba el día UTC del proceso -- corrido un día adelante del real en CDMX entre
+// las 18:00 y las 23:59 hora local. Ahora usa `@atiende/core-tenancy::hoyFechaNegocio()`.
+// NOTA (zona por negocio, r6 punto 6): `rentas.property_config.zona_horaria` SÍ existe
+// (NOT NULL, migración 001) pero no está expuesta hoy en `RentasRepository` (el repo
+// principal -- ver `packages/domain-rentas/src/sync/postgres-repository.ts` para la ÚNICA
+// consulta existente, exclusiva del sync de iCal). Conectarla aquí requiere agregar un
+// método nuevo al repositorio -- fuera de alcance de este fix puntual, ver knownGaps del
+// PR. Mientras tanto usa el default de plataforma (`America/Mexico_City`).
 function hoyIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyFechaNegocio();
 }
 
 interface TarifaBaseBody {

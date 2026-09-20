@@ -27,6 +27,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import {
   CONTABILIDAD_ELECTRONICA_ROLES,
   VER_CONTABILIDAD_ELECTRONICA_ROLES,
@@ -147,9 +148,15 @@ function parseSaldosIniciales(raw: unknown): Record<string, number | string> | n
 /** `ejercicio` default: año actual del servidor (ver cabecera de este
  * archivo — el motor de dominio deliberadamente no lee el reloj de sistema,
  * esta ruta sí lo hace por él cuando el cliente no lo especifica, mismo
- * criterio documentado en la DESVIACIÓN 1 de `paquete.ts`). */
+ * criterio documentado en la DESVIACIÓN 1 de `paquete.ts`).
+ *
+ * Bug real (revisión r6 de PR #171, no bloqueante #6): usaba
+ * `new Date().getFullYear()` (año UTC del proceso) -- el 31-dic de 18:00 a
+ * 23:59 CDMX eso ya da el año SIGUIENTE. Usa `hoyFechaNegocio()` (día de
+ * negocio) para derivar el año, mismo criterio que el resto de este
+ * vertical (bookkeeping.ts, cobranza.ts, cierre-mensual.ts, vencimientos.ts). */
 function parseEjercicio(raw: unknown): number {
-  if (raw === undefined || raw === null) return new Date().getFullYear();
+  if (raw === undefined || raw === null) return Number(hoyFechaNegocio().slice(0, 4));
   if (typeof raw !== "number" || !Number.isFinite(raw)) throw Errors.validation("ejercicio: se esperaba un número.");
   return raw;
 }

@@ -19,7 +19,7 @@ import {
   RealCalDavPort,
   type WhatsAppTurnHandler,
 } from "@atiende/domain-citas";
-import { InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler as acknowledgeOnlyRestaurantesTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
@@ -185,6 +185,8 @@ function buildFullAppDeps(citasRepo: InMemoryCitasRepository, turnHandler: Whats
     // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
     // impersonación.
     impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
+    authzAuditSink: new InMemoryAuditSink(),
+    authzAuditRepo: (_db) => new InMemoryAuthzAuditRepository(),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),

@@ -9,7 +9,7 @@
 // reconoce esa forma exacta de query). Dos organizaciones sembradas para poder probar
 // aislamiento cross-tenant real de las rutas de KPIs.
 import { randomUUID } from "node:crypto";
-import { hashPassword, InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import type { Order, PersistedOrderItem } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
@@ -193,6 +193,8 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
     // impersonación.
     impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
+    authzAuditSink: new InMemoryAuditSink(),
+    authzAuditRepo: (_db) => new InMemoryAuthzAuditRepository(),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
     saludRepo: new InMemorySaludRepository(),

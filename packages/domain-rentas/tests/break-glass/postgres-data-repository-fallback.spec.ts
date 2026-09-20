@@ -97,7 +97,7 @@ describe("PostgresBreakGlassRentasDataRepository.listReservasTenant -- fallback 
 
     const result = await repo.listReservasTenant(ORG_ID, CALLER_ID);
 
-    expect(result).toEqual([{ ocupacionId: "r1", propertyId: "p1", unidadId: "u1", checkIn: "2026-01-01", checkOut: "2026-01-03", estado: "confirmada", huespedNombre: "Ana", huespedContacto: null }]);
+    expect(result).toEqual({ disponible: true, datos: [{ ocupacionId: "r1", propertyId: "p1", unidadId: "u1", checkIn: "2026-01-01", checkOut: "2026-01-03", estado: "confirmada", huespedNombre: "Ana", huespedContacto: null }], hasMore: false });
   });
 
   it("42883 en la función de 5 parámetros -> SAVEPOINT+ROLLBACK TO SAVEPOINT recuperan la transacción y la sobrecarga vieja de 2 parámetros sí responde (sin 25P02)", async () => {
@@ -117,7 +117,7 @@ describe("PostgresBreakGlassRentasDataRepository.listReservasTenant -- fallback 
     // (transacción abortada) en vez de devolver la fila de la sobrecarga vieja.
     const result = await repo.listReservasTenant(ORG_ID, CALLER_ID);
 
-    expect(result.map((r) => r.ocupacionId)).toEqual(["r1", "r2"]);
+    expect(result.datos.map((r) => r.ocupacionId)).toEqual(["r1", "r2"]);
   });
 
   it("42883 recuperado + filtro por propiedad aplicado en TypeScript sobre el resultado de la sobrecarga vieja (Postgres no filtra del lado del servidor sin la migración 020)", async () => {
@@ -135,7 +135,7 @@ describe("PostgresBreakGlassRentasDataRepository.listReservasTenant -- fallback 
 
     const result = await repo.listReservasTenant(ORG_ID, CALLER_ID, { propertyId: "p2" });
 
-    expect(result.map((r) => r.ocupacionId)).toEqual(["r2"]);
+    expect(result.datos.map((r) => r.ocupacionId)).toEqual(["r2"]);
   });
 
   it("la transacción sigue usable DESPUÉS del fallback -- una query posterior (mismo patrón que el INSERT de bitácora de acceso.ts) no lanza 25P02", async () => {
@@ -185,6 +185,7 @@ describe("PostgresBreakGlassRentasDataRepository -- los 6 lectores nuevos, fallb
     expect(result).toEqual({
       disponible: true,
       datos: [{ id: "f1", ocupacionId: "r1", propertyId: "p1", moneda: "MXN", montoBrutoCentavos: 100000, comisionCanalCentavos: 10000, comisionGestorCentavos: 5000, gastosCentavos: 0, impuestosCentavos: 16000, netoCentavos: 69000, createdAtMs: new Date("2026-01-01T00:00:00.000Z").getTime() }],
+      hasMore: false,
     });
   });
 
@@ -196,7 +197,7 @@ describe("PostgresBreakGlassRentasDataRepository -- los 6 lectores nuevos, fallb
     const repo = new PostgresBreakGlassRentasDataRepository(session);
 
     const result = await repo.listFinanzasTenant(ORG_ID, CALLER_ID);
-    expect(result).toEqual({ disponible: false, datos: [] });
+    expect(result).toEqual({ disponible: false, datos: [], hasMore: false });
 
     // Regression guard del bloqueante 1 para los 6 lectores nuevos: sin
     // ROLLBACK TO SAVEPOINT, esta query posterior (el INSERT de bitácora real de
@@ -210,7 +211,7 @@ describe("PostgresBreakGlassRentasDataRepository -- los 6 lectores nuevos, fallb
 
     const result = await repo.listSyncIcalTenant(ORG_ID, CALLER_ID);
 
-    expect(result).toEqual({ disponible: false, datos: [] });
+    expect(result).toEqual({ disponible: false, datos: [], hasMore: false });
     // La sesión debe quedar recuperada (no abortada) -- una query trivial
     // posterior no debe lanzar 25P02.
     await expect(session.query("select 1;")).rejects.toThrow(/ninguna regla coincide/);
