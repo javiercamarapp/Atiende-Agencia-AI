@@ -30,6 +30,7 @@ import {
   createAppointmentFromPanel,
   DEFAULT_LISTA_ESPERA_LIMIT,
   MAX_LISTA_ESPERA_LIMIT,
+  previewListaEspera,
   runListaEsperaCore,
   sortWaitlistByPosition,
   tryEnqueueAppointmentEmail,
@@ -42,6 +43,7 @@ import type {
   AvailabilityRule,
   CitasRepository,
   CustomerRecord,
+  ListaEsperaEvent,
   NewProviderInput,
   NewServiceInput,
   ProviderPatch,
@@ -83,6 +85,43 @@ function serializeCustomer(customer: CustomerRecord) {
 
 function serializeTenantConfig(config: TenantConfigRecord) {
   return { organization_id: config.organizationId, rubro: config.rubro, default_timezone: config.defaultTimezone, owner_notification_phone: config.ownerNotificationPhone };
+}
+
+/**
+ * f2-citas-lista-de-espera, hallazgo (B) — `POST .../waitlist/broadcast` corría
+ * en sesión de STAFF y llamaba `runListaEsperaCore`, que termina en
+ * `citas.claim_waitlist_notification_slot` -- RPC `security definer` de
+ * SOLO-SISTEMA desde la migración 015 (`auth.uid() is null` a secas) -- 500
+ * DETERMINISTA contra Postgres real cada vez que había un candidato visible y
+ * `whatsapp_config` activo (nunca detectado por los tests, que usan
+ * `InMemoryCitasRepository` -- ni por la auditoría original del PR #174, ver
+ * su `nonBlocking`).
+ *
+ * Arreglo (mismo patrón EXACTO que `runCitasWaitlistNotifyAfterCancel`,
+ * `appointments-lifecycle.ts` -- PR #166/#169): el efecto real (leer
+ * candidatos vía la RPC de sistema, reclamar el slot, encolar el mensaje) se
+ * mueve a `postCommitTasks`, en una sesión de sistema NUEVA
+ * (`deps.engine.withAppSession({ userId: null }, ...)`) abierta DESPUÉS de que
+ * la transacción de staff de la ruta ya confirmó -- la validación de acceso
+ * (provider_id/service_id pertenecen a esta organización) sigue ANTES, en la
+ * sesión de staff (ver la ruta HTTP de abajo). Un SAVEPOINT solo NO bastaría
+ * aquí (el guard sigue negando el claim en sesión de staff, igual que ya
+ * documenta `tryNotifyWaitlistOfFreedSlot`) -- hace falta la sesión de sistema
+ * de verdad.
+ *
+ * Best-effort real: un fallo aquí nunca puede afectar la respuesta ya armada
+ * del staff (`dbSession` envuelve cada tarea post-commit en su propio
+ * try/catch, ver `packages/core-auth/src/middleware.ts`).
+ */
+async function runCitasListaEsperaBroadcastAfterCommit(deps: AppDeps, organizationId: string, event: ListaEsperaEvent, limit: number): Promise<void> {
+  try {
+    await deps.engine.withAppSession({ userId: null }, async (db) => {
+      const citasRepo = deps.citasRepo(db);
+      await runListaEsperaCore(citasRepo, organizationId, event, limit);
+    });
+  } catch (err) {
+    console.error("citas: broadcast de lista de espera (post-commit, sesión de sistema) falló (best-effort):", err);
+  }
 }
 
 // ---- Gap real de paridad — agente "Lista de espera (simple)": el broadcast
@@ -1022,7 +1061,22 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // staff decide "notificar a la lista de espera de este horario/servicio que
   // se acaba de liberar" (ej. amplió su propio horario ese día, un caso que
   // nunca pasa por cancelar-cita/reagendar-cita) y esta ruta encola los
-  // mensajes reales. ----
+  // mensajes reales.
+  //
+  // f2-citas-lista-de-espera, hallazgo (B) — el efecto real (claim + encolar)
+  // corre en SESIÓN DE SISTEMA, POST-COMMIT (ver
+  // `runCitasListaEsperaBroadcastAfterCommit` arriba); esta ruta SOLO valida en
+  // sesión de STAFF (provider_id/service_id de esta organización -- caller
+  // clasificado: STAFF, `dbSession`/JWT/`requirePropertyMembership`, ver
+  // `propertyScopedPaths` arriba) y calcula un conteo REAL de vista previa
+  // (`previewListaEspera`, solo lectura, RLS de staff -- nunca reclama nada) --
+  // el `notified` real de esta corrida solo se sabe DESPUÉS del commit, así
+  // que la respuesta ya NO lo reporta como si fuera síncrono (sería un número
+  // inventado): `queued: true` documenta que el efecto es best-effort, y
+  // `candidates_considered`/`skipped_no_whatsapp_config` siguen siendo el
+  // conteo real de a quién le tocaría, calculado con el MISMO filtro/orden/
+  // límite que usará el broadcast de verdad (`filterAndRankWaitlistForBroadcast`
+  // en `reminders.ts`). ----
   app.post("/v1/citas/properties/:propertyId/waitlist/broadcast", async (c) => {
     const organizationId = c.get("organizationId");
     const citasRepo = deps.citasRepo(c.get("db"));
@@ -1032,8 +1086,8 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const serviceId = optionalNonEmptyString(raw.service_id, "service_id", 100);
     // Límite razonable de destinatarios por corrida — validado aquí (400 claro
     // para el staff si pide de más) Y recortado de nuevo dentro de
-    // runListaEsperaCore (defensa en profundidad para cualquier otro caller
-    // futuro que no pase por esta ruta).
+    // runListaEsperaCore/previewListaEspera (defensa en profundidad para
+    // cualquier otro caller futuro que no pase por esta ruta).
     const limit = optionalPositiveInt(raw.limit, "limit", MAX_LISTA_ESPERA_LIMIT) ?? DEFAULT_LISTA_ESPERA_LIMIT;
 
     if (providerId !== undefined) {
@@ -1045,11 +1099,14 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       if (!service) throw Errors.validation(`service_id: "${serviceId}" no es un servicio de este negocio.`);
     }
 
-    const summary = await runListaEsperaCore(citasRepo, organizationId, { providerId, serviceId }, limit);
+    const event: ListaEsperaEvent = { providerId, serviceId };
+    const preview = await previewListaEspera(citasRepo, organizationId, event, limit);
+    c.get("postCommitTasks").push(() => runCitasListaEsperaBroadcastAfterCommit(deps, organizationId, event, limit));
+
     return c.json({
-      notified: summary.notified,
-      candidates_considered: summary.candidatesConsidered,
-      skipped_no_whatsapp_config: summary.skippedNoWhatsappConfig,
+      queued: true,
+      candidates_considered: preview.candidatesConsidered,
+      skipped_no_whatsapp_config: preview.skippedNoWhatsappConfig,
     });
   });
 
