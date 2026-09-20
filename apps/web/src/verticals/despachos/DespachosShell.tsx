@@ -80,6 +80,7 @@ import {
   FolderInput,
   HandCoins,
   Landmark,
+  Settings,
   Undo2,
   UsersRound,
   Wallet,
@@ -138,6 +139,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "bookkeeping", label: "Bookkeeping" },
   { to: "contabilidad-electronica", label: "Contabilidad electrónica" },
   { to: "staff", label: "Staff" },
+  { to: "configuracion", label: "Configuración" },
 ];
 
 function buildSidebarSections(orgSlug: string): SidebarSection[] {
@@ -174,7 +176,10 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
     },
     {
       title: "Equipo",
-      items: [{ ...item("staff"), icon: UsersRound }],
+      items: [
+        { ...item("staff"), icon: UsersRound },
+        { ...item("configuracion"), icon: Settings },
+      ],
     },
   ];
 }
