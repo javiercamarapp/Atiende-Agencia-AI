@@ -6,6 +6,7 @@ import { createAppointment, rescheduleAppointment } from "../src/appointments.ts
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { MAX_LISTA_ESPERA_LIMIT, notifyWaitlistAfterReschedule, previewListaEspera, runConfirmacionCitaCore, runListaEsperaCore } from "../src/reminders.ts";
 import { buildCitasFixture } from "./fixtures.ts";
+import { ThrowsOnStaffWhatsAppRepo } from "./support/throws-on-staff-whatsapp-repo.ts";
 
 describe("runConfirmacionCitaCore", () => {
   it("encola un recordatorio real para una cita dentro de la ventana de 24h, con la hora en el timezone del NEGOCIO, nunca UTC/host", async () => {
@@ -60,6 +61,40 @@ describe("runConfirmacionCitaCore", () => {
     const summary = await runConfirmacionCitaCore(fixture.repo, sinWhatsapp, new Date());
     expect(summary.skippedNoWhatsappConfig).toBe(false); // no hay citas pendientes -> ni siquiera llega a resolver whatsapp
     expect(summary.processed).toBe(0);
+  });
+
+  // f2-citas-whatsapp-config-sesion-sistema — el ÚNICO caller real de
+  // `runConfirmacionCitaCore` (cron interno `/internal/citas/confirmacion-cita`)
+  // abre SIEMPRE una sesión de SISTEMA. Contra Postgres real,
+  // `resolveActiveWhatsAppPhoneNumberId` (variante de STAFF) SIEMPRE devuelve 0
+  // filas ahí (RLS de membership sobre `citas.whatsapp_config`) -- invisible
+  // contra `InMemoryCitasRepository` a secas (mismo dato, sin RLS que
+  // reproducir). Este test usa `ThrowsOnStaffWhatsAppRepo` (lanza si se llama
+  // la variante de STAFF) para afirmar el EFECTO real: si `runConfirmacionCitaCore`
+  // todavía llamara la variante de STAFF, este test explotaría con el error
+  // BLOQUEANTE del doble -- en vez de eso, el recordatorio se resuelve y queda
+  // encolado de verdad.
+  it("REGLA DURA (sesión de sistema): usa la variante de SISTEMA para resolver el phone_number_id -- nunca la de STAFF, que en producción devuelve 0 filas bajo auth.uid() null", async () => {
+    const fixture = buildCitasFixture(new ThrowsOnStaffWhatsAppRepo());
+    const now = new Date("2026-09-13T16:00:00.000Z");
+    const startsAt = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();
+    await createAppointment(fixture.repo, {
+      organizationId: fixture.organizationId,
+      providerId: fixture.providerId,
+      serviceId: fixture.serviceId,
+      customerName: "Cliente sesión de sistema",
+      customerPhone: "9990001111",
+      startsAt,
+      source: "web",
+    });
+
+    const summary = await runConfirmacionCitaCore(fixture.repo, fixture.organizationId, now);
+
+    expect(summary.skippedNoWhatsappConfig).toBe(false);
+    expect(summary.sent).toBe(1);
+    const outbox = fixture.repo.getOutbox();
+    expect(outbox).toHaveLength(1);
+    expect((outbox[0]!.payload as { phone_number_id: string }).phone_number_id).toBe("1234567890");
   });
 });
 
