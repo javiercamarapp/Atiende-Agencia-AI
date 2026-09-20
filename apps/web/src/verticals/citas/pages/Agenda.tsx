@@ -60,7 +60,7 @@ import type { ProviderSummary } from "../lib/providers-client.ts";
 import { fetchServices } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
 import { broadcastWaitlist, fetchWaitlist } from "../lib/waitlist-client.ts";
-import type { WaitlistCandidate } from "../lib/waitlist-client.ts";
+import type { WaitlistBroadcastSummary, WaitlistCandidate } from "../lib/waitlist-client.ts";
 import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention } from "../lib/format.ts";
 import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
 import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
@@ -182,7 +182,11 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   const [waitlistLoading, setWaitlistLoading] = useState(false);
   const [waitlistError, setWaitlistError] = useState<string | null>(null);
   const [broadcasting, setBroadcasting] = useState(false);
-  const [broadcastSummary, setBroadcastSummary] = useState<{ notified: number; candidatesConsidered: number; skippedNoWhatsappConfig: number } | null>(null);
+  // Corrección post-revisión de f2-citas-lista-de-espera (hallazgo B) —
+  // WaitlistBroadcastSummary ya no trae `notified` (el efecto real corre
+  // post-commit, best-effort, en segundo plano) y `skippedNoWhatsappConfig` es
+  // `boolean`, no `number` — ver el comentario largo de `waitlist-client.ts`.
+  const [broadcastSummary, setBroadcastSummary] = useState<WaitlistBroadcastSummary | null>(null);
 
   // ---- Fase 12 — hallazgo de auditoría (ALTO, "Staff no puede crear citas
   // manualmente desde la Agenda"): alta manual real (POST .../appointments, ver
@@ -598,8 +602,12 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
           {broadcastSummary && (
             <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-[13px] text-foreground">
-              Avisados: {broadcastSummary.notified} de {broadcastSummary.candidatesConsidered} candidatos considerados
-              {broadcastSummary.skippedNoWhatsappConfig > 0 ? ` (${broadcastSummary.skippedNoWhatsappConfig} sin WhatsApp configurado, no se les pudo avisar)` : ""}.
+              {/* Corrección post-revisión (hallazgo B): el efecto real corre
+                  post-commit, en segundo plano — este mensaje ya no promete un
+                  "Avisados: N" síncrono (esa cifra no existe todavía cuando la
+                  ruta responde), solo confirma que el aviso quedó encolado. */}
+              Aviso encolado para {broadcastSummary.candidatesConsidered} candidato{broadcastSummary.candidatesConsidered === 1 ? "" : "s"} considerado{broadcastSummary.candidatesConsidered === 1 ? "" : "s"}; se procesa en segundo plano.
+              {broadcastSummary.skippedNoWhatsappConfig ? " Este negocio no tiene WhatsApp configurado todavía, así que ningún aviso podrá salir." : ""}
             </p>
           )}
 
