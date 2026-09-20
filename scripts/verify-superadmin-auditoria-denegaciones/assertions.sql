@@ -206,21 +206,251 @@ select (count(*) >= 2)::int as deberia_ser_1 from core.authz_audit_log;
 rollback;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 4) Tope defensivo de ráfaga (mandato de la tarea: "agrega un tope
---    defensivo para que una ráfaga de denegaciones no llene la tabla")
+-- 4) Tope defensivo POR ACTOR + GLOBAL, marcador de desborde (endurecimiento
+--    de esta ronda -- packages/db/migrations/
+--    0022_superadmin_bitacoras_endurecimiento.sql, ver su cabecera para el
+--    razonamiento completo). Hallazgo que reemplaza: el tope de la versión
+--    anterior (5000 filas/10 min, GLOBAL a secas) se podía agotar con una
+--    sola cuenta autenticada variando de ruta -- desde ahí, las
+--    denegaciones de TODOS los demás actores se perdían en silencio durante
+--    el resto de la ventana. Se verifica aquí:
+--
+--      18. Tope POR ACTOR alcanzado (500/10min) -- descarta EN SILENCIO
+--          (id NULL, nunca lanza).
+--      19. ... e inserta UN marcador de desborde (nunca uno por evento).
+--      20. DOS intentos denegados del MISMO actor en la MISMA ventana -- el
+--          marcador NUNCA se duplica (sigue habiendo exactamente 1).
+--      21. Un actor DISTINTO, muy por debajo de su propio tope -- NO
+--          afectado por el tope agotado del actor de arriba (la corrección
+--          real de este hallazgo).
+--      22. Tope GLOBAL alcanzado (20000/10min, última red) -- descarta EN
+--          SILENCIO incluso para un actor que jamás se acercó a su propio
+--          tope por actor.
+--      23. ... e inserta UN marcador de desborde GLOBAL.
+--      24. DOS intentos cualquiera (incluso de actores distintos), misma
+--          ventana -- el marcador global NUNCA se duplica.
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- 5000 filas más, TODAS dentro de la ventana móvil de 10 minutos que la
--- función cuenta -- deliberadamente DESPUÉS de todos los escenarios de
--- arriba (que cuentan filas exactas/aproximadas): esta ráfaga persiste para
--- el resto del script, así que va al final para no contaminar los conteos
--- de los escenarios 6/7/8/9/10/16/17.
-insert into core.authz_audit_log (actor_user_id, actor_ip, organization_id, action, route, method, decision, reason, occurred_at)
-select null, '203.0.113.99', null, 'admin:access', '/superadmin/rafaga', 'POST', 'denied', 'rate_limited', now()
-from generate_series(1, 5000);
+insert into core.staff_user (id, email, full_name, created_via) values
+  ('00000000-0000-0000-0000-0000000aa500', 'actor-tope-por-actor@example.com', 'Actor Tope Por Actor', 'seed'),
+  ('00000000-0000-0000-0000-0000000aa501', 'actor-no-afectado@example.com', 'Actor No Afectado', 'seed')
+on conflict do nothing;
 
-\echo '=== 18. record_authz_audit_denial: con la ventana móvil ya en 5000+ filas -- descarta el INSERT EN SILENCIO (id NULL, nunca lanza) ==='
+-- 500 filas para UN solo actor -- exactamente `c_max_per_actor_window` de la
+-- función (ver la migración). Deliberadamente DESPUÉS de todos los
+-- escenarios de arriba (que cuentan filas exactas/aproximadas): esta ráfaga
+-- persiste para el resto del script.
+insert into core.authz_audit_log (actor_user_id, actor_ip, organization_id, action, route, method, decision, reason, occurred_at)
+select '00000000-0000-0000-0000-0000000aa500', null, null, 'admin:access', '/superadmin/rafaga-actor', 'POST', 'denied', 'rate_limited', now()
+from generate_series(1, 500);
+
+\echo '=== 18. record_authz_audit_denial: tope POR ACTOR alcanzado (500/10min) -- descarta el INSERT EN SILENCIO (id NULL, nunca lanza) ==='
 begin;
 set local role authenticated;
-select (core.record_authz_audit_denial(null, '203.0.113.100', null, 'admin:access', '/superadmin/rafaga-una-mas', 'POST', 'denied', 'rate_limited', '{}'::jsonb, now()) is null)::int as deberia_ser_1;
+select (core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa500', null, null, 'admin:access', '/superadmin/rafaga-actor-una-mas', 'POST', 'denied', 'rate_limited', '{}'::jsonb, now()) is null)::int as deberia_ser_1;
 rollback;
+
+\echo '=== 19. ... inserta EXACTAMENTE UN marcador de desborde por-actor (nunca uno por evento descartado) ==='
+begin;
+set local role authenticated;
+select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa500', null, null, 'admin:access', '/superadmin/rafaga-actor-marca', 'POST', 'denied', 'rate_limited', '{}'::jsonb, now());
+-- `reset role` -- vuelve a `postgres` (bypassa RLS) SOLO para poder contar
+-- filas directamente; la función de escritura ya corrió como sistema
+-- (auth.uid() NULL) arriba, esto no es parte de lo que se está probando.
+reset role;
+select count(*) as deberia_ser_1 from core.authz_audit_log where actor_user_id = '00000000-0000-0000-0000-0000000aa500' and reason = 'audit_capacity_overflow_actor';
+rollback;
+
+\echo '=== 20. ... DOS intentos denegados del mismo actor en la MISMA transacción -- ambos descartan EN SILENCIO Y el marcador NUNCA se duplica (sigue siendo exactamente 1) ==='
+begin;
+set local role authenticated;
+select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa500', null, null, 'admin:access', '/superadmin/rafaga-actor-otra-mas-1', 'POST', 'denied', 'rate_limited', '{}'::jsonb, now());
+select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa500', null, null, 'admin:access', '/superadmin/rafaga-actor-otra-mas-2', 'POST', 'denied', 'rate_limited', '{}'::jsonb, now());
+reset role;
+select count(*) as deberia_ser_1 from core.authz_audit_log where actor_user_id = '00000000-0000-0000-0000-0000000aa500' and reason = 'audit_capacity_overflow_actor';
+rollback;
+
+\echo '=== 21. record_authz_audit_denial: un actor DISTINTO, muy por debajo de su propio tope -- NUNCA afectado por el tope agotado de otro actor (la corrección real de este hallazgo) ==='
+begin;
+set local role authenticated;
+select (core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa501', null, null, 'admin:access', '/superadmin/actor-no-afectado', 'POST', 'denied', 'no_membership', '{}'::jsonb, now()) is not null)::int as deberia_ser_1;
+rollback;
+
+-- 40 actores DISTINTOS, cada uno MUY por debajo de su propio tope por-actor
+-- (490 < 500), pero cuya suma (19600) sumada a lo de arriba (~502) supera el
+-- tope GLOBAL (20000, "última red") -- el escenario que un tope solo-por-
+-- actor NUNCA cubriría (muchos actores DISTINTOS en paralelo, no uno solo
+-- insistiendo).
+do $$
+declare i int;
+begin
+  for i in 1..40 loop
+    insert into core.staff_user (id, email, full_name, created_via)
+    values (('00000000-0000-0000-0000-0000000ab' || lpad(i::text, 3, '0'))::uuid, 'bulk-global-' || i || '@example.com', 'Bulk Global ' || i, 'seed')
+    on conflict do nothing;
+    insert into core.authz_audit_log (actor_user_id, actor_ip, organization_id, action, route, method, decision, reason, occurred_at)
+    select ('00000000-0000-0000-0000-0000000ab' || lpad(i::text, 3, '0'))::uuid, null, null, 'admin:access', '/superadmin/rafaga-global', 'GET', 'denied', 'no_membership', now()
+    from generate_series(1, 490);
+  end loop;
+end $$;
+
+insert into core.staff_user (id, email, full_name, created_via) values
+  ('00000000-0000-0000-0000-0000000aa502', 'actor-tope-global@example.com', 'Actor Tope Global', 'seed')
+on conflict do nothing;
+
+\echo '=== 22. record_authz_audit_denial: tope GLOBAL alcanzado (20000/10min) -- descarta EN SILENCIO incluso para un actor que jamás se acercó a su propio tope por-actor ==='
+begin;
+set local role authenticated;
+select (core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa502', null, null, 'admin:access', '/superadmin/tope-global', 'POST', 'denied', 'no_membership', '{}'::jsonb, now()) is null)::int as deberia_ser_1;
+rollback;
+
+\echo '=== 23. ... inserta EXACTAMENTE UN marcador de desborde GLOBAL ==='
+begin;
+set local role authenticated;
+select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa502', null, null, 'admin:access', '/superadmin/tope-global-marca', 'POST', 'denied', 'no_membership', '{}'::jsonb, now());
+reset role;
+select count(*) as deberia_ser_1 from core.authz_audit_log where reason = 'audit_capacity_overflow_global';
+rollback;
+
+\echo '=== 24. ... DOS intentos cualquiera (incluso de actores DISTINTOS), misma transacción -- ambos descartan EN SILENCIO Y el marcador global NUNCA se duplica (sigue siendo exactamente 1) ==='
+begin;
+set local role authenticated;
+select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa501', null, null, 'admin:access', '/superadmin/tope-global-otra-mas-1', 'POST', 'denied', 'no_membership', '{}'::jsonb, now());
+select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa502', null, null, 'admin:access', '/superadmin/tope-global-otra-mas-2', 'POST', 'denied', 'no_membership', '{}'::jsonb, now());
+reset role;
+select count(*) as deberia_ser_1 from core.authz_audit_log where reason = 'audit_capacity_overflow_global';
+rollback;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 5) BASE SIN MIGRAR -- el encargo del PR #172 pedía esto explícitamente y no
+--    se entregó (ver review de esa ronda): escenarios que, DENTRO del
+--    fixture y en una transacción que se revierte, deshacen lo que
+--    producción aún no tiene, y afirman el SQLSTATE EXACTO que
+--    packages/db/src/authz-audit-repository.ts espera
+--    (`isMigrationMissingError`: 42883/42P01/42703) -- nunca solo "algo
+--    truena", el código real. Cada escenario es un bloque `do $$ ... $$`
+--    que ATRAPA el error con `exception when others`, compara
+--    `returned_sqlstate` (`get stacked diagnostics`) contra el código
+--    esperado, y solo entonces decide si re-lanzar (si el código NO
+--    coincide, `do` SÍ propaga un error real -- el runner automático de
+--    scripts/verify-real-postgres-ci/run-gate.mjs lo marca FAIL igual que
+--    cualquier otro escenario sin alias que termine en ERROR inesperado).
+--    Un escenario que SÍ pasa completa el `begin;...rollback;` SIN ningún
+--    error visible desde afuera -- la comprobación ya ocurrió adentro.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+\echo '=== 25. Base sin migrar -- record_authz_audit_denial NO existe (función eliminada dentro de la transacción) -- SQLSTATE EXACTO 42883 ==='
+begin;
+drop function core.record_authz_audit_denial(uuid, text, uuid, text, text, text, text, text, jsonb, timestamptz);
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    perform core.record_authz_audit_denial(null, null, null, 'admin:access', '/x', 'GET', 'denied', 'no_membership', '{}'::jsonb, now());
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42883 (undefined_function)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42883' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42883)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 26. Base sin migrar -- list_authz_audit_log_for_superadmin NO existe -- SQLSTATE EXACTO 42883 ==='
+begin;
+drop function core.list_authz_audit_log_for_superadmin(uuid, int, int);
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    perform core.list_authz_audit_log_for_superadmin('00000000-0000-0000-0000-0000000aa100', 10, 0);
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42883 (undefined_function)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42883' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42883)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 27. Base sin migrar -- la tabla core.authz_audit_log NO existe (0021 nunca aplicada) -- record_authz_audit_denial: SQLSTATE EXACTO 42P01 ==='
+begin;
+drop table core.authz_audit_log cascade;
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    perform core.record_authz_audit_denial(null, null, null, 'admin:access', '/x', 'GET', 'denied', 'no_membership', '{}'::jsonb, now());
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42P01 (undefined_table)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42P01' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42P01)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 28. Base sin migrar -- la tabla core.authz_audit_log NO existe -- list_authz_audit_log_for_superadmin: SQLSTATE EXACTO 42P01 ==='
+begin;
+drop table core.authz_audit_log cascade;
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    perform core.list_authz_audit_log_for_superadmin('00000000-0000-0000-0000-0000000aa100', 10, 0);
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42P01 (undefined_table)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42P01' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42P01)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 29. CASO INTERMEDIO -- 0021 aplicada, la migración 0022 de ESTA ronda NO (columna actor_key ausente, la función NUEVA sí activa) -- SQLSTATE EXACTO 42703 ==='
+begin;
+-- Deshace SOLO la parte de 0022 que introduce la columna nueva -- simula, vía
+-- DDL transaccional real (no una afirmación sin probar: PR #173, ronda de
+-- revisión, marcó exactamente esta inexactitud en otro verify), el estado
+-- "0021 aplicada, 0022 no" contra Postgres real, dejando activa la función
+-- NUEVA de 0022 (que sí quedó `create or replace`-ada al aplicar todas las
+-- migraciones) para probar que, si esa columna faltara, Postgres lanza
+-- 42703 (undefined_column) -- exactamente lo que
+-- `isMigrationMissingError` en packages/db/src/authz-audit-repository.ts ya
+-- captura.
+alter table core.authz_audit_log drop column actor_key cascade;
+do $$
+declare v_sqlstate text;
+begin
+  begin
+    perform core.record_authz_audit_denial(null, null, null, 'admin:access', '/x', 'GET', 'denied', 'no_membership', '{}'::jsonb, now());
+    raise exception 'no lanzó ningún error -- se esperaba SQLSTATE 42703 (undefined_column)';
+  exception when others then
+    get stacked diagnostics v_sqlstate = returned_sqlstate;
+    if v_sqlstate <> '42703' then
+      raise exception 'SQLSTATE inesperado: % (se esperaba 42703)', v_sqlstate;
+    end if;
+  end;
+end $$;
+rollback;
+
+-- NOTA -- por qué NO hace falta un escenario adicional de "0022 no aplicada,
+-- código sigue funcionando": a diferencia de 022_rentas_audit_log_orden_
+-- determinista.sql (PR #173, que si introducía una dependencia real: la
+-- función necesitaba la columna `seq` para su NUEVO order by), esta
+-- migración reemplaza `record_authz_audit_denial`/`list_authz_audit_log_
+-- for_superadmin` con `create or replace function` de la MISMA firma -- si
+-- 0022 no está aplicada, la función VIEJA de 0021 sigue activa tal cual (sin
+-- tope por actor, sin el marcador de desborde, con el tope global anterior
+-- de 5000) y sigue respondiendo con normalidad -- exactamente el mismo
+-- comportamiento que ya prueban los escenarios 1-24 de este archivo cuando
+-- se corren contra la base con TODAS las migraciones aplicadas (que incluyen
+-- 0022). El escenario 29 de arriba es la comprobación real de que, SI algo
+-- rompiera esa compatibilidad hacia atrás (una columna que la función nueva
+-- diera por sentada), el código TypeScript la captura con el SQLSTATE
+-- correcto -- no que ese estado sea alcanzable hoy por un `supabase db push`
+-- parcial real.
