@@ -19,6 +19,7 @@
 // Booking, con o sin IA) SIEMPRE pasa por colaAprobacion.ts antes de salir; un correo
 // de "tu reserva quedó confirmada" no es contenido generado que alguien deba
 // aprobar -- ver el comentario de cabecera de ./emails/reserva-templates.ts.
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { correoReservaConfirmada, correoReservaRecordatorioCheckIn, type ReservaCorreoDatos } from "./emails/reserva-templates.ts";
 import type { RentasRepository } from "./repository.ts";
 import type { FechaLocal } from "./tipos.ts";
@@ -98,18 +99,56 @@ export async function enqueueReservaEmailCore(repo: RentasRepository, organizati
   return { enqueued: true };
 }
 
+const RESERVA_EMAIL_SAVEPOINT_NAME = "sp_reserva_email_best_effort";
+
 /**
- * Envoltura best-effort -- mismo principio que
- * `domain-citas::tryEnqueueAppointmentEmail`: la reserva YA se creó con éxito en la
- * base de datos (o ya existía, en el caso del recordatorio); que no haya correo del
- * huésped en archivo, o que esto falle por cualquier otra razón, NUNCA debe
- * convertirse en un error para quien está creando la reserva ni tumbar la corrida
- * del cron de recordatorio.
+ * Hallazgo de auditoría (a3, rentas — parte de los elementos "best-effort sin
+ * SAVEPOINT" de citas/rentas/hoteles/despachos/restaurantes) — mismo defecto y mismo
+ * fix EXACTO que `@atiende/domain-restaurantes::order-notifications.ts::
+ * runNotifyBestEffort`: `POST .../rentas/.../reservas` (reservas.ts:158) llama a
+ * `tryEnqueueReservaEmail` con el MISMO `TenantDbSession`/transacción del request que
+ * ya corrió `crearReservaConfirmada` + `insertGuestMinimo` — un try/catch plano
+ * alrededor de `enqueueReservaEmailCore` (que hace varias consultas reales, incluida
+ * `select rentas.enqueue_messaging_outbox(...)`, ver `enqueueMessagingOutbox`) deja la
+ * transacción ABORTADA ante CUALQUIER error real de Postgres (deadlock, timeout,
+ * permission denied contra una base sin migrar), y el `commit;` final de
+ * `ManagedPostgresEngine.withAppSession` se convierte en un `ROLLBACK` silencioso — la
+ * reserva que YA se había creado con éxito en esta misma transacción se pierde con una
+ * respuesta 2xx.
+ *
+ * `db` (opcional) es el MISMO `TenantDbSession` de la transacción del caller — cuando
+ * se pasa, este best-effort corre protegido por SAVEPOINT (mismo criterio que
+ * `runNotifyBestEffort`: si el propio `db` ya traía la transacción abortada por una
+ * causa AJENA a este best-effort, el `SAVEPOINT` también lanza 25P02 — se traga aquí
+ * también, nunca se relanza). Cuando `db` no se pasa (`runRecordatorioCheckInCore`, que
+ * usa `enqueueReservaEmailCore` DIRECTO en su propia transacción por candidata, nunca
+ * esta variante) no aplica -- pero se deja el parámetro opcional por si algún caller
+ * futuro de sesión de sistema sin transacción compartida la necesita sin SAVEPOINT.
  */
-export async function tryEnqueueReservaEmail(repo: RentasRepository, organizationId: string, event: ReservaEmailEvent, ocupacionId: string): Promise<ReservaEmailResult | null> {
+export async function tryEnqueueReservaEmail(repo: RentasRepository, organizationId: string, event: ReservaEmailEvent, ocupacionId: string, db?: TenantDbSession): Promise<ReservaEmailResult | null> {
+  if (!db) {
+    try {
+      return await enqueueReservaEmailCore(repo, organizationId, event, ocupacionId);
+    } catch (err) {
+      console.error("reserva-email-notifications: best-effort enqueue failed:", err);
+      return null;
+    }
+  }
   try {
-    return await enqueueReservaEmailCore(repo, organizationId, event, ocupacionId);
+    await db.exec(`SAVEPOINT ${RESERVA_EMAIL_SAVEPOINT_NAME}`);
+    const resultado = await enqueueReservaEmailCore(repo, organizationId, event, ocupacionId);
+    await db.exec(`RELEASE SAVEPOINT ${RESERVA_EMAIL_SAVEPOINT_NAME}`);
+    return resultado;
   } catch (err) {
+    try {
+      await db.exec(`ROLLBACK TO SAVEPOINT ${RESERVA_EMAIL_SAVEPOINT_NAME}`);
+      await db.exec(`RELEASE SAVEPOINT ${RESERVA_EMAIL_SAVEPOINT_NAME}`);
+    } catch (recoveryErr) {
+      // Si el propio SAVEPOINT nunca llegó a crearse (transacción ya abortada de
+      // entrada, por una causa AJENA a este best-effort), este ROLLBACK TO también
+      // falla -- se traga aquí a propósito, igual que `runNotifyBestEffort`.
+      console.error("reserva-email-notifications: fallo recuperando el SAVEPOINT del best-effort (no debería pasar):", recoveryErr);
+    }
     console.error("reserva-email-notifications: best-effort enqueue failed:", err);
     return null;
   }
