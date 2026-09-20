@@ -1,0 +1,46 @@
+{
+  "fiscalYears": [
+    {
+      "id": 20,
+      "year": 2020,
+      "status": true,
+      "createdAt": "2025-06-25T13:49:41Z",
+      "updatedAt": "2025-06-25T13:49:41Z"
+    },
+    {
+      "id": 21,
+      "year": 2021,
+      "status": true,
+      "createdAt": "2025-06-25T13:49:41Z",
+      "updatedAt": "2025-06-25T13:49:41Z"
+    },
+    {
+      "id": 22,
+      "year": 2022,
+      "status": true,
+      "createdAt": "2025-06-25T13:49:41Z",
+      "updatedAt": "2025-06-25T13:49:41Z"
+    },
+    {
+      "id": 23,
+      "year": 2023,
+      "status": true,
+      "createdAt": "2025-06-25T13:49:41Z",
+      "updatedAt": "2025-06-25T13:49:41Z"
+    },
+    {
+      "id": 24,
+      "year": 2024,
+      "status": true,
+      "createdAt": "2025-06-25T13:49:41Z",
+      "updatedAt": "2025-06-25T13:49:41Z"
+    },
+    {
+      "id": 25,
+      "year": 2025,
+      "status": true,
+      "createdAt": "2025-06-25T13:49:41Z",
+      "updatedAt": "2025-06-25T13:49:41Z"
+    }
+  ]
+}

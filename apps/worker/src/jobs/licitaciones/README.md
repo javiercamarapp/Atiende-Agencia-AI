@@ -15,8 +15,9 @@ auditoría de paridad contra el repo origen).
   ComprasMX vía CSV abierto de `datos.gob.mx`, ver
   `packages/domain-licitaciones/src/connectors/compras-mx-historico.ts` para
   el detalle completo, incluidas las desviaciones deliberadas respecto del
-  repo origen). **Desactualizado: la Fase 9 (ver abajo) agregó 3 conectores
-  más al registro** (`nl_ocds`, `cdmx_ocds`, `aggregator`) — hoy son 4 con
+  repo origen). **Desactualizado: la Fase 9 agregó 3 conectores más al
+  registro** (`nl_ocds`, `cdmx_ocds`, `aggregator`) **y la Fase 13 dos más**
+  (`yucatan_ocds`, `guadalajara_ocds`, ver tabla más abajo) — hoy son 6 con
   `connector` real, no 1. Cada corrida se registra vía `recordSourceRun`
   (REQ-146..150: estado explícito, evidencia, cobertura — nunca "0
   registros" en silencio).
@@ -126,3 +127,37 @@ Un run real del conector `nl_ocds` (sin `fetchImpl` inyectado, contra la API
 real) hoy: 2 páginas × ~10 MB, ~1800 releases/página, 333 convocatorias
 vigentes detectadas de 1938 ocids únicos en 2 páginas — ninguna con
 `submissionDeadline` real todavía (ver tabla arriba).
+
+## Fase 13 — Yucatán (INAIP) + Guadalajara (municipio), plataforma "contratacionesabiertas"
+
+Investigación de solo lectura (agente separado, GETs reales) contra 16
+fuentes candidatas del registro internacional de Open Contracting
+Partnership: 12 no sirven hoy (dominios muertos, servidores caídos, TLS
+roto, institución extinta, o bot-detection — nunca evadido) y 2 son reales,
+verificadas con GET exitoso, sobre la MISMA plataforma tipo Kingfisher
+("contratacionesabiertas": `/edca/fiscalYears` + `/edca/contractingprocess/{year}`,
+OCDS 1.1 real) — por eso UN SOLO conector genérico
+(`packages/domain-licitaciones/src/connectors/ocds/contratacionesabiertas-connector.ts`)
+sirve ambas instancias, no dos implementaciones separadas:
+
+| id | `connector` real | `liveVerification.verified` | Produce vigentes hoy | Motivo |
+|---|:-:|:-:|:-:|---|
+| `yucatan_ocds` | Sí | **true** | No (hoy) | API OCDS del INAIP de Yucatán. Verificado 2026-09-20: `fiscalYears` real (2020-2025), `contractingprocess/2025` real (5 release packages: arrendamiento, CFE, leasing, 2 expedientes DAJP), TODOS con `tender.status: "complete"` — ninguno vigente con la evidencia descargada. CAVEAT DE ALCANCE: son SOLO las compras propias del instituto INAIP (~5 contratos/año), NO el gobierno estatal de Yucatán en general. |
+| `guadalajara_ocds` | Sí | **true** | No (hoy, con la evidencia descargada) | API OCDS del municipio de Guadalajara (`contratacionesabiertas.guadalajara.gob.mx:3000`, DISTINTA de `miradapublica.guadalajara.gob.mx` ya estancado). Verificado 2026-09-20: `fiscalYears` real (solo 2025 — plataforma recién adoptada), `contractingprocess/2025` real (2.28 MB, 48 release packages reales: audiovisuales, despensas, música, licitaciones `LCCC-GDL-XXX`, hasta dic-2025). Registrado con `fixedState: "Jalisco"` (municipio, no entidad federativa — evidencia real: `parties[].address.region: "Jalisco"`; se pierde granularidad municipal por el límite del esquema actual, sin campo de municipio). |
+
+Ambas instancias comparten: un año fiscal no activado responde `404` con
+cuerpo JSON real (`{"status":404,"message":"No se encontrarón resultados..."}`)
+— tratado explícitamente como "sin datos ese año todavía", nunca como error
+(verificado real: `contractingprocess/2026` en ambas, 2026-09-20, año no
+activado en ninguna). El conector nunca hardcodea el año: lee `fiscalYears`
+primero y siempre intenta también el año actual por reloj (`buildCandidateYears`),
+tope `maxYears=2` por corrida (año actual + el más reciente ya activado).
+
+Dos casos "reserva" investigados y descartados (no registrados, no son
+placeholders nuevos — re-chequear más adelante si vuelven a estar vivos):
+**CDMX/INFOCDMX** (ficha de datos abiertos viva, pero el puerto real donde
+vivirían los datos respondió caído el 2026-09-20) y **NL — Secretaría de
+Administración** (dataset con ficha fresca en el catálogo, pero verificado
+que resuelve contra la MISMA infraestructura `api-ocds.nl.gob.mx` que
+`nl_ocds` ya consulta — lo más probable es que el conector NL existente ya
+vea estos datos, así que no se registró un conector duplicado).

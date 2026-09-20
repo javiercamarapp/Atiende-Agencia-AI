@@ -76,6 +76,9 @@ export const DEFAULT_STALE_THRESHOLD_MS: Record<SourceConnectorId, number> = {
   // Fase 9 — 3x la cadencia declarada de cada conector OCDS/agregador (ver connector-registry.ts).
   nl_ocds: 3 * 24 * 60 * 60_000,
   cdmx_ocds: 3 * 24 * 60 * 60_000,
+  // Fase 13 — 3x la cadencia declarada (24 h, ver connector-registry.ts), mismo criterio que nl_ocds/cdmx_ocds.
+  yucatan_ocds: 3 * 24 * 60 * 60_000,
+  guadalajara_ocds: 3 * 24 * 60 * 60_000,
   aggregator: 3 * 60 * 60_000,
 };
 
