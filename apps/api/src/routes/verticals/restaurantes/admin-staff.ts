@@ -269,6 +269,25 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       verticalRole,
     });
 
+    // FASE 3 (producto) — "invitación ... de staff" (ver
+    // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
+    // Nunca guarda el correo completo del invitado en texto libre visible en la
+    // bitácora sin necesidad real -- aquí SÍ es el dato mínimo indispensable
+    // para saber a quién se invitó (mandato de la fase: "sin PII innecesaria",
+    // no "sin ningún dato identificador" -- a diferencia de un teléfono de
+    // comensal, un correo de STAFF es exactamente lo que esta acción necesita
+    // auditar). Best-effort real, nunca revierte la invitación ya creada.
+    await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: staffId,
+      action: "staff.invitado",
+      entityType: "staff",
+      entityId: invite.id,
+      campo: "email,verticalRole",
+      antes: null,
+      despues: `${email} (${verticalRole})`,
+    });
+
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);
   });
 
@@ -286,6 +305,21 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
     if (!revoked) throw Errors.notFound("Invitación no encontrada, ya fue usada, o ya estaba revocada.");
     logEvent(c, "info", "restaurantes_admin_staff_invitacion_revocada", { actorUserId: c.get("userId"), organizationId, inviteId });
+
+    // FASE 3 (producto) — "baja ... de staff": revocar una invitación PENDIENTE
+    // es la única forma real de "baja" que existe hoy en restaurantes (no hay
+    // ruta para dar de baja a un miembro YA ACEPTADO -- ver knownGaps del PR).
+    await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "staff.invitacion_revocada",
+      entityType: "staff",
+      entityId: inviteId,
+      campo: null,
+      antes: null,
+      despues: null,
+    });
+
     return c.json({ ok: true });
   });
 
@@ -361,6 +395,22 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
     try {
       const updated = await deps.coreStaffRepo(c.get("db")).updateMemberVerticalRole(organizationId, targetUserId, newPlatformRole, newVerticalRole);
+
+      // FASE 3 (producto) — "cambio de rol de staff". Nunca guarda el correo del
+      // target aquí (ya visible en `target.email` del listado, no hace falta
+      // duplicarlo en la bitácora) -- solo el id de usuario + el rol antes/
+      // después, el resumen mínimo que la fase pide.
+      await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+        organizationId,
+        actorUserId: callerUserId,
+        action: "staff.rol_actualizado",
+        entityType: "staff",
+        entityId: targetUserId,
+        campo: "verticalRole",
+        antes: target.verticalRole,
+        despues: newVerticalRole,
+      });
+
       return c.json(serializeMemberWithRole(updated));
     } catch (err) {
       if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);

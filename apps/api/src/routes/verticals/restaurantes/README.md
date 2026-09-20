@@ -105,3 +105,26 @@ selector real en `Pedidos.tsx` que lo consumiera. Se agrega:
   PATCH en cuanto se elige un repartidor) alimentado por
   `lib/staff-client.ts::fetchRepartidores` — sin endpoint de "desasignar" en
   el backend, elegir "Sin asignar" es deliberadamente un no-op.
+
+FASE 3 (producto) — bitácora de auditoría del staff (copiada del patrón ya en
+`main` para rentas, `021_rentas_audit_log.sql`/`022_..._orden_determinista.sql`,
+PR #165/#173 — ver `packages/domain-restaurantes/migrations/
+019_restaurantes_audit_log.sql` para el diseño completo, incluida la validación
+de rol que rentas dejó pendiente):
+
+- `auditoria.ts` — `GET .../admin/auditoria` (paginado, filtro `tipo`/`desde`/
+  `hasta`), solo `owner`/`admin` de la organización (más estricto que
+  `MANAGER_ROLES`: un `staff` real SÍ puede escribir en la bitácora vía las
+  rutas de abajo, pero no leerla).
+- Instrumentado (`registrarAuditoria`, best-effort, nunca revierte la acción de
+  negocio si la bitácora falla — ver el SAVEPOINT en
+  `PostgresRestaurantesRepository.registrarAuditoria`): `admin-catalog.ts`
+  (precio/disponibilidad de producto, `entityType="producto"`),
+  `admin-promotions.ts` (alta/cambio/activación/baja, `entityType="promocion"`),
+  `admin-orders.ts` (cancelación de pedido `entityType="pedido"`; asignación/
+  reasignación de repartidor `entityType="repartidor"`), `admin-staff.ts`
+  (invitación/revocación/cambio de rol, `entityType="staff"`).
+- Huecos conocidos (ver el cuerpo del PR para el detalle completo): sin ruta
+  real de "baja" de un miembro YA ACEPTADO (solo existe revocar una invitación
+  pendiente); sin ninguna ruta que edite WhatsApp/voz/horarios/zonas de entrega
+  todavía, así que `entityType="configuracion"` queda reservado sin caller.

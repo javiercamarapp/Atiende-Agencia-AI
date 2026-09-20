@@ -183,6 +183,28 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
       // salía con el cron diario (`vercel.json`: "55 14 * * *"), hasta ~24h tarde.
       c.get("postCommitTasks").push(() => dispatchWhatsAppVertical(deps, "restaurantes", 5).then(() => undefined));
       logEvent(c, "info", "restaurantes_admin_pedido_status_cambiado", { actorUserId: c.get("userId"), organizationId, orderId, status: raw.status });
+
+      // FASE 3 (producto) — "cancelación o reembolso de pedidos" (el catálogo de
+      // estados de order-lifecycle.ts no distingue un reembolso de una
+      // cancelación simple -- 'cancelado' es el único estado terminal negativo
+      // real, ver ORDER_STATUSES/ORDER_TRANSITIONS). Solo se audita ESE
+      // estado -- las transiciones normales de operación (preparando/en_camino/
+      // entregado/completado) no son la acción sensible que esta fase pide
+      // cubrir. Best-effort real, nunca revierte el cambio de estado ya
+      // aplicado.
+      if (raw.status === "cancelado") {
+        await repo.registrarAuditoria({
+          organizationId,
+          actorUserId: c.get("userId"),
+          action: "pedido.cancelado",
+          entityType: "pedido",
+          entityId: orderId,
+          campo: "status",
+          antes: order.status,
+          despues: "cancelado",
+        });
+      }
+
       return c.json({ order: serializeOrder(updated) });
     } catch (err) {
       if (err instanceof OrderStatusTransitionError) throw Errors.conflict(err.message);
@@ -250,6 +272,21 @@ export function restaurantesAdminOrdersRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     // "listo" inventado): best-effort, nunca revierte el dispatch ya persistido.
     await tryNotifyStaffRepartidorAssigned(repo, updated);
     logEvent(c, "info", "restaurantes_admin_pedido_repartidor_asignado", { actorUserId: c.get("userId"), organizationId, orderId, repartidorId: raw.repartidorId, estimatedDeliveryAt });
+
+    // FASE 3 (producto) — "asignación/cambio de repartidor" (mueve dinero: el
+    // repartidor asignado es a quien se le liquida la entrega). Best-effort
+    // real, nunca revierte el dispatch ya persistido.
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: order.assignedRepartidorId ? "repartidor.reasignado" : "repartidor.asignado",
+      entityType: "repartidor",
+      entityId: orderId,
+      campo: "assignedRepartidorId",
+      antes: order.assignedRepartidorId,
+      despues: raw.repartidorId,
+    });
+
     return c.json({ order: serializeOrder(updated) });
   });
 
