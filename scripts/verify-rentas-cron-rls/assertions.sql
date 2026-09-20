@@ -188,10 +188,18 @@ rollback;
 -- enmascaraba por completo el hallazgo ALTA de esa auditoría: el INSERT real,
 -- durante casi una semana, omitía esas dos columnas NOT NULL y reventaba 23502
 -- contra Postgres real en CADA corrida, mientras este escenario (con los valores ya
--- servidos) seguía en verde. Ahora reproduce el SQL real, columna por columna
--- (mismo JOIN, mismo ON CONFLICT) -- si alguien vuelve a quitar organization_id/
--- property_id del INSERT real, este escenario (y el gate dedicado de
--- verify-rentas-ical-import-postgres-real/) fallan con el mismo 23502.
+-- servidos) seguía en verde. Ahora reproduce el SQL real, columna por columna (mismo
+-- JOIN, mismo ON CONFLICT). Corrección de revisión de PR #175 (no bloqueante): esto
+-- es SQL LITERAL copiado a mano, no el `.ts` compilado en vivo -- si alguien vuelve a
+-- quitar organization_id/property_id del INSERT real SIN actualizar este archivo a
+-- la par, este escenario NO lo detecta por sí solo (limitación estructural de todo
+-- el tier de pruebas `scripts/verify-*/` de este repo, ver el README de
+-- verify-rentas-ical-import-postgres-real/, que sí sirve como detector dedicado para
+-- ese caso). Lo que este escenario SÍ prueba, de forma real contra Postgres, es que
+-- la POLICY/GRANT de la sesión de sistema permite este INSERT/UPDATE columna por
+-- columna -- por eso el `select count(*)` de abajo, con alias `..._deberia_ser_N`
+-- (el único formato que `run-gate.mjs` valida), en vez del `select` sin alias de
+-- antes, que dejaba pasar en verde incluso un INSERT que insertara 0 filas.
 \echo '--- 12. sesion de sistema SI puede upsert rentas.evento_canal_importado derivando el tenant de rentas.unidad (SQL real de upsertEventoImportado, hallazgo adicional: nunca tuvo policy de insert/update) ---'
 begin;
 set local role authenticated;
@@ -203,7 +211,9 @@ insert into rentas.evento_canal_importado (organization_id, property_id, unidad_
   on conflict (unidad_id, canal_id, uid_evento) do update set
     sequence = excluded.sequence, dtstamp = excluded.dtstamp, hash_contenido = excluded.hash_contenido,
     ocupacion_id = excluded.ocupacion_id, ultima_accion = excluded.ultima_accion, updated_at = now();
-select eci.uid_evento, eci.organization_id, eci.property_id from rentas.evento_canal_importado eci where eci.unidad_id = '00000000-0000-0000-0000-0000000000c1';
+select count(*) as tenant_correcto_deberia_ser_1 from rentas.evento_canal_importado eci
+  where eci.unidad_id = '00000000-0000-0000-0000-0000000000c1' and eci.uid_evento = 'uid-evento-1'
+    and eci.organization_id = '00000000-0000-0000-0000-0000000000a1' and eci.property_id = '00000000-0000-0000-0000-0000000000b1';
 rollback;
 
 \echo '--- 13. staff real CON acceso a la property sigue RECHAZADO escribiendo evento_canal_importado (nunca fue parte del diseño) ---'

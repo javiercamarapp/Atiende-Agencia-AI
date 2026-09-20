@@ -11,11 +11,15 @@ rentas nunca funcionó contra la base real desde que se introdujo (`edf6cdf`,
 2026-09-12), solo contra el repositorio en memoria de los tests (que nunca
 valida `NOT NULL`).
 
-Este directorio ejecuta **el SQL real del repositorio** (mismas columnas,
-mismo `JOIN` a `rentas.unidad`, mismo `ON CONFLICT`) — a diferencia de
+Este directorio ejecuta **el SQL real del repositorio** — a diferencia de
 `scripts/verify-rentas-cron-rls/assertions.sql` (escenario 12, corregido en
 este mismo PR), que insertaba `organization_id`/`property_id` A MANO y por eso
-nunca detectó el bug.
+nunca detectó el bug. Corrección de revisión de PR #175: los escenarios 2-3
+(evento nuevo/eco) SÍ reproducen el JOIN a `rentas.unidad` y el `ON CONFLICT`
+completos, literales. Los escenarios 4-7 (aislamiento por evento y
+cross-tenant) usan un `INSERT` más simple (sin `ON CONFLICT`, con literales en
+vez de parámetros) porque solo necesitan demostrar el NOT NULL/FK/tenant, no
+el camino de conflicto — ver "Qué NO cubre" más abajo.
 
 ## Qué demuestra (`assertions.sql`, 7 escenarios)
 
@@ -62,30 +66,42 @@ corre automáticamente en cada PR/push vía
 
 Igual que los demás `scripts/verify-*/assertions.sql` del monorepo, este gate corre
 SQL puro contra `psql` — nunca importa ni ejecuta el código TypeScript compilado del
-repositorio. El SQL de `assertions.sql` es una copia LITERAL (mismas columnas, mismo
-`JOIN`, mismo `ON CONFLICT`) del SQL real de `upsertEventoImportado` al momento de
-escribir este gate, no una llamada en vivo a esa función. Si alguien modifica el SQL
-de `postgres-repository.ts` sin actualizar `assertions.sql` a la par, este gate NO lo
-detecta — sigue verificando el contrato SQL que documenta, no el archivo `.ts` en sí.
-Esto es una limitación estructural de este tier de pruebas en todo el repo (ningún
-`scripts/verify-*/` tiene un tier de integración que ejecute TypeScript contra
-Postgres real todavía), no algo específico de este script.
+repositorio. Los escenarios 2-3 son una copia LITERAL (mismas columnas, mismo `JOIN`,
+mismo `ON CONFLICT`) del SQL real de `upsertEventoImportado` al momento de escribir
+este gate; los escenarios 4-7 (aislamiento/cross-tenant) simplifican ese SQL (sin
+`ON CONFLICT`, con literales en vez de `$1`..`$8`) porque el `ON CONFLICT` no
+participa del NOT NULL/FK/tenant que esos escenarios verifican — así que la
+inferencia de tipos real de esos parámetros ($1 usado dos veces, $4 `int`, $5
+`timestamptz`, $7 `uuid` nullable) nunca se ejerce contra Postgres real en esos 4
+escenarios. Ninguna llamada de este gate es una llamada en vivo a la función `.ts`
+misma. Si alguien modifica el SQL de `postgres-repository.ts` sin actualizar
+`assertions.sql` a la par, este gate NO lo detecta — sigue verificando el contrato
+SQL que documenta, no el archivo `.ts` en sí. Esto es una limitación estructural de
+este tier de pruebas en todo el repo (ningún `scripts/verify-*/` tiene un tier de
+integración que ejecute TypeScript contra Postgres real todavía), no algo específico
+de este script.
 
 ## Qué NO cubre
 
 - El SAVEPOINT-por-evento REAL de `motor.ts::procesarEventoDelCicloAislado`
   (la sintaxis `SAVEPOINT`/`ROLLBACK TO SAVEPOINT`/`RELEASE SAVEPOINT` exacta
-  que emite `ctx.db.exec`) ya tiene su propio test unitario con un
-  repositorio "envenenado" en
+  que emite `ctx.db.exec`, y que la sesión realmente quede recuperada tras un
+  `25P02`) tiene su propio test con un `AbortAwareFakeSession` real (mismo
+  patrón que `reserva-email-notifications-savepoint.spec.ts`) en
   `packages/domain-rentas/tests/sync-motor.spec.ts` — este gate solo
   demuestra, con una subtransacción PL/pgSQL equivalente, que el MECANISMO de
   aislamiento por fila funciona contra Postgres real (mismo principio que
   `scripts/verify-fallback-savepoint/` demuestra para
   `runWithSavepointFallback`).
-- El SEQUENCE fuera de rango de `int32`/el año `"0000"` (BUG 2 de la
-  auditoría) son validaciones puramente en JS (`packages/domain-rentas/src/
-  ical/parser.ts`) — cubiertas por
-  `packages/domain-rentas/tests/ical-parser.spec.ts`, no por este gate de SQL.
+- El SEQUENCE fuera de rango de `int32` (BUG 2 de la auditoría) es una
+  validación puramente en JS del parser
+  (`packages/domain-rentas/src/ical/parser.ts`) — cubierta por
+  `packages/domain-rentas/tests/ical-parser.spec.ts`. El año `"0000"` (mismo
+  BUG 2) se valida por EVENTO en `motor.ts::procesarEventoDelCiclo` (junto a
+  `esRangoValido`, no en el parser — un año inválido descarta solo ese evento,
+  nunca el feed completo) — cubierto por
+  `packages/domain-rentas/tests/sync-motor.spec.ts`, tampoco por este gate de
+  SQL.
 - El SAVEPOINT best-effort de `tryEnqueueReservaEmail` (BUG 3) — cubierto por
   `packages/domain-rentas/tests/reserva-email-notifications-savepoint.spec.ts`
   con `AbortAwareFakeSession`.

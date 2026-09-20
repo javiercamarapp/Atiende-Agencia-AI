@@ -21,7 +21,11 @@ done
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 WORKDIR="$(mktemp -d)"
-PGPORT=55434
+# Hallazgo de revisión de PR #175 (no bloqueante): 55434 ya lo usa
+# scripts/verify-superadmin-caller-binding/run.sh -- solo afecta corridas LOCALES
+# simultáneas de ambos scripts (CI usa run-gate.mjs, que ya serializa/aísla cada
+# gate), pero 55472 no colisiona con ningún otro `scripts/verify-*/run.sh` del repo.
+PGPORT=55472
 PGDATA="$WORKDIR/pgdata"
 LOG="$WORKDIR/postgres.log"
 

@@ -12,11 +12,16 @@
 -- escenario 12, en vez de derivarlos con el JOIN real -- ver el fix aparte en ese
 -- archivo).
 --
--- Cada escenario reproduce, LITERALMENTE (mismas columnas, mismo JOIN, mismo
--- ON CONFLICT), el SQL real de `upsertEventoImportado` -- nunca un INSERT
+-- Cada escenario reproduce, con las mismas columnas y el mismo JOIN a
+-- rentas.unidad, el SQL real de `upsertEventoImportado` -- nunca un INSERT
 -- simplificado que ya traiga organization_id/property_id como si el caller los
 -- conociera de antemano (esa era exactamente la simplificación que enmascaraba el
--- bug).
+-- bug). Corrección de revisión de PR #175: solo los escenarios 2 y 3 (evento
+-- nuevo/eco) llevan también el mismo ON CONFLICT literal -- los escenarios 4-7
+-- (aislamiento por evento y cross-tenant) simplifican el INSERT (sin ON CONFLICT,
+-- con literales en vez de $1..$8) porque no necesitan ejercer el camino de
+-- conflicto para lo que prueban (ver el README de este directorio, "Qué NO
+-- cubre").
 --
 -- Qué demuestra:
 --   1. (documental) La tabla real SÍ rechaza el INSERT viejo (sin organization_id/
