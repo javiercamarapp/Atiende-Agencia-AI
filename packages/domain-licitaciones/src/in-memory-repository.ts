@@ -869,7 +869,11 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       unitPrice: input.unitPrice,
       currency: "MXN",
       approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
-      validFrom: input.validFrom ?? isoNow(),
+      // Paridad con `PostgresLicitacionesRepository.createApprovedRate` (ver su
+      // comentario de cabecera): el default de `validFrom` es el día de NEGOCIO
+      // (`hoyFechaNegocio()`), nunca `isoNow()` (día UTC crudo del proceso, y
+      // además un timestamp completo sobre una columna `date`).
+      validFrom: input.validFrom ?? hoyFechaNegocio(),
       validUntil: input.validUntil ?? null,
     };
     this.approvedRates.set(organizationId, [...list, record]);
