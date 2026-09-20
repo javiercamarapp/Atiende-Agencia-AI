@@ -630,6 +630,49 @@ export interface CitasRepository {
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
+  /** f2-citas-lista-de-espera — igual que `loadLiveWaitlistCandidates`, pero para
+   * sesión de SISTEMA (`auth.uid()` null): `citas.appointment_waitlist` solo tiene
+   * policy de RLS de staff (membership), así que el SELECT plano de
+   * `loadLiveWaitlistCandidates` SIEMPRE devuelve 0 filas bajo sesión de sistema
+   * (ver migración 020_appointment_waitlist_sistema_lectura.sql). Todos los
+   * callers reales de este método (runOptimizadorCore -- cancelar/reagendar/
+   * reasignar del agente, SIEMPRE sesión de sistema; runListaEsperaCore --
+   * broadcast del staff, movido a sesión de sistema post-commit) corren en
+   * sesión de sistema; el GET de solo-lectura del panel (`admin.ts`) sigue
+   * usando `loadLiveWaitlistCandidates` (staff, RLS real). Compatibilidad con
+   * la base sin migrar: implementación Postgres degrada a `[]` (SQLSTATE
+   * 42883), nunca un 500. */
+  loadLiveWaitlistCandidatesAsSystem(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
+  /** Corrección post-revisión de f2-citas-lista-de-espera — igual que
+   * `loadLiveWaitlistCandidatesAsSystem`, pero para el paso INMEDIATO siguiente
+   * (resolver a qué `phone_number_id` mandar el aviso): `citas.whatsapp_config`
+   * también solo tiene policy de RLS de staff (membership), así que
+   * `resolveActiveWhatsAppPhoneNumberId` (SELECT plano) SIEMPRE devuelve `null`
+   * bajo sesión de sistema, incluso con la migración 020 ya aplicada -- ver
+   * migración 021_whatsapp_config_sistema_lectura.sql. Mismos dos callers reales
+   * que `loadLiveWaitlistCandidatesAsSystem` (runOptimizadorCore/
+   * runListaEsperaCore, ambos sesión de sistema); `previewListaEspera` (staff,
+   * vista previa de solo lectura) sigue usando `resolveActiveWhatsAppPhoneNumberId`.
+   * Compatibilidad con la base sin migrar: implementación Postgres degrada a
+   * `null` (SQLSTATE 42883), nunca un 500. */
+  resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId: string): Promise<string | null>;
+  /** Corrección bloqueante de la ronda 2 de revisión del PR #180 — probe de SOLO
+   * CATÁLOGO (nunca ejecuta ninguna de las dos funciones, no requiere `EXECUTE`
+   * ni ningún fallback nuevo) que corre en sesión de STAFF: le dice a
+   * `previewListaEspera` si las migraciones 020/021 ya están aplicadas en ESTA
+   * base, ANTES de calcular un conteo de candidatos que el post-commit en
+   * sesión de sistema nunca podría notificar de verdad. Sin este probe, con la
+   * base sin migrar (el estado REAL de producción en el instante en que este
+   * PR se mergea — nadie aplica las migraciones al mergear, ver regla dura de
+   * compatibilidad del repo) el panel mostraba "Aviso encolado para N
+   * candidatos" y el post-commit degradaba a `[]`/`null` por SQLSTATE 42883 sin
+   * encolar nada: un éxito falso permanente, en vez del 500 visible que da hoy
+   * `main` para esa misma acción. Implementación Postgres:
+   * `to_regprocedure('citas.system_load_live_waitlist_candidates(uuid)')` +
+   * la misma comprobación para `system_resolve_active_whatsapp_phone_number_id`
+   * — una consulta al catálogo, disponible para cualquier rol, que nunca lanza
+   * si la función no existe (a diferencia de invocarla). */
+  areSystemWaitlistFunctionsAvailable(): Promise<boolean>;
   claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean>;
 
   // ---- Idempotencia/rate-limit (transversal) ----

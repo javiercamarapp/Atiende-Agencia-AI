@@ -76,16 +76,34 @@ export async function fetchWaitlist(fetchImpl: typeof fetch, apiBaseUrl: string,
   return body.waitlist.map(mapCandidate);
 }
 
+/** Corrección post-revisión de f2-citas-lista-de-espera (hallazgo B) — la ruta
+ * (`admin.ts::POST .../waitlist/broadcast`) ya NO responde `notified`: el efecto
+ * real (claim + encolar) corre POST-COMMIT en sesión de sistema, así que el
+ * `notified` de esa corrida todavía no existe cuando la ruta responde. La
+ * respuesta ahora es `queued: true` (el aviso quedó encolado como tarea
+ * best-effort, se procesa en segundo plano) + el MISMO conteo real de vista
+ * previa (`candidates_considered`/`skipped_no_whatsapp_config`, calculado con
+ * el mismo filtro/orden/límite que usará el broadcast de verdad) que antes.
+ * Antes de esta corrección este cliente seguía tipando/leyendo `notified`
+ * (undefined contra el body real) y tipaba `skipped_no_whatsapp_config` como
+ * `number` cuando la API siempre lo manda como `boolean`. */
 export interface WaitlistBroadcastSummary {
-  readonly notified: number;
+  readonly queued: boolean;
+  /** Corrección bloqueante de la ronda 2 de revisión del PR #180 — presente
+   * (p. ej. `"not_available_yet"`) solo cuando `queued` es `false`: la base a
+   * la que está conectada la API todavía no tiene aplicadas las migraciones
+   * que este flujo necesita, así que la ruta NO encoló ninguna tarea real
+   * (ver `admin.ts::POST .../waitlist/broadcast`). `null` en el caso normal. */
+  readonly reason: string | null;
   readonly candidatesConsidered: number;
-  readonly skippedNoWhatsappConfig: number;
+  readonly skippedNoWhatsappConfig: boolean;
 }
 
 interface WaitlistBroadcastApiBody {
-  readonly notified: number;
+  readonly queued: boolean;
+  readonly reason?: string;
   readonly candidates_considered: number;
-  readonly skipped_no_whatsapp_config: number;
+  readonly skipped_no_whatsapp_config: boolean;
 }
 
 export interface WaitlistBroadcastInput {
@@ -96,12 +114,14 @@ export interface WaitlistBroadcastInput {
 
 /** POST real que dispara el aviso (admin.ts::POST .../waitlist/broadcast) — encola
  * en `citas.messaging_outbox` (nunca habla directo con la API de WhatsApp, ver
- * runListaEsperaCore) el aviso a los candidatos FIFO que matcheen los filtros. */
+ * runListaEsperaCore) el aviso a los candidatos FIFO que matcheen los filtros.
+ * El envío real ocurre después, en un post-commit best-effort (`queued: true`
+ * solo confirma que la tarea se encoló, nunca que ya se mandó ningún mensaje). */
 export async function broadcastWaitlist(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: WaitlistBroadcastInput = {}): Promise<WaitlistBroadcastSummary> {
   const body = await postJson<WaitlistBroadcastApiBody>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/waitlist/broadcast`, token, {
     provider_id: input.providerId,
     service_id: input.serviceId,
     limit: input.limit,
   });
-  return { notified: body.notified, candidatesConsidered: body.candidates_considered, skippedNoWhatsappConfig: body.skipped_no_whatsapp_config };
+  return { queued: body.queued, reason: body.reason ?? null, candidatesConsidered: body.candidates_considered, skippedNoWhatsappConfig: body.skipped_no_whatsapp_config };
 }

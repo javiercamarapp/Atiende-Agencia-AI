@@ -92,11 +92,31 @@ async function resolveOrganizationOrNotFound(citasRepo: CitasRepository, orgSlug
   return org;
 }
 
+/**
+ * f2-citas-lista-de-espera, hallazgo (C) residual de la auditoría a3 (barrido
+ * #4) — `findProvider`/`findPropertyTimezone` (2 SELECTs planos) corrían
+ * SUELTOS, SIN SAVEPOINT propio, dentro de un `try/catch` que sí protege (con
+ * su PROPIO SAVEPOINT interno) la llamada que sigue
+ * (`tryNotifyWaitlistOfFreedSlot`/`notifyWaitlistAfterReschedule`, ver
+ * `reminders.ts`). Un error real de Postgres en cualquiera de estos 2 SELECTs
+ * (probabilidad baja) dejaba la transacción COMPARTIDA del agente -- que sigue
+ * con `tryEnqueueAppointmentEmail`/`triggerCitasEmailDispatchInline`/
+ * `tryTriggerCalendarSync` después -- abortada sin recuperación, exactamente
+ * el mismo patrón que ya se corrigió para el claim de la lista de espera.
+ * Usado por los 3 callers reales (cancelar/reagendar/reasignar del agente,
+ * TODOS sesión de sistema).
+ */
+async function resolveProviderTimeZoneForWaitlist(citasRepo: CitasRepository, organizationId: string, providerId: string): Promise<string> {
+  return citasRepo.runWithRowSavepoint(async () => {
+    const provider = await citasRepo.findProvider(organizationId, providerId);
+    return citasRepo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+  });
+}
+
 /** Best-effort: nunca bloquea la respuesta de cancelar/reagendar si falla. */
 async function tryNotifyWaitlistAndEmail(deps: AppDeps, db: TenantDbSession, citasRepo: CitasRepository, organizationId: string, providerId: string, serviceId: string, previousStartsAt: string, newStartsAt: string, appointmentId: string) {
   try {
-    const provider = await citasRepo.findProvider(organizationId, providerId);
-    const timeZone = await citasRepo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+    const timeZone = await resolveProviderTimeZoneForWaitlist(citasRepo, organizationId, providerId);
     await notifyWaitlistAfterReschedule(citasRepo, organizationId, timeZone, { providerId, serviceId, previousStartsAt, newStartsAt });
   } catch (err) {
     console.error("citas: notifyWaitlistAfterReschedule best-effort falló:", err);
@@ -116,8 +136,7 @@ async function tryNotifyWaitlistAndEmail(deps: AppDeps, db: TenantDbSession, cit
  * reagendar (donde solo se libera si el nuevo horario es distinto del viejo). */
 async function tryNotifyWaitlistAfterCancel(citasRepo: CitasRepository, organizationId: string, appointment: AppointmentRecord) {
   try {
-    const provider = await citasRepo.findProvider(organizationId, appointment.providerId);
-    const timeZone = await citasRepo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+    const timeZone = await resolveProviderTimeZoneForWaitlist(citasRepo, organizationId, appointment.providerId);
     await tryNotifyWaitlistOfFreedSlot(citasRepo, organizationId, timeZone, { providerId: appointment.providerId, serviceId: appointment.serviceId, startsAt: appointment.startsAt });
   } catch (err) {
     console.error("citas: aviso de lista de espera tras cancelar falló (best-effort):", err);
@@ -263,9 +282,9 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
         });
         // El hueco (proveedor, servicio, horario) VIEJO queda libre — mismo aviso
         // de lista de espera que usa cancelar (nadie más "ocupa" ese hueco ahora).
+        // f2-citas-lista-de-espera, hallazgo (C) — ver `resolveProviderTimeZoneForWaitlist`.
         try {
-          const oldProvider = await citasRepo.findProvider(org.id, previousProviderId);
-          const timeZone = await citasRepo.findPropertyTimezone(oldProvider?.propertyId ?? null, org.id);
+          const timeZone = await resolveProviderTimeZoneForWaitlist(citasRepo, org.id, previousProviderId);
           await tryNotifyWaitlistOfFreedSlot(citasRepo, org.id, timeZone, { providerId: previousProviderId, serviceId: previousServiceId, startsAt: appointment.startsAt });
         } catch (err) {
           console.error("citas: aviso de lista de espera tras modificar-cita falló (best-effort):", err);

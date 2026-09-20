@@ -185,9 +185,28 @@ panel:
   true` en la respuesta) ni por un candidato individual que ya llegó a su tope
   (se salta y sigue con el siguiente).
 
-Ninguna migración SQL nueva: la tabla, la RPC de rate-limit y el outbox ya
-existían desde la Fase 1 de este vertical — el gap era puramente la ausencia del
-mecanismo de broadcast en la capa de dominio/HTTP. Fuera de alcance de esta fase:
+  **f2-citas-lista-de-espera (hallazgo B):** `claim_waitlist_notification_slot`
+  exige sesión de SISTEMA desde la migración 015 (`auth.uid() is null`) — esta
+  ruta corre en sesión de STAFF (`dbSession`/JWT/`requirePropertyMembership`),
+  así que el efecto real (`runListaEsperaCore`) se movió a `postCommitTasks`,
+  en una sesión de sistema nueva abierta DESPUÉS del commit
+  (`runCitasListaEsperaBroadcastAfterCommit`, mismo patrón que
+  `runCitasWaitlistNotifyAfterCancel`). La ruta solo valida (provider_id/
+  service_id de esta organización) y calcula una vista previa de solo lectura
+  en sesión de staff (`previewListaEspera`) antes de encolar el efecto. **La
+  respuesta ya NO incluye `notified`** (el número real solo se sabe después
+  del commit) — devuelve `{ queued: true, candidates_considered,
+  skipped_no_whatsapp_config }`, con el mismo conteo de candidatos que
+  procesará el efecto real (`filterAndRankWaitlistForBroadcast`, compartida
+  por ambas funciones). Ver `packages/domain-citas/README.md` para el gap de
+  RLS de `citas.appointment_waitlist` que este mismo cambio cierra con
+  migración (`020_appointment_waitlist_sistema_lectura.sql`).
+
+Ninguna migración SQL nueva para el mecanismo de broadcast en sí: la tabla, la
+RPC de rate-limit y el outbox ya existían desde la Fase 1 de este vertical — el
+gap era puramente la ausencia del mecanismo de broadcast en la capa de
+dominio/HTTP (la migración 020, arriba, es de f2-citas-lista-de-espera, para el
+gap de RLS de lectura bajo sesión de sistema). Fuera de alcance de esta fase:
 la UI del panel (`apps/web`) para disparar este broadcast con un botón — hoy solo
 existe el mecanismo real (dominio + endpoint HTTP), sin superficie visual todavía.
 
