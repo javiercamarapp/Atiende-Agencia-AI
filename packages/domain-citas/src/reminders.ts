@@ -46,6 +46,16 @@ export interface ConfirmacionCitaSummary {
   sentEmail: number;
   skippedNoPhone: number;
   skippedNoWhatsappConfig: boolean;
+  /** Auditoría a3 (hallazgo confirmado #7) — ids de citas cuyo procesamiento
+   * lanzó un error REAL (no capturado por los best-effort internos de WhatsApp/
+   * correo) dentro de esta corrida. Cada iteración corre bajo su propio
+   * `repo.runWithRowSavepoint` (aislamiento por fila, mismo mecanismo que
+   * `syncPendingAppointmentsMultiProvider`, ver `repository.ts::runWithRowSavepoint`)
+   * — una cita "venenosa" ya NO revierte los recordatorios de las demás citas de
+   * la MISMA organización que este loop ya había encolado con éxito antes de
+   * llegar a ella. El caller (`apps/api/.../citas/reminders.ts`) refleja esto en
+   * `failures[]`/`CronPartialFailureError`, nunca en silencio. */
+  failedAppointmentIds: string[];
 }
 
 /**
@@ -75,7 +85,7 @@ export interface ConfirmacionCitaSummary {
  * simplemente no le llega al cliente por WhatsApp hasta que exista esa plantilla.
  */
 export async function runConfirmacionCitaCore(repo: CitasRepository, organizationId: string, now: Date = new Date()): Promise<ConfirmacionCitaSummary> {
-  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false };
+  const summary: ConfirmacionCitaSummary = { organizationId, processed: 0, sent: 0, sentEmail: 0, skippedNoPhone: 0, skippedNoWhatsappConfig: false, failedAppointmentIds: [] };
 
   const windowStart = new Date(now.getTime() + REMINDER_HORIZON_MS - REMINDER_WINDOW_TOLERANCE_MS);
   const windowEnd = new Date(now.getTime() + REMINDER_HORIZON_MS + REMINDER_WINDOW_TOLERANCE_MS);
@@ -94,52 +104,67 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
   const timeZoneByProvider = new Map<string, string>();
 
   for (const apt of pending) {
-    let remindedSomehow = false;
+    // Auditoría a3 (hallazgo confirmado #7) — TODO el cuerpo de esta iteración
+    // (incluida la rama de WhatsApp, que antes no tenía ningún try/catch) corre
+    // bajo su propio SAVEPOINT: un error REAL de Postgres en esta cita (deadlock,
+    // timeout, o cualquier best-effort interno que en el futuro deje de tragar su
+    // propio error) queda aislado — `ROLLBACK TO SAVEPOINT` deja la transacción
+    // de la organización utilizable para la SIGUIENTE cita del loop, en vez de
+    // abortarla completa (25P02) y perder en silencio los recordatorios ya
+    // encolados de las citas anteriores de esta misma corrida.
+    try {
+      await repo.runWithRowSavepoint(async () => {
+        let remindedSomehow = false;
 
-    if (phoneNumberId) {
-      if (!apt.customerPhone) {
-        summary.skippedNoPhone += 1;
-      } else {
-        let timeZone = timeZoneByProvider.get(apt.providerId);
-        if (!timeZone) {
-          const provider = await repo.findProvider(organizationId, apt.providerId);
-          timeZone = await repo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
-          timeZoneByProvider.set(apt.providerId, timeZone);
+        if (phoneNumberId) {
+          if (!apt.customerPhone) {
+            summary.skippedNoPhone += 1;
+          } else {
+            let timeZone = timeZoneByProvider.get(apt.providerId);
+            if (!timeZone) {
+              const provider = await repo.findProvider(organizationId, apt.providerId);
+              timeZone = await repo.findPropertyTimezone(provider?.propertyId ?? null, organizationId);
+              timeZoneByProvider.set(apt.providerId, timeZone);
+            }
+
+            const time = new Intl.DateTimeFormat("es-MX", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(apt.startsAt));
+            const greeting = apt.customerName ? `Hola ${apt.customerName}, ` : "Hola, ";
+
+            await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
+              to: apt.customerPhone,
+              phone_number_id: phoneNumberId,
+              body: `${greeting}le recordamos su cita mañana a las ${time}. ¿Puede confirmar?`,
+              buttons: ["Confirmar", "Cancelar", "Reagendar"],
+            });
+            summary.sent += 1;
+            remindedSomehow = true;
+          }
         }
 
-        const time = new Intl.DateTimeFormat("es-MX", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(apt.startsAt));
-        const greeting = apt.customerName ? `Hola ${apt.customerName}, ` : "Hola, ";
+        // Fase 6 §3 — best-effort real (nunca lanza): sin correo en archivo del
+        // cliente simplemente no se encola nada (ver enqueueAppointmentEmailCore),
+        // nunca cuenta como error.
+        const emailResult = await tryEnqueueAppointmentEmail(repo, organizationId, "appointment.reminder_24h", apt.appointmentId);
+        if (emailResult?.enqueued) {
+          summary.sentEmail += 1;
+          remindedSomehow = true;
+        }
 
-        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "appointment.reminder_24h", `reminder-24h:${apt.appointmentId}`, {
-          to: apt.customerPhone,
-          phone_number_id: phoneNumberId,
-          body: `${greeting}le recordamos su cita mañana a las ${time}. ¿Puede confirmar?`,
-          buttons: ["Confirmar", "Cancelar", "Reagendar"],
-        });
-        summary.sent += 1;
-        remindedSomehow = true;
-      }
-    }
-
-    // Fase 6 §3 — best-effort real (nunca lanza): sin correo en archivo del
-    // cliente simplemente no se encola nada (ver enqueueAppointmentEmailCore),
-    // nunca cuenta como error.
-    const emailResult = await tryEnqueueAppointmentEmail(repo, organizationId, "appointment.reminder_24h", apt.appointmentId);
-    if (emailResult?.enqueued) {
-      summary.sentEmail += 1;
-      remindedSomehow = true;
-    }
-
-    // Marca reminder24hSentAt SOLO después de encolar exitosamente en AL MENOS un
-    // canal real — evita reenvío en la siguiente corrida del cron dentro de la
-    // misma ventana de tolerancia. Si ningún canal aplicó (sin WhatsApp
-    // configurado Y sin correo en archivo), se deja sin marcar a propósito: el
-    // dedupe_key de messaging_outbox ya evita duplicados si algo sí llegó a
-    // encolarse, y una cita sin ningún dato de contacto real simplemente sigue
-    // "pendiente" hasta que el cliente deje un correo o el negocio conecte
-    // WhatsApp — no es un estado silencioso, el cron la vuelve a intentar.
-    if (remindedSomehow) {
-      await repo.markReminderSent(apt.appointmentId, now.toISOString());
+        // Marca reminder24hSentAt SOLO después de encolar exitosamente en AL MENOS un
+        // canal real — evita reenvío en la siguiente corrida del cron dentro de la
+        // misma ventana de tolerancia. Si ningún canal aplicó (sin WhatsApp
+        // configurado Y sin correo en archivo), se deja sin marcar a propósito: el
+        // dedupe_key de messaging_outbox ya evita duplicados si algo sí llegó a
+        // encolarse, y una cita sin ningún dato de contacto real simplemente sigue
+        // "pendiente" hasta que el cliente deje un correo o el negocio conecte
+        // WhatsApp — no es un estado silencioso, el cron la vuelve a intentar.
+        if (remindedSomehow) {
+          await repo.markReminderSent(apt.appointmentId, now.toISOString());
+        }
+      });
+    } catch (err) {
+      console.error(`reminders: la cita ${apt.appointmentId} falló con un error real de Postgres, aislada por SAVEPOINT -- se sigue con las demás citas de la organización:`, err);
+      summary.failedAppointmentIds.push(apt.appointmentId);
     }
   }
 
@@ -205,10 +230,29 @@ export async function runOptimizadorCore(repo: CitasRepository, organizationId: 
 
 /** Envoltura best-effort — la cita YA se canceló/reagendó de verdad; que la lista de
  * espera falle o no tenga a nadie que matchee NUNCA debe convertirse en un error
- * para el cliente que está cancelando/reagendando. */
+ * para el cliente que está cancelando/reagendando.
+ *
+ * Arreglo de fondo (auditoría a3, hallazgo confirmado #1) — `runOptimizadorCore`
+ * corre `repo.claimWaitlistNotificationSlot` (`citas.claim_waitlist_notification_slot`),
+ * cuyo guard SQL rechaza con 42501 CUALQUIER sesión con `auth.uid()` no nulo ("solo
+ * para la sesión de sistema"; sin la migración que le da GRANT a `authenticated`,
+ * `authenticated` ni siquiera tiene EXECUTE — mismo código 42501 de todos modos).
+ * ANTES de este fix, ese catch tragaba el error SIN ningún SAVEPOINT: en sesión de
+ * STAFF (`auth.uid()` real) dejaba la transacción de negocio COMPLETA abortada
+ * (25P02) — la cancelación/reagendo YA exitoso se revertía en silencio con un
+ * `commit;` que Postgres responde como "ROLLBACK" (ver
+ * `packages/db/src/managed-postgres-engine.ts`). `repo.runWithRowSavepoint` (mismo
+ * helper que ya usa `syncPendingAppointmentsMultiProvider`, vía
+ * `runWithSavepointFallback` de `@atiende/db`) hace `SAVEPOINT` antes del intento y
+ * `ROLLBACK TO SAVEPOINT` en el catch — la transacción del caller queda utilizable
+ * de nuevo pase lo que pase aquí dentro. El SAVEPOINT por sí solo NO logra que el
+ * aviso a la lista de espera salga de verdad en sesión de staff (el guard sigue
+ * negando el claim ahí) — eso lo resuelve el caller moviendo esta llamada a una
+ * sesión de SISTEMA post-commit, ver
+ * `apps/api/.../citas/appointments-lifecycle.ts::runCitasWaitlistNotifyAfterCancel`. */
 export async function tryNotifyWaitlistOfFreedSlot(repo: CitasRepository, organizationId: string, timeZone: string, event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string }): Promise<OptimizadorResult | null> {
   try {
-    return await runOptimizadorCore(repo, organizationId, timeZone, event);
+    return await repo.runWithRowSavepoint(() => runOptimizadorCore(repo, organizationId, timeZone, event));
   } catch (err) {
     console.error("reminders: runOptimizadorCore best-effort call failed:", err);
     return null;
