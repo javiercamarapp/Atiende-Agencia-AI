@@ -406,3 +406,69 @@ export interface PromotionPatch {
   readonly maxUses?: number | null;
   readonly isActive?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// FASE 3 (producto) — bitácora de auditoría del staff, ver
+// migrations/019_restaurantes_audit_log.sql. Mismo shape exacto que
+// domain-rentas/src/types.ts (RegistrarAuditoriaInput/RentasAuditLog*) — copiado
+// a propósito para que ambas verticales se lean igual, ver comentario de cabecera
+// de esa migración para las 2 correcciones que nacen resueltas aquí (orden total
+// desde el día uno, validación de rol). 'configuracion' está reservado en el
+// catálogo aunque hoy ningún caller real lo usa (restaurantes todavía no tiene
+// ninguna ruta que edite WhatsApp/voz/horarios/zonas de entrega — ver comentario
+// de cabecera de esa migración).
+// ---------------------------------------------------------------------------
+export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion";
+
+export interface RegistrarAuditoriaInput {
+  readonly organizationId: string;
+  /** Usado SOLO por `InMemoryRestaurantesRepository` (sin `auth.uid()`) para
+   *  poblar `actorUserId` en sus fixtures de prueba. `PostgresRestaurantesRepository`
+   *  lo IGNORA por completo al armar la llamada SQL -- `restaurantes.record_audit_log`
+   *  (security definer) captura el actor real vía `auth.uid()` dentro de la
+   *  función, nunca confía en un parámetro de este lado. */
+  readonly actorUserId: string;
+  readonly action: string;
+  readonly entityType: RestaurantesAuditEntityType;
+  readonly entityId: string | null;
+  readonly campo?: string | null;
+  readonly antes?: string | null;
+  readonly despues?: string | null;
+}
+
+export interface RestaurantesAuditLogRow {
+  readonly id: string;
+  readonly actorUserId: string;
+  readonly action: string;
+  readonly entityType: string;
+  readonly entityId: string | null;
+  readonly campo: string | null;
+  readonly antes: string | null;
+  readonly despues: string | null;
+  readonly createdAtMs: number;
+}
+
+export interface RestaurantesAuditLogFiltro {
+  readonly entityType?: RestaurantesAuditEntityType | null;
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly desde?: string | null;
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly hasta?: string | null;
+}
+
+export interface RestaurantesAuditLogPaginacion {
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+export interface RestaurantesAuditLogPagina {
+  /** `false` cuando `restaurantes.audit_log`/`restaurantes.record_audit_log`
+   *  todavía no existen en esta base (SQLSTATE 42883/42P01/42703, ver
+   *  postgres-repository.ts) -- la pantalla debe mostrar "no disponible aún",
+   *  nunca confundirlo con una bitácora real pero vacía
+   *  (`disponible: true, items: []`). */
+  readonly disponible: boolean;
+  readonly items: readonly RestaurantesAuditLogRow[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}

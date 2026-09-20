@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createAppointment, rescheduleAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
-import { MAX_LISTA_ESPERA_LIMIT, notifyWaitlistAfterReschedule, runConfirmacionCitaCore, runListaEsperaCore } from "../src/reminders.ts";
+import { MAX_LISTA_ESPERA_LIMIT, notifyWaitlistAfterReschedule, previewListaEspera, runConfirmacionCitaCore, runListaEsperaCore } from "../src/reminders.ts";
 import { buildCitasFixture } from "./fixtures.ts";
 
 describe("runConfirmacionCitaCore", () => {
@@ -125,6 +125,54 @@ describe("notifyWaitlistAfterReschedule", () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+describe("previewListaEspera", () => {
+  // Corrección bloqueante de la ronda 2 de revisión del PR #180 — antes de
+  // este fix, esta función solo miraba `loadLiveWaitlistCandidates`/
+  // `resolveActiveWhatsAppPhoneNumberId` (variantes de STAFF, funcionan sin
+  // ninguna migración) y devolvía un conteo real aunque el post-commit en
+  // sesión de sistema no pudiera hacer nada con la base sin migrar. Ahora
+  // `areSystemWaitlistFunctionsAvailable()` (el probe de catálogo) se
+  // consulta PRIMERO.
+  it("con las funciones de sistema NO disponibles (base sin migrar), responde available:false SIN llegar a contar candidatos", async () => {
+    const fixture = buildCitasFixture();
+    fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9990000001",
+      customerName: "Candidato real",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    });
+    fixture.repo.setSystemWaitlistFunctionsAvailable(false);
+
+    const preview = await previewListaEspera(fixture.repo, fixture.organizationId);
+
+    expect(preview).toEqual({ available: false, candidatesConsidered: 0, skippedNoWhatsappConfig: false });
+  });
+
+  it("con las funciones de sistema disponibles (default, base ya migrada), sigue respondiendo el conteo real de candidatos", async () => {
+    const fixture = buildCitasFixture();
+    fixture.repo.seedWaitlistEntry({
+      organizationId: fixture.organizationId,
+      customerPhone: "9990000001",
+      customerName: "Candidato real",
+      providerId: null,
+      serviceId: null,
+      preferredDateFrom: null,
+      preferredDateTo: null,
+      preferredTimeWindow: "any",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    });
+
+    const preview = await previewListaEspera(fixture.repo, fixture.organizationId);
+
+    expect(preview).toEqual({ available: true, candidatesConsidered: 1, skippedNoWhatsappConfig: false });
   });
 });
 

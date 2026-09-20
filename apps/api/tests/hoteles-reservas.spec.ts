@@ -4,9 +4,13 @@
 // las guardas reales de la tabla de transiciones, el filtrado de roles finos por
 // transición, cancelación con liberación de inventario, y el job de no-show con la
 // penalización fiscal correcta (IVA sí, ISH no) posteada al folio primario.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildHotelesTestContext, authedJson } from "./hoteles-fixtures.ts";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // `authedJson` (compartido con el resto de los tests de hoteles) siempre produce
 // method: "POST" cuando hay body -- la ruta de transición usa PATCH real (mismo verbo
@@ -293,6 +297,44 @@ describe("POST /hoteles/:propertyId/reservas/procesar-no-show", () => {
     );
     const res = await app.request(`/hoteles/${ctx.propertyId}/reservas/procesar-no-show`, authedJson(ctx.staff.owner.token, { asOfDate: "2025-01-01" }));
     expect(((await res.json()) as { procesadas: number }).procesadas).toBe(0);
+  });
+
+  // REQ-r6/f2-current-date-fecha-negocio: sin `asOfDate` en el body, el default debe
+  // ser el día de NEGOCIO (`hoyFechaNegocio()`), nunca `current_date` de la sesión de
+  // Postgres (UTC en Vercel). A las 19:30 CDMX el día UTC YA es mañana -- si el
+  // default usara ese día UTC, una reserva cuyo check-in es MAÑANA (día de negocio)
+  // se reclamaría como no-show un día antes de tiempo.
+  it("sin asOfDate, a las 19:30 CDMX, NO reclama una reserva cuyo check-in es MAÑANA (día de negocio), aunque el día UTC ya sea mañana", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const crear = await app.request(
+      `/hoteles/${ctx.propertyId}/reservas`,
+      authedJson(ctx.staff.owner.token, { roomTypeId: ctx.roomTypeId, checkInDate: "2025-01-10", checkOutDate: "2025-01-11" }, { "idempotency-key": "k-noshow-4" }),
+    );
+    // Hallazgo no-bloqueante de revisión (PR #182): sin afirmar el status aquí, una
+    // creación fallida (0 reservas sembradas) pasaría inadvertida -- el `procesadas:
+    // 0` de abajo se vería igual tanto si el fix funciona como si la reserva nunca
+    // se creó.
+    expect(crear.status).toBe(201);
+
+    // 2025-01-10T01:30:00Z = 2025-01-09T19:30:00 en America/Mexico_City (UTC-6 fijo)
+    // -- el día UTC ya es "2025-01-10" (el mismo día del check-in), pero en CDMX
+    // todavía es "2025-01-09".
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-10T01:30:00.000Z"));
+
+    const res = await app.request(`/hoteles/${ctx.propertyId}/reservas/procesar-no-show`, authedJson(ctx.staff.owner.token, {}));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { procesadas: number };
+    expect(body.procesadas).toBe(0);
+
+    // Control positivo (mismo reloj falso, misma reserva): un `asOfDate` explícito
+    // que SÍ coincide con el check-in confirma que la ruta puede reclamar cuando
+    // corresponde -- sin este control, un `procesadas: 0` que en realidad viniera de
+    // una query rota (no de la fecha) también pasaría el test de arriba.
+    const control = await app.request(`/hoteles/${ctx.propertyId}/reservas/procesar-no-show`, authedJson(ctx.staff.owner.token, { asOfDate: "2025-01-10" }));
+    expect(control.status).toBe(200);
+    expect(((await control.json()) as { procesadas: number }).procesadas).toBe(1);
   });
 });
 

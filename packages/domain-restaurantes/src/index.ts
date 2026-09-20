@@ -33,8 +33,14 @@ export type {
   PromotionPatch,
   PromotionType,
   QuotedOrderLine,
+  RegistrarAuditoriaInput,
   RequestedComplement,
   RequestedOrderItemInput,
+  RestaurantesAuditEntityType,
+  RestaurantesAuditLogFiltro,
+  RestaurantesAuditLogPagina,
+  RestaurantesAuditLogPaginacion,
+  RestaurantesAuditLogRow,
   TortillaChoice,
 } from "./types.ts";
 

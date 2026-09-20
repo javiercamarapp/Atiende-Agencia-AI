@@ -6,7 +6,7 @@
 // domain-citas). El camino de red REAL se prueba aparte en tests/sync-net-real.spec.ts
 // con IcalFeedHttpSimulator + RealIcalFeedPort.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryRentasCalendarStore } from "../src/calendar-store.ts";
 import { InMemoryRentasTenancyEngine } from "../src/in-memory-tenancy-engine.ts";
 import { crearBloqueo, crearReservaConfirmada } from "../src/aplicacion/reservas.ts";
@@ -14,6 +14,7 @@ import type { EjecutorTransaccional } from "../src/ejecutor.ts";
 import type { UnidadRecord } from "../src/types.ts";
 import { FakeIcalFeedPort } from "../src/sync/calendar-sync-port.ts";
 import { InMemoryRentasCalendarSyncRepository } from "../src/sync/in-memory-repository.ts";
+import type { RentasCalendarSyncRepository } from "../src/sync/repository.ts";
 import { ejecutarCicloImportacion, exportarFeedParaUnidad, type ContextoSincronizacion } from "../src/sync/motor.ts";
 
 const ZONA = "America/Mexico_City";
@@ -138,6 +139,310 @@ describe("ejecutarCicloImportacion", () => {
     expect(resumen.eventosDescartadosPorError[0]!.uid).toBe("malo@airbnb.com");
     expect(resumen.eventosAplicados).toBe(1); // el evento válido sí se aplicó
     void unidad;
+  });
+
+  // Hallazgo de auditoría (a3, MEDIA, corregido tras revisión de PR #175) — a
+  // diferencia de la primera versión de este fix (que lanzaba desde el PARSER y
+  // tumbaba el FEED entero, ver el comentario de cabecera de
+  // `validarComponentesFecha` en ../src/ical/parser.ts), un DTSTART/DTEND con año
+  // "0000" ahora se descarta SOLO ese evento -- mismo criterio y mismo mecanismo que
+  // el rango inválido del test de arriba (validado en JS ANTES de cualquier SQL, ver
+  // `motor.ts::anioFechaLocalValido`, junto a `esRangoValido`).
+  it("un evento individual con año de calendario inválido (DTSTART año '0000') se descarta sin abortar el resto del ciclo", async () => {
+    const { port, ejecutarCiclo } = await crearFixture();
+    const icsConAnioInvalido = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      "UID:anio-invalido@airbnb.com",
+      "DTSTAMP:20260101T000000Z",
+      "DTSTART;VALUE=DATE:00000101",
+      "DTEND;VALUE=DATE:00000105",
+      "END:VEVENT",
+      "BEGIN:VEVENT",
+      "UID:bueno-anio@airbnb.com",
+      "DTSTAMP:20260101T000000Z",
+      "DTSTART;VALUE=DATE:20261201",
+      "DTEND;VALUE=DATE:20261203",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+    port.definirEscenario(URL_AIRBNB, { tipo: "ics", contenidoIcs: icsConAnioInvalido });
+
+    const resumen = await ejecutarCiclo();
+    expect(resumen.resultado).toBe("exito_con_eventos"); // el feed se parseó completo, no "fallo_parseo"
+    expect(resumen.eventosDescartadosPorError).toHaveLength(1);
+    expect(resumen.eventosDescartadosPorError[0]!.uid).toBe("anio-invalido@airbnb.com");
+    expect(resumen.eventosAplicados).toBe(1); // el evento con año válido sí se aplicó
+  });
+
+  // Hallazgo de auditoría (a3, ALTA) — a diferencia del test de arriba (rango
+  // inválido, descartado en JS ANTES de cualquier SQL), este reproduce un error que
+  // ocurre DENTRO de una llamada real al repositorio de sync (el camino que, contra
+  // Postgres real, dejaba la transacción del feed ABORTADA -- ver el comentario de
+  // cabecera de `procesarEventoDelCicloAislado`, motor.ts). El repositorio en memoria
+  // nunca aborta una transacción por sí solo, así que este test verifica el mecanismo
+  // DIRECTAMENTE: que `ctx.db.exec` recibe la secuencia SAVEPOINT/ROLLBACK TO
+  // SAVEPOINT/RELEASE SAVEPOINT alrededor del evento venenoso, y que el evento sano
+  // que sigue en el MISMO feed sí se aplica -- sin este fix, el error simplemente
+  // escapaba del try/catch sin ningún exec() de por medio.
+  it("SAVEPOINT por evento: un error real del repositorio de sync en un evento no impide que el siguiente evento del mismo feed se aplique", async () => {
+    const { db, port, syncRepo, propertyId, unidad, canalAirbnb } = await crearFixture();
+    const feed = await syncRepo.findFeed(propertyId, unidad.id, canalAirbnb.id);
+
+    const execCalls: string[] = [];
+    const dbEspiado = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop === "exec") {
+          return async (sql: string) => {
+            execCalls.push(sql);
+            return target.exec(sql);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const UID_VENENOSO = "evt-venenoso@airbnb.com";
+    let vecesLlamado = 0;
+    const syncRepoEnvenenado = new Proxy(syncRepo, {
+      get(target, prop, receiver) {
+        if (prop === "upsertEventoImportado") {
+          return async (unidadId: string, canalId: string, entrada: Parameters<typeof syncRepo.upsertEventoImportado>[2]) => {
+            if (entrada.uid === UID_VENENOSO) {
+              vecesLlamado += 1;
+              throw new Error("error real simulado del repositorio (ej. 23502/22003 contra Postgres real)");
+            }
+            return target.upsertEventoImportado(unidadId, canalId, entrada);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const icsDosEventos = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      `UID:${UID_VENENOSO}`,
+      "DTSTAMP:20260101T000000Z",
+      "DTSTART;VALUE=DATE:20260701",
+      "DTEND;VALUE=DATE:20260703",
+      "END:VEVENT",
+      "BEGIN:VEVENT",
+      "UID:evt-sano@airbnb.com",
+      "DTSTAMP:20260101T000000Z",
+      "DTSTART;VALUE=DATE:20260801",
+      "DTEND;VALUE=DATE:20260803",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+    port.definirEscenario(URL_AIRBNB, { tipo: "ics", contenidoIcs: icsDosEventos });
+
+    const resumen = await ejecutarCicloImportacion({
+      db: dbEspiado,
+      syncRepo: syncRepoEnvenenado,
+      port,
+      feed: feed!,
+      zonaHorariaPropiedad: ZONA,
+    });
+
+    expect(vecesLlamado).toBe(1); // el repositorio SÍ se llamó para el uid venenoso
+    expect(resumen.eventosDescartadosPorError).toHaveLength(1);
+    expect(resumen.eventosDescartadosPorError[0]!.uid).toBe(UID_VENENOSO);
+    expect(resumen.eventosAplicados).toBe(1); // el evento sano SÍ se aplicó pese al error del anterior
+
+    // La secuencia real que Postgres exige para recuperar una transacción abortada:
+    // SAVEPOINT antes del intento, y ante el error, ROLLBACK TO SAVEPOINT + RELEASE
+    // SAVEPOINT (en ese orden) ANTES de seguir con el siguiente evento. Se filtra por
+    // el nombre propio del SAVEPOINT de `procesarEventoDelCicloAislado`
+    // (`sp_evento_ciclo_`) -- `crearReservaConfirmada` (llamado dentro del evento SANO
+    // también) usa sus PROPIOS SAVEPOINT internos (`sp_crear_reserva`/
+    // `intento_insercion`) con su propio RELEASE, que no deben confundirse con los de
+    // este aislamiento.
+    const propios = execCalls.filter((c) => c.includes("sp_evento_ciclo_"));
+    const savepointIdx = propios.findIndex((c) => c.startsWith("SAVEPOINT "));
+    const rollbackIdx = propios.findIndex((c) => c.startsWith("ROLLBACK TO SAVEPOINT "));
+    const releaseIdx = propios.findIndex((c) => c.startsWith("RELEASE SAVEPOINT "));
+    expect(savepointIdx).toBeGreaterThanOrEqual(0);
+    expect(rollbackIdx).toBeGreaterThan(savepointIdx);
+    expect(releaseIdx).toBeGreaterThan(rollbackIdx);
+  });
+
+  // Hallazgo de revisión de PR #175 (punto 7 del checklist) — el test de arriba
+  // ("SAVEPOINT por evento...") solo prueba el ORDEN de tres strings sobre un Proxy en
+  // memoria: `InMemoryRentasTenancyEngine` trata SAVEPOINT/ROLLBACK TO
+  // SAVEPOINT/RELEASE SAVEPOINT como no-op (ver in-memory-tenancy-engine.ts) y la
+  // sesión NUNCA queda realmente abortada, así que ese test pasa CON o SIN el fix.
+  // Este test SÍ reproduce el modo de falla real: un doble `AbortAwareFakeSession`
+  // (mismo patrón que reserva-email-notifications-savepoint.spec.ts) sobre `ctx.db` Y
+  // `ctx.syncRepo` -- al lanzar `upsertEventoImportado` para el UID venenoso marca
+  // `aborted=true`, y desde ese instante CUALQUIER `query`/`exec` de `ctx.db` o
+  // cualquier llamada a `ctx.syncRepo` lanza `25P02` ("current transaction is
+  // aborted"), salvo `ROLLBACK TO SAVEPOINT` de un savepoint que de verdad se haya
+  // establecido antes (que limpia `aborted`) -- igual que Postgres real, nunca "una
+  // sesión falsa plana" que ignore el estado abortado.
+  describe("SAVEPOINT por evento — AbortAwareFakeSession (reproduce el 25P02 real de Postgres)", () => {
+    function pgErrorReal(mensaje: string, code: string): Error & { code: string } {
+      const err = new Error(mensaje) as Error & { code: string };
+      err.code = code;
+      return err;
+    }
+    const pg23502 = () => pgErrorReal('null value in column "organization_id" of relation "evento_canal_importado" violates not-null constraint', "23502");
+    const pg25P02 = () => pgErrorReal("current transaction is aborted, commands ignored until end of transaction block", "25P02");
+
+    /** Envuelve un `db`/`syncRepo` REALES (el motor transaccional en memoria + el
+     * repositorio de sync en memoria) en un doble que comparte un estado
+     * `{ aborted }` -- a diferencia del Proxy del test de arriba, que solo REGISTRA
+     * llamadas, este además las INTERCEPTA: mientras `aborted` sea `true`, cualquier
+     * `db.query`/`db.exec` (salvo `ROLLBACK TO SAVEPOINT` de un savepoint real) o
+     * cualquier método de `syncRepo` lanza `25P02` en vez de delegar al motor/
+     * repositorio real -- exactamente el comportamiento de una conexión Postgres
+     * real con la transacción abortada, que `InMemoryRentasTenancyEngine` (no-op en
+     * SAVEPOINT/ROLLBACK TO/RELEASE) nunca modela por sí solo. */
+    function crearDobleAbortAware(dbReal: EjecutorTransaccional, syncRepoReal: RentasCalendarSyncRepository, uidVenenoso: string) {
+      const estado = { aborted: false };
+      const savepointsEstablecidos = new Set<string>();
+      const execCalls: string[] = [];
+
+      const db: EjecutorTransaccional = new Proxy(dbReal, {
+        get(target, prop, receiver) {
+          if (prop === "exec") {
+            return async (sql: string) => {
+              execCalls.push(sql);
+              const n = sql.trim().toLowerCase();
+              if (n.startsWith("rollback to savepoint")) {
+                const nombre = sql.trim().split(/\s+/).pop()!;
+                if (!savepointsEstablecidos.has(nombre)) {
+                  throw new Error(`AbortAwareFakeSession: no existe el savepoint a revertir (${sql})`);
+                }
+                estado.aborted = false;
+                return target.exec(sql);
+              }
+              if (estado.aborted) throw pg25P02();
+              if (n.startsWith("savepoint")) savepointsEstablecidos.add(sql.trim().split(/\s+/).pop()!);
+              if (n.startsWith("release savepoint")) savepointsEstablecidos.delete(sql.trim().split(/\s+/).pop()!);
+              return target.exec(sql);
+            };
+          }
+          if (prop === "query") {
+            return async (...args: unknown[]) => {
+              if (estado.aborted) throw pg25P02();
+              return (target as unknown as { query: (...a: unknown[]) => unknown }).query(...args);
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+
+      const syncRepo: RentasCalendarSyncRepository = new Proxy(syncRepoReal, {
+        get(target, prop, receiver) {
+          const original = Reflect.get(target, prop, receiver);
+          if (typeof original !== "function") return original;
+          return async (...args: unknown[]) => {
+            if (prop === "upsertEventoImportado" && (args[2] as { uid?: string } | undefined)?.uid === uidVenenoso) {
+              estado.aborted = true;
+              throw pg23502();
+            }
+            if (estado.aborted) throw pg25P02();
+            return (original as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      });
+
+      return { db, syncRepo, estado, execCalls };
+    }
+
+    it("un error real (23502) en upsertEventoImportado deja la sesión ABORTADA (25P02 en cascada), y el SAVEPOINT por evento la recupera para el evento siguiente", async () => {
+      const { syncRepo: syncRepoBase, db: dbReal, port, propertyId, unidad, canalAirbnb } = await crearFixture();
+      const feed = await syncRepoBase.findFeed(propertyId, unidad.id, canalAirbnb.id);
+
+      const UID_VENENOSO = "evt-venenoso-real@airbnb.com";
+      const UID_SANO = "evt-sano-real@airbnb.com";
+      const listUidsActivosInternosSpy = vi.spyOn(syncRepoBase, "listUidsActivosInternos");
+      const persistFeedSyncStateSpy = vi.spyOn(syncRepoBase, "persistFeedSyncState");
+
+      const { db, syncRepo, estado, execCalls } = crearDobleAbortAware(dbReal, syncRepoBase, UID_VENENOSO);
+
+      const icsDosEventos = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "BEGIN:VEVENT",
+        `UID:${UID_VENENOSO}`,
+        "DTSTAMP:20260101T000000Z",
+        "DTSTART;VALUE=DATE:20270901",
+        "DTEND;VALUE=DATE:20270903",
+        "END:VEVENT",
+        "BEGIN:VEVENT",
+        `UID:${UID_SANO}`,
+        "DTSTAMP:20260101T000000Z",
+        "DTSTART;VALUE=DATE:20271001",
+        "DTEND;VALUE=DATE:20271003",
+        "END:VEVENT",
+        "END:VCALENDAR",
+      ].join("\r\n");
+      port.definirEscenario(URL_AIRBNB, { tipo: "ics", contenidoIcs: icsDosEventos });
+
+      const ctx: ContextoSincronizacion = { db, syncRepo, port, feed: feed!, zonaHorariaPropiedad: ZONA };
+
+      // El propio ciclo NUNCA debe lanzar -- sin el SAVEPOINT por evento, la sesión
+      // seguiría abortada para el evento sano y para `listUidsActivosInternos` de
+      // más abajo (25P02 en cascada), y ESE throw escaparía sin capturar de
+      // `ejecutarCicloImportacion` por completo.
+      const resumen = await ejecutarCicloImportacion(ctx);
+
+      expect(resumen.resultado).toBe("exito_con_eventos");
+      expect(resumen.eventosDescartadosPorError).toHaveLength(1);
+      expect(resumen.eventosDescartadosPorError[0]!.uid).toBe(UID_VENENOSO);
+      expect(resumen.eventosAplicados).toBe(1); // el evento sano SÍ se aplicó pese al 23502 del anterior
+
+      // La sesión terminó SANA (recuperada) -- nunca abortada al final del ciclo.
+      expect(estado.aborted).toBe(false);
+
+      // `listUidsActivosInternos`/`persistFeedSyncState` (reconciliación completa,
+      // al final del ciclo) SÍ corrieron -- sin la recuperación, habrían lanzado
+      // 25P02 y el ciclo entero habría reventado antes de llegar aquí.
+      expect(listUidsActivosInternosSpy).toHaveBeenCalledTimes(1);
+      expect(persistFeedSyncStateSpy).toHaveBeenCalledTimes(1);
+
+      // Secuencia real de recuperación del evento venenoso, y que el SAVEPOINT del
+      // evento SANO ocurre DESPUÉS de que el venenoso ya se haya recuperado por
+      // completo (RELEASE SAVEPOINT) -- nunca solapados.
+      const propios = execCalls.filter((c) => c.includes("sp_evento_ciclo_"));
+      const iSavepoint1 = propios.findIndex((c) => c.startsWith("SAVEPOINT "));
+      const iRollback1 = propios.findIndex((c) => c.startsWith("ROLLBACK TO SAVEPOINT "));
+      const iRelease1 = propios.findIndex((c) => c.startsWith("RELEASE SAVEPOINT "));
+      const iSavepoint2 = propios.findIndex((c, idx) => idx > iRelease1 && c.startsWith("SAVEPOINT "));
+      expect(iSavepoint1).toBeGreaterThanOrEqual(0);
+      expect(iRollback1).toBeGreaterThan(iSavepoint1);
+      expect(iRelease1).toBeGreaterThan(iRollback1);
+      expect(iSavepoint2).toBeGreaterThan(iRelease1);
+      // El SAVEPOINT del evento sano tiene un nombre PROPIO (contador de módulo),
+      // nunca reutiliza el del venenoso.
+      expect(propios[iSavepoint2]).not.toBe(propios[iSavepoint1]);
+      // Nunca hay un segundo ROLLBACK TO SAVEPOINT para el evento sano (se aplicó
+      // sin error, así que solo RELEASE).
+      expect(propios.filter((c) => c.startsWith("ROLLBACK TO SAVEPOINT "))).toHaveLength(1);
+    });
+
+    it("verificación directa del doble: mientras la sesión está abortada, TODA llamada (db.query, db.exec fuera de ROLLBACK TO, y cualquier método de syncRepo) lanza 25P02", async () => {
+      const { syncRepo: syncRepoBase, db: dbReal } = await crearFixture();
+      const { db, syncRepo, estado } = crearDobleAbortAware(dbReal, syncRepoBase, "uid-venenoso-unitario");
+
+      await db.exec("SAVEPOINT sp_test_directo");
+      estado.aborted = true; // Simula el 23502 real que ya dejó la sesión abortada.
+
+      await expect(db.query("SELECT 1")).rejects.toMatchObject({ code: "25P02" });
+      await expect(db.exec("SAVEPOINT sp_otro")).rejects.toMatchObject({ code: "25P02" });
+      await expect(syncRepo.listUidsActivosInternos("u", "c")).rejects.toMatchObject({ code: "25P02" });
+      await expect(syncRepo.findVersionPrevia("u", "c", "uid")).rejects.toMatchObject({ code: "25P02" });
+
+      // ROLLBACK TO SAVEPOINT de un savepoint que sí se estableció antes SÍ recupera
+      // la sesión -- después de eso, las llamadas vuelven a delegar con normalidad.
+      await db.exec("ROLLBACK TO SAVEPOINT sp_test_directo");
+      expect(estado.aborted).toBe(false);
+      await expect(syncRepo.listUidsActivosInternos("u", "c")).resolves.toEqual([]);
+    });
   });
 
   it("cuarentena: tras 3 fallos de fetch consecutivos, el feed queda marcado en cuarentena", async () => {

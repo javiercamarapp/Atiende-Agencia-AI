@@ -371,3 +371,219 @@ begin;
 set local role anon;
 select * from core.get_daily_ops_summary_for_superadmin('00000000-0000-0000-0000-0000000000f3', '2026-06-22'::date) as should_fail;
 rollback;
+
+-- ═══ Hallazgo endurecido (revisores del 19-sep, rubro B) -- SQLSTATE 42883 NO
+-- es exclusivo de "function does not exist" ═══
+--
+-- Un guard que clasifique CUALQUIER 42883 como "migración pendiente" (el
+-- código de este repo ANTES de este fix, ver `packages/db/src/sql-errors.ts::
+-- isUndefinedFunctionError`) confundiría el escenario 37 de abajo con una
+-- migración sin aplicar -- es un BUG REAL de tipos (comparar `uuid` con
+-- `text` sin cast explícito), NUNCA "falta aplicar una migración". El helper
+-- endurecido exige que el MENSAJE tenga la forma "function ... does not
+-- exist" -- los escenarios 37/38 de abajo, contra Postgres REAL (no un
+-- supuesto), confirman que Postgres reporta un mensaje MUY distinto para
+-- cada caso aunque ambos compartan el mismo SQLSTATE 42883:
+--   37. "operator does not exist: uuid = text"          -- NUNCA migración pendiente
+--   38. "function core.funcion_inexistente...() does not exist" -- SÍ migración pendiente
+-- (mensajes exactos verificados con `initdb`/`pg_ctl` efímero, 19-sep-2026 --
+-- ver también la prueba unitaria que fija este texto en
+-- `packages/db/tests/sql-errors.spec.ts`).
+--
+-- CORRECCIÓN (revisor independiente del PR #179, bloqueante #1): `as
+-- should_fail` le dice a `run-gate.mjs::deriveExpectation` que clasifique el
+-- escenario como kind "error" -- ESE chequeo pasa con CUALQUIER error de
+-- psql (division by zero, error de sintaxis, lo que sea), nunca valida
+-- SQLSTATE ni el texto del mensaje (ver `run-gate.mjs::runScenario`, rama
+-- `expectation.kind === "error"`: solo mira si el `try` lanzó o no). Con la
+-- forma anterior, 37/38 pasaban en CI aunque Postgres cambiara de mensaje o
+-- de SQLSTATE -- no demostraban lo que el comentario de arriba y el cuerpo
+-- del PR afirmaban. Los 2 escenarios de abajo NO usan `should_fail`: cada
+-- uno es su propio `do $$ ... $$` que atrapa la excepción con `exception
+-- when others`, lee `returned_sqlstate`/`message_text` con `get stacked
+-- diagnostics`, y hace `raise exception` (que SÍ tumba el `do` con
+-- ON_ERROR_STOP=1) si el SQLSTATE o la forma del mensaje no coinciden EXACTO
+-- con lo esperado -- así, si Postgres alguna vez reportara este caso de otra
+-- forma, el gate automático (no una lectura humana) lo detectaría. Sin
+-- alias `should_fail`/`deberia_ser_N` ninguno de los dos, así que
+-- `deriveExpectation` los clasifica "success": el escenario PASA solo si el
+-- bloque `do $$ ... $$` completa sin lanzar (es decir, si las 2
+-- validaciones internas de arriba SÍ se cumplieron).
+
+\echo '=== 37. HALLAZGO ENDURECIDO: comparar uuid = text (AMBOS lados con tipo YA conocido, sin margen para coaccion implicita de literal) falla con SQLSTATE 42883, mensaje EXACTO "operator does not exist: uuid = text" -- verificado por el propio gate (no solo por terminar en error), NUNCA debe clasificarse como migracion pendiente ==='
+begin;
+do $$
+declare
+  v_state text;
+  v_msg text;
+begin
+  begin
+    perform '00000000-0000-0000-0000-0000000000f3'::uuid = 'no-es-un-uuid-valido'::text;
+    raise exception 'se esperaba que comparar uuid = text fallara con SQLSTATE 42883, pero la consulta no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42883' then
+      raise exception 'se esperaba SQLSTATE 42883 (undefined_function/operator), se obtuvo % con mensaje: %', v_state, v_msg;
+    end if;
+    if v_msg !~ '^operator does not exist: uuid = text' then
+      raise exception 'se esperaba el mensaje EXACTO "operator does not exist: uuid = text", se obtuvo: %', v_msg;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 38. Contraste: una funcion REALMENTE inexistente falla con el MISMO SQLSTATE 42883 pero mensaje EXACTO "function ... does not exist" -- este SI es el caso de migracion pendiente, verificado por el propio gate ==='
+begin;
+do $$
+declare
+  v_state text;
+  v_msg text;
+begin
+  begin
+    perform * from core.funcion_que_no_existe_para_verificar_el_mensaje_de_42883();
+    raise exception 'se esperaba que llamar una funcion inexistente fallara con SQLSTATE 42883, pero la consulta no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42883' then
+      raise exception 'se esperaba SQLSTATE 42883 (undefined_function), se obtuvo % con mensaje: %', v_state, v_msg;
+    end if;
+    if v_msg !~ '^function\s+\S+\(.*\)\s+does not exist' then
+      raise exception 'se esperaba un mensaje con la forma "function ...(...) does not exist" (la misma que packages/db/src/sql-errors.ts::UNDEFINED_FUNCTION_MESSAGE_RE exige), se obtuvo: %', v_msg;
+    end if;
+  end;
+end $$;
+rollback;
+
+-- ═══ Hallazgo endurecido (revisor independiente del PR #179, bloqueante #2 /
+-- exigencia obligatoria 3 del brief) -- demostrar, contra Postgres REAL, el
+-- SQL REAL de `packages/db/src/resumen-diario-repository.ts` (el que
+-- `ProductionResumenDiarioRepository.listDailyOpsSummariesForSuperadmin`/
+-- `getDailyOpsSummaryForSuperadmin` ejecutan) en sus DOS estados: la base a
+-- medio migrar (la función de nivel superior NO existe todavía) y la base
+-- con la migración aplicada (la función SÍ existe y `fecha::text` SÍ
+-- entrega un `string` `YYYY-MM-DD`, nunca un objeto `Date`) ═══
+--
+-- "A medio migrar" se logra con un `drop function ...;` dentro de la MISMA
+-- transacción del escenario (DDL es transaccional en Postgres -- el
+-- `rollback;` final del bloque lo revierte, nunca persiste, ver el
+-- precedente `scripts/verify-fallback-savepoint/` para el mismo criterio de
+-- "excluir algo a propósito" pero con `run.sh` propio; aquí no hace falta
+-- un `run.sh` aparte porque `drop function` cabe dentro del contrato
+-- genérico begin;/rollback; que `run-gate.mjs` ya soporta, sin tocarlo). El
+-- `perform` de cada escenario 40/41 usa el TEXTO SQL EXACTO (mismas
+-- columnas, mismo cast `fecha::text as fecha`) que
+-- `PostgresResumenDiarioRepository.listDailyOpsSummariesForSuperadmin`/
+-- `getDailyOpsSummaryForSuperadmin` emiten -- solo cambia `$1`/`$2` por
+-- literales (Postgres reporta el mismo error de "función no existe" sin
+-- importar si los argumentos llegan como parámetros o como literales).
+
+\echo '=== 39. HALLAZGO ENDURECIDO (exigencia 3, base APLICADA): el SELECT REAL de listDailyOpsSummariesForSuperadmin (fecha::text as fecha) SI devuelve fecha como texto plano YYYY-MM-DD -- verificado con pg_typeof sobre el MISMO texto SQL, no un regex sobre el codigo fuente ni un fake que ya devuelve string por diseno ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select core.upsert_daily_ops_summary('2026-06-23'::date, '{}'::jsonb, 'resumen del 23 -- prueba de tipo real de la columna fecha', 'determinista', null, null, null);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
+do $$
+declare
+  v_fecha_text text;
+  v_tipo regtype;
+begin
+  select list.fecha, pg_typeof(list.fecha) into v_fecha_text, v_tipo
+  from (
+    select fecha::text as fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
+    from core.list_daily_ops_summaries_for_superadmin('00000000-0000-0000-0000-0000000000f3'::uuid, 30)
+  ) as list
+  where list.fecha = '2026-06-23';
+
+  if v_tipo is distinct from 'text'::regtype then
+    raise exception 'se esperaba que la columna fecha (tras el cast ::text del repositorio real) fuera de tipo Postgres text -- el driver pg real usa el OID que Postgres reporta en RowDescription para decidir su parser (text = string plano; date/oid 1082 = objeto Date de JS), asi que esto prueba que el driver NUNCA veria un Date aqui. Se obtuvo tipo: %', v_tipo;
+  end if;
+  if v_fecha_text !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'se esperaba fecha en formato YYYY-MM-DD, se obtuvo: %', v_fecha_text;
+  end if;
+end $$;
+rollback;
+
+\echo '=== 40. HALLAZGO ENDURECIDO (exigencia 3, base APLICADA): mismo chequeo que el 39 mas arriba pero para getDailyOpsSummaryForSuperadmin ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select core.upsert_daily_ops_summary('2026-06-24'::date, '{}'::jsonb, 'resumen del 24 -- prueba de tipo real de la columna fecha', 'determinista', null, null, null);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
+do $$
+declare
+  v_fecha_text text;
+  v_tipo regtype;
+begin
+  select uno.fecha, pg_typeof(uno.fecha) into v_fecha_text, v_tipo
+  from (
+    select fecha::text as fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
+    from core.get_daily_ops_summary_for_superadmin('00000000-0000-0000-0000-0000000000f3'::uuid, '2026-06-24'::date)
+  ) as uno;
+
+  if v_tipo is distinct from 'text'::regtype then
+    raise exception 'se esperaba que la columna fecha (tras el cast ::text del repositorio real) fuera de tipo Postgres text, se obtuvo: %', v_tipo;
+  end if;
+  if v_fecha_text !~ '^\d{4}-\d{2}-\d{2}$' then
+    raise exception 'se esperaba fecha en formato YYYY-MM-DD, se obtuvo: %', v_fecha_text;
+  end if;
+end $$;
+rollback;
+
+\echo '=== 41. HALLAZGO ENDURECIDO (exigencia 3, base A MEDIO MIGRAR): con core.list_daily_ops_summaries_for_superadmin ELIMINADA dentro de esta MISMA transaccion (drop transaccional, revertido al final), el SELECT REAL de listDailyOpsSummariesForSuperadmin falla con SQLSTATE 42883 y el mensaje incluye el NOMBRE REAL de la funcion -- exactamente lo que isMigrationPendingError(err, "core.list_daily_ops_summaries_for_superadmin") (superadmin-resumen.ts:101) exige para responder disponible:false en vez de 500 ==='
+begin;
+drop function core.list_daily_ops_summaries_for_superadmin(uuid, integer);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
+do $$
+declare
+  v_state text;
+  v_msg text;
+begin
+  begin
+    perform fecha::text as fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
+    from core.list_daily_ops_summaries_for_superadmin('00000000-0000-0000-0000-0000000000f3'::uuid, 30);
+    raise exception 'se esperaba que la funcion eliminada hiciera fallar esta consulta con SQLSTATE 42883, pero no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42883' then
+      raise exception 'se esperaba SQLSTATE 42883, se obtuvo % con mensaje: %', v_state, v_msg;
+    end if;
+    if v_msg !~ '^function\s+\S+\(.*\)\s+does not exist' then
+      raise exception 'se esperaba un mensaje con la forma "function ...(...) does not exist", se obtuvo: %', v_msg;
+    end if;
+    if v_msg !~ 'core\.list_daily_ops_summaries_for_superadmin' then
+      raise exception 'se esperaba que el mensaje incluyera el nombre real de la funcion (core.list_daily_ops_summaries_for_superadmin -- el mismo expectedFunctionName que superadmin-resumen.ts pasa), se obtuvo: %', v_msg;
+    end if;
+  end;
+end $$;
+rollback;
+
+\echo '=== 42. HALLAZGO ENDURECIDO (exigencia 3, base A MEDIO MIGRAR): mismo chequeo que el 41 mas arriba pero con core.get_daily_ops_summary_for_superadmin ELIMINADA -- expectedFunctionName real de superadmin-resumen.ts:114 ==='
+begin;
+drop function core.get_daily_ops_summary_for_superadmin(uuid, date);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
+do $$
+declare
+  v_state text;
+  v_msg text;
+begin
+  begin
+    perform fecha::text as fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
+    from core.get_daily_ops_summary_for_superadmin('00000000-0000-0000-0000-0000000000f3'::uuid, '2026-06-24'::date);
+    raise exception 'se esperaba que la funcion eliminada hiciera fallar esta consulta con SQLSTATE 42883, pero no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42883' then
+      raise exception 'se esperaba SQLSTATE 42883, se obtuvo % con mensaje: %', v_state, v_msg;
+    end if;
+    if v_msg !~ '^function\s+\S+\(.*\)\s+does not exist' then
+      raise exception 'se esperaba un mensaje con la forma "function ...(...) does not exist", se obtuvo: %', v_msg;
+    end if;
+    if v_msg !~ 'core\.get_daily_ops_summary_for_superadmin' then
+      raise exception 'se esperaba que el mensaje incluyera el nombre real de la funcion (core.get_daily_ops_summary_for_superadmin -- el mismo expectedFunctionName que superadmin-resumen.ts pasa), se obtuvo: %', v_msg;
+    end if;
+  end;
+end $$;
+rollback;

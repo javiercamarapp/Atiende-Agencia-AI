@@ -340,3 +340,195 @@ PR futuro CON migración: agregar a `citas.appointment_waitlist` una policy de
 sesión de sistema (`using (auth.uid() is null)`, análoga a las funciones
 `*_idempotent`) o una función `security definer` de lectura dedicada, en vez
 de aflojar el guard de `claim_waitlist_notification_slot`.
+
+## f2-citas-lista-de-espera — CIERRA los 3 gaps de arriba (con migración)
+
+Esta tarea confirma, leyendo el código de `main`, los 3 hallazgos que el
+apartado anterior dejó documentados-pero-abiertos, y los cierra:
+
+**(A) Gap de RLS de `citas.appointment_waitlist` bajo sesión de sistema —
+CERRADO con migración.** `migrations/020_appointment_waitlist_sistema_lectura.sql`
+(espejo `supabase/migrations/20240101000168_020_...sql`) agrega
+`citas.system_load_live_waitlist_candidates(p_organization_id uuid)` —
+función `security definer` de SOLO-SISTEMA (`auth.uid() is null`, mismo
+patrón que `...000139_022_hoteles_sistema_voz_whatsapp_escritura.sql`), que
+devuelve el mismo mínimo de columnas que ya seleccionaba
+`loadLiveWaitlistCandidates`. Se prefirió la función sobre un escape hatch
+`auth.uid() is null or <regla de staff>` en la policy `for all` existente
+porque esta tabla guarda PII de contacto (`customer_phone`/`customer_name`) y
+un escape hatch en `for all` habría relajado TAMBIÉN insert/update/delete a
+sesión de sistema (hoy correctamente exclusivos del panel de staff). La
+policy de staff original NO se toca — el `GET .../waitlist` (listado de solo
+lectura del panel) sigue usando `loadLiveWaitlistCandidates` (RLS de staff),
+nunca la función nueva.
+
+`PostgresCitasRepository.loadLiveWaitlistCandidatesAsSystem` (nuevo método)
+llama a esa función con `runWithSavepointFallback` +
+`isUndefinedFunctionError` (SQLSTATE 42883): si la migración 020 todavía no
+está aplicada, degrada a lista vacía — el MISMO comportamiento honesto de
+hoy (cero candidatos vistos, nunca un 500) — en vez de dejar la sesión
+abortada. `runOptimizadorCore` (dispara al cancelar/reagendar/reasignar del
+agente de voz/WhatsApp, y post-commit tras el cancelar de staff — TODOS
+sesión de sistema) y `runListaEsperaCore` (broadcast manual, ver (B) abajo)
+ahora usan este método nuevo; el resto de callers (el `GET` de panel) sigue
+usando la versión de staff, sin cambio.
+
+De paso, aprovechando la migración: `loadLiveWaitlistCandidates` (staff)
+casteaba `preferred_date_from`/`preferred_date_to` (columnas `date`) SIN
+`::text` — bug preexistente e independiente de este gap (el driver `pg` real
+entrega `date` como objeto `Date`, no como el `string` que
+`WaitlistCandidateRow` declara; nunca visible en los tests en memoria).
+Corregido en ambas consultas (staff y sistema). También se corrigió
+`runOptimizadorCore`: su `.sort` ad-hoc para decidir "quién gana el hueco
+liberado" no desempataba por `id` cuando dos candidatos comparten el mismo
+`createdAt` (posible bajo carga real; SQL nunca garantiza el orden de filas
+empatadas sin `ORDER BY` explícito) — ahora reutiliza `sortWaitlistByPosition`
+(la misma función de orden total que ya usaba `runListaEsperaCore`).
+
+**Corrección post-revisión (revisor independiente del PR #180, 19-sep-2026) —
+la afirmación de arriba ("CERRADO con migración") era falsa en el EFECTO,
+aunque cierta en la lectura de candidatos:** con la migración 020 aplicada,
+`runOptimizadorCore`/`runListaEsperaCore` SÍ veían candidatos reales — pero el
+paso INMEDIATO siguiente (resolver a qué `phone_number_id` mandar el aviso)
+llamaba `CitasRepository.resolveActiveWhatsAppPhoneNumberId`, un SELECT plano
+contra `citas.whatsapp_config`, que también solo tiene policy de RLS de staff
+(`migrations/003_waitlist_and_rate_limit.sql`) — EXACTAMENTE el mismo gap,
+un paso más adelante, invisible porque (a) el fixture de
+`scripts/verify-citas-lista-de-espera-sistema/assertions.sql` nunca insertaba
+`whatsapp_config` y el escenario del flujo completo saltaba la resolución del
+teléfono con SQL escrito a mano, y (b) los specs con `AbortAwareFakeSession`
+mockeaban `from citas.whatsapp_config` devolviendo una fila en sesión de
+sistema — falso contra Postgres real. Resultado: `runOptimizadorCore` seguía
+devolviendo `{matched:false, reason:'no_whatsapp_config'}` y
+`runListaEsperaCore` seguía devolviendo `skippedNoWhatsappConfig:true`, con o
+sin la migración 020 — CERO avisos salían de todos modos.
+
+**(A2) Gap de RLS de `citas.whatsapp_config` bajo sesión de sistema — AHORA SÍ
+CERRADO con migración.** `migrations/021_whatsapp_config_sistema_lectura.sql`
+(espejo `supabase/migrations/20240101000169_021_...sql`) agrega
+`citas.system_resolve_active_whatsapp_phone_number_id(p_organization_id uuid)`
+— mismo patrón exacto que (A): función `security definer` de SOLO-SISTEMA
+(`auth.uid() is null`), revoke de `public`/`anon`/`authenticated` + grant a
+`authenticated`, devuelve únicamente `phone_number_id`. La policy de staff
+original NO se toca — `previewListaEspera` (vista previa de solo lectura del
+broadcast, sesión de STAFF) sigue usando `resolveActiveWhatsAppPhoneNumberId`
+sin cambio.
+`PostgresCitasRepository.resolveActiveWhatsAppPhoneNumberIdAsSystem` (nuevo
+método) llama a esa función con el mismo `runWithSavepointFallback` +
+`isUndefinedFunctionError` que (A) — si la migración 021 todavía no está
+aplicada, degrada a `null` (el mismo comportamiento honesto de hoy), nunca un
+500. `runOptimizadorCore`/`runListaEsperaCore` ahora usan este método nuevo.
+
+Gap relacionado, MISMO defecto, fuera de alcance de esta corrección
+(documentado aquí para quien lo toque después): `runConfirmacionCitaCore`
+(cron de recordatorio 24h, `apps/api/.../citas/reminders.ts`, sesión de
+sistema) y `crisis-guardrail.ts::notifyOwnerOfEscalation` (canal de WhatsApp
+entrante, también sesión de sistema) todavía llaman
+`resolveActiveWhatsAppPhoneNumberId` (la variante de staff) — mismo gap de
+RLS, nunca corregido, preexistente a esta tarea (no introducido por
+f2-citas-lista-de-espera). `PostgresCitasRepository.resolveOrganizationByPhoneNumberId`
+(línea ~992, usado por el webhook entrante para resolver la organización a
+partir del `phone_number_id`) tiene el mismo gap en la dirección inversa.
+
+**(B) `POST .../waitlist/broadcast` en sesión de staff llamando una RPC
+solo-sistema — CERRADO sin migración (solo código).**
+`citas.claim_waitlist_notification_slot` exige `auth.uid() is null` desde la
+migración 015 — la ruta de broadcast, en sesión de STAFF, la llamaba
+directo → 500 determinista cada vez que había un candidato visible y
+`whatsapp_config` activo (documentado como "fuera de alcance" en el apartado
+anterior). Arreglo (mismo patrón que `runCitasWaitlistNotifyAfterCancel`,
+PR #166/#169): la ruta (`apps/api/.../admin.ts`) valida en sesión de STAFF
+(provider_id/service_id de esta organización — ya existía) y calcula una
+vista previa de solo lectura (`previewListaEspera`, nueva función de
+`reminders.ts`, usa `loadLiveWaitlistCandidates` de staff — nunca reclama
+nada); el efecto real (`runListaEsperaCore`, ahora vía
+`loadLiveWaitlistCandidatesAsSystem`) se mueve a `postCommitTasks`, en una
+sesión de sistema NUEVA (`runCitasListaEsperaBroadcastAfterCommit`). La
+respuesta HTTP cambia de forma: ya no reporta `notified` (un número que solo
+se conoce DESPUÉS del commit) — reporta `queued: true` +
+`candidates_considered`/`skipped_no_whatsapp_config` (calculados de
+inmediato, en sesión de staff, con el MISMO filtro/orden/límite que usará el
+efecto real — `filterAndRankWaitlistForBroadcast`, compartida por ambas
+funciones para que nunca diverjan). Gap conocido, no corregido en esta
+tarea (preexistente, no introducido aquí): si `claimWaitlistNotificationSlot`
+lanza un error real de Postgres a la mitad del loop de `runListaEsperaCore`,
+toda la sesión de sistema del broadcast hace rollback — los candidatos YA
+notificados en esa misma corrida se pierden junto con el que falló (sin
+aislamiento por fila vía `runWithRowSavepoint`, a diferencia del loop de
+recordatorios 24h). Bajo riesgo (un solo `claim` + un `enqueue` por
+candidato, ambos ya con GRANT correcto) pero documentado aquí para quien
+toque este loop después. Corrección post-revisión: la respuesta `queued: true`
++ `candidates_considered: N` de esta ruta, ANTES del fix (A2), era un "éxito"
+falso — el `postCommitTasks` corría de verdad pero terminaba en
+`skippedNoWhatsappConfig:true` en silencio, sin que la respuesta HTTP lo
+reflejara (`skipped_no_whatsapp_config` sí lo hacía, pero el consumidor de
+`apps/web` no lo mostraba de forma clara — ver `apps/web/src/verticals/citas/pages/Agenda.tsx`,
+corregido también en esta ronda). Con (A2) cerrado **y las migraciones 020 y
+021 YA APLICADAS en la base**, `queued: true` con
+`skipped_no_whatsapp_config: false` corresponde a un aviso que saldrá de
+verdad (salvo el gap conocido de aislamiento por fila arriba).
+
+Corrección BLOQUEANTE de la ronda 2 de revisión independiente del PR #180 —
+lo anterior deja de ser cierto justo en el instante en que este PR se mergea
+a `main`: mergear despliega el código a Vercel de inmediato, pero nadie
+aplica 020/021 a la base Supabase real en ese mismo momento (la base va
+decenas de migraciones atrás — ver la regla dura de compatibilidad del repo
+en el README raíz). `previewListaEspera` corre con las variantes de STAFF de
+`loadLiveWaitlistCandidates`/`resolveActiveWhatsAppPhoneNumberId`, que
+funcionan HOY sin ninguna migración (RLS de membership) — así que, sin más,
+esta ruta seguía respondiendo `queued: true` con un `candidates_considered`
+real y `skipped_no_whatsapp_config: false` con la base sin migrar, mientras el
+post-commit en sesión de sistema degradaba en silencio a `[]`/`null` por
+SQLSTATE 42883 y NO encolaba nada: el mismo "éxito falso" de arriba, ahora
+permanente para el broadcast manual (hoy en `main`, sin este PR, esa misma
+acción da un 500 visible — el staff sabe que falló). Arreglo:
+`previewListaEspera` ahora empieza con un probe de SOLO CATÁLOGO,
+`repository.ts::areSystemWaitlistFunctionsAvailable`
+(`to_regprocedure('citas.system_load_live_waitlist_candidates(uuid)')` + lo
+mismo para `system_resolve_active_whatsapp_phone_number_id` — nunca ejecuta
+ninguna de las dos funciones, no requiere `EXECUTE` ni ningún fallback nuevo,
+corre en la misma sesión de staff). Si falta cualquiera de las dos,
+`admin.ts` NO registra el `postCommitTask` y responde `{ queued: false,
+reason: "not_available_yet", candidates_considered: 0,
+skipped_no_whatsapp_config: false }`; `apps/web/.../Agenda.tsx` muestra un
+mensaje honesto ("todavía no está disponible... vuelve a intentarlo más
+tarde") en vez de "Aviso encolado para N candidatos". Cubierto por
+`apps/api/tests/citas-admin.spec.ts` (ruta HTTP, con
+`InMemoryCitasRepository.setSystemWaitlistFunctionsAvailable(false)`),
+`apps/web/tests/citas-agenda-page.spec.tsx` (UI) y los escenarios 14f/15e de
+`scripts/verify-citas-lista-de-espera-sistema/assertions.sql` contra Postgres
+real (mismo probe: `true` con 020/021 aplicadas, `false` tras eliminarlas en
+el escenario de "esquema a medias").
+
+**(C) Residuales sin SAVEPOINT del barrido #4 de la auditoría a3 —
+CERRADOS.** `appointments-lifecycle.ts`: `findProvider`+`findPropertyTimezone`
+corrían sueltos (sin SAVEPOINT propio) dentro de un catch-que-traga, en LOS
+3 callers reales (cancelar/reagendar/reasignar del agente) — extraídos a
+`resolveProviderTimeZoneForWaitlist`, que envuelve ambas lecturas en
+`runWithRowSavepoint`. `calendar-sync.ts::tryTriggerCalendarSync`:
+`loadAppointmentSyncRow` corría suelto, ANTES del SAVEPOINT que solo cubría
+`syncOneAppointmentRow` — ahora una única llamada a `runWithRowSavepoint`
+envuelve la lectura Y el intento de sincronización.
+
+**Verificación:** `scripts/verify-citas-lista-de-espera-sistema/` (26/26
+bloques begin/rollback contra Postgres real tras la corrección BLOQUEANTE de
+la ronda 2 -- antes 24/24 (A2); antes de eso 16/16, solo para (A); ahora
+también cubre (A2) y el probe de catálogo (B2): fixture con
+`whatsapp_config` real para dos organizaciones, positivo/cross-tenant/
+negativos para `citas.system_resolve_active_whatsapp_phone_number_id`, y el
+flujo completo -- se libera un horario, sesión de staff confirma; una sesión
+de sistema NUEVA lee la lista de espera, RESUELVE EL TELÉFONO, reclama y
+encola, las dos funciones de sistema invocadas de verdad -- controles
+negativos de staff/anon, cross-tenant, el probe de catálogo
+(`to_regprocedure`) que `previewListaEspera` usa para decidir `available`
+ANTES y DESPUÉS de eliminar ambas funciones, y el escenario de "esquema a
+medias" que elimina AMBAS funciones para reproducir las migraciones 020 y
+021 sin aplicar. Los controles negativos (staff/anon, para ambas funciones)
+ya no aceptan "cualquier error": confirman el SQLSTATE EXACTO vía bloques
+`do $$ ... exception when sqlstate ... $$;`, y el de `anon` confirma además
+con `has_function_privilege` que el rechazo es por el REVOKE de EXECUTE, no
+por falta de USAGE en el schema).
+`packages/domain-citas/tests/postgres-repository-waitlist-system-savepoint.spec.ts`
+y `postgres-repository-whatsapp-config-system-savepoint.spec.ts` cubren el
+fallback de compatibilidad con `AbortAwareFakeSession`.
+`reminders-waitlist-orden-total.spec.ts` cubre el desempate por `id`.

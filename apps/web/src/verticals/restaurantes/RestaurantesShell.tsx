@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
+  ClipboardCheck,
   ClipboardList,
   History,
   LayoutDashboard,
@@ -98,9 +99,17 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
     },
   ];
   if (canSeeStaff) {
+    // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin
+    // (mismo mandato que el servidor exige, ver apps/api/src/routes/verticals/
+    // restaurantes/auditoria.ts) -- reusa el mismo `canSeeStaff`
+    // (STAFF_NAV_ROLES = {"owner","admin"}) en vez de una lista nueva: ambos
+    // links comparten exactamente el mismo umbral de rol.
     sections.push({
       title: "Equipo",
-      items: [{ to: `${base}/staff`, label: "Staff", icon: UserCog }],
+      items: [
+        { to: `${base}/staff`, label: "Staff", icon: UserCog },
+        { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardCheck },
+      ],
     });
   }
   return sections;

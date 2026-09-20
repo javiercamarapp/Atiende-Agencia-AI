@@ -25,6 +25,7 @@
 // verificar en un test de concurrencia, y sí se implementa como until real (una
 // segunda adquisición espera a que la primera libere).
 import { randomUUID } from "node:crypto";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import type { EstadoOcupacion, Razon } from "./tipos.ts";
 import type {
   BloqueoRecord,
@@ -706,7 +707,13 @@ export class InMemoryRentasCalendarStore {
    *  (`upper(rango)`) ya llegó y que todavía no tienen ninguna tarea `tipo='limpieza'`
    *  vinculada por `ocupacion_unidad_id` -- idempotente por construcción (una
    *  reserva con tarea ya creada nunca vuelve a aparecer aquí). */
-  findOcupacionesCheckoutPendientes(limite: number, hoyIso: string = new Date().toISOString().slice(0, 10)): { ocupacionId: string; unidadId: string; fin: string }[] {
+  // Paridad con `PostgresRentasRepository`/`procesarCheckoutsPendientes` (ver su
+  // comentario de cabecera): el default de "hoy" es el día de NEGOCIO
+  // (`hoyFechaNegocio()`), nunca el día UTC crudo del proceso -- este store respalda
+  // el `TenantDbSession` real de `InMemoryRentasTenancyEngine`, que SÍ recibe el
+  // `asOfDate` ya resuelto como parámetro (`$2`) en producción; el default de aquí
+  // solo cubre un caller directo de este store que lo omitiera.
+  findOcupacionesCheckoutPendientes(limite: number, hoyIso: string = hoyFechaNegocio()): { ocupacionId: string; unidadId: string; fin: string }[] {
     return [...this.ocupaciones.values()]
       .filter((o) => o.capa === "reserva" && o.estado === "confirmado" && o.bloqueante && o.fin <= hoyIso)
       .filter((o) => ![...this.tareas.values()].some((t) => t.tipo === "limpieza" && t.ocupacionUnidadId === o.id))

@@ -126,6 +126,20 @@ function validarComponentesFecha(anio: string, mes: string, dia: string, context
   const a = Number(anio);
   const m = Number(mes);
   const d = Number(dia);
+  // Hallazgo de auditoría (a3, MEDIA, verificado contra Postgres real) — un VEVENT con
+  // `DTSTART:00000101` (año "0000", forma sintácticamente válida según el regex de 4
+  // dígitos de `parsearValorFecha`) produce la fecha '0000-01-01', que Postgres real
+  // rechaza con `22008` en cuanto `daterange()` la usa. A DIFERENCIA de las
+  // validaciones de mes/día/hora de abajo (errores de FORMA del VEVENT — se tratan
+  // como "el feed entero está corrupto", igual que el resto de `campo_requerido_ausente`
+  // de este parser), el año fuera de rango es una condición semántica de UN evento
+  // dentro de un feed por lo demás válido: lanzar aquí (`IcsParseError` desde
+  // `construirVEvent`) escaparía de `parsearIcs` SIN try/catch por VEVENT (ver el
+  // bucle de `END:VEVENT` más abajo) y tumbaría el FEED COMPLETO en cada ciclo —
+  // exactamente el daño que este hallazgo buscaba evitar. Por eso NO se valida aquí:
+  // se valida por EVENTO en `motor.ts::procesarEventoDelCiclo`, junto a
+  // `esRangoValido` (mismo criterio que el rango invertido, motor.ts ~94), donde un
+  // año inválido descarta solo ESE evento sin afectar al resto del feed.
   if (m < 1 || m > 12) {
     throw new IcsParseError("valor_fecha_invalido", `${contexto}: mes fuera de rango 01-12: "${mes}"`);
   }
@@ -287,7 +301,20 @@ function construirVEvent(lineas: LineaContenido[]): VEventNormalizado {
 
   return {
     uid: uidLinea.valor.trim(),
-    sequence: Number.isFinite(sequence) ? sequence : null,
+    // Hallazgo de auditoría (a3, MEDIA, verificado contra Postgres real) — antes,
+    // `Number.isFinite` aceptaba CUALQUIER entero representable como `number`
+    // (`SEQUENCE:9999999999`, típico de un canal que manda un timestamp en
+    // milisegundos por error). La columna real es `sequence integer` (Postgres
+    // int4, supabase/migrations/20240101000057_008_ical_sync_schema.sql:63) — ese
+    // valor pasa el parser, `crearReservaConfirmada` corre con éxito, y
+    // `upsertEventoImportado` lanza `22003` ("numeric value out of range") al
+    // intentar persistirlo, dejando la transacción del feed ABORTADA para todos los
+    // eventos siguientes (mismo camino de falla que el NOT NULL de arriba). Se
+    // acota aquí, en el dominio, ANTES de cualquier SQL: fuera de rango (o
+    // negativo, RFC 5545 §3.8.7.4 nunca lo permite) se trata como "sin SEQUENCE"
+    // (`null`), igual que un SEQUENCE ausente — nunca aborta el evento completo por
+    // esto solo.
+    sequence: sequence !== null && Number.isSafeInteger(sequence) && sequence >= 0 && sequence <= 2147483647 ? sequence : null,
     dtstamp: dtstampIso,
     lastModifiedIso,
     dtstart,

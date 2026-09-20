@@ -34,6 +34,11 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  RegistrarAuditoriaInput,
+  RestaurantesAuditLogFiltro,
+  RestaurantesAuditLogPagina,
+  RestaurantesAuditLogPaginacion,
+  RestaurantesAuditLogRow,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -52,6 +57,18 @@ import type {
   TopCustomerRow,
   WhatsAppConversationStatsRow,
 } from "./repository.ts";
+
+// FASE 3 (producto) -- mismos límites que el CHECK de `restaurantes.audit_log`
+// (ver migrations/019_restaurantes_audit_log.sql) -- mismo criterio EXACTO que
+// `InMemoryRentasRepository` (@atiende/domain-rentas, ver el comentario dentro
+// de `registrarAuditoria` de abajo).
+const AUDIT_LOG_CAMPO_MAX = 200;
+const AUDIT_LOG_TEXTO_MAX = 500;
+
+function truncarCampoAuditoriaRestaurantes(value: string | null | undefined, max: number): string | null {
+  if (value == null) return null;
+  return value.length > max ? value.slice(0, max) : value;
+}
 
 /** Percentil "mid-rank" con empates promediados (0-100) — mismo método que
  * `restaurantes.calc_customer_tier` (migrations/002) y que `calcularPercentiles` de
@@ -243,6 +260,18 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   private readonly whatsappConversations = new Map<string, StoredConversation>();
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
   private readonly staffOrderNotifications = new Map<string, StaffOrderNotificationRecord>();
+
+  // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----
+  /** Expuesto también como referencia tipada directa (mismo criterio que
+   *  `InMemoryRentasRepository.auditLog`) para que un test pueda inspeccionar lo
+   *  que quedó registrado sin depender de `listAuditoria`. */
+  readonly auditLog: (RestaurantesAuditLogRow & { readonly organizationId: string; readonly seq: number })[] = [];
+  /** Desempate monótono, EQUIVALENTE en memoria a la columna `seq bigint
+   *  generated always as identity` de Postgres (ver migrations/
+   *  019_restaurantes_audit_log.sql) -- `Date.now()` (usado como `createdAtMs`
+   *  abajo) tiene resolución de milisegundo, dos escrituras dentro del mismo
+   *  milisegundo empatarían sin este desempate. Empieza en 0 y solo avanza. */
+  private auditLogSeq = 0;
 
   private readonly orderLock = new KeyedMutex();
   private readonly customerLock = new KeyedMutex();
@@ -1296,6 +1325,63 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     const page = matching.slice(0, filter.limit);
     const nextCursor = matching.length > filter.limit ? page[page.length - 1]!.id : null;
     return { customers: page, nextCursor };
+  }
+
+  // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----
+
+  async registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void> {
+    // A diferencia de PostgresRestaurantesRepository (que ignora
+    // `input.actorUserId` y deja que `restaurantes.record_audit_log` capture el
+    // actor real vía `auth.uid()`), este doble en memoria SÍ lo usa -- no hay
+    // sesión SQL/`auth.uid()` que simular aquí, y los tests necesitan un actor
+    // real para poder afirmar "quién" quedó registrado.
+    this.auditLogSeq += 1;
+    this.auditLog.push({
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      // Trunca a los MISMOS límites que el CHECK de `restaurantes.audit_log`
+      // (200/500/500, ver migrations/019_restaurantes_audit_log.sql) -- mismo
+      // criterio que `left(..., N)` dentro de `restaurantes.record_audit_log`.
+      campo: truncarCampoAuditoriaRestaurantes(input.campo, AUDIT_LOG_CAMPO_MAX),
+      antes: truncarCampoAuditoriaRestaurantes(input.antes, AUDIT_LOG_TEXTO_MAX),
+      despues: truncarCampoAuditoriaRestaurantes(input.despues, AUDIT_LOG_TEXTO_MAX),
+      createdAtMs: Date.now(),
+      seq: this.auditLogSeq,
+    });
+  }
+
+  async listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina> {
+    const limit = Math.min(200, Math.max(1, paginacion.limit ?? 50));
+    const offset = Math.max(0, paginacion.offset ?? 0);
+
+    let filtrados = this.auditLog.filter((r) => r.organizationId === organizationId);
+    if (filtro.entityType) filtrados = filtrados.filter((r) => r.entityType === filtro.entityType);
+    // Mismo criterio EXACTO que `PostgresRestaurantesRepository.listAuditoria` --
+    // ancla `desde`/`hasta` a America/Mexico_City (offset fijo `-06:00`) para
+    // que ambos repositorios (real e in-memory) clasifiquen el mismo instante
+    // en el mismo día de filtro.
+    if (filtro.desde) {
+      const desdeMs = new Date(`${filtro.desde}T00:00:00-06:00`).getTime();
+      filtrados = filtrados.filter((r) => r.createdAtMs >= desdeMs);
+    }
+    if (filtro.hasta) {
+      const hastaExclusivoMs = new Date(`${filtro.hasta}T00:00:00-06:00`).getTime() + 24 * 60 * 60 * 1000;
+      filtrados = filtrados.filter((r) => r.createdAtMs < hastaExclusivoMs);
+    }
+    // Desempate por `seq` cuando `createdAtMs` empata (dos escrituras dentro del
+    // mismo milisegundo) -- MISMO orden que `PostgresRestaurantesRepository.
+    // listAuditoria` (`order by created_at desc, seq desc`). `Array.prototype.sort`
+    // es estable; sin este desempate dos filas empatadas quedarían en orden de
+    // inserción (más antigua primero) en vez de "más reciente primero".
+    filtrados = [...filtrados].sort((a, b) => b.createdAtMs - a.createdAtMs || b.seq - a.seq);
+
+    const total = filtrados.length;
+    const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, seq: _seq, ...row }) => row);
+    return { disponible: true, items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
   }
 }
 

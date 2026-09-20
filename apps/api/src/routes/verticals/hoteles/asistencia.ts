@@ -294,6 +294,18 @@ export function hotelesAsistenciaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // independiente de que la property ya haya configurado CFDI (H5), nunca se
       // bloquea la obligación laboral por una obligación fiscal distinta sin
       // configurar.
+      //
+      // Grep de cierre (auditoría a3, revisión #2 sobre PR #176) -- este `catch {}`
+      // sigue usando `c.get("db")` DESPUÉS (líneas de abajo: `findStaffById`,
+      // `computeCrossCheckRows`). Es SEGURO por construcción, a diferencia de los
+      // sitios reales que este PR corrige: (a) es un GET de solo LECTURA -- no hay
+      // ninguna escritura de negocio previa en esta misma transacción que un 25P02
+      // pudiera perder; (b) el error esperado aquí es un `Error` de JS ("Sin
+      // configuración fiscal..."), no uno de Postgres -- `rfcEmisor` viene de la
+      // migración 038 (ya aplicada contra la base real); (c) si algún día SÍ fuera un
+      // error real de Postgres, la transacción quedaría abortada (25P02) y las
+      // consultas de abajo lanzarían -- el request terminaría en un 500 reintentable,
+      // nunca en un CSV con datos incompletos servido como 200.
     }
 
     // Identidad del empleado -- `core.staff_user`, NUNCA domain-hoteles (que no posee

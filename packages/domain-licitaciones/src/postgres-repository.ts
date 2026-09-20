@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
@@ -1370,11 +1371,17 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     const existing = await this.db.query<{ id: string }>(`select id from licitaciones.approved_rate where organization_id = $1 and concept = $2;`, [organizationId, input.concept]);
     if (existing.rows.length > 0) throw new CompanyDataDuplicateKeyError("tarifa aprobada", input.concept);
 
+    // Bug real: `current_date` corre en la sesión de Postgres (UTC en Vercel); entre
+    // las 18:00 y las 23:59 CDMX el día UTC ya es MAÑANA, así que una tarifa aprobada
+    // sin `validFrom` explícito en el body (`POST .../company/rates`) se persistía
+    // vigente un día antes de tiempo. Resuelto UNA vez en TS con
+    // `@atiende/core-tenancy::hoyFechaNegocio()` -- el SQL ya no llama `current_date`.
+    const validFrom = input.validFrom ?? hoyFechaNegocio();
     const { rows } = await this.db.query<{ id: string; concept: string; unit_price: string; approval_status: ApprovedRateRecord["approvalStatus"]; valid_from: string; valid_until: string | null }>(
       `insert into licitaciones.approved_rate (organization_id, concept, unit_price, approval_status, valid_from, valid_until)
-       values ($1, $2, $3, $4, coalesce($5::date, current_date), $6)
+       values ($1, $2, $3, $4, $5::date, $6)
        returning id, concept, unit_price, approval_status, valid_from::text as valid_from, valid_until::text as valid_until;`,
-      [organizationId, input.concept, input.unitPrice, input.approvalStatus ?? "pendiente_aprobacion", input.validFrom ?? null, input.validUntil ?? null],
+      [organizationId, input.concept, input.unitPrice, input.approvalStatus ?? "pendiente_aprobacion", validFrom, input.validUntil ?? null],
     );
     const row = rows[0]!;
     return { id: row.id, concept: row.concept, unitPrice: row.unit_price, currency: "MXN", approvalStatus: row.approval_status, validFrom: dateColumnToExplicitOffsetIso(row.valid_from)!, validUntil: dateColumnToExplicitOffsetIso(row.valid_until) };
@@ -2569,5 +2576,23 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
     await this.db.query(`select licitaciones.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
+  }
+
+  // Aislamiento del best-effort de correo (ver el comentario de cabecera de
+  // `runWithRowSavepoint` en `repository.ts` para el diseño completo) -- mismo
+  // `runWithSavepointFallback` que `PostgresHotelesRepository`/
+  // `PostgresRestaurantesRepository`/`PostgresDespachosRepository`, con
+  // `isRecoverable` fijo en `true` y un `fallback` que simplemente relanza el
+  // mismo error DESPUÉS de que `ROLLBACK TO SAVEPOINT` ya dejó la transacción
+  // utilizable para el `commit;` real que sigue.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: fn,
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
   }
 }

@@ -110,13 +110,18 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000002
 select despachos.enqueue_messaging_outbox('00000000-0000-0000-0000-00000000000a', 'email', 'test.event', 'dedupe-desp-1', '{}'::jsonb) as should_fail;
 rollback;
 
-\echo '=== 11. licitaciones.enqueue_messaging_outbox: RECHAZA cualquier auth.uid() real, incluso con membership (system-only, sin caller de staff real hoy) ==='
+\echo '=== 11. licitaciones.enqueue_messaging_outbox: RECHAZA cualquier auth.uid() real, incluso con membership (system-only) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
 select licitaciones.enqueue_messaging_outbox('00000000-0000-0000-0000-00000000000a', 'email', 'test.event', 'dedupe-lic-1', '{}'::jsonb) as should_fail;
 rollback;
 
+-- Auditoría a3, revisión #2 sobre PR #176: SÍ hay un caller real de sesión de
+-- SISTEMA -- apps/api/.../licitaciones/admin-staff.ts::enqueueStaffInviteEmailPostCommit,
+-- vía `postCommitTasks`/`deps.engine.withAppSession({userId: null})` DESPUÉS de que la
+-- invitación se persistió en sesión de staff -- justamente PORQUE el assert de arriba
+-- confirma que la sesión de staff nunca puede llamar a esta función directamente.
 \echo '=== 12. licitaciones.enqueue_messaging_outbox: sesion de sistema SI puede ==='
 begin;
 set local role authenticated;

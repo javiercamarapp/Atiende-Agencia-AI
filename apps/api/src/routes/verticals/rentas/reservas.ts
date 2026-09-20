@@ -154,8 +154,13 @@ export function rentasReservasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // rentas.messaging_outbox (channel='email'); el envío real por Resend lo hace
       // el dispatcher de POST /internal/rentas/email-dispatch. Sin correo real en
       // huespedContacto (o sin huésped adjunto) simplemente no encola nada — ver
-      // @atiende/domain-rentas::enqueueReservaEmailCore.
-      await tryEnqueueReservaEmail(repo, organizationId, "reserva.creada", resultado.ocupacionId);
+      // @atiende/domain-rentas::enqueueReservaEmailCore. Hallazgo de auditoría a3 —
+      // se pasa `db` (MISMA transacción que crearReservaConfirmada/insertGuestMinimo
+      // de arriba) para que este best-effort corra protegido por SAVEPOINT: un error
+      // real de Postgres aquí ya NO puede abortar la transacción y perder la reserva
+      // que ya se creó con éxito (ver el comentario de cabecera de
+      // tryEnqueueReservaEmail).
+      await tryEnqueueReservaEmail(repo, organizationId, "reserva.creada", resultado.ocupacionId, db);
       // Cierre del hallazgo "rentas no tiene disparo inline de correo" (ver
       // ./email-dispatch.ts::triggerRentasEmailDispatchInline) — mismo `repo`/
       // transacción del request, best-effort real.

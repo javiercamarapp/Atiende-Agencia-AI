@@ -218,6 +218,13 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const productId = c.req.param("productId");
     const raw = await readJsonCapped<ProductBody>(c.req.raw, 16 * 1024);
 
+    // FASE 3 (producto) — bitácora de auditoría: "antes" real del catálogo, para
+    // poder resumir qué precio/disponibilidad cambió (ver
+    // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
+    // Nunca bloquea el PATCH si el producto no existe -- `updateProduct` de abajo
+    // sigue siendo la fuente real del 404.
+    const antes = await repo.findProduct(organizationId, productId);
+
     const patch = {
       name: raw.name !== undefined ? requireNonEmptyString(raw.name, "name", 160) : undefined,
       price: raw.price !== undefined ? requirePrice(raw.price) : undefined,
@@ -232,6 +239,37 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
     const updated = await repo.updateProduct(organizationId, productId, patch);
     if (!updated) throw Errors.notFound("Producto no encontrado.");
     logEvent(c, "info", "restaurantes_admin_producto_actualizado", { actorUserId: c.get("userId"), organizationId, productId: updated.id });
+
+    // FASE 3 (producto) — solo registra cuando el body de verdad pidió cambiar
+    // precio o disponibilidad (alcance explícito de esta fase: "cambios de
+    // precio/disponibilidad de productos y menú") -- nunca por editar solo
+    // nombre/descripción/imagen. Best-effort real (nunca lanza, nunca revierte
+    // el PATCH ya aplicado, ver `registrarAuditoria`).
+    if (patch.price !== undefined && antes) {
+      await repo.registrarAuditoria({
+        organizationId,
+        actorUserId: c.get("userId"),
+        action: "producto.precio_actualizado",
+        entityType: "producto",
+        entityId: updated.id,
+        campo: "price",
+        antes: String(antes.price),
+        despues: String(updated.price),
+      });
+    }
+    if (patch.isAvailable !== undefined && antes) {
+      await repo.registrarAuditoria({
+        organizationId,
+        actorUserId: c.get("userId"),
+        action: "producto.disponibilidad_actualizada",
+        entityType: "producto",
+        entityId: updated.id,
+        campo: "isAvailable",
+        antes: String(antes.isAvailable),
+        despues: String(updated.isAvailable),
+      });
+    }
+
     const propertyId = c.req.param("propertyId");
     return c.json({ product: { ...serializeProduct(updated), branch: await repo.getBranchProductState(propertyId, updated.id) } });
   });
@@ -257,6 +295,23 @@ export function restaurantesAdminCatalogRoutes(deps: AppDeps): Hono<CoreAuthHono
 
     const state = await repo.upsertBranchProductState(propertyId, productId, price, isAvailable);
     logEvent(c, "info", "restaurantes_admin_producto_disponibilidad_sucursal_actualizada", { actorUserId: c.get("userId"), organizationId, propertyId, productId, price, isAvailable });
+
+    // FASE 3 (producto) — precio/disponibilidad EN ESTA sucursal es justo la
+    // fuente real que product-search.ts/quoteOrder consultan (ver comentario de
+    // cabecera de esta ruta) -- se registra siempre que esta ruta escribe, con el
+    // `propertyId` afectado en el resumen (esta acción es por-sucursal, a
+    // diferencia del catálogo organization-wide de arriba).
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "producto.disponibilidad_sucursal_actualizada",
+      entityType: "producto",
+      entityId: productId,
+      campo: "price,isAvailable",
+      antes: existing ? `price=${existing.price} isAvailable=${existing.isAvailable} (sucursal ${propertyId})` : `sin registro previo (sucursal ${propertyId})`,
+      despues: `price=${price} isAvailable=${isAvailable} (sucursal ${propertyId})`,
+    });
+
     return c.json({ branch: state });
   });
 
