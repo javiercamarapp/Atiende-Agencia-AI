@@ -463,9 +463,42 @@ falso — el `postCommitTasks` corría de verdad pero terminaba en
 `skippedNoWhatsappConfig:true` en silencio, sin que la respuesta HTTP lo
 reflejara (`skipped_no_whatsapp_config` sí lo hacía, pero el consumidor de
 `apps/web` no lo mostraba de forma clara — ver `apps/web/src/verticals/citas/pages/Agenda.tsx`,
-corregido también en esta ronda). Con (A2) cerrado, `queued: true` con
-`skipped_no_whatsapp_config: false` ahora sí corresponde a un aviso que
-saldrá de verdad (salvo el gap conocido de aislamiento por fila arriba).
+corregido también en esta ronda). Con (A2) cerrado **y las migraciones 020 y
+021 YA APLICADAS en la base**, `queued: true` con
+`skipped_no_whatsapp_config: false` corresponde a un aviso que saldrá de
+verdad (salvo el gap conocido de aislamiento por fila arriba).
+
+Corrección BLOQUEANTE de la ronda 2 de revisión independiente del PR #180 —
+lo anterior deja de ser cierto justo en el instante en que este PR se mergea
+a `main`: mergear despliega el código a Vercel de inmediato, pero nadie
+aplica 020/021 a la base Supabase real en ese mismo momento (la base va
+decenas de migraciones atrás — ver la regla dura de compatibilidad del repo
+en el README raíz). `previewListaEspera` corre con las variantes de STAFF de
+`loadLiveWaitlistCandidates`/`resolveActiveWhatsAppPhoneNumberId`, que
+funcionan HOY sin ninguna migración (RLS de membership) — así que, sin más,
+esta ruta seguía respondiendo `queued: true` con un `candidates_considered`
+real y `skipped_no_whatsapp_config: false` con la base sin migrar, mientras el
+post-commit en sesión de sistema degradaba en silencio a `[]`/`null` por
+SQLSTATE 42883 y NO encolaba nada: el mismo "éxito falso" de arriba, ahora
+permanente para el broadcast manual (hoy en `main`, sin este PR, esa misma
+acción da un 500 visible — el staff sabe que falló). Arreglo:
+`previewListaEspera` ahora empieza con un probe de SOLO CATÁLOGO,
+`repository.ts::areSystemWaitlistFunctionsAvailable`
+(`to_regprocedure('citas.system_load_live_waitlist_candidates(uuid)')` + lo
+mismo para `system_resolve_active_whatsapp_phone_number_id` — nunca ejecuta
+ninguna de las dos funciones, no requiere `EXECUTE` ni ningún fallback nuevo,
+corre en la misma sesión de staff). Si falta cualquiera de las dos,
+`admin.ts` NO registra el `postCommitTask` y responde `{ queued: false,
+reason: "not_available_yet", candidates_considered: 0,
+skipped_no_whatsapp_config: false }`; `apps/web/.../Agenda.tsx` muestra un
+mensaje honesto ("todavía no está disponible... vuelve a intentarlo más
+tarde") en vez de "Aviso encolado para N candidatos". Cubierto por
+`apps/api/tests/citas-admin.spec.ts` (ruta HTTP, con
+`InMemoryCitasRepository.setSystemWaitlistFunctionsAvailable(false)`),
+`apps/web/tests/citas-agenda-page.spec.tsx` (UI) y los escenarios 14f/15e de
+`scripts/verify-citas-lista-de-espera-sistema/assertions.sql` contra Postgres
+real (mismo probe: `true` con 020/021 aplicadas, `false` tras eliminarlas en
+el escenario de "esquema a medias").
 
 **(C) Residuales sin SAVEPOINT del barrido #4 de la auditoría a3 —
 CERRADOS.** `appointments-lifecycle.ts`: `findProvider`+`findPropertyTimezone`
@@ -477,18 +510,21 @@ corrían sueltos (sin SAVEPOINT propio) dentro de un catch-que-traga, en LOS
 `syncOneAppointmentRow` — ahora una única llamada a `runWithRowSavepoint`
 envuelve la lectura Y el intento de sincronización.
 
-**Verificación:** `scripts/verify-citas-lista-de-espera-sistema/` (24/24
-bloques begin/rollback contra Postgres real tras la corrección post-revisión
--- antes 16/16, solo para (A); ahora también cubre (A2): fixture con
+**Verificación:** `scripts/verify-citas-lista-de-espera-sistema/` (26/26
+bloques begin/rollback contra Postgres real tras la corrección BLOQUEANTE de
+la ronda 2 -- antes 24/24 (A2); antes de eso 16/16, solo para (A); ahora
+también cubre (A2) y el probe de catálogo (B2): fixture con
 `whatsapp_config` real para dos organizaciones, positivo/cross-tenant/
 negativos para `citas.system_resolve_active_whatsapp_phone_number_id`, y el
 flujo completo -- se libera un horario, sesión de staff confirma; una sesión
 de sistema NUEVA lee la lista de espera, RESUELVE EL TELÉFONO, reclama y
 encola, las dos funciones de sistema invocadas de verdad -- controles
-negativos de staff/anon, cross-tenant, y el escenario de "esquema a medias"
-que elimina AMBAS funciones para reproducir las migraciones 020 y 021 sin
-aplicar. Los controles negativos (staff/anon, para ambas funciones) ya no
-aceptan "cualquier error": confirman el SQLSTATE EXACTO vía bloques
+negativos de staff/anon, cross-tenant, el probe de catálogo
+(`to_regprocedure`) que `previewListaEspera` usa para decidir `available`
+ANTES y DESPUÉS de eliminar ambas funciones, y el escenario de "esquema a
+medias" que elimina AMBAS funciones para reproducir las migraciones 020 y
+021 sin aplicar. Los controles negativos (staff/anon, para ambas funciones)
+ya no aceptan "cualquier error": confirman el SQLSTATE EXACTO vía bloques
 `do $$ ... exception when sqlstate ... $$;`, y el de `anon` confirma además
 con `has_function_privilege` que el rechazo es por el REVOKE de EXECUTE, no
 por falta de USAGE en el schema).
