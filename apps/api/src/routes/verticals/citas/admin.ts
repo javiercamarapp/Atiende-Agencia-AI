@@ -637,6 +637,21 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const isActive = optionalBoolean(raw.is_active, "is_active");
 
     const created = await citasRepo.createAvailabilityRule({ providerId, dayOfWeek, startTime, endTime, ...(isActive !== undefined ? { isActive } : {}) });
+
+    // FASE 3 (producto) — "configuración de ... horarios/disponibilidad" (ver
+    // packages/domain-citas/migrations/023_citas_audit_log.sql). Best-effort
+    // real, nunca revierte la regla ya creada.
+    await citasRepo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "configuracion.horario_creado",
+      entityType: "configuracion",
+      entityId: created.id,
+      campo: `providerId=${providerId}`,
+      antes: null,
+      despues: `dia=${created.dayOfWeek} ${created.startTime}-${created.endTime}`,
+    });
+
     return c.json({ availability_rule: serializeAvailabilityRule(created) }, 201);
   });
 
@@ -674,6 +689,20 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       ...(isActive !== undefined ? { isActive } : {}),
     });
     if (!updated) throw Errors.notFound("Regla de disponibilidad no encontrada.");
+
+    // FASE 3 (producto) — "configuración de ... horarios/disponibilidad".
+    // Best-effort real, nunca revierte el PATCH ya aplicado.
+    await citasRepo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "configuracion.horario_actualizado",
+      entityType: "configuracion",
+      entityId: updated.id,
+      campo: `providerId=${providerId}`,
+      antes: `dia=${existing.dayOfWeek} ${existing.startTime}-${existing.endTime} activo=${existing.isActive}`,
+      despues: `dia=${updated.dayOfWeek} ${updated.startTime}-${updated.endTime} activo=${updated.isActive}`,
+    });
+
     return c.json({ availability_rule: serializeAvailabilityRule(updated) });
   });
 
@@ -689,6 +718,19 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const deleted = await citasRepo.deleteAvailabilityRule(providerId, ruleId);
     if (!deleted) throw Errors.notFound("Regla de disponibilidad no encontrada.");
+
+    // FASE 3 (producto) — "configuración de ... horarios/disponibilidad".
+    await citasRepo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "configuracion.horario_eliminado",
+      entityType: "configuracion",
+      entityId: ruleId,
+      campo: `providerId=${providerId}`,
+      antes: null,
+      despues: null,
+    });
+
     return c.json({ deleted: true });
   });
 
@@ -759,6 +801,19 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       endTime,
       ...(reason !== undefined ? { reason } : {}),
     });
+
+    // FASE 3 (producto) — "configuración de ... horarios/disponibilidad".
+    await citasRepo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "configuracion.excepcion_horario_actualizada",
+      entityType: "configuracion",
+      entityId: null,
+      campo: `providerId=${providerId} fecha=${overrideDate}`,
+      antes: null,
+      despues: isClosed ? "cerrado" : `${startTime}-${endTime}`,
+    });
+
     return c.json({ availability_override: serializeAvailabilityOverride(upserted) });
   });
 
@@ -775,6 +830,19 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const deleted = await citasRepo.deleteAvailabilityOverride(providerId, overrideDate);
     if (!deleted) throw Errors.notFound("Excepción de disponibilidad no encontrada.");
+
+    // FASE 3 (producto) — "configuración de ... horarios/disponibilidad".
+    await citasRepo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "configuracion.excepcion_horario_eliminada",
+      entityType: "configuracion",
+      entityId: null,
+      campo: `providerId=${providerId} fecha=${overrideDate}`,
+      antes: null,
+      despues: null,
+    });
+
     return c.json({ deleted: true });
   });
 
@@ -842,6 +910,13 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const citasRepo = deps.citasRepo(c.get("db"));
     const raw = await readJsonCapped<ServiceBody>(c.req.raw, 8 * 1024);
 
+    // FASE 3 (producto) — bitácora de auditoría: "antes" real del catálogo, para
+    // poder resumir qué tarifa cambió (ver
+    // packages/domain-citas/migrations/023_citas_audit_log.sql). Nunca bloquea
+    // el PATCH si el servicio no existe -- `updateService` de abajo sigue
+    // siendo la fuente real del 404.
+    const antes = await citasRepo.findService(organizationId, serviceId);
+
     const patch: ServicePatch = {
       name: optionalNonEmptyString(raw.name, "name", 160),
       durationMinutes: optionalPositiveInt(raw.duration_minutes, "duration_minutes", MAX_DURATION_MINUTES),
@@ -852,6 +927,25 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     };
     const updated = await citasRepo.updateService(organizationId, serviceId, patch);
     if (!updated) throw Errors.notFound("Servicio no encontrado.");
+
+    // FASE 3 (producto) — solo registra cuando el body de verdad pidió cambiar
+    // la tarifa (alcance explícito de esta fase: "cambios de precio/tarifa de
+    // servicios") -- nunca por editar solo nombre/duración/buffers/
+    // disponibilidad del servicio. Best-effort real (nunca lanza, nunca
+    // revierte el PATCH ya aplicado, ver `registrarAuditoria`).
+    if (patch.priceCents !== undefined && antes) {
+      await citasRepo.registrarAuditoria({
+        organizationId,
+        actorUserId: c.get("userId"),
+        action: "servicio.tarifa_actualizada",
+        entityType: "servicio",
+        entityId: updated.id,
+        campo: "priceCents",
+        antes: String(antes.priceCents),
+        despues: String(updated.priceCents),
+      });
+    }
+
     return c.json({ service: serializeService(updated) });
   });
 
@@ -881,12 +975,42 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const citasRepo = deps.citasRepo(c.get("db"));
     const raw = await readJsonCapped<TenantConfigBody>(c.req.raw, 4 * 1024);
 
+    // FASE 3 (producto) — bitácora de auditoría: "antes" real de la
+    // configuración, para poder resumir qué cambió. Nunca lo requiere para el
+    // upsert (que siempre corre igual, exista o no la fila previa).
+    const antes = await citasRepo.findTenantConfig(organizationId);
+
     const patch: TenantConfigPatch = {
       rubro: optionalRubro(raw.rubro),
       defaultTimezone: optionalTimeZone(raw.default_timezone),
       ownerNotificationPhone: optionalNullablePhone(raw.owner_notification_phone),
     };
     const updated = await citasRepo.upsertTenantConfig(organizationId, patch);
+
+    // FASE 3 (producto) — "configuración de ... horarios/disponibilidad" (aquí:
+    // rubro/zona horaria/teléfono de aviso). Solo registra cuando el body de
+    // verdad pidió tocar algún campo -- nunca en un PATCH vacío. Best-effort
+    // real, nunca revierte el upsert ya aplicado. `owner_notification_phone`
+    // nunca aparece en texto plano en la bitácora append-only imborrable --
+    // mismo criterio de minimizar PII que `enmascararCorreoInvitado` de
+    // admin-staff.ts.
+    if (patch.rubro !== undefined || patch.defaultTimezone !== undefined || patch.ownerNotificationPhone !== undefined) {
+      const campos: string[] = [];
+      if (patch.rubro !== undefined) campos.push("rubro");
+      if (patch.defaultTimezone !== undefined) campos.push("defaultTimezone");
+      if (patch.ownerNotificationPhone !== undefined) campos.push("ownerNotificationPhone(enmascarado)");
+      await citasRepo.registrarAuditoria({
+        organizationId,
+        actorUserId: c.get("userId"),
+        action: "configuracion.tenant_actualizada",
+        entityType: "configuracion",
+        entityId: null,
+        campo: campos.join(","),
+        antes: antes ? `rubro=${antes.rubro} tz=${antes.defaultTimezone}` : null,
+        despues: `rubro=${updated.rubro} tz=${updated.defaultTimezone}`,
+      });
+    }
+
     return c.json({ tenant_config: serializeTenantConfig(updated) });
   });
 
@@ -1132,6 +1256,25 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         skipped_no_whatsapp_config: false,
       });
     }
+
+    // FASE 3 (producto) — "resolución manual de la lista de espera" (ver
+    // packages/domain-citas/migrations/023_citas_audit_log.sql, "Deliberadamente
+    // SIN variante de solo-sistema"). Se registra AQUÍ, dentro de la sesión de
+    // STAFF que ya validó la solicitud (actor real = quien decidió disparar el
+    // broadcast) -- ANTES del postCommitTask de abajo, que corre DESPUÉS en una
+    // sesión de sistema (`userId: null`) donde `citas.record_audit_log`
+    // rechazaría con 28000 (exige `auth.uid()` no nulo). Best-effort real,
+    // nunca revierte la decisión ya tomada de encolar el broadcast.
+    await citasRepo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "lista_espera.resuelta_manual",
+      entityType: "lista_espera",
+      entityId: null,
+      campo: `providerId=${providerId ?? "cualquiera"} serviceId=${serviceId ?? "cualquiera"}`,
+      antes: null,
+      despues: `candidatos_considerados=${preview.candidatesConsidered}`,
+    });
 
     c.get("postCommitTasks").push(() => runCitasListaEsperaBroadcastAfterCommit(deps, organizationId, event, limit));
 

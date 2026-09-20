@@ -31,6 +31,17 @@ const STAFF_INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// FASE 3 (producto) — bitácora de auditoría del staff: "sin PII innecesaria"
+// (mandato explícito de esta fase, ver
+// packages/domain-citas/migrations/023_citas_audit_log.sql). Mismo criterio
+// EXACTO que restaurantes/admin-staff.ts::enmascararCorreoInvitado -- el correo
+// completo NUNCA queda en una tabla append-only que nadie puede borrar.
+function enmascararCorreoInvitado(email: string): string {
+  const arroba = email.indexOf("@");
+  if (arroba <= 0) return "***";
+  return `${email[0]}***@${email.slice(arroba + 1)}`;
+}
+
 interface CreateInviteBody {
   readonly email?: unknown;
   readonly verticalRole?: unknown;
@@ -182,6 +193,24 @@ export function citasAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       console.error("citas admin-staff: best-effort staff invite email enqueue failed:", err);
     }
 
+    // FASE 3 (producto) — "invitación ... de staff" (ver
+    // packages/domain-citas/migrations/023_citas_audit_log.sql). Correo
+    // ENMASCARADO (ver `enmascararCorreoInvitado` arriba) -- sigue siendo el
+    // dato mínimo indispensable para reconocer a quién se invitó (mandato de la
+    // fase: "sin PII innecesaria", no "sin ningún dato identificador"), pero
+    // nunca el correo completo en una tabla append-only que nadie puede
+    // borrar. Best-effort real, nunca revierte la invitación ya creada.
+    await deps.citasRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: staffId,
+      action: "staff.invitado",
+      entityType: "staff",
+      entityId: invite.id,
+      campo: "email,verticalRole",
+      antes: null,
+      despues: `${enmascararCorreoInvitado(email)} (${verticalRole})`,
+    });
+
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);
   });
 
@@ -198,6 +227,22 @@ export function citasAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const inviteId = c.req.param("inviteId");
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
     if (!revoked) throw Errors.notFound("Invitación no encontrada, ya fue usada, o ya estaba revocada.");
+
+    // FASE 3 (producto) — "baja ... de staff": revocar una invitación PENDIENTE
+    // es la única forma real de "baja" que existe hoy en citas (no hay ruta
+    // para dar de baja a un miembro YA ACEPTADO -- mismo knownGap que
+    // restaurantes documentó en su propio PR #183).
+    await deps.citasRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "staff.invitacion_revocada",
+      entityType: "staff",
+      entityId: inviteId,
+      campo: null,
+      antes: null,
+      despues: null,
+    });
+
     return c.json({ ok: true });
   });
 
@@ -239,6 +284,22 @@ export function citasAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     try {
       const updated = await deps.coreStaffRepo(c.get("db")).updateMemberVerticalRole(organizationId, targetUserId, newPlatformRole, newVerticalRole);
+
+      // FASE 3 (producto) — "cambio de rol de staff". Nunca guarda el correo
+      // del target aquí (ya visible en `target.email` del listado, no hace
+      // falta duplicarlo en la bitácora) -- solo el id de usuario + el rol
+      // antes/después, el resumen mínimo que la fase pide.
+      await deps.citasRepo(c.get("db")).registrarAuditoria({
+        organizationId,
+        actorUserId: callerUserId,
+        action: "staff.rol_actualizado",
+        entityType: "staff",
+        entityId: targetUserId,
+        campo: "verticalRole",
+        antes: target.verticalRole,
+        despues: newVerticalRole,
+      });
+
       return c.json(serializeMemberWithRole(updated));
     } catch (err) {
       if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);
