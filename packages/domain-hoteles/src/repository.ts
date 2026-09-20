@@ -324,7 +324,11 @@ export interface HotelesRepository {
    *  respecto a `asOfDate` (o "hoy" si `asOfDate` es `null`) — el job de no-show
    *  reclama cada una atómicamente vía `transitionReservation` antes de aplicar
    *  efectos secundarios (mismo patrón de "lee candidatas, reclama una por una" que el
-   *  origen documenta para evitar que dos corridas compitan sobre la MISMA fila). */
+   *  origen documenta para evitar que dos corridas compitan sobre la MISMA fila).
+   *  "hoy" (`asOfDate: null`) es el día de NEGOCIO (`@atiende/core-tenancy::
+   *  hoyFechaNegocio()`), resuelto dentro de cada implementación -- nunca
+   *  `current_date`/el reloj UTC crudo del proceso (bug real, ver comentario de
+   *  cabecera de `PostgresHotelesRepository.findDueNoShowReservations`). */
   findDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly ReservationRecord[]>;
 
   // ---- Fase 5 — H16-014/REQ-REC-014: fraude interno ----

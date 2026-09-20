@@ -207,6 +207,21 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
       ...(isActive !== undefined ? { isActive } : {}),
     });
     logEvent(c, "info", "restaurantes_admin_promocion_creada", { actorUserId: c.get("userId"), organizationId: c.get("organizationId"), promotionId: created.id, code });
+
+    // FASE 3 (producto) — alta de promoción (ver
+    // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
+    // Best-effort real, nunca revierte la promoción ya creada.
+    await repo.registrarAuditoria({
+      organizationId: c.get("organizationId"),
+      actorUserId: c.get("userId"),
+      action: "promocion.creada",
+      entityType: "promocion",
+      entityId: created.id,
+      campo: "code,type,value,isActive",
+      antes: null,
+      despues: `${created.code} (${created.type} ${created.value}${created.type === "percentage" ? "%" : ""}, activa=${created.isActive})`,
+    });
+
     return c.json({ promotion: serializePromotion(created) }, 201);
   });
 
@@ -255,6 +270,24 @@ export function restaurantesAdminPromotionsRoutes(deps: AppDeps): Hono<CoreAuthH
     const updated = await repo.updatePromotion(organizationId, promotionId, patch);
     if (!updated) throw Errors.notFound("Promoción no encontrada.");
     logEvent(c, "info", "restaurantes_admin_promocion_actualizada", { actorUserId: c.get("userId"), organizationId, promotionId });
+
+    // FASE 3 (producto) — cambio/baja de promoción: "baja" en este vertical es
+    // `isActive: false` (no hay DELETE, ver comentario de cabecera de este
+    // archivo) — se distingue el action para que la bitácora lo muestre como lo
+    // que es (alta/cambio/baja), aunque las tres pasen por el mismo PATCH.
+    const huboCambioDeActivacion = patch.isActive !== undefined && patch.isActive !== existing.isActive;
+    const action = huboCambioDeActivacion ? (patch.isActive ? "promocion.activada" : "promocion.desactivada") : "promocion.actualizada";
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action,
+      entityType: "promocion",
+      entityId: updated.id,
+      campo: huboCambioDeActivacion ? "isActive" : "value,startsAt,endsAt,daysOfWeek,startTime,endTime,maxUses",
+      antes: `${existing.code} (${existing.type} ${existing.value}, activa=${existing.isActive})`,
+      despues: `${updated.code} (${updated.type} ${updated.value}, activa=${updated.isActive})`,
+    });
+
     return c.json({ promotion: serializePromotion(updated) });
   });
 

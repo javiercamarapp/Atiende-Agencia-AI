@@ -6,10 +6,14 @@
 // naciera una tarea de limpieza en producción, pese a que el motor transaccional
 // completo (crearTareaLimpiezaPorCheckout/procesarCheckoutsPendientes) llevaba desde
 // la Fase 8 sin ningún HTTP/cron que lo disparara.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildRentasTestContext } from "./rentas-fixtures.ts";
 import { TEST_ENV } from "./fixtures.ts";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const AYER = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const EN_UN_ANIO = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -121,6 +125,36 @@ describe("GET/POST /internal/rentas/checkout-sweep", () => {
     });
 
     const res = await app.request("/internal/rentas/checkout-sweep", { method: "POST", headers: { "x-atiende-internal-secret": TEST_ENV.internalSecret } });
+    const body = (await res.json()) as { procesados: number };
+    expect(body.procesados).toBe(0);
+  });
+
+  // REQ-r6/f2-current-date-fecha-negocio: el scheduler (Vercel Cron) SIEMPRE dispara
+  // esta ruta sin ningún `asOfDate` -- el default de `procesarCheckoutsPendientes`
+  // debe ser el día de NEGOCIO (`hoyFechaNegocio()`), nunca el día UTC crudo de la
+  // sesión. A las 19:30 CDMX el día UTC YA es mañana; un checkout que apenas llega
+  // MAÑANA (día de negocio) no debe procesarse todavía.
+  it("a las 19:30 CDMX, NO procesa un checkout que llega MAÑANA (día de negocio), aunque el día UTC ya sea mañana", async () => {
+    const ctx = await buildRentasTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    ctx.engine.calendarStore.insertOcupacionReserva({
+      organizationId: ctx.organizationId,
+      propertyId: ctx.propertyId,
+      unidadId: ctx.unidadId,
+      inicio: "2026-01-01",
+      fin: "2026-01-02",
+      estado: "confirmado",
+      bloqueante: true,
+      canalOrigenId: null,
+      externalId: null,
+    });
+
+    // 2026-01-02T01:30:00Z = 2026-01-01T19:30:00 en America/Mexico_City (UTC-6 fijo).
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-02T01:30:00.000Z"));
+
+    const res = await app.request("/internal/rentas/checkout-sweep", { method: "POST", headers: { "x-atiende-internal-secret": TEST_ENV.internalSecret } });
+    expect(res.status).toBe(200);
     const body = (await res.json()) as { procesados: number };
     expect(body.procesados).toBe(0);
   });

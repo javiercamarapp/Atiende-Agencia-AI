@@ -16,7 +16,7 @@ escrituras de SOLO-SISTEMA + 2 lecturas para el back office).
 
 ## Qué demuestra
 
-36 escenarios (ver `assertions.sql` para el detalle exacto):
+42 escenarios (ver `assertions.sql` para el detalle exacto):
 
 1. **Las 11 funciones `*_for_system`**: una sesión de SISTEMA (`auth.uid()`
    null) SÍ puede leer — verificado contra datos reales sembrados (un latido
@@ -49,6 +49,42 @@ escrituras de SOLO-SISTEMA + 2 lecturas para el back office).
    normal (autenticado, NO superadmin) o una sesión de SISTEMA que pasan el
    UUID del superadmin como `p_caller_id` obtienen CERO filas (nunca un
    error que confirme/niegue si hay datos); `anon` no puede ejecutar.
+6. **Hallazgo endurecido del 19-sep (rubro B) -- SQLSTATE 42883 no es solo
+   "function does not exist"**: escenarios 37/38 confirman contra Postgres
+   REAL que "operator does not exist: uuid = text" (comparar tipos
+   incompatibles, un bug real) y "function ... does not exist" (una función
+   genuinamente inexistente, el caso normal de "migración pendiente")
+   comparten el MISMO SQLSTATE 42883 pero un mensaje MUY distinto -- la base
+   real que `packages/db/src/sql-errors.ts::isUndefinedFunctionError`/
+   `isMigrationPendingError` usan para no confundir un bug real de tipos con
+   una migración sin aplicar (ver `packages/db/tests/sql-errors.spec.ts` para
+   la prueba unitaria que fija el texto exacto de ambos mensajes). **Cada uno
+   es un `do $$ ... $$` que atrapa la excepción con `get stacked
+   diagnostics` y compara SQLSTATE/mensaje EXACTO** -- no un `as
+   should_fail` a secas (ese alias solo le dice al gate automático que
+   termine en CUALQUIER error, sin mirar cuál; ver la corrección del
+   19-sep en el propio `assertions.sql`, comentario justo antes del
+   escenario 37, para el detalle de por qué la forma anterior no demostraba
+   nada de esto).
+7. **Exigencia obligatoria del brief -- el SQL REAL del repositorio, en sus
+   DOS estados, contra Postgres real**: escenarios 39/40 ejecutan el TEXTO
+   SQL EXACTO que `PostgresResumenDiarioRepository.listDailyOpsSummariesFor
+   Superadmin`/`getDailyOpsSummaryForSuperadmin` emiten (mismas columnas,
+   mismo `fecha::text as fecha`) con la migración APLICADA, y confirman con
+   `pg_typeof` que la columna `fecha` resultante es de tipo Postgres `text`
+   en formato `YYYY-MM-DD` -- nunca `date` (que el driver `pg` real
+   convertiría a un objeto `Date` de JS, ver el comentario de cabecera de
+   `resumen-diario-repository.ts`). Escenarios 41/42 corren el MISMO SQL con
+   la función de nivel superior correspondiente ELIMINADA dentro de la
+   propia transacción del escenario (`drop function ...;`, revertido por el
+   `rollback;` final -- DDL es transaccional en Postgres, mismo criterio que
+   el precedente `scripts/verify-fallback-savepoint/` pero sin necesitar un
+   `run.sh` aparte) y confirman que el error real es SQLSTATE 42883 con el
+   NOMBRE REAL de la función en el mensaje -- exactamente lo que
+   `isMigrationPendingError(err, "core.list_daily_ops_summaries_for_superadmin")`/
+   `"core.get_daily_ops_summary_for_superadmin"` (`apps/api/src/routes/
+   superadmin-resumen.ts`) necesitan para clasificarlo como migración
+   pendiente en vez de un 500.
 
 ## Hallazgos reales durante el desarrollo de este script (ambos corregidos)
 
@@ -102,7 +138,10 @@ automáticamente (cualquier `scripts/verify-*/` con
 `bootstrap.sql`+`post-migrations.sql`+`assertions.sql`) y lo corre en CI
 contra el servicio `postgres:` de GitHub Actions — sin intervención manual.
 
-Corrida real más reciente (local, Postgres efímero vía `initdb`/`pg_ctl`):
-**36/36 escenarios pasaron** — los 12 marcados `should_fail` terminaron en
-`ERROR` (código `42501` para las funciones de sistema, "permission denied"
-para `anon`), los 24 restantes devolvieron los valores reales esperados.
+Corrida real más reciente (local, vía `scripts/verify-real-postgres-ci/
+run-gate.mjs` -- el mismo gate automático que corre en CI, no solo lectura
+humana de `run.sh`): **42/42 escenarios OK**. Confirmado además que el gate
+SÍ detecta una regresión real: forzar a mano el mensaje esperado del
+escenario 37 a un texto distinto del que Postgres realmente reporta lo hace
+fallar (`41/42`, `GATE FALLIDO`) -- no un chequeo que pasa con cualquier
+salida.

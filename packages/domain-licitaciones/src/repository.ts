@@ -285,6 +285,10 @@ export interface CompanyDocumentUpdateInput {
 export interface ApprovedRateCreateInput {
   readonly concept: string;
   readonly unitPrice: DecimalString;
+  /** Default cuando el caller la omite: el día de NEGOCIO
+   *  (`@atiende/core-tenancy::hoyFechaNegocio()`), resuelto dentro de cada
+   *  implementación -- nunca `current_date`/el reloj UTC crudo del proceso (bug real,
+   *  ver comentario de cabecera de `PostgresLicitacionesRepository.createApprovedRate`). */
   readonly validFrom?: string;
   readonly validUntil?: string | null;
   readonly approvalStatus?: CompanyDataApprovalStatus;

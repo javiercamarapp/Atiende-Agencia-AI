@@ -53,25 +53,42 @@ export async function handleInboundWhatsAppMessage(
   }
 
   try {
-    const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
-    const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(propertyId, phone, userMessage);
+    // Hallazgo de revisores (19-sep-2026, mismo defecto que expuso PR #158 en los
+    // 3 turn handlers): TODO este bloque corre en la ÚNICA transacción del
+    // request (`ManagedPostgresEngine.withAppSession`, un solo `begin ... commit`).
+    // Si `turnHandler.handleInboundMessage`, `appendWhatsAppUserMessageOnce`,
+    // `whatsappAppendTurn` o `enqueueMessagingOutbox` lanzan un error real de
+    // Postgres (SQLSTATE, no un `throw` de negocio), la transacción queda
+    // ABORTADA (25P02) — sin `SAVEPOINT`, el `catch` de abajo reutilizaría esa
+    // MISMA sesión abortada para `finishWhatsAppMessage(..., "failed", ...)`, esa
+    // llamada fallaría también con 25P02, el error escaparía sin marcar nada, el
+    // `COMMIT` de `withAppSession` lanzaría `AbortedTransactionCommitError` -> 500
+    // a Meta -> reintentos sin tope que re-corren el turno completo del LLM
+    // (gasto real) mientras el huésped nunca recibe respuesta. `runWithRowSavepoint`
+    // (mismo helper que ya protege `executeToolCall` en turn-handler.ts) deja la
+    // sesión UTILIZABLE de nuevo antes de repropagar, para que el `catch` de abajo
+    // sí pueda registrar el fallo.
+    return await repo.runWithRowSavepoint(async () => {
+      const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
+      const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(propertyId, phone, userMessage);
 
-    const turn = await turnHandler.handleInboundMessage({ organizationId, propertyId, phone, messages: messagesAfterUser });
+      const turn = await turnHandler.handleInboundMessage({ organizationId, propertyId, phone, messages: messagesAfterUser });
 
-    const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
-    await repo.whatsappAppendTurn(propertyId, phone, [assistantMessage], turn.fnbOrderId ? "completed" : "active", turn.fnbOrderId);
+      const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
+      await repo.whatsappAppendTurn(propertyId, phone, [assistantMessage], turn.fnbOrderId ? "completed" : "active", turn.fnbOrderId);
 
-    // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
-    // solo se guardaba en el historial de la conversación y nunca llegaba de
-    // verdad al huésped (ver @atiende/whatsapp-gateway/README.md).
-    await repo.enqueueMessagingOutbox(propertyId, organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
-      to: phone,
-      phone_number_id: phoneNumberId,
-      body: turn.reply,
+      // Encola el envío REAL de la respuesta — antes de este cambio, `outcome.reply`
+      // solo se guardaba en el historial de la conversación y nunca llegaba de
+      // verdad al huésped (ver @atiende/whatsapp-gateway/README.md).
+      await repo.enqueueMessagingOutbox(propertyId, organizationId, "whatsapp", "whatsapp.inbound_reply", `inbound-reply:${messageId}`, {
+        to: phone,
+        phone_number_id: phoneNumberId,
+        body: turn.reply,
+      });
+
+      await repo.finishWhatsAppMessage(propertyId, messageId, phoneHash, "processed", null);
+      return { ok: true, retryable: false, reply: turn.reply };
     });
-
-    await repo.finishWhatsAppMessage(propertyId, messageId, phoneHash, "processed", null);
-    return { ok: true, retryable: false, reply: turn.reply };
   } catch (err) {
     const errorClass = err instanceof Error ? err.constructor.name : "UnknownError";
     await repo.finishWhatsAppMessage(propertyId, messageId, phoneHash, "failed", errorClass);

@@ -52,6 +52,21 @@ const STAFF_INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Enmascara el correo del invitado antes de guardarlo en la bitácora de
+ *  auditoría (`restaurantes.audit_log`, append-only e imborrable -- hallazgo
+ *  no bloqueante del revisor independiente del PR #183: el correo COMPLETO ahí
+ *  impide atender después una solicitud de borrado/ARCO sobre ese invitado, y
+ *  el correo ya es visible de todas formas en `GET .../staff/invitaciones`
+ *  mientras la invitación siga pendiente). Conserva el primer carácter + el
+ *  dominio completo -- suficiente para reconocer a quién se invitó en el
+ *  resumen, nunca el correo completo -- mismo criterio que
+ *  `apps/api/src/superadmin-acciones/resumen.ts::enmascararDestinatario`. */
+function enmascararCorreoInvitado(email: string): string {
+  const arroba = email.indexOf("@");
+  if (arroba <= 0) return "***";
+  return `${email[0]}***@${email.slice(arroba + 1)}`;
+}
+
 interface CreateInviteBody {
   readonly email?: unknown;
   readonly verticalRole?: unknown;
@@ -269,6 +284,25 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       verticalRole,
     });
 
+    // FASE 3 (producto) — "invitación ... de staff" (ver
+    // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
+    // Correo ENMASCARADO (corrección de revisión sobre el PR #183, ver
+    // `enmascararCorreoInvitado` arriba) -- sigue siendo el dato mínimo
+    // indispensable para reconocer a quién se invitó (mandato de la fase: "sin
+    // PII innecesaria", no "sin ningún dato identificador"), pero nunca el
+    // correo completo en una tabla append-only que nadie puede borrar. Best-
+    // effort real, nunca revierte la invitación ya creada.
+    await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: staffId,
+      action: "staff.invitado",
+      entityType: "staff",
+      entityId: invite.id,
+      campo: "email,verticalRole",
+      antes: null,
+      despues: `${enmascararCorreoInvitado(email)} (${verticalRole})`,
+    });
+
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);
   });
 
@@ -286,6 +320,21 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const revoked = await deps.coreStaffRepo(c.get("db")).revokeStaffInvite(inviteId, organizationId);
     if (!revoked) throw Errors.notFound("Invitación no encontrada, ya fue usada, o ya estaba revocada.");
     logEvent(c, "info", "restaurantes_admin_staff_invitacion_revocada", { actorUserId: c.get("userId"), organizationId, inviteId });
+
+    // FASE 3 (producto) — "baja ... de staff": revocar una invitación PENDIENTE
+    // es la única forma real de "baja" que existe hoy en restaurantes (no hay
+    // ruta para dar de baja a un miembro YA ACEPTADO -- ver knownGaps del PR).
+    await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: c.get("userId"),
+      action: "staff.invitacion_revocada",
+      entityType: "staff",
+      entityId: inviteId,
+      campo: null,
+      antes: null,
+      despues: null,
+    });
+
     return c.json({ ok: true });
   });
 
@@ -361,6 +410,22 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
 
     try {
       const updated = await deps.coreStaffRepo(c.get("db")).updateMemberVerticalRole(organizationId, targetUserId, newPlatformRole, newVerticalRole);
+
+      // FASE 3 (producto) — "cambio de rol de staff". Nunca guarda el correo del
+      // target aquí (ya visible en `target.email` del listado, no hace falta
+      // duplicarlo en la bitácora) -- solo el id de usuario + el rol antes/
+      // después, el resumen mínimo que la fase pide.
+      await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+        organizationId,
+        actorUserId: callerUserId,
+        action: "staff.rol_actualizado",
+        entityType: "staff",
+        entityId: targetUserId,
+        campo: "verticalRole",
+        antes: target.verticalRole,
+        despues: newVerticalRole,
+      });
+
       return c.json(serializeMemberWithRole(updated));
     } catch (err) {
       if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);
