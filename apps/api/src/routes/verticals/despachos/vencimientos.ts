@@ -20,6 +20,7 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { INLINE_BATCH_SIZE, runDespachosEmailDispatch, triggerDespachosEmailDispatchInline } from "./notifications.ts";
+import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
 
 interface CalcularBody {
   readonly year?: unknown;
@@ -39,11 +40,18 @@ interface CompletarBody {
 // helper de servidor (`@atiende/core-tenancy::hoyFechaNegocio`) reemplaza este
 // `todayIso()` local -- ver su comentario de cabecera para el resto de call-sites
 // con el mismo bug ya corregidos en esta misma ronda.
-function todayIso(): string {
-  return hoyFechaNegocio();
+//
+// FASE 3 (producto) — hasta esta fase, `todayIso()` SIEMPRE llamaba
+// `hoyFechaNegocio()` SIN argumento (el default de plataforma), porque
+// `despachos` no tenía ninguna columna de zona horaria real todavía (ver el
+// comentario de cabecera de la migración 012). Ahora recibe la zona YA
+// resuelta (`resolverZonaHorariaDespachosProperty`, una consulta por
+// request -- nunca por deadline) en vez de asumir México siempre.
+function todayIso(zonaHoraria: string): string {
+  return hoyFechaNegocio(zonaHoraria);
 }
 
-function serializeDeadline(d: FiscalDeadlineRecord) {
+function serializeDeadline(d: FiscalDeadlineRecord, hoy: string) {
   return {
     id: d.id,
     tipo: d.tipo,
@@ -53,7 +61,7 @@ function serializeDeadline(d: FiscalDeadlineRecord) {
     estado: d.estado,
     fechaPresentacion: d.fechaPresentacion,
     comprobanteUrl: d.comprobanteUrl,
-    diasRestantes: diasHasta(d.fechaLimite, todayIso()),
+    diasRestantes: diasHasta(d.fechaLimite, hoy),
     creadoEn: d.createdAt,
   };
 }
@@ -72,9 +80,11 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
   app.get("/despachos/:propertyId/vencimientos", async (c) => {
     assertVerticalRole(c, VER_VENCIMIENTOS_ROLES);
     const repo = deps.despachosRepo(c.get("db"));
+    const propertyId = c.req.param("propertyId");
     const estado = c.req.query("estado");
-    const deadlines = await repo.listDeadlines(c.req.param("propertyId"), estado ? { estado } : undefined);
-    return c.json(deadlines.map(serializeDeadline));
+    const [deadlines, zonaHoraria] = await Promise.all([repo.listDeadlines(propertyId, estado ? { estado } : undefined), resolverZonaHorariaDespachosProperty(repo, propertyId)]);
+    const hoy = todayIso(zonaHoraria);
+    return c.json(deadlines.map((d) => serializeDeadline(d, hoy)));
   });
 
   app.post("/despachos/:propertyId/vencimientos/calcular", async (c) => {
@@ -83,24 +93,26 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     const organizationId = c.get("organizationId");
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<CalcularBody>(c.req.raw, 1024);
+    const zonaHoraria = await resolverZonaHorariaDespachosProperty(repo, propertyId);
+    const hoy = todayIso(zonaHoraria);
     // Mismo bug/mismo fix que `todayIso()` de arriba: el default de year/month (cuando
-    // el caller no los manda) se deriva del día de NEGOCIO (`todayIso()`), nunca de
+    // el caller no los manda) se deriva del día de NEGOCIO (`hoy`), nunca de
     // `now.getUTCFullYear()/getUTCMonth()` -- si no, el último día del mes en CDMX
-    // entre las 18:00 y las 23:59 hora local calcularía los vencimientos del mes
-    // SIGUIENTE por error.
-    const hoyPartes = todayIso().split("-");
+    // (o la zona real de esta property) entre las 18:00 y las 23:59 hora local
+    // calcularía los vencimientos del mes SIGUIENTE por error.
+    const hoyPartes = hoy.split("-");
     const hoyYear = Number(hoyPartes[0]);
     const hoyMonth = Number(hoyPartes[1]);
     const year = typeof raw.year === "number" ? raw.year : hoyYear;
     const month = typeof raw.month === "number" ? raw.month : hoyMonth;
     if (!Number.isInteger(month) || month < 1 || month > 12) throw Errors.validation("month: se esperaba un entero 1-12.");
 
-    const nuevos = calcularVencimientosDelPeriodo(year, month, todayIso());
+    const nuevos = calcularVencimientosDelPeriodo(year, month, hoy);
     const creados: FiscalDeadlineRecord[] = [];
     for (const n of nuevos) {
       creados.push(await repo.createDeadline({ organizationId, propertyId, tipo: n.tipo, periodo: n.periodo, fechaLimite: n.fechaLimite, prioridad: n.prioridad }));
     }
-    return c.json(creados.map(serializeDeadline), 201);
+    return c.json(creados.map((d) => serializeDeadline(d, hoy)), 201);
   });
 
   app.post("/despachos/:propertyId/vencimientos/:deadlineId/completar", async (c) => {
@@ -115,8 +127,9 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     if (!existing) throw Errors.notFound("Vencimiento no encontrado.");
     if (existing.estado === "completado") throw Errors.conflict("Este vencimiento ya está marcado como completado.");
 
-    const updated = await repo.markDeadlineCompleted(deadlineId, comprobanteUrl, todayIso());
-    return c.json(serializeDeadline(updated!));
+    const hoy = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
+    const updated = await repo.markDeadlineCompleted(deadlineId, comprobanteUrl, hoy);
+    return c.json(serializeDeadline(updated!, hoy));
   });
 
   app.post("/despachos/:propertyId/vencimientos/:deadlineId/escalar", async (c) => {
@@ -129,7 +142,8 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     if (!deadline) throw Errors.notFound("Vencimiento no encontrado.");
     if (deadline.estado === "completado") throw Errors.conflict("No se puede escalar un vencimiento ya completado.");
 
-    const dias = diasHasta(deadline.fechaLimite, todayIso());
+    const hoy = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
+    const dias = diasHasta(deadline.fechaLimite, hoy);
     const decision = decidirEscalamiento(deadline.tipo, deadline.fechaLimite, dias);
     const escalation = await repo.insertEscalation(deadlineId, decision.level, new Date().toISOString(), decision.notes);
     await repo.updateDeadlineEstado(deadlineId, "escalado");

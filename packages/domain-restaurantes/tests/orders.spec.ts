@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOrder, prepareCreateOrder } from "../src/orders.ts";
-import { OrderConflictError, OrderValidationError } from "../src/errors.ts";
+import { OrderConflictError, OrderValidationError, PromotionError } from "../src/errors.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 import type { CreateOrderInput } from "../src/types.ts";
 
@@ -185,5 +185,46 @@ describe("createOrder/prepareCreateOrder — aplicación real de una promoción 
     const order = await createOrder(fixture.repo, baseInput(fixture));
     expect(order.total).toBe(90);
     expect(order.notes ?? "").not.toMatch(/Promoción aplicada/);
+  });
+
+  // FASE 3 (producto) — EFECTO real end-to-end: `prepareCreateOrder` resuelve la
+  // zona horaria REAL de la sucursal (migración 022,
+  // `restaurantes.branch_detail.zona_horaria`) antes de validar la vigencia
+  // día/hora de una promoción -- hasta esta fase, `now.getDay()` (UTC del
+  // proceso) decidía SIEMPRE, sin importar dónde estuviera la sucursal.
+  //
+  // Instante elegido y verificado con Intl.DateTimeFormat ANTES de escribir este
+  // test (mismo instante que `promotions.spec.ts` -- ver su comentario de
+  // cabecera para el detalle completo):
+  //   new Date("2026-01-02T05:30:00.000Z") es jueves en America/Mexico_City
+  //   (el default de plataforma) y viernes en America/Cancun.
+  describe("EFECTO real: la zona horaria de la SUCURSAL decide si una promo de 'solo viernes' aplica (FASE 3)", () => {
+    const INSTANTE = "2026-01-02T05:30:00.000Z";
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("sin zona horaria configurada (default de plataforma, CDMX) -- sigue siendo jueves, la promo de viernes se rechaza", async () => {
+      const fixture = buildRestaurantFixture();
+      await fixture.repo.createPromotion(fixture.organizationId, { code: "SOLOVIERNES", name: "x", type: "fixed", value: 10, daysOfWeek: [5] });
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(INSTANTE));
+
+      await expect(createOrder(fixture.repo, baseInput(fixture, { promoCode: "SOLOVIERNES" }))).rejects.toThrow(PromotionError);
+    });
+
+    it("con la sucursal configurada en America/Cancun -- ya es viernes ahí, la MISMA promo SÍ aplica en el MISMO instante", async () => {
+      const fixture = buildRestaurantFixture();
+      await fixture.repo.createPromotion(fixture.organizationId, { code: "SOLOVIERNES", name: "x", type: "fixed", value: 10, daysOfWeek: [5] });
+      await fixture.repo.upsertBranchZonaHoraria(fixture.propertyId, "America/Cancun");
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(INSTANTE));
+
+      const order = await createOrder(fixture.repo, baseInput(fixture, { promoCode: "SOLOVIERNES" }));
+      expect(order.total).toBe(80); // 90 - $10 fijo.
+    });
   });
 });

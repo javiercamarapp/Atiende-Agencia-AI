@@ -35,6 +35,7 @@ import {
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
 
 function optionalNumber(value: unknown, field: string, fallback: number): number {
   if (value === undefined || value === null) return fallback;
@@ -52,8 +53,12 @@ function requireNumber(value: unknown, field: string): number {
 // `calcularEstadoPeriodo`/`generarReporteCierre`) usaba el día UTC del proceso, corrido un
 // día adelante del real en CDMX entre las 18:00 y las 23:59 hora local. Ahora delega en
 // `@atiende/core-tenancy::hoyFechaNegocio()`.
-function todayIso(): string {
-  return hoyFechaNegocio();
+//
+// FASE 3 (producto) — recibe la zona YA resuelta (`resolverZonaHorariaDespachosProperty`,
+// una consulta por request) en vez de asumir siempre el default de plataforma -- mismo
+// fix que `./vencimientos.ts::todayIso`/`./cobranza.ts::todayIso`.
+function todayIso(zonaHoraria: string): string {
+  return hoyFechaNegocio(zonaHoraria);
 }
 
 export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -98,7 +103,7 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const periodo = await repo.findPeriodoCierre(propertyId, periodoId);
     if (!periodo) throw Errors.notFound("Período de cierre no encontrado.");
     const tareas = await repo.listTareasCierre(periodoId);
-    const hoy = todayIso();
+    const hoy = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
     const periodoActualizado = recomputeOverdue(periodo, tareas, hoy);
     if (periodoActualizado.status !== periodo.status) await repo.updatePeriodoCierre(periodoActualizado);
     const estado = calcularEstadoPeriodo(tareas, hoy);
@@ -167,7 +172,7 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const moduleState = typeof raw.moduleState === "object" && raw.moduleState !== null ? (raw.moduleState as Record<string, unknown>) : {};
     const { tareas: actualizadas, completadas } = autoCheckTareas(tareas, moduleState, userId, new Date().toISOString());
     const persistidas = await repo.replaceTareasCierre(periodoId, actualizadas);
-    const periodoActualizado = recomputeOverdue(periodo, persistidas, todayIso());
+    const periodoActualizado = recomputeOverdue(periodo, persistidas, todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId)));
     if (periodoActualizado.status !== periodo.status) await repo.updatePeriodoCierre(periodoActualizado);
     // Solo se audita cuando el auto-check de verdad completó algo -- a diferencia de
     // "completar"/"cerrar" (siempre una decisión explícita de un humano), este
@@ -252,7 +257,8 @@ export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const periodo = await repo.findPeriodoCierre(propertyId, periodoId);
     if (!periodo) throw Errors.notFound("Período de cierre no encontrado.");
     const tareas = await repo.listTareasCierre(periodoId);
-    return c.json(generarReporteCierre(periodo, tareas, todayIso()));
+    const hoy = todayIso(await resolverZonaHorariaDespachosProperty(repo, propertyId));
+    return c.json(generarReporteCierre(periodo, tareas, hoy));
   });
 
   // ---- Validaciones de balance (endpoint puro/calculadora, sin persistencia) ----
