@@ -36,6 +36,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { canInviteStaff } from "@atiende/core-authz";
 import type { PlatformRole } from "@atiende/core-tenancy";
 import { correoInvitacionStaff, isRestaurantesRole, MANAGER_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-restaurantes";
+import type { RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { MembershipRoleUpdateError } from "@atiende/db";
 import type { OrganizationMemberRow, OrganizationMemberWithRoleRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
@@ -66,6 +67,45 @@ function serializeInvite(invite: StaffInviteRow) {
     expiresAt: invite.expiresAt,
     createdAt: invite.createdAt,
   };
+}
+
+/**
+ * Correo real vía `restaurantes.messaging_outbox` con el enlace de activación
+ * ya armado — best-effort: un fallo al encolar el correo NUNCA debe revertir
+ * la invitación que sí quedó creada (`createStaffInvite`, ya persistida por
+ * el caller ANTES de invocar esto, misma sesión de staff).
+ *
+ * SAVEPOINT (corrección de revisión sobre PR #176, mismo patrón que
+ * `order-notifications.ts::tryNotifyStaffNewOrder`): esta ruta corre en la
+ * sesión de STAFF del request, en la MISMA transacción que ya persistió
+ * `createStaffInvite`. Sin `runWithRowSavepoint`, un error real de Postgres
+ * en el encolado (deadlock/timeout transitorio, o `42501` del guard) deja la
+ * transacción en 25P02 y el `commit;` que sigue
+ * (`managed-postgres-engine.ts`) revierte también la invitación con
+ * `AbortedTransactionCommitError` -> 500, justo lo que este best-effort
+ * promete que nunca pasa. Exportada para poder probarla directamente con
+ * `PostgresRestaurantesRepository` + `AbortAwareFakeSession` sin pasar por la
+ * ruta HTTP completa (ver `restaurantes-admin-staff-savepoint.spec.ts`).
+ */
+export async function tryEnqueueStaffInviteEmail(
+  repo: RestaurantesRepository,
+  organizationId: string,
+  inviteId: string,
+  email: string,
+  correo: { readonly asunto: string; readonly html: string; readonly texto: string },
+): Promise<void> {
+  try {
+    await repo.runWithRowSavepoint(() =>
+      repo.enqueueMessagingOutbox(organizationId, "email", "staff.invite", `staff-invite:${inviteId}`, {
+        to: email,
+        subject: correo.asunto,
+        html: correo.html,
+        text: correo.texto,
+      }),
+    );
+  } catch (err) {
+    console.error("admin-staff: best-effort staff invite email enqueue failed:", err);
+  }
 }
 
 // Fase 12 — hallazgo de auditoría (severidad ALTA, "asignar repartidor a un pedido no
@@ -206,23 +246,14 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     // invitación que sí quedó creada. El token se sigue devolviendo UNA sola vez
     // en la respuesta HTTP (solo el hash persiste, nunca se puede recuperar de
     // nuevo) por si quien invita prefiere compartirlo por otro medio.
-    try {
-      const acceptUrl = `${deps.env.appBaseUrl}/aceptar-invitacion?token=${encodeURIComponent(tokenPlain)}`;
-      const correo = correoInvitacionStaff({
-        email,
-        verticalRole,
-        acceptUrl,
-        expiresAtTexto: new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(expiresAt)),
-      });
-      await deps.restaurantesRepo(c.get("db")).enqueueMessagingOutbox(organizationId, "email", "staff.invite", `staff-invite:${invite.id}`, {
-        to: email,
-        subject: correo.asunto,
-        html: correo.html,
-        text: correo.texto,
-      });
-    } catch (err) {
-      console.error("admin-staff: best-effort staff invite email enqueue failed:", err);
-    }
+    const acceptUrl = `${deps.env.appBaseUrl}/aceptar-invitacion?token=${encodeURIComponent(tokenPlain)}`;
+    const correo = correoInvitacionStaff({
+      email,
+      verticalRole,
+      acceptUrl,
+      expiresAtTexto: new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(expiresAt)),
+    });
+    await tryEnqueueStaffInviteEmail(deps.restaurantesRepo(c.get("db")), organizationId, invite.id, email, correo);
 
     // Hallazgo de auditoría (observabilidad) — trazabilidad de acciones
     // administrativas de staff: quién (actorUserId), qué (evento), sobre qué
