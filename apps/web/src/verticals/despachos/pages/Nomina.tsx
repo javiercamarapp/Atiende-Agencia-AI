@@ -207,9 +207,11 @@ export function NominaPage(ctx: DespachosShellContext) {
   // CDMX precargaba el MES SIGUIENTE (y el 31-dic el AÑO siguiente). `hoyFechaSolo()`
   // (apps/web/src/lib/formato-fecha.ts) da el día de calendario en
   // America/Mexico_City -- mismo helper que Dashboard.tsx/Pl.tsx/Vencimientos.tsx.
-  const hoy = hoyFechaSolo();
-  const [month, setMonth] = useState(String(Number(hoy.slice(5, 7))));
-  const [year, setYear] = useState(String(Number(hoy.slice(0, 4))));
+  // Inicializador lazy: solo se usa como valor inicial de useState, así que no
+  // hace falta recalcular `hoyFechaSolo()` (construye un Intl.DateTimeFormat) en
+  // cada render.
+  const [month, setMonth] = useState(() => String(Number(hoyFechaSolo().slice(5, 7))));
+  const [year, setYear] = useState(() => String(Number(hoyFechaSolo().slice(0, 4))));
   const [diasPagados, setDiasPagados] = useState("30");
   const [salarioDiarioDefault, setSalarioDiarioDefault] = useState("");
   const [empleados, setEmpleados] = useState<readonly EmpleadoFila[]>([nuevaFila()]);

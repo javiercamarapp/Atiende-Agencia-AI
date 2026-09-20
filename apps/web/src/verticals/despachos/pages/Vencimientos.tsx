@@ -118,12 +118,12 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
   // 00:00-05:59 UTC del día siguiente) precargaba el MES SIGUIENTE (y el 31-dic el AÑO
   // siguiente). `hoyFechaSolo()` (apps/web/src/lib/formato-fecha.ts) da el día de
   // calendario en America/Mexico_City -- mismo helper que Dashboard.tsx/Pl.tsx.
-  const hoy = hoyFechaSolo();
-  const anioHoy = Number(hoy.slice(0, 4));
-  const mesHoy = Number(hoy.slice(5, 7));
+  // Inicializador lazy: solo se usa como valor inicial de useState, así que no
+  // hace falta recalcular `hoyFechaSolo()` (construye un Intl.DateTimeFormat) en
+  // cada render.
   const [showCalcularForm, setShowCalcularForm] = useState(false);
-  const [calcAnio, setCalcAnio] = useState(anioHoy);
-  const [calcMes, setCalcMes] = useState(mesHoy);
+  const [calcAnio, setCalcAnio] = useState(() => Number(hoyFechaSolo().slice(0, 4)));
+  const [calcMes, setCalcMes] = useState(() => Number(hoyFechaSolo().slice(5, 7)));
   const [calcError, setCalcError] = useState<string | null>(null);
   const [calculando, setCalculando] = useState(false);
 

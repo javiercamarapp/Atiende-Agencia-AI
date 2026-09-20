@@ -284,8 +284,10 @@ function DiotConsulta({ ctx }: { ctx: DespachosShellContext }) {
   // CDMX precargaba el MES SIGUIENTE (y el 31-dic el AÑO siguiente). `hoyFechaSolo()`
   // (apps/web/src/lib/formato-fecha.ts, formato "YYYY-MM-DD") da el día de
   // calendario en America/Mexico_City -- mismo helper que Dashboard.tsx/Pl.tsx.
-  const defaultPeriodo = hoyFechaSolo().slice(0, 7);
-  const [periodo, setPeriodo] = useState(defaultPeriodo);
+  // Inicializador lazy: solo se usa como valor inicial de useState, así que no
+  // hace falta recalcular `hoyFechaSolo()` (construye un Intl.DateTimeFormat) en
+  // cada render.
+  const [periodo, setPeriodo] = useState(() => hoyFechaSolo().slice(0, 7));
   const [agregado, setAgregado] = useState<DiotAgregado | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
