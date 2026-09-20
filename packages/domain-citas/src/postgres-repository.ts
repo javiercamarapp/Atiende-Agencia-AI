@@ -1002,6 +1002,22 @@ export class PostgresCitasRepository implements CitasRepository {
     });
   }
 
+  /** Corrección bloqueante de la ronda 2 de revisión del PR #180 — ver el
+   * comentario largo de `repository.ts::areSystemWaitlistFunctionsAvailable`.
+   * `to_regprocedure` es una consulta de catálogo pura (equivalente a
+   * `\df` en `psql`): nunca lanza si la función no existe (a diferencia de
+   * `select citas.system_...(...)`, que lanzaría 42883) y no requiere ningún
+   * privilegio `EXECUTE` sobre las funciones -- por eso corre segura en la
+   * MISMA sesión de staff que ya usa `previewListaEspera`, sin savepoint ni
+   * fallback: no hay ningún SQLSTATE que capturar. */
+  async areSystemWaitlistFunctionsAvailable(): Promise<boolean> {
+    const { rows } = await this.db.query<{ available: boolean }>(
+      `select to_regprocedure('citas.system_load_live_waitlist_candidates(uuid)') is not null
+          and to_regprocedure('citas.system_resolve_active_whatsapp_phone_number_id(uuid)') is not null as available;`,
+    );
+    return rows[0]?.available ?? false;
+  }
+
   async claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean> {
     const { rows } = await this.db.query<{ id: string | null }>(`select (citas.claim_waitlist_notification_slot($1, $2)).id as id;`, [waitlistId, maxNotifications]);
     return rows[0]?.id != null;

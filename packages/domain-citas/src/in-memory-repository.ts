@@ -168,6 +168,15 @@ export class InMemoryCitasRepository implements CitasRepository {
   private readonly outbox = new Map<string, InMemoryOutboxRow>();
   // ---- Fase 6 §1 — guardia de crisis ----
   private readonly tenantConfigs = new Map<string, TenantConfigRecord>();
+  // ---- Corrección bloqueante ronda 2 del PR #180 — el doble en memoria no
+  // tiene catálogo de Postgres que consultar (`to_regprocedure`), así que
+  // simula el resultado del probe con esta bandera: `true` por defecto (mismo
+  // comportamiento que una base YA migrada, que es lo que asumen todos los
+  // demás tests de este repo que no la tocan); los tests que sí necesitan
+  // reproducir "esquema a medias" (020/021 no aplicadas) la ponen en `false`
+  // vía `setSystemWaitlistFunctionsAvailable` -- ver
+  // `repository.ts::areSystemWaitlistFunctionsAvailable` para el diseño real. ----
+  private systemWaitlistFunctionsAvailableFlag = true;
 
   /** Contadores de llamadas a los métodos BATCH de enriquecimiento de agenda --
    * expuestos para que los tests de rendimiento (ver
@@ -242,6 +251,13 @@ export class InMemoryCitasRepository implements CitasRepository {
   seedWhatsAppConfig(organizationId: string, phoneNumberId: string): void {
     this.whatsappPhoneNumberIdByOrg.set(organizationId, phoneNumberId);
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
+  }
+
+  /** Corrección bloqueante ronda 2 del PR #180 — simula "esquema a medias"
+   * (`false`, migraciones 020/021 no aplicadas) o base ya migrada (`true`,
+   * default) para el probe de `areSystemWaitlistFunctionsAvailable`. */
+  setSystemWaitlistFunctionsAvailable(available: boolean): void {
+    this.systemWaitlistFunctionsAvailableFlag = available;
   }
 
   seedWaitlistEntry(row: Omit<StoredWaitlistRow, "id" | "status" | "notifiedCount" | "createdAt" | "expiresAt"> & { id?: string; expiresAt?: string; createdAt?: string }): string {
@@ -1026,6 +1042,13 @@ export class InMemoryCitasRepository implements CitasRepository {
    * `repository.ts` para por qué Postgres real sí distingue las dos). */
   async resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId: string): Promise<string | null> {
     return this.resolveActiveWhatsAppPhoneNumberId(organizationId);
+  }
+
+  /** Corrección bloqueante ronda 2 del PR #180 — ver
+   * `repository.ts::areSystemWaitlistFunctionsAvailable` y
+   * `setSystemWaitlistFunctionsAvailable` de arriba. */
+  async areSystemWaitlistFunctionsAvailable(): Promise<boolean> {
+    return this.systemWaitlistFunctionsAvailableFlag;
   }
 
   async claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean> {

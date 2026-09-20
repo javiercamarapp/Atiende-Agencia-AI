@@ -656,6 +656,23 @@ export interface CitasRepository {
    * Compatibilidad con la base sin migrar: implementación Postgres degrada a
    * `null` (SQLSTATE 42883), nunca un 500. */
   resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId: string): Promise<string | null>;
+  /** Corrección bloqueante de la ronda 2 de revisión del PR #180 — probe de SOLO
+   * CATÁLOGO (nunca ejecuta ninguna de las dos funciones, no requiere `EXECUTE`
+   * ni ningún fallback nuevo) que corre en sesión de STAFF: le dice a
+   * `previewListaEspera` si las migraciones 020/021 ya están aplicadas en ESTA
+   * base, ANTES de calcular un conteo de candidatos que el post-commit en
+   * sesión de sistema nunca podría notificar de verdad. Sin este probe, con la
+   * base sin migrar (el estado REAL de producción en el instante en que este
+   * PR se mergea — nadie aplica las migraciones al mergear, ver regla dura de
+   * compatibilidad del repo) el panel mostraba "Aviso encolado para N
+   * candidatos" y el post-commit degradaba a `[]`/`null` por SQLSTATE 42883 sin
+   * encolar nada: un éxito falso permanente, en vez del 500 visible que da hoy
+   * `main` para esa misma acción. Implementación Postgres:
+   * `to_regprocedure('citas.system_load_live_waitlist_candidates(uuid)')` +
+   * la misma comprobación para `system_resolve_active_whatsapp_phone_number_id`
+   * — una consulta al catálogo, disponible para cualquier rol, que nunca lanza
+   * si la función no existe (a diferencia de invocarla). */
+  areSystemWaitlistFunctionsAvailable(): Promise<boolean>;
   claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean>;
 
   // ---- Idempotencia/rate-limit (transversal) ----

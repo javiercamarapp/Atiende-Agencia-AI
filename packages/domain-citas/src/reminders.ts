@@ -462,9 +462,22 @@ export async function runListaEsperaCore(
 }
 
 export interface ListaEsperaPreview {
+  /** Corrección bloqueante de la ronda 2 de revisión del PR #180 — `false`
+   * significa que la base a la que está conectado este proceso todavía NO
+   * tiene aplicadas las migraciones 020/021 (probe de catálogo, ver
+   * `repository.ts::areSystemWaitlistFunctionsAvailable`): el post-commit en
+   * sesión de sistema (`runCitasListaEsperaBroadcastAfterCommit`) degradaría
+   * en silencio a `[]`/`null` por SQLSTATE 42883 y NO encolaría ningún aviso,
+   * así que `candidatesConsidered`/`skippedNoWhatsappConfig` NO se calculan
+   * (irían con un conteo real de candidatos que el broadcast nunca podría
+   * notificar de verdad -- exactamente el éxito falso que la ronda 2 señaló).
+   * El caller (`admin.ts`) debe responder `queued:false` en este caso, nunca
+   * encolar el postCommitTask. */
+  readonly available: boolean;
   /** Mismo criterio EXACTO que `ListaEsperaSummary.candidatesConsidered` --
    * cuántos candidatos vivos matchean el filtro y caben en `limit`, calculado
-   * con la MISMA `filterAndRankWaitlistForBroadcast` que usa el efecto real. */
+   * con la MISMA `filterAndRankWaitlistForBroadcast` que usa el efecto real.
+   * Solo tiene sentido cuando `available` es `true`. */
   readonly candidatesConsidered: number;
   readonly skippedNoWhatsappConfig: boolean;
 }
@@ -481,13 +494,25 @@ export interface ListaEsperaPreview {
  * respuesta HTTP síncrona nunca lo reporta (sería una cifra inventada antes
  * de que el efecto exista). Usa `loadLiveWaitlistCandidates` (RLS real de
  * staff, funciona hoy sin ninguna migración) -- NUNCA la versión de sistema.
+ *
+ * Corrección bloqueante de la ronda 2 — antes de calcular ese conteo,
+ * `areSystemWaitlistFunctionsAvailable()` (probe de catálogo, sesión de
+ * staff, no ejecuta ninguna función) confirma que la base YA tiene 020/021
+ * aplicadas. Sin este probe, con la base sin migrar (el estado REAL de
+ * producción en el instante del merge) esta función veía candidatos y
+ * `whatsapp_config` reales (las variantes de staff funcionan sin ninguna
+ * migración) y respondía un conteo que el post-commit en sesión de sistema
+ * nunca podría convertir en un aviso de verdad.
  */
 export async function previewListaEspera(repo: CitasRepository, organizationId: string, event: ListaEsperaEvent = {}, limit: number = DEFAULT_LISTA_ESPERA_LIMIT): Promise<ListaEsperaPreview> {
+  const functionsAvailable = await repo.areSystemWaitlistFunctionsAvailable();
+  if (!functionsAvailable) return { available: false, candidatesConsidered: 0, skippedNoWhatsappConfig: false };
+
   const effectiveLimit = clampListaEsperaLimit(limit);
   const candidates = await repo.loadLiveWaitlistCandidates(organizationId);
   const filtered = filterAndRankWaitlistForBroadcast(candidates, event, effectiveLimit);
-  if (filtered.length === 0) return { candidatesConsidered: 0, skippedNoWhatsappConfig: false };
+  if (filtered.length === 0) return { available: true, candidatesConsidered: 0, skippedNoWhatsappConfig: false };
 
   const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(organizationId);
-  return { candidatesConsidered: filtered.length, skippedNoWhatsappConfig: !phoneNumberId };
+  return { available: true, candidatesConsidered: filtered.length, skippedNoWhatsappConfig: !phoneNumberId };
 }
