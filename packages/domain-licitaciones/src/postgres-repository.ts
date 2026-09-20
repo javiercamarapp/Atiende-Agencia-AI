@@ -6,6 +6,7 @@
 // `licitaciones.can_access_org`/`can_write_org`/`can_decide_org`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
@@ -2548,5 +2549,23 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
     await this.db.query(`select licitaciones.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
+  }
+
+  // Aislamiento del best-effort de correo (ver el comentario de cabecera de
+  // `runWithRowSavepoint` en `repository.ts` para el diseño completo) -- mismo
+  // `runWithSavepointFallback` que `PostgresHotelesRepository`/
+  // `PostgresRestaurantesRepository`/`PostgresDespachosRepository`, con
+  // `isRecoverable` fijo en `true` y un `fallback` que simplemente relanza el
+  // mismo error DESPUÉS de que `ROLLBACK TO SAVEPOINT` ya dejó la transacción
+  // utilizable para el `commit;` real que sigue.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: fn,
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
   }
 }

@@ -836,6 +836,24 @@ export interface LicitacionesRepository {
   claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
   completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
 
+  /** Corrección de revisión sobre PR #176 (auditoría a3) -- aísla un best-effort
+   * (hoy `apps/api/.../verticals/licitaciones/admin-staff.ts` al encolar el
+   * correo de invitación de staff) con un SAVEPOINT propio dentro de la MISMA
+   * transacción que ya persistió la escritura de negocio real
+   * (`createStaffInvite`, misma sesión de staff del request). Sin este
+   * SAVEPOINT, un error real de Postgres dentro del encolado (deadlock,
+   * timeout, `42501` si `auth.uid()` no es miembro) deja la transacción
+   * COMPLETA abortada (25P02) -- la invitación ya "persistida" se pierde con un
+   * `commit;` que `managed-postgres-engine.ts` convierte en `ROLLBACK`
+   * silencioso (`AbortedTransactionCommitError`). Mismo patrón/mismo helper
+   * (`runWithSavepointFallback` de `@atiende/db`, `isRecoverable: () => true`,
+   * `fallback` que relanza) que `HotelesRepository.runWithRowSavepoint`/
+   * `RestaurantesRepository.runWithRowSavepoint`/
+   * `DespachosRepository.runWithRowSavepoint` -- ver su comentario de cabecera
+   * para el diseño completo. No-op en `InMemoryLicitacionesRepository` (sin
+   * transacción real que aislar). */
+  runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T>;
+
   // ---------------------------------------------------------------------
   // Fase 16 -- resolución won/lost (ver tender-resolution.ts) + escritura de
   // "datos de empresa" (ver bloque de tipos *CreateInput/*UpdateInput arriba).
