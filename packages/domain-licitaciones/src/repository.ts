@@ -836,6 +836,35 @@ export interface LicitacionesRepository {
   claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
   completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
 
+  /** Corrección de revisión sobre PR #176 (auditoría a3) -- agregado por PARIDAD
+   * con `HotelesRepository.runWithRowSavepoint`/`RestaurantesRepository.
+   * runWithRowSavepoint`/`DespachosRepository.runWithRowSavepoint` (mismo helper
+   * `runWithSavepointFallback` de `@atiende/db`, `isRecoverable: () => true`,
+   * `fallback` que relanza -- ver su comentario de cabecera para el diseño
+   * completo), para cualquier best-effort futuro de este vertical que corra
+   * DENTRO de la misma transacción de sesión de staff que ya persistió una
+   * escritura de negocio real.
+   *
+   * SIN caller hoy (a diferencia de las otras 3 verticales): el único candidato
+   * -- `admin-staff.ts` al encolar el correo de invitación de staff -- resultó
+   * NO poder usar este SAVEPOINT, porque `licitaciones.enqueue_messaging_outbox`
+   * es EXCLUSIVA de sesión de SISTEMA sin excepción (`supabase/migrations/
+   * 20240101000089_020_email_outbox_authenticated_grants.sql:17-25`,
+   * `if auth.uid() is not null then raise ... errcode = '42501'`, certificado por
+   * `scripts/verify-outbox-grants/assertions.sql` casos 11/12) -- a diferencia de
+   * `hoteles`/`despachos`/`restaurantes`.enqueue_messaging_outbox, que sí aceptan
+   * sesión de staff con membership/property-access real. Un SAVEPOINT ahí evita
+   * que el 42501 tumbe la transacción del request, pero NUNCA logra que el
+   * correo se encole (la sesión sigue siendo la de staff, que ese guard siempre
+   * rechaza) -- por eso `admin-staff.ts` usa en su lugar
+   * `enqueueStaffInviteEmailPostCommit` (sesión de SISTEMA, `postCommitTasks`,
+   * ver su comentario de cabecera). Si un caller futuro necesita este
+   * SAVEPOINT, debe primero confirmar que la función SQL que invoca SÍ acepta
+   * `auth.uid()` real -- si es solo-sistema, el remedio es post-commit en
+   * sesión de sistema, no este helper. No-op en `InMemoryLicitacionesRepository`
+   * (sin transacción real que aislar). */
+  runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T>;
+
   // ---------------------------------------------------------------------
   // Fase 16 -- resolución won/lost (ver tender-resolution.ts) + escritura de
   // "datos de empresa" (ver bloque de tipos *CreateInput/*UpdateInput arriba).
