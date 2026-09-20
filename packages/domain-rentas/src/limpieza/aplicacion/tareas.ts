@@ -46,6 +46,7 @@
 //     `cancelarOcupacion` ya hicieron commit) — ver
 //     apps/api/src/routes/verticals/rentas/reservas.ts — en vez de un consumidor de
 //     eventos, porque aquí no existe ningún bus de eventos del que colgarse.
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { bloquearUnidadEnTransaccion, type EjecutorTransaccional } from "../../ejecutor.ts";
 import { cancelarOcupacion, crearBloqueo } from "../../aplicacion/reservas.ts";
 import { RentasDomainError } from "../../errors.ts";
@@ -226,18 +227,27 @@ export interface ResultadoProcesarCheckouts {
   readonly tareasCreadas: readonly string[];
 }
 
-export async function procesarCheckoutsPendientes(ejecutor: EjecutorTransaccional, limite = 50): Promise<ResultadoProcesarCheckouts> {
+// Bug real: `current_date` corre en la sesión de Postgres (UTC en Vercel); entre las
+// 18:00 y las 23:59 CDMX el día UTC ya es MAÑANA, así que una reserva cuyo checkout es
+// MAÑANA (CDMX) se procesaba (tarea de limpieza creada) un día antes de tiempo. Este
+// sweep corre COMPLETO bajo `withAppSession({ userId: null })` (sesión de sistema,
+// `apps/api/.../rentas/checkout-sweep-cron.ts`) -- nunca hay un caller staff que
+// mezclar en la misma llamada. Resuelto UNA vez en TS con
+// `@atiende/core-tenancy::hoyFechaNegocio()`, con el mismo patrón de default que
+// `PostgresLicitacionesRepository`/`InMemoryLicitacionesRepository` ya usan
+// (`todayIsoDate: string = hoyFechaNegocio()`) -- el SQL ya no llama `current_date`.
+export async function procesarCheckoutsPendientes(ejecutor: EjecutorTransaccional, limite = 50, asOfDate: string = hoyFechaNegocio()): Promise<ResultadoProcesarCheckouts> {
   const pendientes = await ejecutor.query<{ ocupacion_id: string; unidad_id: string; fin: string }>(
     `SELECT o.id AS ocupacion_id, o.unidad_id, upper(o.rango)::text AS fin
      FROM rentas.ocupacion o
      WHERE o.capa = 'reserva' AND o.estado = 'confirmado' AND o.bloqueante
-       AND upper(o.rango) <= current_date
+       AND upper(o.rango) <= $2::date
        AND NOT EXISTS (
          SELECT 1 FROM rentas.tarea_operativa t WHERE t.ocupacion_unidad_id = o.id AND t.tipo = 'limpieza'
        )
      ORDER BY upper(o.rango)
      LIMIT $1`,
-    [limite],
+    [limite, asOfDate],
   );
 
   const tareasCreadas: string[] = [];

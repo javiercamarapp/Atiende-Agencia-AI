@@ -5,6 +5,7 @@
 // Sirve para tests determinísticos y como fallback dev/CI sin Postgres real — mismo
 // rol que InMemoryRestaurantesRepository.
 import { createHash, randomUUID } from "node:crypto";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -983,7 +984,9 @@ export class InMemoryHotelesRepository implements HotelesRepository {
   }
 
   async findDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly ReservationRecord[]> {
-    const cutoff = asOfDate ?? new Date().toISOString().slice(0, 10);
+    // Paridad con `PostgresHotelesRepository.findDueNoShowReservations` (ver su
+    // comentario de cabecera): "hoy" es el día de NEGOCIO, nunca el día UTC crudo.
+    const cutoff = asOfDate ?? hoyFechaNegocio();
     return [...this.reservations.values()]
       .filter((r) => r.propertyId === propertyId && r.status === "confirmada" && r.checkInDate <= cutoff)
       .map((r) => this.toReservationRecord(r));
