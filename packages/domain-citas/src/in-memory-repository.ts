@@ -14,6 +14,10 @@ import type {
   AvailabilityRule,
   AvailabilityRulePatch,
   BusyInterval,
+  CitasAuditLogFiltro,
+  CitasAuditLogPagina,
+  CitasAuditLogPaginacion,
+  CitasAuditLogRow,
   CustomerRecord,
   GoogleSyncStatus,
   NewAvailabilityRuleInput,
@@ -22,6 +26,7 @@ import type {
   ProviderCalendarAccountRecord,
   ProviderPatch,
   ProviderRecord,
+  RegistrarCitasAuditoriaInput,
   ServicePatch,
   ServiceRecord,
 } from "./types.ts";
@@ -57,6 +62,18 @@ import type {
   TenantConfigRecord,
   WaitlistCandidateRow,
 } from "./repository.ts";
+
+// FASE 3 (producto) -- mismos límites que el CHECK de `citas.audit_log` (ver
+// migrations/023_citas_audit_log.sql) -- mismo criterio EXACTO que
+// `InMemoryRestaurantesRepository`/`InMemoryRentasRepository` (ver el comentario
+// dentro de `registrarAuditoria` de abajo).
+const AUDIT_LOG_CAMPO_MAX = 200;
+const AUDIT_LOG_TEXTO_MAX = 500;
+
+function truncarCampoAuditoriaCitas(value: string | null | undefined, max: number): string | null {
+  if (value == null) return null;
+  return value.length > max ? value.slice(0, max) : value;
+}
 
 /** Serializa operaciones por clave — equivalente en memoria de
  * `pg_advisory_xact_lock`/row lock de Postgres: dos llamadas concurrentes con la
@@ -189,6 +206,12 @@ export class InMemoryCitasRepository implements CitasRepository {
   llamadasFindServicesByIds = 0;
   llamadasFindCustomersByIds = 0;
   private readonly emergencyEscalations: EmergencyEscalationRecord[] = [];
+  // ---- FASE 3 (producto) -- bitácora de auditoría del staff, ver
+  // migrations/023_citas_audit_log.sql. Expuesta (no privada, mismo criterio que
+  // `InMemoryRestaurantesRepository.auditLog`) para que un test pueda inspeccionar
+  // lo que de verdad se escribió sin pasar por una ruta HTTP de lectura. ----
+  readonly auditLog: (CitasAuditLogRow & { readonly organizationId: string; readonly seq: number })[] = [];
+  private auditLogSeq = 0;
   // ---- Fase 6 §2 — Cal.com/CalDAV por proveedor ----
   private readonly calcomAccounts = new Map<string, ProviderCalComAccountRecord>(); // por providerId
   private readonly calcomApiKeys = new Map<string, string>(); // por providerId
@@ -1454,5 +1477,62 @@ export class InMemoryCitasRepository implements CitasRepository {
     if (!job || job.channel !== "email") return;
     job.status = status;
     job.lastError = error === null ? null : error.slice(0, 500);
+  }
+
+  // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----
+
+  async registrarAuditoria(input: RegistrarCitasAuditoriaInput): Promise<void> {
+    // A diferencia de PostgresCitasRepository (que ignora `input.actorUserId` y
+    // deja que `citas.record_audit_log` capture el actor real vía `auth.uid()`),
+    // este doble en memoria SÍ lo usa -- no hay sesión SQL/`auth.uid()` que
+    // simular aquí, y los tests necesitan un actor real para poder afirmar
+    // "quién" quedó registrado.
+    this.auditLogSeq += 1;
+    this.auditLog.push({
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      // Trunca a los MISMOS límites que el CHECK de `citas.audit_log`
+      // (200/500/500, ver migrations/023_citas_audit_log.sql) -- mismo criterio
+      // que `left(..., N)` dentro de `citas.record_audit_log`.
+      campo: truncarCampoAuditoriaCitas(input.campo, AUDIT_LOG_CAMPO_MAX),
+      antes: truncarCampoAuditoriaCitas(input.antes, AUDIT_LOG_TEXTO_MAX),
+      despues: truncarCampoAuditoriaCitas(input.despues, AUDIT_LOG_TEXTO_MAX),
+      createdAtMs: Date.now(),
+      seq: this.auditLogSeq,
+    });
+  }
+
+  async listAuditoria(organizationId: string, filtro: CitasAuditLogFiltro, paginacion: CitasAuditLogPaginacion): Promise<CitasAuditLogPagina> {
+    const limit = Math.min(200, Math.max(1, paginacion.limit ?? 50));
+    const offset = Math.max(0, paginacion.offset ?? 0);
+
+    let filtrados = this.auditLog.filter((r) => r.organizationId === organizationId);
+    if (filtro.entityType) filtrados = filtrados.filter((r) => r.entityType === filtro.entityType);
+    // Mismo criterio EXACTO que `PostgresCitasRepository.listAuditoria` -- ancla
+    // `desde`/`hasta` a America/Mexico_City (offset fijo `-06:00`) para que
+    // ambos repositorios (real e in-memory) clasifiquen el mismo instante en el
+    // mismo día de filtro.
+    if (filtro.desde) {
+      const desdeMs = new Date(`${filtro.desde}T00:00:00-06:00`).getTime();
+      filtrados = filtrados.filter((r) => r.createdAtMs >= desdeMs);
+    }
+    if (filtro.hasta) {
+      const hastaExclusivoMs = new Date(`${filtro.hasta}T00:00:00-06:00`).getTime() + 24 * 60 * 60 * 1000;
+      filtrados = filtrados.filter((r) => r.createdAtMs < hastaExclusivoMs);
+    }
+    // Desempate por `seq` cuando `createdAtMs` empata (dos escrituras dentro del
+    // mismo milisegundo) -- MISMO orden que `PostgresCitasRepository.
+    // listAuditoria` (`order by created_at desc, seq desc`). `Array.prototype.sort`
+    // es estable; sin este desempate dos filas empatadas quedarían en orden de
+    // inserción (más antigua primero) en vez de "más reciente primero".
+    filtrados = [...filtrados].sort((a, b) => b.createdAtMs - a.createdAtMs || b.seq - a.seq);
+
+    const total = filtrados.length;
+    const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, seq: _seq, ...row }) => row);
+    return { disponible: true, items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
   }
 }

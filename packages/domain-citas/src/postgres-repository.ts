@@ -10,7 +10,7 @@
 // ruta de staff (cancelar desde panel) sí abre sesión con el userId real, que es lo
 // que `cancelAppointmentFromPanel` recibe como `actorUserId`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
+import { isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
@@ -19,6 +19,10 @@ import type {
   AvailabilityRule,
   AvailabilityRulePatch,
   BusyInterval,
+  CitasAuditLogFiltro,
+  CitasAuditLogPagina,
+  CitasAuditLogPaginacion,
+  CitasAuditLogRow,
   CustomerRecord,
   GoogleSyncStatus,
   NewAvailabilityRuleInput,
@@ -27,6 +31,7 @@ import type {
   ProviderCalendarAccountRecord,
   ProviderPatch,
   ProviderRecord,
+  RegistrarCitasAuditoriaInput,
   ServicePatch,
   ServiceRecord,
 } from "./types.ts";
@@ -201,6 +206,70 @@ function mapCalendarAccount(row: ProviderCalendarAccountRow): ProviderCalendarAc
     syncError: row.sync_error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// FASE 3 (producto) -- bitácora de auditoría del staff, ver
+// migrations/023_citas_audit_log.sql. REGLA DURA DE COMPATIBILIDAD CON LA BASE
+// SIN MIGRAR (ver AGENTS.md de esta fase): mergear a `main` despliega el código
+// al instante pero la base Supabase real va ~30 migraciones atrás -- nadie
+// aplica esta migración al mergear. `citas.record_audit_log`/`citas.audit_log`
+// no existen todavía en ese estado, y Postgres real lanza SQLSTATE 42883
+// (`undefined_function`)/42P01 (`undefined_table`)/42703 (`undefined_column`)
+// en ese caso -- `isMigrationPendingError` (@atiende/db) ya cubre el trío.
+// ---------------------------------------------------------------------------
+const CITAS_AUDIT_LOG_WRITE_SAVEPOINT = "sp_citas_audit_log_write";
+const CITAS_AUDIT_LOG_READ_SAVEPOINT = "sp_citas_audit_log_read";
+
+let auditLogAdvertidoEscritura = false;
+function advertirCitasAuditLogEscrituraNoDisponible(err: unknown): void {
+  if (auditLogAdvertidoEscritura) return;
+  auditLogAdvertidoEscritura = true;
+  console.warn(
+    "PostgresCitasRepository.registrarAuditoria: citas.record_audit_log no existe todavía en esta base " +
+      "(SQLSTATE 42883/42P01/42703) -- la acción de negocio YA se completó y no se revierte, esta fila de " +
+      "bitácora se omitió. Aplica packages/domain-citas/migrations/023_citas_audit_log.sql (o su espejo " +
+      "en supabase/migrations/) para habilitarla.",
+    err,
+  );
+}
+
+let auditLogAdvertidoLectura = false;
+function advertirCitasAuditLogLecturaNoDisponible(err: unknown): void {
+  if (auditLogAdvertidoLectura) return;
+  auditLogAdvertidoLectura = true;
+  console.warn(
+    "PostgresCitasRepository.listAuditoria: citas.audit_log no existe todavía en esta base (SQLSTATE " +
+      "42883/42P01/42703) -- devolviendo disponible:false (nunca una lista vacía real, ver CitasAuditLogPagina). " +
+      "Aplica packages/domain-citas/migrations/023_citas_audit_log.sql (o su espejo en supabase/migrations/).",
+    err,
+  );
+}
+
+interface CitasAuditLogRowSql {
+  id: string;
+  actor_user_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  campo: string | null;
+  antes: string | null;
+  despues: string | null;
+  created_at: string;
+}
+
+function mapCitasAuditLogRow(row: CitasAuditLogRowSql): CitasAuditLogRow {
+  return {
+    id: row.id,
+    actorUserId: row.actor_user_id,
+    action: row.action,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    campo: row.campo,
+    antes: row.antes,
+    despues: row.despues,
+    createdAtMs: new Date(row.created_at).getTime(),
   };
 }
 
@@ -1575,5 +1644,111 @@ export class PostgresCitasRepository implements CitasRepository {
 
   async completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void> {
     await this.db.query(`select citas.complete_email_outbox_job($1, $2, $3);`, [id, status, error]);
+  }
+
+  // ============================================================================
+  // FASE 3 (producto) -- bitácora de auditoría del staff, ver
+  // migrations/023_citas_audit_log.sql. Mismo patrón EXACTO que
+  // `PostgresRestaurantesRepository.registrarAuditoria`/`.listAuditoria`, reescrito
+  // sobre el helper compartido `runWithSavepointFallback` (@atiende/db) que este
+  // archivo ya usa para el resto de sus SAVEPOINT (ver `runWithRowSavepoint`/
+  // `markAppointmentGoogleSyncInvalid` arriba) en vez del SAVEPOINT/ROLLBACK TO
+  // SAVEPOINT/RELEASE a mano que domain-restaurantes escribió antes de que ese
+  // helper existiera.
+  // ============================================================================
+
+  /**
+   * Nunca lanza -- best-effort real (regla dura de esta fase, ver AGENTS.md): un
+   * error real de Postgres dentro de esta transacción compartida (misma
+   * `dbSession`/`withAppSession` del request de staff) deja la transacción
+   * "abortada" si no se recupera con un SAVEPOINT -- la SIGUIENTE consulta
+   * (incluido el `commit` final del request) fallaría con 25P02, revirtiendo la
+   * acción de negocio que ya había corrido con éxito antes de llamar aquí. La
+   * capa exterior try/catch cubre además cualquier error NO cubierto por
+   * `isMigrationPendingError` (ej. un bug real de tipos) -- la regla dura no
+   * distingue "por qué" falló la bitácora, solo que nunca puede tumbar ni
+   * revertir la acción de negocio ya hecha.
+   */
+  async registrarAuditoria(input: RegistrarCitasAuditoriaInput): Promise<void> {
+    try {
+      await runWithSavepointFallback({
+        session: this.db,
+        savepointName: CITAS_AUDIT_LOG_WRITE_SAVEPOINT,
+        primary: async () => {
+          await this.db.query(`select citas.record_audit_log($1, $2, $3, $4, $5, $6, $7);`, [
+            input.organizationId,
+            input.action,
+            input.entityType,
+            input.entityId,
+            input.campo ?? null,
+            input.antes ?? null,
+            input.despues ?? null,
+          ]);
+        },
+        isRecoverable: (err) => isMigrationPendingError(err, "citas.record_audit_log"),
+        fallback: (err) => {
+          advertirCitasAuditLogEscrituraNoDisponible(err);
+          return Promise.resolve();
+        },
+      });
+    } catch (err) {
+      console.error("PostgresCitasRepository.registrarAuditoria: fallo inesperado al escribir en citas.audit_log (la acción de negocio ya se completó y NO se revierte).", err);
+    }
+  }
+
+  async listAuditoria(organizationId: string, filtro: CitasAuditLogFiltro, paginacion: CitasAuditLogPaginacion): Promise<CitasAuditLogPagina> {
+    const limit = Math.min(200, Math.max(1, paginacion.limit ?? 50));
+    const offset = Math.max(0, paginacion.offset ?? 0);
+
+    const params: unknown[] = [organizationId];
+    const condiciones = ["organization_id = $1"];
+    if (filtro.entityType) {
+      params.push(filtro.entityType);
+      condiciones.push(`entity_type = $${params.length}`);
+    }
+    // Mismo criterio EXACTO que `PostgresRestaurantesRepository.listAuditoria`:
+    // ancla `desde`/`hasta` a America/Mexico_City con offset fijo `-06:00`
+    // (México no tiene horario de verano nacional desde 2022) -- comparar
+    // contra `created_at >= $n::date` usaría la zona horaria de la SESIÓN de
+    // Postgres (UTC), y una acción de las 18:00 a las 23:59 hora de México
+    // caería en el día SIGUIENTE del filtro.
+    if (filtro.desde) {
+      params.push(`${filtro.desde}T00:00:00-06:00`);
+      condiciones.push(`created_at >= $${params.length}::timestamptz`);
+    }
+    if (filtro.hasta) {
+      // Extremo inclusivo -- `hasta` es una fecha (sin hora), así que compara
+      // contra el INICIO del día siguiente en vez de `<=`.
+      params.push(`${filtro.hasta}T00:00:00-06:00`);
+      condiciones.push(`created_at < ($${params.length}::timestamptz + interval '1 day')`);
+    }
+    const where = condiciones.join(" and ");
+
+    return runWithSavepointFallback<CitasAuditLogPagina>({
+      session: this.db,
+      savepointName: CITAS_AUDIT_LOG_READ_SAVEPOINT,
+      primary: async () => {
+        const totalResult = await this.db.query<{ total: string }>(`select count(*)::text as total from citas.audit_log where ${where};`, params);
+        const total = Number(totalResult.rows[0]?.total ?? 0);
+
+        const limitOffsetParams = [...params, limit, offset];
+        // Orden TOTAL desde el día uno (`seq` ya existe en migrations/023, ver
+        // su comentario de cabecera) -- nunca hace falta un fallback anidado
+        // por "seq no existe todavía" (a diferencia de rentas).
+        const { rows } = await this.db.query<CitasAuditLogRowSql>(
+          `select id, actor_user_id, action, entity_type, entity_id, campo, antes, despues, created_at::text as created_at
+           from citas.audit_log where ${where} order by created_at desc, seq desc limit $${limitOffsetParams.length - 1} offset $${limitOffsetParams.length};`,
+          limitOffsetParams,
+        );
+
+        const items = rows.map(mapCitasAuditLogRow);
+        return { disponible: true, items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        advertirCitasAuditLogLecturaNoDisponible(err);
+        return Promise.resolve({ disponible: false, items: [], total: 0, nextOffset: null });
+      },
+    });
   }
 }

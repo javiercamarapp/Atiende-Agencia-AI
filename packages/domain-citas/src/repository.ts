@@ -19,6 +19,9 @@ import type {
   AvailabilityRule,
   AvailabilityRulePatch,
   BusyInterval,
+  CitasAuditLogFiltro,
+  CitasAuditLogPagina,
+  CitasAuditLogPaginacion,
   CustomerRecord,
   GoogleSyncStatus,
   NewAvailabilityRuleInput,
@@ -27,6 +30,7 @@ import type {
   ProviderCalendarAccountRecord,
   ProviderPatch,
   ProviderRecord,
+  RegistrarCitasAuditoriaInput,
   ServicePatch,
   ServiceRecord,
 } from "./types.ts";
@@ -750,4 +754,18 @@ export interface CitasRepository {
   // ---- Fase 6 §3 — dispatcher de correo ----
   claimEmailOutboxBatch(limit: number): Promise<readonly EmailOutboxJobRow[]>;
   completeEmailOutboxJob(id: string, status: "sent" | "failed" | "dead", error: string | null): Promise<void>;
+
+  // ---- FASE 3 (producto) — bitácora de auditoría del staff, ver
+  // migrations/023_citas_audit_log.sql. Mismo contrato exacto que
+  // `RestaurantesRepository.registrarAuditoria`/`listAuditoria`. ----
+  /** Nunca lanza -- best-effort real (regla dura de esta fase): un error real de
+   *  la bitácora nunca puede tumbar ni revertir la acción de negocio que ya se
+   *  completó, ver `PostgresCitasRepository.registrarAuditoria`. */
+  registrarAuditoria(input: RegistrarCitasAuditoriaInput): Promise<void>;
+
+  /** `disponible: false` (nunca lanza) cuando `citas.audit_log`/
+   *  `citas.record_audit_log` todavía no existen en esta base (SQLSTATE
+   *  42883/42P01/42703, base sin migrar) -- ver
+   *  `PostgresCitasRepository.registrarAuditoria`. */
+  listAuditoria(organizationId: string, filtro: CitasAuditLogFiltro, paginacion: CitasAuditLogPaginacion): Promise<CitasAuditLogPagina>;
 }
