@@ -9,6 +9,8 @@ import type { DespachosRepository, EmailOutboxJobRow, InvoicePage, OrganizationN
 import type {
   CollectionEventRecord,
   DeadlineEscalationRecord,
+  DespachosAuditLogEntry,
+  DespachosAuditLogPage,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
@@ -41,6 +43,52 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   private readonly organizationIdBySlug = new Map<string, string>();
   private readonly despachosProperties = new Map<string, { propertyId: string; organizationId: string; name: string }>();
   private readonly receivables = new Map<string, ReceivableRecord>();
+
+  /** Espejo en memoria de `despachos.audit_log` -- f2-orden-total-bitacoras.
+   * Expuesto directo (mismo criterio que `InMemoryRentasRepository.auditLog`, ver
+   * PR #173) para que un test pueda sembrar filas sin pasar por ninguna ruta HTTP
+   * (que hoy no existe -- la escritura real de producción es
+   * `ProductionDespachosAuditSink`, fuera de `DespachosRepository`; ver el
+   * comentario de cabecera de `listAuditLogPage` en `repository.ts`). `seq` es el
+   * desempate monótono EQUIVALENTE a la columna `seq bigint generated always as
+   * identity` de Postgres (migración 011): `Date.now()` (`createdAtMs`) tiene
+   * resolución de milisegundo, así que dos filas sembradas en el mismo milisegundo
+   * (exactamente lo que reproduce un reloj falso congelado en tests) empatan sin
+   * este desempate. */
+  readonly auditLog: (DespachosAuditLogEntry & { readonly organizationId: string; readonly createdAtMs: number; readonly seq: number })[] = [];
+  private auditLogSeq = 0;
+
+  /** Siembra una fila para pruebas -- ver el comentario de `auditLog` arriba. */
+  registrarAuditLogParaPruebas(input: { readonly organizationId: string; readonly actorUserId: string | null; readonly action: string; readonly payload?: Record<string, unknown> }): void {
+    this.auditLogSeq += 1;
+    const createdAtMs = Date.now();
+    this.auditLog.push({
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      action: input.action,
+      payload: input.payload ?? {},
+      createdAtMs,
+      createdAt: new Date(createdAtMs).toISOString(),
+      seq: this.auditLogSeq,
+    });
+  }
+
+  async listAuditLogPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<DespachosAuditLogPage> {
+    const { limit, offset } = opts;
+    // f2-orden-total-bitacoras -- desempate por `seq` cuando `createdAtMs` empata
+    // (ver el comentario de `auditLog` arriba) -- MISMO orden que
+    // `PostgresDespachosRepository.listAuditLogPage` (`order by created_at desc,
+    // seq desc`). `Array.prototype.sort` es estable: sin este desempate, dos filas
+    // del mismo milisegundo quedarían en orden de inserción (más antigua primero),
+    // exactamente al revés de "más reciente primero".
+    const filtrados = this.auditLog
+      .filter((r) => r.organizationId === organizationId)
+      .sort((a, b) => b.createdAtMs - a.createdAtMs || b.seq - a.seq);
+    const total = filtrados.length;
+    const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, createdAtMs: _createdAtMs, seq: _seq, ...row }) => row);
+    return { items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
+  }
   private readonly receivableByInvoice = new Map<string, string>(); // key: invoiceId -> receivableId
   private readonly collectionEvents = new Map<string, CollectionEventRecord[]>(); // key: receivableId
 
