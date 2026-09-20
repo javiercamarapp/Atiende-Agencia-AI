@@ -550,10 +550,16 @@ export interface NightAuditRunRecord {
 
 /** Property de hoteles activa -- insumo de la ruta interna de barrido (mismo patrón
  *  que `CitasRepository.listActiveOrganizations()`, ver
- *  apps/api/src/routes/verticals/citas/reminders.ts). */
+ *  apps/api/src/routes/verticals/citas/reminders.ts). `timezone` (FASE 3 producto,
+ *  migrations/030_zona_horaria_property.sql) es el valor CRUDO guardado en
+ *  `hoteles.property_config.timezone` -- `null` si la property no la configuró (o si
+ *  la tabla todavía no existe en una base sin migrar) -- SIEMPRE pasa por
+ *  `@atiende/core-tenancy::resolverZonaHorariaNegocio()` antes de usarse, nunca se lee
+ *  cruda. */
 export interface ActiveHotelProperty {
   readonly organizationId: string;
   readonly propertyId: string;
+  readonly timezone: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
