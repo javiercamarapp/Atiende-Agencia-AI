@@ -27,6 +27,17 @@
 --       -- este script cubre el mecanismo SQL subyacente (misma RPC, mismo
 --       guard); la orquestación HTTP/postCommitTasks se cubre en
 --       `apps/api/tests/citas-admin.spec.ts`.
+--   (B2) Corrección BLOQUEANTE de la ronda 2 de revisión independiente del
+--       PR #180 -- con la base sin migrar (020/021, el estado REAL de
+--       producción en el instante en que este PR se mergea: nadie las aplica
+--       al mergear) `previewListaEspera` seguía viendo candidatos reales y
+--       `whatsapp_config` real (las variantes de STAFF funcionan sin ninguna
+--       migración) y la ruta respondía `queued:true` con un conteo real que
+--       el post-commit en sesión de sistema jamás podría convertir en un
+--       aviso -- un éxito falso permanente (hoy en `main`, sin este PR, esa
+--       misma acción da un 500 visible). Arreglo: probe de SOLO CATÁLOGO
+--       (`to_regprocedure`, nunca ejecuta ninguna función, sin `EXECUTE` ni
+--       fallback nuevo) en sesión de staff -- ver escenarios 14f/15e.
 --
 -- Cubre, de punta a punta y contra Postgres real (156+ migraciones reales de
 -- `supabase/migrations/`, en orden):
@@ -63,6 +74,10 @@
 --          AMBAS funciones de sistema invocadas de verdad (corrección
 --          post-revisión: la versión anterior de este escenario saltaba la
 --          resolución del teléfono y encolaba con SQL escrito a mano).
+--   14f.   Corrección BLOQUEANTE ronda 2 -- probe de catálogo
+--          (`to_regprocedure`, el mismo que usa `previewListaEspera` en
+--          sesión de staff) confirma que AMBAS funciones existen con 020/021
+--          ya aplicadas.
 --   15a-d. "Esquema de producción a medias" (migraciones 020 Y 021 NO
 --          aplicadas): se eliminan AMBAS funciones reales y se demuestra (a)
 --          el SQLSTATE exacto (42883, `undefined_function`) que
@@ -70,6 +85,11 @@
 --          `postgres-repository.ts` para cada una, y (b) que el resto del
 --          sistema (RLS de staff, guard de la RPC de claim) sigue funcionando
 --          exactamente igual -- vacío honesto, nunca un 500 nuevo.
+--   15e.   Corrección BLOQUEANTE ronda 2 -- el MISMO probe de catálogo de
+--          14f, ahora con el esquema a medias: confirma `false`, exactamente
+--          lo que hace que `previewListaEspera` responda `available:false` y
+--          `admin.ts` responda `queued:false` sin encolar el postCommitTask
+--          -- en vez del éxito falso que la ronda 2 encontró.
 --
 -- Cada escenario vive en su propio `begin; ... rollback;` (o `commit; rollback;`
 -- cuando necesita persistir para el siguiente escenario del flujo #14 -- mismo
@@ -353,6 +373,13 @@ begin;
 select count(*) as flujo_aviso_encolado_deberia_ser_1 from citas.messaging_outbox where organization_id = '00000000-0000-0000-0000-0000000000f2' and dedupe_key = 'waitlist-offer-f2-verify';
 rollback;
 
+\echo '=== 14f. Corrección BLOQUEANTE ronda 2 (PR #180) -- PROBE DE CATÁLOGO que previewListaEspera usa en sesión de STAFF (to_regprocedure, nunca ejecuta ninguna función) -- con 020 y 021 YA aplicadas confirma que AMBAS existen (deberia_ser_1). Antes de este fix, previewListaEspera respondía un conteo real de candidatos aunque el post-commit en sesión de sistema no pudiera hacer nada con la base sin migrar -- ver 15e, mismo probe, más abajo, después del DROP ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
+select (to_regprocedure('citas.system_load_live_waitlist_candidates(uuid)') is not null and to_regprocedure('citas.system_resolve_active_whatsapp_phone_number_id(uuid)') is not null)::int as probe_catalogo_funciones_disponibles_deberia_ser_1;
+rollback;
+
 -- ============================================================================
 -- 15. "Esquema de producción a medias" (migraciones 020 Y 021 NO aplicadas) --
 -- dentro de este mismo fixture, elimina AMBAS funciones reales para
@@ -418,4 +445,11 @@ exception
 end $$;
 rollback;
 
-\echo '=== FIN -- 24 bloques begin/rollback en total (2 control staff, 1 gap A, 2 fix A, 2 negativos A [7 en 2 bloques], 1 fecha, 1 gap A2, 2 fix A2, 2 negativos A2 [13 en 2 bloques], 5 flujo completo, 4 esquema-a-medias) = 24/24. Corrección post-revisión (no-bloqueante #3): 6, 7, 12, 13, 15a, 15b y 15d ya NO usan el alias `should_fail` (el gate aceptaba cualquier error) -- ahora son bloques `do $$ ... exception when sqlstate ... $$;` que solo completan sin error cuando Postgres lanzó EXACTAMENTE el SQLSTATE esperado; cualquier otro código (o un éxito inesperado) hace que el `raise exception` explícito revienta el bloque y el gate lo reporta como fallo real. ==='
+\echo '=== 15e. Corrección BLOQUEANTE ronda 2 (PR #180) -- MISMO PROBE DE CATÁLOGO que 14f, ahora con el ESQUEMA A MEDIAS (ambas funciones eliminadas arriba): confirma false (deberia_ser_0) -- exactamente lo que hace que previewListaEspera responda available:false y admin.ts responda queued:false + reason:not_available_yet SIN encolar el postCommitTask, en vez del éxito falso que la ronda 2 encontró ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f3', true);
+select (to_regprocedure('citas.system_load_live_waitlist_candidates(uuid)') is not null and to_regprocedure('citas.system_resolve_active_whatsapp_phone_number_id(uuid)') is not null)::int as probe_catalogo_funciones_disponibles_deberia_ser_0;
+rollback;
+
+\echo '=== FIN -- 26 bloques begin/rollback en total (2 control staff, 1 gap A, 2 fix A, 2 negativos A [7 en 2 bloques], 1 fecha, 1 gap A2, 2 fix A2, 2 negativos A2 [13 en 2 bloques], 5 flujo completo, 1 probe-catalogo-disponible, 4 esquema-a-medias, 1 probe-catalogo-no-disponible) = 26/26. Corrección post-revisión (no-bloqueante #3): 6, 7, 12, 13, 15a, 15b y 15d ya NO usan el alias `should_fail` (el gate aceptaba cualquier error) -- ahora son bloques `do $$ ... exception when sqlstate ... $$;` que solo completan sin error cuando Postgres lanzó EXACTAMENTE el SQLSTATE esperado; cualquier otro código (o un éxito inesperado) hace que el `raise exception` explícito revienta el bloque y el gate lo reporta como fallo real. Corrección BLOQUEANTE ronda 2: 14f/15e prueban el probe de catálogo (`to_regprocedure`) que `previewListaEspera` usa para decidir si el broadcast puede prometer un aviso real antes o después de que las migraciones 020/021 existan en esta base. ==='
