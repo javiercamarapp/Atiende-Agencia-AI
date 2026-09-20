@@ -24,6 +24,16 @@
 // text" -- mismo SQLSTATE 42883 en los dos, mensaje muy distinto). Ver
 // `scripts/verify-superadmin-resumen/assertions.sql` para la demostración
 // reproducible contra Postgres real de este mismo hallazgo.
+//
+// SUPUESTO (no-bloqueante, revisor independiente del PR #179): esta
+// detección depende de que `lc_messages` del servidor Postgres sea inglés
+// -- el regex de abajo casa el texto EN INGLÉS que Postgres antepone.
+// Supabase usa inglés por defecto (nunca cambiado por este repo), así que
+// esto se cumple en producción, pero si algún entorno cambiara `lc_messages`
+// a otro idioma, `isUndefinedFunctionError`/`isMigrationPendingError`
+// dejarían de reconocer el mensaje y ese 42883 se repropagaría como error
+// real (nunca al revés -- degrada a "más estricto", nunca enmascara nada
+// nuevo).
 function errorCode(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
 }
