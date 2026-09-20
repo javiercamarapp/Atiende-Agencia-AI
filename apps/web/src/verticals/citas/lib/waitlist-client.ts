@@ -89,12 +89,19 @@ export async function fetchWaitlist(fetchImpl: typeof fetch, apiBaseUrl: string,
  * `number` cuando la API siempre lo manda como `boolean`. */
 export interface WaitlistBroadcastSummary {
   readonly queued: boolean;
+  /** Corrección bloqueante de la ronda 2 de revisión del PR #180 — presente
+   * (p. ej. `"not_available_yet"`) solo cuando `queued` es `false`: la base a
+   * la que está conectada la API todavía no tiene aplicadas las migraciones
+   * que este flujo necesita, así que la ruta NO encoló ninguna tarea real
+   * (ver `admin.ts::POST .../waitlist/broadcast`). `null` en el caso normal. */
+  readonly reason: string | null;
   readonly candidatesConsidered: number;
   readonly skippedNoWhatsappConfig: boolean;
 }
 
 interface WaitlistBroadcastApiBody {
   readonly queued: boolean;
+  readonly reason?: string;
   readonly candidates_considered: number;
   readonly skipped_no_whatsapp_config: boolean;
 }
@@ -116,5 +123,5 @@ export async function broadcastWaitlist(fetchImpl: typeof fetch, apiBaseUrl: str
     service_id: input.serviceId,
     limit: input.limit,
   });
-  return { queued: body.queued, candidatesConsidered: body.candidates_considered, skippedNoWhatsappConfig: body.skipped_no_whatsapp_config };
+  return { queued: body.queued, reason: body.reason ?? null, candidatesConsidered: body.candidates_considered, skippedNoWhatsappConfig: body.skipped_no_whatsapp_config };
 }

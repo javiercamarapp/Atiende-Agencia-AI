@@ -600,7 +600,19 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
           {waitlistError && <EstadoError mensaje={waitlistError} />}
 
-          {broadcastSummary && (
+          {broadcastSummary && !broadcastSummary.queued && (
+            // Corrección bloqueante de la ronda 2 de revisión del PR #180 — la
+            // base todavía no tiene aplicadas las migraciones que este flujo
+            // necesita: la ruta NO encoló ninguna tarea real (ver
+            // `admin.ts::POST .../waitlist/broadcast`), así que este mensaje
+            // NUNCA debe decir "Aviso encolado" (sería una confirmación falsa
+            // -- exactamente el éxito falso que la ronda 2 encontró).
+            <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-[13px] text-foreground">
+              Avisar a la lista de espera todavía no está disponible en este negocio (falta terminar de actualizar la base de datos). Ningún aviso se encoló; vuelve a intentarlo más tarde.
+            </p>
+          )}
+
+          {broadcastSummary && broadcastSummary.queued && (
             <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-[13px] text-foreground">
               {/* Corrección post-revisión (hallazgo B): el efecto real corre
                   post-commit, en segundo plano — este mensaje ya no promete un
