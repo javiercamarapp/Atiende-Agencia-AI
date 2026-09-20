@@ -115,10 +115,10 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000b0b01
 select count(*) as deberia_ser_0 from hoteles.property_config where property_id = '00000000-0000-0000-0000-0000000a1a01';
 rollback;
 
-\echo '=== 7. anon: rechazado por completo (lectura y escritura) ==='
+\echo '=== 7. anon: rechazado por completo (lectura y escritura) -- sin GRANT alguno, Postgres levanta "permission denied" ANTES de que RLS opine (más estricto que el filtrado en silencio de un staff cross-tenant, ver escenario 6) ==='
 begin;
 set local role anon;
-select count(*) as deberia_ser_0 from hoteles.property_config;
+select count(*) as should_fail from hoteles.property_config;
 rollback;
 begin;
 set local role anon;
