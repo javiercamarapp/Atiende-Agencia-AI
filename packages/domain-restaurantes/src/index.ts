@@ -15,8 +15,10 @@ export type {
   CustomerLookupResult,
   CustomerTier,
   DefaultComplement,
+  KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
+  NewKnownZoneInput,
   NewProductInput,
   NewPromotionInput,
   Order,
@@ -42,6 +44,7 @@ export type {
   RestaurantesAuditLogPaginacion,
   RestaurantesAuditLogRow,
   TortillaChoice,
+  WhatsappChannelConfig,
 } from "./types.ts";
 
 export { OrderConflictError, OrderValidationError, PromotionError } from "./errors.ts";
@@ -75,6 +78,7 @@ export type {
   StaffOrderNotificationRecord,
   EmailOutboxJobRow,
 } from "./repository.ts";
+export { RestaurantesConfigUnavailableError } from "./repository.ts";
 export { InMemoryRestaurantesRepository } from "./in-memory-repository.ts";
 export { PostgresRestaurantesRepository } from "./postgres-repository.ts";
 
