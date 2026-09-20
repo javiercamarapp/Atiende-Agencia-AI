@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { runCrisisGuardrail } from "../src/crisis-guardrail.ts";
 import { buildCitasFixture } from "./fixtures.ts";
+import { ThrowsOnStaffWhatsAppRepo } from "./support/throws-on-staff-whatsapp-repo.ts";
 
 describe("runCrisisGuardrail", () => {
   it("un mensaje normal en un rubro de salud no dispara nada", async () => {
@@ -88,5 +89,27 @@ describe("runCrisisGuardrail", () => {
 
     expect(result.triggered).toBe(true);
     expect(fixture.repo.getOutbox().filter((m) => m.eventType === "crisis.escalated")).toHaveLength(0);
+  });
+
+  // f2-citas-whatsapp-config-sesion-sistema — el ÚNICO caller real de
+  // `runCrisisGuardrail` (`whatsapp/inbound.ts::handleInboundWhatsAppMessage`,
+  // webhook entrante) abre SIEMPRE una sesión de SISTEMA. Contra Postgres real,
+  // `resolveActiveWhatsAppPhoneNumberId` (variante de STAFF) SIEMPRE devuelve 0
+  // filas ahí -- el aviso de crisis al dueño/staff NUNCA salía, invisible
+  // contra `InMemoryCitasRepository` a secas. `ThrowsOnStaffWhatsAppRepo` (lanza
+  // si se llama la variante de STAFF) afirma el EFECTO real: si
+  // `notifyOwnerOfEscalation` todavía llamara la variante de STAFF, este test
+  // explotaría con el error BLOQUEANTE del doble.
+  it("REGLA DURA (sesión de sistema): notifyOwnerOfEscalation usa la variante de SISTEMA para resolver el phone_number_id -- nunca la de STAFF, que en producción devuelve 0 filas bajo auth.uid() null", async () => {
+    const fixture = buildCitasFixture(new ThrowsOnStaffWhatsAppRepo());
+    fixture.repo.seedTenantConfig({ organizationId: fixture.organizationId, rubro: "dental", ownerNotificationPhone: "5599998888" });
+
+    await runCrisisGuardrail(fixture.repo, fixture.organizationId, "5512345678", "me quiero matar");
+
+    const calls = fixture.repo.getOutbox().filter((m) => m.eventType === "crisis.escalated");
+    expect(calls).toHaveLength(1);
+    const payload = calls[0]!.payload as { to: string; phone_number_id: string };
+    expect(payload.to).toBe("5599998888");
+    expect(payload.phone_number_id).toBe("1234567890");
   });
 });

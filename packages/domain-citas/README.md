@@ -419,16 +419,67 @@ método) llama a esa función con el mismo `runWithSavepointFallback` +
 aplicada, degrada a `null` (el mismo comportamiento honesto de hoy), nunca un
 500. `runOptimizadorCore`/`runListaEsperaCore` ahora usan este método nuevo.
 
-Gap relacionado, MISMO defecto, fuera de alcance de esta corrección
-(documentado aquí para quien lo toque después): `runConfirmacionCitaCore`
-(cron de recordatorio 24h, `apps/api/.../citas/reminders.ts`, sesión de
-sistema) y `crisis-guardrail.ts::notifyOwnerOfEscalation` (canal de WhatsApp
-entrante, también sesión de sistema) todavía llaman
-`resolveActiveWhatsAppPhoneNumberId` (la variante de staff) — mismo gap de
-RLS, nunca corregido, preexistente a esta tarea (no introducido por
-f2-citas-lista-de-espera). `PostgresCitasRepository.resolveOrganizationByPhoneNumberId`
-(línea ~992, usado por el webhook entrante para resolver la organización a
-partir del `phone_number_id`) tiene el mismo gap en la dirección inversa.
+Gap relacionado, MISMO defecto, en su momento fuera de alcance de esta
+corrección (`runConfirmacionCitaCore`, cron de recordatorio 24h,
+`crisis-guardrail.ts::notifyOwnerOfEscalation`, canal de WhatsApp entrante, y
+`PostgresCitasRepository.resolveOrganizationByPhoneNumberId` en la dirección
+inversa) — **AHORA SÍ CERRADO, ver f2-citas-whatsapp-config-sesion-sistema
+justo abajo.**
+
+**(A3) f2-citas-whatsapp-config-sesion-sistema — los 3 callers restantes del
+MISMO gap (A2), CERRADOS.** Clasificación real de sesión de cada uno
+(confirmada leyendo el caller HTTP, no supuesta):
+
+- `runConfirmacionCitaCore` (`packages/domain-citas/src/reminders.ts`) — su
+  único caller real es `/internal/citas/confirmacion-cita`
+  (`apps/api/.../citas/reminders.ts`), que abre
+  `deps.engine.withAppSession({ userId: null }, ...)` — SIEMPRE sesión de
+  SISTEMA. Ahora usa `resolveActiveWhatsAppPhoneNumberIdAsSystem`.
+- `crisis-guardrail.ts::notifyOwnerOfEscalation` — su único caller real es
+  `runCrisisGuardrail`, invocado desde
+  `whatsapp/inbound.ts::handleInboundWhatsAppMessage`, que a su vez solo se
+  llama desde el webhook entrante (`apps/api/.../citas/whatsapp.ts`), también
+  sesión de sistema. Ahora usa `resolveActiveWhatsAppPhoneNumberIdAsSystem`.
+- `PostgresCitasRepository.resolveOrganizationByPhoneNumberId` — MISMO gap en
+  la dirección INVERSA (`phone_number_id` -> `organization_id`), usado por el
+  webhook entrante (`apps/api/.../citas/whatsapp.ts`) como PRIMERA consulta de
+  su sesión de sistema para rutear el mensaje entrante. Sin la migración 022,
+  esa consulta devolvía 0 filas en silencio, así que NINGÚN mensaje entrante
+  de WhatsApp de citas resolvía jamás una organización contra Postgres real
+  (cada uno caía en la rama "número no configurado en la plataforma", ack
+  silencioso). Arreglo: función espejo `security definer` de SOLO-SISTEMA
+  `citas.system_resolve_organization_by_whatsapp_phone_number_id`
+  (`migrations/022_whatsapp_config_organizacion_sistema_lectura.sql`, espejo
+  `supabase/migrations/20240101000171_022_...sql`) — mismo patrón EXACTO que
+  (A2), guard `auth.uid() is null`, revoke de `public`/`anon`/`authenticated`
+  + grant a `authenticated`. Nuevo método
+  `PostgresCitasRepository.resolveOrganizationByPhoneNumberIdAsSystem`, mismo
+  `runWithSavepointFallback` + `isUndefinedFunctionError`. `whatsapp.ts` ahora
+  lo usa en vez de la variante de staff.
+
+Hallazgo adicional cerrado en la misma tarea, mismo archivo
+(`reminders.ts::runListaEsperaCore`): el loop de `claim`/`enqueue` del
+broadcast manual (post-commit, sesión de sistema) no aislaba cada candidato —
+un error real de Postgres a mitad de la corrida revertía TODA la sesión de
+sistema, perdiendo a los candidatos YA notificados en esa misma corrida (mismo
+mecanismo que el fix de `runConfirmacionCitaCore`, auditoría a3, hallazgo
+confirmado #7). Cada iteración ahora corre bajo `repo.runWithRowSavepoint`; un
+candidato venenoso queda aislado y reportado en `ListaEsperaSummary.failedWaitlistIds`,
+nunca se lleva consigo a los candidatos anteriores ya notificados.
+
+Verificación contra Postgres real: `scripts/verify-citas-whatsapp-config-sesion-sistema/`
+(12/12 escenarios) — control positivo/cross-tenant de la policy de staff sin
+cambio, el gap inverso sigue existiendo a nivel de SELECT plano, el fix
+resuelve la organización real sin cruzar tenant, número desconocido/config
+inactiva resuelven `null` honesto, controles negativos (staff real/anon con
+SQLSTATE 42501 exacto), y el escenario de "esquema a medias" (migración 022
+no aplicada, SQLSTATE 42883 exacto). Tests unitarios:
+`packages/domain-citas/tests/postgres-repository-whatsapp-config-organization-system-savepoint.spec.ts`
+(SAVEPOINT/fallback de compatibilidad con `AbortAwareFakeSession`),
+`reminders.spec.ts`/`crisis-guardrail.spec.ts` (afirman el EFECTO con
+`ThrowsOnStaffWhatsAppRepo`: si el código todavía llamara la variante de
+staff, el test explota), y `waitlist-broadcast-row-savepoint.spec.ts` (el
+aislamiento por fila del broadcast).
 
 **(B) `POST .../waitlist/broadcast` en sesión de staff llamando una RPC
 solo-sistema — CERRADO sin migración (solo código).**
