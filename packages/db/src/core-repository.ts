@@ -749,6 +749,22 @@ export interface CoreStaffRepository {
    *  completa de membresías (de CUALQUIER organización) del target. Mismo umbral de
    *  autoridad que `findStaffForOrgAdmin`. */
   isStaffOrgMember(organizationId: string, targetUserId: string): Promise<boolean>;
+  /** FASE 3 (producto, restaurantes) — hallazgo real: hasta ahora ninguna vertical
+   *  podía dar de baja a un staff YA ACEPTADO (solo revocar una invitación
+   *  PENDIENTE, `revokeStaffInvite`). Elimina SOLO la `core.membership` de esta
+   *  organización -- nunca `core.staff_user` (ver comentario de cabecera de
+   *  `migrations/0022_remove_membership.sql`). Lanza `MembershipRemovalError`
+   *  cuando el caller no tiene autoridad suficiente (mismo umbral que
+   *  `updateMemberVerticalRole`: admin/owner, nunca de menor rango que el target),
+   *  cuando intenta darse de baja a SÍ MISMO (nunca permitido), cuando `targetUserId`
+   *  no pertenece a `organizationId`, o cuando remover al target dejaría la
+   *  organización sin ningún owner (caso límite decidido explícitamente en esa
+   *  migración). Lanza `MembershipRemovalUnavailableError` cuando `core.
+   *  remove_membership` todavía no existe en esta base (SQLSTATE 42883, base real
+   *  sin migrar -- REGLA DURA de compatibilidad de AGENTS.md: esta es una
+   *  capacidad NUEVA sin camino anterior al que degradar, así que el caller HTTP
+   *  debe responder un "no disponible todavía" honesto, nunca un 500). */
+  removeMembership(organizationId: string, targetUserId: string): Promise<void>;
 }
 
 /** Lanzado por `acceptStaffInvite` cuando el token no existe, ya no está pendiente, o
@@ -773,6 +789,28 @@ export class MembershipRoleUpdateError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "MembershipRoleUpdateError";
+  }
+}
+
+/** Lanzado por `removeMembership` -- mismo criterio de mensaje real (no genérico)
+ *  que `MembershipRoleUpdateError`: ningún caso (rango insuficiente, auto-baja,
+ *  target ajeno a la organización, último owner) es sensible de ocultar. */
+export class MembershipRemovalError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MembershipRemovalError";
+  }
+}
+
+/** Lanzado por `removeMembership` cuando `core.remove_membership` todavía no existe
+ *  en esta base (SQLSTATE 42883) -- a diferencia de `MembershipRemovalError`
+ *  (rechazo de autorización/regla de negocio, mensaje real de la función SQL), este
+ *  caso es "la migración de esta capacidad nueva todavía no se aplicó" -- el caller
+ *  HTTP lo traduce a un 503 honesto ("no disponible todavía"), nunca a un 500. */
+export class MembershipRemovalUnavailableError extends Error {
+  constructor() {
+    super("Dar de baja a un staff todavía no está disponible en esta base de datos.");
+    this.name = "MembershipRemovalUnavailableError";
   }
 }
 

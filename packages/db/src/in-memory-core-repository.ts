@@ -42,6 +42,7 @@ import type {
   UpsertOrganizationBillingInput,
 } from "./core-repository.ts";
 import {
+  MembershipRemovalError,
   MembershipRoleUpdateError,
   NotificationNotFoundError,
   OrganizationBillingAccessDeniedError,
@@ -313,6 +314,21 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
     const staff = this.staffById.get(targetUserId);
     if (!staff) throw new Error(`membership apunta a staff_user inexistente "${targetUserId}"`);
     return { userId: staff.id, email: staff.email, fullName: staff.fullName, platformRole: updated.platformRole, verticalRole: updated.verticalRole, propertyIds: updated.propertyIds };
+  }
+
+  // FASE 3 (producto, restaurantes) — mismo criterio EXACTO que
+  // `updateMemberVerticalRole` de arriba: en producción real, la autoridad completa
+  // (jerarquía de rango, bloqueo de auto-baja, protección del último owner) vive en
+  // `core.remove_membership` (`security definer`, ver `migrations/
+  // 0022_remove_membership.sql`) -- el caller HTTP (`admin-staff.ts`) ya reaplica esa
+  // MISMA jerarquía en la capa TS ANTES de llamar aquí (defensa en profundidad, mismo
+  // patrón que el resto de este archivo), así que esta implementación en memoria solo
+  // necesita el caso real que le falta a esa capa TS: el target simplemente no existe
+  // en la organización.
+  async removeMembership(organizationId: string, targetUserId: string): Promise<void> {
+    const idx = this.memberships.findIndex((m) => m.organizationId === organizationId && m.userId === targetUserId);
+    if (idx < 0) throw new MembershipRemovalError("el staff indicado no pertenece a esta organización.");
+    this.memberships.splice(idx, 1);
   }
 
   // Fase 3 caller-binding — en memoria no hay ninguna sesión/RLS que emular (mismo
