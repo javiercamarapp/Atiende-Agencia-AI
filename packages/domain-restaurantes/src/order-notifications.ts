@@ -326,12 +326,13 @@ export async function notifyCustomerOrderConfirmationEmailCore(repo: Restaurante
   return { enqueued: true };
 }
 
-/** Variante best-effort — la que de verdad llama `orders.ts::createOrder`: un
+/**
+ * Variante best-effort — la que de verdad llama `orders.ts::createOrder`: un
  * pedido YA se creó con éxito en la base de datos; que el cliente no haya
  * dejado correo, o que esto falle por cualquier otra razón, NUNCA debe
  * convertirse en un error para quien está creando el pedido. Mismo principio
- * que `tryNotifyStaffNewOrder` de arriba. */
-/**
+ * que `tryNotifyStaffNewOrder` de arriba.
+ *
  * `orders.ts::createOrder` es el único caller, en la MISMA transacción de sistema
  * (`withAppSession({userId:null})`, `public.ts`/`llm-turn-handler.ts`) que ya insertó
  * el pedido -- mismo hueco y mismo arreglo que `tryNotifyStaffNewOrder`: sin
