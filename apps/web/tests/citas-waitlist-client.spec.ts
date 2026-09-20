@@ -79,7 +79,7 @@ describe("broadcastWaitlist", () => {
     }) as unknown as typeof fetch;
 
     const result = await broadcastWaitlist(fetchImpl, "http://api.local", "tok", "prop-1", { providerId: "prov-1", serviceId: "serv-1", limit: 10 });
-    expect(result).toEqual({ queued: true, candidatesConsidered: 5, skippedNoWhatsappConfig: false });
+    expect(result).toEqual({ queued: true, reason: null, candidatesConsidered: 5, skippedNoWhatsappConfig: false });
   });
 
   it("sin filtros manda el body con undefined (el servidor los ignora) y funciona igual", async () => {
@@ -89,7 +89,18 @@ describe("broadcastWaitlist", () => {
     }) as unknown as typeof fetch;
 
     const result = await broadcastWaitlist(fetchImpl, "http://api.local", "tok", "prop-1");
-    expect(result).toEqual({ queued: true, candidatesConsidered: 0, skippedNoWhatsappConfig: true });
+    expect(result).toEqual({ queued: true, reason: null, candidatesConsidered: 0, skippedNoWhatsappConfig: true });
+  });
+
+  // Corrección bloqueante de la ronda 2 de revisión del PR #180 — con la base
+  // sin migrar, `admin.ts` responde `queued: false` + `reason`; este cliente
+  // debe mapear ese `reason` en vez de perderlo (antes de este fix, la
+  // interfaz `WaitlistBroadcastSummary` ni siquiera tenía el campo).
+  it("queued:false (base sin migrar) mapea el reason en vez de perderlo", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ queued: false, reason: "not_available_yet", candidates_considered: 0, skipped_no_whatsapp_config: false }), { status: 200 })) as unknown as typeof fetch;
+
+    const result = await broadcastWaitlist(fetchImpl, "http://api.local", "tok", "prop-1");
+    expect(result).toEqual({ queued: false, reason: "not_available_yet", candidatesConsidered: 0, skippedNoWhatsappConfig: false });
   });
 
   it("400 -> error real (ej. provider_id que no pertenece al negocio)", async () => {
