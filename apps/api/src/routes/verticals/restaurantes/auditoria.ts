@@ -32,9 +32,21 @@ const ENTITY_TYPES: readonly RestaurantesAuditEntityType[] = ["producto", "promo
 // angosto que `MANAGER_ROLES` (owner/admin/staff, que sí puede ESCRIBIR en la
 // bitácora vía las rutas de arriba, pero no LEERLA).
 const AUDITORIA_LECTURA_ROLES: readonly RestaurantesRole[] = ["owner", "admin"];
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Grupos de captura (corrección de revisión sobre el PR #183, no bloqueante #4):
+// el regex de forma NO basta -- "2026-13-45" tiene la forma YYYY-MM-DD pero no es
+// una fecha real, y llegaba tal cual al `::timestamptz` de
+// `PostgresRestaurantesRepository.listAuditoria` (SQLSTATE 22008, invalid_datetime_
+// format -- NO es uno de los 3 códigos de "base sin migrar" que
+// `runWithSavepointFallback` sabe recuperar), terminando en 500 en vez de 400.
+// `parseFecha` ahora valida el CALENDARIO real (rechaza mes/día fuera de rango,
+// incluido el 29 de febrero en año no bisiesto) antes de que la fecha llegue a
+// Postgres.
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
+// Solo dígitos -- a diferencia de `Number.parseInt`, que acepta un prefijo
+// numérico y descarta silenciosamente el resto ("12abc" -> 12).
+const ENTERO_RE = /^\d+$/;
 
 function parseEntityType(raw: string | undefined): RestaurantesAuditEntityType | null {
   if (!raw) return null;
@@ -46,22 +58,35 @@ function parseEntityType(raw: string | undefined): RestaurantesAuditEntityType |
 
 function parseFecha(raw: string | undefined, field: string): string | null {
   if (!raw) return null;
-  if (!DATE_RE.test(raw)) throw Errors.validation(`${field}: formato de fecha esperado YYYY-MM-DD.`);
+  const m = DATE_RE.exec(raw);
+  if (!m) throw Errors.validation(`${field}: formato de fecha esperado YYYY-MM-DD.`);
+  const anio = Number(m[1]);
+  const mes = Number(m[2]);
+  const dia = Number(m[3]);
+  // Redondeo UTC para no depender de la zona horaria del proceso -- solo importan
+  // los 3 componentes, nunca una hora real.
+  const fecha = new Date(Date.UTC(anio, mes - 1, dia));
+  if (fecha.getUTCFullYear() !== anio || fecha.getUTCMonth() !== mes - 1 || fecha.getUTCDate() !== dia) {
+    throw Errors.validation(`${field}: "${raw}" no es una fecha de calendario válida.`);
+  }
   return raw;
+}
+
+function parseEntero(raw: string, field: string): number {
+  if (!ENTERO_RE.test(raw)) throw Errors.validation(`${field}: se esperaba un entero.`);
+  return Number.parseInt(raw, 10);
 }
 
 function parseLimit(raw: string | undefined): number {
   if (raw === undefined) return DEFAULT_LIMIT;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isInteger(n) || n < 1) throw Errors.validation("limit: se esperaba un entero >= 1.");
+  const n = parseEntero(raw, "limit");
+  if (n < 1) throw Errors.validation("limit: se esperaba un entero >= 1.");
   return Math.min(n, MAX_LIMIT);
 }
 
 function parseOffset(raw: string | undefined): number {
   if (raw === undefined) return 0;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isInteger(n) || n < 0) throw Errors.validation("offset: se esperaba un entero >= 0.");
-  return n;
+  return parseEntero(raw, "offset");
 }
 
 export function restaurantesAuditoriaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
