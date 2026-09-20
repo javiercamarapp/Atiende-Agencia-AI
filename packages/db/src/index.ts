@@ -33,6 +33,8 @@ export type {
 export {
   StaffInviteInvalidError,
   MembershipRoleUpdateError,
+  MembershipRemovalError,
+  MembershipRemovalUnavailableError,
   NotificationNotFoundError,
   ProspectoNotFoundError,
   OrganizationNotFoundError,

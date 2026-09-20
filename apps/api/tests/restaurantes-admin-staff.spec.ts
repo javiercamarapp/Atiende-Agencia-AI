@@ -542,3 +542,90 @@ describe("PATCH /v1/restaurantes/:propertyId/admin/staff/miembros/:userId -- cam
     expect(permitido.status).toBe(200);
   });
 });
+
+// FASE 3 (producto) — hallazgo real: hasta ahora NO existía ninguna forma de dar de
+// baja a un miembro de staff YA ACEPTADO (solo revocar una invitación PENDIENTE, ver
+// el describe de arriba). Mismo umbral de autorización EXACTO que el PATCH de cambio
+// de rol -- ver el comentario de cabecera del DELETE en admin-staff.ts para la
+// autoridad real (`core.remove_membership`, `packages/db/migrations/
+// 0024_remove_membership.sql`).
+describe("DELETE /v1/restaurantes/:propertyId/admin/staff/miembros/:userId -- baja de staff ya aceptado", () => {
+  it("owner da de baja a un staff -- 200, ya no aparece en el listado, y queda en la bitácora de auditoría", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.staffSucursalA.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+
+    const listado = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros`, authedGet(ctx.staff.owner.token));
+    const listadoBody = (await listado.json()) as { miembros: MemberWithRoleResponse[] };
+    expect(listadoBody.miembros.map((m) => m.id)).not.toContain(ctx.staff.staffSucursalA.id);
+
+    const entrada = ctx.restaurantesRepo.auditLog.find((r) => r.action === "staff.baja" && r.entityId === ctx.staff.staffSucursalA.id);
+    expect(entrada).toBeDefined();
+    expect(entrada?.antes).toBe("staff");
+  });
+
+  it("nunca se puede dar de baja a sí mismo -- 400, bloqueado ANTES de tocar la base", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.owner.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(res.status).toBe(400);
+
+    const listado = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros`, authedGet(ctx.staff.owner.token));
+    const listadoBody = (await listado.json()) as { miembros: MemberWithRoleResponse[] };
+    expect(listadoBody.miembros.map((m) => m.id)).toContain(ctx.staff.owner.id);
+  });
+
+  it("un admin NUNCA puede dar de baja a un owner (jerarquía real) -- 403", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.owner.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.admin.token}` },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("owner SÍ puede dar de baja a un admin (rango menor) -- 200", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.admin.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("staff (fuera de STAFF_INVITE_ROLES) -- 403, mismo umbral que invitar/cambiar rol", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.repartidor.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.staffSucursalA.token}` },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("target que no pertenece a esta organización -- 404, nunca se filtra información de otra organización", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/staff/miembros/${ctx.staff.otroOrgOwner.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ctx.staff.owner.token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+});

@@ -123,8 +123,40 @@ de rol que rentas dejó pendiente):
   `admin-promotions.ts` (alta/cambio/activación/baja, `entityType="promocion"`),
   `admin-orders.ts` (cancelación de pedido `entityType="pedido"`; asignación/
   reasignación de repartidor `entityType="repartidor"`), `admin-staff.ts`
-  (invitación/revocación/cambio de rol, `entityType="staff"`).
-- Huecos conocidos (ver el cuerpo del PR para el detalle completo): sin ruta
-  real de "baja" de un miembro YA ACEPTADO (solo existe revocar una invitación
-  pendiente); sin ninguna ruta que edite WhatsApp/voz/horarios/zonas de entrega
-  todavía, así que `entityType="configuracion"` queda reservado sin caller.
+  (invitación/revocación/cambio de rol/**baja de un staff ya aceptado**,
+  `entityType="staff"`), `admin-config.ts` (**configuración de WhatsApp/zonas
+  conocidas**, `entityType="configuracion"` — nuevo, ver abajo).
+
+FASE 3 (producto) — cierre de 2 de los 3 huecos que la ronda anterior dejaba
+documentados aquí mismo:
+
+- **Baja de staff ya aceptado**: `admin-staff.ts::DELETE .../admin/staff/
+  miembros/:userId`, mismo umbral que el `PATCH` de cambio de rol
+  (`STAFF_INVITE_ROLES` + jerarquía real de `canInviteStaff`). Autoridad real
+  en `core.remove_membership` (`security definer`, genérico de `core` — ver
+  `packages/db/migrations/0024_remove_membership.sql`): bloquea auto-baja
+  SIEMPRE, y el caso límite "no dejar la organización sin ningún owner"
+  (demostrado por exhaustividad en
+  `scripts/verify-restaurantes-config-staff-baja/README.md` — con la
+  combinación "nunca auto-baja" + "solo un owner toca a otro owner", esa
+  invariante se sostiene incluso sin necesitar disparar jamás el chequeo
+  explícito de conteo).
+- **Configuración de WhatsApp/zonas conocidas editable**: `admin-config.ts`
+  (nuevo) — `GET`/`PUT .../admin/config/whatsapp` (conecta/rota el
+  `phone_number_id`) y `GET`/`POST`/`DELETE .../admin/config/zonas` (alta/baja
+  de zonas conocidas para `nearest_branch_by_colonia`). Ambas tablas
+  (`restaurantes.whatsapp_channel_config`/`restaurantes.known_zone`) YA
+  EXISTÍAN desde Fase 1/2 sin ninguna ruta de escritura — ver
+  `packages/domain-restaurantes/migrations/
+  021_restaurantes_config_editable_y_search_path_fix.sql`. Solo owner/admin
+  (`STAFF_INVITE_ROLES`), tanto en la policy RLS (SQL, autoridad real) como en
+  `assertVerticalRole` (TS, defensa en profundidad) — deliberadamente MÁS
+  angosto que `MANAGER_ROLES`.
+- Hueco conocido que SIGUE abierto (deliberado, no inventado sin dirección de
+  producto): horarios de atención editables — hoy NO existe ninguna
+  tabla/columna de horarios en el schema base de restaurantes (verificado
+  antes de escribir la migración de esta fase). Construirlo exige una decisión
+  de producto real (¿por organización o por sucursal? ¿excepciones, como
+  `citas`?) fuera del alcance de "conectar lo ya construido" de esta fase.
+  Configuración de voz tampoco tiene tabla (a diferencia de hoteles/citas),
+  mismo criterio.

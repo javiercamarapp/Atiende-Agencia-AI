@@ -51,7 +51,7 @@ export async function sendJson<T>(
   fetchImpl: typeof fetch,
   url: string,
   token: string,
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "PUT",
   payload: unknown = {},
   authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
 ): Promise<T> {

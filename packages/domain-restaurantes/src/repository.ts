@@ -20,8 +20,10 @@ import type {
   CustomerListFilter,
   CustomerListPage,
   CustomerTier,
+  KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
+  NewKnownZoneInput,
   NewProductInput,
   NewPromotionInput,
   Order,
@@ -37,6 +39,7 @@ import type {
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
   RestaurantesAuditLogPaginacion,
+  WhatsappChannelConfig,
 } from "./types.ts";
 
 export interface SearchableProduct {
@@ -429,6 +432,43 @@ export interface RestaurantesRepository {
    *  42883/42P01/42703) -- ver
    *  `PostgresRestaurantesRepository.registrarAuditoria`. */
   listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina>;
+
+  // ---- FASE 3 (producto) -- configuración editable del panel (owner/admin),
+  // ver migrations/021_restaurantes_config_editable_y_search_path_fix.sql. Ambas
+  // tablas YA EXISTÍAN sin ninguna ruta de escritura -- ver el comentario de
+  // cabecera de esa migración.
+
+  /** `{ phoneNumberId: null }` cuando la organización nunca conectó WhatsApp --
+   *  nunca lanza por "no configurado todavía" (mismo criterio "honesto" que
+   *  `resolveActiveWhatsAppPhoneNumberId`). */
+  getWhatsappChannelConfig(organizationId: string): Promise<WhatsappChannelConfig>;
+  /** Alta o reemplazo del número conectado (`ON CONFLICT` por `organization_id`,
+   *  primary key de la tabla) -- nunca dos filas por organización. */
+  upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig>;
+
+  /** Más reciente primero -- orden total (ver `created_at desc, id desc`, mismo
+   *  criterio de desempate que `restaurantes.audit_log` para paginación estable). */
+  listKnownZones(organizationId: string): Promise<readonly KnownZone[]>;
+  createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone>;
+  /** `true` si borró una zona de ESTA organización; `false` si no existía o
+   *  pertenecía a otra organización (nunca lanza por "no encontrado" -- el
+   *  caller decide el 404, mismo contrato que `revokeStaffInvite`). */
+  deleteKnownZone(organizationId: string, zoneId: string): Promise<boolean>;
+}
+
+/** Lanzado por `upsertWhatsappChannelConfig`/`createKnownZone`/`deleteKnownZone`
+ *  cuando la migración `021_restaurantes_config_editable_y_search_path_fix.sql`
+ *  todavía no se aplicó a esta base (SQLSTATE 42501 -- la tabla YA EXISTE desde
+ *  Fase 1, así que a diferencia de `restaurantes.audit_log` esto nunca es
+ *  42883/42P01/42703: es un GRANT/policy de escritura que esta fase agrega sobre
+ *  una tabla vieja, no un objeto nuevo). El caller HTTP (`admin-config.ts`) lo
+ *  traduce a un 503 honesto, nunca un 500 -- ver el comentario de cabecera de
+ *  `PostgresRestaurantesRepository.upsertWhatsappChannelConfig`. */
+export class RestaurantesConfigUnavailableError extends Error {
+  constructor() {
+    super("Esta configuración todavía no se puede editar en esta base de datos.");
+    this.name = "RestaurantesConfigUnavailableError";
+  }
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo

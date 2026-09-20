@@ -21,8 +21,10 @@ import type {
   CustomerListFilter,
   CustomerListPage,
   CustomerTier,
+  KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
+  NewKnownZoneInput,
   NewProductInput,
   NewPromotionInput,
   Order,
@@ -39,6 +41,7 @@ import type {
   RestaurantesAuditLogPagina,
   RestaurantesAuditLogPaginacion,
   RestaurantesAuditLogRow,
+  WhatsappChannelConfig,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -199,10 +202,16 @@ type StoredPromotion = Promotion;
 type StoredOrder = Order;
 
 interface StoredKnownZone {
+  /** Opcional en `seedKnownZone` (fixtures de Fase 2 ya existentes nunca lo pasan)
+   *  -- generado con `randomUUID()` si se omite, mismo criterio que el resto de
+   *  `seed*` de esta clase. Requerido para `listKnownZones`/`deleteKnownZone`
+   *  (Fase 3, ver `repository.ts`). */
+  readonly id?: string;
   readonly organizationId: string;
   readonly name: string;
   readonly lat: number;
   readonly lng: number;
+  readonly createdAt?: string;
 }
 
 interface StoredWhatsAppEvent {
@@ -338,7 +347,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
    * (ver migrations/005) — una zona conocida (colonia/plaza/referencia) con
    * sus coordenadas reales, sembrada por organización. */
   seedKnownZone(zone: StoredKnownZone): void {
-    this.knownZones.push(zone);
+    this.knownZones.push({ id: zone.id ?? randomUUID(), createdAt: zone.createdAt ?? new Date().toISOString(), ...zone });
   }
 
   /** Fase 3 — inserta un pedido YA en el estado/canal/fecha que el test necesita,
@@ -1382,6 +1391,46 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     const total = filtrados.length;
     const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, seq: _seq, ...row }) => row);
     return { disponible: true, items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
+  }
+
+  // ---- FASE 3 (producto) -- configuración editable del panel (owner/admin),
+  // ver migrations/021_restaurantes_config_editable_y_search_path_fix.sql ----
+
+  async getWhatsappChannelConfig(organizationId: string): Promise<WhatsappChannelConfig> {
+    for (const [phoneNumberId, orgId] of this.phoneNumberIdToOrg) {
+      if (orgId === organizationId) return { phoneNumberId };
+    }
+    return { phoneNumberId: null };
+  }
+
+  async upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig> {
+    // Un solo `phone_number_id` por organización (PK real de la tabla) -- limpia
+    // cualquier entrada previa de ESTA organización antes de fijar la nueva.
+    for (const [existingPhoneNumberId, orgId] of this.phoneNumberIdToOrg) {
+      if (orgId === organizationId) this.phoneNumberIdToOrg.delete(existingPhoneNumberId);
+    }
+    this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
+    return { phoneNumberId };
+  }
+
+  async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
+    return this.knownZones
+      .filter((z) => z.organizationId === organizationId)
+      .map((z) => ({ id: z.id!, organizationId: z.organizationId, name: z.name, lat: z.lat, lng: z.lng, createdAt: z.createdAt! }))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : b.id.localeCompare(a.id)));
+  }
+
+  async createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone> {
+    const zone: Required<StoredKnownZone> = { id: randomUUID(), organizationId, name: input.name, lat: input.lat, lng: input.lng, createdAt: new Date().toISOString() };
+    this.knownZones.push(zone);
+    return zone;
+  }
+
+  async deleteKnownZone(organizationId: string, zoneId: string): Promise<boolean> {
+    const idx = this.knownZones.findIndex((z) => z.id === zoneId && z.organizationId === organizationId);
+    if (idx < 0) return false;
+    this.knownZones.splice(idx, 1);
+    return true;
   }
 }
 

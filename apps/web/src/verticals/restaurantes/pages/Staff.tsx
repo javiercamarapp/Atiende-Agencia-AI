@@ -38,6 +38,7 @@ import {
   fetchOrgMembers,
   fetchRepartidores,
   fetchStaffInvites,
+  removeStaffMember,
   revokeStaffInvite,
   updateStaffRole,
 } from "../lib/staff-client.ts";
@@ -66,7 +67,7 @@ function statusLabel(status: string): string {
   return status;
 }
 
-export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: RestaurantesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
@@ -77,6 +78,9 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
   // ACEPTADO — todo lo de arriba (invites/repartidores) solo cubre alta o lectura.
   const [members, setMembers] = useState<readonly OrgMember[] | null>(null);
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
+  // FASE 3 (producto) -- baja de un staff YA aceptado (ver removeStaffMember en
+  // lib/staff-client.ts).
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
@@ -119,6 +123,24 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
   useEffect(() => {
     void load();
   }, [apiBaseUrl, token, propertyId, canManage]);
+
+  // FASE 3 (producto) -- el servidor (admin-staff.ts::DELETE miembroItemPath) es
+  // SIEMPRE el enforcement real (auto-baja/jerarquía/último owner) -- este
+  // `window.confirm` es solo para evitar un clic accidental, nunca la única
+  // barrera.
+  async function handleRemove(member: OrgMember) {
+    if (!window.confirm(`¿Dar de baja a ${member.fullName}? Pierde acceso a esta organización de inmediato.`)) return;
+    setRemovingId(member.id);
+    setError(null);
+    try {
+      await removeStaffMember(fetch, apiBaseUrl, token, propertyId, member.id);
+      setMembers((prev) => (prev ? prev.filter((m) => m.id !== member.id) : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo dar de baja a ese staff.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -270,36 +292,52 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: RestaurantesS
         <section className="flex flex-col gap-2">
           <p className="m-0 text-sm font-semibold text-foreground">Staff activo</p>
           <p className="m-0 text-xs text-muted-foreground">
-            Cambia el rol de un staff ya aceptado. No puedes tocar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo, ni cambiar tu propio rol
-            — el servidor lo rechaza aunque el rol aparezca en esta lista.
+            Cambia el rol de un staff ya aceptado, o dalo de baja por completo. No puedes tocar a alguien con más alcance que el tuyo, ni cambiar tu propio rol, ni darte de baja
+            a ti mismo, ni dejar la organización sin ningún dueño — el servidor lo rechaza aunque la opción aparezca aquí.
           </p>
           {!members && !error && <EstadoCargando etiqueta="Cargando staff…" />}
           {members && members.length === 0 && <EstadoVacio mensaje="Todavía no hay ningún staff aceptado en esta organización." />}
           {members && members.length > 0 && (
             <div className="flex flex-col gap-2">
-              {members.map((m) => (
-                <Card key={m.id}>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
-                    <div>
-                      <p className="m-0 text-[13px] font-semibold text-foreground">{m.fullName}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
-                    </div>
-                    <select
-                      aria-label={`Rol de ${m.fullName}`}
-                      value={m.verticalRole}
-                      disabled={savingRoleId === m.id}
-                      onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
-                      className={SELECT_CLASES}
-                    >
-                      {ROLE_OPTIONS.map((r) => (
-                        <option key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </option>
-                      ))}
-                    </select>
-                  </CardContent>
-                </Card>
-              ))}
+              {members.map((m) => {
+                const esUnoMismo = m.email === staffEmail;
+                return (
+                  <Card key={m.id}>
+                    <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+                      <div>
+                        <p className="m-0 text-[13px] font-semibold text-foreground">{m.fullName}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{m.email}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          aria-label={`Rol de ${m.fullName}`}
+                          value={m.verticalRole}
+                          disabled={savingRoleId === m.id}
+                          onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
+                          className={SELECT_CLASES}
+                        >
+                          {ROLE_OPTIONS.map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_LABELS[r]}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="h-9 text-xs"
+                          onClick={() => void handleRemove(m)}
+                          disabled={removingId === m.id || esUnoMismo}
+                          title={esUnoMismo ? "No puedes darte de baja a ti mismo." : undefined}
+                        >
+                          {removingId === m.id ? "Dando de baja…" : "Dar de baja"}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </section>

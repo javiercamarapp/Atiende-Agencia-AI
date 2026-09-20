@@ -85,6 +85,14 @@ export const Errors = {
   // "invitar" con "editar el rol de alguien ya aceptado" en la UI.
   staffRoleChangeRolInsuficiente: () =>
     new ApiError(403, "staff_role_change_rol_insuficiente", "No puedes cambiar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo."),
+  // FASE 3 (producto, restaurantes) — dar de baja a un staff YA ACEPTADO (ver
+  // packages/db/migrations/0024_remove_membership.sql). Mismo umbral/mismo código
+  // HTTP que `staffRoleChangeRolInsuficiente`, mensaje propio.
+  staffRemovalRolInsuficiente: () =>
+    new ApiError(403, "staff_removal_rol_insuficiente", "No puedes dar de baja a alguien con más alcance que el tuyo."),
+  staffRemovalAutoBaja: () => new ApiError(400, "staff_removal_auto_baja", "No puedes darte de baja a ti mismo."),
+  staffRemovalSinOwner: () =>
+    new ApiError(400, "staff_removal_sin_owner", "No puedes dejar la organización sin ningún owner."),
   // ---- hoteles (motor de revenue management, Fase 9 -- REQ-REV-003/004/005/007) ----
   // El trigger real de Postgres (`revenue_engine_gate_transition_guard`) sigue siendo
   // la autoridad; esto solo traduce el mismo rechazo que `evaluateGateTransition`

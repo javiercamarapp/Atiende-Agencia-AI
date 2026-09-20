@@ -413,10 +413,13 @@ export interface PromotionPatch {
 // domain-rentas/src/types.ts (RegistrarAuditoriaInput/RentasAuditLog*) — copiado
 // a propósito para que ambas verticales se lean igual, ver comentario de cabecera
 // de esa migración para las 2 correcciones que nacen resueltas aquí (orden total
-// desde el día uno, validación de rol). 'configuracion' está reservado en el
-// catálogo aunque hoy ningún caller real lo usa (restaurantes todavía no tiene
-// ninguna ruta que edite WhatsApp/voz/horarios/zonas de entrega — ver comentario
-// de cabecera de esa migración).
+// desde el día uno, validación de rol). 'configuracion' ya tiene caller real
+// desde FASE 3 (producto): `admin-config.ts::PUT .../admin/config/whatsapp` y
+// `POST`/`DELETE .../admin/config/zonas` — ver `migrations/
+// 021_restaurantes_config_editable_y_search_path_fix.sql`. Horarios de
+// atención/configuración de voz siguen sin ruta (ninguna tabla existe todavía
+// en el schema base para ninguno de los dos — ver el comentario de cabecera de
+// esa migración).
 // ---------------------------------------------------------------------------
 export type RestaurantesAuditEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion";
 
@@ -471,4 +474,36 @@ export interface RestaurantesAuditLogPagina {
   readonly items: readonly RestaurantesAuditLogRow[];
   readonly total: number;
   readonly nextOffset: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// FASE 3 (producto) -- configuración editable del panel (owner/admin), ver
+// migrations/021_restaurantes_config_editable_y_search_path_fix.sql. Conecta
+// tablas que YA EXISTÍAN sin ninguna ruta de escritura -- ver el comentario de
+// cabecera de esa migración para el porqué de cada una.
+// ---------------------------------------------------------------------------
+
+/** `restaurantes.whatsapp_channel_config` (migrations/001/017) -- `null` cuando
+ *  la organización nunca conectó un número (mismo criterio "honesto" que
+ *  `resolveActiveWhatsAppPhoneNumberId`: nunca un objeto fingido). */
+export interface WhatsappChannelConfig {
+  readonly phoneNumberId: string | null;
+}
+
+/** `restaurantes.known_zone` (migrations/005/016) -- fila completa para el
+ *  listado de administración (a diferencia de `NearestBranchMatch`, que solo
+ *  expone el nombre reconocido de la zona que matcheó). */
+export interface KnownZone {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly name: string;
+  readonly lat: number;
+  readonly lng: number;
+  readonly createdAt: string;
+}
+
+export interface NewKnownZoneInput {
+  readonly name: string;
+  readonly lat: number;
+  readonly lng: number;
 }

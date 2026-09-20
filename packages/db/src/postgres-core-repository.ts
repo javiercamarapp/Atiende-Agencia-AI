@@ -43,6 +43,8 @@ import type {
   UpsertOrganizationBillingInput,
 } from "./core-repository.ts";
 import {
+  MembershipRemovalError,
+  MembershipRemovalUnavailableError,
   MembershipRoleUpdateError,
   NotificationNotFoundError,
   OrganizationBillingAccessDeniedError,
@@ -506,6 +508,42 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
       if (pgErr?.code === "P0001") throw new MembershipRoleUpdateError(pgErr.message ?? "No se pudo cambiar el rol de ese staff.");
       throw err;
     }
+  }
+
+  // FASE 3 (producto, restaurantes) — ver el comentario de cabecera de
+  // `migrations/0024_remove_membership.sql` para la autoridad real (jerarquía,
+  // auto-baja, último owner). REGLA DURA DE COMPATIBILIDAD (AGENTS.md): esta es una
+  // capacidad NUEVA -- a diferencia de `updateMemberVerticalRole` (cuya migración ya
+  // estaba en `main` cuando se escribió esta clase), el código que llama a este
+  // método se despliega en el MISMO PR que la migración `0024`, así que la base real
+  // (Supabase, ~30 migraciones atrás al momento de mergear) puede no tenerla
+  // aplicada todavía -- `core.remove_membership` lanzaría SQLSTATE 42883
+  // (`undefined_function`). Sin camino anterior al que degradar (esta capacidad no
+  // existía antes de esta fase), así que el fallback es un error tipado honesto
+  // (`MembershipRemovalUnavailableError`, nunca un 500) -- el caller HTTP
+  // (`admin-staff.ts`) lo traduce a 503. `runWithSavepointFallback` (no un try/catch
+  // simple) porque esta llamada corre dentro de la transacción compartida del
+  // request de staff (`dbSession`/`withAppSession`) -- un 42883 sin SAVEPOINT deja
+  // la transacción abortada y el resto del request (incluido su `commit` final)
+  // fallaría con 25P02 (ver savepoint-fallback.ts para el mecanismo completo).
+  async removeMembership(organizationId: string, targetUserId: string): Promise<void> {
+    return runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_core_remove_membership",
+      primary: async () => {
+        try {
+          await this.db.query(`select core.remove_membership($1, $2);`, [organizationId, targetUserId]);
+        } catch (err) {
+          const pgErr = err as { code?: string; message?: string } | null;
+          if (pgErr?.code === "P0001") throw new MembershipRemovalError(pgErr.message ?? "No se pudo dar de baja a ese staff.");
+          throw err;
+        }
+      },
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+      fallback: () => {
+        throw new MembershipRemovalUnavailableError();
+      },
+    });
   }
 
   // Fase 3 caller-binding (ver `packages/db/migrations/0017_caller_binding_

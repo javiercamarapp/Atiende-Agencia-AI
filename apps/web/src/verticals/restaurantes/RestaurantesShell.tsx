@@ -20,6 +20,7 @@ import {
   ClipboardList,
   History,
   LayoutDashboard,
+  Settings,
   Store,
   Tag,
   UserCog,
@@ -109,6 +110,9 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
       items: [
         { to: `${base}/staff`, label: "Staff", icon: UserCog },
         { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardCheck },
+        // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas, mismo
+        // umbral owner/admin (STAFF_NAV_ROLES) que Staff/Auditoría.
+        { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
       ],
     });
   }

@@ -37,7 +37,7 @@ import { canInviteStaff } from "@atiende/core-authz";
 import type { PlatformRole } from "@atiende/core-tenancy";
 import { correoInvitacionStaff, isRestaurantesRole, MANAGER_ROLES, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-restaurantes";
 import type { RestaurantesRepository } from "@atiende/domain-restaurantes";
-import { MembershipRoleUpdateError } from "@atiende/db";
+import { MembershipRemovalError, MembershipRemovalUnavailableError, MembershipRoleUpdateError } from "@atiende/db";
 import type { OrganizationMemberRow, OrganizationMemberWithRoleRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
@@ -431,6 +431,77 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       if (err instanceof MembershipRoleUpdateError) throw Errors.forbidden(err.message);
       throw err;
     }
+  });
+
+  // FASE 3 (producto) — hallazgo real: hasta ahora NO existía ninguna forma de dar
+  // de baja a un miembro de staff YA ACEPTADO (`core.membership`) -- solo revocar
+  // una invitación PENDIENTE (`DELETE itemPath` de arriba). Mismo umbral de
+  // autorización EXACTO que `PATCH miembroItemPath` (STAFF_INVITE_ROLES + jerarquía
+  // real de `canInviteStaff`, aplicada al rol ACTUAL del target) -- decisión
+  // explícita de esta fase para el caso límite:
+  //   1. Nunca auto-baja (un staff no puede darse de baja a sí mismo por esta vía)
+  //      -- bloqueado ANTES de tocar la base, mismo criterio que "nunca auto-cambio
+  //      de rol" del PATCH de arriba.
+  //   2. "No dejar la organización sin ningún owner" -- si el target es el ÚNICO
+  //      owner, la baja se rechaza (aunque quien la pida sea OTRO owner de igual
+  //      rango, la única combinación que la jerarquía permitiría).
+  // La AUTORIDAD real, sin embargo, es `core.remove_membership` (`security
+  // definer`, ver `packages/db/migrations/0024_remove_membership.sql`) -- estas
+  // dos capas de TS son solo el primer filtro/mejor mensaje de error, nunca la
+  // única barrera (mismo principio "RLS real, TS es defensa en profundidad" del
+  // resto del monorepo). `MembershipRemovalUnavailableError` (SQLSTATE 42883, la
+  // migración 0024 todavía no se aplicó a la base real) se traduce a un 503
+  // honesto -- REGLA DURA de compatibilidad de AGENTS.md: esta es una capacidad
+  // NUEVA sin camino anterior al que degradar, nunca un 500 genérico.
+  app.delete(miembroItemPath, async (c) => {
+    assertVerticalRole(c, STAFF_INVITE_ROLES);
+    const organizationId = c.get("organizationId");
+    const callerUserId = c.get("userId");
+    const targetUserId = c.req.param("userId");
+
+    if (targetUserId === callerUserId) throw Errors.staffRemovalAutoBaja();
+
+    const members = await deps.coreStaffRepo(c.get("db")).listOrgMembers(organizationId);
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw Errors.notFound("Ese staff no pertenece a esta organización.");
+
+    const callerPlatformRole = c.get("platformRole");
+    if (!callerPlatformRole || !canInviteStaff(callerPlatformRole, target.platformRole)) {
+      throw Errors.staffRemovalRolInsuficiente();
+    }
+
+    // Caso límite decidido explícitamente para esta fase (ver comentario de
+    // cabecera): nunca dejar la organización sin ningún owner.
+    if (target.verticalRole === "owner" && members.filter((m) => m.platformRole === "owner").length <= 1) {
+      throw Errors.staffRemovalSinOwner();
+    }
+
+    try {
+      await deps.coreStaffRepo(c.get("db")).removeMembership(organizationId, targetUserId);
+    } catch (err) {
+      if (err instanceof MembershipRemovalError) throw Errors.forbidden(err.message);
+      if (err instanceof MembershipRemovalUnavailableError) throw Errors.serviceUnavailable(err.message);
+      throw err;
+    }
+
+    logEvent(c, "info", "restaurantes_admin_staff_dado_de_baja", { actorUserId: callerUserId, organizationId, targetUserId });
+
+    // FASE 3 (producto) — "baja ... de staff" (ver migrations/
+    // 019_restaurantes_audit_log.sql). Nunca guarda el correo del target (ya
+    // visible en el listado mientras existió, no hace falta duplicarlo en una
+    // bitácora append-only) -- solo el id de usuario + el rol que tenía.
+    await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
+      organizationId,
+      actorUserId: callerUserId,
+      action: "staff.baja",
+      entityType: "staff",
+      entityId: targetUserId,
+      campo: "verticalRole",
+      antes: target.verticalRole,
+      despues: null,
+    });
+
+    return c.json({ ok: true });
   });
 
   return app;

@@ -15,6 +15,7 @@ import { restaurantesAdminStaffRoutes } from "./admin-staff.ts";
 import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
+import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -39,5 +40,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // FASE 3 (producto) — bitácora de auditoría del staff (ver
   // packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql).
   app.route("/", restaurantesAuditoriaRoutes(deps));
+  // FASE 3 (producto) — configuración editable del panel (WhatsApp/zonas
+  // conocidas), owner/admin -- ver el comentario de cabecera de admin-config.ts.
+  app.route("/", restaurantesAdminConfigRoutes(deps));
   return app;
 }
