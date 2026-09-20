@@ -511,11 +511,11 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
   }
 
   // FASE 3 (producto, restaurantes) — ver el comentario de cabecera de
-  // `migrations/0022_remove_membership.sql` para la autoridad real (jerarquía,
+  // `migrations/0024_remove_membership.sql` para la autoridad real (jerarquía,
   // auto-baja, último owner). REGLA DURA DE COMPATIBILIDAD (AGENTS.md): esta es una
   // capacidad NUEVA -- a diferencia de `updateMemberVerticalRole` (cuya migración ya
   // estaba en `main` cuando se escribió esta clase), el código que llama a este
-  // método se despliega en el MISMO PR que la migración `0022`, así que la base real
+  // método se despliega en el MISMO PR que la migración `0024`, así que la base real
   // (Supabase, ~30 migraciones atrás al momento de mergear) puede no tenerla
   // aplicada todavía -- `core.remove_membership` lanzaría SQLSTATE 42883
   // (`undefined_function`). Sin camino anterior al que degradar (esta capacidad no

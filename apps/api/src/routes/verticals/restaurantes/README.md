@@ -134,7 +134,7 @@ documentados aquí mismo:
   miembros/:userId`, mismo umbral que el `PATCH` de cambio de rol
   (`STAFF_INVITE_ROLES` + jerarquía real de `canInviteStaff`). Autoridad real
   en `core.remove_membership` (`security definer`, genérico de `core` — ver
-  `packages/db/migrations/0022_remove_membership.sql`): bloquea auto-baja
+  `packages/db/migrations/0024_remove_membership.sql`): bloquea auto-baja
   SIEMPRE, y el caso límite "no dejar la organización sin ningún owner"
   (demostrado por exhaustividad en
   `scripts/verify-restaurantes-config-staff-baja/README.md` — con la

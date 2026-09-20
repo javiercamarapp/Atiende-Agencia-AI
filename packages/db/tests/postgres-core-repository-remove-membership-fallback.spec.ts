@@ -1,5 +1,5 @@
 // FASE 3 (producto, restaurantes) — regresión de `PostgresCoreRepository.
-// removeMembership` (ver `migrations/0022_remove_membership.sql` y el comentario de
+// removeMembership` (ver `migrations/0024_remove_membership.sql` y el comentario de
 // cabecera de este método en `../src/postgres-core-repository.ts`). Mismo criterio
 // EXACTO que `postgres-core-repository-org-admin-fallback.spec.ts`: un doble de
 // prueba que SÍ reproduce la semántica de aborto de transacción real de Postgres

@@ -548,7 +548,7 @@ describe("PATCH /v1/restaurantes/:propertyId/admin/staff/miembros/:userId -- cam
 // el describe de arriba). Mismo umbral de autorización EXACTO que el PATCH de cambio
 // de rol -- ver el comentario de cabecera del DELETE en admin-staff.ts para la
 // autoridad real (`core.remove_membership`, `packages/db/migrations/
-// 0022_remove_membership.sql`).
+// 0024_remove_membership.sql`).
 describe("DELETE /v1/restaurantes/:propertyId/admin/staff/miembros/:userId -- baja de staff ya aceptado", () => {
   it("owner da de baja a un staff -- 200, ya no aparece en el listado, y queda en la bitácora de auditoría", async () => {
     const ctx = await buildRestaurantesKpiTestContext(buildApp);

@@ -320,7 +320,7 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
   // `updateMemberVerticalRole` de arriba: en producción real, la autoridad completa
   // (jerarquía de rango, bloqueo de auto-baja, protección del último owner) vive en
   // `core.remove_membership` (`security definer`, ver `migrations/
-  // 0022_remove_membership.sql`) -- el caller HTTP (`admin-staff.ts`) ya reaplica esa
+  // 0024_remove_membership.sql`) -- el caller HTTP (`admin-staff.ts`) ya reaplica esa
   // MISMA jerarquía en la capa TS ANTES de llamar aquí (defensa en profundidad, mismo
   // patrón que el resto de este archivo), así que esta implementación en memoria solo
   // necesita el caso real que le falta a esa capa TS: el target simplemente no existe

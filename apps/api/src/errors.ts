@@ -86,7 +86,7 @@ export const Errors = {
   staffRoleChangeRolInsuficiente: () =>
     new ApiError(403, "staff_role_change_rol_insuficiente", "No puedes cambiar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo."),
   // FASE 3 (producto, restaurantes) — dar de baja a un staff YA ACEPTADO (ver
-  // packages/db/migrations/0022_remove_membership.sql). Mismo umbral/mismo código
+  // packages/db/migrations/0024_remove_membership.sql). Mismo umbral/mismo código
   // HTTP que `staffRoleChangeRolInsuficiente`, mensaje propio.
   staffRemovalRolInsuficiente: () =>
     new ApiError(403, "staff_removal_rol_insuficiente", "No puedes dar de baja a alguien con más alcance que el tuyo."),

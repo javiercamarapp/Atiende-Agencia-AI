@@ -3,7 +3,7 @@
 # que scripts/verify-restaurantes-audit-log/run.sh (ver ese archivo para el porqué
 # de cada paso). Cubre, contra RLS/GRANT/auth.uid() reales (nunca el repositorio en
 # memoria, que no aplica ninguno de los tres):
-#   - packages/db/migrations/0022_remove_membership.sql (baja de staff activo)
+#   - packages/db/migrations/0024_remove_membership.sql (baja de staff activo)
 #   - packages/domain-restaurantes/migrations/
 #     021_restaurantes_config_editable_y_search_path_fix.sql (config editable de
 #     WhatsApp/zonas conocidas, owner/admin)
@@ -49,7 +49,7 @@ PSQL_DB=(psql -h "$WORKDIR" -p "$PGPORT" -U postgres -d atiende_verify)
 echo "==> aplicando el mock mínimo de plataforma (auth.uid()/roles/schema usage)"
 "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$HERE/bootstrap.sql" >/dev/null
 
-echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0022_remove_membership.sql y 021_restaurantes_config_editable_y_search_path_fix.sql)"
+echo "==> aplicando TODAS las migraciones reales de supabase/migrations/ en orden (incluye 0024_remove_membership.sql y 021_restaurantes_config_editable_y_search_path_fix.sql)"
 for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
   "${PSQL_DB[@]}" -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done

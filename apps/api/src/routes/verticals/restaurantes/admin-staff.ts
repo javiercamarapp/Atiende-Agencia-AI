@@ -446,11 +446,11 @@ export function restaurantesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
   //      owner, la baja se rechaza (aunque quien la pida sea OTRO owner de igual
   //      rango, la única combinación que la jerarquía permitiría).
   // La AUTORIDAD real, sin embargo, es `core.remove_membership` (`security
-  // definer`, ver `packages/db/migrations/0022_remove_membership.sql`) -- estas
+  // definer`, ver `packages/db/migrations/0024_remove_membership.sql`) -- estas
   // dos capas de TS son solo el primer filtro/mejor mensaje de error, nunca la
   // única barrera (mismo principio "RLS real, TS es defensa en profundidad" del
   // resto del monorepo). `MembershipRemovalUnavailableError` (SQLSTATE 42883, la
-  // migración 0022 todavía no se aplicó a la base real) se traduce a un 503
+  // migración 0024 todavía no se aplicó a la base real) se traduce a un 503
   // honesto -- REGLA DURA de compatibilidad de AGENTS.md: esta es una capacidad
   // NUEVA sin camino anterior al que degradar, nunca un 500 genérico.
   app.delete(miembroItemPath, async (c) => {

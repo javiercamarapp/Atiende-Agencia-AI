@@ -753,7 +753,7 @@ export interface CoreStaffRepository {
    *  podía dar de baja a un staff YA ACEPTADO (solo revocar una invitación
    *  PENDIENTE, `revokeStaffInvite`). Elimina SOLO la `core.membership` de esta
    *  organización -- nunca `core.staff_user` (ver comentario de cabecera de
-   *  `migrations/0022_remove_membership.sql`). Lanza `MembershipRemovalError`
+   *  `migrations/0024_remove_membership.sql`). Lanza `MembershipRemovalError`
    *  cuando el caller no tiene autoridad suficiente (mismo umbral que
    *  `updateMemberVerticalRole`: admin/owner, nunca de menor rango que el target),
    *  cuando intenta darse de baja a SÍ MISMO (nunca permitido), cuando `targetUserId`

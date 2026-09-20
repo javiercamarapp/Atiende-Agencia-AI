@@ -3,7 +3,7 @@
 -- ninguno de los dos), que estas dos migraciones cierran exactamente lo que dicen
 -- cerrar:
 --
---   A. packages/db/migrations/0022_remove_membership.sql (core.remove_membership --
+--   A. packages/db/migrations/0024_remove_membership.sql (core.remove_membership --
 --      baja de un staff YA ACEPTADO):
 --     1. Positivo: owner/admin real de la organización SÍ puede dar de baja a un
 --        staff de rango menor -- el membership desaparece de verdad.
@@ -23,7 +23,7 @@
 --        chequeo explícito de conteo. Con 2 owners, remover a UNO de ellos sí es
 --        legítimo (deja 1) -- se demuestra que el chequeo de conteo no bloquea ese
 --        caso normal por error.
---     7. Esquema de PRODUCCIÓN a medio migrar (0022 no aplicada) -- SQLSTATE 42883,
+--     7. Esquema de PRODUCCIÓN a medio migrar (0024 no aplicada) -- SQLSTATE 42883,
 --        recuperado con SAVEPOINT/ROLLBACK TO SAVEPOINT (mismo mecanismo que
 --        runWithSavepointFallback en producción).
 --

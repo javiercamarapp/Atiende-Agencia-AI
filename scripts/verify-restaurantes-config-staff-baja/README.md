@@ -3,7 +3,7 @@
 Verificación, contra un Postgres **real**, de dos migraciones de esta fase (FASE 3
 producto de restaurantes):
 
-- `packages/db/migrations/0022_remove_membership.sql` (`core.remove_membership` —
+- `packages/db/migrations/0024_remove_membership.sql` (`core.remove_membership` —
   baja de un staff YA ACEPTADO, genérico de `core`, expuesto vía
   `apps/api/src/routes/verticals/restaurantes/admin-staff.ts::DELETE
   .../admin/staff/miembros/:userId`).
@@ -39,7 +39,7 @@ producto de restaurantes):
    documentada como tal, no la única barrera. El escenario 8 demuestra además que
    ese chequeo NO bloquea por error el caso normal: con 2 owners reales, remover a
    uno de ellos sí es legítimo (deja 1, nunca 0).
-7. **Esquema de producción a medio migrar** (`0022` no aplicada todavía): el SQL
+7. **Esquema de producción a medio migrar** (`0024` no aplicada todavía): el SQL
    REAL que `PostgresCoreRepository.removeMembership` emite, con la función
    eliminada DENTRO de la misma transacción (DDL transaccional, revertido al
    `rollback` final), falla con SQLSTATE 42883 — recuperado con
