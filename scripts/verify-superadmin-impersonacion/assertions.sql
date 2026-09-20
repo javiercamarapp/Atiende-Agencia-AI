@@ -400,6 +400,14 @@ select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'
 select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 2 de 3 (escenario 27).')).id as id \gset ord2_
 select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'ord2_id') \gset noop2_
 select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 3 de 3 (escenario 27).')).id as id \gset ord3_
+-- El escenario 26 (premisa) NUNCA cierra la tercera sesión -- deja solo 5
+-- eventos (3 starts + 2 ends), no los 6 que el enunciado de ambos
+-- escenarios describe. Aquí SÍ se cierra, para tener de verdad los 6
+-- eventos empatados que hacen falta para probar el orden COMPLETO
+-- (end3,start3,end2,start2,end1,start1) -- sin este cierre, el array
+-- esperado de abajo tendría solo 5 elementos y `start3` (no `end3`) sería
+-- el primero.
+select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'ord3_id') \gset noop3_
 select (
   array_agg(t.session_id) = array[:'ord3_id',:'ord3_id',:'ord2_id',:'ord2_id',:'ord1_id',:'ord1_id']::uuid[]
   and array_agg(t.event_type) = array['end','start','end','start','end','start']::text[]
