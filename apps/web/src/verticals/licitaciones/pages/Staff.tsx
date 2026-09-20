@@ -26,6 +26,7 @@ import { Mail, UserPlus } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label } from "@atiende/ui";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
+import { fetchTenantConfig, updateTenantConfigTimezone } from "../lib/admin-client.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -60,13 +61,25 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 const SELECT_NATIVO =
   "h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
-export function StaffPage({ apiBaseUrl, token, propertyId, role }: LicitacionesShellContext) {
+export function StaffPage({ apiBaseUrl, token, propertyId, orgSlug, role }: LicitacionesShellContext) {
   const canManage = STAFF_INVITE_ROLES.has(role);
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
   const [members, setMembers] = useState<readonly OrgMember[] | null>(null);
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // FASE 3 (producto) — zona horaria por negocio: UI mínima owner/admin (mismo
+  // umbral `canManage`/`STAFF_INVITE_ROLES` de esta página). `timezone === null`
+  // (sin fila todavía, o borrada explícitamente) se ve en el input como texto
+  // vacío -- el placeholder deja claro cuál es el default real que aplica
+  // mientras tanto, nunca un valor inventado en el campo.
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const [timezoneInput, setTimezoneInput] = useState("");
+  const [timezoneLoaded, setTimezoneLoaded] = useState(false);
+  const [savingTimezone, setSavingTimezone] = useState(false);
+  const [timezoneError, setTimezoneError] = useState<string | null>(null);
+  const [timezoneSavedAt, setTimezoneSavedAt] = useState<number | null>(null);
 
   const [email, setEmail] = useState("");
   const [verticalRole, setVerticalRole] = useState<StaffVerticalRole>("analyst");
@@ -103,6 +116,44 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: LicitacionesS
     // eslint: mismo criterio que el resto del panel -- este proyecto no tiene
     // eslint-plugin-react-hooks configurado.
   }, [apiBaseUrl, token, propertyId, canManage]);
+
+  async function loadTimezone() {
+    if (!canManage) return;
+    setTimezoneError(null);
+    try {
+      const config = await fetchTenantConfig(fetch, apiBaseUrl, token, orgSlug);
+      setTimezone(config.timezone);
+      setTimezoneInput(config.timezone ?? "");
+    } catch (err) {
+      setTimezoneError(err instanceof Error ? err.message : "No se pudo cargar la zona horaria.");
+    } finally {
+      setTimezoneLoaded(true);
+    }
+  }
+
+  useEffect(() => {
+    void loadTimezone();
+  }, [apiBaseUrl, token, orgSlug, canManage]);
+
+  async function handleSaveTimezone(e: FormEvent) {
+    e.preventDefault();
+    setSavingTimezone(true);
+    setTimezoneError(null);
+    setTimezoneSavedAt(null);
+    try {
+      // Texto vacío = borrar (`timezone: null`) -- vuelve al default de plataforma,
+      // nunca se manda un string vacío como si fuera un timezone real.
+      const trimmed = timezoneInput.trim();
+      const updated = await updateTenantConfigTimezone(fetch, apiBaseUrl, token, orgSlug, trimmed.length > 0 ? trimmed : null);
+      setTimezone(updated.timezone);
+      setTimezoneInput(updated.timezone ?? "");
+      setTimezoneSavedAt(Date.now());
+    } catch (err) {
+      setTimezoneError(err instanceof Error ? err.message : "No se pudo guardar la zona horaria.");
+    } finally {
+      setSavingTimezone(false);
+    }
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -146,6 +197,41 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: LicitacionesS
         <p className="rounded-xl border border-border bg-muted p-3 text-[13px] text-muted-foreground">
           Invitar, revocar, o cambiar el rol de staff está reservado a dueños y administradores. Con tu rol actual ({role}) no puedes gestionar el staff de esta empresa.
         </p>
+      )}
+
+      {canManage && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Zona horaria de la empresa</CardTitle>
+            <CardDescription>
+              Se usa para calcular "hoy" en vigencias de tarifas, facturación y alertas de renovación — nunca para reinterpretar el plazo legal ya fijado en las bases de una convocatoria (ese lo declara
+              quien convoca, no tu empresa). Un plazo ya calculado y comunicado con la zona anterior NO se recalcula: este cambio aplica solo hacia adelante.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {timezoneError && <EstadoError mensaje={timezoneError} onReintentar={() => void loadTimezone()} />}
+            {!timezoneLoaded && !timezoneError && <EstadoCargando lineas={1} etiqueta="Cargando zona horaria…" />}
+            {timezoneLoaded && (
+              <form onSubmit={handleSaveTimezone} className="flex flex-wrap items-end gap-2">
+                <div className="flex min-w-[260px] flex-1 flex-col gap-1.5">
+                  <Label htmlFor="tenant-timezone">Timezone IANA (ej. "America/Mexico_City", "America/Tijuana")</Label>
+                  <Input
+                    id="tenant-timezone"
+                    type="text"
+                    placeholder="America/Mexico_City (default de plataforma, sin configurar)"
+                    value={timezoneInput}
+                    onChange={(e) => setTimezoneInput(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">{timezone ? `Configurada: ${timezone}` : "Sin configurar todavía — se usa el default de plataforma (America/Mexico_City)."} Deja el campo vacío y guarda para borrarla.</p>
+                </div>
+                <Button type="submit" size="sm" disabled={savingTimezone}>
+                  {savingTimezone ? "Guardando…" : "Guardar"}
+                </Button>
+              </form>
+            )}
+            {timezoneSavedAt !== null && <p className="text-xs text-muted-foreground">Guardado.</p>}
+          </CardContent>
+        </Card>
       )}
 
       {canManage && (

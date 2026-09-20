@@ -43,6 +43,11 @@ export interface LicitacionesTestContext {
   readonly tenderId: string;
   readonly staff: {
     readonly owner: { id: string; email: string; password: string; token: string };
+    // FASE 3 (producto) — zona horaria por negocio: `PATCH .../tenant-config`
+    // exige owner/admin (`STAFF_INVITE_ROLES`) -- ningún fixture anterior
+    // necesitaba un staff "admin" propio hasta ahora (owner ya cubría el
+    // umbral más alto en todas las suites previas).
+    readonly admin: { id: string; email: string; password: string; token: string };
     readonly analyst: { id: string; email: string; password: string; token: string };
     readonly writer: { id: string; email: string; password: string; token: string };
     // Fase 3 §7: GO_NO_GO_ROLES = DECISION_ROLES + "reviewer" -- ningún
@@ -89,6 +94,7 @@ export async function buildLicitacionesTestContext(
   }
 
   const ownerSeed = await seedStaff("owner", "owner");
+  const adminSeed = await seedStaff("admin", "admin");
   const analystSeed = await seedStaff("analyst", "analyst");
   const writerSeed = await seedStaff("writer", "writer");
   const reviewerSeed = await seedStaff("reviewer", "reviewer");
@@ -153,8 +159,9 @@ export async function buildLicitacionesTestContext(
   };
 
   const app = buildApp(deps);
-  const [ownerToken, analystToken, writerToken, reviewerToken, viewerToken] = await Promise.all([
+  const [ownerToken, adminToken, analystToken, writerToken, reviewerToken, viewerToken] = await Promise.all([
     signInAndGetToken(app, ownerSeed.email, ownerSeed.password),
+    signInAndGetToken(app, adminSeed.email, adminSeed.password),
     signInAndGetToken(app, analystSeed.email, analystSeed.password),
     signInAndGetToken(app, writerSeed.email, writerSeed.password),
     signInAndGetToken(app, reviewerSeed.email, reviewerSeed.password),
@@ -169,6 +176,7 @@ export async function buildLicitacionesTestContext(
     tenderId,
     staff: {
       owner: { ...ownerSeed, token: ownerToken },
+      admin: { ...adminSeed, token: adminToken },
       analyst: { ...analystSeed, token: analystToken },
       writer: { ...writerSeed, token: writerToken },
       reviewer: { ...reviewerSeed, token: reviewerToken },

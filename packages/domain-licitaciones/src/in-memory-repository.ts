@@ -8,7 +8,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
@@ -26,6 +26,8 @@ import type {
   IdempotencyParams,
   IdempotentResult,
   LicitacionesRepository,
+  LicitacionesTenantConfigPatch,
+  LicitacionesTenantConfigRecord,
   MatchingProfileUpsertInput,
   TenderAuditLogPage,
   TenderResolutionCreateInput,
@@ -172,6 +174,10 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   private readonly submissions = new Map<string, SubmissionRecord[]>(); // proposalId -> submissions (historial)
   private readonly idempotency = new Map<string, StoredIdempotencyRow>();
   private readonly mutex = new KeyedMutex();
+  // FASE 3 (producto) — zona horaria por negocio: `licitaciones.tenant_config`
+  // (migración 027). Ausente en el mapa = misma fila inexistente que
+  // `findTenantConfig` ve contra Postgres real (`timezone: null`).
+  private readonly tenantConfigs = new Map<string, string | null>(); // orgId -> timezone
   // ---- Fase 3: matching/scoring y go/no-go ----
   private readonly tenderByExternalKey = new Map<string, string>(); // `${orgId}:manual:${externalId}` -> tenderId (mismo alcance que tender_org_source_external_idx)
   // f2-orden-total-bitacoras -- `id`/`organizationId`/`createdAtMs`/`seq` agregados
@@ -298,6 +304,32 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       .filter((p) => p.organizationId === organizationId)
       .map((p) => ({ propertyId: p.propertyId, name: p.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // ---- FASE 3 (producto) — zona horaria por negocio ----
+
+  async findTenantConfig(organizationId: string): Promise<LicitacionesTenantConfigRecord> {
+    return { organizationId, timezone: this.tenantConfigs.get(organizationId) ?? null };
+  }
+
+  async upsertTenantConfig(organizationId: string, patch: LicitacionesTenantConfigPatch): Promise<LicitacionesTenantConfigRecord> {
+    const current = this.tenantConfigs.get(organizationId) ?? null;
+    const timezone = "timezone" in patch ? (patch.timezone ?? null) : current;
+    this.tenantConfigs.set(organizationId, timezone);
+    return { organizationId, timezone };
+  }
+
+  /** Único punto que llaman `createApprovedRate`/`createContractInvoice`/
+   * `listContractInvoices`/`markContractInvoicePaid`/`receivablesSummary`/
+   * `scanRenewalAlerts`/`systemScanRenewalAlerts`/`listOverdueContractInvoices`
+   * de abajo para resolver "hoy" — mismo nombre/rol exacto que
+   * `PostgresLicitacionesRepository.resolveOrganizationTimezoneForToday`
+   * (nunca duplica el cálculo, ver ese método para el porqué de
+   * `resolverZonaHorariaNegocio`). El repositorio en memoria nunca tiene un
+   * "esquema a medio migrar" que fallback-ear -- siempre lee `tenantConfigs`
+   * directo. */
+  private todayForOrg(organizationId: string): string {
+    return hoyFechaNegocio(resolverZonaHorariaNegocio(this.tenantConfigs.get(organizationId) ?? null));
   }
 
   // ---- Convocatoria / expediente (transversal) ----
@@ -895,18 +927,20 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
       // Paridad con `PostgresLicitacionesRepository.createApprovedRate` (ver su
       // comentario de cabecera): el default de `validFrom` es el día de NEGOCIO
-      // (`hoyFechaNegocio()`), nunca `isoNow()` (día UTC crudo del proceso). El
-      // contrato de `ApprovedRateRecord.validFrom` exige ISO con offset horario
-      // EXPLÍCITO (`assertExplicitOffset`, types.ts) -- `hoyFechaNegocio()` sola
-      // devuelve "YYYY-MM-DD" pelón, que NO lo trae; se le agrega
-      // "T00:00:00Z" para que el default en memoria tenga la MISMA forma que
-      // `dateColumnToExplicitOffsetIso` produce sobre la respuesta real de
+      // de ESTA organización (`this.todayForOrg`, que resuelve `resolverZonaHorariaNegocio`
+      // sobre `licitaciones.tenant_config.timezone` -- FASE 3, ver ese método),
+      // nunca `isoNow()` (día UTC crudo del proceso) ni el default de plataforma
+      // hardcodeado. El contrato de `ApprovedRateRecord.validFrom` exige ISO con
+      // offset horario EXPLÍCITO (`assertExplicitOffset`, types.ts) --
+      // `todayForOrg` sola devuelve "YYYY-MM-DD" pelón, que NO lo trae; se le
+      // agrega "T00:00:00Z" para que el default en memoria tenga la MISMA forma
+      // que `dateColumnToExplicitOffsetIso` produce sobre la respuesta real de
       // Postgres (postgres-repository.ts), y así no viole
       // `CompanyDataService.resolveApprovedRate::assertExplicitOffset` en
       // `POST .../proposal/economic/generate` (bloqueante de revisión detectado
       // el 20-sep: antes de este fix, el valor persistía como "YYYY-MM-DD" y
       // `assertExplicitOffset` lanzaba en cuanto se resolvía la tarifa).
-      validFrom: input.validFrom ?? `${hoyFechaNegocio()}T00:00:00Z`,
+      validFrom: input.validFrom ?? `${this.todayForOrg(organizationId)}T00:00:00Z`,
       validUntil: input.validUntil ?? null,
     };
     this.approvedRates.set(organizationId, [...list, record]);
@@ -1370,8 +1404,10 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   // (el que corre en producción) ya usa `hoyFechaNegocio()` -- la suite en memoria dejó
   // de ejercer lo que corre en producción. `contract-billing.ts::classifyInvoiceStatus`/
   // `summarizeReceivables` ya no aceptan un default oculto (ver su comentario) -- este
-  // repositorio pasa el mismo `hoyFechaNegocio()` explícito que Postgres.
-  private invoicesWithStatus(contractId: string, todayIsoDate: string = hoyFechaNegocio()): ContractInvoiceRecord[] {
+  // repositorio exige `todayIsoDate` explícito (nunca un default silencioso aquí --
+  // a diferencia de la versión anterior, "hoy" depende de la organización dueña del
+  // contrato, FASE 3, y este método no la conoce sin `contractId` -> `organizationId`).
+  private invoicesWithStatus(contractId: string, todayIsoDate: string): ContractInvoiceRecord[] {
     return (this.contractInvoices.get(contractId) ?? [])
       .map((inv) => ({ ...inv, status: classifyInvoiceStatus(inv, todayIsoDate) }))
       .sort((a, b) => a.invoiceVerifiedOn.localeCompare(b.invoiceVerifiedOn));
@@ -1567,12 +1603,12 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     };
     const list = this.contractInvoices.get(contract.id) ?? [];
     this.contractInvoices.set(contract.id, [...list, record]);
-    return { ...record, status: classifyInvoiceStatus(record, hoyFechaNegocio()) };
+    return { ...record, status: classifyInvoiceStatus(record, this.todayForOrg(organizationId)) };
   }
 
   async listContractInvoices(organizationId: string, tenderId: string): Promise<readonly ContractInvoiceRecord[]> {
     const contract = this.requireContract(organizationId, tenderId);
-    return this.invoicesWithStatus(contract.id);
+    return this.invoicesWithStatus(contract.id, this.todayForOrg(organizationId));
   }
 
   async markContractInvoicePaid(organizationId: string, tenderId: string, invoiceId: string, _actorId: string): Promise<ContractInvoiceRecord> {
@@ -1589,7 +1625,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async receivablesSummary(organizationId: string, tenderId: string): Promise<ReceivablesSummary> {
     const contract = this.requireContract(organizationId, tenderId);
-    const today = hoyFechaNegocio();
+    const today = this.todayForOrg(organizationId);
     const invoices = this.invoicesWithStatus(contract.id, today);
     const totals = summarizeReceivables(
       invoices.map((inv) => ({ amount: inv.amount, dueDate: inv.dueDate, paidAt: inv.paidAt })),
@@ -1709,8 +1745,9 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   async scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
     const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
     // Mismo fix de paridad que `invoicesWithStatus` de arriba -- `PostgresLicitacionesRepository`
-    // (producción) ya usa `hoyFechaNegocio()` como default aquí (ver su comentario).
-    const today = input.todayIsoDate ?? hoyFechaNegocio();
+    // (producción) ya resuelve la zona horaria REAL de la organización aquí (FASE 3,
+    // ver `resolveOrganizationTimezoneForToday`), nunca el default de plataforma solo.
+    const today = input.todayIsoDate ?? this.todayForOrg(organizationId);
     const candidates: RenewalCandidateContract[] = [...this.contracts.values()]
       .filter((c) => c.organizationId === organizationId && c.endDate !== null && c.status !== "cerrado" && c.status !== "rescindido")
       .map((c) => ({ contractId: c.id, tenderId: c.tenderId, endDate: c.endDate! }));
@@ -1778,7 +1815,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]> {
     // Mismo fix de paridad que `invoicesWithStatus`/`scanRenewalAlerts` de arriba.
-    const today = todayIsoDate ?? hoyFechaNegocio();
+    const today = todayIsoDate ?? this.todayForOrg(organizationId);
     const [todayY, todayM, todayD] = today.split("-").map(Number) as [number, number, number];
     const todayMs = Date.UTC(todayY, todayM - 1, todayD);
     const result: OverdueContractInvoiceAlert[] = [];

@@ -28,7 +28,11 @@ interface CapturedCall {
 
 /** Variante de `fakeSessionWithResponses` (company-data-postgres-date-contract.spec.ts)
  *  que además CAPTURA los params de cada llamada, en orden. `createApprovedRate`
- *  emite dos queries: 1) el `select` de duplicados, 2) el `insert ... returning`
+ *  emite, cuando el caller NO manda `validFrom` explícito: 1) el `select` de
+ *  duplicados, 2) FASE 3 (producto) -- el `select timezone` de
+ *  `findTenantConfig` (dentro de `resolveOrganizationTimezoneForToday`, protegido
+ *  por `SAVEPOINT`/`RELEASE SAVEPOINT` vía `runWithSavepointFallback` -- `exec` es
+ *  un no-op aquí, no consume la cola de `query`), 3) el `insert ... returning`
  *  bajo prueba -- aquí es donde llega el parámetro de "hoy" (posición $5). */
 function fakeSessionCapturing(responses: ReadonlyArray<{ rows: unknown[] }>): { session: TenantDbSession; calls: CapturedCall[] } {
   const queue = [...responses];
@@ -56,6 +60,7 @@ describe("PostgresLicitacionesRepository.createApprovedRate -- el parámetro rea
 
     const { session, calls } = fakeSessionCapturing([
       { rows: [] }, // select de duplicados: no hay
+      { rows: [] }, // FASE 3 (producto): select timezone de tenant_config -- sin fila, cae al default de plataforma (CDMX)
       {
         rows: [
           { id: "rate-1", concept: "consultoria_hora", unit_price: "500.00", approval_status: "pendiente_aprobacion", valid_from: "2026-01-01", valid_until: null },
@@ -66,8 +71,8 @@ describe("PostgresLicitacionesRepository.createApprovedRate -- el parámetro rea
 
     await repo.createApprovedRate("org-1", { concept: "consultoria_hora", unitPrice: "500.00" });
 
-    expect(calls).toHaveLength(2);
-    const insertCall = calls[1]!;
+    expect(calls).toHaveLength(3);
+    const insertCall = calls[2]!;
     expect(insertCall.sql.toLowerCase()).toContain("insert into licitaciones.approved_rate");
     // Orden real de params en el insert: [organizationId, concept, unitPrice,
     // approvalStatus, validFrom, validUntil] -- ver postgres-repository.ts.
