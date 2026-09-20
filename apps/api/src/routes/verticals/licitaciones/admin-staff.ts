@@ -22,7 +22,6 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { canInviteStaff } from "@atiende/core-authz";
 import type { PlatformRole } from "@atiende/core-tenancy";
 import { correoInvitacionStaff, isLicitacionesRole, PLATFORM_ROLE_BY_VERTICAL_ROLE, STAFF_INVITE_ROLES } from "@atiende/domain-licitaciones";
-import type { LicitacionesRepository } from "@atiende/domain-licitaciones";
 import { MembershipRoleUpdateError } from "@atiende/db";
 import type { OrganizationMemberWithRoleRow, StaffInviteRow } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
@@ -56,40 +55,60 @@ function serializeInvite(invite: StaffInviteRow) {
  * Correo real (Resend, mismo canal que `email-dispatch.ts` de este vertical)
  * con el enlace de activación ya armado — best-effort: un fallo al encolar el
  * correo NUNCA debe revertir la invitación que sí quedó creada
- * (`createStaffInvite`, ya persistida por el caller ANTES de invocar esto,
- * misma sesión de staff).
+ * (`createStaffInvite`, ya persistida por el caller ANTES de invocar esto).
  *
- * SAVEPOINT (corrección de revisión sobre PR #176, auditoría a3): esta ruta
- * corre en la sesión de STAFF del request, en la MISMA transacción que ya
- * persistió `createStaffInvite`. Sin `runWithRowSavepoint`, un error real de
- * Postgres en el encolado (deadlock/timeout transitorio, o `42501` del
- * guard) deja la transacción en 25P02 y el `commit;` que sigue
- * (`managed-postgres-engine.ts`) revierte también la invitación con
- * `AbortedTransactionCommitError` -> 500, justo lo que este best-effort
- * promete que nunca pasa. `LicitacionesRepository.runWithRowSavepoint` se
- * agrega en este mismo commit (antes solo hoteles/restaurantes/despachos lo
- * tenían). Exportada para poder probarla directamente con
- * `PostgresLicitacionesRepository` + `AbortAwareFakeSession` sin pasar por la
- * ruta HTTP completa (ver `licitaciones-admin-staff-savepoint.spec.ts`).
+ * POST-COMMIT en sesión de SISTEMA (corrección de revisión #2 sobre PR #176,
+ * auditoría a3 — reemplaza el intento anterior de esta misma corrección, que
+ * envolvía la llamada en `repo.runWithRowSavepoint` DENTRO de la sesión de
+ * STAFF del request). Ese intento anterior estaba mal para este vertical en
+ * concreto: a diferencia de `hoteles`/`despachos`/`restaurantes` — cuyas
+ * `enqueue_messaging_outbox` son `security definer` con un guard que SÍ
+ * acepta sesión de staff con membership/property-access real (ver migraciones
+ * 087/088/091/150) — `licitaciones.enqueue_messaging_outbox` es EXCLUSIVA de
+ * sesión de SISTEMA sin excepción: `supabase/migrations/
+ * 20240101000089_020_email_outbox_authenticated_grants.sql:17-25` hace
+ * `if auth.uid() is not null then raise exception '... es solo para la
+ * sesión de sistema' using errcode = '42501'`, sin ningún camino que acepte
+ * `auth.uid()` real (certificado por
+ * `scripts/verify-outbox-grants/assertions.sql` casos 11/12). Un
+ * `runWithRowSavepoint` ahí NO arregla el best-effort: evita que el 42501
+ * tumbe la transacción del request (la invitación sí sobrevive), pero el
+ * correo NUNCA llega a encolarse porque la sesión que lo intenta sigue
+ * siendo la de staff — el mismo 42501 determinista se traga cada vez.
+ *
+ * El remedio real es abrir una transacción NUEVA en sesión de sistema
+ * DESPUÉS del commit (mismo patrón que `apps/api/.../despachos/
+ * vencimientos.ts` y `.../hoteles/reservas.ts`: `c.get("postCommitTasks")`,
+ * corrido por `packages/core-auth/src/middleware.ts::dbSession` una vez que
+ * `withAppSession` de la sesión de staff ya hizo `commit;` real — recién ahí
+ * una sesión nueva puede ver la invitación que este request insertó). Este
+ * export recibe `deps` (para abrir `deps.engine.withAppSession({userId:
+ * null}, ...)` y obtener un `LicitacionesRepository` de sistema con
+ * `deps.licitacionesRepo`) en vez de un `repo` ya abierto, precisamente
+ * porque necesita una sesión DISTINTA a la del caller. Sigue siendo
+ * best-effort real: un fallo aquí (columna sin migrar, Resend caído, lo que
+ * sea) solo se loguea — nunca afecta el 201 ya devuelto al staff, exactamente
+ * igual que cualquier otra tarea de `postCommitTasks`.
  */
-export async function tryEnqueueStaffInviteEmail(
-  repo: LicitacionesRepository,
+export async function enqueueStaffInviteEmailPostCommit(
+  deps: Pick<AppDeps, "engine" | "licitacionesRepo">,
   organizationId: string,
   inviteId: string,
   email: string,
   correo: { readonly asunto: string; readonly html: string; readonly texto: string },
 ): Promise<void> {
   try {
-    await repo.runWithRowSavepoint(() =>
-      repo.enqueueMessagingOutbox(organizationId, "email", "staff.invite", `staff-invite:${inviteId}`, {
+    await deps.engine.withAppSession({ userId: null }, async (systemSession) => {
+      const systemRepo = deps.licitacionesRepo(systemSession);
+      await systemRepo.enqueueMessagingOutbox(organizationId, "email", "staff.invite", `staff-invite:${inviteId}`, {
         to: email,
         subject: correo.asunto,
         html: correo.html,
         text: correo.texto,
-      }),
-    );
+      });
+    });
   } catch (err) {
-    console.error("licitaciones/admin-staff: best-effort staff invite email enqueue failed:", err);
+    console.error("licitaciones/admin-staff: best-effort staff invite email enqueue (post-commit, sesión de sistema) failed:", err);
   }
 }
 
@@ -201,6 +220,12 @@ export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     // el correo NUNCA debe revertir la invitación que sí quedó creada. El token
     // se sigue devolviendo UNA sola vez en la respuesta HTTP (solo el hash
     // persiste) por si quien invita prefiere compartirlo por otro medio.
+    //
+    // Encolado en `postCommitTasks` (sesión de SISTEMA), NUNCA inline en esta
+    // sesión de staff — ver el comentario completo de
+    // `enqueueStaffInviteEmailPostCommit` arriba: `licitaciones.
+    // enqueue_messaging_outbox` es exclusiva de sesión de sistema, a
+    // diferencia de las otras 3 verticales.
     const acceptUrl = `${deps.env.appBaseUrl}/aceptar-invitacion?token=${encodeURIComponent(tokenPlain)}`;
     const correo = correoInvitacionStaff({
       email,
@@ -208,7 +233,7 @@ export function licitacionesAdminStaffRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       acceptUrl,
       expiresAtTexto: new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(expiresAt)),
     });
-    await tryEnqueueStaffInviteEmail(deps.licitacionesRepo(c.get("db")), organizationId, invite.id, email, correo);
+    c.get("postCommitTasks").push(() => enqueueStaffInviteEmailPostCommit(deps, organizationId, invite.id, email, correo));
 
     return c.json({ ...serializeInvite(invite), inviteToken: tokenPlain }, 201);
   });
