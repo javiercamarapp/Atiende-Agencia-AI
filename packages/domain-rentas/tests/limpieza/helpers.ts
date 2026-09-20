@@ -325,9 +325,12 @@ export async function crearFixtureLimpieza(): Promise<FixtureLimpieza> {
       }
 
       // ---- Fase 8 (deviation): SELECT checkouts pendientes de rentas.ocupacion ----
+      // `hoy` llega como parámetro ($2, `asOfDate` ya resuelto en TS con
+      // `hoyFechaNegocio()` por `procesarCheckoutsPendientes`) -- nunca se recalcula
+      // aquí con el reloj real, para no reproducir el mismo bug de `current_date`/día
+      // UTC que el fix de Postgres real ya corrigió (paridad real, no solo de forma).
       if (n.startsWith("select o.id as ocupacion_id")) {
-        const [limite] = params as [number];
-        const hoy = new Date().toISOString().slice(0, 10);
+        const [limite, hoy] = params as [number, string];
         const filas = [...store.ocupaciones.values()]
           .filter((o) => o.capa === "reserva" && o.estado === "confirmado" && o.bloqueante && o.fin <= hoy)
           .filter((o) => ![...tareas.values()].some((t) => t.tipo === "limpieza" && t.ocupacionUnidadId === o.id))

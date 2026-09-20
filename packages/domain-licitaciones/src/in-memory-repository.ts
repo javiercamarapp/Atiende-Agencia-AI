@@ -869,7 +869,20 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
       unitPrice: input.unitPrice,
       currency: "MXN",
       approvalStatus: input.approvalStatus ?? "pendiente_aprobacion",
-      validFrom: input.validFrom ?? isoNow(),
+      // Paridad con `PostgresLicitacionesRepository.createApprovedRate` (ver su
+      // comentario de cabecera): el default de `validFrom` es el día de NEGOCIO
+      // (`hoyFechaNegocio()`), nunca `isoNow()` (día UTC crudo del proceso). El
+      // contrato de `ApprovedRateRecord.validFrom` exige ISO con offset horario
+      // EXPLÍCITO (`assertExplicitOffset`, types.ts) -- `hoyFechaNegocio()` sola
+      // devuelve "YYYY-MM-DD" pelón, que NO lo trae; se le agrega
+      // "T00:00:00Z" para que el default en memoria tenga la MISMA forma que
+      // `dateColumnToExplicitOffsetIso` produce sobre la respuesta real de
+      // Postgres (postgres-repository.ts), y así no viole
+      // `CompanyDataService.resolveApprovedRate::assertExplicitOffset` en
+      // `POST .../proposal/economic/generate` (bloqueante de revisión detectado
+      // el 20-sep: antes de este fix, el valor persistía como "YYYY-MM-DD" y
+      // `assertExplicitOffset` lanzaba en cuanto se resolvía la tarifa).
+      validFrom: input.validFrom ?? `${hoyFechaNegocio()}T00:00:00Z`,
       validUntil: input.validUntil ?? null,
     };
     this.approvedRates.set(organizationId, [...list, record]);
