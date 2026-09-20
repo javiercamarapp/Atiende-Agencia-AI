@@ -376,8 +376,15 @@ export class PostgresResumenDiarioRepository implements ResumenDiarioRepository 
   }
 
   async getDailyOpsSummaryForSystem(fecha: string): Promise<DailyOpsSummaryRow | null> {
+    // `fecha::text` (hallazgo endurecido, revisores del 19-sep, exigencia 6):
+    // `core.daily_ops_summary.fecha` es una columna `date` -- sin el cast
+    // explícito, el driver `pg` real la parsea como un objeto `Date` de JS
+    // (no el `string` `YYYY-MM-DD` que `DailyOpsSummaryRawRow`/`mapDailyOps
+    // Summary` asumen), algo que `InMemoryResumenDiarioRepository` NUNCA
+    // podría detectar (siempre usa strings). Mismo criterio en las otras 2
+    // consultas de este archivo que seleccionan `fecha`, abajo.
     const { rows } = await this.db.query<DailyOpsSummaryRawRow>(
-      `select fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
+      `select fecha::text as fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
        from core.get_daily_ops_summary_for_system($1);`,
       [fecha],
     );
@@ -402,9 +409,38 @@ export class PostgresResumenDiarioRepository implements ResumenDiarioRepository 
     return rows[0]?.mark_daily_ops_summary_email_sent ?? false;
   }
 
+  // Hallazgo de auditoría (revisores del 19-sep, rubro A): a diferencia de
+  // TODAS las lecturas `*ForSystem` de arriba (protegidas por el sondeo
+  // barato de `agregador.ts::migracionResumenDiarioAplicada`, que corre
+  // ANTES de llegar aquí) y del UPSERT final (protegido en el propio
+  // `agregador.ts`), estos 2 métodos NO tenían NINGÚN guard -- se llaman
+  // DIRECTO desde `GET /superadmin/resumen`/`GET /superadmin/resumen/:fecha`
+  // (`apps/api/src/routes/superadmin-resumen.ts`), así que contra la base
+  // real sin la migración 0015 aplicada esas 2 rutas daban 500 en vez de un
+  // vacío honesto. A propósito, el guard NO vive aquí (dentro de este
+  // método): `ProductionResumenDiarioRepository.listDailyOpsSummariesFor
+  // Superadmin/getDailyOpsSummaryForSuperadmin` (`apps/api/src/production/
+  // resumen-diario-repository.ts`) abren una transacción NUEVA por llamada
+  // (`engine.withAppSession`) -- si este método atrapara el error AQUÍ
+  // ADENTRO y devolviera un valor normal en vez de relanzar, `fn(session)`
+  // resolvería sin error y `withAppSession` intentaría un `COMMIT` sobre una
+  // transacción que Postgres real ya dejó ABORTADA por la consulta fallida:
+  // ese `COMMIT` no lanza, devuelve el tag `ROLLBACK`, y `managed-postgres-
+  // engine.ts` lo convierte en `AbortedTransactionCommitError` -- exactamente
+  // el mismo síntoma ("500 después de 'resolver' bien") que la REGLA DURA de
+  // transacciones de este repo advierte, y un `SAVEPOINT` no arreglaría nada
+  // aquí porque no hay ninguna consulta de respaldo que correr DENTRO de esta
+  // misma transacción. El guard real vive en la ruta HTTP (`superadmin-
+  // resumen.ts`), envolviendo la llamada COMPLETA a este método -- fuera de
+  // `withAppSession`, que ya hace un `rollback;` limpio de la transacción
+  // ENTERA cuando `fn()` lanza (ver `managed-postgres-engine.ts::
+  // withAppSession`, rama `catch`), sin dejar nada "abortado" que arrastrar.
+  // Este método, entonces, sigue relanzando tal cual -- exactamente igual que
+  // las 10 lecturas `*ForSystem` de `leerFuentesDiarias` antes de que `leer()`
+  // las envolviera.
   async listDailyOpsSummariesForSuperadmin(callerId: string, limit: number): Promise<readonly DailyOpsSummaryRow[]> {
     const { rows } = await this.db.query<DailyOpsSummaryRawRow>(
-      `select fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
+      `select fecha::text as fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
        from core.list_daily_ops_summaries_for_superadmin($1, $2);`,
       [callerId, limit],
     );
@@ -413,7 +449,7 @@ export class PostgresResumenDiarioRepository implements ResumenDiarioRepository 
 
   async getDailyOpsSummaryForSuperadmin(callerId: string, fecha: string): Promise<DailyOpsSummaryRow | null> {
     const { rows } = await this.db.query<DailyOpsSummaryRawRow>(
-      `select fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
+      `select fecha::text as fecha, agregados, narrativa, generado_por, costo_llm_micro_usd, modelo_llm, proveedor_llm, creado_en, actualizado_en, correo_enviado_en
        from core.get_daily_ops_summary_for_superadmin($1, $2);`,
       [callerId, fecha],
     );
@@ -492,10 +528,13 @@ export class InMemoryResumenDiarioRepository implements ResumenDiarioRepository 
 
   /** Solo para tests -- simula la migración `0015_superadmin_resumen_diario.sql`
    *  SIN APLICAR: `listCronHeartbeatsForSystem` (el sondeo barato del
-   *  agregador) y `upsertDailyOpsSummary` (el UPSERT final) lanzan con
-   *  `.code = "42883"`, exactamente como el driver `pg` real reporta
-   *  `undefined_function` -- fixture del hallazgo de auditoría a1 (rubro B:
-   *  el cron/"generar ahora" respondían 500 en vez de un vacío honesto). */
+   *  agregador), `upsertDailyOpsSummary` (el UPSERT final) y las 2 lecturas
+   *  `*ForSuperadmin` del final (`listDailyOpsSummariesForSuperadmin`/
+   *  `getDailyOpsSummaryForSuperadmin`, hallazgo de auditoría del 19-sep,
+   *  rubro A) lanzan con `.code = "42883"`, exactamente como el driver `pg`
+   *  real reporta `undefined_function` -- fixture del hallazgo de auditoría a1
+   *  (rubro B: el cron/"generar ahora" respondían 500 en vez de un vacío
+   *  honesto) ahora extendido a cubrir también el rubro A. */
   private migracionPendiente = false;
   setMigracionPendiente(pendiente: boolean): void {
     this.migracionPendiente = pendiente;
@@ -600,12 +639,20 @@ export class InMemoryResumenDiarioRepository implements ResumenDiarioRepository 
     return true;
   }
 
+  // `migracionPendiente` (ver su comentario de cabecera más arriba) hace
+  // fallar TODAS las funciones de la migración 0015 -- incluidas estas 2, que
+  // antes de este fix NUNCA lanzaban (hallazgo de auditoría a1/rubro A, ver
+  // el comentario de cabecera de `PostgresResumenDiarioRepository.list
+  // DailyOpsSummariesForSuperadmin` más arriba para por qué el guard real
+  // vive en la ruta HTTP, no aquí ni en la implementación Postgres).
   async listDailyOpsSummariesForSuperadmin(callerId: string, limit: number): Promise<readonly DailyOpsSummaryRow[]> {
+    if (this.migracionPendiente) this.lanzarUndefinedFunction("core.list_daily_ops_summaries_for_superadmin(uuid, integer)");
     if (!this.isSuperadmin.has(callerId)) return [];
     return [...this.summaries.values()].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, Math.max(1, limit));
   }
 
   async getDailyOpsSummaryForSuperadmin(callerId: string, fecha: string): Promise<DailyOpsSummaryRow | null> {
+    if (this.migracionPendiente) this.lanzarUndefinedFunction("core.get_daily_ops_summary_for_superadmin(uuid, date)");
     if (!this.isSuperadmin.has(callerId)) return null;
     return this.summaries.get(fecha) ?? null;
   }
