@@ -21,6 +21,7 @@
 import { describe, expect, it } from "vitest";
 import { PostgresRestaurantesRepository } from "../src/postgres-repository.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder, tryNotifyStaffRepartidorAssigned } from "../src/order-notifications.ts";
+import { tryIncrementPromotionUses } from "../src/orders.ts";
 import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 import type { Order } from "../src/types.ts";
 
@@ -130,6 +131,39 @@ describe("tryNotifyCustomerOrderConfirmationEmail — SAVEPOINT (auditoría a3, 
 
     // El SAVEPOINT sí se abre (envuelve el core completo), pero como el core
     // retorna temprano (`no_email`), nunca llega a la consulta que fallaría.
+    expect(session.calls.some((c) => c.startsWith("release savepoint sp_fallback_"))).toBe(true);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(false);
+  });
+});
+
+describe("tryIncrementPromotionUses — SAVEPOINT (auditoría a3, no bloqueante #2, extraída de createOrder)", () => {
+  const ORGANIZATION_ID = "00000000-0000-0000-0000-0000000000o1";
+  const PROMOTION_ID = "00000000-0000-0000-0000-0000000000m1";
+
+  it("un error real de Postgres en increment_promotion_uses NUNCA deja la sesión abortada -- el pedido ya insertado sobrevive", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /increment_promotion_uses/, respond: () => pgPermissionDenied() },
+      { match: /select 1/, respond: () => [] },
+    ]);
+    const repo = new PostgresRestaurantesRepository(session);
+
+    await expect(tryIncrementPromotionUses(repo, ORGANIZATION_ID, PROMOTION_ID)).resolves.toBeUndefined();
+
+    // Igual que las otras tres: la prueba real es que una consulta POSTERIOR sobre
+    // la MISMA sesión (el `commit;` real que sigue) resuelve en vez de lanzar
+    // 25P02/AbortedTransactionCommitError. Contra el código anterior (sin
+    // `repo.runWithRowSavepoint`) esta aserción falla.
+    await expect(session.query("select 1;")).resolves.toEqual({ rows: [] });
+    expect(session.calls.some((c) => c.startsWith("savepoint sp_fallback_"))).toBe(true);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_fallback_"))).toBe(true);
+  });
+
+  it("éxito real: incrementa el uso de la promoción sin dejar rastro de SAVEPOINT sin liberar", async () => {
+    const session = new AbortAwareFakeSession([{ match: /increment_promotion_uses/, respond: () => [{ increment_promotion_uses: true }] }]);
+    const repo = new PostgresRestaurantesRepository(session);
+
+    await tryIncrementPromotionUses(repo, ORGANIZATION_ID, PROMOTION_ID);
+
     expect(session.calls.some((c) => c.startsWith("release savepoint sp_fallback_"))).toBe(true);
     expect(session.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(false);
   });
