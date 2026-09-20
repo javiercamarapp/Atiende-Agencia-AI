@@ -125,6 +125,30 @@ async function tryNotifyWaitlistAfterCancel(citasRepo: CitasRepository, organiza
 }
 
 /**
+ * Arreglo de fondo (auditoría a3, hallazgo confirmado #1) — el SAVEPOINT de
+ * `tryNotifyWaitlistOfFreedSlot` evita el 500 (deja la transacción del caller
+ * utilizable), pero por sí solo NO logra que el aviso salga en sesión de STAFF:
+ * `citas.claim_waitlist_notification_slot` rechaza con 42501 CUALQUIER sesión
+ * con `auth.uid()` no nulo, sin excepción ("solo para la sesión de sistema").
+ * Mismo patrón EXACTO que `runCitasEmailDispatch` (auditoría a2,
+ * PR #166/#168, ver `email-dispatch.ts`): correr esto en una sesión de SISTEMA
+ * nueva, DESPUÉS de que la cancelación ya hizo `commit;` real (vía
+ * `c.get("postCommitTasks")`, que `dbSession` solo drena tras confirmar la
+ * transacción del staff, ver `packages/core-auth/src/middleware.ts`), es lo
+ * único que de verdad pasa el guard y notifica al candidato de la lista de
+ * espera. Best-effort real -- un fallo aquí nunca puede afectar la respuesta ya
+ * armada del staff (el `try` interno de `tryNotifyWaitlistAfterCancel` ya lo
+ * cubre; `dbSession` además envuelve cada tarea post-commit en su propio
+ * try/catch, ver middleware.ts).
+ */
+export async function runCitasWaitlistNotifyAfterCancel(deps: AppDeps, organizationId: string, appointment: AppointmentRecord): Promise<void> {
+  await deps.engine.withAppSession({ userId: null }, async (db) => {
+    const citasRepo = deps.citasRepo(db);
+    await tryNotifyWaitlistAfterCancel(citasRepo, organizationId, appointment);
+  });
+}
+
+/**
  * A diferencia de los demás errores de negocio (mapeados a {code,message} genérico
  * por el onError global de app.ts, ver Errors.*), un conflicto de disponibilidad con
  * alternativas necesita un body enriquecido — `{ error, alternative_slots }`, ver
@@ -278,7 +302,6 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
 
     try {
       const appointment = await cancelAppointmentFromPanel(citasRepo, organizationId, appointmentId, userId);
-      await tryNotifyWaitlistAfterCancel(citasRepo, organizationId, appointment);
       await tryEnqueueAppointmentEmail(citasRepo, organizationId, "appointment.cancelled", appointment.id);
       await triggerCitasEmailDispatchInline(deps, c.get("db"), citasRepo);
       // Arreglo de fondo (auditoría a2, parte 3) — en sesión de staff el intento
@@ -286,6 +309,15 @@ export function citasAppointmentsLifecycleRoutes(deps: AppDeps): Hono<CoreAuthHo
       // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
       // sistema (runCitasEmailDispatch ya pasa el guard auth.uid() is null).
       c.get("postCommitTasks").push(() => runCitasEmailDispatch(deps, INLINE_BATCH_SIZE).then(() => undefined));
+      // Arreglo de fondo (auditoría a3, hallazgo confirmado #1) — MISMO criterio
+      // que el correo de arriba: `citas.claim_waitlist_notification_slot`
+      // siempre deniega el claim en sesión de staff (42501), así que el aviso
+      // real a la lista de espera solo puede intentarse DESPUÉS del commit, en
+      // sesión de sistema (ver `runCitasWaitlistNotifyAfterCancel` arriba). Ya
+      // NO se llama `tryNotifyWaitlistAfterCancel` dentro de esta transacción —
+      // antes de este fix eso solo lograba tragar un 42501 sin savepoint, dejando
+      // la transacción abortada y revirtiendo esta misma cancelación en silencio.
+      c.get("postCommitTasks").push(() => runCitasWaitlistNotifyAfterCancel(deps, organizationId, appointment));
       // Fase 3 §5 — mismo best-effort que la cancelación del agente.
       await tryTriggerCalendarSync(citasRepo, deps.citasCalendarSyncPortResolver, appointment.id);
       return c.json({ appointment: serializeAppointment(appointment) });

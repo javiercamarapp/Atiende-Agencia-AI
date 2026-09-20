@@ -57,6 +57,7 @@ import {
   USALI_UNDISTRIBUTED_DEPARTMENTS,
 } from "../lib/pl-client.ts";
 import type { PlExpenseEntry, PlFullResponse, UsaliDepartment, UsaliExpenseCategory } from "../lib/pl-client.ts";
+import { hoyFechaSolo, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 type PeriodDays = 7 | 30 | 90;
@@ -66,19 +67,23 @@ const PERIOD_OPTIONS: ReadonlyArray<{ days: PeriodDays; label: string }> = [
   { days: 90, label: "90 días" },
 ];
 
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
 /** Mismo helper que Dashboard.tsx (ExecutiveSummary) — el servidor exige
  * `desde <= hasta` en YYYY-MM-DD (`DATE_RE`/`parseDateRange` en pl.ts). Redeclarado
  * aquí (no importado de Dashboard.tsx) porque esta página también permite un rango
- * manual, a diferencia del Dashboard que solo ofrece los 3 presets. */
+ * manual, a diferencia del Dashboard que solo ofrece los 3 presets.
+ *
+ * BUG REAL corregido aquí (revisión de PR #170, mismo bug REQ-r5 ya arreglado en
+ * Asistencia.tsx::todayIso): `hasta` se calculaba con `new Date().toISOString().
+ * slice(0, 10)` -- día UTC, no el día de calendario del negocio. Entre las 18:00 y
+ * las 23:59 hora de CDMX (00:00-05:59 UTC) eso pedía el P&L de MAÑANA (y corría
+ * `desde` un día también) y precargaba la fecha del gasto nuevo (`defaultFecha`,
+ * más abajo en esta página) con la fecha de MAÑANA -- cae en otro día/periodo
+ * contable. `hoyFechaSolo`/`sumarDiasFechaSolo` (apps/web/src/lib/formato-fecha.ts)
+ * usan el día de calendario en America/Mexico_City, nunca el día UTC. */
 function rangeForDays(days: PeriodDays): { desde: string; hasta: string } {
-  const hasta = new Date();
-  const desde = new Date(hasta);
-  desde.setUTCDate(desde.getUTCDate() - (days - 1));
-  return { desde: isoDate(desde), hasta: isoDate(hasta) };
+  const hasta = hoyFechaSolo();
+  const desde = sumarDiasFechaSolo(hasta, -(days - 1));
+  return { desde, hasta };
 }
 
 function formatMoney(n: number): string {
