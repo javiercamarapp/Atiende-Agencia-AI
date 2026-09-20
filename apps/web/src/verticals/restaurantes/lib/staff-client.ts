@@ -112,3 +112,13 @@ export async function updateStaffRole(
 ): Promise<OrgMember> {
   return sendJson<OrgMember>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/staff/miembros/${userId}`, token, "PATCH", { verticalRole });
 }
+
+// FASE 3 (producto) — hallazgo real: hasta ahora no existía ninguna forma de dar de
+// baja a un miembro de staff YA ACEPTADO (solo revocar una invitación pendiente, ver
+// revokeStaffInvite arriba). `admin-staff.ts::DELETE miembroItemPath` bloquea la
+// auto-baja y la baja del único owner restante ANTES de tocar la base -- un
+// 400/403/404/503 real, nunca un éxito fingido (ver el comentario de cabecera de esa
+// ruta para la autoridad real, `core.remove_membership`).
+export async function removeStaffMember(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, userId: string): Promise<void> {
+  await deleteJson<{ ok: true }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/staff/miembros/${userId}`, token);
+}

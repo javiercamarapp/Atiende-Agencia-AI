@@ -5,7 +5,7 @@
 // ninguna UI"): cliente real de POST/GET/DELETE .../admin/staff/invitaciones
 // (mismo admin-staff.ts).
 import { describe, expect, it, vi } from "vitest";
-import { createStaffInvite, fetchRepartidores, fetchStaffInvites, revokeStaffInvite } from "../src/verticals/restaurantes/lib/staff-client.ts";
+import { createStaffInvite, fetchRepartidores, fetchStaffInvites, removeStaffMember, revokeStaffInvite } from "../src/verticals/restaurantes/lib/staff-client.ts";
 
 describe("fetchRepartidores", () => {
   it("hace GET real al endpoint de repartidores de la organización", async () => {
@@ -103,5 +103,30 @@ describe("revokeStaffInvite", () => {
     await expect(revokeStaffInvite(fetchImpl, "http://api.local", "tok", "prop-1", "inv-nope")).rejects.toThrow(
       "Invitación no encontrada, ya fue usada, o ya estaba revocada.",
     );
+  });
+});
+
+// FASE 3 (producto) — cliente real de DELETE .../admin/staff/miembros/:userId (baja
+// de un staff YA aceptado, ver el comentario de cabecera de esa ruta en
+// admin-staff.ts para la autoridad real).
+describe("removeStaffMember", () => {
+  it("hace DELETE real al item del miembro", async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("http://api.local/v1/restaurantes/prop-1/admin/staff/miembros/user-1");
+      expect(init?.method).toBe("DELETE");
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await expect(removeStaffMember(fetchImpl, "http://api.local", "tok", "prop-1", "user-1")).resolves.toBeUndefined();
+  });
+
+  it("auto-baja (400) -> error real", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No puedes darte de baja a ti mismo." }), { status: 400 })) as unknown as typeof fetch;
+    await expect(removeStaffMember(fetchImpl, "http://api.local", "tok", "prop-1", "self-id")).rejects.toThrow("No puedes darte de baja a ti mismo.");
+  });
+
+  it("último owner (400) -> error real", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "No puedes dejar la organización sin ningún owner." }), { status: 400 })) as unknown as typeof fetch;
+    await expect(removeStaffMember(fetchImpl, "http://api.local", "tok", "prop-1", "owner-id")).rejects.toThrow("No puedes dejar la organización sin ningún owner.");
   });
 });
