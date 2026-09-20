@@ -13,6 +13,7 @@ import type {
   CollectionEventRecord,
   CollectionEventStage,
   DeadlineEscalationRecord,
+  DespachosAuditLogPage,
   FiscalDeadlineRecord,
   InvoiceRecord,
   InvoiceReviewRecord,
@@ -330,6 +331,53 @@ function mapTareaCierre(row: TareaCierreRawRow): CloseTask {
     required: row.required,
     completedAt: row.completed_at,
     completedBy: row.completed_by,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Bitácora de auditoría (f2-orden-total-bitacoras, ver migrations/
+// 011_despachos_audit_log_orden_total_lectura_paginada.sql)
+// ---------------------------------------------------------------------------
+const DESPACHOS_AUDIT_LOG_READ_ORDER_SAVEPOINT = "sp_despachos_audit_log_read_order";
+
+/** SQLSTATE 42703 (`undefined_column`) -- exactamente lo que `order by ..., seq
+ * desc` lanza contra una base con 008 aplicada pero 011 no (`seq` no existe
+ * todavía). Deliberadamente SOLO ese código (mismo criterio que
+ * `esErrorColumnaSeqNoExiste` de `PostgresRentasRepository`, PR #173): un error
+ * real distinto debe seguir propagándose tal cual. */
+function esErrorColumnaSeqNoExiste(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42703";
+}
+
+let auditLogAdvertidoOrdenSeq = false;
+function advertirAuditLogOrdenSeqNoDisponible(err: unknown): void {
+  if (auditLogAdvertidoOrdenSeq) return;
+  auditLogAdvertidoOrdenSeq = true;
+  console.warn(
+    "PostgresDespachosRepository.listAuditLogPage: despachos.audit_log.seq no existe todavía en esta base (SQLSTATE " +
+      "42703) -- la bitácora SÍ está disponible, pero degradada al orden 'created_at desc' de antes de la migración " +
+      "011 (empates de timestamp dentro de una misma transacción pueden quedar en orden no determinista hasta que " +
+      "se aplique). Aplica packages/domain-despachos/migrations/011_despachos_audit_log_orden_total_lectura_" +
+      "paginada.sql (o su espejo en supabase/migrations/) para el orden total estable.",
+    err,
+  );
+}
+
+interface DespachosAuditLogRawRow {
+  id: string;
+  actor_user_id: string | null;
+  action: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+function mapDespachosAuditLogRow(row: DespachosAuditLogRawRow) {
+  return {
+    id: row.id,
+    actorUserId: row.actor_user_id,
+    action: row.action,
+    payload: row.payload ?? {},
+    createdAt: row.created_at,
   };
 }
 
@@ -957,5 +1005,39 @@ export class PostgresDespachosRepository implements DespachosRepository {
         throw err;
       },
     });
+  }
+
+  // ---- Bitácora de auditoría (f2-orden-total-bitacoras) ----
+  async listAuditLogPage(organizationId: string, opts: { readonly limit: number; readonly offset: number }): Promise<DespachosAuditLogPage> {
+    const { limit, offset } = opts;
+    const totalResult = await this.db.query<{ total: string }>(`select count(*)::text as total from despachos.audit_log where organization_id = $1;`, [organizationId]);
+    const total = Number(totalResult.rows[0]?.total ?? 0);
+
+    const selectConOrden = (orderBy: string) =>
+      this.db.query<DespachosAuditLogRawRow>(
+        `select id, actor_user_id, action, payload, created_at::text as created_at
+         from despachos.audit_log where organization_id = $1 order by ${orderBy} limit $2 offset $3;`,
+        [organizationId, limit, offset],
+      );
+
+    // f2-orden-total-bitacoras -- ver migrations/011_despachos_audit_log_orden_
+    // total_lectura_paginada.sql. `seq` (011) puede no existir todavía (`008` sin
+    // esa migración aplicada) -- 42703 (undefined_column) degrada al `order by
+    // created_at desc` de antes de 011, NUNCA revienta ni revierte el resto de la
+    // transacción compartida del request (`runWithSavepointFallback`, mismo patrón
+    // que `PostgresRentasRepository.listAuditoria`, PR #173).
+    const { rows } = await runWithSavepointFallback({
+      session: this.db,
+      savepointName: DESPACHOS_AUDIT_LOG_READ_ORDER_SAVEPOINT,
+      primary: () => selectConOrden("created_at desc, seq desc"),
+      isRecoverable: esErrorColumnaSeqNoExiste,
+      fallback: (err) => {
+        advertirAuditLogOrdenSeqNoDisponible(err);
+        return selectConOrden("created_at desc");
+      },
+    });
+
+    const items = rows.map(mapDespachosAuditLogRow);
+    return { items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
   }
 }

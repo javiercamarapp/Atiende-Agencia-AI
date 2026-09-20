@@ -404,6 +404,25 @@ export interface ReopenedFolioChargeForFraudScan {
   readonly chargeCreatedAt: string;
 }
 
+/** Fila de `hoteles.fraude_audit_log` (017_fraude_audit_log.sql), ya mapeada a
+ * camelCase -- ver `HotelesRepository.listFraudeAuditLogPage`
+ * (f2-orden-total-bitacoras). `payload` es el `AuthzAuditEntry` completo tal cual
+ * lo guardó `ProductionHotelesFraudeAuditSink` (nunca reinterpretado aquí). */
+export interface HotelesFraudeAuditLogEntry {
+  readonly id: string;
+  readonly actorUserId: string | null;
+  readonly action: string;
+  readonly payload: Record<string, unknown>;
+  readonly createdAt: string;
+}
+
+/** Página de `HotelesRepository.listFraudeAuditLogPage`. */
+export interface HotelesFraudeAuditLogPage {
+  readonly items: readonly HotelesFraudeAuditLogEntry[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Fase 5 — H5/REQ-BO-001/002: CFDI de hospedaje. `status` es el mismo vocabulario
 // de dominio que expone `@atiende/mcp-cfdi::DomainCfdiStatus` — copiado aquí como

@@ -1,0 +1,42 @@
+-- f2-orden-total-bitacoras -- mismo desempate estable y monótono que
+-- packages/domain-rentas/migrations/022_rentas_audit_log_orden_determinista.sql
+-- (PR #173) y packages/domain-despachos/migrations/011_..._sql /
+-- packages/domain-hoteles/migrations/028_..._sql para `licitaciones.
+-- tender_audit_log` (007_matching_profile.sql).
+--
+-- A DIFERENCIA de despachos/hoteles (donde la ESCRITURA tampoco tenía lector
+-- todavía), aquí la escritura SÍ existe y corre en producción hoy:
+-- `PostgresLicitacionesRepository.upsertTenderManual`/`recordTenderVersion`
+-- insertan en `licitaciones.tender_audit_log` dentro de la MISMA transacción de
+-- request que ya hizo el upsert/versión real (ver postgres-repository.ts). Sin
+-- embargo, la LECTURA sigue sin ningún consumidor real -- se buscó explícitamente
+-- (`grep -rn "tender_audit_log" apps/ packages/`) y el único método que la lee es
+-- `InMemoryLicitacionesRepository.listTenderAuditLogForTests`, cuyo propio
+-- comentario dice "no forma parte de LicitacionesRepository (ningún endpoint de
+-- Fase 3 la expone)". Esta migración NO corrige un bug activo (nada reordena mal
+-- una lectura real hoy) -- deja lista la infraestructura de orden TOTAL para el
+-- `listTenderAuditLogPage` que este mismo PR agrega a `LicitacionesRepository`.
+--
+-- Misma columna, mismo tipo, mismo criterio EXACTO que 022 de rentas / 011 de
+-- despachos / 028 de hoteles.
+--
+-- COMPATIBILIDAD CON LA BASE SIN MIGRAR: `licitaciones.tender_audit_log` (007)
+-- ya vive en producción desde hace muchas migraciones (posición ~21 de 164 en
+-- supabase/migrations/ al momento de escribir esto, muy por detrás del corte de
+-- "~30 migraciones atrás" que describe el estado real de la base) -- no hace
+-- falta ningún fallback para "la tabla no existe todavía". El ÚNICO caso nuevo es
+-- "007 aplicada, 026 (esta) no" -- `seq` no existe todavía y `order by ..., seq
+-- desc` lanzaría 42703 (undefined_column). `PostgresLicitacionesRepository.
+-- listTenderAuditLogPage` cae al `order by created_at desc` de antes de esta
+-- migración vía `runWithSavepointFallback` (`@atiende/db`), nunca revienta ni
+-- revierte el resto de la transacción compartida del request -- CRÍTICO aquí
+-- porque `upsertTenderManual`/`recordTenderVersion` (la escritura real, sin
+-- cambios en este PR) comparten esa misma transacción con la escritura de
+-- negocio: un error sin SAVEPOINT propio la abortaría por completo.
+alter table licitaciones.tender_audit_log add column seq bigint generated always as identity;
+
+-- El índice de 007 servía `order by created_at desc` (scoped a organización +
+-- convocatoria) -- se recrea para que Postgres pueda resolver `order by
+-- created_at desc, seq desc` con un index scan.
+drop index licitaciones.tender_audit_log_tender_idx;
+create index tender_audit_log_tender_idx on licitaciones.tender_audit_log (organization_id, tender_id, created_at desc, seq desc);

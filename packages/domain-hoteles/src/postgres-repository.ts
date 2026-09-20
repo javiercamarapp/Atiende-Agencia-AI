@@ -26,6 +26,7 @@ import type {
   FraudAlertStatus,
   GuestIdentity,
   HospedajeFiscalConfig,
+  HotelesFraudeAuditLogPage,
   HotelOrganizationSummary,
   HousekeepingShiftRecord,
   MaintenanceTicketRecord,
@@ -2458,6 +2459,85 @@ export class PostgresHotelesRepository implements HotelesRepository {
     );
     return rows.map(mapGuestReviewResponse);
   }
+
+  // ---- Bitácora de auditoría de fraude (f2-orden-total-bitacoras) ----
+  async listFraudeAuditLogPage(propertyId: string, opts: { readonly limit: number; readonly offset: number }): Promise<HotelesFraudeAuditLogPage> {
+    const { limit, offset } = opts;
+    const totalResult = await this.db.query<{ total: string }>(`select count(*)::text as total from hoteles.fraude_audit_log where property_id = $1;`, [propertyId]);
+    const total = Number(totalResult.rows[0]?.total ?? 0);
+
+    const selectConOrden = (orderBy: string) =>
+      this.db.query<HotelesFraudeAuditLogRawRow>(
+        `select id, actor_user_id, action, payload, created_at::text as created_at
+         from hoteles.fraude_audit_log where property_id = $1 order by ${orderBy} limit $2 offset $3;`,
+        [propertyId, limit, offset],
+      );
+
+    // f2-orden-total-bitacoras -- ver migrations/028_fraude_audit_log_orden_total_
+    // lectura_paginada.sql. `seq` (028) puede no existir todavía (`017` sin esa
+    // migración aplicada) -- 42703 (undefined_column) degrada al `order by
+    // created_at desc` de antes de 028, NUNCA revienta ni revierte el resto de la
+    // transacción compartida del request (mismo patrón que
+    // `PostgresDespachosRepository.listAuditLogPage`).
+    const { rows } = await runWithSavepointFallback({
+      session: this.db,
+      savepointName: HOTELES_FRAUDE_AUDIT_LOG_READ_ORDER_SAVEPOINT,
+      primary: () => selectConOrden("created_at desc, seq desc"),
+      isRecoverable: esErrorColumnaSeqNoExisteFraudeAuditLog,
+      fallback: (err) => {
+        advertirFraudeAuditLogOrdenSeqNoDisponible(err);
+        return selectConOrden("created_at desc");
+      },
+    });
+
+    const items = rows.map(mapHotelesFraudeAuditLogRow);
+    return { items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bitácora de auditoría de fraude (f2-orden-total-bitacoras, ver migrations/
+// 028_fraude_audit_log_orden_total_lectura_paginada.sql)
+// ---------------------------------------------------------------------------
+const HOTELES_FRAUDE_AUDIT_LOG_READ_ORDER_SAVEPOINT = "sp_hoteles_fraude_audit_log_read_order";
+
+/** SQLSTATE 42703 (`undefined_column`) -- exactamente lo que `order by ..., seq
+ * desc` lanza contra una base con 017 aplicada pero 028 no (`seq` no existe
+ * todavía). Deliberadamente SOLO ese código. */
+function esErrorColumnaSeqNoExisteFraudeAuditLog(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42703";
+}
+
+let fraudeAuditLogAdvertidoOrdenSeq = false;
+function advertirFraudeAuditLogOrdenSeqNoDisponible(err: unknown): void {
+  if (fraudeAuditLogAdvertidoOrdenSeq) return;
+  fraudeAuditLogAdvertidoOrdenSeq = true;
+  console.warn(
+    "PostgresHotelesRepository.listFraudeAuditLogPage: hoteles.fraude_audit_log.seq no existe todavía en esta " +
+      "base (SQLSTATE 42703) -- la bitácora SÍ está disponible, pero degradada al orden 'created_at desc' de antes " +
+      "de la migración 028 (empates de timestamp dentro de una misma transacción pueden quedar en orden no " +
+      "determinista hasta que se aplique). Aplica packages/domain-hoteles/migrations/028_fraude_audit_log_orden_" +
+      "total_lectura_paginada.sql (o su espejo en supabase/migrations/) para el orden total estable.",
+    err,
+  );
+}
+
+interface HotelesFraudeAuditLogRawRow {
+  id: string;
+  actor_user_id: string | null;
+  action: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+function mapHotelesFraudeAuditLogRow(row: HotelesFraudeAuditLogRawRow) {
+  return {
+    id: row.id,
+    actorUserId: row.actor_user_id,
+    action: row.action,
+    payload: row.payload ?? {},
+    createdAt: row.created_at,
+  };
 }
 
 interface RevenueGateRow {
