@@ -28,6 +28,7 @@ import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-hoteles";
 import type { HotelesEmailDispatchSummary, HotelesRepository } from "@atiende/domain-hoteles";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { logEvent } from "../../../logger.ts";
@@ -113,39 +114,38 @@ export async function runHotelesEmailDispatch(deps: AppDeps, batchSize?: number)
  * de `dispatchPendingEmailJobs`, incluido el 42501 determinista de sesión de
  * staff) se hace el `ROLLBACK TO SAVEPOINT` best-effort sin relanzar -- ese
  * es el único caso que este SAVEPOINT existe para aislar.
+ *
+ * FASE 2 (integridad, consolidación) -- el SAVEPOINT/ROLLBACK TO SAVEPOINT/
+ * RELEASE manual de arriba (documentado en detalle porque así se razonó/
+ * verificó originalmente, PR #166/#168) se reemplaza aquí por
+ * `runWithSavepointFallback` (@atiende/db, mismo helper reutilizable que ya usan
+ * los best-effort de citas/restaurantes/despachos, ver su comentario de
+ * cabecera en packages/db/src/savepoint-fallback.ts) -- comportamiento
+ * IDÉNTICO, verificado bit a bit contra la suite de regresión existente
+ * (hoteles-email-dispatch-savepoint.spec.ts, `AbortAwareFakeSession`): si el
+ * SAVEPOINT mismo falla (transacción ya abortada por una causa AJENA a este
+ * trigger, `isNoActiveTransactionError` de ese helper no matchea 25P02), se
+ * relanza tal cual, sin `fallback` -- mismo caso "SAVEPOINT SÍ se tomó" de
+ * arriba. Si falla DESPUÉS de tomarlo (incluido el 42501 determinista de
+ * sesión de staff), `isRecoverable` fijo en `true` hace que el helper corra
+ * `ROLLBACK TO SAVEPOINT` + `RELEASE SAVEPOINT` y llame a `fallback`, que aquí
+ * solo loguea y traga (nunca relanza) -- el mismo criterio "best-effort, el
+ * cron diario lo recoge" de siempre. `savepointName` fijo preserva el nombre
+ * exacto (`sp_inline_email_dispatch`) que ya afirma esa suite.
  */
 export async function triggerHotelesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, hotelesRepo: HotelesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  let savepointTaken = false;
-  try {
-    await db.exec("SAVEPOINT sp_inline_email_dispatch");
-    savepointTaken = true;
-    const summary = await dispatchPendingEmailJobs(hotelesRepo, deps.env.resend, { batchSize });
-    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
-    if (summary.dead > 0) {
-      console.error(`hoteles email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
-    }
-  } catch (err) {
-    if (!savepointTaken) {
-      // El propio SAVEPOINT lanzó 25P02: la transacción ya venía abortada por
-      // una causa AJENA a este trigger. No hay nada que proteger con un
-      // ROLLBACK TO SAVEPOINT -- relanzar es la única opción honesta (ver
-      // corrección documentada arriba).
-      console.error("hoteles email-dispatch inline: la transacción ya venía abortada antes de este trigger, relanzando:", err);
-      throw err;
-    }
-    // Cubre TANTO el 42501 determinista de sesión de staff (ver arriba) COMO
-    // cualquier otro error real de Postgres/Resend ocurrido DESPUÉS de tomar
-    // el SAVEPOINT -- ambos dejan la transacción igual de abortada y
-    // necesitan el mismo ROLLBACK TO SAVEPOINT para que el resto del request
-    // (incluido el `commit;` final) pueda seguir usando la sesión con
-    // normalidad.
-    try {
-      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
-      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
-    } catch (recoveryErr) {
-      console.error("hoteles email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
-    }
-    console.error("hoteles email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+  const summary = await runWithSavepointFallback<HotelesEmailDispatchSummary | undefined>({
+    session: db,
+    savepointName: "sp_inline_email_dispatch",
+    primary: () => dispatchPendingEmailJobs(hotelesRepo, deps.env.resend, { batchSize }),
+    isRecoverable: () => true,
+    fallback: (err) => {
+      console.error("hoteles email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+      return Promise.resolve(undefined);
+    },
+  });
+  if (summary && summary.dead > 0) {
+    console.error(`hoteles email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
   }
 }
 

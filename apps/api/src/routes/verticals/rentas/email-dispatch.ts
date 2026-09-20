@@ -29,6 +29,7 @@ import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-rentas";
 import type { EmailDispatchSummary as RentasEmailDispatchSummary, RentasRepository } from "@atiende/domain-rentas";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
 import { withHeartbeat } from "../../../salud/with-heartbeat.ts";
@@ -104,29 +105,29 @@ export async function runRentasEmailDispatch(deps: AppDeps, batchSize?: number):
  * ocurre DESPUÉS (incluido el 42501 determinista de sesión de staff) se hace
  * el `ROLLBACK TO SAVEPOINT` best-effort sin relanzar -- ese es el único
  * caso que este SAVEPOINT existe para aislar.
+ *
+ * FASE 2 (integridad, consolidación) -- mismo reemplazo EXACTO que
+ * `../hoteles/email-dispatch.ts::triggerHotelesEmailDispatchInline` (leído
+ * primero como plantilla): el SAVEPOINT/ROLLBACK TO SAVEPOINT/RELEASE manual
+ * de arriba se reemplaza por `runWithSavepointFallback` (@atiende/db) --
+ * comportamiento idéntico, verificado contra la suite de regresión existente
+ * (rentas-email-dispatch-savepoint.spec.ts, `AbortAwareFakeSession`).
+ * `savepointName` fijo preserva el nombre exacto (`sp_inline_email_dispatch`)
+ * que esa suite ya afirma.
  */
 export async function triggerRentasEmailDispatchInline(deps: AppDeps, db: TenantDbSession, rentasRepo: RentasRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  let savepointTaken = false;
-  try {
-    await db.exec("SAVEPOINT sp_inline_email_dispatch");
-    savepointTaken = true;
-    const summary = await dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize });
-    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
-    if (summary.dead > 0) {
-      console.error(`rentas email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
-    }
-  } catch (err) {
-    if (!savepointTaken) {
-      console.error("rentas email-dispatch inline: la transacción ya venía abortada antes de este trigger, relanzando:", err);
-      throw err;
-    }
-    try {
-      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
-      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
-    } catch (recoveryErr) {
-      console.error("rentas email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
-    }
-    console.error("rentas email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+  const summary = await runWithSavepointFallback<RentasEmailDispatchSummary | undefined>({
+    session: db,
+    savepointName: "sp_inline_email_dispatch",
+    primary: () => dispatchPendingEmailJobs(rentasRepo, deps.env.resend, { batchSize }),
+    isRecoverable: () => true,
+    fallback: (err) => {
+      console.error("rentas email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+      return Promise.resolve(undefined);
+    },
+  });
+  if (summary && summary.dead > 0) {
+    console.error(`rentas email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
   }
 }
 
