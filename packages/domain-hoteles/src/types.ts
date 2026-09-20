@@ -991,6 +991,116 @@ export interface NewRevenueBacktestRunInput {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Fase 10 — motor de recomendaciones de tarifa v1. Espejo de aplicación de
+// `migrations/029_rate_recommendation_engine.sql`
+// (`hoteles.pricing_rule`/`hoteles.local_event`/`hoteles.competitor_rate`/
+// `hoteles.rate_recommendation`). La autoridad real de la máquina de estados de
+// `rate_recommendation` sigue siendo el trigger de Postgres
+// (`rate_recommendation_status_guard`); estos tipos son solo el espejo de
+// aplicación de las columnas reales, mismo criterio que `RevenueGateRecord` arriba.
+// ─────────────────────────────────────────────────────────────────────────
+export interface PricingRuleRecord {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly roomTypeId: string;
+  readonly floorPrice: number;
+  readonly ceilingPrice: number;
+  /** 7 valores, domingo..sábado (mismo orden que `Date.prototype.getUTCDay()`). */
+  readonly dayOfWeekMultiplier: readonly number[];
+  readonly minStayDefault: number;
+  readonly minStayOnHighDemand: number;
+  readonly updatedBy: string | null;
+  readonly updatedAt: string;
+  readonly createdAt: string;
+}
+
+export interface NewPricingRuleInput {
+  readonly propertyId: string;
+  readonly roomTypeId: string;
+  readonly floorPrice: number;
+  readonly ceilingPrice: number;
+  readonly dayOfWeekMultiplier: readonly number[];
+  readonly minStayDefault: number;
+  readonly minStayOnHighDemand: number;
+}
+
+export type LocalEventImpacto = "alza_demanda" | "baja_demanda";
+
+export interface LocalEventRecord {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly nombre: string;
+  readonly fechaInicio: string;
+  readonly fechaFin: string;
+  readonly impacto: LocalEventImpacto;
+  readonly magnitudPct: number;
+  readonly registradoPor: string | null;
+  readonly createdAt: string;
+}
+
+export interface NewLocalEventInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly nombre: string;
+  readonly fechaInicio: string;
+  readonly fechaFin: string;
+  readonly impacto: LocalEventImpacto;
+  readonly magnitudPct: number;
+}
+
+export interface CompetitorRateRecord {
+  readonly id: string;
+  readonly propertyId: string;
+  readonly competidor: string;
+  readonly fecha: string;
+  readonly tarifa: number;
+  readonly capturadaPor: string | null;
+  readonly capturadaEn: string;
+}
+
+export interface NewCompetitorRateInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly competidor: string;
+  readonly fecha: string;
+  readonly tarifa: number;
+}
+
+export type RateRecommendationStatus = "pendiente" | "aprobada" | "aplicada" | "descartada" | "expirada";
+
+export interface RateRecommendationRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly roomTypeId: string;
+  readonly fecha: string;
+  readonly currentBarPrice: number;
+  readonly recommendedPrice: number;
+  readonly suggestedMinStay: number;
+  readonly desglose: Readonly<Record<string, unknown>>;
+  readonly estado: RateRecommendationStatus;
+  readonly aprobadaPor: string | null;
+  readonly aprobadaEn: string | null;
+  readonly aplicadaPor: string | null;
+  readonly aplicadaEn: string | null;
+  readonly descartadaPor: string | null;
+  readonly descartadaEn: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface NewRateRecommendationInput {
+  readonly organizationId: string;
+  readonly propertyId: string;
+  readonly roomTypeId: string;
+  readonly fecha: string;
+  readonly currentBarPrice: number;
+  readonly recommendedPrice: number;
+  readonly suggestedMinStay: number;
+  readonly desglose: Readonly<Record<string, unknown>>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Fase 13 — cierre del wiring de reputación (migrations/
 // 021_reputacion_respuestas.sql): la respuesta libre de staff a una reseña
 // (distinta de `GuestReviewActionRecord`, que modela ACCIONES REGLADAS

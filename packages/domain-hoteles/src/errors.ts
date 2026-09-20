@@ -27,3 +27,18 @@ export class GuestReviewActionAlreadyResolvedError extends Error {
     this.name = "GuestReviewActionAlreadyResolvedError";
   }
 }
+
+/** Fase 10 — motor de recomendaciones de tarifa v1: una ESCRITURA de sistema
+ *  (insertar/aplicar/expirar una recomendación, o configurar pricing_rule/
+ *  local_event/competitor_rate) contra una base cuya migración 029 aún no está
+ *  aplicada (42883/42P01/42703). A diferencia de las LECTURAS (que degradan a un
+ *  vacío honesto sin lanzar, ver `postgres-repository.ts`), una escritura no tiene
+ *  ningún "camino anterior" al que caer -- el motor de tarifas simplemente no
+ *  existía antes de esta fase. La ruta HTTP mapea esto a 503, nunca a un 500 crudo
+ *  ni a fingir que la escritura ocurrió. */
+export class RateEngineUnavailableError extends Error {
+  constructor(operation: string) {
+    super(`El motor de recomendaciones de tarifa aún no está disponible en esta base (migración pendiente) -- operación: ${operation}.`);
+    this.name = "RateEngineUnavailableError";
+  }
+}

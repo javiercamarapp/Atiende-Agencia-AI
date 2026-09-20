@@ -6,8 +6,8 @@
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
-import { runWithSavepointFallback } from "@atiende/db";
-import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError } from "./errors.ts";
+import { runWithSavepointFallback, isMigrationPendingError } from "@atiende/db";
+import { FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, IdempotencyConflictError, RateEngineUnavailableError } from "./errors.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -69,6 +69,15 @@ import type {
   RevenueGateRecord,
   RevenueBacktestRunRecord,
   NewRevenueBacktestRunInput,
+  PricingRuleRecord,
+  NewPricingRuleInput,
+  LocalEventRecord,
+  NewLocalEventInput,
+  CompetitorRateRecord,
+  NewCompetitorRateInput,
+  RateRecommendationRecord,
+  NewRateRecommendationInput,
+  RateRecommendationStatus,
   GuestReviewRecord,
   NewGuestReviewInput,
   GuestReviewActionRecord,
@@ -2344,6 +2353,374 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   // ============================================================================
+  // Fase 10 — motor de recomendaciones de tarifa v1 (migrations/
+  // 029_rate_recommendation_engine.sql). REGLA DURA DE COMPATIBILIDAD: toda
+  // lectura degrada a un vacío honesto si 029 aún no está aplicada
+  // (42883/42P01/42703 -- `runWithSavepointFallback` + `isMigrationPendingError`,
+  // mismo patrón que `domain-citas/src/postgres-repository.ts::
+  // loadLiveWaitlistCandidatesAsSystem`). Las escrituras de sistema (insertar/
+  // aplicar/expirar) DEGRADAN a lanzar `RateEngineUnavailableError` -- no hay un
+  // "camino anterior" honesto para una escritura de una pieza que hoy no existe.
+  // ============================================================================
+
+  private toPricingRuleRecord(r: PricingRuleRow): PricingRuleRecord {
+    return {
+      id: r.id,
+      propertyId: r.property_id,
+      roomTypeId: r.room_type_id,
+      floorPrice: Number(r.floor_price),
+      ceilingPrice: Number(r.ceiling_price),
+      dayOfWeekMultiplier: r.day_of_week_multiplier.map(Number),
+      minStayDefault: r.min_stay_default,
+      minStayOnHighDemand: r.min_stay_on_high_demand,
+      updatedBy: r.updated_by,
+      updatedAt: r.updated_at,
+      createdAt: r.created_at,
+    };
+  }
+
+  async findPricingRule(roomTypeId: string): Promise<PricingRuleRecord | null> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<PricingRuleRow>(
+          `select id, property_id, room_type_id, floor_price::text as floor_price, ceiling_price::text as ceiling_price,
+                  day_of_week_multiplier::text[] as day_of_week_multiplier, min_stay_default, min_stay_on_high_demand,
+                  updated_by, updated_at::text as updated_at, created_at::text as created_at
+           from hoteles.pricing_rule where room_type_id = $1;`,
+          [roomTypeId],
+        );
+        return rows[0] ? this.toPricingRuleRecord(rows[0]) : null;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn("findPricingRule: hoteles.pricing_rule no existe todavía (migración 029 pendiente) -- degradando a null:", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
+  }
+
+  async upsertPricingRule(input: NewPricingRuleInput, actorUserId: string): Promise<PricingRuleRecord> {
+    void actorUserId; // el trigger fija updated_by = auth.uid() (migrations/029), no confía en este parámetro.
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<PricingRuleRow>(
+          `insert into hoteles.pricing_rule (property_id, room_type_id, floor_price, ceiling_price, day_of_week_multiplier, min_stay_default, min_stay_on_high_demand)
+           values ($1, $2, $3, $4, $5::numeric(4,2)[], $6, $7)
+           on conflict (room_type_id) do update
+             set floor_price = excluded.floor_price, ceiling_price = excluded.ceiling_price,
+                 day_of_week_multiplier = excluded.day_of_week_multiplier, min_stay_default = excluded.min_stay_default,
+                 min_stay_on_high_demand = excluded.min_stay_on_high_demand
+           returning id, property_id, room_type_id, floor_price::text as floor_price, ceiling_price::text as ceiling_price,
+                     day_of_week_multiplier::text[] as day_of_week_multiplier, min_stay_default, min_stay_on_high_demand,
+                     updated_by, updated_at::text as updated_at, created_at::text as created_at;`,
+          [input.propertyId, input.roomTypeId, input.floorPrice, input.ceilingPrice, input.dayOfWeekMultiplier, input.minStayDefault, input.minStayOnHighDemand],
+        );
+        return this.toPricingRuleRecord(rows[0]!);
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => {
+        throw new RateEngineUnavailableError("upsertPricingRule");
+      },
+    });
+  }
+
+  private toLocalEventRecord(r: LocalEventRow): LocalEventRecord {
+    return {
+      id: r.id,
+      propertyId: r.property_id,
+      nombre: r.nombre,
+      fechaInicio: r.fecha_inicio,
+      fechaFin: r.fecha_fin,
+      impacto: r.impacto,
+      magnitudPct: Number(r.magnitud_pct),
+      registradoPor: r.registrado_por,
+      createdAt: r.created_at,
+    };
+  }
+
+  async listLocalEvents(propertyId: string, desde: string, hasta: string): Promise<readonly LocalEventRecord[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<LocalEventRow>(
+          `select id, property_id, nombre, fecha_inicio::text as fecha_inicio, fecha_fin::text as fecha_fin,
+                  impacto, magnitud_pct::text as magnitud_pct, registrado_por, created_at::text as created_at
+           from hoteles.local_event
+           where property_id = $1 and fecha_inicio <= $3::date and fecha_fin >= $2::date
+           order by fecha_inicio asc, id asc;`,
+          [propertyId, desde, hasta],
+        );
+        return rows.map((r) => this.toLocalEventRecord(r));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn("listLocalEvents: hoteles.local_event no existe todavía (migración 029 pendiente) -- degradando a lista vacía:", err instanceof Error ? err.message : err);
+        return Promise.resolve([] as readonly LocalEventRecord[]);
+      },
+    });
+  }
+
+  async insertLocalEvent(input: NewLocalEventInput, actorUserId: string): Promise<LocalEventRecord> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<LocalEventRow>(
+          `insert into hoteles.local_event (organization_id, property_id, nombre, fecha_inicio, fecha_fin, impacto, magnitud_pct, registrado_por)
+           values ($1, $2, $3, $4, $5, $6, $7, $8)
+           returning id, property_id, nombre, fecha_inicio::text as fecha_inicio, fecha_fin::text as fecha_fin,
+                     impacto, magnitud_pct::text as magnitud_pct, registrado_por, created_at::text as created_at;`,
+          [input.organizationId, input.propertyId, input.nombre, input.fechaInicio, input.fechaFin, input.impacto, input.magnitudPct, actorUserId],
+        );
+        return this.toLocalEventRecord(rows[0]!);
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => {
+        throw new RateEngineUnavailableError("insertLocalEvent");
+      },
+    });
+  }
+
+  private toCompetitorRateRecord(r: CompetitorRateRow): CompetitorRateRecord {
+    return {
+      id: r.id,
+      propertyId: r.property_id,
+      competidor: r.competidor,
+      fecha: r.fecha,
+      tarifa: Number(r.tarifa),
+      capturadaPor: r.capturada_por,
+      capturadaEn: r.capturada_en,
+    };
+  }
+
+  async listCompetitorRates(propertyId: string, fecha: string): Promise<readonly CompetitorRateRecord[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<CompetitorRateRow>(
+          `select id, property_id, competidor, fecha::text as fecha, tarifa::text as tarifa, capturada_por, capturada_en::text as capturada_en
+           from hoteles.competitor_rate where property_id = $1 and fecha = $2::date order by capturada_en desc;`,
+          [propertyId, fecha],
+        );
+        return rows.map((r) => this.toCompetitorRateRecord(r));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn("listCompetitorRates: hoteles.competitor_rate no existe todavía (migración 029 pendiente) -- degradando a lista vacía:", err instanceof Error ? err.message : err);
+        return Promise.resolve([] as readonly CompetitorRateRecord[]);
+      },
+    });
+  }
+
+  async insertCompetitorRate(input: NewCompetitorRateInput, actorUserId: string): Promise<CompetitorRateRecord> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<CompetitorRateRow>(
+          `insert into hoteles.competitor_rate (organization_id, property_id, competidor, fecha, tarifa, capturada_por)
+           values ($1, $2, $3, $4, $5, $6)
+           returning id, property_id, competidor, fecha::text as fecha, tarifa::text as tarifa, capturada_por, capturada_en::text as capturada_en;`,
+          [input.organizationId, input.propertyId, input.competidor, input.fecha, input.tarifa, actorUserId],
+        );
+        return this.toCompetitorRateRecord(rows[0]!);
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => {
+        throw new RateEngineUnavailableError("insertCompetitorRate");
+      },
+    });
+  }
+
+  private readonly RATE_RECOMMENDATION_COLUMNS =
+    `id, organization_id, property_id, room_type_id, fecha::text as fecha, current_bar_price::text as current_bar_price,
+     recommended_price::text as recommended_price, suggested_min_stay, desglose, estado,
+     aprobada_por, aprobada_en::text as aprobada_en, aplicada_por, aplicada_en::text as aplicada_en,
+     descartada_por, descartada_en::text as descartada_en, created_at::text as created_at, updated_at::text as updated_at`;
+
+  private toRateRecommendationRecord(r: RateRecommendationRow): RateRecommendationRecord {
+    return {
+      id: r.id,
+      organizationId: r.organization_id,
+      propertyId: r.property_id,
+      roomTypeId: r.room_type_id,
+      fecha: r.fecha,
+      currentBarPrice: Number(r.current_bar_price),
+      recommendedPrice: Number(r.recommended_price),
+      suggestedMinStay: r.suggested_min_stay,
+      desglose: r.desglose,
+      estado: r.estado,
+      aprobadaPor: r.aprobada_por,
+      aprobadaEn: r.aprobada_en,
+      aplicadaPor: r.aplicada_por,
+      aplicadaEn: r.aplicada_en,
+      descartadaPor: r.descartada_por,
+      descartadaEn: r.descartada_en,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  }
+
+  async listRateRecommendations(
+    propertyId: string,
+    opts: { readonly estado?: RateRecommendationStatus; readonly limit: number; readonly beforeCursor?: { readonly fecha: string; readonly roomTypeId: string; readonly id: string } },
+  ): Promise<readonly RateRecommendationRecord[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        // Orden TOTAL (fecha desc, room_type_id, id) + keyset pagination -- nunca
+        // OFFSET (estable aunque se inserten filas nuevas entre páginas, mismo
+        // criterio que citas.audit_log/listAuditoria).
+        const conditions: string[] = ["property_id = $1"];
+        const params: unknown[] = [propertyId];
+        if (opts.estado) {
+          params.push(opts.estado);
+          conditions.push(`estado = $${params.length}`);
+        }
+        if (opts.beforeCursor) {
+          params.push(opts.beforeCursor.fecha, opts.beforeCursor.roomTypeId, opts.beforeCursor.id);
+          const i = params.length;
+          conditions.push(`(fecha, room_type_id, id) < ($${i - 2}::date, $${i - 1}, $${i})`);
+        }
+        params.push(opts.limit);
+        const { rows } = await this.db.query<RateRecommendationRow>(
+          `select ${this.RATE_RECOMMENDATION_COLUMNS} from hoteles.rate_recommendation
+           where ${conditions.join(" and ")}
+           order by fecha desc, room_type_id asc, id asc
+           limit $${params.length};`,
+          params,
+        );
+        return rows.map((r) => this.toRateRecommendationRecord(r));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn(
+          "listRateRecommendations: hoteles.rate_recommendation no existe todavía (migración 029 pendiente) -- degradando a lista vacía:",
+          err instanceof Error ? err.message : err,
+        );
+        return Promise.resolve([] as readonly RateRecommendationRecord[]);
+      },
+    });
+  }
+
+  async findRateRecommendation(id: string): Promise<RateRecommendationRecord | null> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<RateRecommendationRow>(
+          `select ${this.RATE_RECOMMENDATION_COLUMNS} from hoteles.rate_recommendation where id = $1;`,
+          [id],
+        );
+        return rows[0] ? this.toRateRecommendationRecord(rows[0]) : null;
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn("findRateRecommendation: hoteles.rate_recommendation no existe todavía (migración 029 pendiente) -- degradando a null:", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
+  }
+
+  async insertRateRecommendationAsSystem(input: NewRateRecommendationInput): Promise<RateRecommendationRecord> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<RateRecommendationRow>(
+          `insert into hoteles.rate_recommendation (organization_id, property_id, room_type_id, fecha, current_bar_price, recommended_price, suggested_min_stay, desglose)
+           values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+           returning ${this.RATE_RECOMMENDATION_COLUMNS};`,
+          [input.organizationId, input.propertyId, input.roomTypeId, input.fecha, input.currentBarPrice, input.recommendedPrice, input.suggestedMinStay, JSON.stringify(input.desglose)],
+        );
+        return this.toRateRecommendationRecord(rows[0]!);
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => {
+        throw new RateEngineUnavailableError("insertRateRecommendationAsSystem");
+      },
+    });
+  }
+
+  private async transitionRateRecommendation(id: string, estado: RateRecommendationStatus, methodName: string): Promise<RateRecommendationRecord> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<RateRecommendationRow>(
+          `update hoteles.rate_recommendation set estado = $2 where id = $1 returning ${this.RATE_RECOMMENDATION_COLUMNS};`,
+          [id, estado],
+        );
+        if (!rows[0]) throw new Error(`recomendacion_invalida: ${id} no existe`);
+        return this.toRateRecommendationRecord(rows[0]);
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => {
+        throw new RateEngineUnavailableError(methodName);
+      },
+    });
+  }
+
+  async approveRateRecommendation(id: string, actorUserId: string): Promise<RateRecommendationRecord> {
+    void actorUserId; // el trigger fija aprobada_por = auth.uid() (migrations/029), no confía en este parámetro.
+    return this.transitionRateRecommendation(id, "aprobada", "approveRateRecommendation");
+  }
+
+  async discardRateRecommendation(id: string, actorUserId: string): Promise<RateRecommendationRecord> {
+    void actorUserId; // el trigger fija descartada_por = auth.uid(), no confía en este parámetro.
+    return this.transitionRateRecommendation(id, "descartada", "discardRateRecommendation");
+  }
+
+  async expireRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord> {
+    return this.transitionRateRecommendation(id, "expirada", "expireRateRecommendationAsSystem");
+  }
+
+  async listExpirableRateRecommendationsAsSystem(propertyId: string): Promise<readonly RateRecommendationRecord[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<RateRecommendationRow>(
+          `select ${this.RATE_RECOMMENDATION_COLUMNS} from hoteles.rate_recommendation
+           where property_id = $1 and estado in ('pendiente', 'aprobada') and fecha < current_date
+           order by fecha asc, room_type_id asc, id asc;`,
+          [propertyId],
+        );
+        return rows.map((r) => this.toRateRecommendationRecord(r));
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: (err) => {
+        console.warn(
+          "listExpirableRateRecommendationsAsSystem: hoteles.rate_recommendation no existe todavía (migración 029 pendiente) -- degradando a lista vacía:",
+          err instanceof Error ? err.message : err,
+        );
+        return Promise.resolve([] as readonly RateRecommendationRecord[]);
+      },
+    });
+  }
+
+  async applyRateRecommendationAsSystem(id: string): Promise<RateRecommendationRecord> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        // `hoteles.system_apply_rate_recommendation` (security definer, migrations/
+        // 029) YA hace el UPDATE real dentro de su propia ejecución -- solo se
+        // invoca por su efecto (escribir hoteles.rate_plan + estado='aplicada') y
+        // se relee la fila con la MISMA sesión/transacción (columnas ya casteadas a
+        // texto, mismo criterio que el resto de este repositorio) en vez de parsear
+        // el tipo compuesto que la función devuelve.
+        await this.db.query(`select hoteles.system_apply_rate_recommendation($1);`, [id]);
+        const { rows } = await this.db.query<RateRecommendationRow>(
+          `select ${this.RATE_RECOMMENDATION_COLUMNS} from hoteles.rate_recommendation where id = $1;`,
+          [id],
+        );
+        if (!rows[0]) throw new Error(`recomendacion_invalida: ${id} no existe`);
+        return this.toRateRecommendationRecord(rows[0]);
+      },
+      isRecoverable: isMigrationPendingError,
+      fallback: () => {
+        throw new RateEngineUnavailableError("applyRateRecommendationAsSystem");
+      },
+    });
+  }
+
+  // ============================================================================
   // Fase 11/13 (REQ-CRM-002/003) — reputación/CRM (ver migrations/013_reputacion.sql
   // + migrations/021_reputacion_respuestas.sql).
   // ============================================================================
@@ -2491,4 +2868,61 @@ interface RevenueBacktestRunRow {
   run_by: string | null;
   run_at: string;
   created_at: string;
+}
+
+interface PricingRuleRow {
+  id: string;
+  property_id: string;
+  room_type_id: string;
+  floor_price: string;
+  ceiling_price: string;
+  day_of_week_multiplier: readonly string[];
+  min_stay_default: number;
+  min_stay_on_high_demand: number;
+  updated_by: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+interface LocalEventRow {
+  id: string;
+  property_id: string;
+  nombre: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  impacto: LocalEventRecord["impacto"];
+  magnitud_pct: string;
+  registrado_por: string | null;
+  created_at: string;
+}
+
+interface CompetitorRateRow {
+  id: string;
+  property_id: string;
+  competidor: string;
+  fecha: string;
+  tarifa: string;
+  capturada_por: string | null;
+  capturada_en: string;
+}
+
+interface RateRecommendationRow {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  room_type_id: string;
+  fecha: string;
+  current_bar_price: string;
+  recommended_price: string;
+  suggested_min_stay: number;
+  desglose: Readonly<Record<string, unknown>>;
+  estado: RateRecommendationStatus;
+  aprobada_por: string | null;
+  aprobada_en: string | null;
+  aplicada_por: string | null;
+  aplicada_en: string | null;
+  descartada_por: string | null;
+  descartada_en: string | null;
+  created_at: string;
+  updated_at: string;
 }
