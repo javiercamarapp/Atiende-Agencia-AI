@@ -38,6 +38,7 @@ import {
 import { calcularNomina, generarXmlNomina } from "../lib/nomina-client.ts";
 import type { ComprobanteNomina, EmployeePayroll, GenerarXmlNominaInput, PayrollPeriodResultado, TipoNomina } from "../lib/nomina-client.ts";
 import { formatMoney, formatPeriodo } from "../lib/format.ts";
+import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 // Mismo conjunto que NOMINA_ROLES (@atiende/domain-despachos/roles.ts) --
@@ -199,9 +200,16 @@ function ComprobanteXml({ comprobante }: { comprobante: ComprobanteNomina }) {
 export function NominaPage(ctx: DespachosShellContext) {
   const puedeUsar = NOMINA_ROLES.has(ctx.role);
 
-  const now = new Date();
-  const [month, setMonth] = useState(String(now.getUTCMonth() + 1));
-  const [year, setYear] = useState(String(now.getUTCFullYear()));
+  // Bug real (hallazgo de auditoría a4, dimensión web-contrato, severidad baja,
+  // mismo patrón exacto que Vencimientos.tsx): precargar con
+  // `new Date().getUTCMonth()`/`getUTCFullYear()` usa el día UTC del navegador, no
+  // el día de calendario del negocio -- el último día del mes por la tarde/noche
+  // CDMX precargaba el MES SIGUIENTE (y el 31-dic el AÑO siguiente). `hoyFechaSolo()`
+  // (apps/web/src/lib/formato-fecha.ts) da el día de calendario en
+  // America/Mexico_City -- mismo helper que Dashboard.tsx/Pl.tsx/Vencimientos.tsx.
+  const hoy = hoyFechaSolo();
+  const [month, setMonth] = useState(String(Number(hoy.slice(5, 7))));
+  const [year, setYear] = useState(String(Number(hoy.slice(0, 4))));
   const [diasPagados, setDiasPagados] = useState("30");
   const [salarioDiarioDefault, setSalarioDiarioDefault] = useState("");
   const [empleados, setEmpleados] = useState<readonly EmpleadoFila[]>([nuevaFila()]);
