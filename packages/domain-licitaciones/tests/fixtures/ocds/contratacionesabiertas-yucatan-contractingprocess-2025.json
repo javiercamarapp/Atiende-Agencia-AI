@@ -1,0 +1,1926 @@
+{
+  "arrayReleasePackage": [
+    {
+      "uri": "http://captura.contratacionesabiertas.inaipyucatan.org.mx/release-package/34/ocds-0ld0n8-DAFRH-Arrendamiento185-2025.v34.contract.json",
+      "version": "1.1",
+      "publishedDate": "2025-07-17T15:38:28-05:00",
+      "releases": [
+        {
+          "ocid": "ocds-0ld0n8-DAFRH-Arrendamiento185-2025",
+          "id": "ocds-0ld0n8-DAFRH-Arrendamiento185-2025.v34.contract",
+          "date": "2025-07-17T16:38:28-05:00",
+          "tag": [
+            "contract"
+          ],
+          "initiationType": "tender",
+          "parties": [
+            {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales ",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "Calle 21 no.185 x 10 y 12 Col. García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "buyer",
+                "procuringEntity",
+                "payer"
+              ]
+            },
+            {
+              "name": "Oscar Manuel González Sánchez",
+              "id": "MX-RFC-GOSO550430RB2",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "GOSO550430RB2",
+                "legalPersonality": "naturalPerson",
+                "givenName": "Oscar Manuel",
+                "patronymicName": "González",
+                "matronymicName": "Sánchez"
+              },
+              "contactPoint": {
+                "name": "Lilia Beatriz Cuevas Muñoz",
+                "email": "liliabeatriz_cuevas@hotmail.com",
+                "type": "attorney",
+                "givenName": "Lilia Beatriz",
+                "patronymicName": "Cuevas",
+                "matronymicName": "Muñoz"
+              },
+              "roles": [
+                "supplier",
+                "payee"
+              ]
+            },
+            {
+              "name": "Dirección de Administración, Finanzas y Recursos Humanos",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Dirección de Administración, Finanzas y Recursos Humanos",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "requestingUnit",
+                "contractingUnit",
+                "technicalUnit",
+                "responsibleUnit"
+              ]
+            }
+          ],
+          "planning": {
+            "rationale": "Arrendamiento edificio INAIP No. 185 x 10 Y 12 Col. García Ginerés",
+            "hasquotes": false,
+            "requestingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ],
+            "contractingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ],
+            "responsibleUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ]
+          },
+          "tender": {
+            "id": "DAFRH/Arrendamiento185/2025",
+            "title": "Arrendamiento edificio INAIP No. 185",
+            "description": "Arrendamiento edificio INAIP No. 185",
+            "status": "complete",
+            "procuringEntity": {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39"
+            },
+            "value": {
+              "amount": 350433.54,
+              "currency": "MXN"
+            },
+            "minValue": {
+              "amount": 350433.54,
+              "currency": "MXN"
+            },
+            "procurementMethod": "direct",
+            "procurementMethodDetails": "Adjudicación directa",
+            "procurementMethodRationale": " Según Políticas Administrativas y Financieras del INAIP frac.56",
+            "mainProcurementCategory": "goods",
+            "additionalProcurementCategories": [
+              "goodsLease"
+            ],
+            "hasEnquiries": false
+          },
+          "buyer": {
+            "name": "INAIP",
+            "id": "MX-RFC-IEA040531E39"
+          },
+          "awards": [
+            {
+              "id": "DAF/Arrendamiento185/2025",
+              "title": " Arrendamiento de edificio INAIP No.185 x 10 y 12 de la Col. García Ginerés",
+              "description": "Arrendamiento de edificio INAIP No.185 x 10 y 12 de la Col. García Ginerés",
+              "status": "active",
+              "value": {
+                "netAmount": 302097.88,
+                "amount": 350433.54,
+                "currency": "MXN"
+              },
+              "suppliers": [
+                {
+                  "name": "Oscar Manuel González Sánchez",
+                  "id": "MX-RFC-GOSO550430RB2"
+                }
+              ],
+              "contractPeriod": {
+                "startDate": "2025-01-01T00:00:00-06:00",
+                "endDate": "2025-12-31T00:00:00-06:00"
+              },
+              "rationale": "Arrendamiento de edificio INAIP No.185 x 10 y 12 de la Col. García Ginerés",
+              "date": "2026-09-20T13:00:54-05:00"
+            }
+          ],
+          "contracts": [
+            {
+              "id": "Arrendamiento de edificio INAIP no.185",
+              "awardID": "DAF/Arrendamiento185/2025",
+              "title": " Arrendamiento de edificio INAIP no.185",
+              "description": " Arrendamiento de edificio INAIP no.185",
+              "status": "terminated",
+              "period": {
+                "startDate": "2025-01-01T00:00:00-06:00",
+                "endDate": "2025-12-31T00:00:00-06:00"
+              },
+              "value": {
+                "netAmount": 302097.88,
+                "amount": 350433.54,
+                "currency": "MXN",
+                "exchangeRates": [
+                  {
+                    "currency": "MXN"
+                  }
+                ]
+              },
+              "items": [
+                {
+                  "id": "item-a5634bdf-66c0-49e1-b5a3-d9aff3c9279a",
+                  "description": "PAGO RENTA CORRESPONDIENTE AL MES DE ENERO 2025 EDIFICIOS INAIP CALLE 17 NUM. 185 10 Y 12 COLONIA GARCÍA GINERÉS",
+                  "classification": {
+                    "scheme": "CUCOP",
+                    "id": "32201001",
+                    "description": "Arrendamiento de edificios y locales"
+                  },
+                  "quantity": 1,
+                  "unit": {
+                    "name": "Servicio",
+                    "value": {
+                      "amount": 58405.59,
+                      "netAmount": 50349.65,
+                      "currency": "MXN"
+                    }
+                  },
+                  "deliveryLocation": {
+                    "geometry": {
+                      "type": "Point",
+                      "coordinates": [
+                        -89.628174,
+                        20.987259
+                      ]
+                    }
+                  },
+                  "deliveryAddress": {
+                    "streetAddress": "Avenida Colón",
+                    "locality": "Mérida",
+                    "region": "Yucatán",
+                    "postalCode": "97070",
+                    "countryName": "México"
+                  }
+                },
+                {
+                  "id": "item-51a6d706-0ed5-427d-9421-352150fe3eea",
+                  "description": "PAGO RENTA CORRESPONDIENTE AL MES DE FEBRERO 2025 EDIFICIOS INAIP CALLE 17 NUM. 185 10 Y 12 COLONIA GARCÍA GINERÉS",
+                  "classification": {
+                    "scheme": "CUCOP",
+                    "id": "32201001",
+                    "description": "Arrendamiento de edificios y locales"
+                  },
+                  "quantity": 1,
+                  "unit": {
+                    "name": "Servicio",
+                    "value": {
+                      "amount": 58405.59,
+                      "netAmount": 50349.65,
+                      "currency": "MXN"
+                    }
+                  },
+                  "deliveryLocation": {
+                    "geometry": {
+                      "type": "Point",
+                      "coordinates": [
+                        -89.628174,
+                        20.987259
+                      ]
+                    }
+                  },
+                  "deliveryAddress": {
+                    "streetAddress": "Avenida Colón",
+                    "locality": "Mérida",
+                    "region": "Yucatán",
+                    "postalCode": "97070",
+                    "countryName": "México"
+                  }
+                },
+                {
+                  "id": "item-d854ce10-64f9-46a1-b724-4c978f53a7d6",
+                  "description": "PAGO RENTA CORRESPONDIENTE AL MES DE MARZO 2025 EDIFICIOS INAIP CALLE 17 NUM. 185 10 Y 12 COLONIA GARCÍA GINERÉS",
+                  "classification": {
+                    "scheme": "CUCOP",
+                    "id": "32201001",
+                    "description": "Arrendamiento de edificios y locales"
+                  },
+                  "quantity": 1,
+                  "unit": {
+                    "name": "Servicio",
+                    "value": {
+                      "amount": 58405.59,
+                      "netAmount": 50349.65,
+                      "currency": "MXN"
+                    }
+                  },
+                  "deliveryLocation": {
+                    "geometry": {
+                      "type": "Point",
+                      "coordinates": [
+                        -89.628174,
+                        20.987259
+                      ]
+                    }
+                  },
+                  "deliveryAddress": {
+                    "streetAddress": "Avenida Colón",
+                    "locality": "Mérida",
+                    "region": "Yucatán",
+                    "postalCode": "97070",
+                    "countryName": "México"
+                  }
+                }
+              ],
+              "dateSigned": "2025-01-23T00:00:00-06:00",
+              "documents": [
+                {
+                  "id": "doc-b1c2497f-df27-4fc5-bfaf-e0642bd808cd",
+                  "documentType": "contractSigned",
+                  "title": "ORDEN DE COMPRA Y SERVICIOS DAFRH 004-2025",
+                  "description": "Documento en el cual se asigna al proveedor ganador, Unidad Administrativa solicitante y el desglose de los bienes o servicios adquiridos para lograr el desarrollo y cumplimento de sus programas.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=2a4ee9e0-ce57-43b6-8c0c-21ce2023396c",
+                  "datePublished": "2025-04-30T09:14:36-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-a3f69432-7f71-4944-9380-7e06b7747777",
+                  "documentType": "contractSigned",
+                  "title": "FACTURA M 3",
+                  "description": "Documento donde el contratante solicita el pago de bienes y servicios prestados de acuerdo a la factura emitida.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=795a0668-3126-4aa5-900e-0471d9d23e50",
+                  "datePublished": "2025-04-30T10:52:34-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-64a07ec3-2e54-4fff-a73f-3da080afb41a",
+                  "documentType": "contractSigned",
+                  "title": "ORDEN DE COMPRA Y SERVICIOS DAFRH 012-2025",
+                  "description": "Documento en el cual se asigna al proveedor ganador, Unidad Administrativa solicitante y el desglose de los bienes o servicios adquiridos para lograr el desarrollo y cumplimento de sus programas.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=15aba08b-9f0a-4c9f-8380-ea3d9f9fb29c",
+                  "datePublished": "2025-04-30T10:53:03-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-d32be80f-4752-4f4a-bf96-bd59f57bf2a2",
+                  "documentType": "contractSigned",
+                  "title": "FACTURA M 8",
+                  "description": "Documento donde el contratante solicita el pago de bienes y servicios prestados de acuerdo a la factura emitida.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=6545ec8e-ffcc-4b71-bd70-71ed242d718d",
+                  "datePublished": "2025-04-30T10:53:49-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-012c7efe-6870-48d0-8217-7ecf371b42b8",
+                  "documentType": "contractSigned",
+                  "title": "ORDEN DE COMPRA Y SERVICIOS DAFRH 014-2025",
+                  "description": "Documento en el cual se asigna al proveedor ganador, Unidad Administrativa solicitante y el desglose de los bienes o servicios adquiridos para lograr el desarrollo y cumplimento de sus programas.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=333e6fc6-b6b3-4cc1-8a70-4f1e72998460",
+                  "datePublished": "2025-04-30T10:54:46-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-bc0cd6f5-356f-4136-a2d6-d961ec719a20",
+                  "documentType": "contractSigned",
+                  "title": "FACTURA M 13",
+                  "description": "Documento donde el contratante solicita el pago de bienes y servicios prestados de acuerdo a la factura emitida.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=e7d62505-c904-4d9f-ba9b-798b245d0407",
+                  "datePublished": "2025-04-30T10:55:27-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                }
+              ],
+              "implementation": {
+                "status": "concluded",
+                "transactions": [
+                  {
+                    "id": "transaction-2b531298-428d-496a-aef1-92a0e4cc5833",
+                    "date": "2025-01-23T14:44:00-06:00",
+                    "value": {
+                      "netAmount": 50349.65,
+                      "amount": 47999.97,
+                      "currency": "MXN"
+                    },
+                    "payer": {
+                      "name": "INAIP",
+                      "id": "MX-RFC-IEA040531E39"
+                    },
+                    "payee": {
+                      "name": "Oscar Manuel González Sánchez",
+                      "id": "MX-RFC-GOSO550430RB2"
+                    },
+                    "paymentMethod": "wireTransfe"
+                  },
+                  {
+                    "id": "transaction-95af69e2-1c8e-4478-8461-aca8330b3ebb",
+                    "date": "2025-02-17T15:30:00-06:00",
+                    "value": {
+                      "netAmount": 50349.65,
+                      "amount": 47999.97,
+                      "currency": "MXN"
+                    },
+                    "payer": {
+                      "name": "INAIP",
+                      "id": "MX-RFC-IEA040531E39"
+                    },
+                    "payee": {
+                      "name": "Oscar Manuel González Sánchez",
+                      "id": "MX-RFC-GOSO550430RB2"
+                    },
+                    "paymentMethod": "wireTransfe"
+                  },
+                  {
+                    "id": "transaction-b021201a-94fa-4fb7-8c21-191261c6a180",
+                    "date": "2025-03-10T14:05:00-06:00",
+                    "value": {
+                      "netAmount": 50349.65,
+                      "amount": 47999.97,
+                      "currency": "MXN"
+                    },
+                    "payer": {
+                      "name": "INAIP",
+                      "id": "MX-RFC-IEA040531E39"
+                    },
+                    "payee": {
+                      "name": "Oscar Manuel González Sánchez",
+                      "id": "MX-RFC-GOSO550430RB2"
+                    },
+                    "paymentMethod": "wireTransfe"
+                  }
+                ],
+                "documents": [
+                  {
+                    "id": "doc-bcf88621-afa6-4e62-a9cb-0a6f5449637d",
+                    "documentType": "transferReport",
+                    "title": "SOLICITUD DE TRANSFERENCIA BANCARIA No. 004",
+                    "description": "Documento donde se Solicita la autorización del pago del proveedor, por medio de transferencia bancaria.",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=5e764487-d722-40a5-a84d-4acaba630f25",
+                    "datePublished": "2025-04-30T11:04:17-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  },
+                  {
+                    "id": "doc-97dfefba-a9f1-4c42-8ce8-cf8a8a653ca2",
+                    "documentType": "transferReport",
+                    "title": "SPEI",
+                    "description": "Documento bancario donde se realiza la transacción al proveedor por el pago de los servicios  ",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=6fd87676-a3c7-4865-a67f-f9671ca57583",
+                    "datePublished": "2025-04-30T11:04:50-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  },
+                  {
+                    "id": "doc-0fc5b5a6-e4ca-4829-b698-29555f0bd631",
+                    "documentType": "transferReport",
+                    "title": "SOLICITUD DE TRANSFERENCIA BANCARIA No. 019",
+                    "description": "Documento donde se Solicita la autorización del pago del proveedor, por medio de transferencia bancaria.",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=aaa18b14-aa75-4c44-8eb1-ec1f8506d4f0",
+                    "datePublished": "2025-04-30T11:05:39-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  },
+                  {
+                    "id": "doc-423261ec-bced-4619-a429-86d61ffe99cc",
+                    "documentType": "transferReport",
+                    "title": "SPEI",
+                    "description": "Documento bancario donde se realiza la transacción al proveedor por el pago de los servicios  ",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=16cf6a6b-3413-407c-98a9-751d0a25df66",
+                    "datePublished": "2025-04-30T11:06:26-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  },
+                  {
+                    "id": "doc-6f887ae3-e5b6-4300-b415-da208db8d29e",
+                    "documentType": "transferReport",
+                    "title": "SOLICITUD DE TRANSFERENCIA BANCARIA No. 024",
+                    "description": "Documento donde se Solicita la autorización del pago del proveedor, por medio de transferencia bancaria.",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=592091eb-ab7e-4477-ab6f-81c1528e49da",
+                    "datePublished": "2025-04-30T11:07:07-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  },
+                  {
+                    "id": "doc-266b8e74-905d-49ba-83f4-fb2277dc1e7f",
+                    "documentType": "transferReport",
+                    "title": "SPEI",
+                    "description": "Documento bancario donde se realiza la transacción al proveedor por el pago de los servicios  ",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=433ecc63-74e4-44b8-9283-730039e972ab",
+                    "datePublished": "2025-04-30T11:08:41-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  }
+                ]
+              },
+              "surveillanceMechanisms": [
+                "internalControlUnit"
+              ]
+            }
+          ],
+          "language": "es"
+        }
+      ],
+      "publisher": {
+        "name": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales.",
+        "scheme": "MX-RFC",
+        "uid": "IEA040531E39",
+        "uri": "http://inaipyucatan.org.mx/"
+      }
+    },
+    {
+      "uri": "http://captura.contratacionesabiertas.inaipyucatan.org.mx/release-package/20/ocds-0ld0n8-DAFRH-CFE-2025.v20.contract.json",
+      "version": "1.1",
+      "publishedDate": "2025-07-17T16:01:16-05:00",
+      "releases": [
+        {
+          "ocid": "ocds-0ld0n8-DAFRH-CFE-2025",
+          "id": "ocds-0ld0n8-DAFRH-CFE-2025.v20.contract",
+          "date": "2025-07-17T17:01:16-05:00",
+          "tag": [
+            "contract"
+          ],
+          "initiationType": "tender",
+          "parties": [
+            {
+              "name": "Dirección de Administración, Finanzas y Recursos Humanos",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Dirección de Administración, Finanzas y Recursos Humanos",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "Calle 21 no.185 x 10 y 12 Col. García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "requestingUnit",
+                "contractingUnit",
+                "technicalUnit",
+                "responsibleUnit"
+              ]
+            },
+            {
+              "name": "CFE",
+              "id": "MX-RFC-CSS160630CP7",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "CSS160630CP7",
+                "legalName": "CFE Suministrador de Servicios Básico",
+                "legalPersonality": "legalPerson"
+              },
+              "contactPoint": {
+                "name": "CFE",
+                "type": "contactPoint",
+                "givenName": "CFE"
+              },
+              "roles": [
+                "supplier",
+                "payee"
+              ]
+            },
+            {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales ",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "buyer",
+                "procuringEntity",
+                "payer"
+              ]
+            }
+          ],
+          "planning": {
+            "rationale": "Proporcionar el suministro de energía eléctrica para el desarrollo de las funciones del instituto.",
+            "hasquotes": false,
+            "requestingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ],
+            "contractingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ],
+            "responsibleUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ]
+          },
+          "tender": {
+            "id": "DAFRH/CFE/2025",
+            "title": "Suministro de energía eléctrica ",
+            "description": "Proporcionar el servicio de energía eléctrica para el desarrollo de las funciones del instituto",
+            "status": "complete",
+            "procuringEntity": {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39"
+            },
+            "value": {
+              "amount": 67188,
+              "currency": "MXN"
+            },
+            "minValue": {
+              "amount": 67188,
+              "currency": "MXN"
+            },
+            "procurementMethod": "direct",
+            "procurementMethodDetails": "Adjudicación directa",
+            "procurementMethodRationale": "Único proveedor que ofrece el servicio de energía eléctrica",
+            "mainProcurementCategory": "services",
+            "additionalProcurementCategories": [
+              "services"
+            ],
+            "awardCriteria": "singleBidOnly",
+            "hasEnquiries": false
+          },
+          "buyer": {
+            "name": "INAIP",
+            "id": "MX-RFC-IEA040531E39"
+          },
+          "awards": [
+            {
+              "id": "DAFRH/CFE/2025",
+              "title": "  Suministro de energía eléctrica",
+              "description": "Suministro de energía eléctrica",
+              "status": "active",
+              "date": "2025-01-01T00:00:00-06:00",
+              "value": {
+                "netAmount": 57920.69,
+                "amount": 67188,
+                "currency": "MXN"
+              },
+              "suppliers": [
+                {
+                  "name": "CFE",
+                  "id": "MX-RFC-CSS160630CP7"
+                }
+              ],
+              "contractPeriod": {
+                "startDate": "2025-01-01T00:00:00-06:00",
+                "endDate": "2025-12-31T00:00:00-06:00"
+              },
+              "rationale": "Proveer el recurso necesario para el desarrollo de las funciones del instituto"
+            }
+          ],
+          "contracts": [
+            {
+              "id": "DAFRH/CFE/2025",
+              "awardID": "DAFRH/CFE/2025",
+              "title": "  Suministro de energía eléctrica 2025",
+              "description": "Proporcionar el servicio de energía eléctrica para el desarrollo de las funciones del instituto",
+              "status": "terminated",
+              "period": {
+                "startDate": "2025-01-01T00:00:00-06:00",
+                "endDate": "2025-12-31T00:00:00-06:00"
+              },
+              "value": {
+                "netAmount": 57920.69,
+                "amount": 67188,
+                "currency": "MXN",
+                "exchangeRates": [
+                  {
+                    "currency": "MXN"
+                  }
+                ]
+              },
+              "items": [
+                {
+                  "id": "item-abc125e0-4bd9-47ec-b09d-e65426fb4e03",
+                  "description": "SUMINISTRO DE ENERGIA ELECTRICA ",
+                  "classification": {
+                    "scheme": "CUCOP",
+                    "id": "31100001",
+                    "description": "Servicio de energia electrica"
+                  },
+                  "quantity": 1,
+                  "unit": {
+                    "name": "Servicio",
+                    "value": {
+                      "amount": 13296,
+                      "netAmount": 11462.07,
+                      "currency": "MXN"
+                    }
+                  },
+                  "deliveryLocation": {
+                    "geometry": {
+                      "type": "Point",
+                      "coordinates": [
+                        -89.628174,
+                        20.987259
+                      ]
+                    }
+                  },
+                  "deliveryAddress": {
+                    "streetAddress": "Avenida Colón",
+                    "locality": "Mérida",
+                    "region": "Yucatán",
+                    "postalCode": "97070",
+                    "countryName": "México"
+                  }
+                }
+              ],
+              "dateSigned": "2025-01-01T00:00:00-06:00",
+              "documents": [
+                {
+                  "id": "doc-d6fed9fa-f34b-41dc-b30b-f76d852a40cc",
+                  "documentType": "contractSigned",
+                  "title": "ORDEN DE COMPRA Y SERVICIOS DAFRH 019-2025",
+                  "description": "Documento en el cual se asigna al proveedor ganador, Unidad Administrativa solicitante y el desglose de los bienes o servicios adquiridos para lograr el desarrollo y cumplimento de sus programas.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=90c9ee52-f70d-4e8b-a569-97f656be06f7",
+                  "datePublished": "2025-04-30T11:22:54-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-ec633dc4-f3e4-4154-8f13-915a89ab35ba",
+                  "documentType": "contractSigned",
+                  "title": "AC 000063726240",
+                  "description": "Documento donde el contratante solicita el pago de bienes y servicios prestados de acuerdo a la factura emitida.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=3c296b99-8ba9-48c0-aabb-90d9fecbcff8",
+                  "datePublished": "2025-06-25T11:23:28-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                }
+              ],
+              "implementation": {
+                "status": "concluded",
+                "transactions": [
+                  {
+                    "id": "transaction-5fdc04ee-7e1c-4ae2-9cf3-7643cdb22959",
+                    "date": "2025-03-14T14:41:00-06:00",
+                    "value": {
+                      "netAmount": 11462.07,
+                      "amount": 13296,
+                      "currency": "MXN"
+                    },
+                    "payer": {
+                      "name": "INAIP",
+                      "id": "MX-RFC-IEA040531E39"
+                    },
+                    "payee": {
+                      "name": "CFE",
+                      "id": "MX-RFC-CSS160630CP7"
+                    },
+                    "paymentMethod": "wireTransfe"
+                  }
+                ],
+                "documents": [
+                  {
+                    "id": "doc-c619646b-5c82-44db-8678-168dfb5fa2c7",
+                    "documentType": "transferReport",
+                    "title": "SOLICITUD DE TRANSFERENCIA BANCARIA No. 033",
+                    "description": "Documento donde se Solicita la autorización del pago del proveedor, por medio de transferencia bancaria.",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=ab35aeb9-c21d-483d-84cf-4c0af9a054d0",
+                    "datePublished": "2025-04-30T11:28:31-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  },
+                  {
+                    "id": "doc-13a98ef6-14a1-4191-b9b1-769cba1dcd05",
+                    "documentType": "transferReport",
+                    "title": "SPEI",
+                    "description": "Documento bancario donde se realiza la transacción al proveedor por el pago de los servicios  ",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=931ca4da-513d-4cc1-b85e-eb0fdebde41c",
+                    "datePublished": "2025-04-30T11:29:04-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  }
+                ]
+              },
+              "surveillanceMechanisms": [
+                "internalControlUnit"
+              ]
+            }
+          ],
+          "language": "es"
+        }
+      ],
+      "publisher": {
+        "name": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales.",
+        "scheme": "MX-RFC",
+        "uid": "IEA040531E39",
+        "uri": "http://inaipyucatan.org.mx/"
+      }
+    },
+    {
+      "uri": "http://captura.contratacionesabiertas.inaipyucatan.org.mx/release-package/21/ocds-0ld0n8-DAFRH-BepensaLeasing-2025.v21.contract.json",
+      "version": "1.1",
+      "publishedDate": "2025-07-18T15:20:14-05:00",
+      "releases": [
+        {
+          "ocid": "ocds-0ld0n8-DAFRH-BepensaLeasing-2025",
+          "id": "ocds-0ld0n8-DAFRH-BepensaLeasing-2025.v21.contract",
+          "date": "2025-07-18T16:20:14-05:00",
+          "tag": [
+            "contract"
+          ],
+          "initiationType": "tender",
+          "parties": [
+            {
+              "name": "Dirección de Administración, Finanzas y Recursos Humanos",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Dirección de Administración, Finanzas y Recursos Humanos",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "requestingUnit",
+                "contractingUnit",
+                "technicalUnit",
+                "responsibleUnit"
+              ]
+            },
+            {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales ",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "buyer",
+                "procuringEntity",
+                "payer"
+              ]
+            },
+            {
+              "name": "Bepensa Leasing",
+              "id": "MX-RFC-BLE1512082R9",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "BLE1512082R9",
+                "legalName": "Bepensa Leasing S.A. de C.V.",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "CALLE 56-B POR 11 y 13 452 INT. 1",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97100",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "type": "contactPoint"
+              },
+              "roles": [
+                "supplier",
+                "payee"
+              ]
+            }
+          ],
+          "planning": {
+            "rationale": "Arrendamiento de camioneta Nissan Urvan ",
+            "hasquotes": false,
+            "requestingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ],
+            "contractingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ],
+            "responsibleUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ]
+          },
+          "tender": {
+            "id": "DAFRH/BepensaLeasing/2025",
+            "title": "Arrendamiento de camioneta Nissan Urvan",
+            "description": "Arrendamiento de camioneta Nissan Urvan, Pago de seguro",
+            "status": "complete",
+            "procuringEntity": {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39"
+            },
+            "value": {
+              "amount": 80883.56,
+              "currency": "MXN"
+            },
+            "minValue": {
+              "amount": 80883.56,
+              "currency": "MXN"
+            },
+            "procurementMethod": "direct",
+            "procurementMethodDetails": "Adjudicación directa",
+            "mainProcurementCategory": "goods",
+            "additionalProcurementCategories": [
+              "goodsLease"
+            ],
+            "hasEnquiries": false
+          },
+          "buyer": {
+            "name": "INAIP",
+            "id": "MX-RFC-IEA040531E39"
+          },
+          "awards": [
+            {
+              "id": "DAFRH/BEPENSALEASING/2025",
+              "title": "     Arrendamiento de camioneta Nissan Urvan",
+              "description": "   Arrendamiento de camioneta Nissan Urvan 2024",
+              "status": "active",
+              "value": {
+                "netAmount": 69727.21,
+                "amount": 80883.56,
+                "currency": "MXN"
+              },
+              "suppliers": [
+                {
+                  "name": "Bepensa Leasing",
+                  "id": "MX-RFC-BLE1512082R9"
+                }
+              ],
+              "contractPeriod": {
+                "startDate": "2025-01-01T00:00:00-06:00",
+                "endDate": "2025-12-31T00:00:00-06:00"
+              },
+              "rationale": "   Arrendamiento de camioneta Nissan Urvan 2024",
+              "date": "2026-09-20T13:00:54-05:00"
+            }
+          ],
+          "contracts": [
+            {
+              "id": "Arrendamiento Nissan URVAN 2024",
+              "awardID": "DAFRH/BEPENSALEASING/2025",
+              "title": "  Arrendamiento Nissan URVAN ",
+              "description": "Arrendamiento Nissan URVAN",
+              "status": "terminated",
+              "period": {
+                "startDate": "2025-01-01T00:00:00-06:00",
+                "endDate": "2025-12-31T00:00:00-06:00"
+              },
+              "value": {
+                "netAmount": 69727.21,
+                "amount": 80883.56,
+                "currency": "MXN",
+                "exchangeRates": [
+                  {
+                    "currency": "MXN"
+                  }
+                ]
+              },
+              "items": [
+                {
+                  "id": "item-edc87578-5131-4c3c-a19e-ab128da0c65d",
+                  "description": "RENOVACION DEL SEGURO 2025 DE LA CAMIONETA URVAN 2024",
+                  "classification": {
+                    "scheme": "CUCOP",
+                    "id": "34500001",
+                    "description": "Contratacion de seguros para bienes muebles"
+                  },
+                  "quantity": 1,
+                  "unit": {
+                    "name": "Servicio",
+                    "value": {
+                      "amount": 26729.15,
+                      "netAmount": 23042.37,
+                      "currency": "MXN"
+                    }
+                  },
+                  "deliveryLocation": {
+                    "geometry": {
+                      "type": "Point",
+                      "coordinates": [
+                        -89.628174,
+                        20.987259
+                      ]
+                    }
+                  },
+                  "deliveryAddress": {
+                    "streetAddress": "Avenida Colón",
+                    "locality": "Mérida",
+                    "region": "Yucatán",
+                    "postalCode": "97070",
+                    "countryName": "México"
+                  }
+                }
+              ],
+              "dateSigned": "2025-01-01T00:00:00-06:00",
+              "documents": [
+                {
+                  "id": "doc-ce9e52cc-02f1-4595-ac61-21fec40c4512",
+                  "documentType": "contractSigned",
+                  "title": "ORDEN DE COMPRA Y SERVICIOS DAFRH 026-2025",
+                  "description": "Documento en el cual se asigna al proveedor ganador, Unidad Administrativa solicitante y el desglose de los bienes o servicios adquiridos para lograr el desarrollo y cumplimento de sus programas.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=1da50248-e129-425d-ae3c-1ede05fe56b3",
+                  "datePublished": "2025-04-30T11:34:50-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-7e1f9988-28c3-4328-b4a5-6e03f61038d9",
+                  "documentType": "contractSigned",
+                  "title": "C119141",
+                  "description": "Documento donde el contratante solicita el pago de bienes y servicios prestados de acuerdo a la factura emitida.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=dd5b6513-7d9e-404f-b228-93c4c6a2bc40",
+                  "datePublished": "2025-04-30T11:35:18-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                }
+              ],
+              "implementation": {
+                "status": "concluded",
+                "transactions": [
+                  {
+                    "id": "transaction-62c201bd-0fe6-44a4-b950-40d2f5963cc8",
+                    "date": "2025-03-29T00:00:00-06:00",
+                    "value": {
+                      "netAmount": 2672915,
+                      "amount": 23042.37,
+                      "currency": "MXN"
+                    },
+                    "payer": {
+                      "name": "INAIP",
+                      "id": "MX-RFC-IEA040531E39"
+                    },
+                    "payee": {
+                      "name": "Bepensa Leasing",
+                      "id": "MX-RFC-BLE1512082R9"
+                    },
+                    "paymentMethod": "wireTransfe"
+                  }
+                ]
+              },
+              "surveillanceMechanisms": [
+                "internalControlUnit"
+              ]
+            }
+          ],
+          "language": "es"
+        }
+      ],
+      "publisher": {
+        "name": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales.",
+        "scheme": "MX-RFC",
+        "uid": "IEA040531E39",
+        "uri": "http://inaipyucatan.org.mx/"
+      }
+    },
+    {
+      "uri": "http://captura.contratacionesabiertas.inaipyucatan.org.mx/release-package/26/ocds-0ld0n8-DAJP-006-2025.v26.tender.json",
+      "version": "1.1",
+      "publishedDate": "2025-07-22T12:15:06-05:00",
+      "releases": [
+        {
+          "ocid": "ocds-0ld0n8-DAJP-006-2025",
+          "id": "ocds-0ld0n8-DAJP-006-2025.v26.tender",
+          "date": "2025-07-22T13:15:05-05:00",
+          "tag": [
+            "tender"
+          ],
+          "initiationType": "tender",
+          "parties": [
+            {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales ",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "buyer",
+                "procuringEntity",
+                "payer"
+              ]
+            },
+            {
+              "name": "Dirección de Administración, Finanzas y Recursos Humanos",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Dirección de Administración, Finanzas y Recursos Humanos",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "technicalUnit",
+                "responsibleUnit"
+              ]
+            },
+            {
+              "name": "Dirección de Asuntos Jurídicos y Plenarios",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Dirección de Asuntos Jurídicos y Plenarios",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Sindy Góngora Cervera",
+                "email": "sindy.gongora@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Sindy",
+                "patronymicName": "Góngora",
+                "matronymicName": "Cervera"
+              },
+              "roles": [
+                "requestingUnit",
+                "contractingUnit"
+              ]
+            },
+            {
+              "name": "Impresos la Ermita",
+              "id": "MX-RFC-IER9904191Y8",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IER9904191Y8",
+                "legalName": "Impresos la Ermita S.A de C.V.",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "Calle 64 x 69 y 71 No. 571, Col. Centro,",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "email": "ermitaimpresos@hotmail.com",
+                "telephone": "9999242239",
+                "type": "contactPoint"
+              },
+              "roles": [
+                "supplier",
+                "payee"
+              ]
+            }
+          ],
+          "planning": {
+            "rationale": "Impresión de posters tamaño tabloide para el decálogo de protección de datos personales para el personal docente y administrativo que será distribuido en todas las escuelas de educación básica de Yucatán.",
+            "hasquotes": true,
+            "requestingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Asuntos Jurídicos y Plenarios"
+              }
+            ],
+            "contractingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Asuntos Jurídicos y Plenarios"
+              }
+            ],
+            "responsibleUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ],
+            "documents": [
+              {
+                "id": "doc-ae376876-ea34-4046-a60f-2d7f5e612791",
+                "documentType": "request",
+                "title": "REQUISICION DE COMPRA Y SERVICIOS DAJP 006-2025",
+                "description": "Documento en el cual la Unidad Administrativa solicita bienes o servicios para lograr el desarrollo y cumplimento de sus programas.",
+                "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=837eb055-fab9-4397-89af-c54f48920a23",
+                "datePublished": "2025-04-30T11:51:32-05:00",
+                "format": "PDF",
+                "language": "Spanish; Castilian"
+              },
+              {
+                "id": "doc-3ec3febf-d3b2-4767-a57a-d509b584953c",
+                "documentType": "feasibilityStudy",
+                "title": "COTIZACION  IMPRESOS LA ERMITA",
+                "description": "Documento que muestra el precio real que se va a cobrar el proveedor por los bienes o servicio solicitado en la solicitud de cotización.",
+                "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=878a20e3-88dc-454f-aed6-9950b346971c",
+                "datePublished": "2025-04-30T11:52:14-05:00",
+                "format": "PDF",
+                "language": "Spanish; Castilian"
+              },
+              {
+                "id": "doc-eea53287-23be-4736-aa45-e6e6d406cb81",
+                "documentType": "feasibilityStudy",
+                "title": "COTIZACION QUICK DIGITAL",
+                "description": "Documento que muestra el precio real que se va a cobrar el proveedor por los bienes o servicio solicitado en la solicitud de cotización.",
+                "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=8b4af975-9ac3-4c31-bb6c-2e3d20b6bc8e",
+                "datePublished": "2025-04-30T11:53:37-05:00",
+                "format": "PDF",
+                "language": "Spanish; Castilian"
+              }
+            ]
+          },
+          "tender": {
+            "id": "DAJP/006/2025",
+            "title": "Posters tamaño tabloide para el Decálogo de Protección de Datos Personales",
+            "description": "Impresión de posters tamaño tabloide para el Decálogo de Protección de Datos Personales para el personal docente y administrativo que será distribuido en todas las escuelas de educación básica de Yucatán.",
+            "status": "complete",
+            "procuringEntity": {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39"
+            },
+            "value": {
+              "amount": 20686.97,
+              "currency": "MXN"
+            },
+            "minValue": {
+              "amount": 20686.97,
+              "currency": "MXN"
+            },
+            "procurementMethod": "direct",
+            "procurementMethodDetails": "Adjudicación directa",
+            "procurementMethodRationale": "Según art. 56 de las Políticas Administrativas y Financieras del INAIP",
+            "mainProcurementCategory": "goods",
+            "additionalProcurementCategories": [
+              "goodsAcquisition"
+            ],
+            "awardCriteria": "bestValueToGovernment",
+            "awardCriteriaDetails": "El proveedor que ofrezca el producto con las especificaciones requeridas y a un costo menor que la competencia será acreedor del servicio",
+            "submissionMethod": [
+              "electronicSubmission"
+            ],
+            "submissionMethodDetails": "Correo electrónico",
+            "hasEnquiries": false,
+            "eligibilityCriteria": "El proveedor que ofrezca el producto con las especificaciones requeridas y a un costo menor que la competencia será acreedor del servicio"
+          },
+          "buyer": {
+            "name": "INAIP",
+            "id": "MX-RFC-IEA040531E39"
+          },
+          "awards": [
+            {
+              "id": "DAJP/006/2025",
+              "title": "  Posters tamaño tabloide para el Decálogo de Protección de Datos Personales",
+              "description": "Impresión de posters tamaño tabloide para el Decálogo de Protección de Datos Personales para el personal docente y administrativo que será distribuido en todas las escuelas de educación básica de Yucatán.",
+              "status": "active",
+              "date": "2025-03-07T00:00:00-06:00",
+              "value": {
+                "netAmount": 17833.59,
+                "amount": 20686.97,
+                "currency": "MXN"
+              },
+              "suppliers": [
+                {
+                  "name": "Impresos la Ermita",
+                  "id": "MX-RFC-IER9904191Y8"
+                }
+              ],
+              "contractPeriod": {
+                "startDate": "2025-03-07T00:00:00-06:00",
+                "endDate": "2025-04-04T00:00:00-06:00"
+              },
+              "rationale": "Impresión de posters tamaño tabloide para el Decálogo de Protección de Datos Personales para el personal docente y administrativo que será distribuido en todas las escuelas de educación básica de Yucatán."
+            }
+          ],
+          "contracts": [
+            {
+              "id": "DAJP/006/2025",
+              "awardID": "DAJP/006/2025",
+              "title": "   Posters tamaño tabloide para el Decálogo de Protección de Datos Personales",
+              "description": "Impresión de posters tamaño tabloide para el Decálogo de Protección de Datos Personales para el personal docente y administrativo que será distribuido en todas las escuelas de educación básica de Yucatán.",
+              "status": "terminated",
+              "period": {
+                "startDate": "2025-03-07T00:00:00-06:00",
+                "endDate": "2024-04-04T00:00:00-06:00"
+              },
+              "value": {
+                "netAmount": 17833.59,
+                "amount": 20686.97,
+                "currency": "MXN",
+                "exchangeRates": [
+                  {
+                    "currency": "MXN"
+                  }
+                ]
+              },
+              "items": [
+                {
+                  "id": "item-8619f9b0-3951-4788-ad05-500316231e96",
+                  "description": "POSTERS TAMAÑO TABLOIDE, IMPRESOS EN DIGITAL A TODO COLOR EN COUCHE EN BRILLANTE",
+                  "classification": {
+                    "scheme": "CUCOP",
+                    "id": "36100001",
+                    "description": "Difusion de mensajes sobre programas y actividades gubernamentales"
+                  },
+                  "quantity": 1,
+                  "unit": {
+                    "name": "Servicio",
+                    "value": {
+                      "amount": 10349.98,
+                      "netAmount": 8922.4,
+                      "currency": "MXN"
+                    }
+                  },
+                  "deliveryLocation": {
+                    "geometry": {
+                      "type": "Point",
+                      "coordinates": [
+                        -89.628174,
+                        20.987259
+                      ]
+                    }
+                  },
+                  "deliveryAddress": {
+                    "streetAddress": "Avenida Colón",
+                    "locality": "Mérida",
+                    "region": "Yucatán",
+                    "postalCode": "97070",
+                    "countryName": "México"
+                  }
+                }
+              ],
+              "dateSigned": "2025-03-07T00:00:00-06:00",
+              "documents": [
+                {
+                  "id": "doc-3cd3538e-10a3-4b74-a830-23882b2fad4a",
+                  "documentType": "contractSigned",
+                  "title": "ORDEN DE COMPRA Y SERVICIOS DAJP 006-2025",
+                  "description": "Documento en el cual se asigna al proveedor ganador, Unidad Administrativa solicitante y el desglose de los bienes o servicios adquiridos para lograr el desarrollo y cumplimento de sus programas.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=6157231d-1a32-4f2a-8d53-4bf427204eff",
+                  "datePublished": "2025-04-30T11:55:14-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-81a0038c-bf57-4669-8a2a-6f1f438b8aca",
+                  "documentType": "contractSigned",
+                  "title": "BB 2382",
+                  "description": "Documento donde el contratante solicita el pago de bienes y servicios prestados de acuerdo a la factura emitida.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=7473233d-828d-4179-abfc-bd9fd88f7040",
+                  "datePublished": "2025-04-30T11:55:51-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                }
+              ],
+              "implementation": {
+                "status": "concluded",
+                "transactions": [
+                  {
+                    "id": "transaction-82c40fa4-d404-4eac-a08a-64fa9d9ee6b7",
+                    "date": "2025-03-18T16:07:00-06:00",
+                    "value": {
+                      "netAmount": 8922.4,
+                      "amount": 10349.98,
+                      "currency": "MXN"
+                    },
+                    "payer": {
+                      "name": "INAIP",
+                      "id": "MX-RFC-IEA040531E39"
+                    },
+                    "payee": {
+                      "name": "Impresos la Ermita",
+                      "id": "MX-RFC-IER9904191Y8"
+                    },
+                    "paymentMethod": "wireTransfe"
+                  }
+                ],
+                "documents": [
+                  {
+                    "id": "doc-326c79f1-fa55-4405-9eda-1b7a76784f2a",
+                    "documentType": "transferReport",
+                    "title": "SOLICITUD DE TRANSFERENCIA BANCARIA No. 036",
+                    "description": "Documento donde se Solicita la autorización del pago del proveedor, por medio de transferencia bancaria.",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=80c657ba-8c80-40c0-8900-05465c543386",
+                    "datePublished": "2025-04-30T12:02:30-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  },
+                  {
+                    "id": "doc-ec414cdc-d0c0-49b0-a1aa-6260e8db54a8",
+                    "documentType": "transferReport",
+                    "title": "SPEI",
+                    "description": "Documento bancario donde se realiza la transacción al proveedor por el pago de los servicios  ",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=dd2a5e99-f974-47de-982c-67f52fe6a346",
+                    "datePublished": "2025-04-30T12:03:14-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  }
+                ]
+              },
+              "surveillanceMechanisms": [
+                "internalControlUnit"
+              ]
+            }
+          ],
+          "language": "es"
+        }
+      ],
+      "publisher": {
+        "name": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales.",
+        "scheme": "MX-RFC",
+        "uid": "IEA040531E39",
+        "uri": "http://inaipyucatan.org.mx/"
+      }
+    },
+    {
+      "uri": "http://captura.contratacionesabiertas.inaipyucatan.org.mx/release-package/22/ocds-0ld0n8-DAJP-002-2025.v22.implementation.json",
+      "version": "1.1",
+      "publishedDate": "2025-06-25T12:46:37-05:00",
+      "releases": [
+        {
+          "ocid": "ocds-0ld0n8-DAJP-002-2025",
+          "id": "ocds-0ld0n8-DAJP-002-2025.v22.implementation",
+          "date": "2025-06-25T13:46:37-05:00",
+          "tag": [
+            "implementation"
+          ],
+          "initiationType": "tender",
+          "parties": [
+            {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales ",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "buyer",
+                "procuringEntity",
+                "payer"
+              ]
+            },
+            {
+              "name": "Dirección de Administración, Finanzas y Recursos Humanos",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Dirección de Administración, Finanzas y Recursos Humanos",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Virginia Rosalía Angulo Vázquez",
+                "email": "virginiaangulo@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Virginia Rosalía",
+                "patronymicName": "Angulo",
+                "matronymicName": "Vázquez"
+              },
+              "roles": [
+                "technicalUnit",
+                "responsibleUnit"
+              ]
+            },
+            {
+              "name": "Dirección de Asuntos Jurídicos y Plenarios",
+              "id": "MX-RFC-IEA040531E39",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "IEA040531E39",
+                "legalName": "Dirección de Asuntos Jurídicos y Plenarios",
+                "legalPersonality": "legalPerson"
+              },
+              "address": {
+                "streetAddress": "21 NO.185 X 10 Y 12 García Ginerés",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97070",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "name": "Sindy Góngora Cervera",
+                "email": "sindy.gongora@inaipyucatan.org.mx",
+                "telephone": "9999258631",
+                "type": "contactPoint",
+                "givenName": "Sindy",
+                "patronymicName": "Góngora",
+                "matronymicName": "Cervera"
+              },
+              "roles": [
+                "requestingUnit",
+                "contractingUnit"
+              ]
+            },
+            {
+              "name": "Roberto Arjona Marcin",
+              "id": "MX-RFC-AOMR840122Q56",
+              "identifier": {
+                "scheme": "MX-RFC",
+                "id": "AOMR840122Q56",
+                "legalPersonality": "naturalPerson",
+                "givenName": "Roberto",
+                "patronymicName": "Arjona ",
+                "matronymicName": "Marcin"
+              },
+              "address": {
+                "streetAddress": "Calle 22 no.220 entre 9 y 11 Colonia Montevideo",
+                "locality": "Mérida",
+                "region": "Yucatán",
+                "postalCode": "97133",
+                "countryName": "México"
+              },
+              "contactPoint": {
+                "type": "contactPoint"
+              },
+              "roles": [
+                "supplier",
+                "payee"
+              ]
+            }
+          ],
+          "planning": {
+            "rationale": "Servicio de video y entarimado para la conferencia ''Eres lo que publicas'' en la escuela preparatoria no.1 de la Universidad Autónoma de Yucatán en el marco de las Jornadas de Datos Personales Inaip Yucatán 2025",
+            "hasquotes": true,
+            "requestingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Asuntos Jurídicos y Plenarios"
+              }
+            ],
+            "contractingUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Asuntos Jurídicos y Plenarios"
+              }
+            ],
+            "responsibleUnits": [
+              {
+                "id": "MX-RFC-IEA040531E39",
+                "name": "Dirección de Administración, Finanzas y Recursos Humanos"
+              }
+            ],
+            "documents": [
+              {
+                "id": "doc-3e95e8dd-dab4-4167-9844-278cda616f46",
+                "documentType": "request",
+                "title": "REQUISICION DE COMPRA Y SERVICIOS DAJP 002-2025",
+                "description": "Documento en el cual la Unidad Administrativa solicita bienes o servicios para lograr el desarrollo y cumplimento de sus programas.",
+                "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=40133bb8-3199-4562-90a6-7ae92e80d7d1",
+                "datePublished": "2025-04-30T12:38:51-05:00",
+                "format": "PDF",
+                "language": "Spanish; Castilian"
+              },
+              {
+                "id": "doc-d47eafda-8fa8-400f-a73b-53d63413c521",
+                "documentType": "feasibilityStudy",
+                "title": "COTIZACION AMERI-K AUDIOVISUALES",
+                "description": "Documento que muestra el precio real que se va a cobrar el proveedor por los bienes o servicio solicitado en la solicitud de cotización.",
+                "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=0e4d1716-9950-43d8-8964-4185d52669dc",
+                "datePublished": "2025-04-30T12:39:30-05:00",
+                "format": "PDF",
+                "language": "Spanish; Castilian"
+              },
+              {
+                "id": "doc-b16ed13e-f9d1-4d6b-bd20-f08631125d5b",
+                "documentType": "feasibilityStudy",
+                "title": "COTIZACION MT CARPAS Y TARIMAS",
+                "description": "Documento que muestra el precio real que se va a cobrar el proveedor por los bienes o servicio solicitado en la solicitud de cotización.",
+                "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=046afd48-f575-4dcc-830d-a243b911e9e0",
+                "datePublished": "2025-04-30T12:40:03-05:00",
+                "format": "PDF",
+                "language": "Spanish; Castilian"
+              },
+              {
+                "id": "doc-744272bd-5ced-44c1-99f0-10a761513789",
+                "documentType": "feasibilityStudy",
+                "title": "COTIZACION OBM PRODUCTIONS",
+                "description": "Documento que muestra el precio real que se va a cobrar el proveedor por los bienes o servicio solicitado en la solicitud de cotización.",
+                "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=8bc4fd94-9b85-44c0-b6e8-7ad91e5c8ddc",
+                "datePublished": "2025-04-30T12:40:41-05:00",
+                "format": "PDF",
+                "language": "Spanish; Castilian"
+              }
+            ]
+          },
+          "tender": {
+            "id": "DAJP/002/2025",
+            "title": "Servicio de video y entarimado para la conferencia ''Eres lo que publicas''",
+            "description": "Servicio de video y entarimado para la conferencia ''Eres lo que publicas'' en la escuela preparatoria no.1 de la Universidad Autónoma de Yucatán en el marco de las Jornadas de Datos Personales Inaip Yucatán 2025",
+            "status": "complete",
+            "procuringEntity": {
+              "name": "INAIP",
+              "id": "MX-RFC-IEA040531E39"
+            },
+            "value": {
+              "amount": 38048,
+              "currency": "MXN"
+            },
+            "minValue": {
+              "amount": 38048,
+              "currency": "MXN"
+            },
+            "procurementMethod": "direct",
+            "procurementMethodDetails": "Adjudicación directa",
+            "procurementMethodRationale": "Según art. 9 de las Políticas Administrativas y Financieras del INAIP",
+            "mainProcurementCategory": "services",
+            "additionalProcurementCategories": [
+              "services"
+            ],
+            "awardCriteria": "bestValueToGovernment",
+            "awardCriteriaDetails": "Según art. 9 de las Políticas Administrativas y Financieras del INAIP",
+            "hasEnquiries": false,
+            "eligibilityCriteria": "El proveedor garantizaba las condiciones sonoras y el espacio solicitadas por el conferencista "
+          },
+          "buyer": {
+            "name": "INAIP",
+            "id": "MX-RFC-IEA040531E39"
+          },
+          "awards": [
+            {
+              "id": "DAJP/002/82025",
+              "title": " Servicio de video y entarimado para la conferencia ''Eres lo que publicas''",
+              "description": "Servicio de 1 pantalla led de 4 x 2.5m y 1 pantalla led de 4x3m y base de 1m de altura con 1 computadora para material gráfico y 1 operador de video de cortesía\r\nServicio de sistema de audio para gradas laterales, zona de silla y escenario para voz, con dos micrófonos inalámbricos de mano, 1 consola de audio y periféricos y 1 operador de audio\r\nServicio de entarimado de 9.76 x 3.66 y nivelado a 80cm con acabado de madera barnizada incluye bambalina negra\r\n",
+              "status": "active",
+              "date": "2025-02-06T00:00:00-06:00",
+              "value": {
+                "netAmount": 32800,
+                "amount": 38048,
+                "currency": "MXN"
+              },
+              "suppliers": [
+                {
+                  "name": "Roberto Arjona Marcin",
+                  "id": "MX-RFC-AOMR840122Q56"
+                }
+              ],
+              "contractPeriod": {
+                "startDate": "2025-02-05T00:00:00-06:00",
+                "endDate": "2025-02-07T00:00:00-06:00"
+              },
+              "rationale": "Servicio de video y entarimado para la conferencia ''Eres lo que publicas'' en la escuela preparatoria no.1 de la Universidad Autónoma de Yucatán en el marco de las Jornadas de Datos Personales Inaip Yucatán 2025"
+            }
+          ],
+          "contracts": [
+            {
+              "id": "DAJP/002/2025",
+              "awardID": "DAJP/002/82025",
+              "title": "  Servicio de video y entarimado para la conferencia ''Eres lo que publicas''",
+              "description": "Servicio de video y entarimado para la conferencia ''Eres lo que publicas'' en la escuela preparatoria no.1 de la Universidad Autónoma de Yucatán en el marco de las Jornadas de Datos Personales Inaip Yucatán 2025",
+              "status": "terminated",
+              "period": {
+                "startDate": "2025-02-05T00:00:00-06:00",
+                "endDate": "2025-05-07T00:00:00-05:00"
+              },
+              "value": {
+                "netAmount": 32800,
+                "amount": 38048,
+                "currency": "MXN",
+                "exchangeRates": [
+                  {
+                    "currency": "MXN"
+                  }
+                ]
+              },
+              "items": [
+                {
+                  "id": "item-3da19a12-544a-49e3-8726-788b56f51bd3",
+                  "description": "SERVICIOS DE PANTALLAS, SISTEMA DE AUDIO Y ENTARIMADOS",
+                  "classification": {
+                    "scheme": "CUCOP",
+                    "id": "32900003",
+                    "description": "Arrendamiento de equipo relacionado con el audio, video e iluminacion"
+                  },
+                  "quantity": 1,
+                  "unit": {
+                    "name": "Servicio",
+                    "value": {
+                      "amount": 38048,
+                      "netAmount": 32800,
+                      "currency": "MXN"
+                    }
+                  },
+                  "deliveryLocation": {
+                    "geometry": {
+                      "type": "Point",
+                      "coordinates": [
+                        -89.628174,
+                        20.987259
+                      ]
+                    }
+                  },
+                  "deliveryAddress": {
+                    "streetAddress": "Avenida Colón",
+                    "locality": "Mérida",
+                    "region": "Yucatán",
+                    "postalCode": "97070",
+                    "countryName": "México"
+                  }
+                }
+              ],
+              "dateSigned": "2025-02-05T00:00:00-06:00",
+              "documents": [
+                {
+                  "id": "doc-58293ec0-4075-4380-9413-ca15ae93d0c0",
+                  "documentType": "contractSigned",
+                  "title": "ORDEN DE COMPRA Y SERVICIOS DAJP 002-2025",
+                  "description": "Documento en el cual se asigna al proveedor ganador, Unidad Administrativa solicitante y el desglose de los bienes o servicios adquiridos para lograr el desarrollo y cumplimento de sus programas.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=0de55fa4-05f7-47a7-9b69-3b81a12aac66",
+                  "datePublished": "2025-04-30T12:41:41-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                },
+                {
+                  "id": "doc-8e204de2-8c3d-4e26-bbd5-7c9d4eab1c2f",
+                  "documentType": "contractSigned",
+                  "title": "1C8DDDECCC6F",
+                  "description": "Documento donde el contratante solicita el pago de bienes y servicios prestados de acuerdo a la factura emitida.",
+                  "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=70f9c156-2c90-4722-9fe8-ee918e13d2ae",
+                  "datePublished": "2025-04-30T12:42:26-05:00",
+                  "format": "PDF",
+                  "language": "Spanish; Castilian",
+                  "dateModified": "2026-09-20T13:00:54-05:00"
+                }
+              ],
+              "implementation": {
+                "status": "concluded",
+                "transactions": [
+                  {
+                    "id": "transaction-a066161e-055d-42e9-9dd3-33f02ae7b28f",
+                    "date": "2025-02-10T10:16:00-06:00",
+                    "value": {
+                      "netAmount": 32800,
+                      "amount": 38048,
+                      "currency": "MXN"
+                    },
+                    "payer": {
+                      "name": "INAIP",
+                      "id": "MX-RFC-IEA040531E39"
+                    },
+                    "payee": {
+                      "name": "Roberto Arjona Marcin",
+                      "id": "MX-RFC-AOMR840122Q56"
+                    },
+                    "paymentMethod": "wireTransfe"
+                  }
+                ],
+                "documents": [
+                  {
+                    "id": "doc-60e0a589-e104-45a8-9ca9-c7b009f3b357",
+                    "documentType": "transferReport",
+                    "title": "SOLICITUD DE TRANSFERENCIA BANCARIA No. 009",
+                    "description": "Documento donde se Solicita la autorización del pago del proveedor, por medio de transferencia bancaria.",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=c704aeed-6707-407c-9496-7ea826127784",
+                    "datePublished": "2025-04-30T12:44:52-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  },
+                  {
+                    "id": "doc-a614213e-5bb0-4edd-b2fd-69cb4b0acc3e",
+                    "documentType": "transferReport",
+                    "title": "SPEI",
+                    "description": "Documento bancario donde se realiza la transacción al proveedor por el pago de los servicios  ",
+                    "url": "https://potyucatan.transparenciayucatan.org.mx/Transparencia/DwnA.tr?id=984f968e-8196-43dd-a71c-a4f3698ff827",
+                    "datePublished": "2025-04-30T12:45:19-05:00",
+                    "format": "PDF",
+                    "language": "Spanish; Castilian",
+                    "dateModified": "2026-09-20T13:00:54-05:00"
+                  }
+                ]
+              },
+              "surveillanceMechanisms": [
+                "internalControlUnit"
+              ]
+            }
+          ],
+          "language": "es"
+        }
+      ],
+      "publisher": {
+        "name": "Instituto Estatal de Transparencia, Acceso a la Información Pública y Protección de Datos Personales.",
+        "scheme": "MX-RFC",
+        "uid": "IEA040531E39",
+        "uri": "http://inaipyucatan.org.mx/"
+      }
+    }
+  ]
+}
