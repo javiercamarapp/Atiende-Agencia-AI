@@ -35,8 +35,19 @@ export interface BreakGlassRentasDataRepository {
    *  `paginacion` -- agregado en Fase 10c (`../../migrations/
    *  020_break_glass_lectores.sql`): filtro opcional por propiedad + tope de
    *  página, mismo contrato que los 6 métodos nuevos de abajo. `undefined`/omitido
-   *  se interpreta como "todo el tenant, primera página con el tope por defecto". */
-  listReservasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassReservaResumen[]>;
+   *  se interpreta como "todo el tenant, primera página con el tope por defecto".
+   *
+   *  Devuelve `BreakGlassLectorResultado` (UNIFICADO con los 6 métodos de
+   *  abajo -- antes de la paginación real (hallazgo BAJA de la auditoría a2)
+   *  este método devolvía un array plano, un caso especial que
+   *  `apps/api/.../superadmin-break-glass.ts::registrarLectorTenant` tenía
+   *  que distinguir con `Array.isArray`; unificar el contrato es lo que hace
+   *  posible exponer `hasMore` también para reservas sin duplicar esa rama).
+   *  `disponible` es SIEMPRE `true` para este método -- reservas tiene un
+   *  camino anterior real (la sobrecarga de 2 parámetros de
+   *  `018_break_glass_wiring.sql`) que nunca deja de tener datos, a
+   *  diferencia de los 6 recursos nuevos. */
+  listReservasTenant(organizationId: string, callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassReservaResumen>>;
 
   /** Fase 10c -- movimiento financiero por reserva (`rentas.reserva_financiero`,
    *  003_finanzas_schema.sql). Mismo contrato de sesión/paginación que
@@ -90,13 +101,16 @@ export interface BreakGlassRentasDataRepository {
  * mismo tope `BREAK_GLASS_LECTOR_LIMIT_MAX` que la función SQL) -- es lógica pura,
  * sin RLS de por medio, así que replicarla aquí no tiene el mismo riesgo que
  * replicar autorización (donde SÍ importa que solo Postgres real sea la fuente de
- * verdad).
+ * verdad). `hasMore` se calcula del lado del array COMPLETO ya filtrado
+ * (`filtrados.length > offset + limit`) -- en memoria no hay ningún costo de
+ * "consulta cara" que evitar con un peek, a diferencia del adaptador de
+ * Postgres real (ver postgres-data-repository.ts).
  */
-function paginar<T extends { readonly propertyId: string }>(items: readonly T[], paginacion?: BreakGlassLectorPaginacion): readonly T[] {
+function paginar<T extends { readonly propertyId: string }>(items: readonly T[], paginacion?: BreakGlassLectorPaginacion): { readonly datos: readonly T[]; readonly hasMore: boolean } {
   const filtrados = paginacion?.propertyId ? items.filter((i) => i.propertyId === paginacion.propertyId) : items;
   const offset = Math.max(0, paginacion?.offset ?? 0);
   const limit = Math.min(200, paginacion?.limit ?? 100);
-  return filtrados.slice(offset, offset + limit);
+  return { datos: filtrados.slice(offset, offset + limit), hasMore: filtrados.length > offset + limit };
 }
 
 export class InMemoryBreakGlassRentasDataRepository implements BreakGlassRentasDataRepository {
@@ -110,31 +124,31 @@ export class InMemoryBreakGlassRentasDataRepository implements BreakGlassRentasD
     private readonly syncIcalPorOrganizacion: ReadonlyMap<string, readonly BreakGlassSyncIcalResumen[]> = new Map(),
   ) {}
 
-  async listReservasTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<readonly BreakGlassReservaResumen[]> {
-    return paginar(this.reservasPorOrganizacion.get(organizationId) ?? [], paginacion);
+  async listReservasTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassReservaResumen>> {
+    return { disponible: true, ...paginar(this.reservasPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
   async listFinanzasTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassFinanzasResumen>> {
-    return { disponible: true, datos: paginar(this.finanzasPorOrganizacion.get(organizationId) ?? [], paginacion) };
+    return { disponible: true, ...paginar(this.finanzasPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
   async listPayoutsTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassPayoutResumen>> {
-    return { disponible: true, datos: paginar(this.payoutsPorOrganizacion.get(organizationId) ?? [], paginacion) };
+    return { disponible: true, ...paginar(this.payoutsPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
   async listPricingTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassPricingResumen>> {
-    return { disponible: true, datos: paginar(this.pricingPorOrganizacion.get(organizationId) ?? [], paginacion) };
+    return { disponible: true, ...paginar(this.pricingPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
   async listMensajeriaTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassMensajeriaResumen>> {
-    return { disponible: true, datos: paginar(this.mensajeriaPorOrganizacion.get(organizationId) ?? [], paginacion) };
+    return { disponible: true, ...paginar(this.mensajeriaPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
   async listLimpiezaTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassLimpiezaResumen>> {
-    return { disponible: true, datos: paginar(this.limpiezaPorOrganizacion.get(organizationId) ?? [], paginacion) };
+    return { disponible: true, ...paginar(this.limpiezaPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 
   async listSyncIcalTenant(organizationId: string, _callerId: string, paginacion?: BreakGlassLectorPaginacion): Promise<BreakGlassLectorResultado<BreakGlassSyncIcalResumen>> {
-    return { disponible: true, datos: paginar(this.syncIcalPorOrganizacion.get(organizationId) ?? [], paginacion) };
+    return { disponible: true, ...paginar(this.syncIcalPorOrganizacion.get(organizationId) ?? [], paginacion) };
   }
 }

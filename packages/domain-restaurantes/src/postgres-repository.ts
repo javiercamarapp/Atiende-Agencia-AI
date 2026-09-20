@@ -10,6 +10,7 @@
 // Supabase Auth de usuario, el "service role" original se traduce aquí a una sesión
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import { OrderConflictError } from "./errors.ts";
 import type {
   Branch,
@@ -466,6 +467,19 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return rows[0]?.tier ?? null;
   }
 
+  // NOTA (r3, no-bloqueante de la re-revisión del PR #158 -- convertido por
+  // simetría/defensa en profundidad con `createAppointmentIdempotent` de
+  // `domain-citas`): hoy los dos callers reales de este método ya quedan a salvo del
+  // `COMMIT`-que-en-realidad-es-`ROLLBACK` (`AbortedTransactionCommitError`) SIN este
+  // SAVEPOINT -- la ruta HTTP (`apps/api/.../restaurantes/public.ts`) siempre
+  // RELANZA `OrderConflictError`/`Errors.conflict` fuera del callback de
+  // `withAppSession` (`fn` nunca resuelve normalmente, el motor hace un `rollback`
+  // real), y el agente de WhatsApp (`executeToolCall`) ya envuelve TODA la tool call
+  // en su propio `runWithRowSavepoint` exterior. Se convierte igual, por si un
+  // caller futuro (ej. un panel admin que mapee `OrderConflictError` a una respuesta
+  // 409 normal, como ya hace `appointments-lifecycle.ts::mapErrorToHttp` con
+  // `AppointmentAlternativesError`) reutilizara la sesión después sin su propio
+  // SAVEPOINT.
   async createOrderIdempotent(order: NewOrderRecord, dedupeFingerprint: string, idempotencyKey: string | null): Promise<Order> {
     // restaurantes.create_order_idempotent (ver migrations/003) lanza sqlstate PT409
     // cuando la misma idempotency_key se reutiliza con un dedupe_fingerprint distinto
@@ -474,9 +488,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     // aquí, en el punto real donde llega el error crudo de Postgres, al
     // OrderConflictError tipado que ya consume apps/api/src/routes/verticals/restaurantes/public.ts.
     try {
-      const { rows } = await this.db.query<{ create_order_idempotent: OrderRow }>(
-        `select restaurantes.create_order_idempotent($1::jsonb, $2, $3) as create_order_idempotent;`,
-        [
+      const { rows } = await this.runWithRowSavepoint(() =>
+        this.db.query<{ create_order_idempotent: OrderRow }>(`select restaurantes.create_order_idempotent($1::jsonb, $2, $3) as create_order_idempotent;`, [
           JSON.stringify({
             organization_id: order.organizationId,
             property_id: order.propertyId,
@@ -496,7 +509,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
           }),
           dedupeFingerprint,
           idempotencyKey,
-        ],
+        ]),
       );
       return mapOrder(rows[0]!.create_order_idempotent);
     } catch (err) {
@@ -583,6 +596,23 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
        where message_id = $2 and organization_id = $1;`,
       [organizationId, messageId, errorClass],
     );
+  }
+
+  // Aislamiento por tool call del turno de WhatsApp (ver el comentario de cabecera
+  // de `runWithRowSavepoint` en `repository.ts` para el diseño completo) -- mismo
+  // `runWithSavepointFallback` que `PostgresCitasRepository`, con `isRecoverable`
+  // fijo en `true` y un `fallback` que simplemente relanza el mismo error DESPUÉS de
+  // que `ROLLBACK TO SAVEPOINT` ya dejó la transacción del turno utilizable para el
+  // resto del loop de tool-use / el commit final.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: fn,
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
   }
 
   // ---- Dispatcher real de messaging_outbox (migrations/007) ----

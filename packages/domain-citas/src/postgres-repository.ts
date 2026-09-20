@@ -10,6 +10,7 @@
 // ruta de staff (cancelar desde panel) sí abre sesión con el userId real, que es lo
 // que `cancelAppointmentFromPanel` recibe como `actorUserId`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
@@ -590,24 +591,36 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows.map(mapAppointment);
   }
 
+  // NOTA (bloqueante r3, re-revisión PR #158): el RPC va envuelto en
+  // `runWithRowSavepoint` -- si `citas.create_appointment_idempotent` lanza
+  // AT423/AT409, Postgres deja la transacción del request ABORTADA (RAISE dentro de
+  // una función SQL, no algo que un `catch` de JS pueda deshacer). Sin el SAVEPOINT,
+  // el catch de abajo mapea el error a un resultado discriminado normal, pero la
+  // sesión SIGUE abortada: cualquier caller que reutilice `db` después (o el
+  // `COMMIT` final de `withAppSession`) revienta con 25P02/`AbortedTransactionCommit
+  // Error`. `runWithRowSavepoint` hace `ROLLBACK TO SAVEPOINT` ANTES de que el error
+  // llegue a este catch, así que cuando el catch mapea AT423/AT409, la sesión ya está
+  // utilizable de nuevo.
   async createAppointmentIdempotent(input: NewAppointmentInput, dedupeFingerprint: string, idempotencyKey: string | null): Promise<CreateAppointmentResult> {
     try {
-      const { rows } = await this.db.query<{ create_appointment_idempotent: AppointmentRow }>(`select citas.create_appointment_idempotent($1::jsonb, $2, $3) as create_appointment_idempotent;`, [
-        JSON.stringify({
-          organization_id: input.organizationId,
-          property_id: input.propertyId,
-          provider_id: input.providerId,
-          service_id: input.serviceId,
-          customer_id: input.customerId,
-          starts_at: input.startsAt,
-          ends_at: input.endsAt,
-          status: input.status,
-          source: input.source,
-          notes: input.notes,
-        }),
-        dedupeFingerprint,
-        idempotencyKey,
-      ]);
+      const { rows } = await this.runWithRowSavepoint(() =>
+        this.db.query<{ create_appointment_idempotent: AppointmentRow }>(`select citas.create_appointment_idempotent($1::jsonb, $2, $3) as create_appointment_idempotent;`, [
+          JSON.stringify({
+            organization_id: input.organizationId,
+            property_id: input.propertyId,
+            provider_id: input.providerId,
+            service_id: input.serviceId,
+            customer_id: input.customerId,
+            starts_at: input.startsAt,
+            ends_at: input.endsAt,
+            status: input.status,
+            source: input.source,
+            notes: input.notes,
+          }),
+          dedupeFingerprint,
+          idempotencyKey,
+        ]),
+      );
       return { outcome: "created", appointment: mapAppointment(rows[0]!.create_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
@@ -639,9 +652,12 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows.map(mapAppointment);
   }
 
+  // NOTA (bloqueante r3): mismo argumento que `createAppointmentIdempotent` de
+  // arriba -- `runWithRowSavepoint` alrededor del RPC para que el catch de abajo
+  // mapee AT404/AT409/AT403 sobre una sesión ya recuperada, no una abortada.
   private async runCancelRpc(fn: "cancel_appointment_idempotent" | "cancel_appointment_from_panel", organizationId: string, appointmentId: string): Promise<CancelResult> {
     try {
-      const { rows } = await this.db.query<{ [key: string]: AppointmentRow }>(`select citas.${fn}($1, $2) as result;`, [organizationId, appointmentId]);
+      const { rows } = await this.runWithRowSavepoint(() => this.db.query<{ [key: string]: AppointmentRow }>(`select citas.${fn}($1, $2) as result;`, [organizationId, appointmentId]));
       const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
       return { outcome: appointment.status === "cancelled" ? "cancelled" : "already_cancelled", appointment };
     } catch (err) {
@@ -671,9 +687,10 @@ export class PostgresCitasRepository implements CitasRepository {
   // runCancelRpc: RPC atómica real, AT404/AT409 mapeados a valores discriminados,
   // nunca excepciones crudas de Postgres saliendo del adaptador. ----
 
+  // NOTA (bloqueante r3): mismo argumento -- `runWithRowSavepoint` alrededor del RPC.
   async confirmAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<ConfirmResult> {
     try {
-      const { rows } = await this.db.query<{ result: AppointmentRow }>(`select citas.confirm_appointment_from_panel($1, $2) as result;`, [organizationId, appointmentId]);
+      const { rows } = await this.runWithRowSavepoint(() => this.db.query<{ result: AppointmentRow }>(`select citas.confirm_appointment_from_panel($1, $2) as result;`, [organizationId, appointmentId]));
       const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
       return { outcome: appointment.status === "confirmed" ? "confirmed" : "already_confirmed", appointment };
     } catch (err) {
@@ -685,9 +702,10 @@ export class PostgresCitasRepository implements CitasRepository {
     }
   }
 
+  // NOTA (bloqueante r3): mismo argumento -- `runWithRowSavepoint` alrededor del RPC.
   async completeAppointmentFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<CompleteResult> {
     try {
-      const { rows } = await this.db.query<{ result: AppointmentRow }>(`select citas.complete_appointment_from_panel($1, $2) as result;`, [organizationId, appointmentId]);
+      const { rows } = await this.runWithRowSavepoint(() => this.db.query<{ result: AppointmentRow }>(`select citas.complete_appointment_from_panel($1, $2) as result;`, [organizationId, appointmentId]));
       const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
       return { outcome: appointment.status === "completed" ? "completed" : "already_completed", appointment };
     } catch (err) {
@@ -699,9 +717,10 @@ export class PostgresCitasRepository implements CitasRepository {
     }
   }
 
+  // NOTA (bloqueante r3): mismo argumento -- `runWithRowSavepoint` alrededor del RPC.
   async markAppointmentNoShowFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<NoShowResult> {
     try {
-      const { rows } = await this.db.query<{ result: AppointmentRow }>(`select citas.mark_appointment_no_show_from_panel($1, $2) as result;`, [organizationId, appointmentId]);
+      const { rows } = await this.runWithRowSavepoint(() => this.db.query<{ result: AppointmentRow }>(`select citas.mark_appointment_no_show_from_panel($1, $2) as result;`, [organizationId, appointmentId]));
       const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
       return { outcome: appointment.status === "no_show" ? "marked_no_show" : "already_no_show", appointment };
     } catch (err) {
@@ -719,11 +738,22 @@ export class PostgresCitasRepository implements CitasRepository {
   // humano, no un canal reintentable) -- el único invariante real es el EXCLUDE
   // using gist (AT423 -> conflict_slot_taken), mismo mapeo que
   // createAppointmentIdempotent de arriba.
+  // NOTA (bloqueante r3): mismo argumento -- `runWithRowSavepoint` alrededor del RPC.
   async createAppointmentFromPanel(input: NewAppointmentFromPanelInput): Promise<CreateFromPanelResult> {
     try {
-      const { rows } = await this.db.query<{ result: AppointmentRow }>(
-        `select citas.create_appointment_from_panel($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as result;`,
-        [input.organizationId, input.propertyId, input.providerId, input.serviceId, input.customerName, input.customerPhone, input.customerEmail, input.startsAt, input.endsAt, input.notes],
+      const { rows } = await this.runWithRowSavepoint(() =>
+        this.db.query<{ result: AppointmentRow }>(`select citas.create_appointment_from_panel($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as result;`, [
+          input.organizationId,
+          input.propertyId,
+          input.providerId,
+          input.serviceId,
+          input.customerName,
+          input.customerPhone,
+          input.customerEmail,
+          input.startsAt,
+          input.endsAt,
+          input.notes,
+        ]),
       );
       const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
       return { outcome: "created", appointment };
@@ -735,16 +765,33 @@ export class PostgresCitasRepository implements CitasRepository {
     }
   }
 
+  // BLOQUEANTE re-revisión PR #158 (r3, ronda 2 de auditoría): regresión 409 -> 500
+  // real en `POST /v1/citas/:orgSlug/appointments/:appointmentId/reschedule`
+  // (`apps/api/.../appointments-lifecycle.ts`, sesión propia de `withAppSession`).
+  // En una carrera real de horario, `citas.reschedule_appointment_idempotent` lanza
+  // AT423 -- sin SAVEPOINT, el catch de abajo mapeaba el error a un resultado
+  // discriminado normal (`conflict_slot_taken`), pero dejaba la sesión ABORTADA;
+  // `appointments.ts::rescheduleAppointment` entonces llamaba a
+  // `computeAlternativeSlots`, cuyas consultas fallaban con 25P02 y su catch-all
+  // devolvía `[]` (alternativas vacías); `mapErrorToHttp` respondía 409 igual, pero
+  // el `COMMIT` final de la sesión (todavía abortada) disparaba
+  // `AbortedTransactionCommitError` -- 500 a un caller ACTUAL, no futuro. Con
+  // `runWithRowSavepoint` alrededor del RPC, la sesión queda recuperada ANTES de que
+  // este catch mapee AT423, así que `computeAlternativeSlots` corre sobre una sesión
+  // sana y devuelve alternativas REALES, y el `COMMIT` final sí tiene éxito (409 con
+  // alternativas, nunca 500). Mismo patrón en `reassignAppointmentIdempotent` abajo.
   async rescheduleAppointmentIdempotent(organizationId: string, appointmentId: string, newStartsAt: string, newEndsAt: string, actorChannel: AppointmentActorChannel, actorNote: string | null): Promise<RescheduleResult> {
     try {
-      const { rows } = await this.db.query<{ reschedule_appointment_idempotent: AppointmentRow }>(`select citas.reschedule_appointment_idempotent($1, $2, $3, $4, $5, $6) as reschedule_appointment_idempotent;`, [
-        organizationId,
-        appointmentId,
-        newStartsAt,
-        newEndsAt,
-        actorChannel,
-        actorNote,
-      ]);
+      const { rows } = await this.runWithRowSavepoint(() =>
+        this.db.query<{ reschedule_appointment_idempotent: AppointmentRow }>(`select citas.reschedule_appointment_idempotent($1, $2, $3, $4, $5, $6) as reschedule_appointment_idempotent;`, [
+          organizationId,
+          appointmentId,
+          newStartsAt,
+          newEndsAt,
+          actorChannel,
+          actorNote,
+        ]),
+      );
       return { outcome: "rescheduled", appointment: mapAppointment(rows[0]!.reschedule_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
@@ -755,17 +802,21 @@ export class PostgresCitasRepository implements CitasRepository {
     }
   }
 
+  // NOTA (bloqueante r3): mismo argumento que `rescheduleAppointmentIdempotent` de
+  // arriba -- `runWithRowSavepoint` alrededor del RPC.
   async reassignAppointmentIdempotent(organizationId: string, appointmentId: string, newProviderId: string, newServiceId: string, newEndsAt: string, actorChannel: AppointmentActorChannel, actorNote: string | null): Promise<ReassignResult> {
     try {
-      const { rows } = await this.db.query<{ reassign_appointment_idempotent: AppointmentRow }>(`select citas.reassign_appointment_idempotent($1, $2, $3, $4, $5, $6, $7) as reassign_appointment_idempotent;`, [
-        organizationId,
-        appointmentId,
-        newProviderId,
-        newServiceId,
-        newEndsAt,
-        actorChannel,
-        actorNote,
-      ]);
+      const { rows } = await this.runWithRowSavepoint(() =>
+        this.db.query<{ reassign_appointment_idempotent: AppointmentRow }>(`select citas.reassign_appointment_idempotent($1, $2, $3, $4, $5, $6, $7) as reassign_appointment_idempotent;`, [
+          organizationId,
+          appointmentId,
+          newProviderId,
+          newServiceId,
+          newEndsAt,
+          actorChannel,
+          actorNote,
+        ]),
+      );
       return { outcome: "reassigned", appointment: mapAppointment(rows[0]!.reassign_appointment_idempotent) };
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: unknown }).code : undefined;
@@ -969,18 +1020,38 @@ export class PostgresCitasRepository implements CitasRepository {
    * proyecto, ver diseño §4/§9) exactamente igual que "sin proveedor conectado":
    * null, nunca una excepción que tumbe la corrida de reconciliación completa —
    * mismo criterio honesto que `resolveRefreshTokenFromVault` del origen.
+   *
+   * No-bloqueante de revisión (PR #158, ronda 1) — este `try/catch` atrapaba
+   * CUALQUIER error de `citas.get_provider_calendar_refresh_token` SIN `SAVEPOINT`,
+   * dentro del `withAppSession` propio del resolver (ver
+   * `apps/api/src/production/deps.ts::buildRealGoogleCalendarPortResolver`/
+   * `buildRealCalendarSyncPortResolver`, cada invocación abre su PROPIA sesión de
+   * una sola consulta). Con la defensa de `managed-postgres-engine.ts` de este PR,
+   * un Vault no disponible pasaba de "skip silencioso" a
+   * `AbortedTransactionCommitError`: la cita quedaba en `pending` y el cron de
+   * reconciliación reportaba error en cada corrida (no se pierden reservas —
+   * `tryTriggerCalendarSync`/`syncOneAppointmentRow` ya absorben cualquier error de
+   * este resolver — pero sí cambia el comportamiento observable). Mismo patrón
+   * `runWithSavepointFallback` que `recordBillingWebhookEvent`
+   * (`packages/db/src/postgres-core-repository.ts`): SIEMPRE recuperable, el
+   * `fallback` reproduce exactamente el `console.warn` + `null` de antes.
    */
   async resolveProviderCalendarRefreshToken(providerId: string): Promise<string | null> {
     const { rows: accountRows } = await this.db.query<{ google_refresh_token_secret_id: string | null }>(`select google_refresh_token_secret_id from citas.provider_calendar_accounts where provider_id = $1;`, [providerId]);
     const secretId = accountRows[0]?.google_refresh_token_secret_id ?? null;
     if (!secretId) return null;
-    try {
-      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
-      return rows[0]?.get_provider_calendar_refresh_token ?? null;
-    } catch (err) {
-      console.warn("resolveProviderCalendarRefreshToken: Vault no disponible todavía (Google Calendar real pendiente de infraestructura, ver diseño §4/§9):", err instanceof Error ? err.message : err);
-      return null;
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+        return rows[0]?.get_provider_calendar_refresh_token ?? null;
+      },
+      isRecoverable: () => true,
+      fallback: (err) => {
+        console.warn("resolveProviderCalendarRefreshToken: Vault no disponible todavía (Google Calendar real pendiente de infraestructura, ver diseño §4/§9):", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
   }
 
   async setProviderCalendarAccountSyncError(providerId: string, error: string): Promise<void> {
@@ -1068,12 +1139,68 @@ export class PostgresCitasRepository implements CitasRepository {
     await this.db.query(`update citas.appointments set google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = $4 where id = $1;`, [appointmentId, attempts, error, nextRetryAtIso]);
   }
 
+  // Aislamiento por fila del lote de reconciliación (ver el comentario de cabecera
+  // de `runWithRowSavepoint` en `repository.ts` para el diseño completo) —
+  // reutiliza el mismo `runWithSavepointFallback`, pero con `isRecoverable` fijo en
+  // `true` y un `fallback` que simplemente relanza el mismo error DESPUÉS de que
+  // `ROLLBACK TO SAVEPOINT` ya dejó la transacción del lote utilizable para la
+  // siguiente fila -- a diferencia de `markAppointmentGoogleSyncInvalid`, aquí no
+  // hay una consulta SQL alternativa que correr, solo aislamiento.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: fn,
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
+  }
+
   async markAppointmentGoogleSyncExhausted(appointmentId: string, attempts: number, error: string): Promise<void> {
     await this.db.query(`update citas.appointments set google_sync_status = 'error', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, error]);
   }
 
+  // Hallazgo CRÍTICO de auditoría (a1, verificado contra `main` en b4e5a83) — el
+  // CHECK vigente en la base real (`migrations/005_google_calendar_sync.sql` ~91-92,
+  // `appointments_google_sync_status_check`) NO incluye `'invalid'` — solo lo agrega
+  // la migración `019_calendar_sync_error_visibility.sql`, que "mergear a main" NUNCA
+  // aplica automáticamente (ver REGLA DURA de docs/DEPLOY.md). Un UPDATE directo con
+  // `google_sync_status = 'invalid'` contra la base sin migrar lanza SQLSTATE 23514
+  // (`check_violation`) — y esto se dispara con CUALQUIER rechazo 400/404/409/422 del
+  // proveedor de calendario (caso normal documentado: reserva Cal.com sin correo del
+  // cliente, ver `isPermanentValidationError`/`calendar-sync.ts`).
+  //
+  // Sin SAVEPOINT, ese 23514 deja ABORTADA la transacción del request (crear/
+  // cancelar/reagendar cita, `tryTriggerCalendarSync` corre en la MISMA transacción
+  // que la escritura real, ver `appointments.ts`) o del batch del cron
+  // (`syncPendingAppointmentsMultiProvider`) — la cita, el correo encolado y el
+  // rate-limit del request se revierten en silencio (el `COMMIT` sobre una
+  // transacción abortada no lanza error, ver `managed-postgres-engine.ts`), y en el
+  // batch, `createEvent` de Google ya corrió (no es idempotente) así que la
+  // siguiente corrida duplica el evento en calendarios de tenants sanos. Mismo
+  // patrón SAVEPOINT ya usado en `upsertCustomer` de este archivo (~460-491):
+  // degrada al UPDATE previo a la migración 019 (`google_sync_status = 'error'`,
+  // mismo SQL que `markAppointmentGoogleSyncExhausted`) conservando el motivo
+  // legible en `google_sync_error` — la cita queda en un estado FINAL válido en
+  // ambas versiones del esquema, nunca se pierde el intento. Cualquier otro código
+  // de error se repropaga tal cual (`runWithSavepointFallback` nunca enmascara un
+  // fallo real).
   async markAppointmentGoogleSyncInvalid(appointmentId: string, attempts: number, reason: string): Promise<void> {
-    await this.db.query(`update citas.appointments set google_sync_status = 'invalid', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`, [appointmentId, attempts, reason]);
+    await runWithSavepointFallback({
+      session: this.db,
+      primary: () =>
+        this.db.query(
+          `update citas.appointments set google_sync_status = 'invalid', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`,
+          [appointmentId, attempts, reason],
+        ),
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "23514",
+      fallback: () =>
+        this.db.query(
+          `update citas.appointments set google_sync_status = 'error', google_sync_attempts = $2, google_sync_error = left($3, 500), google_sync_next_retry_at = null where id = $1;`,
+          [appointmentId, attempts, reason],
+        ),
+    });
   }
 
   /** Fase 6 §2 (seguimiento) — a diferencia de `runCancelRpc`/confirm/complete/
@@ -1084,9 +1211,12 @@ export class PostgresCitasRepository implements CitasRepository {
    * lleve el `google_sync_status` REAL de la cita en vez de un valor adivinado.
    * AT404/AT403 sí se raisean (cita no encontrada / staff fuera de la sucursal),
    * mismo criterio que el resto del panel. */
+  // NOTA (bloqueante r3): mismo argumento -- `runWithRowSavepoint` alrededor del RPC.
   async retryAppointmentCalendarSyncFromPanel(organizationId: string, appointmentId: string, _actorUserId: string): Promise<RetryCalendarSyncResult> {
     try {
-      const { rows } = await this.db.query<{ result: { retried: boolean; appointment: AppointmentRow } }>(`select citas.retry_appointment_calendar_sync_from_panel($1, $2) as result;`, [organizationId, appointmentId]);
+      const { rows } = await this.runWithRowSavepoint(() =>
+        this.db.query<{ result: { retried: boolean; appointment: AppointmentRow } }>(`select citas.retry_appointment_calendar_sync_from_panel($1, $2) as result;`, [organizationId, appointmentId]),
+      );
       const result = (rows[0] as unknown as { result: { retried: boolean; appointment: AppointmentRow } }).result;
       const appointment = mapAppointment(result.appointment);
       if (!result.retried) return { outcome: "conflict_invalid_status", status: appointment.googleSyncStatus };
@@ -1214,17 +1344,32 @@ export class PostgresCitasRepository implements CitasRepository {
     await this.db.query(`update citas.provider_calcom_accounts set sync_status = 'disconnected', sync_error = null, updated_at = now() where provider_id = $1;`, [providerId]);
   }
 
+  /** No-bloqueante de re-revisión (PR #158, r3) — sitio hermano IDÉNTICO de
+   * `resolveProviderCalendarRefreshToken` (ver su comentario de cabecera para el
+   * diseño completo): este `try/catch` atrapaba CUALQUIER error de
+   * `citas.get_provider_calendar_refresh_token` SIN `SAVEPOINT`, dentro de la MISMA
+   * sesión que `createCalendarSyncPortResolver` reutiliza para 3-6 consultas
+   * (Google, Cal.com, CalDAV — ver `calendar-sync-resolver-factory.ts`). Sin
+   * SAVEPOINT, un Vault no disponible aquí dejaba la sesión abortada para la
+   * SIGUIENTE cuenta que ese mismo resolver intente resolver en la misma corrida
+   * (ej. si Cal.com falla, la búsqueda de CalDAV que sigue daría 25P02 en vez de
+   * intentar su propio camino). */
   async resolveProviderCalComApiKey(providerId: string): Promise<string | null> {
     const { rows: accountRows } = await this.db.query<{ calcom_api_key_secret_id: string | null }>(`select calcom_api_key_secret_id from citas.provider_calcom_accounts where provider_id = $1;`, [providerId]);
     const secretId = accountRows[0]?.calcom_api_key_secret_id ?? null;
     if (!secretId) return null;
-    try {
-      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
-      return rows[0]?.get_provider_calendar_refresh_token ?? null;
-    } catch (err) {
-      console.warn("resolveProviderCalComApiKey: Vault no disponible todavía:", err instanceof Error ? err.message : err);
-      return null;
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+        return rows[0]?.get_provider_calendar_refresh_token ?? null;
+      },
+      isRecoverable: () => true,
+      fallback: (err) => {
+        console.warn("resolveProviderCalComApiKey: Vault no disponible todavía:", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
   }
 
   async setProviderCalComAccountSyncError(providerId: string, error: string): Promise<void> {
@@ -1283,17 +1428,27 @@ export class PostgresCitasRepository implements CitasRepository {
     await this.db.query(`update citas.provider_caldav_accounts set sync_status = 'disconnected', sync_error = null, updated_at = now() where provider_id = $1;`, [providerId]);
   }
 
+  /** No-bloqueante de re-revisión (PR #158, r3) — mismo sitio hermano que
+   * `resolveProviderCalComApiKey` de arriba (ver su comentario para el diseño
+   * completo): idéntico riesgo de dejar la sesión compartida de
+   * `createCalendarSyncPortResolver` abortada para la siguiente cuenta de la misma
+   * corrida si Vault falla aquí sin SAVEPOINT. */
   async resolveProviderCalDavPassword(providerId: string): Promise<string | null> {
     const { rows: accountRows } = await this.db.query<{ caldav_password_secret_id: string | null }>(`select caldav_password_secret_id from citas.provider_caldav_accounts where provider_id = $1;`, [providerId]);
     const secretId = accountRows[0]?.caldav_password_secret_id ?? null;
     if (!secretId) return null;
-    try {
-      const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
-      return rows[0]?.get_provider_calendar_refresh_token ?? null;
-    } catch (err) {
-      console.warn("resolveProviderCalDavPassword: Vault no disponible todavía:", err instanceof Error ? err.message : err);
-      return null;
-    }
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ get_provider_calendar_refresh_token: string | null }>(`select citas.get_provider_calendar_refresh_token($1) as get_provider_calendar_refresh_token;`, [secretId]);
+        return rows[0]?.get_provider_calendar_refresh_token ?? null;
+      },
+      isRecoverable: () => true,
+      fallback: (err) => {
+        console.warn("resolveProviderCalDavPassword: Vault no disponible todavía:", err instanceof Error ? err.message : err);
+        return Promise.resolve(null);
+      },
+    });
   }
 
   async setProviderCalDavAccountSyncError(providerId: string, error: string): Promise<void> {

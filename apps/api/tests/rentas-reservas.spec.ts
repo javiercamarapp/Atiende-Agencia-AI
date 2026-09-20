@@ -77,24 +77,17 @@ describe("POST /rentas/:propertyId/unidades/:unidadId/reservas", () => {
     // real, sin RESEND_API_KEY en este fixture (ver TEST_ENV.resend.apiKey === null).
     expect(res.status).toBe(201);
 
-    // Sin ningún POST/GET a /internal/rentas/email-dispatch de por medio: el
-    // disparo inline (triggerRentasEmailDispatchInline) ya reclamó el job y marcó
-    // el intento fallido DENTRO de este mismo request -- nunca se queda en
-    // 'pending' esperando al cron diario.
-    //
-    // attempts=2 (no 1) desde el arreglo de fondo de la auditoría a2: además del
-    // disparo inline de arriba, dbSession ahora corre `runRentasEmailDispatch`
-    // (sesión de SISTEMA) como tarea post-commit -- ver
-    // ./email-dispatch.ts::triggerRentasEmailDispatchInline y
-    // packages/core-auth/src/middleware.ts::dbSession. Contra Postgres real esto
-    // NO reprocesa el job dos veces: el intento inline en sesión de staff SIEMPRE
-    // es un no-op (claim_email_outbox_batch lanza 42501 antes de reclamar nada),
-    // así que solo la tarea post-commit reclama de verdad. `InMemoryRentasRepository`
-    // (este fixture) no modela ese guard, así que en este entorno de prueba AMBOS
-    // intentos sí reclaman el job -- fidelidad de test conocida, no un bug.
+    // Fix a2b (CRÍTICO, seguimiento PR #166): sin RESEND_API_KEY en este
+    // fixture (TEST_ENV.resend.apiKey === null), NI el disparo inline
+    // (triggerRentasEmailDispatchInline) NI la tarea post-commit
+    // (runRentasEmailDispatch) llegan a reclamar nada -- `dispatchPendingEmailJobs`
+    // corta antes del claim en ambos casos. El job queda intacto en 'pending'
+    // con attempts=0 (antes de este fix, quedaba 'failed' con attempts=2 -- una
+    // "fidelidad de test conocida" que en realidad escondía el bug real: cada
+    // corrida sin proveedor quemaba intentos de verdad).
     const job = ctx.rentasRepo.getMessagingOutbox().find((o) => o.channel === "email" && o.eventType === "reserva.creada");
-    expect(job?.status).toBe("failed");
-    expect(job?.attempts).toBe(2);
+    expect(job?.status).toBe("pending");
+    expect(job?.attempts).toBe(0);
   });
 
   it("huespedContacto sin correo real (solo teléfono): no encola ningún correo (nunca es un error para la reserva)", async () => {

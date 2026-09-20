@@ -18,7 +18,7 @@ import type { FiscalDeadlineRecord } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { runDespachosEmailDispatch, triggerDespachosEmailDispatchInline } from "./notifications.ts";
+import { INLINE_BATCH_SIZE, runDespachosEmailDispatch, triggerDespachosEmailDispatchInline } from "./notifications.ts";
 
 interface CalcularBody {
   readonly year?: unknown;
@@ -133,7 +133,7 @@ export function despachosVencimientosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     // inline de arriba SIEMPRE es un no-op seguro (42501); el envío real solo
     // puede pasar DESPUÉS de que esta transacción confirme, en sesión de
     // sistema (runDespachosEmailDispatch ya pasa el guard auth.uid() is null).
-    c.get("postCommitTasks").push(() => runDespachosEmailDispatch(deps).then(() => undefined));
+    c.get("postCommitTasks").push(() => runDespachosEmailDispatch(deps, INLINE_BATCH_SIZE).then(() => undefined));
 
     return c.json(
       {

@@ -1,4 +1,5 @@
 import type {
+  AuthzAuditRepository,
   CoreRepository,
   CoreStaffRepository,
   ImpersonationRepository,
@@ -284,6 +285,29 @@ export interface AppDeps {
    *  `engine.withAppSession({ userId: callerId }, ...)`, jamás sobre `coreRepo`
    *  (ese sí es de sesión de sistema). */
   readonly impersonationRepo: (db: TenantDbSession) => ImpersonationRepository;
+  /** Sink persistente de `requireAdminAccess` (audit-on-denial de TODA
+   *  `/superadmin/*`, ver routes/superadmin.ts) -- pendiente declarado
+   *  explícitamente en el PR #162 ("Huecos conocidos": el sink seguía siendo
+   *  `InMemoryAuditSink`, por-proceso). Implementa `@atiende/core-authz::AuditSink`
+   *  -- tipo compartido, MISMO patrón que `despachosAuditSink`/
+   *  `hotelesFraudeAuditSink` (integración transversal desde sesión de
+   *  SISTEMA, NO una fábrica por-request): en producción,
+   *  `PersistentAuthzAuditSink` (production/authz-audit-sink.ts), que cae a
+   *  un `InMemoryAuditSink` interno mientras
+   *  `packages/db/migrations/0021_superadmin_authz_audit_log.sql` no esté
+   *  aplicada; en tests, un `InMemoryAuditSink` liso -- mismo comportamiento
+   *  que ESTE campo reemplaza (antes un `export const` module-level en
+   *  superadmin.ts, ahora inyectado para que tests y producción puedan variar
+   *  de verdad qué implementación usan). */
+  readonly authzAuditSink: AuditSink;
+  /** Lectura paginada de `core.authz_audit_log` para el panel de superadmin
+   *  (`GET /superadmin/authz-auditoria`, ver routes/superadmin.ts) -- MISMO
+   *  criterio que `impersonationRepo`: fábrica por-request, SIEMPRE sobre
+   *  `engine.withAppSession({ userId: callerId }, ...)`
+   *  (`core.list_authz_audit_log_for_superadmin` exige `auth.uid() = p_caller_id`).
+   *  La ESCRITURA (audit-on-denial) no pasa por aquí -- ver `authzAuditSink`
+   *  arriba, que abre su PROPIA sesión de sistema. */
+  readonly authzAuditRepo: (db: TenantDbSession) => AuthzAuditRepository;
   /** Gateway LLM real compartido (packages/agent-core::LlmGateway), construido por
    * `production/llm-gateway.ts::buildProductionLlmGateway` SOLO SI al menos un
    * proveedor (Anthropic/OpenAI/OpenRouter) tiene API key configurada -- ver ese

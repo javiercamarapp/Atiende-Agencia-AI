@@ -229,6 +229,21 @@ export interface BreakGlassLectorResultado<T> {
    *  nunca cuando la consulta corrió con éxito y de verdad no encontró filas. */
   readonly disponible: boolean;
   readonly datos: readonly T[];
+  /**
+   * Hallazgo BAJA confirmado de la auditoría a2 (evidencia:
+   * auditoria-a2-resultado.json, tercer elemento de `confirmed`): los 7
+   * lectores de tenant devuelven como máximo `BREAK_GLASS_LECTOR_LIMIT_MAX`
+   * filas (las más recientes) y ni la API ni la UI indicaban que había más --
+   * un superadmin investigando un incidente creía haber visto todo el tenant.
+   *
+   * `true` cuando existen más filas allende esta página -- calculado con un
+   * "peek" (pedir `limit + 1` filas reales y recortar la última antes de
+   * devolver `datos`, ver `PostgresBreakGlassRentasDataRepository`), NUNCA
+   * con un `COUNT(*)` aparte (mandato de la tarea: "sin una consulta cara").
+   * `false` es el default seguro cuando `disponible` es `false` (no hay
+   * lectura real que paginar).
+   */
+  readonly hasMore: boolean;
 }
 
 export interface BreakGlassFinanzasResumen {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   hashPassword,
+  InMemoryAuthzAuditRepository,
   InMemoryCoreRepository,
   InMemoryImpersonationRepository,
   InMemoryLlmUsageRepository,
@@ -152,6 +153,12 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
   // los tests que impersonan esa organización no tengan que resembrarla.
   const impersonationRepo = new InMemoryImpersonationRepository();
   impersonationRepo.seedOrganization(organizationId);
+  // Misma razón que `impersonationRepo` de arriba: una sola instancia
+  // compartida por contexto de test -- un test que siembra una denegación y
+  // luego hace `GET /superadmin/authz-auditoria` necesita que ambas
+  // operaciones vean el MISMO repositorio en memoria, no una instancia nueva
+  // por cada `authzAuditRepo(db)`.
+  const authzAuditRepo = new InMemoryAuthzAuditRepository();
   const deps: AppDeps = {
     env: TEST_ENV,
     coreRepo,
@@ -201,6 +208,14 @@ export async function buildTestDeps(): Promise<{ deps: AppDeps; restaurantesRepo
     rentasBreakGlassAuditRepo: (_db) => rentasBreakGlassAuditRepo,
     rentasBreakGlassDataRepo: (_db) => rentasBreakGlassDataRepo,
     impersonationRepo: (_db) => impersonationRepo,
+    // Bitácora persistente de denegaciones de /superadmin/* -- `InMemoryAuditSink`
+    // liso en tests (mismo comportamiento que el `export const` module-level que
+    // reemplaza, ver routes/superadmin.ts) + `InMemoryAuthzAuditRepository` para
+    // el lado de lectura (`GET /superadmin/authz-auditoria`). Nunca simula
+    // `not_migrated` -- ese caso solo lo ejercita un doble dedicado, ver
+    // superadmin-authz-audit-log.spec.ts.
+    authzAuditSink: new InMemoryAuditSink(),
+    authzAuditRepo: (_db) => authzAuditRepo,
     llmGateway: undefined,
     llmUsageRepo,
     saludRepo,

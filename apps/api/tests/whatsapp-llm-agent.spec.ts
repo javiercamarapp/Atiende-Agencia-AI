@@ -12,7 +12,7 @@
 // memoria en vez de Postgres real (mismo criterio que el resto de la suite).
 import { randomUUID, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { hashPassword, InMemoryCoreRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
+import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InMemoryImpersonationRepository, InMemoryLlmUsageRepository, InMemoryResumenDiarioRepository, InMemorySaludRepository, InMemorySuperadminAccionesRepository, InMemoryTenancyEngine } from "@atiende/db";
 import {
   InMemoryRestaurantesRepository,
   createLlmWhatsAppTurnHandler,
@@ -216,6 +216,8 @@ async function buildLlmAgentTestDeps(script: (request: LlmCompletionRequest) => 
     // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
     // impersonación.
     impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
+    authzAuditSink: new InMemoryAuditSink(),
+    authzAuditRepo: (_db) => new InMemoryAuthzAuditRepository(),
     llmGateway: undefined,
     llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),
@@ -418,6 +420,8 @@ describe("Agente de WhatsApp con LLM real — end-to-end vía el webhook HTTP re
     // tenía cableado -- instancia en memoria vacía, nada de esta suite ejercita
     // impersonación.
     impersonationRepo: (_db) => new InMemoryImpersonationRepository(),
+    authzAuditSink: new InMemoryAuditSink(),
+    authzAuditRepo: (_db) => new InMemoryAuthzAuditRepository(),
       llmGateway: undefined,
       llmUsageRepo: new InMemoryLlmUsageRepository(),
       saludRepo: new InMemorySaludRepository(),

@@ -91,13 +91,27 @@ export function dbSession(engine: TenancyEngine): MiddlewareHandler<CoreAuthHono
     // AHORA una sesión nueva puede ver las filas que este request encoló (antes
     // del commit, esa sesión nueva -- en su propia transacción Postgres -- no
     // las vería, ver comentario largo de citas/email-dispatch.ts). Best-effort
-    // real: el body/status de la respuesta ya se armó dentro de `next()`, esto
-    // corre después y nunca lo toca; un fallo aquí solo se loguea.
+    // real: el body/status de la respuesta ya se ARMÓ dentro de `next()` y este
+    // bucle nunca lo modifica, pero eso NO significa que ya se haya
+    // TRANSMITIDO al cliente -- este middleware sigue dentro de la cadena de
+    // Hono (`dbSession` es un middleware más), así que el runtime HTTP real
+    // (Node/Vercel) solo escribe la respuesta al socket DESPUÉS de que esta
+    // función retorne. Fix a2b (seguimiento PR #166) -- el `await` de abajo SÍ
+    // suma latencia real y visible al request del staff (antes de este fix,
+    // hasta 25 envíos secuenciales a Resend sin timeout por request; ver
+    // `RESEND_FETCH_TIMEOUT_MS` y `INLINE_BATCH_SIZE` en cada
+    // `apps/api/.../email-dispatch.ts`), y en el peor caso puede acercar el
+    // request al límite de 30s de una función de Vercel. Un `waitUntil` real
+    // (p. ej. `@vercel/functions`) evitaría esa latencia sin arriesgar que el
+    // proceso se congele antes de completar la tarea (mismo problema que
+    // documenta `routes/internal/whatsapp-dispatch.ts::triggerInline`) — no se
+    // agregó en este PR por requerir una dependencia nueva compartida (ver
+    // knownGaps del PR).
     for (const task of postCommitTasks) {
       try {
         await task();
       } catch (err) {
-        console.error("dbSession: una tarea post-commit falló (best-effort, no afecta la respuesta ya enviada):", err);
+        console.error("dbSession: una tarea post-commit falló (best-effort, no afecta el body/status ya armado de la respuesta):", err);
       }
     }
   };

@@ -273,4 +273,50 @@ describe("SuperAdminBreakGlassPage", () => {
     expect(rendered.container.textContent).toContain("todavía no está disponible");
     expect(rendered.container.textContent).not.toContain("El tenant no tiene movimiento financiero");
   });
+
+  // Hallazgo BAJA confirmado de la auditoría a2 (evidencia:
+  // auditoria-a2-resultado.json, tercer elemento de `confirmed`): los 7
+  // lectores de tenant devolvían como máximo 100 filas sin indicar que había
+  // más -- mismo patrón que superadmin-authz-auditoria-page.spec.tsx: la
+  // segunda página se pide con `offset` real (nunca re-pide la primera) y
+  // "Cargar más" desaparece cuando `hasMore` ya es `false`.
+  it("'Cargar más' en reservas dispara la siguiente página con offset real y desaparece cuando hasMore es false", async () => {
+    const ahora = Date.now();
+    const reserva = (ocupacionId: string) => ({ ocupacionId, propertyId: "p1", unidadId: "u1", checkIn: "2026-10-01", checkOut: "2026-10-05", estado: "confirmado", huespedNombre: "Ana", huespedContacto: null });
+    fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/superadmin/break-glass/sesiones")) {
+        return jsonResponse({
+          sessions: [
+            { id: "s1", organizationId: "org-1", reason: "Ticket SOP-4821: investigar cobro duplicado.", openedAtMs: ahora, expiresAtMs: ahora + 30 * 60_000, closedAtMs: null, closedBy: null, activa: true, remainingMs: 30 * 60_000 },
+          ],
+        });
+      }
+      if (url.includes("/superadmin/break-glass/bitacora")) return jsonResponse({ entries: [] });
+      if (url.includes("/reservas") && url.includes("offset=0")) return jsonResponse({ reservas: [reserva("oc-1")], disponible: true, hasMore: true });
+      if (url.includes("/reservas") && url.includes("offset=1")) return jsonResponse({ reservas: [reserva("oc-2")], disponible: true, hasMore: false });
+      throw new Error(`fetch inesperado en el test: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    rendered = renderPage();
+    await esperarCarga();
+
+    const verDatosBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Ver datos del tenant"));
+    click(verDatosBtn!);
+    await esperarCarga();
+
+    expect(rendered.container.textContent).toContain("Mostrando 1, hay más");
+    const cargarMasBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cargar más");
+    expect(cargarMasBtn).toBeDefined();
+
+    await act(async () => {
+      click(cargarMasBtn!);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+
+    expect(fetchMock.mock.calls.some((call: unknown[]) => String(call[0]).includes("/organizaciones/org-1/reservas") && String(call[0]).includes("offset=1"))).toBe(true);
+    // Ambas páginas quedan visibles -- "cargar más" CONCATENA, no reemplaza.
+    expect(rendered.container.textContent).toContain("Mostrando 2");
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Cargar más")).toBe(false);
+  });
 });

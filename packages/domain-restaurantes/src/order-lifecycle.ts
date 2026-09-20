@@ -8,6 +8,7 @@
 // define migrations/001) para que la ruta HTTP pueda rechazar un salto inválido
 // (p.ej. "pending" -> "entregado" saltándose preparación) ANTES de tocar la base de
 // datos, en vez de dejar que cualquier string llegue crudo a un `update`.
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { tryNotifyCustomerOnOrderStatusChange, tryNotifyStaffOrderProblem } from "./order-notifications.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Order, OrderStatus } from "./types.ts";
@@ -68,8 +69,15 @@ export function assertValidOrderStatusTransition(from: OrderStatus, to: OrderSta
  * aquí mismo (best-effort, nunca revierte la transición) el WhatsApp real al
  * cliente cuando el nuevo estado es uno de los notificados (ver
  * order-notifications.ts) — así ninguna otra ruta que llegue a agregarse aquí
- * puede olvidar el aviso. */
-export async function changeOrderStatus(repo: RestaurantesRepository, organizationId: string, order: Order, nextStatus: OrderStatus): Promise<Order> {
+ * puede olvidar el aviso.
+ *
+ * `db` (opcional) es el MISMO `TenantDbSession` de `c.get("db")` en el caller
+ * (admin-orders.ts) — se reenvía a `tryNotify*` para que puedan envolver su
+ * best-effort en SAVEPOINT cuando comparten transacción con el UPDATE de arriba
+ * (Blocker A, revisión de PR #169: sin esto, un fallo real dentro del best-effort
+ * en sesión de staff abortaba la transacción completa y este MISMO UPDATE se
+ * perdía pese a haber "persistido" antes en la misma transacción). */
+export async function changeOrderStatus(repo: RestaurantesRepository, organizationId: string, order: Order, nextStatus: OrderStatus, db?: TenantDbSession): Promise<Order> {
   assertValidOrderStatusTransition(order.status, nextStatus);
   const updated = await repo.updateOrderStatus(organizationId, order.id, order.status, nextStatus);
   if (!updated) {
@@ -87,9 +95,9 @@ export async function changeOrderStatus(repo: RestaurantesRepository, organizati
     );
   }
   if (updated.status === "problema") {
-    await tryNotifyStaffOrderProblem(repo, updated);
+    await tryNotifyStaffOrderProblem(repo, updated, db);
   } else {
-    await tryNotifyCustomerOnOrderStatusChange(repo, updated);
+    await tryNotifyCustomerOnOrderStatusChange(repo, updated, db);
   }
   return updated;
 }
@@ -137,6 +145,9 @@ export function assertValidRepartidorStatusTransition(from: OrderStatus, to: Ord
  * `changeOrderStatus`): un repartidor SÍ puede mover un pedido a en_camino/
  * entregado/problema, así que el aviso real al cliente (en_camino/entregado) y la
  * incidencia al staff (problema) viven aquí también, best-effort igual.
+ *
+ * `db` (opcional) — mismo criterio y misma razón que `changeOrderStatus` de arriba
+ * (Blocker A, revisión de PR #169): se reenvía a `tryNotify*` para el SAVEPOINT.
  */
 export async function changeAssignedOrderStatus(
   repo: RestaurantesRepository,
@@ -145,6 +156,7 @@ export async function changeAssignedOrderStatus(
   order: Order,
   nextStatus: OrderStatus,
   incidentNote: string | null,
+  db?: TenantDbSession,
 ): Promise<Order> {
   assertValidRepartidorStatusTransition(order.status, nextStatus);
   if (nextStatus === "problema") {
@@ -171,9 +183,9 @@ export async function changeAssignedOrderStatus(
     );
   }
   if (updated.status === "problema") {
-    await tryNotifyStaffOrderProblem(repo, updated);
+    await tryNotifyStaffOrderProblem(repo, updated, db);
   } else {
-    await tryNotifyCustomerOnOrderStatusChange(repo, updated);
+    await tryNotifyCustomerOnOrderStatusChange(repo, updated, db);
   }
   return updated;
 }

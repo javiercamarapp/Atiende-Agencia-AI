@@ -34,7 +34,7 @@ import {
 } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor } from "../../../http-security.ts";
-import { runHotelesEmailDispatch, triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
+import { INLINE_BATCH_SIZE, runHotelesEmailDispatch, triggerHotelesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 // Hallazgo de auditoría (ALTO, "packages/core-ratelimit cataloga la categoría
@@ -335,7 +335,7 @@ export function hotelesCfdiRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           // Arreglo de fondo (auditoría a2, parte 3) — ver comentario de
           // folios.ts::cerrar; el envío real solo puede pasar post-commit, en
           // sesión de sistema.
-          c.get("postCommitTasks").push(() => runHotelesEmailDispatch(deps).then(() => undefined));
+          c.get("postCommitTasks").push(() => runHotelesEmailDispatch(deps, INLINE_BATCH_SIZE).then(() => undefined));
         }
 
         return { status: 201 as const, body: serializeCfdi(created) };

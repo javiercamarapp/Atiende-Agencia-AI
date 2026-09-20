@@ -151,6 +151,7 @@ describe("InMemoryRentasRepository.listAuditoria: filtro desde/hasta anclado a A
       antes: null,
       despues: "200000 MXN",
       createdAtMs,
+      seq: 1,
     });
 
     const filtroDia1 = await repo.listAuditoria(organizationId, { desde: "2026-06-01", hasta: "2026-06-01" }, {});
@@ -180,6 +181,7 @@ describe("InMemoryRentasRepository.listAuditoria: filtro desde/hasta anclado a A
       antes: null,
       despues: "200000 MXN",
       createdAtMs,
+      seq: 1,
     });
 
     const resultado = await repo.listAuditoria(organizationId, { hasta: "2026-06-01" }, {});

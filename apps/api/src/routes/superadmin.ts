@@ -16,10 +16,9 @@ import type { Context, Next } from "hono";
 import { authMiddleware } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { ProspectoNotFoundError } from "@atiende/db";
-import type { ProspectoRow } from "@atiende/db";
+import type { AuthzAuditLogRow, ProspectoRow } from "@atiende/db";
 import {
   ImpersonationWriteBlockedError,
-  InMemoryAuditSink,
   InMemoryRateLimiter,
   blockWritesWhileImpersonating,
   requireAdminAccess,
@@ -27,16 +26,24 @@ import {
 import { Errors } from "../errors.ts";
 import type { AppDeps } from "../deps.ts";
 
-// Instancias por-proceso, compartidas por TODA la superficie `/superadmin/*`
+// Rate-limiter por-proceso, compartido por TODA la superficie `/superadmin/*`
 // de la app compuesta (ver comentario largo más abajo sobre por qué el
-// middleware montado AQUÍ gatea también las rutas de otros archivos) —
-// exportadas para que las pruebas puedan verificar que el intento denegado
-// realmente pasó por `requireAdminAccess` (audit-on-denial + rate-limit
-// reales), no solo que el status fue 403 (un 403 también lo produce
-// `Errors.forbidden` de cualquier otro guard). 30 intentos denegados / 5 min
-// por actor+ruta antes de 429, igual criterio que el resto del back office
-// que ya usaba este patrón (ver commit de superadmin-impersonacion.ts).
-export const superadminAdminAccessAudit = new InMemoryAuditSink();
+// middleware montado AQUÍ gatea también las rutas de otros archivos). 30
+// intentos denegados / 5 min por actor+ruta antes de 429, igual criterio que
+// el resto del back office que ya usaba este patrón (ver commit de
+// superadmin-impersonacion.ts).
+//
+// El AUDIT SINK ya NO es un `export const` module-level (a diferencia de
+// antes de esta revisión) -- ahora es `deps.authzAuditSink` (ver deps.ts),
+// para que producción pueda usar el sink PERSISTENTE
+// (`PersistentAuthzAuditSink`, ver packages/db/migrations/
+// 0021_superadmin_authz_audit_log.sql) y los tests sigan usando un
+// `InMemoryAuditSink` liso -- ambos implementan el mismo
+// `@atiende/core-authz::AuditSink`, `requireAdminAccess` no distingue cuál le
+// tocó. Las pruebas que antes importaban `superadminAdminAccessAudit`
+// directamente ahora leen `base.deps.authzAuditSink` (casteado a
+// `InMemoryAuditSink`), mismo criterio que `base.deps.coreRepo as
+// InMemoryCoreRepository` en el resto de este monorepo.
 const superadminAdminAccessRateLimiter = new InMemoryRateLimiter({ capacity: 30, refillPerSecond: 30 / 300 });
 
 // Único endpoint mutante que el requisito "solo lectura por defecto" permite
@@ -75,6 +82,49 @@ function textoOpcional(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function serializeAuthzAuditLogEntry(e: AuthzAuditLogRow) {
+  return {
+    id: e.id,
+    actorUserId: e.actorUserId,
+    actorIp: e.actorIp,
+    organizationId: e.organizationId,
+    action: e.action,
+    route: e.route,
+    method: e.method,
+    decision: e.decision,
+    reason: e.reason,
+    metadata: e.metadata,
+    occurredAtMs: e.occurredAtMs,
+  };
+}
+
+// Validación de `?limit=`/`?offset=` de `GET /superadmin/authz-auditoria` --
+// mismo patrón (regex de entero sin signo COMPLETO, nunca `Number(...)` a
+// secas) ya establecido y revisado en
+// routes/superadmin-break-glass.ts::parseLimitQuery/parseOffsetQuery (hallazgo
+// real de revisión, ronda r5, PR #167: `Number("1.5")`/`Number("1e2")` son
+// enteros "válidos" para `Number.isFinite` sin serlo como TEXTO, y un
+// `offset` sin tope superior desborda el `integer` de Postgres con SQLSTATE
+// 22003/22P02 -- 500 genérico en ambos casos sin esta validación).
+const AUTHZ_AUDIT_LOG_LIMIT_DEFAULT = 50;
+const AUTHZ_AUDIT_LOG_LIMIT_MAX = 200;
+const NONNEGATIVE_INT_RE = /^\d+$/;
+const POSTGRES_INT32_MAX = 2147483647;
+
+function parseAuthzAuditLimitQuery(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return AUTHZ_AUDIT_LOG_LIMIT_DEFAULT;
+  if (!NONNEGATIVE_INT_RE.test(raw) || Number(raw) < 1) throw Errors.validation("limit debe ser un entero >= 1.");
+  return Math.min(AUTHZ_AUDIT_LOG_LIMIT_MAX, Number(raw));
+}
+
+function parseAuthzAuditOffsetQuery(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return 0;
+  if (!NONNEGATIVE_INT_RE.test(raw)) throw Errors.validation("offset debe ser un entero >= 0.");
+  const value = Number(raw);
+  if (value > POSTGRES_INT32_MAX) throw Errors.validation(`offset debe ser menor o igual a ${POSTGRES_INT32_MAX}.`);
+  return value;
 }
 
 interface CreateProspectoBody {
@@ -147,7 +197,7 @@ export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     "/superadmin/*",
     requireAdminAccess({
       allowedRoles: ["owner"],
-      audit: superadminAdminAccessAudit,
+      audit: deps.authzAuditSink,
       rateLimiter: superadminAdminAccessRateLimiter,
     }),
   );
@@ -246,6 +296,24 @@ export function superadminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (!VERTICALES_VALIDAS.has(vertical)) throw Errors.validation("vertical inválida");
     const { organizationId, slug } = await deps.coreRepo.ensureDemoAccessForSuperadmin(c.get("userId"), vertical);
     return c.json({ organizationId, slug });
+  });
+
+  // Bitácora persistente de denegaciones de acceso a /superadmin/* (ver
+  // packages/db/migrations/0021_superadmin_authz_audit_log.sql) -- oversight
+  // de plataforma, junto a la de impersonación (routes/
+  // superadmin-impersonacion.ts::GET .../impersonacion/bitacora). Paginado
+  // real con `?limit=`/`?offset=` (a diferencia de la bitácora de
+  // impersonación, que solo pagina por `limit`) -- `hasMore` viaja en la
+  // respuesta para que el panel pueda ofrecer "cargar más" sin un COUNT(*)
+  // aparte (ver PostgresAuthzAuditRepository.list). `available: false`
+  // cuando la migración 0021 todavía no está aplicada -- nunca 500, nunca una
+  // lista vacía indistinguible de "no hay denegaciones".
+  app.get("/superadmin/authz-auditoria", async (c) => {
+    const callerId = c.get("userId");
+    const limit = parseAuthzAuditLimitQuery(c.req.query("limit"));
+    const offset = parseAuthzAuditOffsetQuery(c.req.query("offset"));
+    const { availability, entries, hasMore } = await deps.engine.withAppSession({ userId: callerId }, (db) => deps.authzAuditRepo(db).list(callerId, limit, offset));
+    return c.json({ available: availability === "available", entries: entries.map(serializeAuthzAuditLogEntry), hasMore });
   });
 
   return app;

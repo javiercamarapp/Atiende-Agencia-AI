@@ -28,11 +28,26 @@ auditoría propia de las acciones del staff").
    tabla (sin policy de INSERT, deny-by-default real).
 7. **Catálogo cerrado de `entity_type`.** Un valor fuera de la lista es
    rechazado por el CHECK antes de llegar a insertar nada.
+8. **Orden total determinista y paginación estable (r6,
+   `022_rentas_audit_log_orden_determinista.sql`).** `now()` (created_at) es
+   constante dentro de una transacción -- varias filas de bitácora escritas en
+   la MISMA transacción quedan con el mismo `created_at`; el desempate por
+   `seq` (columna secuencial de 022) da un orden EXACTO (nunca al azar) y hace
+   que la paginación por offset sobre ese empate no repita ni pierda filas
+   entre páginas.
 
-15 escenarios cubren `021_rentas_audit_log.sql` (ver `assertions.sql` para el
-detalle exacto de cada uno) — cada uno corre en su propio `begin; ... rollback;`;
-las fixtures (2 organizaciones, 3 staff con roles distintos, 1 fila de bitácora
-real) persisten (insertadas directo, como el superusuario que corre el script).
+18 escenarios cubren `021_rentas_audit_log.sql` + `022_rentas_audit_log_orden_
+determinista.sql` (ver `assertions.sql` para el detalle exacto de cada uno) --
+cada uno corre en su propio `begin; ... rollback;`; las fixtures (2
+organizaciones, 3 staff con roles distintos, 1 fila de bitácora real)
+persisten (insertadas directo, como el superusuario que corre el script).
+
+El caso "021 aplicada, 022 no" (esquema intermedio real que la base de
+producción atravesará) NO se prueba aquí -- este runner siempre aplica TODAS
+las migraciones de `supabase/migrations/`, sin forma de saltarse una a
+propósito (ver la nota al final de `assertions.sql`). Esa cobertura vive en
+`packages/domain-rentas/tests/audit-log-savepoint.spec.ts`
+(`SchemaParcial021SinSeqFakeSession`).
 
 ## Cómo correrlo
 
