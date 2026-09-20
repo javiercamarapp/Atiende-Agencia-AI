@@ -186,8 +186,18 @@ function TarjetaResumen({ resumen }: { readonly resumen: Resumen }) {
   );
 }
 
+// Contrato API<->web (hallazgo de auditoría del 19-sep, rubro A): la base
+// Supabase real todavía NO tiene aplicada la migración del resumen diario --
+// `GET /superadmin/resumen`/`GET /superadmin/resumen/:fecha`
+// (`apps/api/src/routes/superadmin-resumen.ts`) responden 200 con
+// `disponible: false` en ese caso, NUNCA una lista vacía real (que esta
+// página ya distinguía como "aún no hay resúmenes") ni un error. `disponible`
+// puede faltar en la respuesta (contrato previo a este fix, o un backend
+// viejo) -- `?? true` trata su ausencia como "sí disponible", nunca como "no
+// disponible" por accidente.
 export function SuperAdminResumenPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
   const [resumenes, setResumenes] = useState<readonly Resumen[] | null>(null);
+  const [disponible, setDisponible] = useState(true);
   const [seleccionado, setSeleccionado] = useState<Resumen | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
@@ -197,7 +207,8 @@ export function SuperAdminResumenPage({ apiBaseUrl, token }: { readonly apiBaseU
     setError(null);
     setCargando(true);
     try {
-      const r = await fetchJson<{ resumenes: Resumen[] }>(apiBaseUrl, token, "/superadmin/resumen?limit=30");
+      const r = await fetchJson<{ disponible?: boolean; resumenes: Resumen[] }>(apiBaseUrl, token, "/superadmin/resumen?limit=30");
+      setDisponible(r.disponible ?? true);
       setResumenes(r.resumenes);
       setSeleccionado((actual) => actual ?? r.resumenes[0] ?? null);
     } catch {
@@ -247,7 +258,13 @@ export function SuperAdminResumenPage({ apiBaseUrl, token }: { readonly apiBaseU
         </p>
       )}
 
-      {resumenes.length === 0 ? (
+      {!disponible ? (
+        <Card className="border-dashed">
+          <CardContent className="pt-6">
+            <EstadoVacio mensaje="El resumen diario automático todavía no está disponible en este entorno -- falta aplicar una migración pendiente." />
+          </CardContent>
+        </Card>
+      ) : resumenes.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="pt-6">
             <EstadoVacio mensaje="Aún no hay resúmenes: el primero se genera con el cron diario o con el botón 'Generar ahora'." />
