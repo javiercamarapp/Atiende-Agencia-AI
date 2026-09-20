@@ -59,6 +59,12 @@ export interface RestaurantesKpiTestContext {
   readonly staff: {
     /** owner, membership org-wide (propertyIds: null) — ve ambas sucursales. */
     readonly owner: RestaurantesKpiStaff;
+    /** FASE 3 (producto) — verticalRole "admin", membership org-wide. Junto con
+     * `owner`, es uno de los 2 roles que SÍ pueden leer
+     * `GET .../admin/auditoria` (ver auditoria.ts) -- `owner` por sí solo no
+     * bastaba para probar que "admin" también pasa ese gate más angosto que
+     * MANAGER_ROLES. */
+    readonly admin: RestaurantesKpiStaff;
     /** verticalRole "staff" (SÍ pasa MANAGER_ROLES), membership acotada SOLO a
      * propertyIdA — nunca debe ver datos de propertyIdB en un KPI org-wide. */
     readonly staffSucursalA: RestaurantesKpiStaff;
@@ -130,18 +136,19 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
   coreRepo.addOrganization({ id: otherOrganizationId, slug: "otro-restaurante", name: "Otro Restaurante", vertical: "restaurantes" });
   engine.seedProperty({ id: otherPropertyId, organizationId: otherOrganizationId });
 
-  async function seedStaff(orgId: string, role: "owner" | "staff" | "repartidor", label: string, propertyIds: readonly string[] | null): Promise<RestaurantesKpiStaff> {
+  async function seedStaff(orgId: string, role: "owner" | "admin" | "staff" | "repartidor", label: string, propertyIds: readonly string[] | null): Promise<RestaurantesKpiStaff> {
     const id = randomUUID();
     const email = `${label}@${orgId.slice(0, 8)}.mx`;
     const password = "correcto-caballo-batería";
     coreRepo.addStaff({ id, email, fullName: label, passwordHash: await hashPassword(password), createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
-    const platformRole = role === "owner" ? "owner" : "member";
+    const platformRole = role === "owner" ? "owner" : role === "admin" ? "admin" : "member";
     coreRepo.addMembership({ userId: id, organizationId: orgId, platformRole, verticalRole: role, propertyIds });
     engine.seedMembership({ userId: id, organizationId: orgId, platformRole, verticalRole: role, propertyIds });
     return { id, email, password, token: "" };
   }
 
   const ownerSeed = await seedStaff(organizationId, "owner", "owner", null);
+  const adminSeed = await seedStaff(organizationId, "admin", "admin", null);
   const staffASeed = await seedStaff(organizationId, "staff", "staff-sucursal-a", [propertyIdA]);
   const repartidorSeed = await seedStaff(organizationId, "repartidor", "repartidor", null);
   const otroOrgOwnerSeed = await seedStaff(otherOrganizationId, "owner", "owner-otro", null);
@@ -204,8 +211,9 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
   };
 
   const app = buildApp(deps);
-  const [ownerToken, staffAToken, repartidorToken, otroOrgOwnerToken] = await Promise.all([
+  const [ownerToken, adminToken, staffAToken, repartidorToken, otroOrgOwnerToken] = await Promise.all([
     signInAndGetToken(app, ownerSeed.email, ownerSeed.password),
+    signInAndGetToken(app, adminSeed.email, adminSeed.password),
     signInAndGetToken(app, staffASeed.email, staffASeed.password),
     signInAndGetToken(app, repartidorSeed.email, repartidorSeed.password),
     signInAndGetToken(app, otroOrgOwnerSeed.email, otroOrgOwnerSeed.password),
@@ -221,6 +229,7 @@ export async function buildRestaurantesKpiTestContext(buildApp: BuildAppFn): Pro
     otherPropertyId,
     staff: {
       owner: { ...ownerSeed, token: ownerToken },
+      admin: { ...adminSeed, token: adminToken },
       staffSucursalA: { ...staffASeed, token: staffAToken },
       repartidor: { ...repartidorSeed, token: repartidorToken },
       otroOrgOwner: { ...otroOrgOwnerSeed, token: otroOrgOwnerToken },

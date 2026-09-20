@@ -33,6 +33,10 @@ import type {
   ProductPatch,
   Promotion,
   PromotionPatch,
+  RegistrarAuditoriaInput,
+  RestaurantesAuditLogFiltro,
+  RestaurantesAuditLogPagina,
+  RestaurantesAuditLogPaginacion,
 } from "./types.ts";
 
 export interface SearchableProduct {
@@ -407,6 +411,24 @@ export interface RestaurantesRepository {
    * carrera o fue desactivada entretanto) — el pedido YA se creó de todos modos,
    * igual que el resto de efectos secundarios best-effort de `createOrder`. */
   incrementPromotionUses(organizationId: string, promotionId: string): Promise<boolean>;
+
+  // ---- FASE 3 (producto) — bitácora de auditoría del staff, ver
+  // migrations/019_restaurantes_audit_log.sql. Mismo contrato exacto que
+  // `RentasRepository.registrarAuditoria`/`listAuditoria`
+  // (@atiende/domain-rentas) — ver el comentario de cabecera de esa migración
+  // para el porqué del patrón copiado.
+
+  /** Nunca lanza -- best-effort real. Un fallo al registrar (base sin migrar,
+   *  o cualquier error inesperado de Postgres) NUNCA revierte ni tumba la
+   *  acción de negocio que ya se completó en la MISMA transacción del request;
+   *  ver `PostgresRestaurantesRepository.registrarAuditoria`. */
+  registrarAuditoria(input: RegistrarAuditoriaInput): Promise<void>;
+
+  /** `disponible: false` (nunca lanza) cuando `restaurantes.audit_log`/
+   *  `restaurantes.record_audit_log` todavía no existen en esta base (SQLSTATE
+   *  42883/42P01/42703) -- ver
+   *  `PostgresRestaurantesRepository.registrarAuditoria`. */
+  listAuditoria(organizationId: string, filtro: RestaurantesAuditLogFiltro, paginacion: RestaurantesAuditLogPaginacion): Promise<RestaurantesAuditLogPagina>;
 }
 
 /** Fila de `restaurantes.messaging_outbox` reclamada para despacho real — mismo
