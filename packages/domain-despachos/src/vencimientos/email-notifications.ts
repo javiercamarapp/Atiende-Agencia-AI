@@ -76,10 +76,23 @@ export async function enqueueEscalationEmailCore(repo: DespachosRepository, dead
  * debe convertirse en un error para quien está escalando el vencimiento
  * (la revisión humana sigue siendo obligatoria y queda registrada de
  * cualquier forma).
+ *
+ * SAVEPOINT (auditoría a3, hallazgo confirmado #5/#2): el único caller real
+ * (`apps/api/src/routes/verticals/despachos/vencimientos.ts::escalar`) llama a esta
+ * función en la MISMA transacción de sesión de staff que ya hizo
+ * `insertEscalation` + `updateDeadlineEstado`. Sin este SAVEPOINT, un error real de
+ * Postgres dentro de `enqueueEscalationEmailCore`
+ * (`despachos.enqueue_messaging_outbox`) deja la transacción COMPLETA abortada
+ * (25P02) y el escalamiento ya "persistido" se pierde de todas formas, y el
+ * `commit;` que sigue en `managed-postgres-engine.ts` lo detecta y lanza
+ * `AbortedTransactionCommitError` (desde PR #158 esto es un 500 honesto, NUNCA un
+ * rollback silencioso con 2xx). `repo.runWithRowSavepoint` aísla el intento y
+ * relanza el mismo error para que este `catch` lo siga tragando, con la sesión ya
+ * recuperada.
  */
 export async function tryEnqueueEscalationEmail(repo: DespachosRepository, deadline: FiscalDeadlineRecord, decision: DecisionEscalamiento, tenantNombre: string, diasRestantes: number): Promise<EscalationEmailEnqueueResult> {
   try {
-    return await enqueueEscalationEmailCore(repo, deadline, decision, tenantNombre, diasRestantes);
+    return await repo.runWithRowSavepoint(() => enqueueEscalationEmailCore(repo, deadline, decision, tenantNombre, diasRestantes));
   } catch (err) {
     console.error("vencimientos/email-notifications: best-effort escalation email enqueue failed:", err);
     return NO_RECIPIENTS;
