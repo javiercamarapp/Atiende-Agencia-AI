@@ -391,7 +391,7 @@ select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211',
 select count(distinct occurred_at) as deberia_ser_1 from core.impersonation_audit_log where session_id in (:'ord1_id', :'ord2_id', :'ord3_id');
 rollback;
 
-\echo '=== 27. ORDEN TOTAL (la corrección real): con los 6 eventos EMPATADOS en occurred_at, list_impersonation_audit_log_for_superadmin devuelve primero el de la sesión abierta AL ÚLTIMO (seq más alto) -- nunca un orden dependiente del plan de ejecución ==='
+\echo '=== 27. ORDEN TOTAL (la corrección real): con los 6 eventos EMPATADOS en occurred_at, list_impersonation_audit_log_for_superadmin devuelve los 6 en el orden COMPLETO de seq descendente (end3,start3,end2,start2,end1,start1) -- nunca un orden dependiente del plan de ejecución. Re-revisión (no bloqueante 6): antes solo se comparaba el primer elemento del array, lo que dejaba pasar cualquier orden de los otros 5 -- ahora se comparan los 6 (session_id Y event_type) ==='
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c9211', true);
@@ -400,9 +400,12 @@ select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'
 select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 2 de 3 (escenario 27).')).id as id \gset ord2_
 select core.end_impersonation_session('00000000-0000-0000-0000-0000000c9211', :'ord2_id') \gset noop2_
 select (core.start_impersonation_session('00000000-0000-0000-0000-0000000c9211', '00000000-0000-0000-0000-0000000c9210', 'Ticket SOP-VERIFY: orden total, evento 3 de 3 (escenario 27).')).id as id \gset ord3_
-select ((array_agg(t.session_id))[1] = :'ord3_id'::uuid)::int as deberia_ser_1
+select (
+  array_agg(t.session_id) = array[:'ord3_id',:'ord3_id',:'ord2_id',:'ord2_id',:'ord1_id',:'ord1_id']::uuid[]
+  and array_agg(t.event_type) = array['end','start','end','start','end','start']::text[]
+)::int as deberia_ser_1
 from (
-  select session_id
+  select session_id, event_type
   from core.list_impersonation_audit_log_for_superadmin('00000000-0000-0000-0000-0000000c9211', 500)
   where session_id in (:'ord1_id', :'ord2_id', :'ord3_id')
 ) t;
