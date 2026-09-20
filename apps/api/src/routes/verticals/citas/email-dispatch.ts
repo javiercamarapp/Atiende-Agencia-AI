@@ -31,6 +31,7 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-citas";
 import type { CitasRepository, EmailDispatchSummary } from "@atiende/domain-citas";
+import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import { internalOrCronSecretMatches } from "../../../http-security.ts";
@@ -116,30 +117,38 @@ export async function runCitasEmailDispatch(deps: AppDeps, batchSize?: number): 
  * al entrar) y el fallo ocurre DESPUÉS (incluido el 42501 determinista de
  * sesión de staff) se hace el `ROLLBACK TO SAVEPOINT` best-effort sin
  * relanzar -- ese es el único caso que este SAVEPOINT existe para aislar.
+ *
+ * Consolidación (Fase 2, integridad) — el `SAVEPOINT`/`ROLLBACK TO
+ * SAVEPOINT`/`RELEASE SAVEPOINT` manual de arriba (idéntico al de
+ * `restaurantes/email-dispatch.ts`, `despachos/notifications.ts` y
+ * `licitaciones/alertNotifications.ts`) ahora corre por
+ * `runWithSavepointFallback` (`@atiende/db`, mismo helper que ya reutilizan
+ * `runWithRowSavepoint` de cada repositorio) en vez de repetir el
+ * SAVEPOINT/ROLLBACK a mano: `isRecoverable` fijo en `true` (cualquier error
+ * DESPUÉS del SAVEPOINT es best-effort) y `fallback` solo loguea -- nunca
+ * relanza -- preservando exactamente la distinción `savepointTaken` de
+ * arriba, porque `runWithSavepointFallback` ya relanza el error tal cual
+ * cuando el `SAVEPOINT` mismo falla (no llega a invocar `fallback`) y solo
+ * corre `fallback` cuando el `ROLLBACK TO SAVEPOINT` de recuperación sí tuvo
+ * éxito. Se pasa `savepointName` fijo (no el nombre único por default del
+ * helper) para no romper `citas-email-dispatch-savepoint.spec.ts`, que
+ * afirma la secuencia exacta de `execCalls` sobre `sp_inline_email_dispatch`.
  */
 export async function triggerCitasEmailDispatchInline(deps: AppDeps, db: TenantDbSession, citasRepo: CitasRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  let savepointTaken = false;
-  try {
-    await db.exec("SAVEPOINT sp_inline_email_dispatch");
-    savepointTaken = true;
-    const summary = await dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize });
-    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
-    if (summary.dead > 0) {
-      console.error(`citas email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
-    }
-  } catch (err) {
-    if (!savepointTaken) {
-      console.error("citas email-dispatch inline: la transacción ya venía abortada antes de este trigger, relanzando:", err);
-      throw err;
-    }
-    try {
-      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
-      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
-    } catch (recoveryErr) {
-      console.error("citas email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
-    }
-    console.error("citas email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
-  }
+  await runWithSavepointFallback<void>({
+    session: db,
+    savepointName: "sp_inline_email_dispatch",
+    primary: async () => {
+      const summary = await dispatchPendingEmailJobs(citasRepo, deps.env.resend, { batchSize });
+      if (summary.dead > 0) {
+        console.error(`citas email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
+      }
+    },
+    isRecoverable: () => true,
+    fallback: async (err) => {
+      console.error("citas email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+    },
+  });
 }
 
 export function citasEmailDispatchRoutes(deps: AppDeps): Hono {
