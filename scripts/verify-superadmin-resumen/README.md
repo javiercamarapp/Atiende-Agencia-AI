@@ -16,7 +16,7 @@ escrituras de SOLO-SISTEMA + 2 lecturas para el back office).
 
 ## Qué demuestra
 
-36 escenarios (ver `assertions.sql` para el detalle exacto):
+38 escenarios (ver `assertions.sql` para el detalle exacto):
 
 1. **Las 11 funciones `*_for_system`**: una sesión de SISTEMA (`auth.uid()`
    null) SÍ puede leer — verificado contra datos reales sembrados (un latido
@@ -49,6 +49,16 @@ escrituras de SOLO-SISTEMA + 2 lecturas para el back office).
    normal (autenticado, NO superadmin) o una sesión de SISTEMA que pasan el
    UUID del superadmin como `p_caller_id` obtienen CERO filas (nunca un
    error que confirme/niegue si hay datos); `anon` no puede ejecutar.
+6. **Hallazgo endurecido del 19-sep (rubro B) -- SQLSTATE 42883 no es solo
+   "function does not exist"**: escenarios 37/38 confirman contra Postgres
+   REAL que "operator does not exist: uuid = text" (comparar tipos
+   incompatibles, un bug real) y "function ... does not exist" (una función
+   genuinamente inexistente, el caso normal de "migración pendiente")
+   comparten el MISMO SQLSTATE 42883 pero un mensaje MUY distinto -- la base
+   real que `packages/db/src/sql-errors.ts::isUndefinedFunctionError`/
+   `isMigrationPendingError` usan para no confundir un bug real de tipos con
+   una migración sin aplicar (ver `packages/db/tests/sql-errors.spec.ts` para
+   la prueba unitaria que fija el texto exacto de ambos mensajes).
 
 ## Hallazgos reales durante el desarrollo de este script (ambos corregidos)
 

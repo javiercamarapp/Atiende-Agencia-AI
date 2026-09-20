@@ -371,3 +371,31 @@ begin;
 set local role anon;
 select * from core.get_daily_ops_summary_for_superadmin('00000000-0000-0000-0000-0000000000f3', '2026-06-22'::date) as should_fail;
 rollback;
+
+-- ═══ Hallazgo endurecido (revisores del 19-sep, rubro B) -- SQLSTATE 42883 NO
+-- es exclusivo de "function does not exist" ═══
+--
+-- Un guard que clasifique CUALQUIER 42883 como "migración pendiente" (el
+-- código de este repo ANTES de este fix, ver `packages/db/src/sql-errors.ts::
+-- isUndefinedFunctionError`) confundiría el escenario 37 de abajo con una
+-- migración sin aplicar -- es un BUG REAL de tipos (comparar `uuid` con
+-- `text` sin cast explícito), NUNCA "falta aplicar una migración". El helper
+-- endurecido exige que el MENSAJE tenga la forma "function ... does not
+-- exist" -- los escenarios 37/38 de abajo, contra Postgres REAL (no un
+-- supuesto), confirman que Postgres reporta un mensaje MUY distinto para
+-- cada caso aunque ambos compartan el mismo SQLSTATE 42883:
+--   37. "operator does not exist: uuid = text"          -- NUNCA migración pendiente
+--   38. "function core.funcion_inexistente...() does not exist" -- SÍ migración pendiente
+-- (mensajes exactos verificados con `initdb`/`pg_ctl` efímero, 19-sep-2026 --
+-- ver también la prueba unitaria que fija este texto en
+-- `packages/db/tests/sql-errors.spec.ts`).
+
+\echo '=== 37. HALLAZGO ENDURECIDO: comparar uuid = text (AMBOS lados con tipo YA conocido, sin margen para coaccion implicita de literal) falla con SQLSTATE 42883 "operator does not exist" -- NUNCA debe clasificarse como migracion pendiente ==='
+begin;
+select '00000000-0000-0000-0000-0000000000f3'::uuid = 'no-es-un-uuid-valido'::text as should_fail;
+rollback;
+
+\echo '=== 38. Contraste: una funcion REALMENTE inexistente falla con el MISMO SQLSTATE 42883 pero mensaje "function ... does not exist" -- este SI es el caso de migracion pendiente ==='
+begin;
+select * from core.funcion_que_no_existe_para_verificar_el_mensaje_de_42883() as should_fail;
+rollback;
