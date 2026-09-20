@@ -79,3 +79,29 @@ describe("PostgresHotelesRepository.findDueNoShowReservations -- el parámetro r
     expect(calls[0]!.params[1]).toBe("2025-05-10");
   });
 });
+
+describe("PostgresHotelesRepository.systemFindDueNoShowReservations -- paridad con InMemoryHotelesRepository cuando asOfDate es null (no-bloqueante 2 de la revisión)", () => {
+  it("con asOfDate=null a las 19:30 CDMX, el parámetro $2 es el día de NEGOCIO ('2026-01-01'), no null (la función SQL haría coalesce(null, current_date) = día UTC)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(INSTANTE_1930_CDMX_DIA_1));
+
+    const { session, calls } = capturingSession();
+    const repo = new PostgresHotelesRepository(session);
+
+    await repo.systemFindDueNoShowReservations("property-1", null);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.params[0]).toBe("property-1");
+    expect(calls[0]!.params[1]).toBe("2026-01-01");
+    expect(calls[0]!.params[1]).not.toBeNull();
+  });
+
+  it("con un asOfDate explícito, se usa tal cual", async () => {
+    const { session, calls } = capturingSession();
+    const repo = new PostgresHotelesRepository(session);
+
+    await repo.systemFindDueNoShowReservations("property-1", "2025-05-10");
+
+    expect(calls[0]!.params[1]).toBe("2025-05-10");
+  });
+});

@@ -1921,12 +1921,23 @@ export class PostgresHotelesRepository implements HotelesRepository {
   }
 
   async systemFindDueNoShowReservations(propertyId: string, asOfDate: string | null): Promise<readonly DueNoShowReservationForSystem[]> {
+    // Paridad con `findDueNoShowReservations` de arriba (mismo comentario de
+    // cabecera): hoy inalcanzable en producción (`night-audit.ts` siempre pasa
+    // `businessDate` no nulo), pero si algún día se llama con `null`, la función
+    // SQL `hoteles.system_find_due_no_show_reservations` hace
+    // `coalesce(p_as_of_date, current_date)` (día UTC de la sesión de Postgres) --
+    // sin este fallback en TS, un `null` produciría el MISMO bug de un día antes de
+    // tiempo entre las 18:00 y las 23:59 CDMX, y además rompería la paridad con
+    // `InMemoryHotelesRepository.systemFindDueNoShowReservations` (delega en
+    // `findDueNoShowReservations`, que ya usa `hoyFechaNegocio()`). No requiere
+    // migración: resuelto en TS antes de que el `null` llegue al SQL.
+    const cutoff = asOfDate ?? hoyFechaNegocio();
     const { rows } = await this.db.query<{
       out_reservation_id: string;
       out_check_in_date: string;
       out_check_out_date: string;
       out_total_amount: string;
-    }>(`select * from hoteles.system_find_due_no_show_reservations($1, $2::date);`, [propertyId, asOfDate]);
+    }>(`select * from hoteles.system_find_due_no_show_reservations($1, $2::date);`, [propertyId, cutoff]);
     return rows.map((r) => ({
       reservationId: r.out_reservation_id,
       checkInDate: r.out_check_in_date,
