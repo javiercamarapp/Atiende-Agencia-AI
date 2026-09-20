@@ -1,51 +1,54 @@
-// Corrección de revisión sobre PR #176 (auditoría a3) — regresión para
-// `tryEnqueueStaffInviteEmail` (apps/api/src/routes/verticals/licitaciones/admin-staff.ts).
-// Mismo hallazgo/mismo remedio que `hoteles-admin-staff-savepoint.spec.ts` de este
-// mismo directorio: el best-effort encolaba el correo de invitación DENTRO de la
-// MISMA transacción de sesión de staff que ya persistió `createStaffInvite`, con
-// un try/catch plano sin SAVEPOINT — un error real de Postgres en
-// `enqueue_messaging_outbox` (deadlock/timeout transitorio, o `42501` del guard)
-// dejaba la transacción en 25P02, y el `commit;` que sigue
-// (`managed-postgres-engine.ts`) revertía también la invitación ya "persistida"
-// con `AbortedTransactionCommitError` -> 500.
+// Corrección de revisión #2 sobre PR #176 (auditoría a3) — reemplaza por
+// completo la versión anterior de este archivo, que probaba (y "celebraba"
+// como best-effort correcto) un `repo.runWithRowSavepoint` alrededor de
+// `licitaciones.enqueue_messaging_outbox` corriendo en la sesión de STAFF del
+// request. Esa función SQL es EXCLUSIVA de sesión de sistema sin excepción
+// (`supabase/migrations/20240101000089_020_email_outbox_authenticated_grants.sql:17-25`,
+// certificado por `scripts/verify-outbox-grants/assertions.sql` casos 11/12):
+// con `auth.uid()` real SIEMPRE lanza `42501`, así que el SAVEPOINT evitaba el
+// 500 pero el correo de invitación NUNCA se encolaba en producción — el test
+// anterior confirmaba justo ese comportamiento roto en vez de detectarlo.
 //
-// A diferencia de hoteles/restaurantes/despachos, `LicitacionesRepository` no
-// tenía `runWithRowSavepoint` antes de esta corrección -- se agrega en el mismo
-// commit (repository.ts/postgres-repository.ts/in-memory-repository.ts, nueva
-// dependencia `@atiende/db` en package.json), mismo patrón exacto que las otras
-// tres verticales.
-//
-// Se prueba contra `PostgresLicitacionesRepository` real (no el doble en
-// memoria, cuyo `runWithRowSavepoint` es un no-op) + un doble LOCAL mínimo de
-// `TenantDbSession` (`AbortAwareFakeSession`, mismo patrón que
-// `licitaciones-email-dispatch-savepoint.spec.ts` de este mismo directorio).
-// Cada test de "fallo" de este archivo FALLA contra el código anterior
-// (try/catch sin `repo.runWithRowSavepoint`, que ni siquiera existía): sin el
-// SAVEPOINT, la consulta posterior sobre la MISMA sesión lanza 25P02 en vez de
-// resolver.
+// El remedio real (ver el comentario de cabecera de
+// `enqueueStaffInviteEmailPostCommit` en `admin-staff.ts`) es encolar el
+// correo DESPUÉS del commit, en una transacción NUEVA de sesión de sistema
+// (`deps.engine.withAppSession({ userId: null }, ...)`), igual que
+// `despachos/vencimientos.ts` y `hoteles/reservas.ts`. Estos tests afirman el
+// EFECTO real, no solo la ausencia de un 500:
+// 1) la sesión que ejecuta el INSERT es la de SISTEMA (`userId: null`), NUNCA
+//    la del staff que hizo la invitación;
+// 2) con esa sesión de sistema, la fila SÍ queda encolada (el INSERT real
+//    llega hasta `session.query`, vía `PostgresLicitacionesRepository` real —
+//    no el doble en memoria, que no ejecuta SQL);
+// 3) un fallo real de Postgres en esa sesión de sistema (`AbortAwareFakeSession`,
+//    mismo doble que el resto de specs de esta auditoría) se loguea pero
+//    NUNCA se propaga — sigue siendo best-effort real, ahora en el lugar que
+//    de verdad puede tener éxito.
 import { describe, expect, it, vi } from "vitest";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { PostgresLicitacionesRepository } from "@atiende/domain-licitaciones";
-import { tryEnqueueStaffInviteEmail } from "../src/routes/verticals/licitaciones/admin-staff.ts";
+import { enqueueStaffInviteEmailPostCommit } from "../src/routes/verticals/licitaciones/admin-staff.ts";
 
 const ORGANIZATION_ID = "00000000-0000-0000-0000-0000000000o1";
 const INVITE_ID = "00000000-0000-0000-0000-0000000000i1";
+const CORREO = { asunto: "Invitación", html: "<p>hola</p>", texto: "hola" };
 
 function pgPermissionDenied(): Error & { code: string } {
-  const err = new Error("permission denied for function enqueue_messaging_outbox") as Error & { code: string };
+  const err = new Error("enqueue_messaging_outbox es solo para la sesión de sistema") as Error & { code: string };
   err.code = "42501";
   return err;
 }
 
-const CORREO = { asunto: "Invitación", html: "<p>hola</p>", texto: "hola" };
-
-/** Doble mínimo local de `TenantDbSession` que reproduce el estado ABORTADO real
- * de Postgres: tras un error dentro de la transacción, CUALQUIER comando (salvo
- * `ROLLBACK TO SAVEPOINT` hacia un savepoint que sí se tomó antes) sigue
- * fallando con 25P02, hasta ese `ROLLBACK TO SAVEPOINT` real. */
+/** Mismo doble mínimo de `TenantDbSession` que el resto de specs de esta
+ * auditoría (p. ej. `hoteles-admin-staff-savepoint.spec.ts`): reproduce el
+ * estado ABORTADO real de Postgres tras un error dentro de la transacción. Se
+ * usa aquí para la sesión de SISTEMA (no la de staff — esa ya no participa en
+ * absoluto en este encolado), para probar que un fallo ahí sigue siendo
+ * best-effort real. */
 class AbortAwareFakeSession implements TenantDbSession {
   aborted = false;
   private savepointTaken = false;
+  readonly queries: unknown[] = [];
   readonly execCalls: string[] = [];
 
   private throwAborted(): never {
@@ -54,26 +57,22 @@ class AbortAwareFakeSession implements TenantDbSession {
     throw err;
   }
 
-  async query<T>(): Promise<{ rows: T[] }> {
+  async query<T>(sql?: string, params?: unknown[]): Promise<{ rows: T[] }> {
     if (this.aborted) this.throwAborted();
+    this.queries.push({ sql, params });
     return { rows: [] as T[] };
   }
 
   async exec(sql: string): Promise<void> {
     const n = sql.trim().toLowerCase();
     this.execCalls.push(n);
-
     if (n.startsWith("rollback to savepoint")) {
-      if (!this.savepointTaken) {
-        throw new Error(`AbortAwareFakeSession: ROLLBACK TO SAVEPOINT sin savepoint previo (${sql})`);
-      }
+      if (!this.savepointTaken) throw new Error(`AbortAwareFakeSession: ROLLBACK TO SAVEPOINT sin savepoint previo (${sql})`);
       this.aborted = false;
       this.savepointTaken = false;
       return;
     }
-
     if (this.aborted) this.throwAborted();
-
     if (n.startsWith("savepoint")) {
       this.savepointTaken = true;
       return;
@@ -86,32 +85,90 @@ class AbortAwareFakeSession implements TenantDbSession {
   }
 }
 
-describe("tryEnqueueStaffInviteEmail (licitaciones) — SAVEPOINT (corrección de revisión PR #176)", () => {
-  it("un 42501 real de enqueue_messaging_outbox NUNCA deja la sesión abortada -- la invitación ya persistida sobrevive", async () => {
-    const session = new AbortAwareFakeSession();
-    const repo = new PostgresLicitacionesRepository(session);
-    vi.spyOn(repo, "enqueueMessagingOutbox").mockImplementation(async () => {
-      session.aborted = true;
-      throw pgPermissionDenied();
-    });
+describe("enqueueStaffInviteEmailPostCommit (licitaciones) — corrección #2 sobre PR #176", () => {
+  it("usa sesión de SISTEMA (userId: null), nunca la del staff, y la fila queda realmente encolada", async () => {
+    const systemSession = new AbortAwareFakeSession();
+    const claimsSeen: Array<{ userId: string | null }> = [];
+    const engine = {
+      async withAppSession<T>(claims: { userId: string | null }, fn: (session: TenantDbSession) => Promise<T>): Promise<T> {
+        claimsSeen.push(claims);
+        return fn(systemSession);
+      },
+    };
+    const deps = {
+      engine,
+      licitacionesRepo: (db: TenantDbSession) => new PostgresLicitacionesRepository(db),
+    };
+    const enqueueSpy = vi.spyOn(PostgresLicitacionesRepository.prototype, "enqueueMessagingOutbox");
 
-    await expect(tryEnqueueStaffInviteEmail(repo, ORGANIZATION_ID, INVITE_ID, "nuevo@licitaciones-de-prueba.mx", CORREO)).resolves.toBeUndefined();
+    await enqueueStaffInviteEmailPostCommit(deps, ORGANIZATION_ID, INVITE_ID, "nuevo@licitaciones-de-prueba.mx", CORREO);
 
-    await expect(session.query()).resolves.toEqual({ rows: [] });
-    expect(session.execCalls.some((c) => c.startsWith("savepoint"))).toBe(true);
-    expect(session.execCalls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
-    expect(session.execCalls.some((c) => c.startsWith("release savepoint"))).toBe(true);
+    // Efecto 1: la sesión abierta para este encolado es de sistema, no de staff.
+    expect(claimsSeen).toEqual([{ userId: null }]);
+    // Efecto 2: el encolado real corrió (contra el repo Postgres real, sobre la
+    // sesión de sistema) con el evento/payload correctos.
+    expect(enqueueSpy).toHaveBeenCalledWith(
+      ORGANIZATION_ID,
+      "email",
+      "staff.invite",
+      `staff-invite:${INVITE_ID}`,
+      expect.objectContaining({ to: "nuevo@licitaciones-de-prueba.mx", subject: CORREO.asunto }),
+    );
+    // Efecto 3: la fila realmente llegó a `session.query` (INSERT real, no un
+    // mock que nunca toca la sesión) y la sesión de sistema no quedó abortada.
+    expect(systemSession.queries.length).toBeGreaterThan(0);
+    expect(systemSession.aborted).toBe(false);
+
+    enqueueSpy.mockRestore();
   });
 
-  it("éxito real: encola el correo sin dejar rastro de SAVEPOINT sin liberar", async () => {
-    const session = new AbortAwareFakeSession();
-    const repo = new PostgresLicitacionesRepository(session);
-    const enqueueSpy = vi.spyOn(repo, "enqueueMessagingOutbox").mockResolvedValue(undefined);
+  it("un fallo real de Postgres en la sesión de sistema (p. ej. 42501 inesperado, o Resend/columna sin migrar) se loguea pero NUNCA se propaga", async () => {
+    const systemSession = new AbortAwareFakeSession();
+    const engine = {
+      async withAppSession<T>(_claims: { userId: string | null }, fn: (session: TenantDbSession) => Promise<T>): Promise<T> {
+        return fn(systemSession);
+      },
+    };
+    const deps = {
+      engine,
+      licitacionesRepo: (db: TenantDbSession) => new PostgresLicitacionesRepository(db),
+    };
+    const enqueueSpy = vi.spyOn(PostgresLicitacionesRepository.prototype, "enqueueMessagingOutbox").mockImplementation(async () => {
+      systemSession.aborted = true;
+      throw pgPermissionDenied();
+    });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    await tryEnqueueStaffInviteEmail(repo, ORGANIZATION_ID, INVITE_ID, "nuevo@licitaciones-de-prueba.mx", CORREO);
+    await expect(
+      enqueueStaffInviteEmailPostCommit(deps, ORGANIZATION_ID, INVITE_ID, "nuevo@licitaciones-de-prueba.mx", CORREO),
+    ).resolves.toBeUndefined();
 
-    expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    expect(session.execCalls.some((c) => c.startsWith("release savepoint"))).toBe(true);
-    expect(session.execCalls.some((c) => c.startsWith("rollback to savepoint"))).toBe(false);
+    expect(consoleSpy).toHaveBeenCalled();
+
+    enqueueSpy.mockRestore();
+    consoleSpy.mockRestore();
+  });
+
+  it("nunca abre ni toca una sesión de STAFF -- el encolado no depende en absoluto de `auth.uid()` del request", async () => {
+    let withAppSessionCalls = 0;
+    const systemSession = new AbortAwareFakeSession();
+    const engine = {
+      async withAppSession<T>(claims: { userId: string | null }, fn: (session: TenantDbSession) => Promise<T>): Promise<T> {
+        withAppSessionCalls += 1;
+        expect(claims.userId).toBeNull();
+        return fn(systemSession);
+      },
+    };
+    const deps = {
+      engine,
+      licitacionesRepo: (db: TenantDbSession) => new PostgresLicitacionesRepository(db),
+    };
+    vi.spyOn(PostgresLicitacionesRepository.prototype, "enqueueMessagingOutbox").mockResolvedValue(undefined);
+
+    await enqueueStaffInviteEmailPostCommit(deps, ORGANIZATION_ID, INVITE_ID, "nuevo@licitaciones-de-prueba.mx", CORREO);
+
+    expect(withAppSessionCalls).toBe(1);
+
+    vi.restoreAllMocks();
   });
 });
