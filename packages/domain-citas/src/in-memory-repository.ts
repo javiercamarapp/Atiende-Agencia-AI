@@ -1013,6 +1013,13 @@ export class InMemoryCitasRepository implements CitasRepository {
       }));
   }
 
+  /** f2-citas-lista-de-espera — el doble en memoria no tiene RLS que simular:
+   * misma implementación que `loadLiveWaitlistCandidates` (ver el comentario
+   * largo de `repository.ts` para por qué Postgres real sí distingue las dos). */
+  async loadLiveWaitlistCandidatesAsSystem(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {
+    return this.loadLiveWaitlistCandidates(organizationId);
+  }
+
   async claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean> {
     const row = this.waitlist.get(waitlistId);
     if (!row || row.status !== "active" || row.notifiedCount >= maxNotifications) return false;

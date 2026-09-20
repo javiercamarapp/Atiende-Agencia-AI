@@ -229,8 +229,20 @@ export async function runOptimizadorCore(repo: CitasRepository, organizationId: 
   const slotDateStr = slotDate.toISOString().slice(0, 10);
   const window = timeWindowFor(slotDate, timeZone);
 
-  const candidates = await repo.loadLiveWaitlistCandidates(organizationId);
-  const matches = candidates.filter((row) => matchesWaitlistPreferences(row, event.providerId, event.serviceId, slotDateStr, window)).sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+  // f2-citas-lista-de-espera, hallazgo (A) — TODOS los callers reales de
+  // runOptimizadorCore (cancelar/reagendar/reasignar del agente de voz/
+  // WhatsApp, y el post-commit `runCitasWaitlistNotifyAfterCancel` del cancelar
+  // de staff) corren en sesión de SISTEMA; `loadLiveWaitlistCandidates` (plain
+  // SELECT, RLS de staff) siempre devolvía 0 filas ahí -- ver el comentario
+  // largo de `repository.ts::loadLiveWaitlistCandidatesAsSystem`.
+  const candidates = await repo.loadLiveWaitlistCandidatesAsSystem(organizationId);
+  // Regla dura de compatibilidad (#5) — orden TOTAL: `sortWaitlistByPosition`
+  // (abajo) ya desempata por `id` cuando dos candidatos comparten el mismo
+  // `createdAt` (mismo milisegundo) -- el `.sort` ad-hoc que este archivo tenía
+  // antes NO desempataba, así que "el que pidió primero, gana primero" podía
+  // depender del orden, no garantizado por SQL, en que Postgres devolviera las
+  // filas empatadas.
+  const matches = sortWaitlistByPosition(candidates.filter((row) => matchesWaitlistPreferences(row, event.providerId, event.serviceId, slotDateStr, window)));
 
   if (matches.length === 0) return { matched: false, reason: "no_match" };
 
@@ -370,20 +382,40 @@ export interface ListaEsperaSummary {
  * `runConfirmacionCitaCore`/`runOptimizadorCore` de arriba — proactivo, fuera de
  * ventana de 24h de Meta, sin plantilla HSM disponible en este entorno.
  */
+/** Filtro (proveedor/servicio opcionales) + orden FIFO total (`sortWaitlistByPosition`)
+ * + recorte a `limit` -- exactamente los mismos 3 pasos que decidían quién entra al
+ * broadcast ANTES de reclamar ningún slot. Compartido entre `runListaEsperaCore`
+ * (efecto real, sesión de sistema) y `previewListaEspera` (solo lectura, sesión de
+ * staff) para que nunca diverjan qué cuenta como "candidato considerado". */
+function filterAndRankWaitlistForBroadcast(candidates: readonly WaitlistCandidateRow[], event: ListaEsperaEvent, effectiveLimit: number): readonly WaitlistCandidateRow[] {
+  return sortWaitlistByPosition(
+    candidates
+      .filter((row) => !event.providerId || row.providerId === null || row.providerId === event.providerId)
+      .filter((row) => !event.serviceId || row.serviceId === null || row.serviceId === event.serviceId),
+  ).slice(0, effectiveLimit);
+}
+
+function clampListaEsperaLimit(limit: number): number {
+  return Math.min(Math.max(1, Math.trunc(limit) || 1), MAX_LISTA_ESPERA_LIMIT);
+}
+
 export async function runListaEsperaCore(
   repo: CitasRepository,
   organizationId: string,
   event: ListaEsperaEvent = {},
   limit: number = DEFAULT_LISTA_ESPERA_LIMIT,
 ): Promise<ListaEsperaSummary> {
-  const effectiveLimit = Math.min(Math.max(1, Math.trunc(limit) || 1), MAX_LISTA_ESPERA_LIMIT);
+  const effectiveLimit = clampListaEsperaLimit(limit);
 
-  const candidates = await repo.loadLiveWaitlistCandidates(organizationId);
-  const filtered = sortWaitlistByPosition(
-    candidates
-      .filter((row) => !event.providerId || row.providerId === null || row.providerId === event.providerId)
-      .filter((row) => !event.serviceId || row.serviceId === null || row.serviceId === event.serviceId),
-  ).slice(0, effectiveLimit);
+  // f2-citas-lista-de-espera, hallazgo (B) — el único caller real de
+  // `runListaEsperaCore` (POST .../waitlist/broadcast) mueve el efecto a sesión
+  // de SISTEMA post-commit desde esta tarea (ver
+  // `apps/api/.../citas/admin.ts::runCitasListaEsperaBroadcastAfterCommit`) --
+  // `claimWaitlistNotificationSlot` de abajo ya exigía sesión de sistema desde
+  // la migración 015; esta lectura ahora también, por el mismo motivo (A) que
+  // `runOptimizadorCore` (ver `repository.ts::loadLiveWaitlistCandidatesAsSystem`).
+  const candidates = await repo.loadLiveWaitlistCandidatesAsSystem(organizationId);
+  const filtered = filterAndRankWaitlistForBroadcast(candidates, event, effectiveLimit);
 
   const summary: ListaEsperaSummary = { notified: 0, candidatesConsidered: filtered.length, skippedNoWhatsappConfig: false };
   if (filtered.length === 0) return summary;
@@ -417,4 +449,35 @@ export async function runListaEsperaCore(
   }
 
   return summary;
+}
+
+export interface ListaEsperaPreview {
+  /** Mismo criterio EXACTO que `ListaEsperaSummary.candidatesConsidered` --
+   * cuántos candidatos vivos matchean el filtro y caben en `limit`, calculado
+   * con la MISMA `filterAndRankWaitlistForBroadcast` que usa el efecto real. */
+  readonly candidatesConsidered: number;
+  readonly skippedNoWhatsappConfig: boolean;
+}
+
+/**
+ * f2-citas-lista-de-espera, hallazgo (B) — vista previa de SOLO LECTURA, segura
+ * de llamar en sesión de STAFF (nunca reclama un slot vía
+ * `claimWaitlistNotificationSlot` -- solo-sistema desde la migración 015 -- ni
+ * encola ningún mensaje): responde con un conteo REAL de inmediato
+ * (`candidatesConsidered`/`skippedNoWhatsappConfig`) desde la ruta HTTP,
+ * mientras el efecto de verdad (`runListaEsperaCore`, sesión de SISTEMA)
+ * corre POST-COMMIT (ver `admin.ts::runCitasListaEsperaBroadcastAfterCommit`)
+ * -- el `notified` real solo se sabe DESPUÉS de esa tarea, así que la
+ * respuesta HTTP síncrona nunca lo reporta (sería una cifra inventada antes
+ * de que el efecto exista). Usa `loadLiveWaitlistCandidates` (RLS real de
+ * staff, funciona hoy sin ninguna migración) -- NUNCA la versión de sistema.
+ */
+export async function previewListaEspera(repo: CitasRepository, organizationId: string, event: ListaEsperaEvent = {}, limit: number = DEFAULT_LISTA_ESPERA_LIMIT): Promise<ListaEsperaPreview> {
+  const effectiveLimit = clampListaEsperaLimit(limit);
+  const candidates = await repo.loadLiveWaitlistCandidates(organizationId);
+  const filtered = filterAndRankWaitlistForBroadcast(candidates, event, effectiveLimit);
+  if (filtered.length === 0) return { candidatesConsidered: 0, skippedNoWhatsappConfig: false };
+
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(organizationId);
+  return { candidatesConsidered: filtered.length, skippedNoWhatsappConfig: !phoneNumberId };
 }

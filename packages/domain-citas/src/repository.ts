@@ -630,6 +630,19 @@ export interface CitasRepository {
   markMessagingOutboxRetry(id: string, attempts: number, errorClass: string, nextAttemptAtIso: string): Promise<void>;
   markMessagingOutboxDead(id: string, attempts: number, errorClass: string): Promise<void>;
   loadLiveWaitlistCandidates(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
+  /** f2-citas-lista-de-espera — igual que `loadLiveWaitlistCandidates`, pero para
+   * sesión de SISTEMA (`auth.uid()` null): `citas.appointment_waitlist` solo tiene
+   * policy de RLS de staff (membership), así que el SELECT plano de
+   * `loadLiveWaitlistCandidates` SIEMPRE devuelve 0 filas bajo sesión de sistema
+   * (ver migración 020_appointment_waitlist_sistema_lectura.sql). Todos los
+   * callers reales de este método (runOptimizadorCore -- cancelar/reagendar/
+   * reasignar del agente, SIEMPRE sesión de sistema; runListaEsperaCore --
+   * broadcast del staff, movido a sesión de sistema post-commit) corren en
+   * sesión de sistema; el GET de solo-lectura del panel (`admin.ts`) sigue
+   * usando `loadLiveWaitlistCandidates` (staff, RLS real). Compatibilidad con
+   * la base sin migrar: implementación Postgres degrada a `[]` (SQLSTATE
+   * 42883), nunca un 500. */
+  loadLiveWaitlistCandidatesAsSystem(organizationId: string): Promise<readonly WaitlistCandidateRow[]>;
   claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean>;
 
   // ---- Idempotencia/rate-limit (transversal) ----

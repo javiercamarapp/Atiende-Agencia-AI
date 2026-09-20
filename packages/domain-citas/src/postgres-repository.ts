@@ -10,7 +10,7 @@
 // ruta de staff (cancelar desde panel) sí abre sesión con el userId real, que es lo
 // que `cancelAppointmentFromPanel` recibe como `actorUserId`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { runWithSavepointFallback } from "@atiende/db";
+import { isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
@@ -894,7 +894,13 @@ export class PostgresCitasRepository implements CitasRepository {
       preferred_time_window: "morning" | "afternoon" | "evening" | "any";
       created_at: string;
     }>(
-      `select id, customer_phone, customer_name, notified_count, provider_id, service_id, preferred_date_from, preferred_date_to, preferred_time_window, created_at
+      // f2-citas-lista-de-espera (regla dura #6) — `preferred_date_from`/
+      // `preferred_date_to` son columnas `date`; el driver `pg` real las entrega
+      // como objeto `Date`, nunca como el `string` que `WaitlistCandidateRow`
+      // declara (nunca visible en los tests en memoria, que no pasan por `pg`
+      // real) -- `::text` explícito, mismo criterio que
+      // `domain-hoteles/src/postgres-repository.ts` (`check_in_date::text`, etc).
+      `select id, customer_phone, customer_name, notified_count, provider_id, service_id, preferred_date_from::text, preferred_date_to::text, preferred_time_window, created_at
        from citas.appointment_waitlist
        where organization_id = $1 and status = 'active' and expires_at > now() and notified_count < 3;`,
       [organizationId],
@@ -911,6 +917,61 @@ export class PostgresCitasRepository implements CitasRepository {
       preferredTimeWindow: r.preferred_time_window,
       createdAt: r.created_at,
     }));
+  }
+
+  /** f2-citas-lista-de-espera, hallazgo (A) — ver el comentario largo de
+   * `repository.ts::loadLiveWaitlistCandidatesAsSystem` y de la migración
+   * `020_appointment_waitlist_sistema_lectura.sql` para el diseño completo.
+   * `citas.system_load_live_waitlist_candidates` es `security definer` de
+   * SOLO-SISTEMA (guard `auth.uid() is null`) — bypassa la policy de staff de
+   * `citas.appointment_waitlist` (que en sesión de sistema nunca aplica) sin
+   * exponer ninguna columna de más. `runWithSavepointFallback` +
+   * `isUndefinedFunctionError`: si la migración 020 todavía no está aplicada
+   * (SQLSTATE 42883, `undefined_function`), degrada a lista vacía -- el MISMO
+   * comportamiento honesto de hoy (0 candidatos vistos, nunca un 500) -- en vez
+   * de dejar la sesión de sistema abortada para lo que el caller haga después
+   * (ver `tryNotifyWaitlistOfFreedSlot`/el broadcast post-commit, ambos ya
+   * envuelven esta llamada en su propio `runWithRowSavepoint`/postCommitTasks,
+   * pero el fallback aquí adentro hace que este método sea seguro también para
+   * cualquier caller futuro que no sepa de ese detalle). */
+  async loadLiveWaitlistCandidatesAsSystem(organizationId: string): Promise<readonly WaitlistCandidateRow[]> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          out_id: string;
+          out_customer_phone: string;
+          out_customer_name: string | null;
+          out_notified_count: number;
+          out_provider_id: string | null;
+          out_service_id: string | null;
+          out_preferred_date_from: string | null;
+          out_preferred_date_to: string | null;
+          out_preferred_time_window: "morning" | "afternoon" | "evening" | "any";
+          out_created_at: string;
+        }>(`select * from citas.system_load_live_waitlist_candidates($1);`, [organizationId]);
+        return rows.map((r) => ({
+          id: r.out_id,
+          customerPhone: r.out_customer_phone,
+          customerName: r.out_customer_name,
+          notifiedCount: r.out_notified_count,
+          providerId: r.out_provider_id,
+          serviceId: r.out_service_id,
+          preferredDateFrom: r.out_preferred_date_from,
+          preferredDateTo: r.out_preferred_date_to,
+          preferredTimeWindow: r.out_preferred_time_window,
+          createdAt: r.out_created_at,
+        }));
+      },
+      isRecoverable: isUndefinedFunctionError,
+      fallback: (err) => {
+        console.warn(
+          "loadLiveWaitlistCandidatesAsSystem: citas.system_load_live_waitlist_candidates no existe todavía (SQLSTATE 42883, migración 020 pendiente de aplicar) -- degradando a lista vacía, mismo comportamiento honesto de hoy:",
+          err instanceof Error ? err.message : err,
+        );
+        return Promise.resolve([] as readonly WaitlistCandidateRow[]);
+      },
+    });
   }
 
   async claimWaitlistNotificationSlot(waitlistId: string, maxNotifications: number): Promise<boolean> {
