@@ -472,3 +472,35 @@ export interface RestaurantesAuditLogPagina {
   readonly total: number;
   readonly nextOffset: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// FASE 3 (producto) -- configuración editable del panel (owner/admin), ver
+// migrations/021_restaurantes_config_editable_y_search_path_fix.sql. Conecta
+// tablas que YA EXISTÍAN sin ninguna ruta de escritura -- ver el comentario de
+// cabecera de esa migración para el porqué de cada una.
+// ---------------------------------------------------------------------------
+
+/** `restaurantes.whatsapp_channel_config` (migrations/001/017) -- `null` cuando
+ *  la organización nunca conectó un número (mismo criterio "honesto" que
+ *  `resolveActiveWhatsAppPhoneNumberId`: nunca un objeto fingido). */
+export interface WhatsappChannelConfig {
+  readonly phoneNumberId: string | null;
+}
+
+/** `restaurantes.known_zone` (migrations/005/016) -- fila completa para el
+ *  listado de administración (a diferencia de `NearestBranchMatch`, que solo
+ *  expone el nombre reconocido de la zona que matcheó). */
+export interface KnownZone {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly name: string;
+  readonly lat: number;
+  readonly lng: number;
+  readonly createdAt: string;
+}
+
+export interface NewKnownZoneInput {
+  readonly name: string;
+  readonly lat: number;
+  readonly lng: number;
+}

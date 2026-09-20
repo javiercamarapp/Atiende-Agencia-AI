@@ -25,8 +25,10 @@ import type {
   CustomerListFilter,
   CustomerListPage,
   CustomerTier,
+  KnownZone,
   NearestBranchMatch,
   NewCategoryInput,
+  NewKnownZoneInput,
   NewProductInput,
   NewPromotionInput,
   Order,
@@ -43,6 +45,7 @@ import type {
   RestaurantesAuditLogPagina,
   RestaurantesAuditLogPaginacion,
   RestaurantesAuditLogRow,
+  WhatsappChannelConfig,
 } from "./types.ts";
 import type {
   ChannelStatsRow,
@@ -61,6 +64,7 @@ import type {
   TierDistributionRow,
   WhatsAppConversationStatsRow,
 } from "./repository.ts";
+import { RestaurantesConfigUnavailableError } from "./repository.ts";
 
 interface BranchRow {
   readonly property_id: string;
@@ -333,6 +337,49 @@ function advertirAuditLogLecturaNoDisponible(err: unknown): void {
       "Aplica packages/domain-restaurantes/migrations/019_restaurantes_audit_log.sql (o su espejo en supabase/migrations/).",
     err,
   );
+}
+
+// ---------------------------------------------------------------------------
+// FASE 3 (producto) -- configuración editable (whatsapp_channel_config/
+// known_zone), ver el comentario de cabecera de `getWhatsappChannelConfig` más
+// abajo para el porqué de incluir 42501 aquí (tablas VIEJAS, GRANT nuevo).
+// ---------------------------------------------------------------------------
+function esErrorCompatibilidadConfigBaseSinMigrar(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42501" || code === "42883" || code === "42P01" || code === "42703";
+}
+
+const configEscrituraAdvertida = new Set<string>();
+function advertirConfigEscrituraNoDisponible(tabla: string, err: unknown): void {
+  if (configEscrituraAdvertida.has(tabla)) return;
+  configEscrituraAdvertida.add(tabla);
+  console.warn(
+    `PostgresRestaurantesRepository: la escritura sobre restaurantes.${tabla} todavía no está habilitada en esta base ` +
+      "(SQLSTATE 42501/42883/42P01/42703) -- aplica " +
+      "packages/domain-restaurantes/migrations/021_restaurantes_config_editable_y_search_path_fix.sql (o su espejo en " +
+      "supabase/migrations/) para habilitarla.",
+    err,
+  );
+}
+
+interface KnownZoneRowSql {
+  id: string;
+  organization_id: string;
+  name: string;
+  lat: string | number;
+  lng: string | number;
+  created_at: string;
+}
+
+function mapKnownZoneRow(row: KnownZoneRowSql): KnownZone {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    name: row.name,
+    lat: Number(row.lat),
+    lng: Number(row.lng),
+    createdAt: row.created_at,
+  };
 }
 
 interface RestaurantesAuditLogRowSql {
@@ -1492,6 +1539,102 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       fallback: (err) => {
         advertirAuditLogLecturaNoDisponible(err);
         return Promise.resolve({ disponible: false, items: [], total: 0, nextOffset: null });
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // FASE 3 (producto) -- configuración editable del panel, ver migrations/
+  // 021_restaurantes_config_editable_y_search_path_fix.sql.
+  //
+  // COMPATIBILIDAD CON LA BASE SIN MIGRAR -- A DIFERENCIA de audit_log (tabla
+  // NUEVA, SQLSTATE 42883/42P01/42703): `whatsapp_channel_config`/`known_zone`
+  // YA EXISTÍAN desde Fase 1/2, así que si la migración 021 todavía no se aplicó
+  // a la base real, el INSERT/UPDATE/DELETE nuevo no falla por "objeto
+  // inexistente" -- falla por RLS/GRANT ausente, SQLSTATE 42501
+  // (`insufficient_privilege`, "permission denied for table ..." o "new row
+  // violates row-level security policy ..."). `esErrorCompatibilidadConfig
+  // BaseSinMigrar` reconoce ambos casos (42501 explícito + el trío estándar de
+  // `@atiende/db::isMigrationPendingError`, por si la propia tabla tampoco
+  // existiera en un entorno todavía más atrasado) -- ver AGENTS.md, REGLA DURA
+  // de compatibilidad.
+  // ---------------------------------------------------------------------------
+
+  async getWhatsappChannelConfig(organizationId: string): Promise<WhatsappChannelConfig> {
+    const { rows } = await this.db.query<{ phone_number_id: string }>(
+      `select phone_number_id from restaurantes.whatsapp_channel_config where organization_id = $1;`,
+      [organizationId],
+    );
+    return { phoneNumberId: rows[0]?.phone_number_id ?? null };
+  }
+
+  async upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig> {
+    return runWithSavepointFallback<WhatsappChannelConfig>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_config_write",
+      primary: async () => {
+        const { rows } = await this.db.query<{ phone_number_id: string }>(
+          `insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id)
+           values ($1, $2)
+           on conflict (organization_id) do update set phone_number_id = excluded.phone_number_id
+           returning phone_number_id;`,
+          [organizationId, phoneNumberId],
+        );
+        return { phoneNumberId: rows[0]!.phone_number_id };
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirConfigEscrituraNoDisponible("whatsapp_channel_config", err);
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
+  async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
+    const { rows } = await this.db.query<KnownZoneRowSql>(
+      `select id, organization_id, name, lat, lng, created_at::text as created_at
+       from restaurantes.known_zone where organization_id = $1 order by created_at desc, id desc;`,
+      [organizationId],
+    );
+    return rows.map(mapKnownZoneRow);
+  }
+
+  async createKnownZone(organizationId: string, input: NewKnownZoneInput): Promise<KnownZone> {
+    return runWithSavepointFallback<KnownZone>({
+      session: this.db,
+      savepointName: "sp_restaurantes_known_zone_write",
+      primary: async () => {
+        const { rows } = await this.db.query<KnownZoneRowSql>(
+          `insert into restaurantes.known_zone (organization_id, name, lat, lng)
+           values ($1, $2, $3, $4)
+           returning id, organization_id, name, lat, lng, created_at::text as created_at;`,
+          [organizationId, input.name, input.lat, input.lng],
+        );
+        return mapKnownZoneRow(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirConfigEscrituraNoDisponible("known_zone", err);
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
+  async deleteKnownZone(organizationId: string, zoneId: string): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_restaurantes_known_zone_delete",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string }>(
+          `delete from restaurantes.known_zone where id = $1 and organization_id = $2 returning id;`,
+          [zoneId, organizationId],
+        );
+        return rows.length > 0;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirConfigEscrituraNoDisponible("known_zone", err);
+        throw new RestaurantesConfigUnavailableError();
       },
     });
   }
