@@ -34,6 +34,18 @@
 --  10. Orden TOTAL determinista dentro de UNA transacción y paginación por offset
 --      ESTABLE sobre ese empate (`seq` ya vive en la migración 019 -- a diferencia
 --      de rentas, nunca hace falta una segunda migración para esto).
+--  11. Esquema de PRODUCCIÓN a medio migrar (019 no aplicada -- "REGLA DURA DE
+--      COMPATIBILIDAD CON LA BASE SIN MIGRAR" del AGENTS.md de esta fase): el SQL
+--      REAL de las dos sentencias que `PostgresRestaurantesRepository` emite
+--      (`select restaurantes.record_audit_log(...)` en `registrarAuditoria`, el
+--      SELECT de datos en `listAuditoria`) contra Postgres REAL, con la función/
+--      tabla eliminada DENTRO de la misma transacción (DDL transaccional, revertido
+--      al final -- mismo patrón que
+--      `scripts/verify-superadmin-resumen/assertions.sql` escenarios 41/42),
+--      recuperado con el mismo SAVEPOINT/ROLLBACK TO SAVEPOINT real que
+--      `runWithSavepointFallback` usa en producción -- no solo el doble en memoria
+--      (`AbortAwareFakeSession`) de
+--      `packages/domain-restaurantes/tests/audit-log-savepoint.spec.ts`.
 --
 -- Run vía ./run.sh -- ver ese archivo para cómo se levanta el Postgres efímero + el
 -- mock mínimo de plataforma (mismo patrón que scripts/verify-rentas-bitacora-auditoria/).
@@ -359,15 +371,97 @@ select (
 )::int as paginacion_sin_repetir_ni_perder_deberia_ser_1;
 rollback;
 
--- NOTA -- esquema a medio migrar (019 no aplicada, regla dura de esta fase --
--- "REGLA DURA DE COMPATIBILIDAD CON LA BASE SIN MIGRAR" del AGENTS.md): este
--- runner (`run-gate.mjs`) SIEMPRE aplica TODAS las migraciones de
--- `supabase/migrations/` en orden, sin forma de saltarse una a propósito (ver el
--- comentario de cabecera de ese script) -- así que el caso "019 no aplicada
--- todavía" no puede reproducirse AQUÍ contra Postgres real. Esa cobertura vive en
--- packages/domain-restaurantes/tests/audit-log-savepoint.spec.ts
--- (`AbortAwareFakeSession`, SQLSTATE 42883/42P01 -- misma técnica que
--- packages/domain-rentas/tests/audit-log-savepoint.spec.ts) -- mismo criterio que
--- el resto de "compatibilidad con la base sin migrar" de esta fase, que tampoco se
--- prueba contra Postgres real por el mismo motivo (ver la nota equivalente en
--- scripts/verify-rentas-bitacora-auditoria/assertions.sql).
+\echo ''
+\echo '=== 12) esquema de PRODUCCION a medio migrar (019 no aplicada): SQLSTATE real de Postgres para las DOS sentencias reales del repositorio, recuperado con SAVEPOINT real (no el doble en memoria de audit-log-savepoint.spec.ts) ==='
+\echo ''
+\echo 'Hallazgo corregido (revisor independiente del PR #183, bloqueante #1): una nota'
+\echo 'anterior aqui afirmaba que este caso "no puede reproducirse aqui" porque'
+\echo 'run-gate.mjs siempre aplica todas las migraciones -- afirmacion FALSA: DDL es'
+\echo 'transaccional en Postgres, asi que un `drop function`/`drop table` DENTRO del'
+\echo 'propio begin;/rollback; de un escenario simula "la migracion 019 no aplicada"'
+\echo 'sin tocar run-gate.mjs ni las migraciones reales -- exactamente el patron ya'
+\echo 'establecido en scripts/verify-superadmin-resumen/assertions.sql (escenarios 41'
+\echo 'y 42, PR #179).'
+\echo ''
+
+\echo '--- 23. escritura: con restaurantes.record_audit_log ELIMINADA dentro de esta MISMA transaccion (drop transaccional, revertido al `rollback;` final), la llamada REAL que PostgresRestaurantesRepository.registrarAuditoria emite (select restaurantes.record_audit_log($1..$7)) falla con SQLSTATE 42883 -- SAVEPOINT + ROLLBACK TO SAVEPOINT (mismo mecanismo que runWithSavepointFallback en produccion) recupera la transaccion: la query siguiente, completamente ajena a la funcion eliminada, SI corre (nunca 25P02) ---'
+begin;
+drop function restaurantes.record_audit_log(uuid, text, text, uuid, text, text, text);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000021', true);
+savepoint sp_verify_restaurantes_audit_log_write;
+do $$
+declare
+  v_state text;
+  v_msg text;
+begin
+  begin
+    -- Mismo texto SQL EXACTO (solo $1..$7 -> literales) que
+    -- PostgresRestaurantesRepository.registrarAuditoria emite realmente, ver
+    -- packages/domain-restaurantes/src/postgres-repository.ts.
+    perform restaurantes.record_audit_log(
+      '00000000-0000-0000-0000-0000000000b1',
+      'producto.precio_actualizado',
+      'producto',
+      null,
+      null,
+      null,
+      'compat-base-sin-migrar'
+    );
+    raise exception 'se esperaba que la funcion eliminada hiciera fallar esta llamada con SQLSTATE 42883, pero no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42883' then
+      raise exception 'se esperaba SQLSTATE 42883 (undefined_function -- el mismo que packages/db/src/sql-errors.ts::UNDEFINED_FUNCTION_MESSAGE_RE exige), se obtuvo % con mensaje: %', v_state, v_msg;
+    end if;
+    if v_msg !~ '^function\s+\S+\(.*\)\s+does not exist' then
+      raise exception 'se esperaba un mensaje con la forma "function ...(...) does not exist" (la misma que UNDEFINED_FUNCTION_MESSAGE_RE exige), se obtuvo: %', v_msg;
+    end if;
+  end;
+end $$;
+rollback to savepoint sp_verify_restaurantes_audit_log_write;
+release savepoint sp_verify_restaurantes_audit_log_write;
+-- "la query siguiente debe funcionar" (bloqueante #1 del revisor): una consulta
+-- REAL, completamente ajena a la funcion eliminada, en la MISMA transaccion --
+-- prueba que ROLLBACK TO SAVEPOINT deja la transaccion compartida REALMENTE
+-- utilizable (no abortada -- ver scripts/verify-fallback-savepoint/pg-scenarios.sql
+-- escenario 1 vs 2 para el mismo criterio con 1/0 en vez de 42883). Sin el
+-- SAVEPOINT de arriba, esta consulta fallaria con 25P02 ("current transaction is
+-- aborted, commands ignored until end of transaction block").
+select 1 as transaccion_recuperada_tras_42883_deberia_ser_1;
+rollback;
+
+\echo '--- 24. lectura: con restaurantes.audit_log ELIMINADA dentro de esta MISMA transaccion, el SELECT REAL de datos que PostgresRestaurantesRepository.listAuditoria emite (mismas columnas, mismo order by created_at desc, seq desc) falla con SQLSTATE 42P01 -- SAVEPOINT + ROLLBACK TO SAVEPOINT recupera la transaccion: la query siguiente SI corre ---'
+begin;
+drop table restaurantes.audit_log;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000021', true);
+savepoint sp_verify_restaurantes_audit_log_read;
+do $$
+declare
+  v_state text;
+  v_msg text;
+begin
+  begin
+    -- Mismo texto SQL EXACTO (mismas columnas, mismo order by/limit/offset) que
+    -- PostgresRestaurantesRepository.listAuditoria emite realmente para la pagina
+    -- de datos de la pantalla de Auditoria (el `count(*)` previo del mismo método
+    -- toca la misma tabla eliminada y fallaría igual; se usa el SELECT de datos
+    -- por ser el que de verdad arma lo que ve el staff).
+    perform id, actor_user_id, action, entity_type, entity_id, campo, antes, despues, created_at::text as created_at
+    from restaurantes.audit_log where organization_id = '00000000-0000-0000-0000-0000000000b1'
+    order by created_at desc, seq desc limit 50 offset 0;
+    raise exception 'se esperaba que la tabla eliminada hiciera fallar este SELECT con SQLSTATE 42P01, pero no fallo';
+  exception when others then
+    get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+    if v_state <> '42P01' then
+      raise exception 'se esperaba SQLSTATE 42P01 (undefined_table), se obtuvo % con mensaje: %', v_state, v_msg;
+    end if;
+  end;
+end $$;
+rollback to savepoint sp_verify_restaurantes_audit_log_read;
+release savepoint sp_verify_restaurantes_audit_log_read;
+-- Misma prueba que el escenario 23: la transaccion compartida sigue utilizable
+-- tras el ROLLBACK TO SAVEPOINT, con una consulta ajena a la tabla eliminada.
+select 1 as transaccion_recuperada_tras_42p01_deberia_ser_1;
+rollback;
