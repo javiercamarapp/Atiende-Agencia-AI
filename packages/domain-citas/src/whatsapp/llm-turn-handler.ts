@@ -37,6 +37,7 @@ import type { CitasRepository, ConversationMessage } from "../repository.ts";
 import type { AppointmentRecord, Slot } from "../types.ts";
 import { getVerticalFaqs } from "../vertical-config.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tono, reglas duras y generación del prompt.
@@ -96,14 +97,26 @@ export interface WhatsAppLlmAgentConfig {
 
 /** Fase 2 no porta un panel de configuración de tono editable (fuera de alcance,
  * ver diseño §6) — el seam de lectura (`getAgentConfig`) queda aislado para que un
- * panel de admin futuro solo tenga que sustituir esta función, sin tocar el loop. */
+ * panel de admin futuro solo tenga que sustituir esta función, sin tocar el loop.
+ *
+ * `timezone` SÍ es real desde la auditoría f3-zona-horaria-citas-rentas: el
+ * caller (`handleInboundMessage` de abajo) ya conoce `organizationId` en este
+ * punto y ya lee `citas.tenant_config` para el rubro (ver ese call site) --
+ * `citas.tenant_config.default_timezone` es la única zona horaria real
+ * disponible aquí (el turno de WhatsApp resuelve provider/property MÁS
+ * ADELANTE en el loop de tool-use, nunca antes de construir el prompt), así
+ * que se pasa resuelta (`resolverZonaHorariaNegocio`) en vez de fijarla a
+ * `FALLBACK_CONFIG.timezone` sin importar la organización real -- bug real:
+ * un negocio de citas en Cancún/Tijuana/otra zona con `default_timezone` ya
+ * configurado en el panel (ver `apps/api/.../citas/admin.ts::optionalTimeZone`)
+ * seguía recibiendo "FECHA DE HOY"/saludo en hora de CDMX en el prompt del LLM. */
 export const FALLBACK_CONFIG: WhatsAppLlmAgentConfig = {
   businessName: "este negocio",
   timezone: "America/Mexico_City",
 };
 
-export function getAgentConfig(_organizationId: string): WhatsAppLlmAgentConfig {
-  return FALLBACK_CONFIG;
+export function getAgentConfig(_organizationId: string, timezone: string = FALLBACK_CONFIG.timezone): WhatsAppLlmAgentConfig {
+  return { ...FALLBACK_CONFIG, timezone };
 }
 
 /**
@@ -395,7 +408,6 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
   return {
     async handleInboundMessage({ organizationId, phone, messages, customer }) {
       const deadline = Date.now() + turnBudgetMs;
-      const config = getAgentConfig(organizationId);
       // Fase 6 §1 — el rubro real (para las FAQs canónicas del prompt) es best-effort:
       // si `citas.tenant_config` todavía no tiene fila para esta organización, el
       // agente sigue funcionando igual, solo sin ese grounding extra (ver
@@ -405,7 +417,14 @@ export function createLlmWhatsAppTurnHandler(repo: CitasRepository, gateway: Llm
       // riesgo que `executeToolCall`) dejaría abortada la transacción para TODO el
       // resto del turno, incluidas las tool calls que sí importan. Mismo
       // `runWithRowSavepoint` que el resto de este archivo.
+      //
+      // auditoría f3-zona-horaria-citas-rentas: se lee ANTES de `getAgentConfig`
+      // porque `tenantConfig.defaultTimezone` es también la única zona horaria
+      // real disponible en este punto del turno (ver comentario de
+      // `getAgentConfig` arriba) — un solo `findTenantConfig` sirve para ambos,
+      // nunca dos lecturas de la misma fila.
       const tenantConfig = await repo.runWithRowSavepoint(() => repo.findTenantConfig(organizationId)).catch(() => null);
+      const config = getAgentConfig(organizationId, resolverZonaHorariaNegocio(tenantConfig?.defaultTimezone));
       const systemPrompt = buildSystemPrompt(config, customer, now(), tenantConfig?.rubro ?? null);
       const normalizedPhone = normalizePhone(phone);
 

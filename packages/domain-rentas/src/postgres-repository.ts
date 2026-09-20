@@ -4,7 +4,7 @@
 // esquema `rentas` de migrations/001-003 (RLS real vía `core.has_property_access`/
 // funciones propias del schema `rentas`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatement } from "./finanzas/statement.ts";
@@ -413,10 +413,21 @@ export class PostgresRentasRepository implements RentasRepository {
     // vigente HOY un día antes de tiempo, y una tarifa que dejó de aplicar hoy (CDMX)
     // seguía compitiendo un día de más. Resuelto UNA vez en TS con
     // `@atiende/core-tenancy::hoyFechaNegocio()` y pasado como parámetro -- el SQL ya
-    // no llama `current_date`. `RentasRepository` no expone hoy ninguna zona horaria
-    // real por property (ver el mismo gap ya documentado en pricing-config.ts, r6
-    // punto 6) -- usa el default de plataforma (`America/Mexico_City`).
-    const hoy = hoyFechaNegocio();
+    // no llama `current_date`.
+    //
+    // auditoría f3-zona-horaria-citas-rentas -- CONFIRMADO y CONECTADO: este método
+    // (`GET .../cotizacion`, cotizaciones.ts) SÍ conoce `propertyId` (parámetro),
+    // así que la zona real de la property ya no cae al default de plataforma sin
+    // más -- se lee directo de `rentas.property_config.zona_horaria` (mismo SELECT
+    // ya otorgado a `authenticated` desde 001_rentas_schema.sql, sin GRANT nuevo;
+    // NOT NULL en el esquema, así que `zonaRow.rows[0]?.zona_horaria` solo sería
+    // `undefined` si la property no tuviera fila todavía -- `resolverZonaHorariaNegocio`
+    // cae CERRADO al default de plataforma en ese caso, nunca lanza). Efecto real:
+    // una property en otra zona (ej. Cancún) ya no mostraba/aplicaba la tarifa
+    // correcta al huésped en la ventana de 1 hora entre el corte real de su zona y
+    // el de CDMX.
+    const zonaRow = await this.db.query<{ zona_horaria: string }>(`select zona_horaria from rentas.property_config where property_id = $1;`, [propertyId]);
+    const hoy = hoyFechaNegocio(resolverZonaHorariaNegocio(zonaRow.rows[0]?.zona_horaria));
     const base = await this.db.query<TarifaBaseRow>(
       `select precio_noche_centavos, moneda from rentas.tarifa_base
        where unidad_id = $1 and vigente_desde <= $2::date
