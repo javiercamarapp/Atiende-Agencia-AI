@@ -717,8 +717,14 @@ describe("POST /v1/citas/properties/:propertyId/waitlist/broadcast — Fase 9", 
       body: JSON.stringify({ limit: 1 }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { notified: number; candidates_considered: number; skipped_no_whatsapp_config: boolean };
-    expect(body).toEqual({ notified: 1, candidates_considered: 1, skipped_no_whatsapp_config: false });
+    // f2-citas-lista-de-espera, hallazgo (B) — el efecto real ahora corre
+    // POST-COMMIT en sesión de sistema (ver runCitasListaEsperaBroadcastAfterCommit);
+    // la respuesta síncrona ya no reporta `notified` (solo se sabe DESPUÉS del
+    // commit) -- `queued: true` documenta el best-effort. Las aserciones de
+    // abajo sobre el outbox/notifiedCount siguen valiendo: `dbSession` espera
+    // la tarea post-commit ANTES de que `app.request` resuelva.
+    const body = (await res.json()) as { queued: boolean; candidates_considered: number; skipped_no_whatsapp_config: boolean };
+    expect(body).toEqual({ queued: true, candidates_considered: 1, skipped_no_whatsapp_config: false });
 
     const outbox = ctx.citasRepo.getOutbox();
     expect(outbox).toHaveLength(1);
@@ -759,8 +765,8 @@ describe("POST /v1/citas/properties/:propertyId/waitlist/broadcast — Fase 9", 
       body: "{}",
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { notified: number; candidates_considered: number };
-    expect(body).toEqual({ notified: 0, candidates_considered: 0, skipped_no_whatsapp_config: false });
+    const body = (await res.json()) as { queued: boolean; candidates_considered: number };
+    expect(body).toEqual({ queued: true, candidates_considered: 0, skipped_no_whatsapp_config: false });
   });
 
   it("403 rechaza a un staff que no pertenece a esa property", async () => {
