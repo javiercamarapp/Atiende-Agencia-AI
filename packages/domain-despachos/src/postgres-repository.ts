@@ -3,7 +3,7 @@
 // consume `core-auth/src/middleware.ts`). Ejecuta las queries reales contra el
 // esquema `despachos` de migrations/001 (RLS real vía `core.has_property_access`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
-import { runWithSavepointFallback } from "@atiende/db";
+import { isNoUniqueOrExclusionConstraintError, runWithSavepointFallback } from "@atiende/db";
 import type { HallazgoCfdi } from "@atiende/billing";
 import { InvoiceAlreadyExistsError, InvoiceReviewAlreadyResolvedError, ReceivableAlreadyExistsError, ReceivableAlreadyPaidError } from "./errors.ts";
 import type { DespachosRepository, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
@@ -501,7 +501,68 @@ export class PostgresDespachosRepository implements DespachosRepository {
 
   // ---- Vencimientos fiscales ----
 
+  // Fase 2 (f2-despachos-fiscal-deadline-unique) — hallazgo real: `createDeadline` era
+  // un INSERT plano; `POST .../vencimientos/calcular` (vencimientos.ts) lo llama 4
+  // veces (ISR/IVA/DIOT/Nómina) EN LA MISMA transacción de staff (`dbSession`) por
+  // cada periodo. `despachos.fiscal_deadline` YA tiene `unique (property_id, tipo,
+  // periodo)` desde la migración ORIGINAL de la Fase 1 (migrations/001_despachos_
+  // schema.sql línea 133 / supabase/migrations/20240101000009_001_despachos_schema.sql
+  // — verificado con `git log -S`, nunca se agregó ni se quitó después: no hacía falta
+  // una migración nueva para AGREGAR el índice, ver el cuerpo del PR). Pulsar
+  // "Calcular vencimientos" dos veces para el mismo periodo (doble clic, reintento de
+  // red del staff) SÍ estaba roto, pero no por duplicar filas -- el índice ya lo
+  // impedía -- sino porque el segundo INSERT lanzaba un `unique_violation` (23505)
+  // CRUDO que Postgres real deja sin manejar: eso aborta TODA la transacción del lote
+  // de 4 inserts de ese request (`ManagedPostgresEngine.withAppSession` es una sola
+  // transacción, ver `savepoint-fallback.ts`), así que el `commit;` real vuelve
+  // `ROLLBACK` en silencio (`AbortedTransactionCommitError`) y el staff ve un 500 en
+  // vez de un resultado idempotente. El mirror en memoria
+  // (`in-memory-repository.ts::createDeadline`) YA hacía este dedup a mano desde antes
+  // -- esta es la paridad que le faltaba al adaptador real de Postgres.
+  //
+  // `ON CONFLICT (property_id, tipo, periodo) DO NOTHING` + relectura de la fila
+  // existente (`findDeadlineByPeriodo`, sin fila devuelta por el `INSERT` cuando hubo
+  // conflicto) hace que "calcular" sea idempotente de verdad. `runWithSavepointFallback`
+  // protege el ÚNICO catch real que sigue: 42P10 ("no unique or exclusion constraint
+  // matching the ON CONFLICT specification") -- SOLO puede pasar si este índice, pese a
+  // ser original de la Fase 1, no existiera todavía en la base real que corre este
+  // código (REGLA DURA de compatibilidad del repo: el código nuevo debe seguir
+  // funcionando contra la base sin migrar) -- se degrada al INSERT plano de antes de
+  // este fix (mismo riesgo/comportamiento que existía antes de este PR, nunca uno
+  // nuevo). Sin el SAVEPOINT, ese `catch` dejaría la transacción abortada para
+  // cualquier consulta posterior de la MISMA sesión (25P02) -- ver
+  // `tests/postgres-repository-create-deadline-savepoint.spec.ts` (con
+  // `AbortAwareFakeSession`, la única sesión de prueba de este paquete que reproduce
+  // ese estado real).
   async createDeadline(input: NewFiscalDeadlineInput): Promise<FiscalDeadlineRecord> {
+    return runWithSavepointFallback<FiscalDeadlineRecord>({
+      session: this.db,
+      primary: () => this.insertDeadlineOnConflictDoNothing(input),
+      isRecoverable: (err) => isNoUniqueOrExclusionConstraintError(err),
+      fallback: () => this.insertDeadlinePlano(input),
+    });
+  }
+
+  private async insertDeadlineOnConflictDoNothing(input: NewFiscalDeadlineInput): Promise<FiscalDeadlineRecord> {
+    const { rows } = await this.db.query<FiscalDeadlineRawRow>(
+      `insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad)
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (property_id, tipo, periodo) do nothing
+       returning ${FISCAL_DEADLINE_COLUMNS};`,
+      [input.organizationId, input.propertyId, input.tipo, input.periodo, input.fechaLimite, input.prioridad],
+    );
+    if (rows[0]) return mapDeadline(rows[0]);
+    // DO NOTHING sin fila devuelta: ya existía un vencimiento para este (property_id,
+    // tipo, periodo) -- se devuelve el existente (idempotente), nunca se duplica ni se
+    // lanza el unique_violation crudo de antes de este fix.
+    return this.findDeadlineByPeriodo(input.propertyId, input.tipo, input.periodo);
+  }
+
+  /** Camino de respaldo de `createDeadline` para 42P10 (ver comentario de arriba) --
+   *  el INSERT plano de antes de este fix, byte a byte, para no introducir NINGÚN
+   *  comportamiento nuevo en el caso (hoy no reproducible, pero manejado explícito)
+   *  de que el índice `unique` todavía no exista en esta base. */
+  private async insertDeadlinePlano(input: NewFiscalDeadlineInput): Promise<FiscalDeadlineRecord> {
     const { rows } = await this.db.query<FiscalDeadlineRawRow>(
       `insert into despachos.fiscal_deadline (organization_id, property_id, tipo, periodo, fecha_limite, prioridad)
        values ($1, $2, $3, $4, $5, $6) returning ${FISCAL_DEADLINE_COLUMNS};`,
@@ -510,16 +571,35 @@ export class PostgresDespachosRepository implements DespachosRepository {
     return mapDeadline(rows[0]!);
   }
 
+  private async findDeadlineByPeriodo(propertyId: string, tipo: TipoVencimiento, periodo: string): Promise<FiscalDeadlineRecord> {
+    const { rows } = await this.db.query<FiscalDeadlineRawRow>(
+      `select ${FISCAL_DEADLINE_COLUMNS} from despachos.fiscal_deadline where property_id = $1 and tipo = $2 and periodo = $3;`,
+      [propertyId, tipo, periodo],
+    );
+    if (!rows[0]) {
+      throw new Error(
+        `createDeadline: ON CONFLICT DO NOTHING no devolvió fila y la relectura tampoco encontró un vencimiento existente para property=${propertyId} tipo=${tipo} periodo=${periodo}.`,
+      );
+    }
+    return mapDeadline(rows[0]);
+  }
+
   async listDeadlines(propertyId: string, filter?: { readonly estado?: string }): Promise<readonly FiscalDeadlineRecord[]> {
+    // Orden TOTAL (hallazgo menor de esta misma ronda): `calcularVencimientosDelPeriodo`
+    // (engine.ts) genera los 4 tipos (ISR/IVA/DIOT/Nómina) de un mismo periodo con el
+    // MISMO `fecha_limite` a propósito -- `order by fecha_limite asc` a secas deja esos
+    // 4 empatados, sin desempate determinista (Postgres no garantiza un orden estable
+    // entre filas empatadas). `, id asc` como desempate hace el orden total y estable
+    // sin cambiar el criterio principal (fecha_limite sigue mandando).
     if (filter?.estado) {
       const { rows } = await this.db.query<FiscalDeadlineRawRow>(
-        `select ${FISCAL_DEADLINE_COLUMNS} from despachos.fiscal_deadline where property_id = $1 and estado = $2 order by fecha_limite asc;`,
+        `select ${FISCAL_DEADLINE_COLUMNS} from despachos.fiscal_deadline where property_id = $1 and estado = $2 order by fecha_limite asc, id asc;`,
         [propertyId, filter.estado],
       );
       return rows.map(mapDeadline);
     }
     const { rows } = await this.db.query<FiscalDeadlineRawRow>(
-      `select ${FISCAL_DEADLINE_COLUMNS} from despachos.fiscal_deadline where property_id = $1 order by fecha_limite asc;`,
+      `select ${FISCAL_DEADLINE_COLUMNS} from despachos.fiscal_deadline where property_id = $1 order by fecha_limite asc, id asc;`,
       [propertyId],
     );
     return rows.map(mapDeadline);
