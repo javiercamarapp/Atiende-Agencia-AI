@@ -109,7 +109,7 @@ async function migracionResumenDiarioAplicada(deps: AppDeps): Promise<boolean> {
     await deps.resumenDiarioRepo.listCronHeartbeatsForSystem();
     return true;
   } catch (err) {
-    if (isUndefinedFunctionError(err)) return false;
+    if (isUndefinedFunctionError(err, "core.list_cron_heartbeats_for_system")) return false;
     // Error real (conexión, permisos, etc.) -- NO es señal de "migración
     // pendiente"; se deja que el flujo normal continúe exactamente como
     // antes de este fix (esas 10 lecturas ya lo tragaban como `null` vía
@@ -145,7 +145,7 @@ export async function generarYPersistirResumenDiario(deps: AppDeps, fecha: strin
     // igual (p. ej. la migración se aplicó a la mitad entre el sondeo y
     // aquí, o el sondeo pasó por otra razón) -- mismo criterio honesto,
     // nunca un 500. Cualquier otro código de error se repropaga tal cual.
-    if (!isUndefinedFunctionError(err)) throw err;
+    if (!isUndefinedFunctionError(err, "core.upsert_daily_ops_summary")) throw err;
     return { ok: false, motivo: "migracion_pendiente" };
   }
 

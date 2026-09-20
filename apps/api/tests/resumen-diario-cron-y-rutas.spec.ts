@@ -301,6 +301,85 @@ describe("Resumen diario -- migración 0015 sin aplicar (SQLSTATE 42883), nunca 
     expect(body.motivo).toBe("migracion_pendiente");
   });
 
+  // Hallazgo de auditoría del 19-sep (rubro A): a diferencia del cron/"generar
+  // ahora" (ya cubiertos arriba desde la auditoría a1), `GET /superadmin/resumen`
+  // y `GET /superadmin/resumen/:fecha` NO tenían NINGÚN guard -- llamaban
+  // directo a `listDailyOpsSummariesForSuperadmin`/`getDailyOpsSummaryForSuperadmin`
+  // sin try/catch, así que contra la base real sin la migración 0015 aplicada
+  // daban 500 en vez del vacío honesto que el resto del back office de
+  // plataforma ya usa (`disponible: false`).
+  it("GET /superadmin/resumen con la migración 0015 sin aplicar -- 200 honesto { disponible:false, resumenes:[] }, nunca un 500", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setMigracionPendiente(true);
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+
+    const res = await app.request("/superadmin/resumen", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { disponible: boolean; resumenes: unknown[] };
+    expect(body.disponible).toBe(false);
+    expect(body.resumenes).toEqual([]); // vacío HONESTO -- nunca ceros que parezcan datos reales
+  });
+
+  it("GET /superadmin/resumen/:fecha con la migración 0015 sin aplicar -- 200 honesto { disponible:false, resumen:null }, NUNCA un 404 (un 404 afirmaría que sí se pudo consultar)", async () => {
+    const base = await buildTestDeps();
+    (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setMigracionPendiente(true);
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+
+    const res = await app.request("/superadmin/resumen/2026-06-15", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { disponible: boolean; resumen: unknown };
+    expect(body.disponible).toBe(false);
+    expect(body.resumen).toBeNull();
+  });
+
+  it("GET /superadmin/resumen con un resumen real disponible -- responde disponible:true (contrato explícito para la página web)", async () => {
+    const base = await buildTestDeps();
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+    await app.request("/superadmin/resumen/generar", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}" });
+
+    const res = await app.request("/superadmin/resumen", { headers: { authorization: `Bearer ${token}` } });
+    const body = (await res.json()) as { disponible: boolean };
+    expect(body.disponible).toBe(true);
+  });
+
+  // Hallazgo endurecido (revisores del 19-sep, rubro B): SQLSTATE 42883 NO
+  // significa solo "function does not exist" -- también es "operator does not
+  // exist" (comparar tipos incompatibles, p. ej. uuid = text), un BUG REAL que
+  // un guard ingenuo (`code === "42883"` a secas) enmascararía como "migración
+  // pendiente". `isMigrationPendingError` (endurecido, `@atiende/db`) exige
+  // además que el MENSAJE tenga la forma "function ... does not exist" -- este
+  // test simula el caso real sobreescribiendo el método directamente con el
+  // mensaje EXACTO que Postgres real reporta para "operator does not exist"
+  // (verificado contra Postgres real, ver `sql-errors.spec.ts`).
+  it("un 42883 de OPERADOR (bug de tipos, no migración pendiente) en GET /superadmin/resumen SÍ se repropaga como error real -- nunca se confunde con 'no disponible aún'", async () => {
+    const base = await buildTestDeps();
+    const repo = base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository;
+    repo.listDailyOpsSummariesForSuperadmin = async () => {
+      throw Object.assign(new Error("operator does not exist: uuid = text"), { code: "42883" });
+    };
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+
+    const res = await app.request("/superadmin/resumen", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(500); // NUNCA 200 { disponible:false } -- esto es un bug real, no una migración pendiente
+  });
+
+  it("un 42883 de OPERADOR en GET /superadmin/resumen/:fecha SÍ se repropaga como error real", async () => {
+    const base = await buildTestDeps();
+    const repo = base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository;
+    repo.getDailyOpsSummaryForSuperadmin = async () => {
+      throw Object.assign(new Error("operator does not exist: uuid = text"), { code: "42883" });
+    };
+    const { token } = await makeSuperadmin(base);
+    const app = buildApp(base.deps);
+
+    const res = await app.request("/superadmin/resumen/2026-06-15", { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(500);
+  });
+
   it("un código de error que NO es 42883 en el SONDEO no se confunde con 'migración pendiente' -- el cron sigue adelante", async () => {
     const base = await buildTestDeps();
     (base.deps.resumenDiarioRepo as InMemoryResumenDiarioRepository).setFallando(true);
