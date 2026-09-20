@@ -17,6 +17,7 @@ import { ApiError, Errors, type CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hasAnyPlatformRole } from "./roles.ts";
 import type { RateLimiter } from "./rate-limiter.ts";
 import type { AuditSink, AuthzAuditEntry, DenialReason } from "./audit.ts";
+import { InMemoryDenialAuditCoalescer, type DenialAuditCoalescer } from "./denial-audit-coalescer.ts";
 import type { RouteAreaMap } from "./route-area.ts";
 
 type Ctx = Context<CoreAuthHonoEnv>;
@@ -99,7 +100,26 @@ export interface RequireAdminAccessOptions {
   readonly anonymousActorKey?: (c: Ctx) => string;
   /** Reloj inyectable para que `at` en el audit entry sea determinista en tests. */
   readonly now?: () => Date;
+  /** Coalescer de 429 repetidas del mismo actor+ruta -- ver
+   *  `DenialAuditCoalescer` (denial-audit-coalescer.ts) para el porqué
+   *  (amplificación de carga hacia la base: una transacción de sistema
+   *  completa por CADA request ya bloqueado, sin evidencia nueva). Default:
+   *  una instancia propia con ventana de `DEFAULT_RATE_LIMITED_AUDIT_
+   *  COALESCE_WINDOW_MS` (10 minutos, alineada con la ventana móvil del tope
+   *  defensivo de `core.record_authz_audit_denial`, aunque son mecanismos
+   *  independientes). Inyectable para tests deterministas o para compartir
+   *  una instancia entre varias rutas montadas con `requireAdminAccess`. */
+  readonly denialAuditCoalescer?: DenialAuditCoalescer;
 }
+
+/** 10 minutos -- mismo orden de magnitud que la ventana móvil del tope
+ *  defensivo de `core.record_authz_audit_denial`
+ *  (packages/db/migrations/0021_superadmin_authz_audit_log.sql/0022_
+ *  superadmin_bitacoras_endurecimiento.sql), aunque son dos mecanismos
+ *  independientes (este coalescer vive en memoria de aplicación, antes de
+ *  que la escritura siquiera se intente; el tope SQL protege la CAPACIDAD de
+ *  la tabla del lado de la base). */
+const DEFAULT_RATE_LIMITED_AUDIT_COALESCE_WINDOW_MS = 10 * 60_000;
 
 function defaultAnonymousActorKey(c: Ctx): string {
   return c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "anon";
@@ -149,6 +169,7 @@ export function requireAdminAccess(options: RequireAdminAccessOptions): Middlewa
   const denialCost = options.denialCost ?? 1;
   const anonymousActorKey = options.anonymousActorKey ?? defaultAnonymousActorKey;
   const now = options.now ?? (() => new Date());
+  const denialAuditCoalescer = options.denialAuditCoalescer ?? new InMemoryDenialAuditCoalescer(DEFAULT_RATE_LIMITED_AUDIT_COALESCE_WINDOW_MS);
 
   return async (c: Ctx, next: Next) => {
     const path = c.req.path;
@@ -170,20 +191,47 @@ export function requireAdminAccess(options: RequireAdminAccessOptions): Middlewa
     const rl = options.rateLimiter.consume(rateLimitKey, denialCost);
 
     const reason: DenialReason = platformRole === undefined ? "no_membership" : "insufficient_role";
-    const entry: AuthzAuditEntry = {
-      at: now().toISOString(),
-      actorUserId: userId,
-      organizationId: c.get("organizationId") ?? null,
-      action: "admin:access",
-      route: path,
-      method,
-      decision: "denied",
-      reason: rl.allowed ? reason : "rate_limited",
-      ip: resolveNormalizedIp(c),
-      userAgent: c.req.header("user-agent") ?? null,
-      metadata: { platformRole: platformRole ?? null, allowedRoles },
-    };
-    await options.audit.record(entry);
+    const finalReason: DenialReason = rl.allowed ? reason : "rate_limited";
+
+    // Coalescer SOLO para 429 repetidas del mismo actor+ruta -- ver
+    // DenialAuditCoalescer para el porqué. Un 403 (insufficient_role/
+    // no_membership) SIEMPRE se audita, sin coalescer.
+    let shouldPersist = true;
+    let suppressedSincePersist = 0;
+    if (finalReason === "rate_limited") {
+      const decision = denialAuditCoalescer.shouldPersistRateLimited(rateLimitKey, now().getTime());
+      shouldPersist = decision.persist;
+      suppressedSincePersist = decision.suppressedSincePersist;
+    }
+
+    if (shouldPersist) {
+      const entry: AuthzAuditEntry = {
+        at: now().toISOString(),
+        actorUserId: userId,
+        organizationId: c.get("organizationId") ?? null,
+        action: "admin:access",
+        route: path,
+        method,
+        decision: "denied",
+        reason: finalReason,
+        ip: resolveNormalizedIp(c),
+        userAgent: c.req.header("user-agent") ?? null,
+        metadata: {
+          platformRole: platformRole ?? null,
+          allowedRoles,
+          // Nunca 0 -- solo se agrega el campo cuando de verdad hubo
+          // repeticiones suprimidas desde la última fila persistida de esta
+          // misma llave (ver InMemoryDenialAuditCoalescer).
+          ...(suppressedSincePersist > 0 ? { suppressedRateLimitedSincePersist: suppressedSincePersist } : {}),
+        },
+      };
+      await options.audit.record(entry);
+    }
+    // `shouldPersist === false`: esta 429 se suprime EN LA CAPA DE
+    // APLICACIÓN, antes de siquiera llamar a `options.audit.record` -- nunca
+    // se abre la transacción de sistema del sink real
+    // (`PersistentAuthzAuditSink::record` -> `engine.withAppSession`) para
+    // una denegación que no aporta evidencia nueva sobre la ya persistida.
 
     if (!rl.allowed) {
       throw new ApiError(
