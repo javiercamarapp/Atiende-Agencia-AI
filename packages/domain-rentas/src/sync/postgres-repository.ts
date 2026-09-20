@@ -148,16 +148,50 @@ export class PostgresRentasCalendarSyncRepository implements RentasCalendarSyncR
     };
   }
 
+  // Hallazgo de auditoría (a3, ALTA, verificado contra Postgres real) — el INSERT
+  // original omitía `organization_id`/`property_id`, columnas NOT NULL sin default de
+  // `rentas.evento_canal_importado` (supabase/migrations/20240101000057_008_ical_sync_
+  // schema.sql:56-75; solo esa migración y la 094 tocan la tabla, y la 094 solo agrega
+  // policies/grants). Contra Postgres real, TODO upsert con `sobrescribirVersion=true`
+  // (el camino real de "aplicar"/"eco") disparaba 23502 antes siquiera de evaluar el
+  // `ON CONFLICT` — el import de rentas NUNCA funcionó contra la base real, solo contra
+  // el repositorio en memoria de los tests (que no valida NOT NULL). Fix: derivar el
+  // tenant de la unidad con un JOIN, igual que ya hace `crearReservaConfirmada`
+  // (aplicacion/reservas.ts) al leer `rentas.unidad` en la MISMA sesión de sistema —
+  // esa lectura ya tiene RLS/GRANT reales (escape hatch `auth.uid() is null`,
+  // supabase/migrations/20240101000094_015_cron_publico_rls_escape_hatch.sql). Nunca se
+  // vuelven a escribir en el UPDATE del `ON CONFLICT`: el tenant de una unidad no
+  // cambia, así que solo se fija en el INSERT inicial.
   async upsertEventoImportado(unidadId: string, canalId: string, entrada: EntradaUpsertEventoImportado): Promise<void> {
     if (entrada.sobrescribirVersion) {
-      await this.db.query(
-        `INSERT INTO rentas.evento_canal_importado (unidad_id, canal_id, uid_evento, sequence, dtstamp, hash_contenido, ocupacion_id, ultima_accion)
-         SELECT $1, $2, $3, $4, $5, $6, $7, $8
+      // Hallazgo de revisión de PR #175 (no bloqueante) — un `INSERT ... SELECT ...
+      // FROM rentas.unidad u WHERE u.id = $1` inserta CERO filas, sin ningún error,
+      // si la unidad no es visible para la sesión (RLS) o no existe (antes era un
+      // `SELECT` sin `FROM`, que siempre producía exactamente 1 fila). Hoy esto no se
+      // da en el cron real (sesión de sistema, policy de `SELECT` de `rentas.unidad`
+      // ya abierta por la migración 094, FK `feed -> unidad`), pero el fallo sería
+      // silencioso: el evento quedaría contado como "aplicado" (la reserva de
+      // `crearReservaConfirmada` ya se creó, en la MISMA transacción, ANTES de esta
+      // llamada) mientras el bookkeeping de `evento_canal_importado` nunca se
+      // escribe — el ciclo siguiente repetiría la recuperación de bookkeeping para
+      // siempre (`buscarOcupacionActivaParaRecuperarBookkeeping`) sin converger
+      // jamás. `RETURNING id` + lanzar si no vino ninguna fila convierte ese
+      // silencio en un error real de Postgres, que el SAVEPOINT por evento de
+      // `motor.ts` ya aísla como cualquier otro fallo de este repositorio.
+      const fila = await this.db.query<{ id: string }>(
+        `INSERT INTO rentas.evento_canal_importado (organization_id, property_id, unidad_id, canal_id, uid_evento, sequence, dtstamp, hash_contenido, ocupacion_id, ultima_accion)
+         SELECT u.organization_id, u.property_id, $1, $2, $3, $4, $5, $6, $7, $8
+         FROM rentas.unidad u
+         WHERE u.id = $1
          ON CONFLICT (unidad_id, canal_id, uid_evento) DO UPDATE SET
            sequence = EXCLUDED.sequence, dtstamp = EXCLUDED.dtstamp, hash_contenido = EXCLUDED.hash_contenido,
-           ocupacion_id = EXCLUDED.ocupacion_id, ultima_accion = EXCLUDED.ultima_accion, updated_at = now()`,
+           ocupacion_id = EXCLUDED.ocupacion_id, ultima_accion = EXCLUDED.ultima_accion, updated_at = now()
+         RETURNING id`,
         [unidadId, canalId, entrada.uid, entrada.sequence, entrada.dtstamp, entrada.hashContenido, entrada.ocupacionId, entrada.ultimaAccion],
       );
+      if (fila.rows.length === 0) {
+        throw new Error(`upsertEventoImportado: 0 filas insertadas/actualizadas para unidad_id=${unidadId} (¿unidad inexistente o no visible para la sesión?)`);
+      }
     } else {
       await this.db.query(`UPDATE rentas.evento_canal_importado SET ultima_accion = $4, updated_at = now() WHERE unidad_id = $1 AND canal_id = $2 AND uid_evento = $3`, [unidadId, canalId, entrada.uid, entrada.ultimaAccion]);
     }

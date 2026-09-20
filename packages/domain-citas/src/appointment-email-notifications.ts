@@ -172,10 +172,24 @@ export async function enqueueAppointmentEmailCore(repo: CitasRepository, organiz
  * reagendó/modificó con éxito en la base de datos; que no haya correo del
  * cliente en archivo, o que esto falle por cualquier otra razón, NUNCA debe
  * convertirse en un error para quien está agendando, cancelando o reagendando.
+ *
+ * Arreglo de fondo (auditoría a3, hallazgo confirmado #1, mismo hueco que
+ * `tryNotifyWaitlistOfFreedSlot`) — `enqueueAppointmentEmailCore` corre varias
+ * consultas reales (`findAppointmentForOrganization`, `findCustomerById`,
+ * `findOrganizationById`, `findProvider`, `findService`,
+ * `findPropertyTimezone`) más `citas.enqueue_messaging_outbox` sobre el MISMO
+ * `TenantDbSession` que la escritura de negocio del caller. ANTES de este fix,
+ * un error real de Postgres aquí dentro (p. ej. 25P02 heredado de un
+ * `tryNotifyWaitlistOfFreedSlot` anterior en el mismo request/iteración que
+ * todavía no tuviera su propio SAVEPOINT) dejaba la transacción del caller
+ * abortada -- este catch la tragaba sin recuperarla. `repo.runWithRowSavepoint`
+ * aísla el intento con `SAVEPOINT`/`ROLLBACK TO SAVEPOINT`, dejando la sesión
+ * utilizable de nuevo para lo que el caller haga después (p. ej. el `commit;`
+ * final de la ruta, o la siguiente cita del loop de recordatorio 24h).
  */
 export async function tryEnqueueAppointmentEmail(repo: CitasRepository, organizationId: string, event: AppointmentEmailEvent, appointmentId: string, extra: AppointmentEmailExtra = {}): Promise<AppointmentEmailResult | null> {
   try {
-    return await enqueueAppointmentEmailCore(repo, organizationId, event, appointmentId, extra);
+    return await repo.runWithRowSavepoint(() => enqueueAppointmentEmailCore(repo, organizationId, event, appointmentId, extra));
   } catch (err) {
     console.error("appointment-email-notifications: best-effort enqueue failed:", err);
     return null;

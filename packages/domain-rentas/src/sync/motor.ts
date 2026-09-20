@@ -28,7 +28,7 @@
 import { cancelarOcupacion, crearReservaConfirmada, modificarFechasReserva } from "../aplicacion/reservas.ts";
 import type { EjecutorTransaccional } from "../ejecutor.ts";
 import { esRangoValido } from "../fechas.ts";
-import type { RangoFechas } from "../tipos.ts";
+import type { FechaLocal, RangoFechas } from "../tipos.ts";
 import { calcularHashContenidoBloqueo, construirUidExportado, exportarFeedIcs, type BloqueoExportable, type FeedExportado } from "../ical/exportador.ts";
 import { IcsParseError, parsearIcs, type LimitesParserIcs, type VEventNormalizado } from "../ical/parser.ts";
 import { resolverFechaLocal } from "../ical/resolver-fecha.ts";
@@ -83,6 +83,18 @@ function extraerRango(evento: VEventNormalizado, zonaHoraria: string): RangoFech
   return { inicio: resolverFechaLocal(evento.dtstart, zonaHoraria), fin: resolverFechaLocal(evento.dtend, zonaHoraria) };
 }
 
+// Hallazgo de auditoría (a3, MEDIA, verificado contra Postgres real) — un DTSTART/
+// DTEND con año "0000" (forma sintácticamente válida en el parser, ver el comentario
+// de cabecera de `validarComponentesFecha` en ../ical/parser.ts) produce una
+// `FechaLocal` como "0000-01-01" que Postgres real rechaza con `22008` en cuanto
+// `daterange()`/`listCanalesExportadosDeRango` la usa. Se valida aquí, por EVENTO,
+// ANTES de cualquier SQL — mismo criterio que `esRangoValido` (rango invertido, más
+// abajo): nunca en el parser, porque `parsearIcs` no envuelve `construirVEvent` en un
+// try/catch por VEVENT (un throw ahí tumbaría el FEED completo, ver parser.ts).
+function anioFechaLocalValido(fecha: FechaLocal): boolean {
+  return Number(fecha.slice(0, 4)) >= 1;
+}
+
 async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEventNormalizado, hashesRecientes: readonly string[], resumen: ResultadoImportarCiclo): Promise<void> {
   const rango = extraerRango(evento, ctx.zonaHorariaPropiedad);
 
@@ -93,6 +105,9 @@ async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEven
   // semánticamente inválidas) se descarta aquí mismo, individualmente.
   if (!esRangoValido(rango)) {
     throw new Error(`evento con rango inválido (dtstart >= dtend): [${rango.inicio}, ${rango.fin})`);
+  }
+  if (!anioFechaLocalValido(rango.inicio) || !anioFechaLocalValido(rango.fin)) {
+    throw new Error(`evento con año de calendario inválido (mínimo 0001): [${rango.inicio}, ${rango.fin})`);
   }
 
   const hash = calcularHashContenidoBloqueo({ unidadId: ctx.feed.unidadId, dtstart: rango.inicio, dtend: rango.fin, razon: "RESERVA_CANAL" });
@@ -198,6 +213,52 @@ async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEven
   resumen.eventosAplicados++;
 }
 
+// Hallazgo de auditoría (a3, ALTA, verificado contra Postgres real) — el loop de
+// `ejecutarCicloImportacion` envolvía cada `procesarEventoDelCiclo` en un try/catch
+// PLANO, sin SAVEPOINT. Contra Postgres real (una única transacción por feed, ver
+// `ical-sync-cron.ts::withAppSession`), cualquier error de Postgres real dentro de un
+// evento (el 23502 de `upsertEventoImportado` antes de este fix, un SEQUENCE fuera de
+// rango, un `daterange()` con año inválido, cualquier error transitorio) deja la
+// transacción ABORTADA (25P02) — TODOS los eventos siguientes del mismo feed fallan en
+// cascada con ESE mismo error engañoso, `listUidsActivosInternos` (más abajo) también
+// lanza, y el catch por-feed de `ical-sync-cron.ts` revierte el feed COMPLETO,
+// incluidas las reservas de canal que ya se habían creado con éxito en este mismo
+// ciclo. Fix: mismo principio que `@atiende/db::runWithSavepointFallback`/
+// `PostgresCitasRepository.runWithRowSavepoint` (aislar UNA fila de un lote con
+// SAVEPOINT/ROLLBACK TO SAVEPOINT, re-lanzando el error original), implementado a mano
+// aquí porque `ctx.db` es `EjecutorTransaccional` (contrato propio de domain-rentas,
+// `query<T extends FilaSql>`), no el `TenantDbSession` genérico de `@atiende/core-tenancy`
+// que ese helper exige — ambos son estructuralmente compatibles en `exec()` (lo único
+// que hace falta aquí), pero no en la firma genérica de `query()`. El catch de abajo
+// sigue viendo el error real (se reporta en `eventosDescartadosPorError` exactamente
+// igual que antes), pero ahora la sesión NUNCA queda abortada para los eventos
+// restantes del mismo feed. Nombre único por llamada (contador de módulo) — evita
+// colisión si en algún momento dos eventos del mismo feed se procesaran en paralelo
+// dentro de la misma transacción (hoy el loop es secuencial, pero un nombre fijo
+// compartido sería frágil, mismo criterio que `savepoint-fallback.ts::uniqueSavepointName`).
+let savepointEventoCounter = 0;
+async function procesarEventoDelCicloAislado(ctx: ContextoSincronizacion, evento: VEventNormalizado, hashesRecientes: readonly string[], resumen: ResultadoImportarCiclo): Promise<void> {
+  savepointEventoCounter += 1;
+  const savepointName = `sp_evento_ciclo_${savepointEventoCounter}`;
+  await ctx.db.exec(`SAVEPOINT ${savepointName}`);
+  try {
+    await procesarEventoDelCiclo(ctx, evento, hashesRecientes, resumen);
+    await ctx.db.exec(`RELEASE SAVEPOINT ${savepointName}`);
+  } catch (error) {
+    // Si el propio `ROLLBACK TO SAVEPOINT`/`RELEASE SAVEPOINT` fallara (la conexión se
+    // cae, o la transacción ya venía abortada por una causa AJENA a este evento antes
+    // de siquiera llegar al `SAVEPOINT` de arriba), se relanza ESE error de
+    // recuperación en vez del original — mismo criterio de "no fingir que se recuperó
+    // cuando no se recuperó" que el resto de este archivo, a diferencia de
+    // `runWithSavepointFallback`, que sí prioriza preservar el error original (aquí no
+    // hay un `fallback` alternativo que ejecutar: el llamador de todos modos solo
+    // necesita ver ALGÚN error real y descartar este evento).
+    await ctx.db.exec(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+    await ctx.db.exec(`RELEASE SAVEPOINT ${savepointName}`);
+    throw error;
+  }
+}
+
 /** Ejecuta un ciclo completo de import para un feed conectado: fetch -> cuarentena en
  * caso de fallo -> parseo -> anti-eco -> resolución de versión -> aplicación
  * transaccional. Nunca libera disponibilidad ante fallo ni crea un segundo bloqueo a
@@ -266,7 +327,7 @@ export async function ejecutarCicloImportacion(ctx: ContextoSincronizacion): Pro
 
   for (const evento of eventos) {
     try {
-      await procesarEventoDelCiclo(ctx, evento, hashesRecientes, resumen);
+      await procesarEventoDelCicloAislado(ctx, evento, hashesRecientes, resumen);
     } catch (error) {
       // Un evento individual del feed (rango invertido/vacío por una DURATION
       // negativa/cero, u otro error inesperado al procesarlo) NUNCA aborta el resto
