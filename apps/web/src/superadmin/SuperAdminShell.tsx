@@ -5,7 +5,7 @@
 // `BotonChatDatos` (no aplica a un panel de plataforma, no de negocio).
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertOctagon, Building2, CalendarDays, DollarSign, ExternalLink, LayoutGrid, ListChecks, Newspaper, Plug, Receipt, ShieldAlert, TrendingUp } from "lucide-react";
+import { Activity, AlertOctagon, Building2, CalendarDays, DollarSign, ExternalLink, LayoutGrid, ListChecks, Newspaper, Plug, Receipt, ShieldAlert, ShieldOff, TrendingUp } from "lucide-react";
 import { DashboardHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { fechaCortaEsMx } from "../lib/formato-fecha.ts";
@@ -34,6 +34,7 @@ const SECTIONS = [
       { to: "/superadmin/facturacion", label: "Facturación", icon: Receipt },
       { to: "/superadmin/break-glass", label: "Romper cristal", icon: AlertOctagon },
       { to: "/superadmin/impersonacion", label: "Impersonación", icon: ShieldAlert },
+      { to: "/superadmin/auditoria-denegaciones", label: "Auditoría de denegaciones", icon: ShieldOff },
       { to: "/superadmin/integraciones", label: "Integraciones", icon: Plug },
       { to: "/superadmin/paneles", label: "Entrar a los otros paneles", icon: ExternalLink },
     ],

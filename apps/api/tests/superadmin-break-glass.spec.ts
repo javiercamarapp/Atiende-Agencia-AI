@@ -186,6 +186,50 @@ describe("superadmin-break-glass", () => {
     expect(resRead.status).toBe(403);
   });
 
+  // Hallazgo BAJA confirmado de la auditoría a2 (evidencia:
+  // auditoria-a2-resultado.json, tercer elemento de `confirmed`): los 7
+  // lectores de tenant devolvían como máximo `limit` filas sin indicar si
+  // había más -- un superadmin creía haber visto todo el tenant. `hasMore`
+  // viaja SIEMPRE en la respuesta JSON de las 7 rutas de lectura, extremo a
+  // extremo vía HTTP: `true` cuando hay más filas allende la página pedida,
+  // `false` en la última página.
+  it("hasMore: true cuando hay más filas allende `limit`, false en la última página (extremo a extremo vía HTTP)", async () => {
+    const orgId = randomUUID();
+    const reservas = Array.from({ length: 3 }, (_, i) => ({
+      ocupacionId: `r${i}`,
+      propertyId: randomUUID(),
+      unidadId: randomUUID(),
+      checkIn: "2026-10-01",
+      checkOut: "2026-10-05",
+      estado: "confirmado",
+      huespedNombre: `Huésped ${i}`,
+      huespedContacto: null,
+    }));
+    const base = await buildTestDeps();
+    const deps = { ...base.deps, rentasBreakGlassDataRepo: (_db: unknown) => new InMemoryBreakGlassRentasDataRepository(new Map([[orgId, reservas]])) } as typeof base.deps;
+    const coreRepo = deps.coreRepo as InMemoryCoreRepository;
+    const superadminId = randomUUID();
+    coreRepo.addStaff({ id: superadminId, email: "superadmin@example.com", passwordHash: null, fullName: "Super Admin", createdVia: "seed", emailVerifiedAt: new Date().toISOString() });
+    coreRepo.addPlatformSuperadmin(superadminId);
+    const token = await tokenFor(deps, superadminId, "superadmin@example.com");
+    const app = buildApp(deps);
+
+    const resOpen = await app.request("/superadmin/break-glass/sesiones", jsonRequestInit({ organizationId: orgId, reason: RAZON_VALIDA, durationMinutes: 30 }, { authorization: `Bearer ${token}` }));
+    expect(resOpen.status).toBe(201);
+
+    const resPagina1 = await app.request(`/superadmin/break-glass/organizaciones/${orgId}/reservas?limit=2&offset=0`, { headers: { authorization: `Bearer ${token}` } });
+    expect(resPagina1.status).toBe(200);
+    const pagina1 = (await resPagina1.json()) as { reservas: unknown[]; hasMore: boolean };
+    expect(pagina1.reservas).toHaveLength(2);
+    expect(pagina1.hasMore).toBe(true);
+
+    const resPagina2 = await app.request(`/superadmin/break-glass/organizaciones/${orgId}/reservas?limit=2&offset=2`, { headers: { authorization: `Bearer ${token}` } });
+    expect(resPagina2.status).toBe(200);
+    const pagina2 = (await resPagina2.json()) as { reservas: unknown[]; hasMore: boolean };
+    expect(pagina2.reservas).toHaveLength(1);
+    expect(pagina2.hasMore).toBe(false);
+  });
+
   // Fase 10c -- los 6 lectores restantes comparten la ruta `registrarLectorTenant`
   // con `reservas` (ya probada arriba de punta a punta) -- este bloque cubre lo
   // que es específico de esa fase: (1) sin sesión activa, CUALQUIERA de los 6
@@ -277,13 +321,13 @@ describe("superadmin-break-glass", () => {
     const orgId = randomUUID();
     const base = await buildTestDeps();
     const dataRepoNoDisponible: BreakGlassRentasDataRepository = {
-      listReservasTenant: async () => [],
-      listFinanzasTenant: async () => ({ disponible: false, datos: [] }),
-      listPayoutsTenant: async () => ({ disponible: true, datos: [] }),
-      listPricingTenant: async () => ({ disponible: true, datos: [] }),
-      listMensajeriaTenant: async () => ({ disponible: true, datos: [] }),
-      listLimpiezaTenant: async () => ({ disponible: true, datos: [] }),
-      listSyncIcalTenant: async () => ({ disponible: true, datos: [] }),
+      listReservasTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listFinanzasTenant: async () => ({ disponible: false, datos: [], hasMore: false }),
+      listPayoutsTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listPricingTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listMensajeriaTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listLimpiezaTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listSyncIcalTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
     };
     const deps = { ...base.deps, rentasBreakGlassDataRepo: (_db: unknown) => dataRepoNoDisponible } as typeof base.deps;
     const coreRepo = deps.coreRepo as InMemoryCoreRepository;
@@ -428,12 +472,12 @@ describe("superadmin-break-glass", () => {
         listReservasTenant: async () => {
           throw new BreakGlassPropertyNotFoundError();
         },
-        listFinanzasTenant: async () => ({ disponible: true, datos: [] }),
-        listPayoutsTenant: async () => ({ disponible: true, datos: [] }),
-        listPricingTenant: async () => ({ disponible: true, datos: [] }),
-        listMensajeriaTenant: async () => ({ disponible: true, datos: [] }),
-        listLimpiezaTenant: async () => ({ disponible: true, datos: [] }),
-        listSyncIcalTenant: async () => ({ disponible: true, datos: [] }),
+        listFinanzasTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listPayoutsTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listPricingTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listMensajeriaTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listLimpiezaTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listSyncIcalTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
       };
       const deps = { ...base.deps, rentasBreakGlassDataRepo: (_db: unknown) => dataRepoQueRechaza } as typeof base.deps;
       const coreRepo = deps.coreRepo as InMemoryCoreRepository;
@@ -457,12 +501,12 @@ describe("superadmin-break-glass", () => {
         listReservasTenant: async () => {
           throw new BreakGlassAccessDeniedError();
         },
-        listFinanzasTenant: async () => ({ disponible: true, datos: [] }),
-        listPayoutsTenant: async () => ({ disponible: true, datos: [] }),
-        listPricingTenant: async () => ({ disponible: true, datos: [] }),
-        listMensajeriaTenant: async () => ({ disponible: true, datos: [] }),
-        listLimpiezaTenant: async () => ({ disponible: true, datos: [] }),
-        listSyncIcalTenant: async () => ({ disponible: true, datos: [] }),
+        listFinanzasTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listPayoutsTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listPricingTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listMensajeriaTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listLimpiezaTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+        listSyncIcalTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
       };
       const deps = { ...base.deps, rentasBreakGlassDataRepo: (_db: unknown) => dataRepoQueRechaza } as typeof base.deps;
       const coreRepo = deps.coreRepo as InMemoryCoreRepository;

@@ -278,8 +278,8 @@ describe("leerReservasTenantBreakGlass -- la composición concreta para resource
       NOW,
     );
 
-    expect(data).toEqual(reservasOrgA);
-    expect(data).not.toEqual(reservasOrgB);
+    expect(data).toEqual({ disponible: true, datos: reservasOrgA, hasMore: false });
+    expect(data.datos).not.toEqual(reservasOrgB);
     expect(auditEntry.resourceType).toBe("reservas");
     expect(auditEntry.resultSummary).toEqual({
       total: 2,
@@ -299,7 +299,7 @@ describe("leerReservasTenantBreakGlass -- la composición concreta para resource
       NOW,
     );
 
-    expect(data).toEqual([]);
+    expect(data).toEqual({ disponible: true, datos: [], hasMore: false });
     expect(auditEntry.resultSummary).toEqual({ total: 0, ocupacionIds: [] });
     expect(auditRepo.entries).toHaveLength(1);
   });
@@ -352,7 +352,7 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
 
     const { data, auditEntry } = await leerFinanzasTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
 
-    expect(data).toEqual({ disponible: true, datos: [fila] });
+    expect(data).toEqual({ disponible: true, datos: [fila], hasMore: false });
     expect(auditEntry).not.toBeNull();
     expect(auditEntry!.resourceType).toBe("finanzas");
     expect(auditEntry!.resultSummary).toEqual({ total: 1, ids: [fila.id] });
@@ -408,7 +408,7 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
     const dataRepo = new InMemoryBreakGlassRentasDataRepository(new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map([[ORG_ID, [fila]]]));
 
     const { data, auditEntry } = await leerSyncIcalTenantBreakGlass(auditRepo, dataRepo, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
-    expect(data).toEqual({ disponible: true, datos: [fila] });
+    expect(data).toEqual({ disponible: true, datos: [fila], hasMore: false });
     expect(auditEntry).not.toBeNull();
     expect(auditEntry!.resourceType).toBe("sync_ical");
     expect(auditEntry!.resultSummary).toEqual({ total: 1, ids: [fila.id] });
@@ -429,24 +429,24 @@ describe("Fase 10c -- los 6 lectores restantes (finanzas/payouts/pricing/mensaje
       NOW,
     );
 
-    expect(data).toEqual({ disponible: true, datos: [filaDeLaPropiedadBuscada] });
+    expect(data).toEqual({ disponible: true, datos: [filaDeLaPropiedadBuscada], hasMore: false });
   });
 
   it("lector NO disponible (disponible: false, migración 020 pendiente): NO audita -- auditEntry es null y no se escribe ninguna fila en la bitácora", async () => {
     const auditRepo = new InMemoryBreakGlassAuditRepository();
     const dataRepoNoDisponible: BreakGlassRentasDataRepository = {
-      listReservasTenant: async () => [],
-      listFinanzasTenant: async () => ({ disponible: false, datos: [] }),
-      listPayoutsTenant: async () => ({ disponible: true, datos: [] }),
-      listPricingTenant: async () => ({ disponible: true, datos: [] }),
-      listMensajeriaTenant: async () => ({ disponible: true, datos: [] }),
-      listLimpiezaTenant: async () => ({ disponible: true, datos: [] }),
-      listSyncIcalTenant: async () => ({ disponible: true, datos: [] }),
+      listReservasTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listFinanzasTenant: async () => ({ disponible: false, datos: [], hasMore: false }),
+      listPayoutsTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listPricingTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listMensajeriaTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listLimpiezaTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
+      listSyncIcalTenant: async () => ({ disponible: true, datos: [], hasMore: false }),
     };
 
     const { data, auditEntry } = await leerFinanzasTenantBreakGlass(auditRepo, dataRepoNoDisponible, { actor: ACTOR, organizationId: ORG_ID, reason: RAZON_VALIDA }, NOW);
 
-    expect(data).toEqual({ disponible: false, datos: [] });
+    expect(data).toEqual({ disponible: false, datos: [], hasMore: false });
     expect(auditEntry).toBeNull();
     expect(await auditRepo.listForActor(ACTOR.userId)).toEqual([]);
   });

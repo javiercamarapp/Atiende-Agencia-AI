@@ -6,11 +6,11 @@
 // conectado), reglas de negocio (motivo, target-superadmin, duplicado,
 // expiración) y el write-guard de solo-lectura sobre /superadmin/*.
 import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { ImpersonationRepository, InMemoryCoreRepository, InMemoryImpersonationRepository } from "@atiende/db";
+import type { InMemoryAuditSink } from "@atiende/core-authz";
 import { signAccessToken } from "@atiende/core-auth";
 import { buildApp } from "../src/app.ts";
-import { superadminAdminAccessAudit } from "../src/routes/superadmin.ts";
 import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
 
 /** Doble de prueba que SIEMPRE reporta `availability: "not_migrated"` --
@@ -63,14 +63,11 @@ async function seedSuperadmin(base: Awaited<ReturnType<typeof buildTestDeps>>) {
 }
 
 describe("superadmin-impersonacion", () => {
-  // El audit sink de `requireAdminAccess` (routes/superadmin.ts) es un
-  // singleton de MÓDULO compartido por toda la superficie `/superadmin/*` de
-  // este archivo de test (ver ese archivo) -- se limpia antes de cada test
-  // para que las aserciones de abajo cuenten SOLO las denegaciones de SU
-  // propio test.
-  beforeEach(() => {
-    superadminAdminAccessAudit.clear();
-  });
+  // El audit sink de `requireAdminAccess` es ahora `deps.authzAuditSink` (ver
+  // routes/superadmin.ts) -- `buildTestDeps()` construye un `InMemoryAuditSink`
+  // NUEVO por cada llamada, así que cada test ya parte de un sink vacío propio
+  // (a diferencia de antes de esta revisión, cuando era un singleton de MÓDULO
+  // que había que limpiar a mano con `beforeEach`).
 
   it("sin token -- 401", async () => {
     const base = await buildTestDeps();
@@ -100,7 +97,7 @@ describe("superadmin-impersonacion", () => {
     // comprobaba el status 403 no lo distinguía. Ahora `requireAdminAccess`
     // ES el único gate (montado una vez en `superadmin.ts`, cubre TODA
     // `/superadmin/*`), así que cada denegación queda auditada de verdad.
-    const denied = superadminAdminAccessAudit.denied();
+    const denied = (base.deps.authzAuditSink as InMemoryAuditSink).denied();
     expect(denied.length).toBe(2);
     expect(denied.every((e) => e.route === "/superadmin/impersonacion/sesiones" && e.reason === "no_membership")).toBe(true);
   });
@@ -300,10 +297,6 @@ describe("superadmin-impersonacion", () => {
 });
 
 describe("superadmin-impersonacion -- base SIN MIGRAR (Bloqueante 5)", () => {
-  beforeEach(() => {
-    superadminAdminAccessAudit.clear();
-  });
-
   it("POST /sesiones -- 503 honesto (nunca 500, nunca simula una sesión) cuando la migración 0020 no se ha aplicado", async () => {
     const base = await buildTestDeps();
     const { superadminId, email } = await seedSuperadmin(base);

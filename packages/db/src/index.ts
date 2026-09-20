@@ -120,3 +120,11 @@ export {
   PostgresImpersonationRepository,
   InMemoryImpersonationRepository,
 } from "./impersonation-repository.ts";
+export type {
+  AuthzAuditAvailability,
+  AuthzAuditDecision,
+  AuthzAuditLogEntryInput,
+  AuthzAuditLogRow,
+  AuthzAuditRepository,
+} from "./authz-audit-repository.ts";
+export { PostgresAuthzAuditRepository, InMemoryAuthzAuditRepository } from "./authz-audit-repository.ts";

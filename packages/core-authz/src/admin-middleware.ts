@@ -105,6 +105,25 @@ function defaultAnonymousActorKey(c: Ctx): string {
   return c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "anon";
 }
 
+/** Último salto de `X-Forwarded-For` (nunca el primero, que el cliente puede
+ * fabricar libremente), con `X-Real-IP` como respaldo -- mismo criterio ya
+ * auditado y corregido en `apps/api/src/http-security.ts::requestActor`
+ * (hallazgo real de revisión, ronda r5, PR #167: confiar en el primer salto
+ * o en una cabecera que el cliente controla permite evadir un rate-limit
+ * rotando la cabecera, o culpar a un tercero legítimo). Replicada aquí (en
+ * vez de importada) porque `@atiende/core-authz` no depende de `apps/api` --
+ * es la MISMA lógica ya revisada, no una reinvención. Usada SOLO para lo que
+ * `record()` puede persistir de forma duradera (ver
+ * `AuthzAuditEntry.ip`/`apps/api/src/production/authz-audit-sink.ts`) --
+ * `defaultAnonymousActorKey` (arriba, la llave del rate-limiter EN MEMORIA,
+ * comportamiento sin cambios en esta revisión) sigue usando el primer salto a
+ * propósito, para no alterar ningún bucket ya en curso. */
+function resolveNormalizedIp(c: Ctx): string | null {
+  const forwarded = c.req.header("x-forwarded-for")?.split(",").at(-1)?.trim();
+  const realIp = c.req.header("x-real-ip")?.trim();
+  return forwarded || realIp || null;
+}
+
 /**
  * El middleware final de esta fase: se monta DESPUÉS de `authMiddleware` +
  * `dbSession` + (`requireOrganizationMembership` o `requirePropertyMembership`)
@@ -160,7 +179,7 @@ export function requireAdminAccess(options: RequireAdminAccessOptions): Middlewa
       method,
       decision: "denied",
       reason: rl.allowed ? reason : "rate_limited",
-      ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      ip: resolveNormalizedIp(c),
       userAgent: c.req.header("user-agent") ?? null,
       metadata: { platformRole: platformRole ?? null, allowedRoles },
     };

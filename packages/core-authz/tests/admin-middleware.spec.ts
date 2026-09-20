@@ -188,3 +188,50 @@ describe("requireAdminAccess — composición con route-area map (piezas 1+2 jun
     expect(audit.entries[0]!.reason).toBe("insufficient_role");
   });
 });
+
+// Hallazgo de esta revisión (no un bug NUEVO de este PR -- el mismo patrón
+// "primer salto de X-Forwarded-For" ya se había corregido en
+// apps/api/src/http-security.ts::requestActor por la razón exacta que se
+// prueba aquí, ronda r5 del PR #167): la entrada persistida por un
+// `AuditSink` real (ver apps/api/src/production/authz-audit-sink.ts) nunca
+// debe guardar una cabecera cruda que el propio cliente pueda fabricar --
+// el ÚLTIMO salto de X-Forwarded-For es el único que un caller sin acceso a
+// la red de Vercel no puede falsificar (Vercel lo APPENDA al final).
+describe("requireAdminAccess — entry.ip: último salto de X-Forwarded-For (nunca el primero, que el cliente fabrica libremente)", () => {
+  it("con varios saltos, usa el ÚLTIMO (el que Vercel garantiza), no el primero (el que el cliente puede escribir)", async () => {
+    const audit = new InMemoryAuditSink();
+    const rateLimiter = new InMemoryRateLimiter({ capacity: 5, refillPerSecond: 1 });
+    const app = buildApp({ engine: fakeEngine([]), audit, rateLimiter });
+
+    await app.request("/admin/usuarios", {
+      headers: {
+        authorization: `Bearer ${await tokenFor("user-ajeno")}`,
+        "x-forwarded-for": "203.0.113.99, 70.41.3.18, 150.172.238.178",
+      },
+    });
+
+    expect(audit.entries[0]!.ip).toBe("150.172.238.178");
+  });
+
+  it("sin X-Forwarded-For, cae a X-Real-IP", async () => {
+    const audit = new InMemoryAuditSink();
+    const rateLimiter = new InMemoryRateLimiter({ capacity: 5, refillPerSecond: 1 });
+    const app = buildApp({ engine: fakeEngine([]), audit, rateLimiter });
+
+    await app.request("/admin/usuarios", {
+      headers: { authorization: `Bearer ${await tokenFor("user-ajeno")}`, "x-real-ip": "198.51.100.7" },
+    });
+
+    expect(audit.entries[0]!.ip).toBe("198.51.100.7");
+  });
+
+  it("sin ninguna cabecera de IP -- null, nunca una cadena vacía ni 'unknown' inventado", async () => {
+    const audit = new InMemoryAuditSink();
+    const rateLimiter = new InMemoryRateLimiter({ capacity: 5, refillPerSecond: 1 });
+    const app = buildApp({ engine: fakeEngine([]), audit, rateLimiter });
+
+    await app.request("/admin/usuarios", { headers: { authorization: `Bearer ${await tokenFor("user-ajeno")}` } });
+
+    expect(audit.entries[0]!.ip).toBeNull();
+  });
+});
