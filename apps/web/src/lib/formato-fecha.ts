@@ -100,6 +100,15 @@ export function formatFechaSolo(fecha: string | null | undefined, variante: "cor
   // atrapaba nada, tumbando la página completa. Mismo criterio "honesto" que el resto de
   // esta función: valor inesperado -> guion, nunca una excepción sin capturar.
   if (Number.isNaN(instante.getTime())) return "—";
+  // Bug real (revisión r6 de PR #171, no bloqueante #8): el guard de arriba solo cubre
+  // `Invalid Date` -- V8 NORMALIZA una fecha de calendario imposible pero con forma
+  // válida ("2026-02-30" -> 2-mar-2026; "2026-04-31" -> 1-may-2026) en vez de lanzar,
+  // así que `instante` queda como Date VÁLIDO de OTRO día distinto al pedido, y este
+  // guard nunca lo atrapaba: la página mostraba una fecha silenciosamente incorrecta
+  // en vez del guion "honesto" que el resto de esta función usa para datos corruptos.
+  // Round-trip: si el día de calendario que V8 realmente guardó no coincide con el
+  // `soloDia` pedido, la fecha no era posible -- nunca se formatea.
+  if (instante.toISOString().slice(0, 10) !== soloDia) return "—";
   const formatter = variante === "larga" ? FECHA_SOLO_FORMATTER_LARGA : FECHA_SOLO_FORMATTER_CORTA;
   return formatter.format(instante);
 }

@@ -65,9 +65,24 @@ describe("formatFechaSolo -- reproduce el bug real (REQ-r5, Cobranza.tsx) y lo c
   it("una cadena con forma válida pero fecha imposible (mes/día fuera de rango) -> guion, nunca lanza", () => {
     expect(() => formatFechaSolo("2026-13-45")).not.toThrow();
     expect(formatFechaSolo("2026-13-45")).toBe("—");
-    expect(() => formatFechaSolo("2026-02-30")).not.toThrow(); // Node normaliza a marzo -- fuera del rango real de "día de febrero"
     expect(formatFechaSolo("2026-00-01")).toBe("—"); // mes 0 no existe
     expect(formatFechaSolo("2026-01-00")).toBe("—"); // día 0 no existe
+  });
+
+  // Corrección de revisión r6 de PR #171 (no bloqueante #8): el guard de arriba solo
+  // cubre `Invalid Date` -- V8 NORMALIZA una fecha de calendario imposible pero de
+  // forma válida en vez de lanzar ("2026-02-30" -> 2-mar-2026; "2026-04-31" ->
+  // 1-may-2026, confirmado a mano con `node`), así que el `it` anterior (solo
+  // `not.toThrow()`) dejaba pasar una fecha SILENCIOSAMENTE INCORRECTA (otro día
+  // distinto al pedido) en vez del guion "honesto". Round-trip
+  // (`toISOString().slice(0,10) === soloDia`) cierra el hueco.
+  it("una cadena con forma válida pero día de calendario imposible que V8 normaliza a OTRO día -> guion, nunca la fecha normalizada", () => {
+    expect(formatFechaSolo("2026-02-30")).toBe("—"); // V8 normaliza a 2-mar-2026, no un 30 de febrero real
+    expect(formatFechaSolo("2026-04-31")).toBe("—"); // V8 normaliza a 1-may-2026 (abril tiene 30 días)
+    expect(formatFechaSolo("2026-02-29")).toBe("—"); // 2026 no es bisiesto -- V8 normaliza a 1-mar-2026
+    // Control positivo: una fecha de calendario real y válida SÍ se formatea.
+    expect(formatFechaSolo("2026-02-28")).not.toBe("—");
+    expect(formatFechaSolo("2024-02-29")).not.toBe("—"); // 2024 SÍ es bisiesto -- 29-feb es real
   });
 
   // REQ (revisión de PR #164, bloqueante): la premisa "la API manda 'YYYY-MM-DD'" es
