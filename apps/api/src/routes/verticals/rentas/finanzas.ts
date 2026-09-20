@@ -147,6 +147,24 @@ export function rentasFinanzasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       createdBy: userId,
     });
 
+    // f3-rentas-bitacora-y-guards -- bitácora de auditoría: "movimiento financiero
+    // de una reserva (cargo/abono/ajuste)", uno de los 4 huecos que esta fase cierra
+    // (ver migrations/023_rentas_audit_log_cobertura_completa.sql). Reutiliza
+    // `entity_type = 'reserva'` -- misma entidad que reserva.creada/modificada/
+    // cancelada (reservas.ts), nunca un catálogo nuevo solo para esta acción.
+    // Best-effort real (nunca revierte el movimiento ya insertado, ver el
+    // comentario de cabecera de `PostgresRentasRepository.registrarAuditoria`).
+    await repo.registrarAuditoria({
+      organizationId,
+      actorUserId: userId,
+      action: "reserva.movimiento_financiero_registrado",
+      entityType: "reserva",
+      entityId: ocupacionId,
+      campo: "montoBrutoCentavos,netoCentavos",
+      antes: null,
+      despues: `bruto=${montoBrutoCentavos} neto=${movimiento.netoCentavos} ${moneda}`,
+    });
+
     return c.json({ id: created.id, ocupacionId, creadoEn: created.createdAt, ...serializeMovimiento(movimiento) }, 201);
   });
 

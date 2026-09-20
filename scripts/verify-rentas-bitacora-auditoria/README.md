@@ -35,11 +35,22 @@ auditoría propia de las acciones del staff").
    `seq` (columna secuencial de 022) da un orden EXACTO (nunca al azar) y hace
    que la paginación por offset sobre ese empate no repita ni pierda filas
    entre páginas.
+9. **Validación de ROL en la escritura (f3-rentas-bitacora-y-guards,
+   `023_rentas_audit_log_cobertura_completa.sql`).** El techo mínimo calculado
+   contra el código real (`admin_gestora`/`operador:acceso_total`/
+   `operador:calendario_mensajeria`/`contador`) SÍ puede escribir; un rol real
+   de la MISMA organización pero fuera de ese techo (`limpieza`) es rechazado
+   con 42501 -- distinto del rechazo cross-tenant del punto 2 (aquí el actor SÍ
+   pertenece a la organización, solo que su rol no alcanza).
+10. **Catálogo ampliado (f3-rentas-bitacora-y-guards).** `entity_type =
+    'bloqueo' | 'owner_credential'` son aceptados, nunca rechazados por el
+    CHECK.
 
-18 escenarios cubren `021_rentas_audit_log.sql` + `022_rentas_audit_log_orden_
-determinista.sql` (ver `assertions.sql` para el detalle exacto de cada uno) --
-cada uno corre en su propio `begin; ... rollback;`; las fixtures (2
-organizaciones, 3 staff con roles distintos, 1 fila de bitácora real)
+21 escenarios cubren `021_rentas_audit_log.sql` + `022_rentas_audit_log_orden_
+determinista.sql` + `023_rentas_audit_log_cobertura_completa.sql` (ver
+`assertions.sql` para el detalle exacto de cada uno) -- cada uno corre en su
+propio `begin; ... rollback;`; las fixtures (2 organizaciones, 4 staff con
+roles distintos, 1 fila de bitácora real)
 persisten (insertadas directo, como el superusuario que corre el script).
 
 El caso "021 aplicada, 022 no" (esquema intermedio real que la base de

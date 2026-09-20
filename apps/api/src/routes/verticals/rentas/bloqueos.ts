@@ -124,6 +124,23 @@ export function rentasBloqueosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     try {
       const resultado = await cancelarOcupacion(db, ocupacionId);
+      // f3-rentas-bitacora-y-guards -- bitácora de auditoría: "cancelar un bloqueo
+      // de disponibilidad", uno de los 4 huecos que esta fase cierra (ver
+      // migrations/023_rentas_audit_log_cobertura_completa.sql). Nuevo
+      // `entity_type = 'bloqueo'` -- un bloqueo NO es una reserva (mismo criterio
+      // de "entidad de negocio distinta" que ya separa el resto del catálogo,
+      // ver el comentario de cabecera de esa migración). Best-effort real, nunca
+      // revierte la cancelación ya aplicada.
+      await repo.registrarAuditoria({
+        organizationId: unidad.organizationId,
+        actorUserId: c.get("userId"),
+        action: "bloqueo.cancelado",
+        entityType: "bloqueo",
+        entityId: ocupacionId,
+        campo: "estado",
+        antes: resultado.estadoAnterior,
+        despues: "cancelado",
+      });
       return c.json({ id: ocupacionId, estado: "cancelado", estadoAnterior: resultado.estadoAnterior }, 200);
     } catch (err) {
       if (err instanceof RentasDomainError) throw mapRentasDomainError(err);

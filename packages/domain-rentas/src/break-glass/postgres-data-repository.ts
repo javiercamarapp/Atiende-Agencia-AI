@@ -32,10 +32,22 @@
 // y la nueva sobrecarga de 5 parámetros de `list_reservas_for_break_glass` no
 // existen todavía en una base que solo tiene `018_break_glass_wiring.sql`
 // aplicada -- Postgres real lanza SQLSTATE 42883 (`undefined_function`) en ese
-// caso, MISMO código que `packages/db/src/postgres-core-repository.ts` ya
-// detecta para su propio fallback de Fase 3 de caller-binding (`isUndefinedFunctionError`,
-// mismo patrón, replicado aquí porque este archivo vive en un paquete distinto sin
-// esa utilidad compartida). Cada uno de los 6 métodos nuevos cae a un VACÍO
+// caso.
+//
+// f3-rentas-bitacora-y-guards -- ENDURECIDO (hallazgo de la revisión de #179,
+// "guard 42883 a secas"): la comparación local que este archivo tenía
+// (`code === "42883"`, sin más) trataba CUALQUIER 42883 como "migración
+// pendiente" -- pero Postgres reutiliza ese mismo SQLSTATE para "operator does
+// not exist: uuid = text" (un BUG REAL de tipos, nunca una migración sin
+// aplicar), ver el comentario de cabecera de `packages/db/src/sql-errors.ts`
+// para la demostración completa contra Postgres real. Se reemplaza por
+// `isUndefinedFunctionError` de `@atiende/db` (la versión compartida y
+// endurecida -- exige además que el MENSAJE tenga la forma "function ... does
+// not exist", nunca "operator does not exist: ..."), con el nombre calificado
+// de la función que cada método sondeó como `expectedFunctionName` -- cierra
+// también el caso más angosto de una función INTERNA distinta que dispare
+// 42883 con "function ... does not exist" pero mencionando OTRO nombre. Cada
+// uno de los 6 métodos nuevos cae a un VACÍO
 // HONESTO (`disponible: false` + lista vacía) -- no existe un "camino anterior"
 // real para estos 6 recursos (nunca tuvieron lector antes de esta fase, a
 // diferencia de reservas). `listReservasTenant` SÍ tiene un camino anterior real
@@ -62,6 +74,7 @@
 // `packages/domain-rentas/src/aplicacion/reservas.ts` (`crearReservaConfirmada`)
 // y en `packages/domain-citas/src/postgres-repository.ts` (`upsertCustomer`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { isUndefinedFunctionError } from "@atiende/db";
 import type { BreakGlassRentasDataRepository } from "./data-repository.ts";
 import { BreakGlassAccessDeniedError, BreakGlassPropertyNotFoundError } from "./errors.ts";
 import type {
@@ -76,10 +89,6 @@ import type {
   BreakGlassSyncIcalResumen,
 } from "./tipos.ts";
 import { BREAK_GLASS_LECTOR_LIMIT_DEFAULT, BREAK_GLASS_LECTOR_LIMIT_MAX } from "./tipos.ts";
-
-function isUndefinedFunctionError(err: unknown): boolean {
-  return (err as { code?: string } | null)?.code === "42883";
-}
 
 // Hallazgo de revisión real (ronda r5): `list_*_for_break_glass` (las 7
 // funciones de `020_break_glass_lectores.sql`) lanzan SQLSTATE `P0002` ("la
@@ -362,7 +371,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         advertirErrorMapeado("list_reservas_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
-      if (!isUndefinedFunctionError(err)) throw err;
+      if (!isUndefinedFunctionError(err, "rentas.list_reservas_for_break_glass")) throw err;
       // 42883 real deja la transacción abortada (25P02 en cualquier query
       // posterior) -- sin este ROLLBACK TO SAVEPOINT, la query de respaldo de
       // abajo (y el INSERT de bitácora que ejecuta el llamador después) fallarían
@@ -425,7 +434,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         advertirErrorMapeado("list_finanzas_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
-      if (!isUndefinedFunctionError(err)) throw err;
+      if (!isUndefinedFunctionError(err, "rentas.list_finanzas_for_break_glass")) throw err;
       await recuperarSavepoint(this.db, "sp_break_glass_finanzas");
       advertirUnaVez(
         "list_finanzas_for_break_glass",
@@ -472,7 +481,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         advertirErrorMapeado("list_payouts_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
-      if (!isUndefinedFunctionError(err)) throw err;
+      if (!isUndefinedFunctionError(err, "rentas.list_payouts_for_break_glass")) throw err;
       await recuperarSavepoint(this.db, "sp_break_glass_payouts");
       advertirUnaVez(
         "list_payouts_for_break_glass",
@@ -517,7 +526,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         advertirErrorMapeado("list_pricing_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
-      if (!isUndefinedFunctionError(err)) throw err;
+      if (!isUndefinedFunctionError(err, "rentas.list_pricing_for_break_glass")) throw err;
       await recuperarSavepoint(this.db, "sp_break_glass_pricing");
       advertirUnaVez(
         "list_pricing_for_break_glass",
@@ -565,7 +574,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         advertirErrorMapeado("list_mensajeria_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
-      if (!isUndefinedFunctionError(err)) throw err;
+      if (!isUndefinedFunctionError(err, "rentas.list_mensajeria_for_break_glass")) throw err;
       await recuperarSavepoint(this.db, "sp_break_glass_mensajeria");
       advertirUnaVez(
         "list_mensajeria_for_break_glass",
@@ -613,7 +622,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         advertirErrorMapeado("list_limpieza_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
-      if (!isUndefinedFunctionError(err)) throw err;
+      if (!isUndefinedFunctionError(err, "rentas.list_limpieza_for_break_glass")) throw err;
       await recuperarSavepoint(this.db, "sp_break_glass_limpieza");
       advertirUnaVez(
         "list_limpieza_for_break_glass",
@@ -662,7 +671,7 @@ export class PostgresBreakGlassRentasDataRepository implements BreakGlassRentasD
         advertirErrorMapeado("list_sync_ical_for_break_glass", "42501");
         throw new BreakGlassAccessDeniedError();
       }
-      if (!isUndefinedFunctionError(err)) throw err;
+      if (!isUndefinedFunctionError(err, "rentas.list_sync_ical_for_break_glass")) throw err;
       await recuperarSavepoint(this.db, "sp_break_glass_sync_ical");
       advertirUnaVez(
         "list_sync_ical_for_break_glass",
