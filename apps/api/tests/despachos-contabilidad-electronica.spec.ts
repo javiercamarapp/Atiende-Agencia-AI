@@ -5,8 +5,9 @@
 // (CONTABILIDAD_ELECTRONICA_ROLES = admin|contador) excluye auditor/readonly
 // -- mismo criterio que despachos-conciliacion.spec.ts/
 // despachos-devolucion-iva.spec.ts.
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calcularHashSha1, CATALOGO_ANEXO24_BASE, generarBalanza, generarXmlBalanza, generarXmlCatalogo } from "@atiende/domain-despachos";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
@@ -141,13 +142,47 @@ describe("POST /despachos/:propertyId/contabilidad-electronica/paquete", () => {
     expect(body.balanza.sha1).toBe(calcularHashSha1(body.balanza.xml));
   });
 
-  it("ejercicio/mes omitidos -> defaults del servidor (año actual, mes 1), sin 400", async () => {
+  it("ejercicio/mes omitidos -> defaults del servidor (año de negocio, mes 1), sin 400", async () => {
     const app = buildApp(ctx.deps);
     const res = await app.request(`/despachos/${ctx.propertyId}/contabilidad-electronica/paquete`, authedJson(ctx.staff.admin.token, { asientos: [] }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { mes: number; ejercicio: number };
     expect(body.mes).toBe(1);
-    expect(body.ejercicio).toBe(new Date().getFullYear());
+    expect(body.ejercicio).toBe(Number(hoyFechaNegocio().slice(0, 4)));
+  });
+
+  // Bug real (revisión r6 de PR #171, no bloqueante #6): el default de `ejercicio`
+  // usaba `new Date().getFullYear()` (año UTC del proceso) -- el 31-dic de 18:00 a
+  // 23:59 CDMX ya daba el año SIGUIENTE. `{ toFake: ["Date"] }` (no
+  // `vi.useFakeTimers()` completo) para no congelar timers reales de la ruta.
+  //
+  // El reloj falso se instala ANTES de construir `ctx`/emitir el token (en vez de
+  // reusar el `ctx` del `beforeEach`, minteado con el reloj REAL) -- si se saltara el
+  // reloj a futuro DESPUÉS de emitir el token, el `exp` real (emitido con el reloj de
+  // verdad) quedaría en el pasado respecto al reloj falso y la petición daría 401 por
+  // token "expirado", no por el bug que este test busca reproducir.
+  it("31-dic a las 22:00 CDMX (04:00 UTC del 1-ene) -> ejercicio default sigue siendo el año de negocio, no el año UTC siguiente", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // 2027-01-01T04:00:00Z = 2026-12-31T22:00:00 en America/Mexico_City.
+      vi.setSystemTime(new Date("2027-01-01T04:00:00.000Z"));
+      const finDeAnioCtx = await buildDespachosTestContext(buildApp);
+      const app = buildApp(finDeAnioCtx.deps);
+      const res = await app.request(
+        `/despachos/${finDeAnioCtx.propertyId}/contabilidad-electronica/paquete`,
+        authedJson(finDeAnioCtx.staff.admin.token, { asientos: [] }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { ejercicio: number };
+      // Control del bug: `new Date().getFullYear()` en un servidor con `TZ=UTC`
+      // (Vercel real) en este instante ya sería 2027 -- se comprueba contra
+      // `getUTCFullYear()` (nunca `getFullYear()`, que depende de la TZ local del
+      // proceso que corre el test, no necesariamente UTC).
+      expect(new Date().getUTCFullYear()).toBe(2027);
+      expect(body.ejercicio).toBe(2026);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("mes fuera de rango -> 400", async () => {
