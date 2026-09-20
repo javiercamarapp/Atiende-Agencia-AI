@@ -1,5 +1,5 @@
 export { hashPassword, verifyPassword } from "./password.ts";
-export { isUndefinedFunctionError, isUndefinedTableError, isUndefinedColumnError, isMigrationPendingError } from "./sql-errors.ts";
+export { isUndefinedFunctionError, isUndefinedTableError, isUndefinedColumnError, isMigrationPendingError, isNoUniqueOrExclusionConstraintError } from "./sql-errors.ts";
 export type {
   CoreRepository,
   CoreStaffRepository,

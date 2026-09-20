@@ -239,10 +239,13 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   }
 
   async listDeadlines(propertyId: string, filter?: { readonly estado?: string }): Promise<readonly FiscalDeadlineRecord[]> {
+    // Mismo desempate `, id asc` que `PostgresDespachosRepository.listDeadlines` --
+    // orden total y estable entre los 4 tipos de un mismo periodo, que siempre
+    // comparten `fechaLimite` (ver comentario ahí).
     return [...this.deadlines.values()]
       .filter((d) => d.propertyId === propertyId)
       .filter((d) => !filter?.estado || d.estado === filter.estado)
-      .sort((a, b) => (a.fechaLimite < b.fechaLimite ? -1 : 1));
+      .sort((a, b) => (a.fechaLimite === b.fechaLimite ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.fechaLimite < b.fechaLimite ? -1 : 1));
   }
 
   async findDeadline(propertyId: string, deadlineId: string): Promise<FiscalDeadlineRecord | null> {
