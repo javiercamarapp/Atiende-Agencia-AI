@@ -98,7 +98,7 @@ export type { HotelRole } from "./roles.ts";
 export { correoInvitacionStaff } from "./emails/staff-invite-template.ts";
 export type { StaffInviteCorreo } from "./emails/staff-invite-template.ts";
 
-export { IdempotencyConflictError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError } from "./errors.ts";
+export { IdempotencyConflictError, FraudAlertAlreadyResolvedError, GuestReviewActionAlreadyResolvedError, RateEngineUnavailableError } from "./errors.ts";
 
 // ---- Fase 5 — H16-014/REQ-REC-014: fraude interno (SOLO los 2 patrones que operan
 // sobre folioEngine.ts ya portado; ver domain-hoteles/src/fraude/deteccion.ts para
@@ -165,6 +165,18 @@ export type {
 
 export type { HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, EmailOutboxJobRow, ReservationPage } from "./repository.ts";
 export type { RevenueGateRecord, RevenueBacktestRunRecord, NewRevenueBacktestRunInput } from "./repository.ts";
+export type {
+  PricingRuleRecord,
+  NewPricingRuleInput,
+  LocalEventRecord,
+  NewLocalEventInput,
+  LocalEventImpacto,
+  CompetitorRateRecord,
+  NewCompetitorRateInput,
+  RateRecommendationRecord,
+  NewRateRecommendationInput,
+  RateRecommendationStatus,
+} from "./repository.ts";
 export { InMemoryHotelesRepository } from "./in-memory-repository.ts";
 export { PostgresHotelesRepository } from "./postgres-repository.ts";
 
