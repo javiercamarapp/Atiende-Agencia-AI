@@ -181,15 +181,29 @@ select set_config('request.jwt.claim.sub', '', true);
 update rentas.canal_feed_externo set ultima_sincronizacion_exitosa_en = now() where id = '00000000-0000-0000-0000-0000000000f1';
 rollback;
 
-\echo '--- 12. sesion de sistema SI puede upsert rentas.evento_canal_importado (hallazgo adicional: nunca tuvo policy de insert/update) ---'
+-- Corrección de auditoría a3 -- ANTES este escenario insertaba organization_id/
+-- property_id A MANO, distinto de la forma real de
+-- `postgres-repository.ts::upsertEventoImportado` (que los DERIVA con un JOIN a
+-- rentas.unidad, ver scripts/verify-rentas-ical-import-postgres-real/) -- eso
+-- enmascaraba por completo el hallazgo ALTA de esa auditoría: el INSERT real,
+-- durante casi una semana, omitía esas dos columnas NOT NULL y reventaba 23502
+-- contra Postgres real en CADA corrida, mientras este escenario (con los valores ya
+-- servidos) seguía en verde. Ahora reproduce el SQL real, columna por columna
+-- (mismo JOIN, mismo ON CONFLICT) -- si alguien vuelve a quitar organization_id/
+-- property_id del INSERT real, este escenario (y el gate dedicado de
+-- verify-rentas-ical-import-postgres-real/) fallan con el mismo 23502.
+\echo '--- 12. sesion de sistema SI puede upsert rentas.evento_canal_importado derivando el tenant de rentas.unidad (SQL real de upsertEventoImportado, hallazgo adicional: nunca tuvo policy de insert/update) ---'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '', true);
-insert into rentas.evento_canal_importado (organization_id, property_id, unidad_id, canal_id, uid_evento, dtstamp, hash_contenido, ultima_accion)
-  select '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1', c.id, 'uid-evento-1', now(), 'hash1', 'aplicar'
-  from rentas.canal c where c.codigo = 'airbnb'
-  on conflict (unidad_id, canal_id, uid_evento) do update set hash_contenido = excluded.hash_contenido;
-select eci.uid_evento from rentas.evento_canal_importado eci where eci.unidad_id = '00000000-0000-0000-0000-0000000000c1';
+insert into rentas.evento_canal_importado (organization_id, property_id, unidad_id, canal_id, uid_evento, sequence, dtstamp, hash_contenido, ocupacion_id, ultima_accion)
+  select u.organization_id, u.property_id, '00000000-0000-0000-0000-0000000000c1', c.id, 'uid-evento-1', 1, now(), 'hash1', null, 'aplicar'
+  from rentas.unidad u, rentas.canal c
+  where u.id = '00000000-0000-0000-0000-0000000000c1' and c.codigo = 'airbnb'
+  on conflict (unidad_id, canal_id, uid_evento) do update set
+    sequence = excluded.sequence, dtstamp = excluded.dtstamp, hash_contenido = excluded.hash_contenido,
+    ocupacion_id = excluded.ocupacion_id, ultima_accion = excluded.ultima_accion, updated_at = now();
+select eci.uid_evento, eci.organization_id, eci.property_id from rentas.evento_canal_importado eci where eci.unidad_id = '00000000-0000-0000-0000-0000000000c1';
 rollback;
 
 \echo '--- 13. staff real CON acceso a la property sigue RECHAZADO escribiendo evento_canal_importado (nunca fue parte del diseño) ---'
