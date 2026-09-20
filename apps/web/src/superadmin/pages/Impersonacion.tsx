@@ -171,7 +171,12 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
             Sesión auditada de solo lectura, con motivo obligatorio y duración acotada (15 minutos), verificada en Postgres.
           </p>
         </div>
-        <Button className="rounded-full gap-1.5" onClick={abrirModal}>
+        <Button
+          className="rounded-full gap-1.5"
+          onClick={abrirModal}
+          disabled={!available}
+          title={!available ? "La impersonación no está disponible todavía -- migración pendiente de aplicar." : undefined}
+        >
           <LogIn className="w-3.5 h-3.5" strokeWidth={1.75} />
           Iniciar impersonación
         </Button>
@@ -179,7 +184,8 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
 
       {!available && (
         <p role="alert" className="text-[13px] text-muted-foreground">
-          La impersonación de superadmin todavía no está disponible en esta base (migración pendiente de aplicar).
+          La impersonación de superadmin todavía no está disponible en esta base (migración pendiente de aplicar) -- el
+          botón "Iniciar impersonación" está deshabilitado mientras tanto.
         </p>
       )}
 

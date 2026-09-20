@@ -29,6 +29,12 @@ const REASON_LABELS: Record<string, string> = {
   no_membership: "Sin membresía",
   rate_limited: "Límite de intentos",
   route_not_mapped: "Ruta sin mapear",
+  // Marcador de desborde del tope defensivo (ver packages/db/migrations/
+  // 0022_superadmin_bitacoras_endurecimiento.sql) -- una fila así significa
+  // "a partir de aquí se descartaron denegaciones reales durante esta
+  // ventana", nunca un intento denegado en sí mismo.
+  audit_capacity_overflow_actor: "Desborde de bitácora (tope por actor)",
+  audit_capacity_overflow_global: "Desborde de bitácora (tope global)",
 };
 
 function fechaHoraEsMx(ms: number): string {
