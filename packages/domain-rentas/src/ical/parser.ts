@@ -126,18 +126,20 @@ function validarComponentesFecha(anio: string, mes: string, dia: string, context
   const a = Number(anio);
   const m = Number(mes);
   const d = Number(dia);
-  // Hallazgo de auditoría (a3, MEDIA, verificado contra Postgres real) — sin este
-  // chequeo, un VEVENT con `DTSTART:00000101` (año "0000", forma sintácticamente
-  // válida según el regex de 4 dígitos de `parsearValorFecha`) producía la fecha
-  // '0000-01-01', que Postgres real rechaza con `22008` ("date/time field value out of
-  // range") en cuanto `listCanalesExportadosDeRango`/`daterange()` la usa —
-  // exactamente el mismo camino de "abortar la transacción del feed completo" que el
-  // SEQUENCE fuera de rango de abajo. Se rechaza aquí, en el dominio, ANTES de
-  // cualquier SQL — mismo criterio que el rango invertido de `esRangoValido`
-  // (motor.ts:94).
-  if (a < 1) {
-    throw new IcsParseError("valor_fecha_invalido", `${contexto}: año fuera de rango (mínimo 0001): "${anio}"`);
-  }
+  // Hallazgo de auditoría (a3, MEDIA, verificado contra Postgres real) — un VEVENT con
+  // `DTSTART:00000101` (año "0000", forma sintácticamente válida según el regex de 4
+  // dígitos de `parsearValorFecha`) produce la fecha '0000-01-01', que Postgres real
+  // rechaza con `22008` en cuanto `daterange()` la usa. A DIFERENCIA de las
+  // validaciones de mes/día/hora de abajo (errores de FORMA del VEVENT — se tratan
+  // como "el feed entero está corrupto", igual que el resto de `campo_requerido_ausente`
+  // de este parser), el año fuera de rango es una condición semántica de UN evento
+  // dentro de un feed por lo demás válido: lanzar aquí (`IcsParseError` desde
+  // `construirVEvent`) escaparía de `parsearIcs` SIN try/catch por VEVENT (ver el
+  // bucle de `END:VEVENT` más abajo) y tumbaría el FEED COMPLETO en cada ciclo —
+  // exactamente el daño que este hallazgo buscaba evitar. Por eso NO se valida aquí:
+  // se valida por EVENTO en `motor.ts::procesarEventoDelCiclo`, junto a
+  // `esRangoValido` (mismo criterio que el rango invertido, motor.ts ~94), donde un
+  // año inválido descarta solo ESE evento sin afectar al resto del feed.
   if (m < 1 || m > 12) {
     throw new IcsParseError("valor_fecha_invalido", `${contexto}: mes fuera de rango 01-12: "${mes}"`);
   }

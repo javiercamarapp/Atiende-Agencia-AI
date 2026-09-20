@@ -140,6 +140,41 @@ describe("ejecutarCicloImportacion", () => {
     void unidad;
   });
 
+  // Hallazgo de auditoría (a3, MEDIA, corregido tras revisión de PR #175) — a
+  // diferencia de la primera versión de este fix (que lanzaba desde el PARSER y
+  // tumbaba el FEED entero, ver el comentario de cabecera de
+  // `validarComponentesFecha` en ../src/ical/parser.ts), un DTSTART/DTEND con año
+  // "0000" ahora se descarta SOLO ese evento -- mismo criterio y mismo mecanismo que
+  // el rango inválido del test de arriba (validado en JS ANTES de cualquier SQL, ver
+  // `motor.ts::anioFechaLocalValido`, junto a `esRangoValido`).
+  it("un evento individual con año de calendario inválido (DTSTART año '0000') se descarta sin abortar el resto del ciclo", async () => {
+    const { port, ejecutarCiclo } = await crearFixture();
+    const icsConAnioInvalido = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      "UID:anio-invalido@airbnb.com",
+      "DTSTAMP:20260101T000000Z",
+      "DTSTART;VALUE=DATE:00000101",
+      "DTEND;VALUE=DATE:00000105",
+      "END:VEVENT",
+      "BEGIN:VEVENT",
+      "UID:bueno-anio@airbnb.com",
+      "DTSTAMP:20260101T000000Z",
+      "DTSTART;VALUE=DATE:20261201",
+      "DTEND;VALUE=DATE:20261203",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+    port.definirEscenario(URL_AIRBNB, { tipo: "ics", contenidoIcs: icsConAnioInvalido });
+
+    const resumen = await ejecutarCiclo();
+    expect(resumen.resultado).toBe("exito_con_eventos"); // el feed se parseó completo, no "fallo_parseo"
+    expect(resumen.eventosDescartadosPorError).toHaveLength(1);
+    expect(resumen.eventosDescartadosPorError[0]!.uid).toBe("anio-invalido@airbnb.com");
+    expect(resumen.eventosAplicados).toBe(1); // el evento con año válido sí se aplicó
+  });
+
   // Hallazgo de auditoría (a3, ALTA) — a diferencia del test de arriba (rango
   // inválido, descartado en JS ANTES de cualquier SQL), este reproduce un error que
   // ocurre DENTRO de una llamada real al repositorio de sync (el camino que, contra

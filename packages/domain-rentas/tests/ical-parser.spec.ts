@@ -147,18 +147,28 @@ describe("parsearIcs — fixtures reales RFC 5545", () => {
     expect(() => parsearIcs(ics)).toThrowError(IcsParseError);
   });
 
-  // Hallazgo de auditoría (a3, MEDIA) — `DTSTART:00000101` es sintácticamente válido
-  // según el regex de 4 dígitos (año "0000"), pero produce la fecha '0000-01-01', que
-  // Postgres real rechaza con 22008 en `daterange()` -- ver el comentario de cabecera
-  // de `validarComponentesFecha`. Se rechaza en el dominio, ANTES de cualquier SQL.
-  it("rechaza DTSTART con año '0000' (VALUE=DATE)", () => {
+  // Hallazgo de auditoría (a3, MEDIA, corregido tras revisión de PR) — `DTSTART:
+  // 00000101` es sintácticamente válido según el regex de 4 dígitos (año "0000"). A
+  // diferencia de un error de FORMA (mes/día/hora fuera de rango, ausencia de campos
+  // requeridos), el parser YA NO lo rechaza a nivel de FEED: `parsearIcs` no envuelve
+  // `construirVEvent` en un try/catch por VEVENT, así que lanzar aquí tumbaría el feed
+  // completo en cada ciclo (ver el comentario de cabecera de
+  // `validarComponentesFecha`, ../src/ical/parser.ts). El año "0000" se valida por
+  // EVENTO en `motor.ts::procesarEventoDelCiclo` (ver
+  // `sync-motor.spec.ts::"descarta solo el evento con año de calendario inválido..."`),
+  // así que a nivel de parser el evento se parsea con normalidad.
+  it("parsea (sin rechazar) un DTSTART con año '0000' (VALUE=DATE) -- se valida por evento en motor.ts, no aquí", () => {
     const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x@y\r\nDTSTAMP:20260601T000000Z\r\nDTSTART;VALUE=DATE:00000101\r\nEND:VEVENT\r\nEND:VCALENDAR";
-    expect(() => parsearIcs(ics)).toThrowError(IcsParseError);
+    const resultado = parsearIcs(ics);
+    expect(resultado.eventos).toHaveLength(1);
+    expect(resultado.eventos[0]!.dtstart).toEqual({ tipo: "DATE", fecha: "0000-01-01" });
   });
 
-  it("rechaza DTSTART con año '0000' (DATE-TIME)", () => {
+  it("parsea (sin rechazar) un DTSTART con año '0000' (DATE-TIME) -- se valida por evento en motor.ts, no aquí", () => {
     const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x@y\r\nDTSTAMP:20260601T000000Z\r\nDTSTART:00000101T000000Z\r\nEND:VEVENT\r\nEND:VCALENDAR";
-    expect(() => parsearIcs(ics)).toThrowError(IcsParseError);
+    const resultado = parsearIcs(ics);
+    expect(resultado.eventos).toHaveLength(1);
+    expect(resultado.eventos[0]!.dtstart).toEqual({ tipo: "DATE-TIME-UTC", instanteIso: "0000-01-01T00:00:00Z" });
   });
 
   // Hallazgo de auditoría (a3, MEDIA) — un SEQUENCE fuera de rango de `integer`

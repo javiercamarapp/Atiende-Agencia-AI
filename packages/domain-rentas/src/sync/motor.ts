@@ -28,7 +28,7 @@
 import { cancelarOcupacion, crearReservaConfirmada, modificarFechasReserva } from "../aplicacion/reservas.ts";
 import type { EjecutorTransaccional } from "../ejecutor.ts";
 import { esRangoValido } from "../fechas.ts";
-import type { RangoFechas } from "../tipos.ts";
+import type { FechaLocal, RangoFechas } from "../tipos.ts";
 import { calcularHashContenidoBloqueo, construirUidExportado, exportarFeedIcs, type BloqueoExportable, type FeedExportado } from "../ical/exportador.ts";
 import { IcsParseError, parsearIcs, type LimitesParserIcs, type VEventNormalizado } from "../ical/parser.ts";
 import { resolverFechaLocal } from "../ical/resolver-fecha.ts";
@@ -83,6 +83,18 @@ function extraerRango(evento: VEventNormalizado, zonaHoraria: string): RangoFech
   return { inicio: resolverFechaLocal(evento.dtstart, zonaHoraria), fin: resolverFechaLocal(evento.dtend, zonaHoraria) };
 }
 
+// Hallazgo de auditoría (a3, MEDIA, verificado contra Postgres real) — un DTSTART/
+// DTEND con año "0000" (forma sintácticamente válida en el parser, ver el comentario
+// de cabecera de `validarComponentesFecha` en ../ical/parser.ts) produce una
+// `FechaLocal` como "0000-01-01" que Postgres real rechaza con `22008` en cuanto
+// `daterange()`/`listCanalesExportadosDeRango` la usa. Se valida aquí, por EVENTO,
+// ANTES de cualquier SQL — mismo criterio que `esRangoValido` (rango invertido, más
+// abajo): nunca en el parser, porque `parsearIcs` no envuelve `construirVEvent` en un
+// try/catch por VEVENT (un throw ahí tumbaría el FEED completo, ver parser.ts).
+function anioFechaLocalValido(fecha: FechaLocal): boolean {
+  return Number(fecha.slice(0, 4)) >= 1;
+}
+
 async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEventNormalizado, hashesRecientes: readonly string[], resumen: ResultadoImportarCiclo): Promise<void> {
   const rango = extraerRango(evento, ctx.zonaHorariaPropiedad);
 
@@ -93,6 +105,9 @@ async function procesarEventoDelCiclo(ctx: ContextoSincronizacion, evento: VEven
   // semánticamente inválidas) se descarta aquí mismo, individualmente.
   if (!esRangoValido(rango)) {
     throw new Error(`evento con rango inválido (dtstart >= dtend): [${rango.inicio}, ${rango.fin})`);
+  }
+  if (!anioFechaLocalValido(rango.inicio) || !anioFechaLocalValido(rango.fin)) {
+    throw new Error(`evento con año de calendario inválido (mínimo 0001): [${rango.inicio}, ${rango.fin})`);
   }
 
   const hash = calcularHashContenidoBloqueo({ unidadId: ctx.feed.unidadId, dtstart: rango.inicio, dtend: rango.fin, razon: "RESERVA_CANAL" });
