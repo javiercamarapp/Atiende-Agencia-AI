@@ -257,6 +257,33 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
 }
 
 /**
+ * Fase 11 de `createOrder` (ver su comentario de cabecera en el call site) — registra
+ * el uso real de una promoción DESPUÉS de persistir el pedido, best-effort real: un
+ * fallo aquí nunca revierte un pedido ya creado.
+ *
+ * SAVEPOINT (corrección de revisión sobre PR #176, auditoría a3, no bloqueante #2):
+ * mismo patrón que `tryNotifyStaffNewOrder`/`tryNotifyCustomerOrderConfirmationEmail`
+ * de `order-notifications.ts` -- este best-effort corre DENTRO de la MISMA
+ * transacción que ya persistió el pedido (`create_order_idempotent`). Sin
+ * `runWithRowSavepoint`, un error real de Postgres en `increment_promotion_uses`
+ * (deadlock/timeout transitorio) dejaría la transacción en 25P02 y el `commit;` que
+ * sigue perdería el pedido ya "persistido", detectado como `AbortedTransactionCommitError`
+ * por `managed-postgres-engine.ts` (500 honesto, nunca un rollback silencioso).
+ * Extraída a función propia (antes inline en `createOrder`) para poder probar el
+ * SAVEPOINT directamente contra `PostgresRestaurantesRepository` real +
+ * `AbortAwareFakeSession`, mismo criterio que las otras dos, sin tener que montar
+ * todo `createOrder` (catálogo, sucursal, cliente, idempotencia) solo para esto —
+ * ver `order-notifications-createorder-savepoint.spec.ts`.
+ */
+export async function tryIncrementPromotionUses(repo: RestaurantesRepository, organizationId: string, promotionId: string): Promise<void> {
+  try {
+    await repo.runWithRowSavepoint(() => repo.incrementPromotionUses(organizationId, promotionId));
+  } catch (err) {
+    console.error("promotions: best-effort incrementPromotionUses failed:", err);
+  }
+}
+
+/**
  * Crea el pedido de verdad: memoria de cliente (upsertCustomer, ver customers.ts) +
  * inserción idempotente de dos niveles (idempotencyKey explícito + dedupeFingerprint
  * automático de 5 minutos) — nunca dos filas reales por una sola intención real de
@@ -348,19 +375,7 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
   // sin una tabla de uso por pedido, fuera de alcance de esta fase). Best-effort:
   // nunca revierte un pedido real ya creado por esto.
   if (appliedPromotion) {
-    try {
-      // SAVEPOINT (corrección de revisión sobre PR #176, auditoría a3, no
-      // bloqueante #2): mismo patrón que las 2 notificaciones de arriba en
-      // esta misma función -- este best-effort corre DENTRO de la MISMA
-      // transacción que ya persistió el pedido (`create_order_idempotent`).
-      // Sin `runWithRowSavepoint`, un error real de Postgres en
-      // `increment_promotion_uses` (deadlock/timeout transitorio) dejaría la
-      // transacción en 25P02 y el `commit;` que sigue perdería el pedido ya
-      // "persistido" con un `AbortedTransactionCommitError`.
-      await repo.runWithRowSavepoint(() => repo.incrementPromotionUses(payload.organizationId, appliedPromotion.id));
-    } catch (err) {
-      console.error("promotions: best-effort incrementPromotionUses failed:", err);
-    }
+    await tryIncrementPromotionUses(repo, payload.organizationId, appliedPromotion.id);
   }
   return order;
 }
