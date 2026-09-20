@@ -140,6 +140,99 @@ describe("ejecutarCicloImportacion", () => {
     void unidad;
   });
 
+  // Hallazgo de auditoría (a3, ALTA) — a diferencia del test de arriba (rango
+  // inválido, descartado en JS ANTES de cualquier SQL), este reproduce un error que
+  // ocurre DENTRO de una llamada real al repositorio de sync (el camino que, contra
+  // Postgres real, dejaba la transacción del feed ABORTADA -- ver el comentario de
+  // cabecera de `procesarEventoDelCicloAislado`, motor.ts). El repositorio en memoria
+  // nunca aborta una transacción por sí solo, así que este test verifica el mecanismo
+  // DIRECTAMENTE: que `ctx.db.exec` recibe la secuencia SAVEPOINT/ROLLBACK TO
+  // SAVEPOINT/RELEASE SAVEPOINT alrededor del evento venenoso, y que el evento sano
+  // que sigue en el MISMO feed sí se aplica -- sin este fix, el error simplemente
+  // escapaba del try/catch sin ningún exec() de por medio.
+  it("SAVEPOINT por evento: un error real del repositorio de sync en un evento no impide que el siguiente evento del mismo feed se aplique", async () => {
+    const { db, port, syncRepo, propertyId, unidad, canalAirbnb } = await crearFixture();
+    const feed = await syncRepo.findFeed(propertyId, unidad.id, canalAirbnb.id);
+
+    const execCalls: string[] = [];
+    const dbEspiado = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop === "exec") {
+          return async (sql: string) => {
+            execCalls.push(sql);
+            return target.exec(sql);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const UID_VENENOSO = "evt-venenoso@airbnb.com";
+    let vecesLlamado = 0;
+    const syncRepoEnvenenado = new Proxy(syncRepo, {
+      get(target, prop, receiver) {
+        if (prop === "upsertEventoImportado") {
+          return async (unidadId: string, canalId: string, entrada: Parameters<typeof syncRepo.upsertEventoImportado>[2]) => {
+            if (entrada.uid === UID_VENENOSO) {
+              vecesLlamado += 1;
+              throw new Error("error real simulado del repositorio (ej. 23502/22003 contra Postgres real)");
+            }
+            return target.upsertEventoImportado(unidadId, canalId, entrada);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const icsDosEventos = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      `UID:${UID_VENENOSO}`,
+      "DTSTAMP:20260101T000000Z",
+      "DTSTART;VALUE=DATE:20260701",
+      "DTEND;VALUE=DATE:20260703",
+      "END:VEVENT",
+      "BEGIN:VEVENT",
+      "UID:evt-sano@airbnb.com",
+      "DTSTAMP:20260101T000000Z",
+      "DTSTART;VALUE=DATE:20260801",
+      "DTEND;VALUE=DATE:20260803",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+    port.definirEscenario(URL_AIRBNB, { tipo: "ics", contenidoIcs: icsDosEventos });
+
+    const resumen = await ejecutarCicloImportacion({
+      db: dbEspiado,
+      syncRepo: syncRepoEnvenenado,
+      port,
+      feed: feed!,
+      zonaHorariaPropiedad: ZONA,
+    });
+
+    expect(vecesLlamado).toBe(1); // el repositorio SÍ se llamó para el uid venenoso
+    expect(resumen.eventosDescartadosPorError).toHaveLength(1);
+    expect(resumen.eventosDescartadosPorError[0]!.uid).toBe(UID_VENENOSO);
+    expect(resumen.eventosAplicados).toBe(1); // el evento sano SÍ se aplicó pese al error del anterior
+
+    // La secuencia real que Postgres exige para recuperar una transacción abortada:
+    // SAVEPOINT antes del intento, y ante el error, ROLLBACK TO SAVEPOINT + RELEASE
+    // SAVEPOINT (en ese orden) ANTES de seguir con el siguiente evento. Se filtra por
+    // el nombre propio del SAVEPOINT de `procesarEventoDelCicloAislado`
+    // (`sp_evento_ciclo_`) -- `crearReservaConfirmada` (llamado dentro del evento SANO
+    // también) usa sus PROPIOS SAVEPOINT internos (`sp_crear_reserva`/
+    // `intento_insercion`) con su propio RELEASE, que no deben confundirse con los de
+    // este aislamiento.
+    const propios = execCalls.filter((c) => c.includes("sp_evento_ciclo_"));
+    const savepointIdx = propios.findIndex((c) => c.startsWith("SAVEPOINT "));
+    const rollbackIdx = propios.findIndex((c) => c.startsWith("ROLLBACK TO SAVEPOINT "));
+    const releaseIdx = propios.findIndex((c) => c.startsWith("RELEASE SAVEPOINT "));
+    expect(savepointIdx).toBeGreaterThanOrEqual(0);
+    expect(rollbackIdx).toBeGreaterThan(savepointIdx);
+    expect(releaseIdx).toBeGreaterThan(rollbackIdx);
+  });
+
   it("cuarentena: tras 3 fallos de fetch consecutivos, el feed queda marcado en cuarentena", async () => {
     const { port, ejecutarCiclo, syncRepo, propertyId, unidad, canalAirbnb } = await crearFixture();
     port.definirEscenario(URL_AIRBNB, { tipo: "inaccesible", statusHttp: 503 });
