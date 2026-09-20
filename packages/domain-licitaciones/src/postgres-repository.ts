@@ -6,6 +6,7 @@
 // `licitaciones.can_access_org`/`can_write_org`/`can_decide_org`).
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { runWithSavepointFallback } from "@atiende/db";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
@@ -469,7 +470,16 @@ interface ContractInvoiceRow {
 const CONTRACT_INVOICE_COLUMNS =
   "id, contract_id, concepto, amount::text as amount, invoice_verified_on::text as invoice_verified_on, due_date::text as due_date, legal_reference, paid_at::text as paid_at, created_by, created_at::text as created_at";
 
-function mapContractInvoice(row: ContractInvoiceRow): ContractInvoiceRecord {
+// Bug real (revisión r6, corrección de PR #171, bloqueante 2): este mapper llamaba
+// `classifyInvoiceStatus(base)` SIN fecha -- caía en el (antiguo) default UTC de
+// `contract-billing.ts`, mientras `receivablesSummary` (abajo) SÍ calculaba con
+// `hoyFechaNegocio()`. Entre las 18:00 y las 23:59 CDMX, la respuesta de
+// `receivablesSummary` se contradecía a sí misma: una factura salía "vencida" en
+// `invoices[]` pero no contaba en `countOverdue`/`totalOverdue`. Fix: `todayIsoDate`
+// ahora es un parámetro obligatorio (ver `contract-billing.ts::classifyInvoiceStatus`)
+// -- todo caller de este mapper pasa el MISMO `hoyFechaNegocio()` que el resto del
+// archivo, nunca un default oculto.
+function mapContractInvoice(row: ContractInvoiceRow, todayIsoDate: string): ContractInvoiceRecord {
   const base = {
     id: row.id,
     contractId: row.contract_id,
@@ -482,7 +492,7 @@ function mapContractInvoice(row: ContractInvoiceRow): ContractInvoiceRecord {
     createdBy: row.created_by,
     createdAt: row.created_at,
   };
-  return { ...base, status: classifyInvoiceStatus(base) };
+  return { ...base, status: classifyInvoiceStatus(base, todayIsoDate) };
 }
 
 interface InconformidadDraftRow {
@@ -2234,7 +2244,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
        returning ${CONTRACT_INVOICE_COLUMNS};`,
       [organizationId, contract.id, input.concepto, input.amount, input.invoiceVerifiedOn, due.dueDate, due.legalReference, input.actorId],
     );
-    return mapContractInvoice(rows[0]!);
+    return mapContractInvoice(rows[0]!, hoyFechaNegocio());
   }
 
   async listContractInvoices(organizationId: string, tenderId: string): Promise<readonly ContractInvoiceRecord[]> {
@@ -2243,7 +2253,8 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       `select ${CONTRACT_INVOICE_COLUMNS} from licitaciones.contract_invoice where organization_id = $1 and contract_id = $2 order by invoice_verified_on asc;`,
       [organizationId, contract.id],
     );
-    return rows.map(mapContractInvoice);
+    const today = hoyFechaNegocio();
+    return rows.map((row) => mapContractInvoice(row, today));
   }
 
   async markContractInvoicePaid(organizationId: string, tenderId: string, invoiceId: string, _actorId: string): Promise<ContractInvoiceRecord> {
@@ -2253,12 +2264,22 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
       [invoiceId, organizationId, contract.id],
     );
     if (rows.length === 0) throw new Error(`Factura "${invoiceId}" no encontrada para el contrato de la convocatoria "${tenderId}".`);
-    return mapContractInvoice(rows[0]!);
+    return mapContractInvoice(rows[0]!, hoyFechaNegocio());
   }
 
   async receivablesSummary(organizationId: string, tenderId: string): Promise<ReceivablesSummary> {
     const invoices = await this.listContractInvoices(organizationId, tenderId);
-    const today = new Date().toISOString().slice(0, 10);
+    // Bug real (revisión r6, misma causa raíz que `apps/api/.../despachos/
+    // vencimientos.ts::todayIso` -- ver su comentario de cabecera): "hoy" para decidir
+    // pendiente/vencido usaba `new Date().toISOString().slice(0, 10)` (día UTC del
+    // proceso), corrido un día adelante del real en CDMX entre las 18:00 y las 23:59 hora
+    // local. Mismo fix en las 3 firmas de abajo (`scanRenewalAlerts`/
+    // `systemScanRenewalAlerts`/`listOverdueContractInvoices`) -- todas usan
+    // `@atiende/core-tenancy::hoyFechaNegocio()` como default cuando el caller no inyecta
+    // un `todayIsoDate` explícito (los tests SÍ lo inyectan; el cron real de
+    // `apps/worker/src/jobs/licitaciones/alert-notifications.ts` NO, así que es el
+    // default el que corre en producción).
+    const today = hoyFechaNegocio();
     const totals = summarizeReceivables(
       invoices.map((inv) => ({ amount: inv.amount, dueDate: inv.dueDate, paidAt: inv.paidAt })),
       today,
@@ -2395,7 +2416,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
 
   async scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
     const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
-    const today = input.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const today = input.todayIsoDate ?? hoyFechaNegocio();
 
     const contractsRes = await this.db.query<{ id: string; tender_id: string; end_date: string }>(
       `select id, tender_id, end_date::text as end_date from licitaciones.contract
@@ -2431,7 +2452,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   // staff autenticado real (`POST .../renewals/scan`) -- sin cambio.
   async systemScanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
     const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
-    const today = input.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const today = input.todayIsoDate ?? hoyFechaNegocio();
 
     const contractsRes = await this.db.query<{ out_contract_id: string; out_tender_id: string; out_end_date: string }>(
       `select * from licitaciones.system_list_renewal_candidate_contracts($1);`,
@@ -2521,7 +2542,7 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   // tabla (bloqueado por `can_access_org` bajo sesión de sistema, sin escape
   // hatch). Sin cambio de contrato TypeScript -- mismo método, misma firma.
   async listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]> {
-    const today = todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    const today = todayIsoDate ?? hoyFechaNegocio();
     const { rows } = await this.db.query<{ out_id: string; out_contract_id: string; out_tender_id: string; out_concepto: string; out_amount: string; out_due_date: string; out_days_overdue: number }>(
       `select * from licitaciones.system_list_overdue_contract_invoices($1, $2::date);`,
       [organizationId, today],

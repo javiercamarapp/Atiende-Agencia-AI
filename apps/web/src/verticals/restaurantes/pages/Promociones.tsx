@@ -39,10 +39,24 @@ function formatValue(type: PromotionType, value: number): string {
   return type === "percentage" ? `${value}%` : `$${value.toFixed(2)}`;
 }
 
+// BUG REAL corregido aquí (revisión de PR #170): `dateInputToIso` construye el
+// instante con el constructor LOCAL de `Date` (`new Date("YYYY-MM-DDTHH:mm:ss")`,
+// sin sufijo de zona) -- el mismo criterio que "medianoche/23:59:59 local" del
+// resto del panel. La ida y vuelta con `formatDateInput` DEBE ser simétrica: leer
+// el ISO guardado con `.slice(0, 10)` toma el día UTC, no el día local, así que en
+// cualquier zona con offset negativo (América completa, incluida
+// America/Mexico_City) el modal "Editar vigencia" precargaba el día SIGUIENTE al
+// real. Cada "Guardar" sin tocar nada volvía a convertir esa fecha corrida a ISO
+// y corría `endsAt` un día más -- el descuento quedaba vigente días extra en cada
+// edición. El fix es leer el ISO con los getters LOCALES de `Date` (mismos que usa
+// el constructor de `dateInputToIso` al escribir), nunca con `.slice`.
 function formatDateInput(iso: string | null): string {
   if (!iso) return "";
-  // <input type="date"> quiere YYYY-MM-DD.
-  return iso.slice(0, 10);
+  const d = new Date(iso);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function dateInputToIso(value: string, endOfDay: boolean): string | null {

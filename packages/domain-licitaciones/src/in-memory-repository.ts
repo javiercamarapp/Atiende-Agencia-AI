@@ -8,6 +8,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, IdempotencyConflictError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import type {
@@ -1326,7 +1327,14 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     return contract;
   }
 
-  private invoicesWithStatus(contractId: string, todayIsoDate: string = new Date().toISOString().slice(0, 10)): ContractInvoiceRecord[] {
+  // Bug real (revisión r6, corrección de PR #171, no-bloqueante #7 -- paridad de
+  // repositorios): estos defaults usaban el día UTC del proceso
+  // (`new Date().toISOString().slice(0, 10)`), mientras `PostgresLicitacionesRepository`
+  // (el que corre en producción) ya usa `hoyFechaNegocio()` -- la suite en memoria dejó
+  // de ejercer lo que corre en producción. `contract-billing.ts::classifyInvoiceStatus`/
+  // `summarizeReceivables` ya no aceptan un default oculto (ver su comentario) -- este
+  // repositorio pasa el mismo `hoyFechaNegocio()` explícito que Postgres.
+  private invoicesWithStatus(contractId: string, todayIsoDate: string = hoyFechaNegocio()): ContractInvoiceRecord[] {
     return (this.contractInvoices.get(contractId) ?? [])
       .map((inv) => ({ ...inv, status: classifyInvoiceStatus(inv, todayIsoDate) }))
       .sort((a, b) => a.invoiceVerifiedOn.localeCompare(b.invoiceVerifiedOn));
@@ -1522,7 +1530,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     };
     const list = this.contractInvoices.get(contract.id) ?? [];
     this.contractInvoices.set(contract.id, [...list, record]);
-    return { ...record, status: classifyInvoiceStatus(record) };
+    return { ...record, status: classifyInvoiceStatus(record, hoyFechaNegocio()) };
   }
 
   async listContractInvoices(organizationId: string, tenderId: string): Promise<readonly ContractInvoiceRecord[]> {
@@ -1544,7 +1552,7 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async receivablesSummary(organizationId: string, tenderId: string): Promise<ReceivablesSummary> {
     const contract = this.requireContract(organizationId, tenderId);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = hoyFechaNegocio();
     const invoices = this.invoicesWithStatus(contract.id, today);
     const totals = summarizeReceivables(
       invoices.map((inv) => ({ amount: inv.amount, dueDate: inv.dueDate, paidAt: inv.paidAt })),
@@ -1663,7 +1671,9 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
 
   async scanRenewalAlerts(organizationId: string, input: ScanRenewalAlertsInput): Promise<ScanRenewalAlertsResult> {
     const thresholds = input.leadDaysThresholds ?? DEFAULT_RENEWAL_LEAD_DAYS;
-    const today = input.todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    // Mismo fix de paridad que `invoicesWithStatus` de arriba -- `PostgresLicitacionesRepository`
+    // (producción) ya usa `hoyFechaNegocio()` como default aquí (ver su comentario).
+    const today = input.todayIsoDate ?? hoyFechaNegocio();
     const candidates: RenewalCandidateContract[] = [...this.contracts.values()]
       .filter((c) => c.organizationId === organizationId && c.endDate !== null && c.status !== "cerrado" && c.status !== "rescindido")
       .map((c) => ({ contractId: c.id, tenderId: c.tenderId, endDate: c.endDate! }));
@@ -1730,7 +1740,8 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
   }
 
   async listOverdueContractInvoices(organizationId: string, todayIsoDate?: string): Promise<readonly OverdueContractInvoiceAlert[]> {
-    const today = todayIsoDate ?? new Date().toISOString().slice(0, 10);
+    // Mismo fix de paridad que `invoicesWithStatus`/`scanRenewalAlerts` de arriba.
+    const today = todayIsoDate ?? hoyFechaNegocio();
     const [todayY, todayM, todayD] = today.split("-").map(Number) as [number, number, number];
     const todayMs = Date.UTC(todayY, todayM - 1, todayD);
     const result: OverdueContractInvoiceAlert[] = [];

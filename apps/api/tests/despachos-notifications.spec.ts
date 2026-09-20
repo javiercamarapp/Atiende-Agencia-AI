@@ -11,6 +11,7 @@
 // `x-atiende-internal-secret` que ya cubrían los tests originales.
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
 
@@ -47,8 +48,14 @@ describe("POST /internal/despachos/cobranza-reminders", () => {
       fecha: "2026-08-01",
     });
     // Vence hoy -- coincide EXACTO con la etapa 'vencimiento' (offset 0), ver
-    // cobranza/engine.ts::etapaRecordatorioCobranzaHoy.
-    const todayIso = new Date().toISOString().slice(0, 10);
+    // cobranza/engine.ts::etapaRecordatorioCobranzaHoy. Bug real de este fixture
+    // (encontrado corriendo la suite completa de la corrección de revisión de PR #171,
+    // exactamente entre las 18:00 y las 23:59 CDMX): usaba el día UTC del reloj real del
+    // proceso, mientras el servidor calcula "hoy" con `hoyFechaNegocio()` (día de
+    // negocio, ya corregido en este PR) -- en esa ventana horaria "vence hoy" (UTC) ya
+    // no coincidía con el "hoy" real del servidor (CDMX), y el barrido no encontraba la
+    // cuenta como vencida.
+    const todayIso = hoyFechaNegocio();
     await ctx.despachosRepo.registerReceivable({ organizationId: ctx.organizationId, propertyId: ctx.propertyId, invoiceId: invoice.id, fechaVencimiento: todayIso, clienteNombre: "Cliente de Prueba", clienteEmail: "cliente@example.com" });
 
     const res = await app.request("/internal/despachos/cobranza-reminders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });
@@ -94,7 +101,7 @@ describe("POST /internal/despachos/cobranza-reminders", () => {
       diot: { proveedoresReportables: [], reportable: false },
       fecha: "2026-08-01",
     });
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = hoyFechaNegocio(); // mismo fix que el test de arriba.
     await ctx.despachosRepo.registerReceivable({ organizationId: ctx.organizationId, propertyId: ctx.propertyId, invoiceId: invoice.id, fechaVencimiento: todayIso, clienteNombre: "Cliente de Prueba", clienteEmail: "cliente@example.com" });
 
     const res = await app.request("/internal/despachos/cobranza-reminders", { method: "POST", headers: { "x-atiende-internal-secret": ctx.deps.env.internalSecret } });

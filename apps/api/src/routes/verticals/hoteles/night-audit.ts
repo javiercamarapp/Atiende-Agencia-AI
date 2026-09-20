@@ -26,6 +26,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { NIGHT_AUDIT_ROLES, type HotelesRepository, type NightAuditSummary } from "@atiende/domain-hoteles";
 import { runNightAuditForProperty, runNightAuditSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
@@ -35,8 +36,13 @@ import type { AppDeps } from "../../../deps.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Bug real (revisión r6, misma causa raíz que `../despachos/vencimientos.ts::todayIso` --
+// ver su comentario de cabecera): el default de `businessDate` del disparo MANUAL (cuando
+// el caller no lo manda) usaba el día UTC del proceso -- corrido un día adelante del real
+// en CDMX entre las 18:00 y las 23:59 hora local. Ahora usa
+// `@atiende/core-tenancy::hoyFechaNegocio()`.
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyFechaNegocio();
 }
 
 function serializeSummary(summary: NightAuditSummary) {
