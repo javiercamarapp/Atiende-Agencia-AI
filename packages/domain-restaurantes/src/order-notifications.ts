@@ -135,9 +135,17 @@ const NOTIFY_SAVEPOINT_NAME = "sp_order_notify_best_effort";
  * `triggerInline`: si `db` ya traía la transacción abortada por una causa AJENA a
  * este best-effort, el propio `SAVEPOINT` también lanza 25P02 — se traga aquí
  * también, nunca se relanza (no es responsabilidad de este best-effort arreglar un
- * abort previo). Cuando `db` no se pasa (callers de sesión de SISTEMA, p.ej.
- * `createOrder`, donde este best-effort no comparte transacción con ninguna
- * escritura de negocio que deba protegerse) corre sin SAVEPOINT, igual que antes.
+ * abort previo). `db` opcional existe solo por si un caller futuro de sesión de
+ * SISTEMA reutiliza esta función sin transacción compartida que proteger -- hoy los
+ * dos únicos callers reales (`order-lifecycle.ts::changeOrderStatus`/
+ * `changeAssignedOrderStatus`) siempre lo pasan, en sesión de STAFF, con el UPDATE
+ * del pedido en la MISMA transacción (CORRECCIÓN, auditoría a3: la versión anterior
+ * de este comentario afirmaba que `createOrder` era un caller de sesión de sistema
+ * que llegaba aquí "sin transacción de negocio que proteger" -- `createOrder` NUNCA
+ * llama a `runNotifyBestEffort`; sus propios best-effort, más abajo en este archivo,
+ * SÍ comparten transacción con el INSERT del pedido dentro de
+ * `withAppSession({userId:null})` y se protegen con `repo.runWithRowSavepoint`, no
+ * con este helper).
  */
 async function runNotifyBestEffort(db: TenantDbSession | undefined, fn: () => Promise<void>, onError: (err: unknown) => void): Promise<void> {
   if (!db) {
@@ -192,9 +200,26 @@ export async function notifyStaffNewOrderCore(repo: RestaurantesRepository, orde
   await enqueueStaffNotification(repo, order, "order.created", `Nuevo pedido de ${order.customerName}${branchSuffix(order)} — ${formatMxn(order.total)}.`);
 }
 
+/**
+ * Best-effort real (`orders.ts::createOrder` es el único caller, tanto en sesión de
+ * SISTEMA -- `public.ts`/`llm-turn-handler.ts`, ambos dentro de
+ * `withAppSession({userId:null})` -- como reutilizado por cualquier caller futuro de
+ * sesión de STAFF): un error real de Postgres dentro de `notifyStaffNewOrderCore`
+ * (`enqueue_staff_order_notification`, ver migrations/009) sin este SAVEPOINT deja la
+ * transacción COMPLETA del request abortada (25P02) — el pedido, YA insertado por
+ * `createOrderIdempotent` antes de llegar aquí (misma transacción), se pierde con un
+ * `commit;` que Postgres convierte en `ROLLBACK` (`AbortedTransactionCommitError`,
+ * `managed-postgres-engine.ts`). `repo.runWithRowSavepoint` (ya expuesto por
+ * `RestaurantesRepository`, ver postgres-repository.ts) aísla solo este intento:
+ * si falla, hace `ROLLBACK TO SAVEPOINT` (deja la sesión utilizable de nuevo, el
+ * pedido ya escrito sobrevive) y vuelve a lanzar el mismo error, que este `catch`
+ * sigue tragando igual que antes -- nunca revierte la creación del pedido solo
+ * porque el aviso al staff falló. Mismo criterio exacto que `runNotifyBestEffort`
+ * de arriba, sin tocar la firma de esta función ni de sus callers.
+ */
 export async function tryNotifyStaffNewOrder(repo: RestaurantesRepository, order: Order): Promise<void> {
   try {
-    await notifyStaffNewOrderCore(repo, order);
+    await repo.runWithRowSavepoint(() => notifyStaffNewOrderCore(repo, order));
   } catch (err) {
     console.error("order-notifications: best-effort staff order.created failed:", err);
   }
@@ -230,9 +255,19 @@ export async function notifyStaffRepartidorAssignedCore(repo: RestaurantesReposi
   await enqueueStaffNotification(repo, order, "order.assigned_repartidor", `Pedido de ${order.customerName}${branchSuffix(order)} asignado a repartidor — listo para salir.`);
 }
 
+/**
+ * Best-effort real (`admin-orders.ts::POST .../assign-repartidor` es el único
+ * caller, siempre en sesión de STAFF vía `c.get("db")`): mismo hueco y mismo
+ * arreglo que `tryNotifyStaffNewOrder` de arriba -- sin SAVEPOINT, un error real
+ * dentro de `notifyStaffRepartidorAssignedCore` aborta la transacción del request y
+ * el dispatch al repartidor (`assignRepartidorToOrder`, ya persistido ANTES de
+ * llamar aquí) se pierde con el request devolviendo un 500 por rollback silencioso.
+ * `repo.runWithRowSavepoint` aísla el intento y relanza el mismo error para que este
+ * `catch` lo siga tragando, con la sesión ya recuperada.
+ */
 export async function tryNotifyStaffRepartidorAssigned(repo: RestaurantesRepository, order: Order): Promise<void> {
   try {
-    await notifyStaffRepartidorAssignedCore(repo, order);
+    await repo.runWithRowSavepoint(() => notifyStaffRepartidorAssignedCore(repo, order));
   } catch (err) {
     console.error("order-notifications: best-effort staff order.assigned_repartidor failed:", err);
   }
@@ -296,9 +331,19 @@ export async function notifyCustomerOrderConfirmationEmailCore(repo: Restaurante
  * dejado correo, o que esto falle por cualquier otra razón, NUNCA debe
  * convertirse en un error para quien está creando el pedido. Mismo principio
  * que `tryNotifyStaffNewOrder` de arriba. */
+/**
+ * `orders.ts::createOrder` es el único caller, en la MISMA transacción de sistema
+ * (`withAppSession({userId:null})`, `public.ts`/`llm-turn-handler.ts`) que ya insertó
+ * el pedido -- mismo hueco y mismo arreglo que `tryNotifyStaffNewOrder`: sin
+ * SAVEPOINT, un error real dentro de `notifyCustomerOrderConfirmationEmailCore`
+ * (`enqueue_messaging_outbox`, migrations/007) aborta la transacción y el pedido ya
+ * creado se pierde con un rollback silencioso en vez del error honesto documentado
+ * arriba. `repo.runWithRowSavepoint` aísla el intento igual que en las otras dos
+ * variantes de este archivo.
+ */
 export async function tryNotifyCustomerOrderConfirmationEmail(repo: RestaurantesRepository, order: Order): Promise<void> {
   try {
-    await notifyCustomerOrderConfirmationEmailCore(repo, order);
+    await repo.runWithRowSavepoint(() => notifyCustomerOrderConfirmationEmailCore(repo, order));
   } catch (err) {
     console.error("order-notifications: best-effort customer order confirmation email enqueue failed:", err);
   }
