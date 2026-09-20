@@ -78,3 +78,70 @@ describe("PostgresRentasRepository.loadPricingContext -- el parámetro real que 
     }
   });
 });
+
+// auditoría f3-zona-horaria-citas-rentas: el test de arriba nunca sembró una zona real
+// en `rentas.property_config` (la sesión falsa responde `rows: []` a esa query, que
+// cae al default de plataforma) -- así que nunca hubiera detectado una regresión que
+// dejara de LEER esa columna. Este bloque sí siembra un `zona_horaria` real distinto
+// del default y verifica que el parámetro que llega a `rentas.tarifa_base` usa ESE
+// valor, no el default de plataforma.
+function capturingSessionConZonaReal(unidadId: string, zonaHoraria: string): { session: TenantDbSession; calls: CapturedCall[] } {
+  const calls: CapturedCall[] = [];
+  const session: TenantDbSession = {
+    async query<T>(sql: string, params: unknown[] = []) {
+      calls.push({ sql, params });
+      const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
+      if (normalized.startsWith("select id from rentas.unidad")) {
+        return { rows: [{ id: unidadId }] as T[] };
+      }
+      if (normalized.includes("from rentas.property_config")) {
+        return { rows: [{ zona_horaria: zonaHoraria }] as T[] };
+      }
+      if (normalized.includes("from rentas.tarifa_base")) {
+        return { rows: [{ precio_noche_centavos: "150000", moneda: "MXN" }] as T[] };
+      }
+      return { rows: [] as T[] };
+    },
+    async exec() {},
+  };
+  return { session, calls };
+}
+
+// Instante elegido (verificado con Intl.DateTimeFormat antes de escribir este test):
+// en 2026-01-15T05:30:00.000Z, America/Cancun (UTC-5, sin horario de verano) YA ve el
+// 15, mientras America/Mexico_City (UTC-6, tampoco tiene DST) TODAVÍA ve el 14 -- una
+// diferencia de día de calendario real para el MISMO instante real.
+const INSTANTE_DIVERGENTE = "2026-01-15T05:30:00.000Z";
+
+describe("PostgresRentasRepository.loadPricingContext -- CONECTADO a rentas.property_config.zona_horaria (auditoría f3-zona-horaria-citas-rentas)", () => {
+  it("con la property en America/Cancun, el parámetro de tarifa_base es '2026-01-15' (Cancún), NUNCA '2026-01-14' (default de plataforma, CDMX)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(INSTANTE_DIVERGENTE));
+
+    const { session, calls } = capturingSessionConZonaReal("unidad-1", "America/Cancun");
+    const repo = new PostgresRentasRepository(session);
+
+    const resultado = await repo.loadPricingContext("property-cancun", "unidad-1");
+    expect(resultado).not.toBeNull();
+
+    const propertyConfigCall = calls.find((c) => c.sql.toLowerCase().includes("from rentas.property_config"));
+    expect(propertyConfigCall).toBeDefined();
+    expect(propertyConfigCall!.params[0]).toBe("property-cancun");
+
+    const tarifaBaseCall = calls.find((c) => c.sql.toLowerCase().includes("from rentas.tarifa_base"));
+    expect(tarifaBaseCall!.params[1]).toBe("2026-01-15");
+    expect(tarifaBaseCall!.params[1]).not.toBe("2026-01-14");
+  });
+
+  it("con zona_horaria corrupta (no IANA real, dato legado), cae CERRADO al default de plataforma en vez de lanzar RangeError", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(INSTANTE_1930_CDMX_DIA_1));
+
+    const { session, calls } = capturingSessionConZonaReal("unidad-1", "no-es-un-timezone-real");
+    const repo = new PostgresRentasRepository(session);
+
+    await expect(repo.loadPricingContext("property-1", "unidad-1")).resolves.not.toBeNull();
+    const tarifaBaseCall = calls.find((c) => c.sql.toLowerCase().includes("from rentas.tarifa_base"));
+    expect(tarifaBaseCall!.params[1]).toBe("2026-01-01");
+  });
+});
