@@ -340,6 +340,57 @@ export type {
 export { BenchmarkGuardError, assertBenchmarkQueryAllowed } from "./revenue/compsetGuard.ts";
 export type { BenchmarkQueryRequest } from "./revenue/compsetGuard.ts";
 
+// ---- Fase 10 hoteles — motor de recomendaciones de tarifa v1 (ver
+// packages/domain-hoteles/README.md §Fase 10 para el resumen de alcance). ----
+export {
+  computeEasterSunday,
+  nthWeekdayOfMonth,
+  isTransmisionPoderEjecutivoYear,
+  getFederalHolidays,
+  getTemporadaAltaRanges,
+  evaluateDemandaFecha,
+  SUMMER_BREAK_APPROXIMATION_NOTE,
+} from "./revenue/calendarioMexico.ts";
+export type {
+  FederalHolidayKind,
+  FederalHoliday,
+  TemporadaAltaTipo,
+  TemporadaAlta,
+  DemandaFechaEvaluation,
+} from "./revenue/calendarioMexico.ts";
+
+export {
+  PickupSignalError,
+  computePickupSignal,
+} from "./revenue/pickupSignal.ts";
+export type {
+  PickupHistoricalSample,
+  PickupSignalInput,
+  PickupSignalResult,
+} from "./revenue/pickupSignal.ts";
+
+export {
+  PricingRulesError,
+  DEFAULT_PRICING_RULES,
+  assertValidPricingRules,
+  applyPricingRules,
+} from "./revenue/pricingRules.ts";
+export type {
+  PricingRules,
+  PricingRuleApplication,
+} from "./revenue/pricingRules.ts";
+
+export {
+  RateRecommendationEngineError,
+  computeRateRecommendation,
+} from "./revenue/rateRecommendationEngine.ts";
+export type {
+  CompsetRateSample,
+  LocalEventInput,
+  RateRecommendationSignalsInput,
+  RateRecommendationResult,
+} from "./revenue/rateRecommendationEngine.ts";
+
 // ---- Fase 10 — REQ-BO-010 (P0): back-office financiero, P&L USALI + punto de
 // equilibrio dinámico (capa pura). Forecast de 90 días y proyección de caja a 13
 // semanas DELIBERADAMENTE fuera de esta fase -- ver header de
