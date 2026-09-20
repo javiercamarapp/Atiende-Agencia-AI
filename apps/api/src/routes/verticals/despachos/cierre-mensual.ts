@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import {
   VER_CIERRE_MENSUAL_ROLES,
   GESTIONAR_CIERRE_MENSUAL_ROLES,
@@ -46,8 +47,13 @@ function requireNumber(value: unknown, field: string): number {
   return value;
 }
 
+// Bug real (revisión r6, misma causa raíz que `./vencimientos.ts::todayIso` -- ver su
+// comentario de cabecera): "hoy" para decidir tareas/periodo vencidos (`recomputeOverdue`/
+// `calcularEstadoPeriodo`/`generarReporteCierre`) usaba el día UTC del proceso, corrido un
+// día adelante del real en CDMX entre las 18:00 y las 23:59 hora local. Ahora delega en
+// `@atiende/core-tenancy::hoyFechaNegocio()`.
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyFechaNegocio();
 }
 
 export function despachosCierreMensualRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {

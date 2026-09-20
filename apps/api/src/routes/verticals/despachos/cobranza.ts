@@ -29,6 +29,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import {
   VER_COBRANZA_ROLES,
   GESTIONAR_COBRANZA_ROLES,
@@ -49,8 +50,12 @@ import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
+// Bug real (revisión r6, misma causa raíz que `./vencimientos.ts::todayIso` -- ver su
+// comentario de cabecera): "hoy" para `diasVencidoCartera`/`etapaRecordatorioCobranzaHoy`
+// usaba el día UTC del proceso, corrido un día adelante del real en CDMX entre las 18:00
+// y las 23:59 hora local. Ahora delega en `@atiende/core-tenancy::hoyFechaNegocio()`.
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyFechaNegocio();
 }
 
 const FECHA_ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
