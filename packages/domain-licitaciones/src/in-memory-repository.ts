@@ -1817,6 +1817,14 @@ export class InMemoryLicitacionesRepository implements LicitacionesRepository {
     this.messagingOutbox.set(id, { ...job, status, lastError: error ? error.slice(0, 500) : null });
   }
 
+  // Ver el comentario de cabecera de `runWithRowSavepoint` en `repository.ts`. `fn`
+  // corre directo y su error (si lo hay) se repropaga tal cual -- mismo
+  // comportamiento observable que tendría un SAVEPOINT+ROLLBACK TO SAVEPOINT real
+  // desde el punto de vista del caller, sin transacción real que aislar en memoria.
+  async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+    return fn();
+  }
+
   private assertProposalOwnership(organizationId: string, proposalId: string): ProposalRecord {
     const proposal = this.proposals.get(proposalId);
     if (!proposal || proposal.organizationId !== organizationId) {

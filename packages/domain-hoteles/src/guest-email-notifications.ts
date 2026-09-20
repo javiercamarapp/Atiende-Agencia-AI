@@ -180,6 +180,23 @@ export async function enqueueGuestEmailCore(
  * archivo, o que esto falle por cualquier otra razón, NUNCA debe convertirse en
  * un error para quien está creando la reserva, cerrando el folio o timbrando el
  * CFDI.
+ *
+ * SAVEPOINT (auditoría a3, hallazgo confirmado #5/#2): los tres callers reales
+ * (`reservas.ts:289`, `folios.ts:576`, `cfdi.ts:322`) invocan esta función DENTRO
+ * de la MISMA transacción que ya persistió la escritura de negocio (inserción de
+ * la reserva, cierre del folio, o el propio `insertCfdiEmision` DESPUÉS de
+ * timbrar en el PAC externo — el caso más delicado, mitigado porque el PAC es
+ * idempotente por folio ante un reintento). `enqueueGuestEmailCore` termina en
+ * `select hoteles.enqueue_messaging_outbox(...)` (postgres-repository.ts ~1399):
+ * un error real de Postgres ahí (deadlock, timeout, `42501` si `auth.uid()` no
+ * es miembro) sin este SAVEPOINT deja la transacción COMPLETA abortada (25P02) —
+ * la reserva/folio/CFDI ya "persistido" antes se pierde de todas formas, y el
+ * `commit;` que sigue en `managed-postgres-engine.ts` lo detecta y lanza
+ * `AbortedTransactionCommitError` (desde PR #158 esto es un 500 honesto, NUNCA un
+ * rollback silencioso con 2xx). `repo.runWithRowSavepoint` (ya expuesto por
+ * `HotelesRepository`, ver postgres-repository.ts ~1426) aísla solo este
+ * intento y relanza el mismo error para que este `catch` lo siga tragando, con
+ * la sesión ya recuperada para el `commit;` real que sigue.
  */
 export async function tryEnqueueGuestEmail(
   repo: HotelesRepository,
@@ -190,7 +207,7 @@ export async function tryEnqueueGuestEmail(
   extra: GuestEmailExtra = {},
 ): Promise<GuestEmailResult | null> {
   try {
-    return await enqueueGuestEmailCore(repo, propertyId, organizationId, event, reservationId, extra);
+    return await repo.runWithRowSavepoint(() => enqueueGuestEmailCore(repo, propertyId, organizationId, event, reservationId, extra));
   } catch (err) {
     console.error("guest-email-notifications: best-effort enqueue failed:", err);
     return null;
