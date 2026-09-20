@@ -309,10 +309,12 @@ export class InMemoryRentasTenancyEngine implements TenancyEngine {
         }
 
         // ---- procesarCheckoutsPendientes: poll de checkouts confirmados sin tarea de
-        // limpieza aún vinculada (ver findOcupacionesCheckoutPendientes) ----
+        // limpieza aún vinculada (ver findOcupacionesCheckoutPendientes). `asOfDate`
+        // ($2) llega ya resuelto en TS con `hoyFechaNegocio()` -- nunca se recalcula
+        // aquí con el reloj real (mismo criterio que el fix de Postgres real). ----
         if (n.startsWith("select o.id as ocupacion_id")) {
-          const [limite] = params as [number];
-          const rows = store.findOcupacionesCheckoutPendientes(limite);
+          const [limite, asOfDate] = params as [number, string];
+          const rows = store.findOcupacionesCheckoutPendientes(limite, asOfDate);
           return { rows: rows.map((r) => ({ ocupacion_id: r.ocupacionId, unidad_id: r.unidadId, fin: r.fin })) as unknown as R[] };
         }
 

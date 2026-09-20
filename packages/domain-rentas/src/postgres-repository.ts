@@ -4,6 +4,7 @@
 // esquema `rentas` de migrations/001-003 (RLS real vía `core.has_property_access`/
 // funciones propias del schema `rentas`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { runWithSavepointFallback } from "@atiende/db";
 import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatement } from "./finanzas/statement.ts";
@@ -395,11 +396,22 @@ export class PostgresRentasRepository implements RentasRepository {
     const unidad = await this.db.query<{ id: string }>(`select id from rentas.unidad where id = $1 and property_id = $2;`, [unidadId, propertyId]);
     if (unidad.rows.length === 0) return null;
 
+    // Bug real (mismo hallazgo que `apps/api/.../rentas/pricing-config.ts::hoyIso`,
+    // ver su comentario de cabecera): `current_date` corre en la sesión de Postgres,
+    // que en Vercel es UTC -- entre las 18:00 y las 23:59 CDMX el día UTC ya es
+    // MAÑANA, así que una tarifa nueva con `vigenteDesde` = mañana (CDMX) aparecía
+    // vigente HOY un día antes de tiempo, y una tarifa que dejó de aplicar hoy (CDMX)
+    // seguía compitiendo un día de más. Resuelto UNA vez en TS con
+    // `@atiende/core-tenancy::hoyFechaNegocio()` y pasado como parámetro -- el SQL ya
+    // no llama `current_date`. `RentasRepository` no expone hoy ninguna zona horaria
+    // real por property (ver el mismo gap ya documentado en pricing-config.ts, r6
+    // punto 6) -- usa el default de plataforma (`America/Mexico_City`).
+    const hoy = hoyFechaNegocio();
     const base = await this.db.query<TarifaBaseRow>(
       `select precio_noche_centavos, moneda from rentas.tarifa_base
-       where unidad_id = $1 and vigente_desde <= current_date
+       where unidad_id = $1 and vigente_desde <= $2::date
        order by vigente_desde desc limit 1;`,
-      [unidadId],
+      [unidadId, hoy],
     );
     if (base.rows.length === 0) return null;
 
