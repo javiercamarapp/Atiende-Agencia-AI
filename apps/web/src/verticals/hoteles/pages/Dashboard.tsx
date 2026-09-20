@@ -56,7 +56,7 @@ import type { MaintenanceTicketSummary } from "../lib/housekeeping-client.ts";
 import { fetchPedidosFnb } from "../lib/pedidos-fnb-client.ts";
 import type { FnbPedido } from "../lib/pedidos-fnb-client.ts";
 import { saludoConNombre } from "../../../lib/greeting.ts";
-import { hoyFechaSolo } from "../../../lib/formato-fecha.ts";
+import { hoyFechaSolo, sumarDiasFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { HotelesShellContext } from "../HotelesShell.tsx";
 
 // Mismo conjunto exacto que `PL_ROLES` (domain-hoteles/src/roles.ts) — redeclarado a
@@ -68,10 +68,6 @@ const EXECUTIVE_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "accountant
 // tickets` sin que el servidor responda 403 (ver housekeeping.ts).
 const TICKETS_VISIBLE_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "housekeeping", "maintenance"]);
 
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
 type PeriodDays = 7 | 30 | 90;
 const PERIOD_OPTIONS: ReadonlyArray<{ days: PeriodDays; label: string }> = [
   { days: 7, label: "7 días" },
@@ -80,13 +76,23 @@ const PERIOD_OPTIONS: ReadonlyArray<{ days: PeriodDays; label: string }> = [
 ];
 
 /** El servidor exige `desde <= hasta` en formato YYYY-MM-DD (ver `DATE_RE`/
- * `parseDateRange` en pl.ts) — este helper solo arma ese rango en UTC, nunca decide
- * qué periodo mostrar por default (eso es estado de React, ver `ExecutiveSummary`). */
+ * `parseDateRange` en pl.ts), pero NO calcula ningún "hoy" ni asume UTC —
+ * `parseDateRange` (apps/api/src/routes/verticals/hoteles/pl.ts) solo valida el
+ * formato y `desde <= hasta`. Mismo helper que `Pl.tsx::rangeForDays` (redeclarado
+ * aquí, no importado — este archivo no depende de otras páginas del vertical).
+ *
+ * BUG REAL corregido aquí (hallazgo de auditoría a4, dimensión web-contrato,
+ * severidad media): antes usaba `new Date()`/`setUTCDate` (día UTC), no el día de
+ * calendario del negocio. Entre las 18:00 y las 23:59 hora de CDMX (00:00-05:59 UTC)
+ * eso pedía el rango [mañana-(N-1), mañana] — ocupación y RevPAR salían deflactados
+ * (el night audit de mañana aún no existe) y el Dashboard mostraba cifras distintas a
+ * `Pl.tsx` para el mismo preset. `hoyFechaSolo`/`sumarDiasFechaSolo`
+ * (apps/web/src/lib/formato-fecha.ts) usan el día de calendario en
+ * America/Mexico_City, nunca el día UTC — mismo fix ya aplicado en `Pl.tsx`. */
 function rangeForDays(days: PeriodDays): { desde: string; hasta: string } {
-  const hasta = new Date();
-  const desde = new Date(hasta);
-  desde.setUTCDate(desde.getUTCDate() - (days - 1));
-  return { desde: isoDate(desde), hasta: isoDate(hasta) };
+  const hasta = hoyFechaSolo();
+  const desde = sumarDiasFechaSolo(hasta, -(days - 1));
+  return { desde, hasta };
 }
 
 function formatMoney(n: number): string {
@@ -222,15 +228,15 @@ function OperationalSummary({ apiBaseUrl, token, propertyId, orgSlug, role }: Ho
     };
   }, [apiBaseUrl, token, propertyId, showPedidos]);
 
-  // Bug real (revisión de PR #164, "no bloqueante" #4): `isoDate(new Date())` da el día
-  // UTC -- entre las 18:00 y las 23:59 hora de CDMX (00:00-05:59 UTC) eso ya es MAÑANA,
-  // así que las tarjetas "Llegadas"/"Salidas" contaban las reservas de mañana. `today`
-  // aquí compara contra `checkInDate`/`checkOutDate` (columnas `date`, mismo criterio que
-  // `hoteles/pages/Asistencia.tsx::todayIso` tras su fix) -- necesita el día de
-  // calendario del NEGOCIO (`hoyFechaSolo`), no `isoDate`/UTC. Distinto de
-  // `rangeForDays` de arriba: ese sí se queda en UTC A PROPÓSITO (contrato con
-  // `parseDateRange` del servidor para el rango de reporte P&L, ver su comentario de
-  // cabecera) -- no es este bug.
+  // Bug real (revisión de PR #164, "no bloqueante" #4): un `new Date().toISOString().
+  // slice(0, 10)` (día UTC) -- entre las 18:00 y las 23:59 hora de CDMX (00:00-05:59
+  // UTC) eso ya es MAÑANA, así que las tarjetas "Llegadas"/"Salidas" contaban las
+  // reservas de mañana. `today` aquí compara contra `checkInDate`/`checkOutDate`
+  // (columnas `date`, mismo criterio que `hoteles/pages/Asistencia.tsx::todayIso` tras
+  // su fix) -- necesita el día de calendario del NEGOCIO (`hoyFechaSolo`), no el día
+  // UTC. Mismo criterio que `rangeForDays` de arriba (hallazgo de auditoría a4): el
+  // servidor tampoco calcula "hoy" para el rango de P&L, así que ese helper usa el
+  // mismo `hoyFechaSolo`/`sumarDiasFechaSolo`, no UTC.
   const today = hoyFechaSolo();
   const llegadasHoy = reservations?.filter((r) => r.checkInDate === today && (r.estado === "confirmada" || r.estado === "check_in")).length ?? null;
   const salidasHoy = reservations?.filter((r) => r.checkOutDate === today && (r.estado === "en_estancia" || r.estado === "check_out")).length ?? null;

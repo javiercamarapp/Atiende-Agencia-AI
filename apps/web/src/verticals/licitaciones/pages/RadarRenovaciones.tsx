@@ -56,6 +56,7 @@ import { acknowledgeRenewalAlert, fetchRenewalAlerts, scanRenewalAlerts } from "
 import type { RenewalAlertRecord, ScanRenewalAlertsResult } from "../lib/renewal-radar-client.ts";
 import { fetchTenders } from "../lib/tenders-client.ts";
 import type { TenderSummary } from "../lib/tenders-client.ts";
+import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 // Espejo EXACTO de WRITE_ROLES (domain-licitaciones/roles.ts) -- cosmético,
@@ -81,14 +82,23 @@ function formatTimestamp(iso: string): string {
   return DATE_TIME_FORMATTER.format(new Date(iso));
 }
 
-/** Días restantes hasta `isoDate` (UTC) a partir de hoy -- solo para mostrar
- * "faltan N días" en la tabla; puramente informativo, el servidor ya decidió
- * qué alertas emitir, esto no vuelve a evaluar nada. */
+/** Días restantes hasta `isoDate` (columna `date`, anclada a medianoche UTC de
+ * ESE día -- ver `parseFechaSolo`) a partir de HOY -- solo para mostrar "faltan
+ * N días" en la tabla; puramente informativo, el servidor ya decidió qué
+ * alertas emitir, esto no vuelve a evaluar nada.
+ *
+ * Bug real (barrido del hallazgo de auditoría a4, mismo patrón exacto que
+ * Dashboard.tsx/hoteles): `Date.UTC(today.getUTCFullYear(), ...)` ancla "hoy" a
+ * la medianoche UTC del día UTC actual, no del día de calendario del negocio --
+ * entre las 18:00 y las 23:59 hora de CDMX (00:00-05:59 UTC) el día UTC ya es
+ * MAÑANA, así que esta cuenta salía UN DÍA MENOS de lo real ("faltan 29 días"
+ * en vez de "faltan 30"). `hoyFechaSolo()`/`parseFechaSolo()`
+ * (apps/web/src/lib/formato-fecha.ts) anclan el día de calendario CDMX a la
+ * misma medianoche UTC que `isoDate`, para que la resta sea consistente. */
 function daysUntil(isoDate: string): number {
-  const today = new Date();
-  const todayUtcMidnight = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  const target = new Date(`${isoDate}T00:00:00Z`).getTime();
-  return Math.round((target - todayUtcMidnight) / (24 * 60 * 60 * 1000));
+  const todayCdmxMidnightUtc = parseFechaSolo(hoyFechaSolo()).getTime();
+  const target = parseFechaSolo(isoDate).getTime();
+  return Math.round((target - todayCdmxMidnightUtc) / (24 * 60 * 60 * 1000));
 }
 
 /** Espejo de `urgencyForLeadDays` (renewal-radar.ts) -- el umbral MÁS PEQUEÑO

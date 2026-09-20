@@ -11,7 +11,7 @@
 // sí SIEMPRE exige revisión humana (CFF art. 89, ver decidirEscalamiento) --
 // esta UI nunca decide una fecha límite fiscal, solo dispara el motor
 // existente y muestra su resultado.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { CalendarClock, CheckCircle2, ExternalLink, TrendingUp } from "lucide-react";
 import {
@@ -42,7 +42,7 @@ import {
 } from "../lib/vencimientos-client.ts";
 import type { EstadoVencimiento, FiscalDeadline } from "../lib/vencimientos-client.ts";
 import { formatEstadoVencimiento, formatPrioridadVencimiento } from "../lib/format.ts";
-import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
+import { formatFechaSolo, hoyFechaSolo } from "../../../lib/formato-fecha.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
 const GESTIONAR_ROLES = new Set(["admin", "contador"]);
@@ -108,10 +108,22 @@ export function VencimientosPage({ apiBaseUrl, token, propertyId, role }: Despac
   const [error, setError] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<EstadoVencimiento | "">("");
 
-  const now = useMemo(() => new Date(), []);
+  // Bug real (hallazgo de auditoría a4, dimensión web-contrato, severidad baja):
+  // precargar con `new Date().getUTCFullYear()`/`getUTCMonth()` usa el día UTC del
+  // navegador, no el día de calendario del negocio. `calcAnio`/`calcMes` SIEMPRE
+  // viajan explícitos a `calcularVencimientos` (vencimientos-client.ts los tipa
+  // obligatorios), así que el default de negocio que el servidor ya calcula con
+  // `hoyFechaNegocio()` (apps/api/.../despachos/vencimientos.ts) es inalcanzable
+  // desde esta pantalla -- el último día del mes por la tarde/noche CDMX (18:00-23:59,
+  // 00:00-05:59 UTC del día siguiente) precargaba el MES SIGUIENTE (y el 31-dic el AÑO
+  // siguiente). `hoyFechaSolo()` (apps/web/src/lib/formato-fecha.ts) da el día de
+  // calendario en America/Mexico_City -- mismo helper que Dashboard.tsx/Pl.tsx.
+  // Inicializador lazy: solo se usa como valor inicial de useState, así que no
+  // hace falta recalcular `hoyFechaSolo()` (construye un Intl.DateTimeFormat) en
+  // cada render.
   const [showCalcularForm, setShowCalcularForm] = useState(false);
-  const [calcAnio, setCalcAnio] = useState(now.getUTCFullYear());
-  const [calcMes, setCalcMes] = useState(now.getUTCMonth() + 1);
+  const [calcAnio, setCalcAnio] = useState(() => Number(hoyFechaSolo().slice(0, 4)));
+  const [calcMes, setCalcMes] = useState(() => Number(hoyFechaSolo().slice(5, 7)));
   const [calcError, setCalcError] = useState<string | null>(null);
   const [calculando, setCalculando] = useState(false);
 
