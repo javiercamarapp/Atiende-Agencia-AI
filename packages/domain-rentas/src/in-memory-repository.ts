@@ -21,7 +21,7 @@
 // blob pre-armado -- así, una escritura real (POST tarifa-base/temporadas/...) se
 // refleja de inmediato en una cotización posterior, exactamente como en producción.
 import { randomUUID } from "node:crypto";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { InMemoryRentasCalendarStore } from "./calendar-store.ts";
 import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement } from "./finanzas/statement.ts";
@@ -192,6 +192,19 @@ function truncarCampoAuditoria(value: string | null | undefined, max: number): s
 }
 
 export class InMemoryRentasRepository implements RentasRepository {
+  // auditoría f3-zona-horaria-citas-rentas -- paridad con `PostgresRentasRepository.
+  // loadPricingContext` (ver su comentario de cabecera): `rentas.property_config.
+  // zona_horaria` no vive en `InMemoryRentasCalendarStore` (fuera de su alcance
+  // angosto), así que se modela aparte, igual que `InMemoryRentasCalendarSyncRepository.
+  // seedZonaHoraria`. Sin sembrar, `loadPricingContext` cae al default de plataforma
+  // (`resolverZonaHorariaNegocio(undefined)`) -- mismo comportamiento que ANTES de
+  // esta auditoría, ningún test existente que no siembre esto cambia de resultado.
+  private readonly zonasHorariasProperty = new Map<string, string>();
+
+  seedZonaHorariaProperty(propertyId: string, zonaHoraria: string): void {
+    this.zonasHorariasProperty.set(propertyId, zonaHoraria);
+  }
+
   private readonly reglasCanalPricing = new Map<string, ReglaCanal>(); // key: unidadId:canalCodigo (usado por loadReglaCanalPricing)
   private readonly reglasComisionCanal: StoredReglaComisionCanal[] = [];
   private readonly reservasFinancieroPorOcupacion = new Map<string, StoredReservaFinanciero>();
@@ -410,8 +423,10 @@ export class InMemoryRentasRepository implements RentasRepository {
     // cabecera): "hoy" es el día de NEGOCIO (`hoyFechaNegocio()`), nunca el día UTC
     // crudo del proceso -- antes este repo en memoria usaba `new Date().toISOString()`
     // (día UTC), reproduciendo el MISMO bug que Postgres real corregía con
-    // `current_date` de la sesión.
-    const hoy = hoyFechaNegocio();
+    // `current_date` de la sesión. auditoría f3-zona-horaria-citas-rentas: la zona
+    // real de la property (`seedZonaHorariaProperty`) ahora participa igual que en
+    // Postgres real -- ver el comentario de cabecera de esa clase para el default.
+    const hoy = hoyFechaNegocio(resolverZonaHorariaNegocio(this.zonasHorariasProperty.get(propertyId)));
     const bases = [...(this.tarifaBase.get(unidadId)?.values() ?? [])].filter((b) => b.vigenteDesde <= hoy);
     if (bases.length === 0) return null;
     const vigente = bases.sort((a, b) => (a.vigenteDesde < b.vigenteDesde ? 1 : a.vigenteDesde > b.vigenteDesde ? -1 : 0))[0]!;

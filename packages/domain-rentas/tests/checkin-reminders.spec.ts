@@ -86,6 +86,26 @@ describe("runRecordatorioCheckInCore", () => {
     expect(fila?.recordatorioCheckinEnviadoEn).not.toBeNull();
   });
 
+  // auditoría f3-zona-horaria-citas-rentas -- demuestra el bug real que corrigió
+  // `hoyDeNegocio` (ver su comentario de cabecera en checkin-reminders.ts). Instante
+  // elegido (verificado con Intl.DateTimeFormat antes de escribir este test): en
+  // 2026-01-15T02:30:00.000Z, el día UTC crudo YA es el 15, pero America/Mexico_City
+  // (UTC-6, sin horario de verano) TODAVÍA ve el 14 -- una diferencia de día de
+  // calendario real, no un ejemplo de offset inventado. Con el bug (día UTC crudo),
+  // "hoy" sería 2026-01-15 y la ventana [16,17] NUNCA hubiera encontrado esta reserva
+  // de mañana-en-CDMX (2026-01-15); con el fix, "hoy" es 2026-01-14 (CDMX) y la
+  // ventana [15,16] SÍ la encuentra.
+  it("cerca de medianoche UTC (madrugada UTC = todavía anoche en CDMX): usa el día de NEGOCIO (CDMX), no el día UTC crudo", async () => {
+    const fixture = await crearFixture();
+    const instanteDivergente = new Date("2026-01-15T02:30:00.000Z");
+    const mananaEnCdmx: FechaLocal = "2026-01-15"; // hoy(CDMX)=2026-01-14 + 1
+    await fixture.crearReserva(mananaEnCdmx);
+
+    const summary = await runRecordatorioCheckInCore(fixture.withRepo, instanteDivergente);
+    expect(summary.procesadas).toBe(1);
+    expect(summary.enviados).toBe(1);
+  });
+
   it("check-in pasado mañana (48h): también entra en la ventana", async () => {
     const fixture = await crearFixture();
     const pasadoManana = sumarDias(HOY, 2);

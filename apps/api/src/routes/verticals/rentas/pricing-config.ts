@@ -16,9 +16,9 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { encontrarMinStaySolapada, encontrarTemporadaSolapada, esRangoValido, PRICING_ESCRITURA_ROLES } from "@atiende/domain-rentas";
-import type { RangoFechas, RentasRepository } from "@atiende/domain-rentas";
+import type { RangoFechas, RentasCalendarSyncRepository, RentasRepository } from "@atiende/domain-rentas";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -83,14 +83,26 @@ function requireDiaSemanaOptional(value: unknown): number | null {
 // ver su comentario de cabecera): el default de `vigenteDesde` (cuando el caller no lo
 // manda) usaba el día UTC del proceso -- corrido un día adelante del real en CDMX entre
 // las 18:00 y las 23:59 hora local. Ahora usa `@atiende/core-tenancy::hoyFechaNegocio()`.
-// NOTA (zona por negocio, r6 punto 6): `rentas.property_config.zona_horaria` SÍ existe
-// (NOT NULL, migración 001) pero no está expuesta hoy en `RentasRepository` (el repo
-// principal -- ver `packages/domain-rentas/src/sync/postgres-repository.ts` para la ÚNICA
-// consulta existente, exclusiva del sync de iCal). Conectarla aquí requiere agregar un
-// método nuevo al repositorio -- fuera de alcance de este fix puntual, ver knownGaps del
-// PR. Mientras tanto usa el default de plataforma (`America/Mexico_City`).
-function hoyIso(): string {
-  return hoyFechaNegocio();
+//
+// auditoría f3-zona-horaria-citas-rentas -- CONFIRMADO y CONECTADO: `rentas.
+// property_config.zona_horaria` SÍ existe (NOT NULL, migración 001) y esta ruta SÍ
+// conoce `propertyId` en este punto (parámetro de la ruta, ya usado por
+// `requireUnidad`) -- el gap real que dejó pendiente r6 no era que la columna no
+// existiera, sino que `RentasRepository` (el repo principal de esta ruta) no la
+// expone. Se resuelve reutilizando `RentasCalendarSyncRepository.
+// findZonaHorariaPropiedad` (ya existe, ya tiene SELECT otorgado a `authenticated`
+// desde 001_rentas_schema.sql -- SOLO LECTURA, ningún GRANT/policy nuevo) en vez de
+// agregar un método nuevo a `RentasRepository` para lo mismo. `resolverZonaHorariaNegocio`
+// es la defensa en profundidad real aquí: `findZonaHorariaPropiedad` cae a `"UTC"`
+// (nunca `null`) cuando la property no tiene fila en `property_config` todavía (ver
+// su propio comentario: "nunca debería alcanzarse en producción, solo protege un
+// fixture de prueba sin sembrar") -- un valor `"UTC"` real pasa intacto por
+// `resolverZonaHorariaNegocio` (es un timezone IANA válido), así que el default de
+// plataforma (`America/Mexico_City`) solo se usa si el valor guardado fuera
+// inválido/corrupto, no como sustituto de "UTC".
+async function hoyIso(syncRepo: RentasCalendarSyncRepository, propertyId: string): Promise<string> {
+  const zonaHoraria = resolverZonaHorariaNegocio(await syncRepo.findZonaHorariaPropiedad(propertyId));
+  return hoyFechaNegocio(zonaHoraria);
 }
 
 interface TarifaBaseBody {
@@ -151,7 +163,8 @@ export function rentasPricingConfigRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> 
     const raw = await readJsonCapped<TarifaBaseBody>(c.req.raw, 2 * 1024);
     const precioNocheCentavos = requireNonNegativeInteger(raw.precioNocheCentavos, "precioNocheCentavos");
     const moneda = requireMoneda(raw.moneda);
-    const vigenteDesde = raw.vigenteDesde === undefined ? hoyIso() : requireFecha(raw.vigenteDesde, "vigenteDesde");
+    const vigenteDesde =
+      raw.vigenteDesde === undefined ? await hoyIso(deps.rentasCalendarSyncRepo(c.get("db")), propertyId) : requireFecha(raw.vigenteDesde, "vigenteDesde");
 
     // Guardia nueva (ver diseño §3.1): nunca mezclar monedas dentro de la misma
     // unidad -- el motor de cotización nunca convierte tipo de cambio.
