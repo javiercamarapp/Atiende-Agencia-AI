@@ -110,6 +110,27 @@ export interface TenderUpsertResult {
   readonly submissionDeadlineChanged: boolean;
 }
 
+/** Fila de `licitaciones.tender_audit_log` (007_matching_profile.sql), ya
+ * mapeada a camelCase -- ver `LicitacionesRepository.listTenderAuditLogPage`
+ * (f2-orden-total-bitacoras). Sin `payload` (a diferencia de
+ * despachos.audit_log/hoteles.fraude_audit_log): esta tabla es específica de
+ * alta/actualización manual de convocatorias, con un `action` de catálogo
+ * cerrado (CHECK de la migración original), no un audit sink genérico. */
+export interface TenderAuditLogEntry {
+  readonly id: string;
+  readonly tenderId: string;
+  readonly action: string;
+  readonly actorId: string;
+  readonly createdAt: string;
+}
+
+/** Página de `LicitacionesRepository.listTenderAuditLogPage`. */
+export interface TenderAuditLogPage {
+  readonly items: readonly TenderAuditLogEntry[];
+  readonly total: number;
+  readonly nextOffset: number | null;
+}
+
 export interface MatchingProfileUpsertInput {
   readonly keywords: readonly string[];
   readonly excludedKeywords: readonly string[];
@@ -572,6 +593,20 @@ export interface LicitacionesRepository {
    * criterio que AE-11/`recordSectionAuthor`).
    */
   upsertTenderManual(organizationId: string, input: TenderUpsertInput): Promise<TenderUpsertResult>;
+  /** Lectura PAGINADA de `licitaciones.tender_audit_log` (007_matching_
+   * profile.sql) para UNA convocatoria, más reciente primero -- orden TOTAL
+   * desde el día uno (`created_at desc, seq desc`, migración 026): sin este
+   * desempate, `now()` (created_at) es CONSTANTE dentro de una transacción, así
+   * que `upsertTenderManual` + `recordTenderVersion` (que auditan en la MISMA
+   * transacción de request) podrían dejar dos filas empatadas en orden no
+   * determinista (mismo hallazgo que `packages/domain-rentas/migrations/
+   * 022_rentas_audit_log_orden_determinista.sql`, PR #173, aplicado aquí ANTES
+   * de que exista ningún consumidor real -- ver el comentario de cabecera de la
+   * migración 026). La ESCRITURA ya existía (`upsertTenderManual`/
+   * `recordTenderVersion`, sin cambios en este PR); f2-orden-total-bitacoras
+   * solo agrega el lado de lectura, hoy sin caller HTTP -- queda lista para un
+   * futuro panel de auditoría de convocatorias. */
+  listTenderAuditLogPage(organizationId: string, tenderId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderAuditLogPage>;
 
   // ---- Fase 3 pieza 2: perfil de matching de la organización (§5) ----
   findMatchingProfile(organizationId: string): Promise<MatchingProfileRecord | null>;
