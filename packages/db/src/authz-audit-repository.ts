@@ -182,13 +182,20 @@ export class PostgresAuthzAuditRepository implements AuthzAuditRepository {
         // Pide una fila de más ("peek") para saber si hay más página sin un
         // COUNT(*) aparte -- mismo criterio que el paginado de break-glass
         // (ver packages/domain-rentas/src/break-glass/postgres-data-repository.ts).
-        // `least(..., 200)` -- nunca por encima del tope duro que la propia
-        // función SQL ya aplica (`core.list_authz_audit_log_for_superadmin`);
-        // en el caso límite `limit === 200` el "peek" queda deshabilitado (la
-        // función igual acotaría a 200), así que `hasMore` puede reportar
-        // `false` aunque exista una página 201+ -- comportamiento aceptado y
-        // documentado, mismo caso límite que el paginado de break-glass.
-        const queryLimit = Math.min(limit + 1, 200);
+        // `least(..., 201)` -- 1 más que `AUTHZ_AUDIT_LOG_LIMIT_MAX` (el
+        // máximo EXPUESTO a un caller real, ver
+        // apps/api/src/routes/superadmin.ts, sin cambios, sigue en 200):
+        // `core.list_authz_audit_log_for_superadmin` sube su tope duro
+        // INTERNO a 201 desde packages/db/migrations/
+        // 0022_superadmin_bitacoras_endurecimiento.sql específicamente para
+        // que este "peek" funcione también en el caso límite `limit === 200`
+        // -- antes de esa migración, pedir `limit+1 = 201` no servía de nada
+        // (la función lo recortaba de vuelta a 200 antes de que este
+        // repositorio pudiera ver la fila de más) y `hasMore` reportaba
+        // `false` aunque existiera una página 201+ real. `Math.min` sigue
+        // aquí como defensa en profundidad (nunca pedir más de 201 pase lo
+        // que pase con `limit`).
+        const queryLimit = Math.min(limit + 1, 201);
         const { rows } = await this.db.query<AuthzAuditLogRawRow>(`select * from core.list_authz_audit_log_for_superadmin($1, $2, $3);`, [callerId, queryLimit, offset]);
         const hasMore = rows.length > limit;
         const trimmed = hasMore ? rows.slice(0, limit) : rows;
