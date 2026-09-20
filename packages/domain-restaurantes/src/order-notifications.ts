@@ -261,7 +261,8 @@ export async function notifyStaffRepartidorAssignedCore(repo: RestaurantesReposi
  * arreglo que `tryNotifyStaffNewOrder` de arriba -- sin SAVEPOINT, un error real
  * dentro de `notifyStaffRepartidorAssignedCore` aborta la transacción del request y
  * el dispatch al repartidor (`assignRepartidorToOrder`, ya persistido ANTES de
- * llamar aquí) se pierde con el request devolviendo un 500 por rollback silencioso.
+ * llamar aquí) se pierde con el request devolviendo un 500 honesto por rollback
+ * (`AbortedTransactionCommitError`, PR #158) en vez de confirmar el dispatch.
  * `repo.runWithRowSavepoint` aísla el intento y relanza el mismo error para que este
  * `catch` lo siga tragando, con la sesión ya recuperada.
  */
@@ -338,9 +339,9 @@ export async function notifyCustomerOrderConfirmationEmailCore(repo: Restaurante
  * el pedido -- mismo hueco y mismo arreglo que `tryNotifyStaffNewOrder`: sin
  * SAVEPOINT, un error real dentro de `notifyCustomerOrderConfirmationEmailCore`
  * (`enqueue_messaging_outbox`, migrations/007) aborta la transacción y el pedido ya
- * creado se pierde con un rollback silencioso en vez del error honesto documentado
- * arriba. `repo.runWithRowSavepoint` aísla el intento igual que en las otras dos
- * variantes de este archivo.
+ * creado se pierde con un 500 honesto por rollback (`AbortedTransactionCommitError`,
+ * PR #158) en vez de confirmar el pedido. `repo.runWithRowSavepoint` aísla el
+ * intento igual que en las otras dos variantes de este archivo.
  */
 export async function tryNotifyCustomerOrderConfirmationEmail(repo: RestaurantesRepository, order: Order): Promise<void> {
   try {
