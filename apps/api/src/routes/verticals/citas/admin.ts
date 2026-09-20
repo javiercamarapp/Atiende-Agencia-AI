@@ -1076,7 +1076,20 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // `candidates_considered`/`skipped_no_whatsapp_config` siguen siendo el
   // conteo real de a quién le tocaría, calculado con el MISMO filtro/orden/
   // límite que usará el broadcast de verdad (`filterAndRankWaitlistForBroadcast`
-  // en `reminders.ts`). ----
+  // en `reminders.ts`).
+  //
+  // Corrección bloqueante de la ronda 2 de revisión (PR #180) — ese conteo
+  // usa las variantes de STAFF de `loadLiveWaitlistCandidates`/
+  // `resolveActiveWhatsAppPhoneNumberId`, que funcionan HOY sin ninguna
+  // migración (RLS de membership). Con la base sin migrar (020/021, el
+  // estado REAL de producción al mergear) esas variantes SÍ ven candidatos y
+  // `whatsapp_config` reales, así que sin más esta ruta respondería
+  // `queued:true` con un conteo real que el post-commit en sesión de sistema
+  // jamás podría convertir en un aviso (degrada a `[]`/`null` por 42883): un
+  // éxito falso permanente. `previewListaEspera` ahora empieza con un probe
+  // de catálogo (`areSystemWaitlistFunctionsAvailable`, sesión de staff, no
+  // ejecuta ninguna función) — si falta cualquiera de las dos, esta ruta NO
+  // registra el postCommitTask y responde `queued:false` + `reason`. ----
   app.post("/v1/citas/properties/:propertyId/waitlist/broadcast", async (c) => {
     const organizationId = c.get("organizationId");
     const citasRepo = deps.citasRepo(c.get("db"));
@@ -1101,6 +1114,25 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const event: ListaEsperaEvent = { providerId, serviceId };
     const preview = await previewListaEspera(citasRepo, organizationId, event, limit);
+
+    // Corrección bloqueante de la ronda 2 de revisión (PR #180) — con la base
+    // sin migrar (020/021 no aplicadas, el estado REAL de producción en el
+    // instante en que este PR se mergea) `preview.available` es `false`: NO
+    // registramos el postCommitTask (encolarlo aquí abortaría la sesión de
+    // sistema por 42883 sin encolar nada, un éxito falso para el staff -- ver
+    // el comentario largo de `previewListaEspera`) y respondemos honestamente
+    // que la función todavía no está disponible. Hoy en `main` (sin este
+    // fix) esta ruta da un 500 visible en ese mismo estado; con este fix da
+    // una respuesta 200 explícita en vez de una confirmación falsa.
+    if (!preview.available) {
+      return c.json({
+        queued: false,
+        reason: "not_available_yet",
+        candidates_considered: 0,
+        skipped_no_whatsapp_config: false,
+      });
+    }
+
     c.get("postCommitTasks").push(() => runCitasListaEsperaBroadcastAfterCommit(deps, organizationId, event, limit));
 
     return c.json({
