@@ -27,6 +27,8 @@ import type {
   LicitacionesRepository,
   MatchingProfileUpsertInput,
   RecordTenderVersionResult,
+  TenderAuditLogEntry,
+  TenderAuditLogPage,
   TenderChangeNotificationRecord,
   TenderResolutionCreateInput,
   TenderPage,
@@ -182,6 +184,51 @@ function mapTender(row: TenderRow): TenderRecord {
     state: row.state,
     procedureTypeRaw: row.procedure_type_raw,
     status: row.status,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Bitácora de auditoría de alta/actualización manual (f2-orden-total-bitacoras,
+// ver migrations/026_tender_audit_log_orden_total_lectura_paginada.sql)
+// ---------------------------------------------------------------------------
+const TENDER_AUDIT_LOG_READ_ORDER_SAVEPOINT = "sp_tender_audit_log_read_order";
+
+/** SQLSTATE 42703 (`undefined_column`) -- exactamente lo que `order by ..., seq
+ * desc` lanza contra una base con 007 aplicada pero 026 no (`seq` no existe
+ * todavía). Deliberadamente SOLO ese código. */
+function esErrorColumnaSeqNoExisteTenderAuditLog(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42703";
+}
+
+let tenderAuditLogAdvertidoOrdenSeq = false;
+function advertirTenderAuditLogOrdenSeqNoDisponible(err: unknown): void {
+  if (tenderAuditLogAdvertidoOrdenSeq) return;
+  tenderAuditLogAdvertidoOrdenSeq = true;
+  console.warn(
+    "PostgresLicitacionesRepository.listTenderAuditLogPage: licitaciones.tender_audit_log.seq no existe todavía " +
+      "en esta base (SQLSTATE 42703) -- la bitácora SÍ está disponible, pero degradada al orden 'created_at desc' " +
+      "de antes de la migración 026 (empates de timestamp dentro de una misma transacción pueden quedar en orden " +
+      "no determinista hasta que se aplique). Aplica packages/domain-licitaciones/migrations/026_tender_audit_log_" +
+      "orden_total_lectura_paginada.sql (o su espejo en supabase/migrations/) para el orden total estable.",
+    err,
+  );
+}
+
+interface TenderAuditLogRawRow {
+  id: string;
+  tender_id: string;
+  action: string;
+  actor_id: string;
+  created_at: string;
+}
+
+function mapTenderAuditLogRow(row: TenderAuditLogRawRow): TenderAuditLogEntry {
+  return {
+    id: row.id,
+    tenderId: row.tender_id,
+    action: row.action,
+    actorId: row.actor_id,
+    createdAt: row.created_at,
   };
 }
 
@@ -768,6 +815,44 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     await this.recordTenderVersion(organizationId, tender.id, input.actorId);
 
     return { tender, created, submissionDeadlineChanged: !created && previousDeadline !== undefined && previousDeadline !== tender.submissionDeadline };
+  }
+
+  // ---- Bitácora de auditoría de alta/actualización manual (f2-orden-total-bitacoras) ----
+  async listTenderAuditLogPage(organizationId: string, tenderId: string, opts: { readonly limit: number; readonly offset: number }): Promise<TenderAuditLogPage> {
+    const { limit, offset } = opts;
+    const totalResult = await this.db.query<{ total: string }>(
+      `select count(*)::text as total from licitaciones.tender_audit_log where organization_id = $1 and tender_id = $2;`,
+      [organizationId, tenderId],
+    );
+    const total = Number(totalResult.rows[0]?.total ?? 0);
+
+    const selectConOrden = (orderBy: string) =>
+      this.db.query<TenderAuditLogRawRow>(
+        `select id, tender_id, action, actor_id, created_at::text as created_at
+         from licitaciones.tender_audit_log where organization_id = $1 and tender_id = $2 order by ${orderBy} limit $3 offset $4;`,
+        [organizationId, tenderId, limit, offset],
+      );
+
+    // f2-orden-total-bitacoras -- ver migrations/026_tender_audit_log_orden_
+    // total_lectura_paginada.sql. `seq` (026) puede no existir todavía (`007`
+    // sin esa migración aplicada) -- 42703 (undefined_column) degrada al `order
+    // by created_at desc` de antes de 026, NUNCA revienta ni revierte el resto
+    // de la transacción compartida del request -- CRÍTICO aquí porque
+    // `upsertTenderManual`/`recordTenderVersion` (arriba) escriben en esta MISMA
+    // tabla dentro de la transacción de negocio real.
+    const { rows } = await runWithSavepointFallback({
+      session: this.db,
+      savepointName: TENDER_AUDIT_LOG_READ_ORDER_SAVEPOINT,
+      primary: () => selectConOrden("created_at desc, seq desc"),
+      isRecoverable: esErrorColumnaSeqNoExisteTenderAuditLog,
+      fallback: (err) => {
+        advertirTenderAuditLogOrdenSeqNoDisponible(err);
+        return selectConOrden("created_at desc");
+      },
+    });
+
+    const items = rows.map(mapTenderAuditLogRow);
+    return { items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
   }
 
   // ---- Fase 5 pieza 2: historial de versiones de convocatoria (REQ-017/041/151..155) ----
