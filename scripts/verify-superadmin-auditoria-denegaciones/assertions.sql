@@ -217,7 +217,14 @@ rollback;
 --
 --      18. Tope POR ACTOR alcanzado (500/10min) -- descarta EN SILENCIO
 --          (id NULL, nunca lanza).
---      19. ... e inserta UN marcador de desborde (nunca uno por evento).
+--      19. ... e inserta UN marcador de desborde (nunca uno por evento), Y
+--          afirma su CONTENIDO: `actor_key`/`actor_user_id` correctos,
+--          `windowMinutes` = 10 y `metadata.rowsInWindowAtOverflow` = 500
+--          EXACTAS (re-revisión: ese campo es cuántas filas YA había en la
+--          ventana al momento del tope, NUNCA "cuántas se descartaron" -- lo
+--          descartado en ese instante siempre es 1; nunca lleva la llave
+--          vieja `discardedAtLeast`, que sí afirmaba estar contando
+--          descartes cuando no lo hacía).
 --      20. DOS intentos denegados del MISMO actor en la MISMA ventana -- el
 --          marcador NUNCA se duplica (sigue habiendo exactamente 1).
 --      21. Un actor DISTINTO, muy por debajo de su propio tope -- NO
@@ -226,7 +233,10 @@ rollback;
 --      22. Tope GLOBAL alcanzado (20000/10min, última red) -- descarta EN
 --          SILENCIO incluso para un actor que jamás se acercó a su propio
 --          tope por actor.
---      23. ... e inserta UN marcador de desborde GLOBAL.
+--      23. ... e inserta UN marcador de desborde GLOBAL, con el mismo
+--          contenido verificado que el escenario 19 (`windowMinutes`,
+--          `rowsInWindowAtOverflow` capturado dinámicamente antes de la
+--          llamada, sin la llave vieja `discardedAtLeast`).
 --      24. DOS intentos cualquiera (incluso de actores distintos), misma
 --          ventana -- el marcador global NUNCA se duplica.
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -250,7 +260,7 @@ set local role authenticated;
 select (core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa500', null, null, 'admin:access', '/superadmin/rafaga-actor-una-mas', 'POST', 'denied', 'rate_limited', '{}'::jsonb, now()) is null)::int as deberia_ser_1;
 rollback;
 
-\echo '=== 19. ... inserta EXACTAMENTE UN marcador de desborde por-actor (nunca uno por evento descartado) ==='
+\echo '=== 19. ... inserta EXACTAMENTE UN marcador de desborde por-actor (nunca uno por evento descartado), con actor_key/metadata correctos (re-revisión: metadata.rowsInWindowAtOverflow es cuántas filas YA había en la ventana al momento del tope, NUNCA "cuántas se descartaron" -- lo descartado en ese instante es siempre 1) ==='
 begin;
 set local role authenticated;
 select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa500', null, null, 'admin:access', '/superadmin/rafaga-actor-marca', 'POST', 'denied', 'rate_limited', '{}'::jsonb, now());
@@ -259,6 +269,22 @@ select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa500', nu
 -- (auth.uid() NULL) arriba, esto no es parte de lo que se está probando.
 reset role;
 select count(*) as deberia_ser_1 from core.authz_audit_log where actor_user_id = '00000000-0000-0000-0000-0000000aa500' and reason = 'audit_capacity_overflow_actor';
+-- Contenido exacto de la fila marcador -- no solo su existencia: la llave
+-- de actor correcta (nunca la de otro), `windowMinutes` = 10 (constante de
+-- la función), y `rowsInWindowAtOverflow` = 500 EXACTAS (las 500 filas ya
+-- persistidas para este actor por el fixture de arriba, el mismo `count(*)`
+-- que la función usó para decidir el tope -- NUNCA 1, que sería el valor
+-- si el campo de verdad contara "lo descartado en este instante").
+select (
+  m.reason = 'audit_capacity_overflow_actor'
+  and m.actor_user_id = '00000000-0000-0000-0000-0000000aa500'
+  and m.actor_key = '00000000-0000-0000-0000-0000000aa500'
+  and (m.metadata ->> 'windowMinutes')::int = 10
+  and (m.metadata ->> 'rowsInWindowAtOverflow')::bigint = 500
+  and not (m.metadata ? 'discardedAtLeast')
+)::int as deberia_ser_1
+from core.authz_audit_log m
+where m.actor_user_id = '00000000-0000-0000-0000-0000000aa500' and m.reason = 'audit_capacity_overflow_actor';
 rollback;
 
 \echo '=== 20. ... DOS intentos denegados del mismo actor en la MISMA transacción -- ambos descartan EN SILENCIO Y el marcador NUNCA se duplica (sigue siendo exactamente 1) ==='
@@ -304,12 +330,25 @@ set local role authenticated;
 select (core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa502', null, null, 'admin:access', '/superadmin/tope-global', 'POST', 'denied', 'no_membership', '{}'::jsonb, now()) is null)::int as deberia_ser_1;
 rollback;
 
-\echo '=== 23. ... inserta EXACTAMENTE UN marcador de desborde GLOBAL ==='
+\echo '=== 23. ... inserta EXACTAMENTE UN marcador de desborde GLOBAL, con metadata correcta (re-revisión: rowsInWindowAtOverflow es cuántas filas YA había en la ventana, NUNCA "cuántas se descartaron") ==='
 begin;
+-- Capturado ANTES de llamar a la función, todavía como `postgres` (sin RLS
+-- de por medio) -- exactamente el mismo `count(*)` que la función calculará
+-- adentro para decidir el tope GLOBAL, así el assert no depende de
+-- hardcodear cuántas filas dejaron los fixtures de arriba.
+select count(*) as n from core.authz_audit_log where occurred_at > now() - make_interval(mins => 10) \gset antes_
 set local role authenticated;
 select core.record_authz_audit_denial('00000000-0000-0000-0000-0000000aa502', null, null, 'admin:access', '/superadmin/tope-global-marca', 'POST', 'denied', 'no_membership', '{}'::jsonb, now());
 reset role;
 select count(*) as deberia_ser_1 from core.authz_audit_log where reason = 'audit_capacity_overflow_global';
+select (
+  m.reason = 'audit_capacity_overflow_global'
+  and (m.metadata ->> 'windowMinutes')::int = 10
+  and (m.metadata ->> 'rowsInWindowAtOverflow')::bigint = :antes_n
+  and not (m.metadata ? 'discardedAtLeast')
+)::int as deberia_ser_1
+from core.authz_audit_log m
+where m.reason = 'audit_capacity_overflow_global';
 rollback;
 
 \echo '=== 24. ... DOS intentos cualquiera (incluso de actores DISTINTOS), misma transacción -- ambos descartan EN SILENCIO Y el marcador global NUNCA se duplica (sigue siendo exactamente 1) ==='

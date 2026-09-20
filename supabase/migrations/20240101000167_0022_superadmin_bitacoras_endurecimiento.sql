@@ -129,13 +129,23 @@ alter table core.authz_audit_log add constraint authz_audit_log_reason_check
 --           'audit_capacity_overflow_actor'`/`'_global'`) -- pero solo la
 --           PRIMERA vez dentro de esa ventana (un `exists` barato sobre el
 --           mismo índice que ya soporta el conteo, nunca una fila por cada
---           evento descartado) -- con el conteo de lo descartado EN ESE
---           INSTANTE en `metadata` (el mismo `count(*)` que ya se calculó
---           para decidir el tope, cero consultas extra -- un conteo EXACTO y
---           creciente exigiría un `UPDATE` sobre la fila marcador, imposible
---           en una tabla append-only con triggers que bloquean todo UPDATE a
---           propósito -- así que es un piso ("al menos N"), nunca una cifra
---           en vivo, tradeoff documentado y deliberado).
+--           evento descartado) -- con `metadata.rowsInWindowAtOverflow`: el
+--           mismo `count(*)` que ya se calculó para decidir el tope (cero
+--           consultas extra). OJO, esto NO es "cuántas se descartaron" --
+--           en el instante en que se inserta el marcador lo descartado es
+--           SIEMPRE exactamente 1 (el evento actual que disparó el tope);
+--           `rowsInWindowAtOverflow` es cuántas filas YA estaban
+--           PERSISTIDAS en la ventana cuando el tope se alcanzó (>= 500 o
+--           >= 20000) -- una cota inferior útil de "cuánta actividad hubo en
+--           esta ventana", pero nunca una cuenta de eventos descartados: la
+--           tabla es append-only (sin `UPDATE` posible sobre la fila
+--           marcador, los triggers lo bloquean a propósito), así que no hay
+--           forma de ir sumando ahí el verdadero número de descartes
+--           posteriores a la primera inserción del marcador -- ese número
+--           real solo lo tendría un contador en memoria, fuera de esta
+--           función. Nombre elegido a propósito para no repetir el error de
+--           la versión anterior de este comentario (`discardedAtLeast`),
+--           que sí afirmaba estar contando descartes cuando no lo hacía.
 --
 --      La ESCRITURA best-effort real (nunca cambia la respuesta HTTP, nunca
 --      corre dentro de la transacción del request) y "no persistir cada 429
@@ -212,7 +222,7 @@ begin
         p_actor_user_id, v_actor_ip_truncated, p_organization_id,
         left(coalesce(p_action, ''), 100), left(coalesce(p_route, ''), 300), left(coalesce(p_method, ''), 10),
         'denied', 'audit_capacity_overflow_actor',
-        jsonb_build_object('discardedAtLeast', v_recent_actor_count, 'windowMinutes', c_window_minutes),
+        jsonb_build_object('rowsInWindowAtOverflow', v_recent_actor_count, 'windowMinutes', c_window_minutes),
         now()
       );
     end if;
@@ -234,7 +244,7 @@ begin
         p_actor_user_id, v_actor_ip_truncated, p_organization_id,
         left(coalesce(p_action, ''), 100), left(coalesce(p_route, ''), 300), left(coalesce(p_method, ''), 10),
         'denied', 'audit_capacity_overflow_global',
-        jsonb_build_object('discardedAtLeast', v_recent_global_count, 'windowMinutes', c_window_minutes),
+        jsonb_build_object('rowsInWindowAtOverflow', v_recent_global_count, 'windowMinutes', c_window_minutes),
         now()
       );
     end if;
