@@ -233,7 +233,19 @@ export class InMemoryRentasRepository implements RentasRepository {
   /** Expuesto también como referencia tipada directa (`ctx.rentasRepo.auditLog`,
    *  mismo criterio que el resto de este archivo) para que un test pueda inspeccionar
    *  lo que quedó registrado sin depender de `listAuditoria`. */
-  readonly auditLog: (RentasAuditLogRow & { readonly organizationId: string })[] = [];
+  readonly auditLog: (RentasAuditLogRow & { readonly organizationId: string; readonly seq: number })[] = [];
+  // r6 -- ver migrations/022_rentas_audit_log_orden_determinista.sql -- contador
+  // monótono, EQUIVALENTE en memoria a la columna `seq bigint generated always as
+  // identity` de Postgres: `Date.now()` (usado como `createdAtMs` abajo) tiene
+  // resolución de milisegundo, así que dos escrituras dentro del mismo milisegundo
+  // (exactamente lo que reproduce, con un reloj falso congelado,
+  // apps/api/tests/rentas-auditoria.spec.ts) empatan en `createdAtMs` -- sin este
+  // desempate, `listAuditoria` (abajo) no tiene ninguna forma de decidir cuál de
+  // las dos filas empatadas es "la más reciente" de verdad. Empieza en 0 y solo
+  // avanza -- nunca se reinicia entre llamadas a `registrarAuditoria` de la MISMA
+  // instancia de este repositorio (mismo criterio de "nunca reusar/retroceder" que
+  // una secuencia real de Postgres).
+  private auditLogSeq = 0;
 
   constructor(private readonly calendarStore: InMemoryRentasCalendarStore = new InMemoryRentasCalendarStore()) {}
 
@@ -750,6 +762,7 @@ export class InMemoryRentasRepository implements RentasRepository {
     // que `rentas.record_audit_log` capture el actor real vía `auth.uid()`), este
     // doble en memoria SÍ lo usa -- no hay sesión SQL/`auth.uid()` que simular aquí,
     // y los tests necesitan un actor real para poder afirmar "quién" quedó registrado.
+    this.auditLogSeq += 1;
     this.auditLog.push({
       id: randomUUID(),
       organizationId: input.organizationId,
@@ -768,6 +781,10 @@ export class InMemoryRentasRepository implements RentasRepository {
       antes: truncarCampoAuditoria(input.antes, AUDIT_LOG_TEXTO_MAX),
       despues: truncarCampoAuditoria(input.despues, AUDIT_LOG_TEXTO_MAX),
       createdAtMs: Date.now(),
+      // r6 -- ver migrations/022_rentas_audit_log_orden_determinista.sql -- el
+      // desempate monótono para `listAuditoria` (abajo), equivalente al `seq` de
+      // Postgres.
+      seq: this.auditLogSeq,
     });
   }
 
@@ -790,10 +807,21 @@ export class InMemoryRentasRepository implements RentasRepository {
       const hastaExclusivoMs = new Date(`${filtro.hasta}T00:00:00-06:00`).getTime() + 24 * 60 * 60 * 1000;
       filtrados = filtrados.filter((r) => r.createdAtMs < hastaExclusivoMs);
     }
-    filtrados = [...filtrados].sort((a, b) => b.createdAtMs - a.createdAtMs);
+    // r6 -- desempate por `seq` cuando `createdAtMs` empata (ver
+    // migrations/022_rentas_audit_log_orden_determinista.sql y el comentario de
+    // `auditLogSeq` arriba) -- MISMO orden que `PostgresRentasRepository.
+    // listAuditoria` (`order by created_at desc, seq desc`). Sin este desempate,
+    // dos filas registradas dentro del mismo milisegundo (reproducible con un
+    // reloj falso, o simplemente probable en CI real -- el flaky original de
+    // apps/api/tests/rentas-auditoria.spec.ts) quedaban en el orden de inserción
+    // (más antigua primero) en vez de "más reciente primero", porque
+    // `Array.prototype.sort` es estable y un comparador que devuelve 0 para
+    // ambas conserva ese orden -- exactamente al revés de lo que la pantalla de
+    // Auditoría promete.
+    filtrados = [...filtrados].sort((a, b) => b.createdAtMs - a.createdAtMs || b.seq - a.seq);
 
     const total = filtrados.length;
-    const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, ...row }) => row);
+    const pagina = filtrados.slice(offset, offset + limit).map(({ organizationId: _organizationId, seq: _seq, ...row }) => row);
     return { disponible: true, items: pagina, total, nextOffset: offset + pagina.length < total ? offset + pagina.length : null };
   }
 }

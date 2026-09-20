@@ -4,6 +4,7 @@
 // esquema `rentas` de migrations/001-003 (RLS real vía `core.has_property_access`/
 // funciones propias del schema `rentas`).
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import type { OcupacionCalendarioPage, RentasRepository } from "./repository.ts";
 import type { LineaOwnerStatement, TotalesOwnerStatement, TipoLineaOwnerStatement } from "./finanzas/statement.ts";
 import type { CandidataConciliacion, EstadoConciliacion, LineaConciliada } from "./finanzas/conciliacion.ts";
@@ -146,10 +147,28 @@ function mapReservaFinanciero(row: ReservaFinancieroRow): MovimientoFinancieroRe
 // ---------------------------------------------------------------------------
 const RENTAS_AUDIT_LOG_SAVEPOINT = "sp_rentas_audit_log_write";
 const RENTAS_AUDIT_LOG_READ_SAVEPOINT = "sp_rentas_audit_log_read";
+// r6 -- ver migrations/022_rentas_audit_log_orden_determinista.sql. Savepoint
+// propio (anidado dentro de RENTAS_AUDIT_LOG_READ_SAVEPOINT) para el caso
+// intermedio "021 aplicada, 022 no": `seq` no existe todavía y `order by ...,
+// seq desc` lanza 42703 -- se degrada al `order by created_at desc` de antes de
+// 022 sin tumbar el resto de la lectura (la tabla/función SÍ existen, no es el
+// caso "no disponible" de RENTAS_AUDIT_LOG_READ_SAVEPOINT).
+const RENTAS_AUDIT_LOG_READ_ORDER_SAVEPOINT = "sp_rentas_audit_log_read_order";
 
 function esErrorCompatibilidadBaseSinMigrar(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
   return code === "42883" || code === "42P01" || code === "42703";
+}
+
+// r6 -- ver migrations/022_rentas_audit_log_orden_determinista.sql. Específico a
+// 42703 (`undefined_column`) -- exactamente el SQLSTATE que `order by ..., seq
+// desc` lanza contra una base con 021 aplicada pero 022 no (`seq` no existe
+// todavía). Deliberadamente SOLO ese código (mismo criterio que
+// `markAppointmentGoogleSyncInvalid` en domain-citas -- un SQLSTATE específico,
+// nunca un catch-all): un error real distinto (sintaxis, conexión caída) debe
+// seguir propagándose tal cual, `runWithSavepointFallback` nunca lo enmascara.
+function esErrorColumnaSeqNoExiste(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "42703";
 }
 
 let auditLogAdvertidoEscritura = false;
@@ -173,6 +192,20 @@ function advertirAuditLogLecturaNoDisponible(err: unknown): void {
     "PostgresRentasRepository.listAuditoria: rentas.audit_log no existe todavía en esta base (SQLSTATE " +
       "42883/42P01/42703) -- devolviendo disponible:false (nunca una lista vacía real, ver RentasAuditLogPagina). " +
       "Aplica packages/domain-rentas/migrations/021_rentas_audit_log.sql (o su espejo en supabase/migrations/).",
+    err,
+  );
+}
+
+let auditLogAdvertidoOrdenSeq = false;
+function advertirAuditLogOrdenSeqNoDisponible(err: unknown): void {
+  if (auditLogAdvertidoOrdenSeq) return;
+  auditLogAdvertidoOrdenSeq = true;
+  console.warn(
+    "PostgresRentasRepository.listAuditoria: rentas.audit_log.seq no existe todavía en esta base (SQLSTATE " +
+      "42703) -- la bitácora SÍ está disponible, pero degradada al orden 'created_at desc' de antes de la " +
+      "migración 022 (empates de timestamp dentro de una misma transacción pueden quedar en orden no " +
+      "determinista hasta que se aplique). Aplica packages/domain-rentas/migrations/022_rentas_audit_log_orden_" +
+      "determinista.sql (o su espejo en supabase/migrations/) para el orden total estable.",
     err,
   );
 }
@@ -1242,27 +1275,54 @@ export class PostgresRentasRepository implements RentasRepository {
     }
     const where = condiciones.join(" and ");
 
-    await this.db.exec(`SAVEPOINT ${RENTAS_AUDIT_LOG_READ_SAVEPOINT}`);
-    try {
-      const totalResult = await this.db.query<{ total: string }>(`select count(*)::text as total from rentas.audit_log where ${where};`, params);
-      const total = Number(totalResult.rows[0]?.total ?? 0);
+    // r6 -- refactor a `runWithSavepointFallback` (ver migrations/
+    // 022_rentas_audit_log_orden_determinista.sql y el comentario de cabecera de
+    // ese helper en packages/db/src/savepoint-fallback.ts) en vez del SAVEPOINT/
+    // ROLLBACK TO SAVEPOINT/RELEASE manual que tenía este método antes -- mismo
+    // comportamiento observable para el caso "tabla no existe" (021 sin aplicar,
+    // ver `savepointName` fijo a RENTAS_AUDIT_LOG_READ_SAVEPOINT, que preserva las
+    // aserciones exactas de packages/domain-rentas/tests/audit-log-savepoint.spec.ts),
+    // MÁS el caso nuevo anidado de abajo (021 aplicada, 022 no).
+    return runWithSavepointFallback<RentasAuditLogPagina>({
+      session: this.db,
+      savepointName: RENTAS_AUDIT_LOG_READ_SAVEPOINT,
+      primary: async () => {
+        const totalResult = await this.db.query<{ total: string }>(`select count(*)::text as total from rentas.audit_log where ${where};`, params);
+        const total = Number(totalResult.rows[0]?.total ?? 0);
 
-      const limitOffsetParams = [...params, limit, offset];
-      const { rows } = await this.db.query<RentasAuditLogRowSql>(
-        `select id, actor_user_id, action, entity_type, entity_id, campo, antes, despues, created_at::text as created_at
-         from rentas.audit_log where ${where} order by created_at desc limit $${limitOffsetParams.length - 1} offset $${limitOffsetParams.length};`,
-        limitOffsetParams,
-      );
-      await this.db.exec(`RELEASE SAVEPOINT ${RENTAS_AUDIT_LOG_READ_SAVEPOINT}`);
+        const limitOffsetParams = [...params, limit, offset];
+        const selectConOrden = (orderBy: string) =>
+          this.db.query<RentasAuditLogRowSql>(
+            `select id, actor_user_id, action, entity_type, entity_id, campo, antes, despues, created_at::text as created_at
+             from rentas.audit_log where ${where} order by ${orderBy} limit $${limitOffsetParams.length - 1} offset $${limitOffsetParams.length};`,
+            limitOffsetParams,
+          );
 
-      const items = rows.map(mapRentasAuditLogRow);
-      return { disponible: true, items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
-    } catch (err) {
-      await this.db.exec(`ROLLBACK TO SAVEPOINT ${RENTAS_AUDIT_LOG_READ_SAVEPOINT}`);
-      await this.db.exec(`RELEASE SAVEPOINT ${RENTAS_AUDIT_LOG_READ_SAVEPOINT}`);
-      if (!esErrorCompatibilidadBaseSinMigrar(err)) throw err;
-      advertirAuditLogLecturaNoDisponible(err);
-      return { disponible: false, items: [], total: 0, nextOffset: null };
-    }
+        // Anidado DENTRO del SAVEPOINT de arriba (los SAVEPOINT de Postgres
+        // anidan sin problema, ver comentario de cabecera de
+        // `runWithSavepointFallback`): la tabla/función YA se demostraron
+        // disponibles (el `count(*)` de arriba tuvo éxito) -- este segundo nivel
+        // decide SOLO si `seq` (022) ya existe, nunca si la bitácora en general
+        // está disponible.
+        const { rows } = await runWithSavepointFallback({
+          session: this.db,
+          savepointName: RENTAS_AUDIT_LOG_READ_ORDER_SAVEPOINT,
+          primary: () => selectConOrden("created_at desc, seq desc"),
+          isRecoverable: esErrorColumnaSeqNoExiste,
+          fallback: (err) => {
+            advertirAuditLogOrdenSeqNoDisponible(err);
+            return selectConOrden("created_at desc");
+          },
+        });
+
+        const items = rows.map(mapRentasAuditLogRow);
+        return { disponible: true, items, total, nextOffset: offset + items.length < total ? offset + items.length : null };
+      },
+      isRecoverable: esErrorCompatibilidadBaseSinMigrar,
+      fallback: (err) => {
+        advertirAuditLogLecturaNoDisponible(err);
+        return Promise.resolve({ disponible: false, items: [], total: 0, nextOffset: null });
+      },
+    });
   }
 }

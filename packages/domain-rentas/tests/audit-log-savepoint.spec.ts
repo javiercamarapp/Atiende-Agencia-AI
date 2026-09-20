@@ -147,6 +147,123 @@ describe("PostgresRentasRepository.registrarAuditoria — recuperación de 42883
   });
 });
 
+function pgUndefinedColumnSeq(): Error & { code: string } {
+  const err = new Error('column "seq" does not exist') as Error & { code: string };
+  err.code = "42703";
+  return err;
+}
+
+/**
+ * r6 -- ver migrations/022_rentas_audit_log_orden_determinista.sql. Modela el
+ * esquema INTERMEDIO real que la base de producción atravesará: 021 YA aplicada
+ * (`rentas.audit_log`/`rentas.record_audit_log` existen, el `count(*)` y el
+ * INSERT funcionan) pero 022 NO (`seq` no existe todavía) -- a diferencia de
+ * `AbortAwareFakeSession` de arriba (que modela "021 tampoco existe", 42883/
+ * 42P01), aquí la tabla SÍ existe -- solo el `order by ..., seq desc` nuevo
+ * falla con 42703 (`undefined_column`), y debe degradar al `order by created_at
+ * desc` de antes de 022 SIN devolver `disponible:false` (la bitácora SÍ está
+ * disponible, solo con el orden viejo).
+ */
+class SchemaParcial021SinSeqFakeSession implements TenantDbSession {
+  aborted = false;
+  readonly calls: string[] = [];
+  readonly filasReales = [
+    {
+      id: "fila-1",
+      actor_user_id: "staff-1",
+      action: "pricing.tarifa_base.actualizada",
+      entity_type: "pricing",
+      entity_id: "unidad-1",
+      campo: "precio_noche_centavos",
+      antes: null,
+      despues: "200000 MXN desde 2026-06-01",
+      created_at: "2026-09-19T12:00:00.000Z",
+    },
+  ];
+
+  async query<T>(sql: string, _params?: unknown[]): Promise<{ rows: T[] }> {
+    const normalized = sql.trim().toLowerCase();
+    this.calls.push(normalized.split("\n")[0]!);
+    if (this.aborted) {
+      const err = new Error("current transaction is aborted, commands ignored until end of transaction block") as Error & { code: string };
+      err.code = "25P02";
+      throw err;
+    }
+    if (normalized.startsWith("select count(*)::text as total from rentas.audit_log")) {
+      // La tabla SÍ existe (021 aplicada) -- el count funciona normal, nunca
+      // marca `aborted`.
+      return { rows: [{ total: "1" }] as unknown as T[] };
+    }
+    if (normalized.includes("select id, actor_user_id, action, entity_type")) {
+      if (normalized.includes("order by created_at desc, seq desc")) {
+        // El order by NUEVO (022) -- `seq` no existe todavía en este esquema
+        // intermedio.
+        this.aborted = true;
+        throw pgUndefinedColumnSeq();
+      }
+      if (normalized.includes("order by created_at desc limit")) {
+        // El order by VIEJO (antes de 022) -- SÍ funciona, la tabla y sus
+        // columnas de 021 existen todas.
+        return { rows: this.filasReales as unknown as T[] };
+      }
+      throw new Error(`SchemaParcial021SinSeqFakeSession: order by inesperado en: ${sql}`);
+    }
+    if (normalized.startsWith("select 1 as siguiente_query_del_request")) {
+      return { rows: [{ ok: true }] as unknown as T[] };
+    }
+    throw new Error(`SchemaParcial021SinSeqFakeSession: query no soportada: ${sql}`);
+  }
+
+  async exec(sql: string): Promise<void> {
+    const normalized = sql.trim().toLowerCase();
+    this.calls.push(normalized);
+    if (normalized.startsWith("savepoint")) return;
+    if (normalized.startsWith("rollback to savepoint")) {
+      this.aborted = false;
+      return;
+    }
+    if (normalized.startsWith("release savepoint")) return;
+    throw new Error(`SchemaParcial021SinSeqFakeSession: exec no soportado: ${sql}`);
+  }
+}
+
+describe("PostgresRentasRepository.listAuditoria — esquema intermedio (021 aplicada, 022 no): degrada el order by, nunca disponible:false", () => {
+  it("un 42703 en 'seq' degrada a 'order by created_at desc' y SIGUE devolviendo disponible:true con las filas reales", async () => {
+    const session = new SchemaParcial021SinSeqFakeSession();
+    const repo = new PostgresRentasRepository(session);
+
+    const pagina = await repo.listAuditoria("org-1", {}, { limit: 25, offset: 0 });
+
+    // La bitácora SÍ está disponible -- 022 no aplicada nunca debe confundirse
+    // con "021 no aplicada" (que sí devuelve disponible:false, ver el describe
+    // de arriba).
+    expect(pagina.disponible).toBe(true);
+    expect(pagina.total).toBe(1);
+    expect(pagina.items).toEqual([
+      {
+        id: "fila-1",
+        actorUserId: "staff-1",
+        action: "pricing.tarifa_base.actualizada",
+        entityType: "pricing",
+        entityId: "unidad-1",
+        campo: "precio_noche_centavos",
+        antes: null,
+        despues: "200000 MXN desde 2026-06-01",
+        createdAtMs: new Date("2026-09-19T12:00:00.000Z").getTime(),
+      },
+    ]);
+
+    // El SAVEPOINT anidado (`sp_rentas_audit_log_read_order`, distinto del de
+    // lectura general `sp_rentas_audit_log_read`) recuperó la transacción antes
+    // de reintentar con el order by viejo.
+    expect(session.calls).toContain("savepoint sp_rentas_audit_log_read_order");
+    expect(session.calls).toContain("rollback to savepoint sp_rentas_audit_log_read_order");
+    expect(session.calls).toContain("release savepoint sp_rentas_audit_log_read_order");
+    // Y la transacción del request sigue utilizable después (sin 25P02).
+    await expect(session.query("select 1 as siguiente_query_del_request;")).resolves.toEqual({ rows: [{ ok: true }] });
+  });
+});
+
 describe("PostgresRentasRepository.listAuditoria — recuperación de 42P01 con SAVEPOINT (no bloqueante #1 de revisión r5)", () => {
   it("tabla sin migrar: devuelve disponible:false (nunca lanza) y deja la transacción recuperada para la query siguiente", async () => {
     const session = new AbortAwareFakeSession();
