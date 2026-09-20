@@ -1037,6 +1037,35 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows[0]?.organization_id ?? null;
   }
 
+  /** f2-citas-whatsapp-config-sesion-sistema — ver el comentario largo de
+   * `repository.ts::resolveOrganizationByPhoneNumberIdAsSystem` y de la
+   * migración `022_whatsapp_config_organizacion_sistema_lectura.sql`. Mismo
+   * mecanismo SAVEPOINT/SQLSTATE que `resolveActiveWhatsAppPhoneNumberIdAsSystem`
+   * (021): si la migración 022 todavía no está aplicada (42883,
+   * `undefined_function`), degrada a `null` -- el MISMO comportamiento
+   * honesto de hoy (el webhook trata el mensaje como "número no
+   * configurado", nunca un 500). */
+  async resolveOrganizationByPhoneNumberIdAsSystem(phoneNumberId: string): Promise<string | null> {
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ system_resolve_organization_by_whatsapp_phone_number_id: string | null }>(
+          `select citas.system_resolve_organization_by_whatsapp_phone_number_id($1) as system_resolve_organization_by_whatsapp_phone_number_id;`,
+          [phoneNumberId],
+        );
+        return rows[0]?.system_resolve_organization_by_whatsapp_phone_number_id ?? null;
+      },
+      isRecoverable: isUndefinedFunctionError,
+      fallback: (err) => {
+        console.warn(
+          "resolveOrganizationByPhoneNumberIdAsSystem: citas.system_resolve_organization_by_whatsapp_phone_number_id no existe todavía (SQLSTATE 42883, migración 022 pendiente de aplicar) -- degradando a null, mismo comportamiento honesto de hoy:",
+          err instanceof Error ? err.message : err,
+        );
+        return Promise.resolve(null);
+      },
+    });
+  }
+
   async claimWhatsAppMessage(organizationId: string, messageId: string, phoneHash: string): Promise<boolean> {
     const { rows } = await this.db.query<{ claim_whatsapp_message: boolean }>(`select citas.claim_whatsapp_message($1, $2, $3) as claim_whatsapp_message;`, [organizationId, messageId, phoneHash]);
     return rows[0]?.claim_whatsapp_message === true;

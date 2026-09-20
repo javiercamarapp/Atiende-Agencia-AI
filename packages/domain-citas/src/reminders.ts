@@ -100,7 +100,22 @@ export async function runConfirmacionCitaCore(repo: CitasRepository, organizatio
   summary.processed = pending.length;
   if (pending.length === 0) return summary;
 
-  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(organizationId);
+  // f2-citas-whatsapp-config-sesion-sistema — el ÚNICO caller real de
+  // `runConfirmacionCitaCore` (`apps/api/.../citas/reminders.ts`, cron interno
+  // `/internal/citas/confirmacion-cita`) abre `deps.engine.withAppSession({
+  // userId: null }, ...)` -- SIEMPRE sesión de SISTEMA. `citas.whatsapp_config`
+  // (003_waitlist_and_rate_limit.sql) solo tiene policy de RLS de STAFF
+  // (membership) -- exactamente el mismo gap ya cerrado para
+  // `runOptimizadorCore`/`runListaEsperaCore` (ver
+  // `repository.ts::resolveActiveWhatsAppPhoneNumberIdAsSystem` y la migración
+  // `021_whatsapp_config_sistema_lectura.sql`), documentado ahí mismo como
+  // "preexistente, fuera de alcance de esa tarea" -- este era ese gap: la
+  // variante de STAFF (`resolveActiveWhatsAppPhoneNumberId`) SIEMPRE devolvía
+  // 0 filas bajo `auth.uid()` null, así que el recordatorio de 24h por
+  // WhatsApp NUNCA salía contra Postgres real, con o sin la migración 021 ya
+  // aplicada (invisible en `InMemoryCitasRepository`, que no tiene RLS que
+  // reproducir).
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId);
   summary.skippedNoWhatsappConfig = !phoneNumberId;
 
   // Timezone efectivo por proveedor: una sucursal puede tener su propio huso — sin
@@ -373,6 +388,17 @@ export interface ListaEsperaSummary {
    * devolvió `false`, ej. otra corrida concurrente ya lo reclamó). */
   candidatesConsidered: number;
   skippedNoWhatsappConfig: boolean;
+  /** f2-citas-whatsapp-config-sesion-sistema (hallazgo adicional) — ids de
+   * candidatos cuyo `claimWaitlistNotificationSlot`/`enqueueMessagingOutbox`
+   * lanzó un error REAL de Postgres en esta corrida, aislado por
+   * `repo.runWithRowSavepoint` (mismo mecanismo que
+   * `runConfirmacionCitaCore` de arriba) -- nunca vacío en silencio: el
+   * caller (`runCitasListaEsperaBroadcastAfterCommit`, `admin.ts`) solo
+   * registra esto en el log del best-effort (nada le llega al staff todavía,
+   * ver README de este vertical), pero el arreglo real es que un candidato
+   * "venenoso" a mitad de la corrida ya NO revierte los candidatos ANTERIORES
+   * de esta misma corrida que sí se notificaron con éxito. */
+  failedWaitlistIds: string[];
 }
 
 /**
@@ -423,7 +449,7 @@ export async function runListaEsperaCore(
   const candidates = await repo.loadLiveWaitlistCandidatesAsSystem(organizationId);
   const filtered = filterAndRankWaitlistForBroadcast(candidates, event, effectiveLimit);
 
-  const summary: ListaEsperaSummary = { notified: 0, candidatesConsidered: filtered.length, skippedNoWhatsappConfig: false };
+  const summary: ListaEsperaSummary = { notified: 0, candidatesConsidered: filtered.length, skippedNoWhatsappConfig: false, failedWaitlistIds: [] };
   if (filtered.length === 0) return summary;
 
   // Corrección post-revisión de f2-citas-lista-de-espera — mismo motivo que en
@@ -445,17 +471,44 @@ export async function runListaEsperaCore(
   // tarde) sí puede volver a notificar al mismo candidato hasta su tope real.
   const runToken = new Date().toISOString().slice(0, 16);
 
+  // f2-citas-whatsapp-config-sesion-sistema (hallazgo adicional) — ANTES, un
+  // error real de Postgres en CUALQUIER candidato de esta lista (claim o
+  // enqueue) dejaba la sesión de SISTEMA completa (post-commit,
+  // `runCitasListaEsperaBroadcastAfterCommit`) abortada (25P02): sin
+  // SAVEPOINT, el `catch` externo de ese caller solo evita que el error
+  // escape (best-effort), pero para entonces Postgres YA revirtió, con el
+  // `COMMIT` implícito de `withAppSession`, TODOS los claims/enqueues de los
+  // candidatos ANTERIORES de esta misma corrida que sí habían tenido éxito —
+  // exactamente el mismo defecto, mismo mecanismo, que ya se corrigió para
+  // `runConfirmacionCitaCore` (auditoría a3, hallazgo confirmado #7) y para
+  // el loop de reconciliación de calendario
+  // (`syncPendingAppointmentsMultiProvider`). `repo.runWithRowSavepoint`
+  // aísla cada candidato con su propio SAVEPOINT — un candidato "venenoso" ya
+  // no se lleva consigo a los que ya se notificaron con éxito antes que él en
+  // la misma corrida.
   for (const row of filtered) {
-    const claimed = await repo.claimWaitlistNotificationSlot(row.id, MAX_WAITLIST_NOTIFICATIONS);
-    if (!claimed) continue; // ya en su tope o ya no 'active' — se salta, nunca tumba la corrida completa
+    try {
+      let claimedLocal = false;
+      await repo.runWithRowSavepoint(async () => {
+        const claimed = await repo.claimWaitlistNotificationSlot(row.id, MAX_WAITLIST_NOTIFICATIONS);
+        if (!claimed) return; // ya en su tope o ya no 'active' — se salta, nunca tumba la corrida completa
 
-    const name = row.customerName ? ` ${row.customerName}` : "";
-    await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "waitlist.slot_available_broadcast", `waitlist-broadcast:${row.id}:${runToken}`, {
-      to: row.customerPhone,
-      phone_number_id: phoneNumberId,
-      body: `¡Buenas noticias${name}! Se acaba de liberar un espacio${negocio}. Responda "Sí" para que se lo agendemos, o "No" si ya no le interesa.`,
-    });
-    summary.notified += 1;
+        const name = row.customerName ? ` ${row.customerName}` : "";
+        await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "waitlist.slot_available_broadcast", `waitlist-broadcast:${row.id}:${runToken}`, {
+          to: row.customerPhone,
+          phone_number_id: phoneNumberId,
+          body: `¡Buenas noticias${name}! Se acaba de liberar un espacio${negocio}. Responda "Sí" para que se lo agendemos, o "No" si ya no le interesa.`,
+        });
+        claimedLocal = true;
+      });
+      // Solo se cuenta como notificado tras un `runWithRowSavepoint` que NO
+      // lanzó -- mismo criterio que `sentLocal` en `runConfirmacionCitaCore`
+      // (nunca contar algo que un SAVEPOINT pudo haber revertido).
+      if (claimedLocal) summary.notified += 1;
+    } catch (err) {
+      console.error(`reminders: runListaEsperaCore — el candidato ${row.id} falló con un error real de Postgres, aislado por SAVEPOINT -- se sigue con los demás candidatos de esta corrida:`, err);
+      summary.failedWaitlistIds.push(row.id);
+    }
   }
 
   return summary;

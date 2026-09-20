@@ -28,10 +28,27 @@ export interface CrisisGuardrailResult {
  * con Graph API. Sin esa configuración, no hace nada (la escalación YA quedó
  * registrada en `emergency_escalations`; esto es un aviso adicional, no la única
  * forma de enterarse).
+ *
+ * f2-citas-whatsapp-config-sesion-sistema — el ÚNICO caller real de
+ * `runCrisisGuardrail` (`whatsapp/inbound.ts::handleInboundWhatsAppMessage`,
+ * invocado desde `apps/api/.../citas/whatsapp.ts`) corre dentro de
+ * `deps.engine.withAppSession({ userId: null }, ...)` -- SIEMPRE sesión de
+ * SISTEMA (el webhook entrante de Meta no tiene usuario autenticado). Mismo
+ * gap de RLS que ya se cerró para `runOptimizadorCore`/`runListaEsperaCore`
+ * (ver `repository.ts::resolveActiveWhatsAppPhoneNumberIdAsSystem` y la
+ * migración 021_whatsapp_config_sistema_lectura.sql, que documenta este
+ * caller como "preexistente, fuera de alcance" de esa tarea): la variante de
+ * STAFF (`resolveActiveWhatsAppPhoneNumberId`, SELECT plano contra
+ * `citas.whatsapp_config`, policy de RLS solo de staff) SIEMPRE devolvía 0
+ * filas bajo `auth.uid()` null -- el aviso de crisis al dueño/staff NUNCA
+ * salía contra Postgres real, con o sin la migración 021 ya aplicada (la
+ * escalación SÍ quedaba registrada en `citas.emergency_escalations`, que no
+ * tiene este gap -- solo el aviso adicional de WhatsApp se perdía en
+ * silencio).
  */
 async function notifyOwnerOfEscalation(repo: CitasRepository, organizationId: string, ownerNotificationPhone: string | null, escalationId: string, keyword: string, customerPhone: string): Promise<void> {
   if (!ownerNotificationPhone) return;
-  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(organizationId);
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberIdAsSystem(organizationId);
   if (!phoneNumberId) return;
 
   await repo.enqueueMessagingOutbox(organizationId, "whatsapp", "crisis.escalated", `crisis:${escalationId}`, {
