@@ -45,18 +45,18 @@ describe("ConnectorRegistry (REQ-004: registro único de conectores)", () => {
 });
 
 describe("LICITACIONES_CONNECTOR_REGISTRY (instancia real de producción)", () => {
-  it("registra exactamente las 10 fuentes conocidas (ComprasMX/DOF/OCDS-SHCP/PDN-S6/portales estatales + histórico ComprasMX + manual + Fase 9: nl_ocds/cdmx_ocds/aggregator)", () => {
+  it("registra exactamente las 12 fuentes conocidas (ComprasMX/DOF/OCDS-SHCP/PDN-S6/portales estatales + histórico ComprasMX + manual + Fase 9: nl_ocds/cdmx_ocds/aggregator + Fase 13: yucatan_ocds/guadalajara_ocds)", () => {
     expect(LICITACIONES_CONNECTOR_REGISTRY.all().map((d) => d.id).sort()).toEqual([...SOURCE_CONNECTOR_IDS].sort());
   });
 
-  it("REQ-150 (tolerancia cero): NINGÚN conector automatizado se declara verificado sin evidencia -- 'manual' y 'nl_ocds' (Fase 9, evidencia real documentada) lo están", () => {
+  it("REQ-150 (tolerancia cero): NINGÚN conector automatizado se declara verificado sin evidencia -- 'manual', 'nl_ocds', 'yucatan_ocds' y 'guadalajara_ocds' (evidencia real documentada) lo están", () => {
     const verified = LICITACIONES_CONNECTOR_REGISTRY.all().filter((d) => d.liveVerification.verified);
-    expect(verified.map((d) => d.id)).toEqual(["manual", "nl_ocds"]);
+    expect(verified.map((d) => d.id).sort()).toEqual(["guadalajara_ocds", "manual", "nl_ocds", "yucatan_ocds"].sort());
   });
 
-  it("Fase 8/9: 'compras_mx_historico', 'nl_ocds', 'cdmx_ocds' y 'aggregator' tienen una implementación real (`connector` presente) -- los otros 4 siguen siendo placeholders sin `connector`", () => {
+  it("Fase 8/9/13: 'compras_mx_historico', 'nl_ocds', 'cdmx_ocds', 'yucatan_ocds', 'guadalajara_ocds' y 'aggregator' tienen una implementación real (`connector` presente) -- los otros 4 siguen siendo placeholders sin `connector`", () => {
     const withConnector = LICITACIONES_CONNECTOR_REGISTRY.all().filter((d) => d.connector !== undefined);
-    expect(withConnector.map((d) => d.id)).toEqual(["compras_mx_historico", "nl_ocds", "cdmx_ocds", "aggregator"]);
+    expect(withConnector.map((d) => d.id)).toEqual(["compras_mx_historico", "nl_ocds", "cdmx_ocds", "yucatan_ocds", "guadalajara_ocds", "aggregator"]);
   });
 
   it("REQ-146: cada conector automatizado declara una cadencia > 0 (nunca 'a demanda' salvo el manual)", () => {

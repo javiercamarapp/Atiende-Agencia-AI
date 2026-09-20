@@ -8,6 +8,7 @@ import { createComprasMxHistoricoConnector } from "./connectors/compras-mx-histo
 import { createAggregatorConnector } from "./connectors/aggregator.ts";
 import { createCdmxOcdsConnector } from "./connectors/ocds/cdmx-ocds-connector.ts";
 import { createNlOcdsConnector } from "./connectors/ocds/nl-ocds-connector.ts";
+import { createGuadalajaraOcdsConnector, createYucatanOcdsConnector } from "./connectors/ocds/contratacionesabiertas-connector.ts";
 import type { LicitacionesSourceConnector } from "./connectors/types.ts";
 //
 // Port ADAPTADO (no literal) de `licitaciones/packages/sources/src/connectors/
@@ -57,7 +58,7 @@ import type { LicitacionesSourceConnector } from "./connectors/types.ts";
 //    abajo) está presente ÚNICAMENTE en este descriptor, ausente en los
 //    otros 5.
 
-export const SOURCE_CONNECTOR_IDS = ["manual", "comprasmx", "dof", "ocds_shcp", "pdn_s6", "state_portal", "compras_mx_historico", "nl_ocds", "cdmx_ocds", "aggregator"] as const;
+export const SOURCE_CONNECTOR_IDS = ["manual", "comprasmx", "dof", "ocds_shcp", "pdn_s6", "state_portal", "compras_mx_historico", "nl_ocds", "cdmx_ocds", "yucatan_ocds", "guadalajara_ocds", "aggregator"] as const;
 export type SourceConnectorId = (typeof SOURCE_CONNECTOR_IDS)[number];
 
 export function isSourceConnectorId(value: string): value is SourceConnectorId {
@@ -281,6 +282,65 @@ export const LICITACIONES_CONNECTOR_REGISTRY = new ConnectorRegistry()
         "No verificado como fuente ÚTIL de vigentes pese a responder correctamente: `GET` real 2026-09-19 contra la URL del CSV -> 200, 13 764 578 bytes, CSV real y bien formado (46 columnas, encabezado documentado en `connectors/ocds/map-cdmx-csv-row.ts`), 6917 filas parseadas sin error. Pero el archivo está ESTANCADO -- distribución real por año de `post_date`: 2019=1589, 2020=1160, 2021=1085, 2022=1562, 2023=1521, CERO filas 2024/2025/2026 (la fecha más reciente real es 2023-11-29), pese a que el catálogo reporta 'modificado 2026-08-28' (un refresco de metadatos, no de contenido, verificado comparando el contenido descargado). REQ-150: una fuente que responde pero no aporta ningún dato UTILIZABLE para el propósito (convocatorias vigentes) se registra `verified: false` con esta evidencia del fallo, igual que se haría ante un bloqueo -- el conector (`connectors/ocds/cdmx-ocds-connector.ts`) SÍ es una implementación real y completa (streaming, detección de bloqueo SR-14, filtro de vigencia), lista para producir resultados reales en cuanto la fuente publique datos recientes en este recurso.",
     },
     connector: createCdmxOcdsConnector(),
+  })
+  // Fase 13 — ampliación de cobertura a más estados/municipios. Investigación
+  // de solo lectura (agente separado, GETs reales) contra 16 fuentes
+  // candidatas del registro internacional de Open Contracting Partnership:
+  // 12 no sirven hoy (dominios muertos, servidores caídos, TLS roto,
+  // institución extinta, o protegidas por bot-detection -- mismo criterio de
+  // "no evadir" que ComprasMX/DOF ya documentado arriba, nunca intentado) y 2
+  // son fuentes REALES verificadas con GET exitoso: Yucatán (INAIP) y
+  // Guadalajara (municipio), AMBAS sobre la misma plataforma
+  // "contratacionesabiertas" (tipo Kingfisher) -- ver
+  // `connectors/ocds/contratacionesabiertas-connector.ts` para el conector
+  // GENÉRICO único que las sirve a las dos (parametrizado por host + estado
+  // fijo, nunca dos implementaciones separadas).
+  //
+  // DOS CASOS "RESERVA" investigados y descartados de este registro por
+  // decisión explícita (no placeholders nuevos -- si alguna vuelve a estar
+  // viva, es trabajo futuro, no de esta fase):
+  //   - **CDMX (INFOCDMX)**: ficha de datos abiertos viva, pero el puerto
+  //     real donde vivirían los datos respondió caído el día de la
+  //     verificación (2026-09-20) -- re-chequear más adelante, no registrado.
+  //   - **NL — Secretaría de Administración**: dataset con ficha fresca en
+  //     el catálogo, pero verificado (petición real 2026-09-20) que
+  //     resuelve contra la MISMA infraestructura `api-ocds.nl.gob.mx` que
+  //     `nl_ocds` (arriba) YA consulta -- lo más probable es que el conector
+  //     NL existente ya vea estos datos; no se registra un conector nuevo
+  //     para evitar duplicar la misma fuente bajo dos ids.
+  .register({
+    id: "yucatan_ocds",
+    kind: "automated",
+    label: "Yucatán — INAIP, Contrataciones Abiertas (API OCDS)",
+    termsNote:
+      "API OCDS pública del Instituto Estatal de Transparencia (INAIP) de Yucatán (https://captura.contratacionesabiertas.inaipyucatan.org.mx, ficha en https://contratacionesabiertas.inaipyucatan.org.mx/contratacionesabiertas/datosabiertos). Sin reCAPTCHA/auth documentado -- solo lectura (GET). ALCANCE REAL LIMITADO: son ÚNICAMENTE las compras propias del instituto INAIP (organismo pequeño, ~5 contratos/año observados en 2025), NO las licitaciones del gobierno estatal de Yucatán en general -- `verified: true` describe 'la API responde datos reales', nunca 'cobertura completa del estado' (ver `connectors/ocds/contratacionesabiertas-connector.ts` para el detalle completo).",
+    cadence: {
+      minIntervalMinutes: 24 * 60,
+      note: "24 h: mismo criterio que nl_ocds/cdmx_ocds (alineado al cron diario existente) -- un organismo con ~5 contratos/año no gana nada con una cadencia más agresiva.",
+    },
+    liveVerification: {
+      verified: true,
+      note:
+        "Verificado 2026-09-20 con peticiones GET reales: `GET .../edca/fiscalYears` respondió 200 con años fiscales 2020-2025 reales (`status: true` cada uno); `GET .../edca/contractingprocess/2025` respondió 200 con JSON OCDS 1.1 real -- 5 release packages reales (arrendamiento de oficina, CFE, leasing, dos expedientes DAJP), todos con `tender.status: \"complete\"` (ninguno vigente bajo `isVigenteTender` con la evidencia descargada, consistente con el alcance chico de la fuente); `GET .../edca/contractingprocess/2026` respondió 404 con cuerpo JSON `{\"status\":404,\"message\":\"No se encontrarón resultados...\"}` -- año fiscal aún no activado, comportamiento NORMAL de esta plataforma (manejado explícitamente como 'sin datos ese año', nunca como error).",
+    },
+    connector: createYucatanOcdsConnector(),
+  })
+  .register({
+    id: "guadalajara_ocds",
+    kind: "automated",
+    label: "Guadalajara (municipio) — Contrataciones Abiertas (API OCDS)",
+    termsNote:
+      "API OCDS pública del municipio de Guadalajara (https://contratacionesabiertas.guadalajara.gob.mx:3000, ficha en https://contratacionesabiertas.guadalajara.gob.mx:4000/contratacionesabiertas/datosabiertos). DISTINTA del portal `miradapublica.guadalajara.gob.mx` ya conocido y estancado de fases previas -- esta es la API real tipo Kingfisher del municipio. Sin reCAPTCHA/auth documentado -- solo lectura (GET). Municipio, no entidad federativa: se registra con `fixedState: \"Jalisco\"` (evidencia real: `parties[].address.region: \"Jalisco\"` en los release packages) por el límite del esquema actual (sin campo de municipio) -- se pierde granularidad municipal, ver `connectors/ocds/contratacionesabiertas-connector.ts` para el detalle completo.",
+    cadence: {
+      minIntervalMinutes: 24 * 60,
+      note: "24 h: mismo criterio que nl_ocds/cdmx_ocds/yucatan_ocds (alineado al cron diario existente) -- la ficha de la plataforma no documenta actualización más frecuente que diaria.",
+    },
+    liveVerification: {
+      verified: true,
+      note:
+        "Verificado 2026-09-20 con peticiones GET reales: `GET .../edca/fiscalYears` respondió 200 con SOLO el año fiscal 2025 real (`status: true`) -- plataforma adoptada recientemente por el municipio, evidencia real de por qué este conector nunca asume qué años existen; `GET .../edca/contractingprocess/2025` respondió 200 con JSON OCDS 1.1 real -- 2 281 921 bytes, 48 release packages reales de contrataciones municipales variadas (audiovisuales, despensas, música, licitaciones `LCCC-GDL-XXX`), tags reales `planning`/`tender`/`award`/`contract`/`contractAmendment`/`contractUpdate`/`contractTermination`, entradas hasta dic-2025; `GET .../edca/contractingprocess/2026` respondió 404 con el mismo cuerpo JSON honesto que Yucatán -- año fiscal aún no activado.",
+    },
+    connector: createGuadalajaraOcdsConnector(),
   })
   .register({
     id: "aggregator",
