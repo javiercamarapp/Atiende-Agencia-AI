@@ -294,10 +294,20 @@ edita el archivo):** `packages/domain-citas/migrations/015_rpc_anti_duplicado_au
 (línea ~62-63, espejo real en `supabase/migrations/20240101000103_015_...sql`)
 afirma que "ninguna de las 10 [RPC de esa migración] tiene una sola ruta de
 staff que las invoque". Eso es **falso** para
-`citas.claim_waitlist_notification_slot`: la ruta de staff
+`citas.claim_waitlist_notification_slot`, y por DOS rutas de staff distintas
+(sesión de staff vía `dbSession`, no de sistema), no solo una:
 `POST .../appointments/:id/cancel` (`apps/api/.../appointments-lifecycle.ts`,
 vía `tryNotifyWaitlistAfterCancel` → `tryNotifyWaitlistOfFreedSlot` →
-`runOptimizadorCore`) sí la invoca — por eso el 42501 confirmado arriba es
+`runOptimizadorCore`) es la que este PR corrige con SAVEPOINT + `postCommitTasks`;
+`POST .../properties/:propertyId/waitlist/broadcast` (`apps/api/.../admin.ts`
+→ `runListaEsperaCore` → `claimWaitlistNotificationSlot`, ambas en
+`reminders.ts`) es la SEGUNDA — misma causa raíz (42501 determinista cada vez
+que hay un candidato visible y `whatsapp_config` activo), preexistente, **fuera
+de alcance de este PR** (no cancela ni libera un hueco de horario, así que no
+comparte el hallazgo confirmado #1 de "revierte la propia acción"; el test
+existente de esta ruta usa `InMemoryCitasRepository` y nunca ve el 42501
+real). Ambas quedan documentadas aquí porque las dos invocan la MISMA RPC de
+sesión de sistema. Sea cual sea el arreglo, el 42501 confirmado arriba es
 real y reproducible, no teórico. El comentario original describía la
 *intención* de diseño (una RPC de sesión de sistema, invocada solo por rutas
 de sistema); en la práctica, una ruta de staff termina llamándola de forma

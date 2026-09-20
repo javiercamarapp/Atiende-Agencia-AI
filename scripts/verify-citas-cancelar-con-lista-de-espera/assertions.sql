@@ -220,4 +220,4 @@ begin;
 select (status = 'cancelled')::int as esquema_a_medias_cancelacion_persiste_deberia_ser_1 from citas.appointments where id = '00000000-0000-0000-0000-000000000a03';
 rollback;
 
-\echo '=== FIN -- 9 escenarios de valor (3 ANTES, 3 DESPUES, 1 guard-intacto, 2 GAP-RLS) + 1 ESQUEMA-A-MEDIAS = 10 en total. Los 3 bloques ANTES/DESPUES/ESQUEMA-A-MEDIAS de arriba deben completar sin ERROR (los 42501/permission-denied se absorben con ON_ERROR_STOP off, a propósito). ==='
+\echo '=== FIN -- 11 bloques begin/rollback en total (3 ANTES, 3 DESPUES + 1 guard-intacto, 2 GAP-RLS, 2 ESQUEMA-A-MEDIAS) = 11/11. Los bloques de setup+cancel de ANTES/DESPUES/ESQUEMA-A-MEDIAS deben completar sin ERROR (los 42501/permission-denied se absorben con ON_ERROR_STOP off, a propósito). ==='
