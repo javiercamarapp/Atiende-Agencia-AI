@@ -182,13 +182,39 @@ export class PostgresAuthzAuditRepository implements AuthzAuditRepository {
         // Pide una fila de más ("peek") para saber si hay más página sin un
         // COUNT(*) aparte -- mismo criterio que el paginado de break-glass
         // (ver packages/domain-rentas/src/break-glass/postgres-data-repository.ts).
-        // `least(..., 200)` -- nunca por encima del tope duro que la propia
-        // función SQL ya aplica (`core.list_authz_audit_log_for_superadmin`);
-        // en el caso límite `limit === 200` el "peek" queda deshabilitado (la
-        // función igual acotaría a 200), así que `hasMore` puede reportar
-        // `false` aunque exista una página 201+ -- comportamiento aceptado y
-        // documentado, mismo caso límite que el paginado de break-glass.
-        const queryLimit = Math.min(limit + 1, 200);
+        // `least(..., 201)` -- 1 más que `AUTHZ_AUDIT_LOG_LIMIT_MAX` (el
+        // máximo EXPUESTO a un caller real, ver
+        // apps/api/src/routes/superadmin.ts, sin cambios, sigue en 200):
+        // `core.list_authz_audit_log_for_superadmin` sube su tope duro
+        // INTERNO a 201 desde packages/db/migrations/
+        // 0022_superadmin_bitacoras_endurecimiento.sql específicamente para
+        // que este "peek" funcione también en el caso límite `limit === 200`
+        // -- antes de esa migración, pedir `limit+1 = 201` no servía de nada
+        // (la función lo recortaba de vuelta a 200 antes de que este
+        // repositorio pudiera ver la fila de más) y `hasMore` reportaba
+        // `false` aunque existiera una página 201+ real. `Math.min` sigue
+        // aquí como defensa en profundidad (nunca pedir más de 201 pase lo
+        // que pase con `limit`).
+        //
+        // HUECO CONOCIDO mientras 0022 no esté aplicada (orden de despliegue
+        // declarado: código primero, migración después): con exactamente
+        // 201 filas reales y `limit === 200`, la función VIEJA (0021) sigue
+        // recortando su `limit+1 = 201` de vuelta a 200 -- este repositorio
+        // recibe 200 filas, `hasMore` sale `false` (el mismo bug que esta
+        // migración corrige, simplemente no arreglado todavía). Inconsistente
+        // con `partirConHasMore` de
+        // `packages/domain-rentas/src/break-glass/postgres-data-repository.ts`,
+        // que para el mismo caso límite (peek no disponible) elige el lado
+        // conservador (`rows.length >= limit` -- "asume que sí hay más").
+        // Aquí se dejó el cálculo EXACTO (`rows.length > limit`) a propósito:
+        // una vez aplicada 0022 es exacto siempre, y hacerlo conservador
+        // solo para el intervalo entre deploy de código y migración
+        // complicaría el código para un hueco temporal y de bajo impacto (un
+        // `hasMore: false` de más en un límite exacto de 200/201 filas, no
+        // una pérdida de datos). No hay regresión frente a la versión previa
+        // de este repositorio (que tenía el mismo hueco, sin condición de
+        // salida).
+        const queryLimit = Math.min(limit + 1, 201);
         const { rows } = await this.db.query<AuthzAuditLogRawRow>(`select * from core.list_authz_audit_log_for_superadmin($1, $2, $3);`, [callerId, queryLimit, offset]);
         const hasMore = rows.length > limit;
         const trimmed = hasMore ? rows.slice(0, limit) : rows;

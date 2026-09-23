@@ -4,6 +4,7 @@ import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { ApiError, authMiddleware, dbSession, signAccessToken, type CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   InMemoryAuditSink,
+  InMemoryDenialAuditCoalescer,
   InMemoryRateLimiter,
   createRouteAreaMap,
   isAdminRoute,
@@ -233,5 +234,119 @@ describe("requireAdminAccess — entry.ip: último salto de X-Forwarded-For (nun
     await app.request("/admin/usuarios", { headers: { authorization: `Bearer ${await tokenFor("user-ajeno")}` } });
 
     expect(audit.entries[0]!.ip).toBeNull();
+  });
+});
+
+// Hallazgo real de revisión (PR #172, no-bloqueante): "no persistas cada 429
+// repetida del mismo actor y ruta" -- ver comentario de cabecera de
+// denial-audit-coalescer.ts para el porqué (amplificación de carga: una
+// transacción de sistema completa por cada 429 repetida, sin evidencia
+// nueva).
+describe("requireAdminAccess — DenialAuditCoalescer: no persiste cada 429 repetida del mismo actor+ruta", () => {
+  function buildAppConReloj(opts: { audit: InMemoryAuditSink; rateLimiter: InMemoryRateLimiter; coalescer: InMemoryDenialAuditCoalescer; clock: { nowMs: number } }) {
+    const app = new Hono<CoreAuthHonoEnv>();
+    app.onError((err, c) => {
+      if (err instanceof ApiError) return c.json({ code: err.code }, err.status as 403 | 429);
+      throw err;
+    });
+    app.use(authMiddleware({ jwtSecret: SECRET }));
+    app.use(dbSession(fakeEngine([{ organization_id: "org-real", platform_role: "viewer", vertical_role: "frontdesk" }])));
+    app.use(requireOrganizationMembership());
+    app.get(
+      "/admin/usuarios",
+      requireAdminAccess({
+        audit: opts.audit,
+        rateLimiter: opts.rateLimiter,
+        denialAuditCoalescer: opts.coalescer,
+        now: () => new Date(opts.clock.nowMs),
+      }),
+      (c) => c.json({ ok: true }),
+    );
+    return app;
+  }
+
+  it("5 intentos ya-rate-limitados del MISMO actor+ruta en la MISMA ventana -- solo la PRIMERA 429 se persiste, las otras 4 se suprimen (nunca abren la transacción del sink)", async () => {
+    const audit = new InMemoryAuditSink();
+    // Capacidad 1: el 2do intento ya encuentra el bucket vacío -> 429 desde ahí en adelante.
+    const rateLimiter = new InMemoryRateLimiter({ capacity: 1, refillPerSecond: 0 });
+    const coalescer = new InMemoryDenialAuditCoalescer(10 * 60_000);
+    const clock = { nowMs: Date.parse("2026-09-19T12:00:00.000Z") };
+    const app = buildAppConReloj({ audit, rateLimiter, coalescer, clock });
+    const headers = { authorization: `Bearer ${await tokenFor("atacante-rafaga")}` };
+
+    const respuestas = [];
+    for (let i = 0; i < 6; i++) {
+      respuestas.push((await app.request("/admin/usuarios", { headers })).status);
+      clock.nowMs += 1000; // 1s entre requests, muy por debajo de la ventana de 10min
+    }
+
+    expect(respuestas).toEqual([403, 429, 429, 429, 429, 429]); // 1er intento: rol insuficiente; el resto, rate-limited
+    // Auditado: el 403 (siempre) + SOLO la 1ra 429 -- las otras 4 se suprimieron.
+    expect(audit.entries).toHaveLength(2);
+    expect(audit.entries.map((e) => e.reason)).toEqual(["insufficient_role", "rate_limited"]);
+  });
+
+  it("tras suprimir repeticiones, la SIGUIENTE fila persistida (fuera de la ventana) lleva el conteo de lo suprimido en metadata.suppressedRateLimitedSincePersist", async () => {
+    const audit = new InMemoryAuditSink();
+    const rateLimiter = new InMemoryRateLimiter({ capacity: 1, refillPerSecond: 0 });
+    const coalescer = new InMemoryDenialAuditCoalescer(60_000); // ventana corta (1 min) para el test
+    const clock = { nowMs: Date.parse("2026-09-19T12:00:00.000Z") };
+    const app = buildAppConReloj({ audit, rateLimiter, coalescer, clock });
+    const headers = { authorization: `Bearer ${await tokenFor("atacante-ventana")}` };
+
+    await app.request("/admin/usuarios", { headers }); // 403 (insufficient_role) -- consume el único token
+    clock.nowMs += 1_000;
+    await app.request("/admin/usuarios", { headers }); // 429 -- 1ra rate_limited, se persiste (abre ventana)
+    clock.nowMs += 1_000;
+    await app.request("/admin/usuarios", { headers }); // 429 -- suprimida (misma ventana)
+    clock.nowMs += 1_000;
+    await app.request("/admin/usuarios", { headers }); // 429 -- suprimida (misma ventana)
+
+    // Avanza MÁS de la ventana (60s) -- la siguiente 429 abre una ventana
+    // nueva y SÍ se persiste, con el conteo de las 2 suprimidas justo antes.
+    clock.nowMs += 61_000;
+    await app.request("/admin/usuarios", { headers });
+
+    const rateLimited = audit.entries.filter((e) => e.reason === "rate_limited");
+    expect(rateLimited).toHaveLength(2); // la 1ra ventana + la 2da ventana, nunca las 3 suprimidas
+    expect(rateLimited[0]!.metadata).not.toHaveProperty("suppressedRateLimitedSincePersist");
+    expect(rateLimited[1]!.metadata!.suppressedRateLimitedSincePersist).toBe(2);
+  });
+
+  it("dos actores DISTINTOS contra la MISMA ruta -- cada uno tiene su propia ventana de coalescer, uno no suprime al otro", async () => {
+    const audit = new InMemoryAuditSink();
+    const rateLimiter = new InMemoryRateLimiter({ capacity: 1, refillPerSecond: 0 });
+    const coalescer = new InMemoryDenialAuditCoalescer(10 * 60_000);
+    const clock = { nowMs: Date.parse("2026-09-19T12:00:00.000Z") };
+    const app = buildAppConReloj({ audit, rateLimiter, coalescer, clock });
+
+    const headersA = { authorization: `Bearer ${await tokenFor("actor-a")}` };
+    const headersB = { authorization: `Bearer ${await tokenFor("actor-b")}` };
+
+    await app.request("/admin/usuarios", { headers: headersA }); // 403, consume token de A
+    await app.request("/admin/usuarios", { headers: headersA }); // 429, 1ra de A -- se persiste
+    await app.request("/admin/usuarios", { headers: headersA }); // 429, 2da de A -- suprimida
+    await app.request("/admin/usuarios", { headers: headersB }); // 403, consume token de B
+    await app.request("/admin/usuarios", { headers: headersB }); // 429, 1ra de B -- se persiste (ventana PROPIA)
+
+    const rateLimited = audit.entries.filter((e) => e.reason === "rate_limited");
+    expect(rateLimited.map((e) => e.actorUserId)).toEqual(["actor-a", "actor-b"]);
+  });
+
+  it("un 403 (insufficient_role) SIEMPRE se audita, sin coalescer -- solo las 429 repetidas se suprimen", async () => {
+    const audit = new InMemoryAuditSink();
+    // Capacidad alta -- nunca llega a 429 en este test, solo 403 repetidos.
+    const rateLimiter = new InMemoryRateLimiter({ capacity: 100, refillPerSecond: 0 });
+    const coalescer = new InMemoryDenialAuditCoalescer(10 * 60_000);
+    const clock = { nowMs: Date.parse("2026-09-19T12:00:00.000Z") };
+    const app = buildAppConReloj({ audit, rateLimiter, coalescer, clock });
+    const headers = { authorization: `Bearer ${await tokenFor("actor-repetido-sin-permiso")}` };
+
+    await app.request("/admin/usuarios", { headers });
+    await app.request("/admin/usuarios", { headers });
+    await app.request("/admin/usuarios", { headers });
+
+    expect(audit.entries).toHaveLength(3); // los 3, ninguno suprimido
+    expect(audit.entries.every((e) => e.reason === "insufficient_role")).toBe(true);
   });
 });

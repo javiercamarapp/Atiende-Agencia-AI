@@ -75,7 +75,14 @@ export async function fetchImpersonacionJson<T>(apiBaseUrl: string, token: strin
 export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
   const [sesiones, setSesiones] = useState<readonly ImpersonacionSesion[] | null>(null);
   const [bitacora, setBitacora] = useState<readonly BitacoraEntry[] | null>(null);
-  const [available, setAvailable] = useState(true);
+  // Default `false` -- re-revisión (hallazgo 8): aunque el `return` de
+  // `EstadoCargando` de abajo (antes de renderizar el botón) ya evita en la
+  // práctica que "Iniciar impersonación" aparezca habilitado antes de que
+  // `cargar()` resuelva (sesiones/bitacora siguen `null` hasta entonces, y
+  // `setAvailable` se actualiza en el MISMO batch que ellas), asumir "no
+  // disponible" hasta que la API lo confirme es el default correcto en
+  // profundidad -- nunca depender solo de dónde cae el `return` de arriba.
+  const [available, setAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
@@ -171,7 +178,12 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
             Sesión auditada de solo lectura, con motivo obligatorio y duración acotada (15 minutos), verificada en Postgres.
           </p>
         </div>
-        <Button className="rounded-full gap-1.5" onClick={abrirModal}>
+        <Button
+          className="rounded-full gap-1.5"
+          onClick={abrirModal}
+          disabled={!available}
+          title={!available ? "La impersonación no está disponible todavía -- migración pendiente de aplicar." : undefined}
+        >
           <LogIn className="w-3.5 h-3.5" strokeWidth={1.75} />
           Iniciar impersonación
         </Button>
@@ -179,7 +191,8 @@ export function SuperAdminImpersonacionPage({ apiBaseUrl, token }: { readonly ap
 
       {!available && (
         <p role="alert" className="text-[13px] text-muted-foreground">
-          La impersonación de superadmin todavía no está disponible en esta base (migración pendiente de aplicar).
+          La impersonación de superadmin todavía no está disponible en esta base (migración pendiente de aplicar) -- el
+          botón "Iniciar impersonación" está deshabilitado mientras tanto.
         </p>
       )}
 
