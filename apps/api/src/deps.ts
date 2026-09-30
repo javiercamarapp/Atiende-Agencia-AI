@@ -10,7 +10,7 @@ import type {
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
-import type { RestaurantesRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
+import type { RestaurantesRepository, VoiceAgentProvider, VozRepository, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import type { HotelesRepository, HotelesWhatsAppTurnHandler, PaymentsPort } from "@atiende/domain-hoteles";
 import type { CfdiPort } from "@atiende/mcp-cfdi";
 import type {
@@ -102,6 +102,12 @@ export interface AppDeps {
   readonly engine: TenancyEngine;
   readonly restaurantesRepo: (db: TenantDbSession) => RestaurantesRepository;
   readonly turnHandler: WhatsAppTurnHandler;
+  /** Backend propio de voz de restaurantes (migración 025). OPCIONALES: si faltan, las rutas de
+   * voz responden 503 honesto en vez de fingir. En producción `vozRepo` es
+   * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
+   * (emite sesiones solo con `GEMINI_API_KEY`). */
+  readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  readonly voiceProvider?: VoiceAgentProvider;
   readonly hotelesRepo: (db: TenantDbSession) => HotelesRepository;
   /** Integración de cobro (Stripe/Conekta/etc.), NO un repositorio de datos
    * por-tenant — a diferencia de `hotelesRepo`, no depende de RLS por-request (no

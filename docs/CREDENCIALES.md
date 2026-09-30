@@ -113,6 +113,16 @@ falso).
 | `SW_CSD_PASSWORD` | contraseña del CSD | Sí |
 | `SW_WEBHOOK_SECRET` | SW Sapien, al configurar el webhook | Sí |
 
+## Voz de restaurantes (Gemini 3.8 Live, backend propio)
+
+| Variable | Dónde se obtiene | Secreta | Habilita | Sin ella | Arranque |
+|---|---|:-:|---|---|:-:|
+| `GEMINI_API_KEY` | Google AI Studio → API keys | Sí | El adaptador de Gemini pide un token efímero de un solo uso para el preview de voz del panel (`POST /v1/restaurantes/:propertyId/admin/voz/preview/sesion`); la llave nunca sale del servidor | La ruta responde 503 "voz no configurada" (nunca un falso éxito); configuración de voz y conversaciones siguen disponibles | No |
+| `VOICE_PREVIEW_TOKEN_SECRET` | lo generas tú (mínimo 16 caracteres, p. ej. `openssl rand -hex 32`) | Sí | Firma (HMAC-SHA256) el token efímero de preview, ligado a organización + sucursal + sesión, y verifica `POST /internal/restaurantes/voz/previews/consumir` | Mismo 503 en la emisión y en la consumición | No |
+
+Las rutas internas del registrador de conversaciones (`/internal/restaurantes/voz/...`) usan el
+secreto ya existente `INTERNAL_SECRET` (header `x-atiende-internal-secret`).
+
 ## Proveedores de LLM (Anthropic / OpenAI / OpenRouter)
 
 Alimentan `LlmGateway` (compartido por los turn handlers de WhatsApp de
