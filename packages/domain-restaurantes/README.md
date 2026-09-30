@@ -31,3 +31,22 @@ plataforma vive en `apps/api/src/routes/superadmin*.ts`/
 dashboards de KPIs, que esta nota marcaba como "fuera de Fase 1", ya se
 construyeron en fases posteriores (ver arriba) — dejaron de estar fuera de
 alcance.
+
+## Modelo por sucursal (primer cliente: Los Taquitos de PM) — migración 023
+
+Reglas configurables por sucursal, todas OPT-IN (una sucursal sin configurar, o una base sin
+la migración 023, se comporta como antes):
+
+- `horarios.ts` — horario por turnos (doble turno, cierre pasada la medianoche) y
+  `estaAbiertoAhora` en la zona horaria del negocio (`resolverZonaHorariaNegocio`).
+- `reglas-pedido.ts` — aplicadas por `quoteOrder`/`createOrder`: horario, pedido mínimo por
+  canal (`domicilio`/`recoger`, sobre el total antes de descuentos), cobertura de entrega
+  ("fuera de zona", por colonia contra `known_zone` + `branch_delivery_zone`) y propina
+  (PM: solo con tarjeta; se anota en el pedido, no suma al total). Los productos/categorías
+  marcados `no_domicilio` se rechazan a domicilio (`order-quote.ts`).
+- WhatsApp por sucursal — `whatsapp_branch_channel`; `resolveWhatsAppChannel` resuelve
+  organización y sucursal desde el `phone_number_id` que recibió el mensaje.
+- Toda lectura/escritura de objetos nuevos pasa por `runWithSavepointFallback`: contra una base
+  sin migrar la lectura da "sin configurar" y la escritura lanza
+  `RestaurantesConfigUnavailableError` (503), nunca deja la transacción abortada. Cubierto en
+  `tests/modelo-pm-savepoint.spec.ts` y en `scripts/verify-restaurantes-modelo-pm/`.
