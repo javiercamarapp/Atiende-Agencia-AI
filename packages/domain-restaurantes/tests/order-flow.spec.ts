@@ -18,9 +18,9 @@ function setup(turnStart = 1) {
     flow: { key: "wa:9991234567", turn: String(turn), now: () => nowMs },
   });
   const items = [{ product_id: f.products.cocaCola, product_name: "Coca-Cola", requested_quantity: 2 }];
-  const quote = (extra: object = {}) => invokeAgentTool(f.repo, ctx(), "cotizar_pedido", { branch_slug: "fco-montejo", items, canal: "recoger", ...extra });
-  const confirm = (args: object = {}) => invokeAgentTool(f.repo, ctx(), "confirmar_resumen", args);
-  const create = (extra: object = {}) =>
+  const quote = (extra: Record<string, unknown> = {}) => invokeAgentTool(f.repo, ctx(), "cotizar_pedido", { branch_slug: "fco-montejo", items, canal: "recoger", ...extra });
+  const confirm = (args: Record<string, unknown> = {}) => invokeAgentTool(f.repo, ctx(), "confirmar_resumen", args);
+  const create = (extra: Record<string, unknown> = {}) =>
     invokeAgentTool(f.repo, ctx(), "crear_pedido", { branch_slug: "fco-montejo", customer_name: "Ana", payment_method: "efectivo", canal: "recoger", items, ...extra });
   const ordersOf = async () => {
     const customer = await f.repo.findCustomerByPhone(f.organizationId, "9991234567");
