@@ -34,6 +34,8 @@ export interface ItemComanda {
   readonly cantidad: number;
   readonly modificadores: readonly ModificadorComanda[];
   readonly nota?: string;
+  /** Solo informativo (captura manual, bitacora): el POS usa `codigo`, nunca este texto. */
+  readonly nombre?: string;
 }
 
 export interface ClienteComanda {
