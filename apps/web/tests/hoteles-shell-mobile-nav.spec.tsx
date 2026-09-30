@@ -4,17 +4,16 @@
 // HotelesShell.tsx -- mismo patrón que despachos-shell-mobile-nav.spec.tsx/
 // restaurantes-shell-mobile-nav.spec.tsx: el <Sidebar> compartido de
 // @atiende/ui es `hidden md:flex`, así que en viewport móvil el usuario
-// depende por completo de <MobileHeader>. Hoteles tiene hasta 13 destinos de
-// nav (Operación + Administración) -- deliberadamente SIN <BottomNav> (mismo
-// criterio que DespachosShell.tsx: demasiados destinos para curar 5 sin
-// arbitrariedad). Protege que el Shell siga exponiendo el wordmark real y el
-// selector de hotel activo también en mobile (`action` de MobileHeader).
+// depende por completo de <MobileHeader> + <BottomNav>. Hoteles tiene hasta 13
+// destinos: la barra trae los 4 de uso diario y "Más" abre TODOS (PR-0 del
+// informe de diseno-ux, F-01: antes no había navegación móvil). Protege también
+// que campana, chat y cerrar sesión sean alcanzables en móvil.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { HotelesShell } from "../src/verticals/hoteles/HotelesShell.tsx";
 import type { PropertyOption } from "../src/verticals/hoteles/lib/discovery-client.ts";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 const fetchPropertiesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly PropertyOption[]>>();
@@ -42,6 +41,7 @@ afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
   fetchPropertiesMock.mockReset();
+  vi.unstubAllGlobals();
 });
 
 async function renderShell(properties: readonly PropertyOption[] = [{ propertyId: "prop-1", nombre: "Hotel Centro" }]): Promise<RenderedComponent> {
@@ -62,7 +62,7 @@ async function renderShell(properties: readonly PropertyOption[] = [{ propertyId
 }
 
 describe("HotelesShell — nav móvil", () => {
-  it("mantiene el Sidebar oculto en mobile (hidden md:flex) y agrega MobileHeader (sin BottomNav: demasiados destinos)", async () => {
+  it("mantiene el Sidebar oculto en mobile (hidden md:flex) y agrega MobileHeader + BottomNav", async () => {
     rendered = await renderShell();
     const root = rendered.container;
 
@@ -76,7 +76,47 @@ describe("HotelesShell — nav móvil", () => {
     expect(mobileHeader).toBeDefined();
     expect(mobileHeader!.textContent).toContain("atiende");
 
-    expect(root.querySelector('nav[aria-label="Navegación móvil"]')).toBeNull();
+    const nav = root.querySelector('nav[aria-label="Navegación móvil"]');
+    expect(nav).not.toBeNull();
+    expect([...nav!.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      "/hoteles/demo",
+      "/hoteles/demo/reservas",
+      "/hoteles/demo/mantenimiento",
+      "/hoteles/demo/asistencia",
+    ]);
+  });
+
+  it('el botón "Más" abre TODOS los destinos del rol (los 13 del owner), no solo los 4 de la barra', async () => {
+    rendered = await renderShell();
+    const nav = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    click([...nav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    const etiquetas = [...hoja.querySelectorAll("a")].map((a) => a.textContent);
+    expect(etiquetas).toEqual(
+      expect.arrayContaining(["Dashboard", "Reservas", "Mantenimiento", "Asistencia", "Fraude", "CFDI", "P&L", "Revenue", "Catálogo"]),
+    );
+    const hrefs = [...hoja.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/hoteles/demo/fraude");
+  });
+
+  it("campana, chat y cerrar sesión son alcanzables en móvil (header + menú de cuenta)", async () => {
+    rendered = await renderShell();
+    const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
+    expect(mobileHeader.querySelector('button[aria-label^="Notificaciones"]')).not.toBeNull();
+    click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
+    const hoja = document.body.querySelector('[role="dialog"]')!;
+    expect(hoja.textContent).toContain("Chatea con tus datos");
+    expect(hoja.textContent).toContain("gm@example.com");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => {
+      click([...hoja.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cerrar sesión")!);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/auth/logout");
+    expect(window.localStorage.getItem("atiende.hoteles.session")).toBeNull();
   });
 
   it("el DashboardHeader de escritorio se oculta en mobile (hidden md:block)", async () => {
