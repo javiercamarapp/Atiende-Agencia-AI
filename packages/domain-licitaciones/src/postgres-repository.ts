@@ -686,6 +686,18 @@ function mapRenewalAlert(row: RenewalAlertRow): RenewalAlertRecord {
   };
 }
 
+const SOURCE_RUN_INSERT_SAVEPOINT = "sp_licitaciones_source_run_insert";
+
+/** 23514 (check_violation) sobre `source_run_source_check`. Se exige el nombre del
+ *  constraint (campo `constraint` de pg o el mensaje) para NO enmascarar el CHECK de
+ *  `state` ni ningún otro 23514. */
+function esViolacionCheckSourceRunSource(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: unknown; constraint?: unknown; message?: unknown };
+  if (e.code !== "23514") return false;
+  return e.constraint === "source_run_source_check" || (typeof e.message === "string" && e.message.includes("source_run_source_check"));
+}
+
 export class PostgresLicitacionesRepository implements LicitacionesRepository {
   constructor(private readonly db: TenantDbSession) {}
 
@@ -1193,23 +1205,46 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
     // `licitaciones.system_record_source_run` (migración
     // `..._024_licitaciones_sistema_ingesta_escritura.sql`) en su lugar. Ver
     // el header de esa migración para el diagnóstico completo.
-    const { rows } = await this.db.query<{ out_id: string; out_created_at: string }>(
-      `select * from licitaciones.system_record_source_run($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
-      [
-        organizationId,
-        input.source,
-        input.state,
-        input.startedAt,
-        input.finishedAt,
-        input.evidence.httpStatus ?? null,
-        input.evidence.responseHash ?? null,
-        input.evidence.message,
-        input.evidence.coverage?.expected ?? null,
-        input.evidence.coverage?.obtained ?? null,
-        input.correlationId,
-      ],
-    );
-    return { ...input, id: rows[0]!.out_id, organizationId, createdAt: rows[0]!.out_created_at };
+    // a5-fix-licitaciones-source-run-check-yucatan-guadalajara: la base real puede no
+    // tener aún la migración 028 (CHECK `source_run_source_check` sin `yucatan_ocds`/
+    // `guadalajara_ocds`) -> 23514. Este INSERT corre en la MISMA transacción que
+    // `ingestTendersFromSource`, así que sin SAVEPOINT el 23514 revertiría los tenders
+    // ya insertados (y el COMMIT devolvería ROLLBACK). Con SAVEPOINT solo se revierte
+    // este INSERT: los tenders se conservan y se devuelve un registro "no persistido"
+    // con el motivo explícito. NO se registra bajo otro valor de `source`: eso
+    // falsearía la frescura/salud de la fuente equivocada (`sourceFreshness`).
+    return runWithSavepointFallback<SourceRunRecord>({
+      session: this.db,
+      savepointName: SOURCE_RUN_INSERT_SAVEPOINT,
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_id: string; out_created_at: string }>(
+          `select * from licitaciones.system_record_source_run($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
+          [
+            organizationId,
+            input.source,
+            input.state,
+            input.startedAt,
+            input.finishedAt,
+            input.evidence.httpStatus ?? null,
+            input.evidence.responseHash ?? null,
+            input.evidence.message,
+            input.evidence.coverage?.expected ?? null,
+            input.evidence.coverage?.obtained ?? null,
+            input.correlationId,
+          ],
+        );
+        return { ...input, id: rows[0]!.out_id, organizationId, createdAt: rows[0]!.out_created_at };
+      },
+      isRecoverable: esViolacionCheckSourceRunSource,
+      fallback: () =>
+        Promise.resolve({
+          ...input,
+          id: "",
+          organizationId,
+          createdAt: new Date().toISOString(),
+          notPersistedReason: `source_run no registrado: la base no admite source="${input.source}" (falta aplicar la migración 028_source_run_check_yucatan_guadalajara).`,
+        }),
+    });
   }
 
   async listSourceRuns(organizationId: string, filter?: { source?: SourceConnectorId; limit?: number }): Promise<readonly SourceRunRecord[]> {
