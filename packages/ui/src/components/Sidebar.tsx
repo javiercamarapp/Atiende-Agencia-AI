@@ -1,6 +1,6 @@
 import { useState, type ComponentType, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { LogOut, PanelLeftClose, PanelLeftOpen, Settings, ChevronDown } from "lucide-react";
+import { LogOut, PanelLeftClose, PanelLeftOpen, ChevronDown } from "lucide-react";
 import { Button } from "./ui/button";
 import { ThemeSelector } from "./ThemeSelector";
 import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
@@ -26,13 +26,6 @@ export interface SidebarProps {
   onLogout: () => void;
   /** Selector de hotel (multi-hotel), renderizado bajo el logo. */
   hotelSelector?: ReactNode;
-  /**
-   * Ruta REAL de la pantalla de configuración de la vertical activa. El enlace
-   * "Configuración" solo se dibuja si la vertical lo pasa (antes apuntaba a un
-   * `/configuracion` global que no existe en App.tsx y llevaba a una pantalla
-   * en blanco en las verticales sin esa pantalla).
-   */
-  configuracionTo?: string;
 }
 
 const CLAVE_GRUPO_ABIERTO = "atiende-hoteles-sidebar-grupo-abierto";
@@ -47,7 +40,7 @@ const CLAVE_COLAPSADO = "atiende-hoteles-sidebar-colapsado";
  * de sección porque era un SPA de una sola ruta; aquí cada ítem es una
  * ruta real, lo que además hace cada pantalla capturable/enlazable).
  */
-export function Sidebar({ sections, user, onLogout, hotelSelector, configuracionTo }: SidebarProps) {
+export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProps) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -154,24 +147,11 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, configuracion
           con margen negativo que tenía la versión anterior). Solo contiene
           controles con destino real: ya no hay "Centro de ayuda", "Notificaciones",
           "Mi perfil" ni "Plan y facturación" (eran maquetas sin acción; la campana
-          vive en el header). */}
+          vive en el header) ni el enlace fijo a /configuracion (ruta inexistente:
+          cada vertical con pantalla de configuración ya la trae en sus secciones). */}
       <div className="shrink-0 border-t border-border">
         {!collapsed && (
           <div className="bg-muted px-2 pt-2 pb-1.5 space-y-0.5">
-            {configuracionTo && (
-              <NavLink
-                to={configuracionTo}
-                className={({ isActive }) =>
-                  cn(
-                    "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] transition-colors",
-                    isActive ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-background",
-                  )
-                }
-              >
-                <Settings className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                <span className="truncate">Configuración</span>
-              </NavLink>
-            )}
             <div className="pt-1.5 pb-0.5 flex justify-center">
               <ThemeSelector />
             </div>
