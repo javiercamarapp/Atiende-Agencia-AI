@@ -145,7 +145,8 @@ bandera efectiva es `apagado`, encolar/reclamar no hacen nada y las lecturas res
 - El enganche cubre `POST /v1/restaurantes/:orgSlug/orders` (voz y web). El agente de WhatsApp
   (`whatsapp/llm-turn-handler.ts`) crea pedidos por otra ruta y aun no llama a
   `encolarComandaParaPedido` (lo modifica otra rama; el punto de enganche ya esta listo).
-- Canal (`domicilio|recoger`) y propina llegan cuando el modelo PM (PR #201) los agregue al pedido;
-  mientras tanto el tipo se deduce de la direccion y la forma de pago por defecto es efectivo.
+- Canal (`domicilio|recoger`), colonia y propina salen del modelo PM (migracion 023) y se pasan al
+  enganche; si el pedido no declara canal, el tipo se deduce de la direccion, y si no declara forma
+  de pago se asume efectivo (la comanda no cobra).
 - Si el request que creo el pedido hace rollback despues de un envio en linea, el POS puede quedar
   con una comanda sin pedido en Atiende (raro; el staff la ve en caja).

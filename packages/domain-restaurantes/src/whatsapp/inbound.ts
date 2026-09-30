@@ -39,9 +39,17 @@ export interface InboundMessageOutcome {
 export async function handleInboundWhatsAppMessage(
   repo: RestaurantesRepository,
   turnHandler: WhatsAppTurnHandler,
-  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly phoneNumberId: string },
+  args: {
+    readonly organizationId: string;
+    readonly messageId: string;
+    readonly phone: string;
+    readonly body: string;
+    readonly phoneNumberId: string;
+    /** Sucursal resuelta desde el numero que recibio el mensaje (`resolveWhatsAppChannel`). */
+    readonly propertyId?: string | null;
+  },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, body, phoneNumberId } = args;
+  const { organizationId, messageId, phone, body, phoneNumberId, propertyId } = args;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
@@ -75,7 +83,7 @@ export async function handleInboundWhatsAppMessage(
       const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
       const customer = await lookupCustomer(repo, organizationId, phone);
-      const turn = await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer });
+      const turn = await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer, propertyId: propertyId ?? null });
 
       const assistantMessage: ConversationMessage = { role: "assistant", content: turn.reply };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);

@@ -7,6 +7,7 @@
 // SOLO rutea, el app_secret de plataforma (nunca en esta tabla) verifica todas las
 // firmas (ver restaurantes.whatsapp_channel_config en migrations/001).
 import type { RestaurantesRepository } from "../repository.ts";
+import type { WhatsAppChannelResolution } from "../types.ts";
 
 export type MetaTextMessage = {
   readonly id: string;
@@ -62,4 +63,11 @@ export function extractMetaPhoneNumberId(payload: unknown): string | null {
  * caller debe responder ack silencioso (200), nunca reintento. */
 export async function resolveOrganizationByPhoneNumberId(repo: RestaurantesRepository, phoneNumberId: string): Promise<string | null> {
   return repo.resolveOrganizationByPhoneNumberId(phoneNumberId);
+}
+
+/** Resuelve organizacion Y sucursal desde el `phone_number_id` que recibio el mensaje (modelo
+ * PM, migracion 023: un numero por sucursal). `propertyId` es null cuando el numero es el
+ * numero por defecto de la organizacion. `null` si ningun numero lo reconoce. */
+export async function resolveWhatsAppChannel(repo: RestaurantesRepository, phoneNumberId: string): Promise<WhatsAppChannelResolution | null> {
+  return repo.resolveWhatsAppChannel(phoneNumberId);
 }

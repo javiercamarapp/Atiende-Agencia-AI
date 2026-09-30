@@ -258,6 +258,7 @@ número de cierre.
 | 134 | Sin usar — timestamp saltado, no un archivo borrado (mismo caso que 126). |
 | 135 `0014_superadmin_salud_operativa.sql` | Primera pieza de "Salud operativa" del superadmin: latidos de los 17 crons de `vercel.json` (`withHeartbeat`), salud de las 6 colas `messaging_outbox` (WhatsApp/email) y estado de las fuentes de licitaciones — el superadmin antes no tenía forma de saber si un cron dejó de correr o una cola quedó atascada sin drenar. |
 | 185 `030_zona_horaria_property.sql` | Fase 3 (producto) zona horaria por negocio, parte hoteles: `hoteles.property_config` (timezone IANA nullable, sin default en SQL — el default vive en `resolverZonaHorariaNegocio()`) conectado a night-audit, al motor de recomendaciones de tarifa y a no-show. |
+| 189 `028_source_run_check_yucatan_guadalajara.sql` | Hallazgo de auditoría CRÍTICO (a5): el PR #193 agregó los conectores reales `yucatan_ocds`/`guadalajara_ocds` al registro de licitaciones pero ninguna migración extendió el CHECK de `licitaciones.source_run.source` (última extensión: 131/`023_ocds_connectors_source_check.sql`) — cada corrida del cron de descubrimiento con esas 2 fuentes violaba el CHECK (23514), revertía en silencio los tenders ya insertados en la misma transacción y ni siquiera dejaba un registro de la corrida fallida. |
 
 Si vuelves a auditar este README, agrega una fila breve por cada migración
 nueva a esta tabla (no hace falta reproducir la prosa extensa de las fases

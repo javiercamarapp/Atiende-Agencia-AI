@@ -1,0 +1,134 @@
+// Reglas de negocio por sucursal que se aplican al cotizar y al crear un pedido (modelo PM,
+// migracion 023): horario ("abierto ahora"), pedido minimo por canal, cobertura de entrega
+// ("fuera de zona") y politica de propina. Todas son OPT-IN: una sucursal sin politica
+// configurada (o una base sin la migracion) se comporta exactamente como antes.
+//
+// Las lecturas van por `repo.find*`/`repo.list*`, que degradan con SAVEPOINT contra la base
+// sin migrar (ver PostgresRestaurantesRepository): este modulo nunca captura SQLSTATE por
+// su cuenta porque corre dentro de la transaccion unica del request.
+import { estaAbiertoAhora, mensajeSucursalCerrada, type EstadoApertura } from "./horarios.ts";
+import { OrderValidationError } from "./errors.ts";
+import { normalizeZoneText } from "./nearest-branch.ts";
+import type { RestaurantesRepository } from "./repository.ts";
+import type { Branch, BranchPolicy, CanalPedido, KnownZone, PropinaPolitica } from "./types.ts";
+
+export const COLONIA_FUERA_DE_VERIFICACION_MENSAJE =
+  "No reconozco esa colonia para verificar la zona de reparto: pida otra referencia cercana (colonia vecina, cruce de calles o plaza conocida) e inténtelo de nuevo.";
+
+/** `undefined` -> "domicilio" (comportamiento historico); cualquier otro valor fuera del
+ * catalogo se rechaza en vez de caer en silencio a un canal. */
+export function normalizarCanal(raw: unknown): CanalPedido {
+  if (raw === undefined || raw === null) return "domicilio";
+  if (raw === "domicilio" || raw === "recoger") return raw;
+  throw new OrderValidationError("El canal del pedido debe ser 'domicilio' o 'recoger'.");
+}
+
+/** PM: propina SOLO con tarjeta. Sin politica configurada nunca se pregunta. */
+export function debePreguntarPropina(politica: PropinaPolitica | null, paymentMethod: "efectivo" | "tarjeta" | null | undefined): boolean {
+  if (politica === "siempre") return true;
+  if (politica === "solo_tarjeta") return paymentMethod === "tarjeta";
+  return false;
+}
+
+/** Mismo emparejamiento que `restaurantes.nearest_branch_by_colonia` (migracion 005): texto
+ * normalizado de ambos lados, la zona mas especifica (nombre mas largo) gana. */
+export function matchKnownZone(zones: readonly KnownZone[], colonia: string): KnownZone | null {
+  const input = normalizeZoneText(colonia);
+  if (!input) return null;
+  let best: KnownZone | null = null;
+  for (const zone of zones) {
+    const name = normalizeZoneText(zone.name);
+    if (!name) continue;
+    if (input.includes(name) || name.includes(input)) {
+      if (!best || zone.name.length > best.name.length) best = zone;
+    }
+  }
+  return best;
+}
+
+function pesos(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+export interface ReglasSucursalArgs {
+  readonly branch: Branch;
+  readonly canal: CanalPedido;
+  /** Total de renglones ANTES de cualquier descuento de promocion. */
+  readonly subtotal: number;
+  readonly colonia?: string;
+  readonly paymentMethod?: "efectivo" | "tarjeta" | null;
+  readonly propina?: number;
+  /** "admin" (captura manual del staff) no se bloquea por horario. */
+  readonly source?: "web" | "voice" | "whatsapp" | "admin";
+  readonly now?: Date;
+}
+
+export interface ReglasSucursalResultado {
+  readonly policy: BranchPolicy;
+  readonly apertura: EstadoApertura | null;
+  readonly pedidoMinimo: number | null;
+  readonly preguntarPropina: boolean;
+}
+
+/**
+ * Aplica las reglas de la sucursal; lanza `OrderValidationError` con un mensaje claro para
+ * el cliente cuando alguna se viola. Orden: horario -> minimo -> cobertura -> propina.
+ */
+export async function aplicarReglasDeSucursal(repo: RestaurantesRepository, args: ReglasSucursalArgs): Promise<ReglasSucursalResultado> {
+  const { branch, canal, subtotal } = args;
+  const policy = await repo.findBranchPolicy(branch.propertyId);
+
+  let apertura: EstadoApertura | null = null;
+  if (policy.horario && policy.horario.length > 0) {
+    const zona = (await repo.findBranchZonaHoraria(branch.propertyId)).zonaHoraria;
+    apertura = estaAbiertoAhora(policy.horario, args.now ?? new Date(), zona);
+    if (!apertura.abierto && args.source !== "admin") {
+      throw new OrderValidationError(mensajeSucursalCerrada(branch.name, apertura));
+    }
+  }
+
+  const pedidoMinimo = canal === "domicilio" ? policy.pedidoMinimoDomicilio : policy.pedidoMinimoRecoger;
+  if (pedidoMinimo !== null && subtotal < pedidoMinimo) {
+    const faltante = Math.round((pedidoMinimo - subtotal) * 100) / 100;
+    throw new OrderValidationError(
+      `El pedido mínimo ${canal === "domicilio" ? "a domicilio" : "para recoger"} en ${branch.name} es de $${pesos(pedidoMinimo)}. ` +
+        `El pedido suma $${pesos(subtotal)}; faltan $${pesos(faltante)} para alcanzarlo. No se puede registrar por debajo del mínimo: ofrezca agregar productos${canal === "domicilio" ? " o pasar a recoger" : ""}.`,
+    );
+  }
+
+  if (canal === "domicilio") {
+    const zoneIds = await repo.listBranchDeliveryZoneIds(branch.propertyId);
+    if (zoneIds.length > 0) {
+      const colonia = typeof args.colonia === "string" ? args.colonia.trim() : "";
+      if (!colonia) {
+        throw new OrderValidationError(
+          `La sucursal ${branch.name} solo entrega en zonas de cobertura: pida la colonia o zona del cliente para verificarla antes de continuar.`,
+        );
+      }
+      const zones = await repo.listKnownZones(branch.organizationId);
+      const match = matchKnownZone(zones, colonia);
+      if (!match) throw new OrderValidationError(COLONIA_FUERA_DE_VERIFICACION_MENSAJE);
+      if (!zoneIds.includes(match.id)) {
+        throw new OrderValidationError(
+          `${match.name} está fuera de la zona de reparto de ${branch.name}: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.`,
+        );
+      }
+    }
+  }
+
+  const preguntarPropina = debePreguntarPropina(policy.propinaPolitica, args.paymentMethod);
+  if (args.propina !== undefined) {
+    if (!Number.isFinite(args.propina) || args.propina < 0 || args.propina > 100000) {
+      throw new OrderValidationError("La propina debe ser un monto en pesos mayor o igual a 0.");
+    }
+    if (args.propina > 0 && !preguntarPropina) {
+      throw new OrderValidationError(
+        policy.propinaPolitica === "solo_tarjeta"
+          ? "La propina solo se registra cuando el pago es con tarjeta."
+          : "Esta sucursal no registra propina en el pedido.",
+      );
+    }
+  }
+
+  return { policy, apertura, pedidoMinimo, preguntarPropina };
+}
