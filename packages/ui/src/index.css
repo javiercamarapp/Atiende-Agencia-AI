@@ -267,3 +267,35 @@
 @media (prefers-reduced-motion: reduce) {
   .atiende-glifo-animado .atiende-linea { animation: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Experiencia de voz (components/voz/*). Reemplaza las 3 animaciones que el
+   panel original hacía con framer-motion (fade de pantalla, burbuja que sube,
+   avatar de voz que gira) por CSS puro, y define el orbe reactivo. El nivel de
+   audio llega por la variable --vol (0..1) que OrbeAgente escribe en rAF sin
+   pasar por el estado de React.
+   --------------------------------------------------------------------------- */
+@keyframes voz-aparece {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.voz-aparece { animation: voz-aparece 0.2s ease-out both; }
+
+@keyframes voz-burbuja {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.voz-burbuja { animation: voz-burbuja 0.25s ease-out both; }
+
+@keyframes voz-gira {
+  to { transform: rotate(360deg); }
+}
+/* Avatar de voz mientras suena su muestra: 360deg en 2 s, lineal, infinito. */
+.voz-avatar-gira { animation: voz-gira 2s linear infinite; }
+
+@keyframes voz-cursor {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.voz-cursor { animation: voz-cursor 1s steps(1) infinite; }
+

@@ -112,3 +112,5 @@ export {
   type MedidorDeStream,
   type MedidorVolumen,
 } from "./components/voz/medidor-volumen.js";
+export { CampoPixeles } from "./components/voz/CampoPixeles.js";
+export { TextoEscribiendose } from "./components/voz/TextoEscribiendose.js";
