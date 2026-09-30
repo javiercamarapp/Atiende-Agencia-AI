@@ -140,19 +140,18 @@ describe("PostgresComandaOutboxStore: errores reales y camino feliz", () => {
     });
     expect(fila).toMatchObject({ estado: "fallida", intentos: 2, maxIntentos: 5, proximoIntentoEn: "2026-09-30T18:00:00.000Z", creadoEn: "2026-09-30T17:00:00.000Z" });
     expect(fila.payload.cliente.nombre).toBe("A");
-    expect(() => mapFilaComanda({ ...({} as never), estado: "inventado" })).toThrow(/estado desconocido/);
+    expect(() => mapFilaComanda({ estado: "inventado" } as never)).toThrow(/estado desconocido/);
   });
 
   it("listar pide solo columnas con GRANT (nunca idempotency_key ni reclamada_en) y filtra por sucursal/estado", async () => {
     let sqlVisto = "";
     let paramsVistos: unknown[] = [];
     const s: AbortAwareFakeSession = new AbortAwareFakeSession([]);
-    const original = s.query.bind(s);
     s.query = (async (sql: string, params?: unknown[]) => {
       sqlVisto = sql;
       paramsVistos = params ?? [];
       return { rows: [] };
-    }) as typeof original;
+    }) as typeof s.query;
     const r = await new PostgresComandaOutboxStore(s).listar(ORG, { propertyIds: [PROP], estados: ["captura_manual", "fallida"], limite: 500, offset: 3 });
     expect(r).toEqual({ disponible: true, filas: [] });
     expect(sqlVisto).not.toMatch(/idempotency_key|reclamada_en|select \*/i);

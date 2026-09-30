@@ -137,7 +137,7 @@ describe("encolarComandaParaPedido: modo activo", () => {
     t.port.inyectarFalla("crearComanda", { tipo: "timeout" });
     const r = await encolarComandaParaPedido(t.deps, { order: t.order });
     expect(r.agente).toMatchObject({ estado: "pendiente_de_confirmar", folio: null });
-    expect(r.agente.mensaje).not.toMatch(/folio/i);
+    expect(r.agente?.mensaje).not.toMatch(/folio/i);
     expect(r.fila).toMatchObject({ estado: "fallida", folio: null, intentos: 1 });
     expect(t.alertar).not.toHaveBeenCalled();
     expect(new Date(r.fila!.proximoIntentoEn).getTime()).toBe(T0.getTime() + 30_000);
@@ -159,7 +159,7 @@ describe("encolarComandaParaPedido: modo activo", () => {
     const t = await preparar();
     t.port.inyectarFalla("crearComanda", { tipo: "duplicado" });
     const r = await encolarComandaParaPedido(t.deps, { order: t.order });
-    expect(r.agente.folio).toBeNull();
+    expect(r.agente?.folio).toBeNull();
     expect(t.port.comandas).toHaveLength(1);
     t.avanzar(31_000);
     await t.drenar();
@@ -197,7 +197,7 @@ describe("encolarComandaParaPedido: modo activo", () => {
     const r = await encolarComandaParaPedido(t.deps, { order: t.order });
     expect(r.fila).toMatchObject({ estado: "captura_manual", ultimoError: "rechazada:producto_sin_codigo_pos" });
     expect(t.port.llamadasCrear).toHaveLength(0);
-    expect(r.agente.folio).toBeNull();
+    expect(r.agente?.folio).toBeNull();
     expect(r.fila!.payload.items[0]).toMatchObject({ nombre: "Coca-Cola", cantidad: 2 });
   });
 
@@ -221,7 +221,7 @@ describe("encolarComandaParaPedido: modo activo", () => {
     const roto: SoftRestaurantPort = { ...t.port, nombre: "roto", esReal: false, crearComanda: async () => { throw new Error("socket hang up"); } } as unknown as SoftRestaurantPort;
     const r = await encolarComandaParaPedido({ ...t.deps, port: roto }, { order: t.order });
     expect(r.fila).toMatchObject({ estado: "fallida", folio: null });
-    expect(r.agente.folio).toBeNull();
+    expect(r.agente?.folio).toBeNull();
   });
 
   it("un POS colgado se corta por timeout y la comanda queda fallida", async () => {
