@@ -82,7 +82,12 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     // sesión de sistema (`userId: null`), igual que public.ts/voice-tools.ts.
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
-      const organizationId = phoneNumberId ? await repo.resolveOrganizationByPhoneNumberId(phoneNumberId) : null;
+      // Modelo PM: un numero de WhatsApp por sucursal. `resolveWhatsAppChannel` devuelve la
+      // organizacion y, si el numero pertenece a una sucursal, esa sucursal; contra una base
+      // sin la migracion 023 cae al numero por defecto de la organizacion (mismo
+      // comportamiento de antes).
+      const channel = phoneNumberId ? await repo.resolveWhatsAppChannel(phoneNumberId) : null;
+      const organizationId = channel?.organizationId ?? null;
       if (!phoneNumberId || !organizationId) {
         // Número no configurado en la plataforma: ack silencioso, no reintento.
         return c.json({ ok: true });
@@ -101,6 +106,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           phone: `+${message.from}`,
           body: message.text.body,
           phoneNumberId,
+          propertyId: channel?.propertyId ?? null,
         });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `restaurantes.messaging_outbox`

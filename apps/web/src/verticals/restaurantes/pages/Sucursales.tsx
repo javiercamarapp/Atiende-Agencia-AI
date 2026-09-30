@@ -12,13 +12,19 @@ import { Pencil } from "lucide-react";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
+import { ReglasSucursal } from "./ReglasSucursal.tsx";
 
-export function SucursalesPage({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+// Mismo criterio que STAFF_NAV_ROLES de RestaurantesShell.tsx: cosmético, el servidor (admin-modelo-pm.ts
+// + RLS) es el enforcement real.
+const REGLAS_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
+
+export function SucursalesPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
   const [branches, setBranches] = useState<readonly BranchDetail[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ phone: string; address: string }>({ phone: "", address: "" });
   const [saving, setSaving] = useState(false);
+  const [reglasAbiertas, setReglasAbiertas] = useState<string | null>(null);
 
   async function load() {
     setError(null);
@@ -120,6 +126,22 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId }: RestaurantesSh
                   <dt className="text-muted-foreground">Dirección</dt>
                   <dd className="m-0 text-foreground">{b.address ?? "—"}</dd>
                 </dl>
+              )}
+
+              {REGLAS_ROLES.has(role) && editing !== b.propertyId && (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 text-xs"
+                    aria-expanded={reglasAbiertas === b.propertyId}
+                    onClick={() => setReglasAbiertas((actual) => (actual === b.propertyId ? null : b.propertyId))}
+                  >
+                    {reglasAbiertas === b.propertyId ? "Ocultar reglas de pedido" : "Reglas de pedido"}
+                  </Button>
+                  {reglasAbiertas === b.propertyId && <ReglasSucursal apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} branchId={b.propertyId} />}
+                </div>
               )}
             </CardContent>
           </Card>

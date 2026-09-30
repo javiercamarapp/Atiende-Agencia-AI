@@ -9,10 +9,11 @@ import { OrderValidationError } from "./errors.ts";
 import { tryNotifyCustomerOrderConfirmationEmail, tryNotifyStaffNewOrder } from "./order-notifications.ts";
 import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { buildComplementNotes, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS } from "./order-quote.ts";
+import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
 import { applyPromotionToOrderTotal, normalizePromotionCode } from "./promotions.ts";
 import { extraerPackSize, matchesProductSearch, requiresAdultConfirmation, resolveOrderItemsAgainstProducts, tokenizeForProductSearch, UUID_PATTERN } from "./product-search.ts";
 import type { RestaurantesRepository } from "./repository.ts";
-import type { Branch, CreateOrderInput, Order, PersistedOrderItem, Promotion, ProductoEncontrado, RequestedOrderItemInput } from "./types.ts";
+import type { Branch, CanalPedido, CreateOrderInput, Order, OrderQuote, PersistedOrderItem, Promotion, ProductoEncontrado, PropinaPolitica, RequestedOrderItemInput } from "./types.ts";
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -24,13 +25,14 @@ function sha256Hex(value: string): string {
 // suficiente para no encolar un correo con un valor obviamente inválido.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function toProductoEncontrado(product: { id: string; name: string; description: string | null; categoryName: string | null; price: number }): ProductoEncontrado {
+function toProductoEncontrado(product: { id: string; name: string; description: string | null; categoryName: string | null; price: number; noDomicilio?: boolean }): ProductoEncontrado {
   return {
     id: product.id,
     name: product.name,
     price: product.price,
     packSize: extraerPackSize(product.name, product.description),
     requiresAdultConfirmation: requiresAdultConfirmation(product.name, product.categoryName),
+    ...(product.noDomicilio === true ? { noDomicilio: true } : {}),
   };
 }
 
@@ -100,7 +102,8 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     invalidOptionalString(raw.notes, 2000) ||
     invalidOptionalString(raw.callTranscript, 20000) ||
     invalidOptionalString(raw.callRecordingUrl, 2000) ||
-    invalidOptionalString(raw.promoCode, 40)
+    invalidOptionalString(raw.promoCode, 40) ||
+    invalidOptionalString(raw.colonia, 200)
   ) {
     throw new OrderValidationError("Uno o más campos exceden el tamaño permitido");
   }
@@ -110,8 +113,13 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
   if (raw.customerEmail !== undefined && raw.customerEmail !== null && raw.customerEmail.trim() !== "" && (typeof raw.customerEmail !== "string" || raw.customerEmail.trim().length > 320 || !EMAIL_RE.test(raw.customerEmail.trim()))) {
     throw new OrderValidationError("customerEmail inválido");
   }
+  const canal = normalizarCanal(raw.canal);
+  if (raw.propina !== undefined && (typeof raw.propina !== "number" || !Number.isFinite(raw.propina) || raw.propina < 0 || raw.propina > 100000)) {
+    throw new OrderValidationError("La propina debe ser un monto en pesos mayor o igual a 0.");
+  }
   const agentOrder = raw.source === "voice" || raw.source === "whatsapp";
-  if (agentOrder && (typeof raw.customerAddress !== "string" || !raw.customerAddress.trim())) {
+  // Para recoger no hay direccion de entrega que exigir.
+  if (agentOrder && canal === "domicilio" && (typeof raw.customerAddress !== "string" || !raw.customerAddress.trim())) {
     throw new OrderValidationError("La dirección completa de entrega es requerida");
   }
   if (
@@ -154,6 +162,7 @@ export function validateCreateOrderPayload(raw: CreateOrderInput): ValidatedCrea
     customerName: raw.customerName.trim(),
     customerPhone: voicePhone ?? normalizePhone(raw.customerPhone),
     customerAddress: raw.customerAddress?.trim(),
+    colonia: raw.colonia?.trim() || undefined,
     customerEmail: raw.customerEmail?.trim() ? raw.customerEmail.trim().toLowerCase() : undefined,
     promoCode: raw.promoCode?.trim() ? normalizePromotionCode(raw.promoCode) : undefined,
   };
@@ -218,7 +227,7 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
         },
       ],
       [{ ...product, packSize: requestedPieces ? product.packSize : null }],
-      { adultConfirmed: payload.adultConfirmed || (!requestedPieces && !isAgentOrder) },
+      { adultConfirmed: payload.adultConfirmed || (!requestedPieces && !isAgentOrder), canal: normalizarCanal(payload.canal) },
     ).lines[0]!;
 
     if (!Number.isInteger(quote.quantity) || quote.quantity <= 0) {
@@ -234,6 +243,19 @@ export async function prepareCreateOrder(repo: RestaurantesRepository, rawInput:
       ...(quote.tortilla ? { tortilla: quote.tortilla } : {}),
     });
   }
+
+  // Modelo PM (migracion 023) -- reglas por sucursal: horario, pedido minimo por canal
+  // (sobre el total de renglones ANTES de descuentos), cobertura de entrega y propina.
+  // Opt-in: sin politica configurada no cambia nada.
+  await aplicarReglasDeSucursal(repo, {
+    branch,
+    canal: normalizarCanal(payload.canal),
+    subtotal: total,
+    colonia: payload.colonia,
+    paymentMethod: payload.paymentMethod,
+    propina: payload.propina,
+    source: payload.source,
+  });
 
   // Fase 11 — promociones/marketing (ver promotions.ts para el porqué de este
   // gap y por qué es deliberadamente nuevo respecto al original). Se aplica DESPUÉS
@@ -312,7 +334,13 @@ export async function createOrder(repo: RestaurantesRepository, rawInput: Create
   // Fase 11 — el descuento real ya está restado de `total` (ver prepareCreateOrder);
   // esta nota es solo auditoría legible por el staff en el panel de pedidos, nunca
   // la fuente de verdad del descuento (eso es `total` + `appliedPromotion`).
-  const finalNotes = appliedPromotion ? [notesWithAlcohol, `Promoción aplicada: ${appliedPromotion.code} (-$${discount.toFixed(2)}).`].join("\n") : notesWithAlcohol;
+  const notesWithPromotion = appliedPromotion ? [notesWithAlcohol, `Promoción aplicada: ${appliedPromotion.code} (-$${discount.toFixed(2)}).`].join("\n") : notesWithAlcohol;
+  // Canal y propina viajan en las notas (no hay columnas dedicadas en `orders`): solo se
+  // agregan cuando el caller los manda, para no alterar el dedupe de pedidos historicos.
+  const canalLines: string[] = [];
+  if (payload.canal) canalLines.push(payload.canal === "recoger" ? "Canal: recoger en sucursal." : "Canal: domicilio.");
+  if (payload.propina !== undefined && payload.propina > 0) canalLines.push(`Propina: $${payload.propina.toFixed(2)} (no incluida en el total).`);
+  const finalNotes = canalLines.length > 0 ? [notesWithPromotion, ...canalLines].join("\n") : notesWithPromotion;
 
   const dedupeFingerprint = sha256Hex(
     JSON.stringify({
@@ -409,14 +437,41 @@ export async function quoteOrder(
     readonly branchSlug: string;
     readonly items: readonly RequestedOrderItemInput[];
     readonly adultConfirmed?: boolean;
+    /** Modelo PM: canal del pedido (default "domicilio"), colonia de entrega y forma de pago
+     * (solo para decidir si corresponde preguntar propina). */
+    readonly canal?: CanalPedido;
+    readonly colonia?: string;
+    readonly paymentMethod?: "efectivo" | "tarjeta";
   },
-) {
+): Promise<OrderQuote & QuotePolicyInfo> {
   const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
   if (!branch || branch.status !== "active") {
     throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
   }
+  const canal = normalizarCanal(args.canal);
   const resolved = await resolveBranchOrderItems(repo, branch.propertyId, args.items);
-  return buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed });
+  const quote = buildOrderQuoteFromProducts(resolved.items, resolved.products, { adultConfirmed: args.adultConfirmed, canal });
+  const reglas = await aplicarReglasDeSucursal(repo, { branch, canal, subtotal: quote.total, colonia: args.colonia, paymentMethod: args.paymentMethod });
+  return {
+    ...quote,
+    canal,
+    pedidoMinimo: reglas.pedidoMinimo,
+    propinaPolitica: reglas.policy.propinaPolitica,
+    preguntarPropina: reglas.preguntarPropina,
+    abiertoAhora: reglas.apertura ? reglas.apertura.abierto : null,
+    cierraA: reglas.apertura?.cierraA ?? null,
+  };
 }
 
-export { DEFAULT_COMPLEMENTS };
+/** Informacion de politica de sucursal que acompana a una cotizacion (modelo PM). */
+export interface QuotePolicyInfo {
+  readonly canal: CanalPedido;
+  /** Minimo que aplica a este canal (ya cumplido: si no se cumpliera, `quoteOrder` lanza). */
+  readonly pedidoMinimo: number | null;
+  readonly propinaPolitica: PropinaPolitica | null;
+  /** true si, dada la forma de pago conocida hasta ahora, corresponde preguntar propina. */
+  readonly preguntarPropina: boolean;
+  /** null = la sucursal no tiene horario configurado. */
+  readonly abiertoAhora: boolean | null;
+  readonly cierraA: string | null;
+}

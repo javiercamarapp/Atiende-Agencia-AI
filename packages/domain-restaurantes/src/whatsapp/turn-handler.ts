@@ -17,6 +17,9 @@ export interface WhatsAppTurnHandler {
     /** Historial completo, ya con el mensaje nuevo appended. */
     readonly messages: readonly ConversationMessage[];
     readonly customer: CustomerLookupResult;
+    /** Sucursal dueña del número de WhatsApp que recibió el mensaje (modelo PM: un número
+     * por sucursal). `null`/ausente = número por defecto de la organización. */
+    readonly propertyId?: string | null;
   }): Promise<{ readonly reply: string; readonly orderId: string | null; readonly propertyId: string | null }>;
 }
 

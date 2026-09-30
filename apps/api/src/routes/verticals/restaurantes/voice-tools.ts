@@ -136,7 +136,7 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
   // calcular él mismo.
   app.post("/v1/restaurantes/:orgSlug/orders/quote", async (c) => {
     requireVoiceToolSecret(deps, c.req.raw);
-    const body = await readJsonCapped<{ branch_slug?: unknown; items?: unknown; adult_confirmed?: unknown }>(c.req.raw, 24 * 1024);
+    const body = await readJsonCapped<{ branch_slug?: unknown; items?: unknown; adult_confirmed?: unknown; canal?: unknown; colonia_entrega?: unknown; payment_method?: unknown }>(c.req.raw, 24 * 1024);
     const branchSlug = typeof body.branch_slug === "string" ? body.branch_slug : "";
     if (!branchSlug.trim()) throw Errors.validation("branch_slug es requerido");
 
@@ -153,6 +153,11 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
           branchSlug,
           items: mapQuoteItems(body.items),
           adultConfirmed: body.adult_confirmed === true,
+          // Modelo PM: canal (default domicilio), colonia de entrega y forma de pago (solo para
+          // saber si corresponde preguntar propina). Las reglas las aplica quoteOrder.
+          canal: typeof body.canal === "string" ? (body.canal as "domicilio" | "recoger") : undefined,
+          colonia: typeof body.colonia_entrega === "string" ? body.colonia_entrega : undefined,
+          paymentMethod: body.payment_method === "efectivo" || body.payment_method === "tarjeta" ? body.payment_method : undefined,
         });
         return c.json({ quote });
       } catch (err) {

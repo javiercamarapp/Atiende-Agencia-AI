@@ -16,6 +16,7 @@ import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
+import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -43,5 +44,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // FASE 3 (producto) — configuración editable del panel (WhatsApp/zonas
   // conocidas), owner/admin -- ver el comentario de cabecera de admin-config.ts.
   app.route("/", restaurantesAdminConfigRoutes(deps));
+  // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
+  app.route("/", restaurantesAdminModeloPmRoutes(deps));
   return app;
 }

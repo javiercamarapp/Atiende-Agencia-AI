@@ -65,5 +65,6 @@ export function buildRestaurantFixture() {
     organizationId,
     propertyId,
     products: { tacosPastor, cocaCola, quesobich, cervezaSol },
+    categories: { tacos: catTacos, bebidas: catBebidas, cervezas: catCervezas },
   };
 }
