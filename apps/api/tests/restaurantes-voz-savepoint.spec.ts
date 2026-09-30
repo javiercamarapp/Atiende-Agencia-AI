@@ -29,7 +29,7 @@ async function construir(handlers: readonly FakeSessionHandler[]) {
     ...ctx.deps,
     vozRepo: () => new PostgresVozRepository(session),
     voiceProvider: provider,
-    env: { ...ctx.deps.env, voicePreviewTokenSecret: "secreto-de-preview-de-pruebas-0123456789" },
+    env: { ...ctx.deps.env, voicePreviewTokenSecret: "test-voice-preview-token-secret" },
   };
   return { ctx, session, provider, app: buildApp(deps), base: `/v1/restaurantes/${ctx.propertyIdA}/admin/voz`, secret: ctx.deps.env.internalSecret };
 }

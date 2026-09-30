@@ -8,7 +8,7 @@ import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
 import { authedGet, authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
 
-const SECRETO = "secreto-de-preview-de-pruebas-0123456789";
+const SECRETO = "test-voice-preview-token-secret";
 
 /** `Response` de Hono con `json()` tipado como any: los cuerpos de estas rutas se inspeccionan por campo. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -422,7 +422,7 @@ describe("registrador de sistema /internal/restaurantes/voz/*", () => {
       const entrada = { sessionId: sesionId, organizationId: t.ctx.organizationId, propertyId: t.ctx.propertyIdA, voiceId: "Kore", proveedor: "gemini-3.8-live" };
       const viejo = firmarPreviewToken(SECRETO, entrada, new Date(Date.now() - 600_000), 60).token;
       expect((await post(t, "/previews/consumir", { token: viejo })).status).toBe(401);
-      const ajeno = firmarPreviewToken("otro-secreto-de-16-o-mas-chars", entrada, new Date(), 60).token;
+      const ajeno = firmarPreviewToken("test-otro-secreto-de-preview", entrada, new Date(), 60).token;
       expect((await post(t, "/previews/consumir", { token: ajeno })).status).toBe(401);
       const huerfano = firmarPreviewToken(SECRETO, { ...entrada, sessionId: "00000000-0000-4000-8000-00000000ffff" }, new Date(), 60).token;
       expect((await post(t, "/previews/consumir", { token: huerfano })).status).toBe(409);

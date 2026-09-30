@@ -36,7 +36,7 @@ describe("catalogo de 30 voces de Gemini", () => {
 });
 
 describe("token efimero de preview (HMAC)", () => {
-  const SECRETO = "secreto-de-prueba-suficientemente-largo";
+  const SECRETO = "test-preview-token-secret-ok";
   const AHORA = new Date("2026-09-30T12:00:00.000Z");
   const entrada = { sessionId: "s-1", organizationId: "org-1", propertyId: "prop-1", voiceId: "Kore", proveedor: "gemini-3.8-live" };
 
@@ -66,7 +66,7 @@ describe("token efimero de preview (HMAC)", () => {
     const payloadAjeno = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, "base64url").toString()), org: "org-2" })).toString("base64url");
     expect(verificarPreviewToken(SECRETO, `${payloadAjeno}.${f}`, AHORA)).toEqual({ ok: false, razon: "firma" });
     expect(verificarPreviewToken(SECRETO, `${p}.${f.slice(0, -2)}AA`, AHORA)).toEqual({ ok: false, razon: "firma" });
-    expect(verificarPreviewToken("otro-secreto-igualmente-largo-123", token, AHORA)).toEqual({ ok: false, razon: "firma" });
+    expect(verificarPreviewToken("test-otro-secreto-igualmente", token, AHORA)).toEqual({ ok: false, razon: "firma" });
   });
 
   it("rechaza formatos invalidos", () => {

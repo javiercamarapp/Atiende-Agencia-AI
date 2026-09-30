@@ -17,17 +17,17 @@ describe("GeminiLiveProvider", () => {
 
   it("CON credencial: pide un token efimero de un solo uso con voz y prompt bloqueados, y devuelve solo el token efimero", async () => {
     const fetchFn = vi.fn(async () => new Response(JSON.stringify({ name: "auth_tokens/abc123" }), { status: 200 }));
-    const p = new GeminiLiveProvider({ apiKey: "LLAVE-SECRETA", fetchFn: fetchFn as unknown as typeof fetch, ahora: () => AHORA });
+    const p = new GeminiLiveProvider({ apiKey: "test-gemini-api-key", fetchFn: fetchFn as unknown as typeof fetch, ahora: () => AHORA });
     expect((await p.salud()).ok).toBe(true);
     const sesion = await p.emitirSesionPreview(entrada);
 
     expect(sesion).toMatchObject({ proveedor: "gemini-3.8-live", modelo: "gemini-3.8-live", tokenProveedor: "auth_tokens/abc123", expiraEn: "2026-09-30T12:05:00.000Z" });
     expect(sesion.websocketUrl).toMatch(/^wss:\/\/generativelanguage\.googleapis\.com\/ws\/.*BidiGenerateContentConstrained$/);
-    expect(JSON.stringify(sesion)).not.toContain("LLAVE-SECRETA");
+    expect(JSON.stringify(sesion)).not.toContain("test-gemini-api-key");
 
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://generativelanguage.googleapis.com/v1alpha/auth_tokens");
-    expect((init.headers as Record<string, string>)["x-goog-api-key"]).toBe("LLAVE-SECRETA");
+    expect((init.headers as Record<string, string>)["x-goog-api-key"]).toBe("test-gemini-api-key");
     const body = JSON.parse(init.body as string);
     expect(body.uses).toBe(1);
     expect(body.expireTime).toBe("2026-09-30T12:05:00.000Z");
