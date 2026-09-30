@@ -115,3 +115,4 @@ export {
 export { CampoPixeles } from "./components/voz/CampoPixeles.js";
 export { TextoEscribiendose } from "./components/voz/TextoEscribiendose.js";
 export { ETIQUETA_MODO_ORB, OrbeAgente, volumenObjetivo, type OrbeAgenteProps } from "./components/voz/OrbeAgente.js";
+export { TranscripcionEnVivo, type TranscripcionEnVivoProps } from "./components/voz/TranscripcionEnVivo.js";
