@@ -28,9 +28,9 @@ import { registerCallbackRequest } from "../callback-requests.ts";
 import { vipNote } from "../customers.ts";
 import { OrderValidationError } from "../errors.ts";
 import { findNearestBranch } from "../nearest-branch.ts";
-import { createOrder, quoteOrder, searchProducts } from "../orders.ts";
+import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo } from "../orders.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
-import type { BranchSummary, CustomerLookupResult, DefaultComplement, Order, OrderQuote, RequestedComplement, RequestedOrderItemInput, TortillaChoice } from "../types.ts";
+import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, DefaultComplement, Order, OrderQuote, RequestedComplement, RequestedOrderItemInput, TortillaChoice } from "../types.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ export function getAgentConfig(_organizationId: string): WhatsAppLlmAgentConfig 
   return FALLBACK_CONFIG;
 }
 
-function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date): string {
+function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null): string {
   const basePrompt = `Eres el asistente de WhatsApp de ${config.businessName}, con varias sucursales.
 Tomas pedidos a domicilio por chat. Tono cálido, directo, mensajes cortos (esto es WhatsApp, no una carta), actúa natural — no leas listas completas de golpe, ve conversando.
 
@@ -191,10 +191,21 @@ FLUJO DE LA CONVERSACIÓN (en este orden):
     basePrompt,
     ORDER_QUANTITY_RULES,
     ORDER_IDENTITY_AND_COMPLEMENT_RULES,
+    ...(entryBranch ? [branchChannelRules(entryBranch)] : []),
     `TONO DE VOZ REQUERIDO: ${TONE_INSTRUCTIONS[config.toneStyle]}`,
     `SALUDO SEGÚN LA HORA ACTUAL (usa esto tal cual solo en tu primer mensaje de la conversación): "${saludoSegunHora(config.timezone, now)}"`,
     `CONTEXTO DEL CLIENTE (no lo repitas literal, úsalo para hablarle natural):\n${customerContextBlock(customer)}`,
   ].join("\n\n");
+}
+
+/** Modelo PM (un WhatsApp por sucursal): solo se agrega cuando el mensaje entro por el numero
+ * de una sucursal, asi que el prompt de los demas restaurantes no cambia. Las reglas duras
+ * (minimo, horario, no_domicilio, zona, propina) las aplican las herramientas, no el modelo. */
+export function branchChannelRules(branch: Pick<Branch, "name" | "slug">): string {
+  return `SUCURSAL DE ESTE CHAT: el cliente escribió al WhatsApp de la sucursal "${branch.name}" (branch_slug: "${branch.slug}"). Úsala como sucursal del pedido por defecto: no le pidas elegir sucursal ni llames a buscar_sucursal_cercana, salvo que pida otra sucursal o que una herramienta diga que su dirección está fuera de la zona de reparto de esta sucursal.
+CANAL: pregunta desde el inicio si el pedido es "a domicilio" o "para recoger en sucursal" y manda canal ("domicilio" o "recoger") en cotizar_pedido y en crear_pedido. Para recoger no pidas dirección. A domicilio pide dirección completa con referencias y manda colonia_entrega (la colonia o zona que dio el cliente).
+REGLAS QUE APLICAN LAS HERRAMIENTAS (no las decidas ni las recalcules tú): pedido mínimo por canal, horario de la sucursal, productos que no se venden a domicilio y zona de reparto. Si cotizar_pedido o crear_pedido responden con un error por alguno de estos motivos, explícaselo al cliente con tus palabras y ofrece la alternativa del mensaje (agregar productos, pasar a recoger, dar otra referencia). Nunca registres un pedido que la herramienta rechazó.
+PROPINA: cotizar_pedido devuelve propina_politica y preguntar_propina. Si la política es "solo_tarjeta", pregunta por la propina únicamente cuando el cliente paga con tarjeta (llama cotizar_pedido otra vez con payment_method para confirmar que corresponde) y mándala en pesos en propina de crear_pedido. Nunca preguntes propina si paga en efectivo.`;
 }
 
 /** Bug real confirmado el 3-sep-2026: para tacos de bistec, refuerza el aviso
@@ -272,6 +283,9 @@ export const TOOLS: readonly LlmToolDefinition[] = [
           },
         },
         adult_confirmed: { type: "boolean", description: "true únicamente si el pedido incluye alcohol y el cliente confirmó mayoría de edad." },
+        canal: { type: "string", enum: ["domicilio", "recoger"], description: "Si el pedido es a domicilio o para recoger en sucursal. Por defecto 'domicilio'." },
+        colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
+        payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
       },
       required: ["branch_slug", "items"],
     },
@@ -284,7 +298,7 @@ export const TOOLS: readonly LlmToolDefinition[] = [
       properties: {
         branch_slug: { type: "string" },
         customer_name: { type: "string" },
-        customer_address: { type: "string" },
+        customer_address: { type: "string", description: "Dirección completa de entrega; obligatoria salvo canal 'recoger'." },
         items: {
           type: "array",
           items: {
@@ -303,8 +317,11 @@ export const TOOLS: readonly LlmToolDefinition[] = [
         omit_default_complements: { type: "array", items: { type: "string", enum: ["salsa_verde", "salsa_roja", "limones", "cebolla"] } },
         payment_method: { type: "string", enum: ["efectivo", "tarjeta"] },
         adult_confirmed: { type: "boolean" },
+        canal: { type: "string", enum: ["domicilio", "recoger"], description: "Por defecto 'domicilio'. Para 'recoger' no hace falta customer_address." },
+        colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
+        propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio. No suma al total." },
       },
-      required: ["branch_slug", "customer_name", "customer_address", "items", "payment_method"],
+      required: ["branch_slug", "customer_name", "items", "payment_method"],
     },
   },
   {
@@ -343,7 +360,7 @@ function toRequestedItems(raw: unknown): RequestedOrderItemInput[] {
   });
 }
 
-function quoteToWire(quote: OrderQuote) {
+function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo>) {
   return {
     lines: quote.lines.map((line) => ({
       product_id: line.productId,
@@ -358,7 +375,17 @@ function quoteToWire(quote: OrderQuote) {
     })),
     total: quote.total,
     contains_alcohol: quote.containsAlcohol,
+    // Modelo PM: politica de la sucursal que aplico la herramienta (minimo ya cumplido,
+    // propina, horario). Solo se incluye lo que la cotizacion reporto.
+    ...(quote.canal ? { canal: quote.canal } : {}),
+    ...(quote.pedidoMinimo !== undefined && quote.pedidoMinimo !== null ? { pedido_minimo: quote.pedidoMinimo } : {}),
+    ...(quote.propinaPolitica ? { propina_politica: quote.propinaPolitica, preguntar_propina: quote.preguntarPropina === true } : {}),
+    ...(quote.abiertoAhora !== undefined && quote.abiertoAhora !== null ? { abierto_ahora: quote.abiertoAhora, cierra_a: quote.cierraA ?? null } : {}),
   };
+}
+
+function toCanal(raw: unknown): CanalPedido | undefined {
+  return typeof raw === "string" ? (raw as CanalPedido) : undefined;
 }
 
 function orderToWire(order: Order) {
@@ -423,6 +450,9 @@ async function executeToolCall(
             branchSlug: String(input.branch_slug ?? ""),
             items: toRequestedItems(input.items),
             adultConfirmed: input.adult_confirmed === true,
+            canal: toCanal(input.canal),
+            colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
+            paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
           });
           return { result: { quote: quoteToWire(quote) }, orderId: null, propertyId: null };
         }
@@ -440,6 +470,9 @@ async function executeToolCall(
             adultConfirmed: input.adult_confirmed === true,
             requestedComplements: Array.isArray(input.requested_complements) ? (input.requested_complements as readonly RequestedComplement[]) : undefined,
             omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
+            canal: toCanal(input.canal),
+            colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
+            propina: typeof input.propina === "number" ? input.propina : undefined,
           });
           return { result: { order: orderToWire(order) }, orderId: order.id, propertyId: order.propertyId };
         }
@@ -499,15 +532,18 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   const now = options.now ?? (() => new Date());
 
   return {
-    async handleInboundMessage({ organizationId, phone, messages, customer }) {
+    async handleInboundMessage({ organizationId, phone, messages, customer, propertyId: entryPropertyId }) {
       const deadline = Date.now() + turnBudgetMs;
       const config = getAgentConfig(organizationId);
       const branches = await repo.listBranchesForOrganization(organizationId);
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now());
+      // Sucursal dueña del numero que recibio el mensaje (null = numero por defecto de la org).
+      const entryBranch = entryPropertyId ? await repo.findBranchById(organizationId, entryPropertyId) : null;
+      const activeEntryBranch = entryBranch && entryBranch.status === "active" ? entryBranch : null;
+      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch);
 
       const working: LlmMessage[] = toLlmHistory(messages);
       let orderId: string | null = null;
-      let propertyId: string | null = null;
+      let propertyId: string | null = activeEntryBranch?.propertyId ?? null;
       let huboFalloDeHerramienta = false;
       const safeReply = (reply: string) => enforceBistecPackNotice(reply, working);
 

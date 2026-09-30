@@ -119,9 +119,9 @@ export async function runDiscoverTendersForOrganization(
         candidates.push(record);
       }
 
-      const ingestResult = await withRepo(async (repo) => {
+      const { ingest: ingestResult, runNotPersistedReason } = await withRepo(async (repo) => {
         const ingest = await repo.ingestTendersFromSource(organizationId, descriptor.id, candidates);
-        await repo.recordSourceRun(organizationId, {
+        const run = await repo.recordSourceRun(organizationId, {
           source: descriptor.id,
           state: "ok",
           startedAt,
@@ -132,8 +132,15 @@ export async function runDiscoverTendersForOrganization(
           },
           correlationId: null,
         });
-        return ingest;
+        return { ingest, runNotPersistedReason: run.notPersistedReason };
       });
+      // a5-fix-licitaciones-source-run-check-yucatan-guadalajara: los tenders YA quedaron
+      // persistidos; si la base aún no admite esta fuente en `source_run` (migración 028
+      // pendiente), el repositorio degradó con SAVEPOINT en vez de revertirlos. Se hace
+      // visible en el resultado del cron y en el log -- nunca en silencio.
+      if (runNotPersistedReason !== undefined) {
+        options.logger?.warn(`discover-tenders: ${runNotPersistedReason}`, { organizationId, source: descriptor.id });
+      }
       results.push({
         source: descriptor.id,
         state: "ok",
@@ -141,23 +148,38 @@ export async function runDiscoverTendersForOrganization(
         created: ingestResult.created,
         updated: ingestResult.updated,
         droppedRows: droppedCount,
-        message: `${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s).`,
+        message: `${ingestResult.created} nueva(s), ${ingestResult.updated} actualizada(s).${runNotPersistedReason !== undefined ? ` [AVISO: ${runNotPersistedReason}]` : ""}`,
       });
     } catch (err) {
       const { state, message } = classifySourceFailure(err);
       const finishedAt = now().toISOString();
+      // a5-fix-licitaciones-source-run-check-yucatan-guadalajara (defensa en profundidad):
+      // `resultMessage` arranca como el mensaje del fallo ORIGINAL (el que ya viaja a
+      // `results`/al body de la ruta/al latido vía `CronPartialFailureError`, ver
+      // discover.ts). Si además el intento de REGISTRAR esa corrida fallida (abajo)
+      // también falla -- el caso real que motivó esta migración, antes de que
+      // 028_source_run_check_yucatan_guadalajara.sql extendiera el CHECK para
+      // yucatan_ocds/guadalajara_ocds -- ese segundo fallo se anexa aquí en vez de
+      // tragarse SOLO en el logger: así, un caso futuro similar (una fuente nueva
+      // agregada al registro sin su migración de CHECK) sigue siendo visible en el
+      // latido/heartbeat del cron (que ya marca "error" ante cualquier `state !==
+      // "ok"`, ver with-heartbeat.ts::CronPartialFailureError) en vez de quedar
+      // documentado SOLO en logs de proceso que nadie audita.
+      let resultMessage = message;
       try {
         // Transacción NUEVA -- nunca la que acaba de fallar arriba (ver comentario de
         // cabecera del archivo).
         await withRepo((repo) => repo.recordSourceRun(organizationId, { source: descriptor.id, state, startedAt, finishedAt, evidence: { message }, correlationId: null }));
       } catch (recordErr) {
         // Nunca deja que un fallo al REGISTRAR la corrida fallida oculte el fallo original de la fuente.
+        const recordErrMessage = recordErr instanceof Error ? recordErr.message : String(recordErr);
         options.logger?.warn(`discover-tenders: no se pudo registrar la corrida fallida de "${descriptor.id}"`, {
           organizationId,
-          err: recordErr instanceof Error ? recordErr.message : String(recordErr),
+          err: recordErrMessage,
         });
+        resultMessage = `${message} [ADEMÁS no se pudo registrar la corrida fallida en source_run: ${recordErrMessage}]`;
       }
-      results.push({ source: descriptor.id, state, discovered: 0, created: 0, updated: 0, droppedRows: droppedCount, message });
+      results.push({ source: descriptor.id, state, discovered: 0, created: 0, updated: 0, droppedRows: droppedCount, message: resultMessage });
     }
   }
 

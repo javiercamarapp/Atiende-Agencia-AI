@@ -1,10 +1,12 @@
 export type {
   Branch,
+  BranchPolicy,
   BranchProductState,
   BranchSummary,
   BranchTimezoneConfig,
   CallbackRequest,
   CallbackRequestInput,
+  CanalPedido,
   Category,
   CategoryPatch,
   CreateOrderInput,
@@ -20,6 +22,7 @@ export type {
   NearestBranchMatch,
   NewCategoryInput,
   NewKnownZoneInput,
+  NoDomicilioMarks,
   NewProductInput,
   NewPromotionInput,
   Order,
@@ -35,6 +38,7 @@ export type {
   Promotion,
   PromotionPatch,
   PromotionType,
+  PropinaPolitica,
   QuotedOrderLine,
   RegistrarAuditoriaInput,
   RequestedComplement,
@@ -45,10 +49,18 @@ export type {
   RestaurantesAuditLogPaginacion,
   RestaurantesAuditLogRow,
   TortillaChoice,
+  WhatsAppChannelResolution,
+  WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
+export { EMPTY_BRANCH_POLICY } from "./types.ts";
 
-export { OrderConflictError, OrderValidationError, PromotionError } from "./errors.ts";
+export { OrderConflictError, OrderValidationError, PromotionError, WhatsappNumberInUseError } from "./errors.ts";
+
+export { validarHorario, leerHorarioPersistido, estaAbiertoAhora, mensajeSucursalCerrada } from "./horarios.ts";
+export type { TurnoHorario, HorarioSucursal, EstadoApertura } from "./horarios.ts";
+export { aplicarReglasDeSucursal, normalizarCanal, debePreguntarPropina, matchKnownZone, COLONIA_FUERA_DE_VERIFICACION_MENSAJE } from "./reglas-pedido.ts";
+export type { ReglasSucursalArgs, ReglasSucursalResultado } from "./reglas-pedido.ts";
 
 export { normalizePromotionCode, assertPromotionApplicable, computePromotionDiscount, applyPromotionToOrderTotal, PROMOTION_CODE_PATTERN } from "./promotions.ts";
 
@@ -98,7 +110,7 @@ export {
 } from "./order-lifecycle.ts";
 
 export { searchProducts, prepareCreateOrder, createOrder, quoteOrder, resolveBranchOrderItems, validateCreateOrderPayload } from "./orders.ts";
-export type { PreparedOrder } from "./orders.ts";
+export type { PreparedOrder, QuotePolicyInfo } from "./orders.ts";
 
 export {
   notifyCustomerOnOrderStatusChangeCore,
@@ -133,7 +145,7 @@ export type { NearestBranchResult } from "./nearest-branch.ts";
 export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
-export { extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId } from "./whatsapp/channel-config.ts";
+export { extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
