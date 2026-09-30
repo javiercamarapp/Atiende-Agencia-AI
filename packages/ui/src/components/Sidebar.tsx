@@ -1,16 +1,6 @@
 import { useState, type ComponentType, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import {
-  Bell,
-  CreditCard,
-  HelpCircle,
-  LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings,
-  UserRound,
-  ChevronDown,
-} from "lucide-react";
+import { LogOut, PanelLeftClose, PanelLeftOpen, Settings, ChevronDown } from "lucide-react";
 import { Button } from "./ui/button";
 import { ThemeSelector } from "./ThemeSelector";
 import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
@@ -22,7 +12,6 @@ export interface SidebarItem {
   to: string;
   label: string;
   icon: IconType;
-  disabled?: boolean;
 }
 
 export interface SidebarSection {
@@ -37,6 +26,13 @@ export interface SidebarProps {
   onLogout: () => void;
   /** Selector de hotel (multi-hotel), renderizado bajo el logo. */
   hotelSelector?: ReactNode;
+  /**
+   * Ruta REAL de la pantalla de configuración de la vertical activa. El enlace
+   * "Configuración" solo se dibuja si la vertical lo pasa (antes apuntaba a un
+   * `/configuracion` global que no existe en App.tsx y llevaba a una pantalla
+   * en blanco en las verticales sin esa pantalla).
+   */
+  configuracionTo?: string;
 }
 
 const CLAVE_GRUPO_ABIERTO = "atiende-hoteles-sidebar-grupo-abierto";
@@ -51,7 +47,7 @@ const CLAVE_COLAPSADO = "atiende-hoteles-sidebar-colapsado";
  * de sección porque era un SPA de una sola ruta; aquí cada ítem es una
  * ruta real, lo que además hace cada pantalla capturable/enlazable).
  */
-export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProps) {
+export function Sidebar({ sections, user, onLogout, hotelSelector, configuracionTo }: SidebarProps) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -63,7 +59,11 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
 
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(() => {
     const guardado = typeof window !== "undefined" ? window.localStorage.getItem(CLAVE_GRUPO_ABIERTO) : null;
-    if (guardado) return guardado;
+    // La clave de localStorage la comparten todas las verticales: un grupo
+    // guardado que no existe en ESTA vertical (p. ej. "Operación" de hoteles
+    // dentro de citas) dejaba todos los acordeones cerrados. Solo se respeta si
+    // existe en las secciones actuales.
+    if (guardado && sections.some((s) => s.title === guardado)) return guardado;
     const activo = grupoDeRuta(location.pathname);
     return activo && !sections.find((s) => s.title === activo)?.siempreAbierto ? activo : sections[1]?.title ?? null;
   });
@@ -128,27 +128,16 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
                     <NavLink
                       key={item.to}
                       to={item.to}
-                      aria-disabled={item.disabled}
-                      onClick={(e) => item.disabled && e.preventDefault()}
                       className={({ isActive }) =>
                         cn(
                           "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] transition-colors",
-                          item.disabled
-                            ? "text-muted-foreground/50 cursor-not-allowed"
-                            : isActive
-                              ? "bg-primary text-primary-foreground font-medium"
-                              : "text-muted-foreground hover:bg-muted",
+                          isActive ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted",
                         )
                       }
                     >
                       <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
                       {!collapsed && (
-                        <span className="flex-1 flex items-center justify-between min-w-0 gap-2">
-                          <span className="truncate">{item.label}</span>
-                          {item.disabled && (
-                            <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground/60 shrink-0">Pronto</span>
-                          )}
-                        </span>
+                        <span className="flex-1 min-w-0 truncate">{item.label}</span>
                       )}
                     </NavLink>
                   ))}
@@ -162,65 +151,27 @@ export function Sidebar({ sections, user, onLogout, hotelSelector }: SidebarProp
       {/* Bloque de cuenta — mismo patrón EXACTO (medidas incluidas) que
           admin/chrome.tsx de Likida: zona plana con fondo propio + separador
           de 1px, tarjeta de usuario simple abajo (sin el hack de superponer
-          con margen negativo que tenía la versión anterior). */}
+          con margen negativo que tenía la versión anterior). Solo contiene
+          controles con destino real: ya no hay "Centro de ayuda", "Notificaciones",
+          "Mi perfil" ni "Plan y facturación" (eran maquetas sin acción; la campana
+          vive en el header). */}
       <div className="shrink-0 border-t border-border">
         {!collapsed && (
           <div className="bg-muted px-2 pt-2 pb-1.5 space-y-0.5">
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full text-[12.5px] border border-border bg-card hover:bg-background transition-colors">
-              <HelpCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={1.75} />
-              <span className="truncate">Centro de ayuda</span>
-            </button>
-            {/* Mismos 5 ítems y mismo orden que el bloque ABAJO real de
-                Likida; activo = píldora sólida bg-primary. Solo
-                "Configuración" tiene página real hoy en este repo. */}
-            <button
-              type="button"
-              disabled
-              title="Notificaciones: todavía no existe una sección propia en Atiende Hoteles."
-              className="w-full flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] text-muted-foreground/50 cursor-not-allowed"
-            >
-              <span className="flex items-center gap-2.5">
-                <Bell className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                <span className="truncate">Notificaciones</span>
-              </span>
-              <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground/60 shrink-0">Pronto</span>
-            </button>
-            <button
-              type="button"
-              disabled
-              title="Mi perfil: todavía no existe esta pantalla en Atiende Hoteles."
-              className="w-full flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] text-muted-foreground/50 cursor-not-allowed"
-            >
-              <span className="flex items-center gap-2.5">
-                <UserRound className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                <span className="truncate">Mi perfil</span>
-              </span>
-              <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground/60 shrink-0">Pronto</span>
-            </button>
-            <button
-              type="button"
-              disabled
-              title="Plan y facturación: todavía no existe esta pantalla en Atiende Hoteles."
-              className="w-full flex items-center justify-between gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] text-muted-foreground/50 cursor-not-allowed"
-            >
-              <span className="flex items-center gap-2.5">
-                <CreditCard className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                <span className="truncate">Plan y facturación</span>
-              </span>
-              <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-muted-foreground/60 shrink-0">Pronto</span>
-            </button>
-            <NavLink
-              to="/configuracion"
-              className={({ isActive }) =>
-                cn(
-                  "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] transition-colors",
-                  isActive ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-background",
-                )
-              }
-            >
-              <Settings className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-              <span className="truncate">Configuración</span>
-            </NavLink>
+            {configuracionTo && (
+              <NavLink
+                to={configuracionTo}
+                className={({ isActive }) =>
+                  cn(
+                    "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[12.5px] transition-colors",
+                    isActive ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-background",
+                  )
+                }
+              >
+                <Settings className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                <span className="truncate">Configuración</span>
+              </NavLink>
+            )}
             <div className="pt-1.5 pb-0.5 flex justify-center">
               <ThemeSelector />
             </div>
