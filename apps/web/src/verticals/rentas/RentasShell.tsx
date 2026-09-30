@@ -95,6 +95,7 @@ import {
 import { AtiendeWordmark, BottomNav, DashboardHeader, EstadoCargando, EstadoError, EstadoVacio, MobileHeader, NotificationBell, Sidebar } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
 import { BotonChatDatos } from "../../components/BotonChatDatos.tsx";
+import { MobileHeaderActions } from "../../components/MobileHeaderActions.tsx";
 import { fechaCortaEsMx } from "../../lib/formato-fecha.ts";
 import { useNotifications } from "../../lib/useNotifications.ts";
 import { clearRentasSession, logout, readPersistedRentasSession } from "./lib/auth-client.ts";
@@ -362,7 +363,15 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
 
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
-        action={<div className="flex items-center gap-2">{properties.length > 1 ? hotelSelector : null}</div>}
+        action={
+          <MobileHeaderActions
+            selector={properties.length > 1 ? hotelSelector : null}
+            notif={notif}
+            user={{ email: session.email, rol: org?.rol }}
+            onLogout={handleLogout}
+            loggingOut={loggingOut}
+          />
+        }
       />
 
       <div className="flex-1 min-w-0 flex flex-col gap-3">
