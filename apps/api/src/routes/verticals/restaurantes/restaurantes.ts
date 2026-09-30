@@ -17,6 +17,7 @@ import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
+import { restaurantesAdminVoiceSecretRoutes } from "./admin-voice-secret.ts";
 
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -46,5 +47,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminConfigRoutes(deps));
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
+  // Secreto de voz por sucursal (hash + rotación con ventana de gracia, migración 026).
+  app.route("/", restaurantesAdminVoiceSecretRoutes(deps));
   return app;
 }

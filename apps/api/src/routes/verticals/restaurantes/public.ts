@@ -11,14 +11,16 @@ import {
   canonicalizeMexicanPhone,
   consumeRateLimit,
   createOrder,
-  lookupCustomer,
+  invokeAgentTool,
   OrderConflictError,
   OrderValidationError,
 } from "@atiende/domain-restaurantes";
 import type { CreateOrderInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
-import { originAllowed, readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
+import { originAllowed, readJsonCapped, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
+import { auditVoice, authenticateVoiceTool, enforceVoiceLimits, hasVoiceCredentials } from "./voice-auth.ts";
+import { runVoiceToolRoute, voiceToolContext } from "./voice-tools.ts";
 import type { AppDeps } from "../../../deps.ts";
 
 interface CreateOrderItemBody {
@@ -110,30 +112,68 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
     if (!originAllowed(c.req.header("origin") ?? null, deps.env.allowedOrigins)) throw Errors.forbidden("Origen no permitido");
 
     const incoming = await readJsonCapped<CreateOrderBody>(c.req.raw, 32 * 1024);
-    const toolAuthorized = secretMatches(c.req.raw, "x-atiende-tool-secret", deps.env.voiceToolSecret);
+    const credentialsPresent = hasVoiceCredentials(c);
 
     // Fase 1: source="voice" queda MODELADO pero INACTIVO en la práctica — el agente
     // de voz ElevenLabs completo está fuera de alcance de esta fase (ver diseño §6).
-    // El guard se conserva por paridad de contrato: sin el secreto del tool, un
+    // El guard se conserva por paridad de contrato: sin credenciales de voz, un
     // caller no puede declararse "voice" ni recibir el trato de mayor rate limit.
-    if (incoming.source === "voice" && !toolAuthorized) throw Errors.unauthorized();
-    if (!toolAuthorized && incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
+    if (incoming.source === "voice" && !credentialsPresent) throw Errors.unauthorized();
+    if (!credentialsPresent && incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
 
     return deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
-      const input = mapCreateOrderBody(org.id, incoming, toolAuthorized ? "voice" : "web");
 
-      const limited = await consumeRateLimit(repo, "create-order", requestActor(c.req.raw, toolAuthorized ? input.customerPhone : ""), toolAuthorized ? 120 : 10, 60);
+      // Credenciales de voz presentes: token de llamada / secreto de sucursal / secreto legado
+      // (ver voice-auth.ts). Un checkout web sin credenciales sigue el camino web de siempre.
+      let voiceAuth: Awaited<ReturnType<typeof authenticateVoiceTool>> | null = null;
+      if (credentialsPresent) {
+        voiceAuth = await authenticateVoiceTool(deps, c, repo, org, { tool: "crear_pedido", accept: "legacy_ok" });
+        if (!voiceAuth.ok) {
+          if (incoming.source === "voice") return voiceAuth.response;
+          if (incoming.source && incoming.source !== "web") throw Errors.validation("source inválido");
+          voiceAuth = null; // credencial inválida en un checkout web: se trata como web, igual que antes.
+        }
+      }
+
+      if (voiceAuth?.ok) {
+        const { caller } = voiceAuth;
+        const toolCtx = voiceToolContext(org.id, caller);
+        if (caller.kind === "legacy_secret") {
+          const limited = await consumeRateLimit(repo, "create-order", requestActor(c.req.raw, typeof incoming.customer_phone === "string" ? incoming.customer_phone : ""), 120, 60);
+          if (!limited.allowed) throw Errors.tooManyRequests();
+        } else {
+          const limitedResponse = await enforceVoiceLimits(c, repo, org, caller, "crear_pedido");
+          if (limitedResponse) return limitedResponse;
+        }
+        try {
+          // Registro único de tools + máquina de estados (cotizado -> confirmado -> creado) y, con token de
+          // llamada, teléfono y sucursal tomados del token (nunca del body que escribe el modelo).
+          const outcome = await repo.runWithRowSavepoint(() => invokeAgentTool(repo, toolCtx, "crear_pedido", incoming as Record<string, unknown>));
+          // Cluster #3 (CRÍTICO) de la auditoría final — `createOrder` ya encoló internamente
+          // (best-effort) la confirmación por correo al cliente si dejó correo; disparo inline del
+          // drenado, mismo `repo`/transacción, en vez de esperar al cron diario.
+          await triggerRestaurantesEmailDispatchInline(deps, db, repo);
+          await auditVoice(repo, org, caller, "crear_pedido", "ok", null);
+          return c.json({ order: outcome.raw });
+        } catch (err) {
+          if (err instanceof OrderConflictError) throw Errors.conflict(err.message);
+          if (err instanceof OrderValidationError) {
+            const code = (err as { code?: unknown }).code;
+            await auditVoice(repo, org, caller, "crear_pedido", "denied", typeof code === "string" ? code : "validacion");
+            return c.json({ code: "validation_error", message: err.message }, 400);
+          }
+          throw err;
+        }
+      }
+
+      const input = mapCreateOrderBody(org.id, incoming, "web");
+      const limited = await consumeRateLimit(repo, "create-order", requestActor(c.req.raw, ""), 10, 60);
       if (!limited.allowed) throw Errors.tooManyRequests();
 
       try {
         const order = await createOrder(repo, input);
-        // Cluster #3 (CRÍTICO) de la auditoría final — `createOrder` ya encoló
-        // internamente (best-effort) la confirmación por correo al cliente si
-        // dejó correo (tryNotifyCustomerOrderConfirmationEmail, ver
-        // order-notifications.ts); disparo inline del drenado, mismo
-        // `repo`/transacción, en vez de esperar al cron diario.
         await triggerRestaurantesEmailDispatchInline(deps, db, repo);
         return c.json({ order });
       } catch (err) {
@@ -148,26 +188,35 @@ export function restaurantesPublicRoutes(deps: AppDeps): Hono {
   // origen). Ruta interna, protegida SOLO por x-atiende-tool-secret — es la pieza
   // donde vive la "memoria de cliente" (frequentItems/"lo de siempre"/tier).
   app.post("/v1/restaurantes/:orgSlug/customers/lookup", async (c) => {
-    if (!secretMatches(c.req.raw, "x-atiende-tool-secret", deps.env.voiceToolSecret)) throw Errors.unauthorized();
+    if (!hasVoiceCredentials(c)) throw Errors.unauthorized();
 
     const { phone } = await readJsonCapped<{ phone?: unknown }>(c.req.raw, 4 * 1024);
-    if (typeof phone !== "string" || !phone.trim() || phone.length > 64) throw Errors.validation("phone es requerido");
-
-    const canonicalPhone = canonicalizeMexicanPhone(phone);
-    if (!canonicalPhone) {
-      throw Errors.validation("Número inválido. Pide exactamente 10 dígitos, léelos en grupos 3-3-4 y obtén una confirmación explícita antes de volver a buscar.");
-    }
-
-    return deps.engine.withAppSession({ userId: null }, async (db) => {
-      const repo = deps.restaurantesRepo(db);
-      const org = await resolveOrganizationOrNotFound(repo, c.req.param("orgSlug"));
-
-      const limited = await consumeRateLimit(repo, "customer-lookup", requestActor(c.req.raw, phone), 30, 60);
-      if (!limited.allowed) throw Errors.tooManyRequests();
-
-      const result = await lookupCustomer(repo, org.id, canonicalPhone);
-      return c.json(result);
-    });
+    return runVoiceToolRoute(
+      deps,
+      c,
+      c.req.param("orgSlug"),
+      { tool: "buscar_cliente", accept: "legacy_ok", legacyLimit: { scope: "customer-lookup", secondary: typeof phone === "string" ? phone : "", max: 30 } },
+      async ({ repo, toolCtx, caller, org }) => {
+        // Aislamiento entre números: con token de llamada el teléfono sale del TOKEN y se ignora el body
+        // (el modelo no puede pedir el historial de otro número). Un secreto de sucursal sin token no
+        // identifica a ningún cliente, así que no puede consultar historial por teléfono.
+        let lookupPhone = caller.phone;
+        if (!lookupPhone) {
+          if (caller.kind === "branch_secret") {
+            await auditVoice(repo, org, caller, "buscar_cliente", "denied", "historial_requiere_token_de_llamada");
+            return c.json({ code: "unauthorized", message: "Consultar el historial requiere el token de la llamada." }, 401);
+          }
+          // Camino legado (secreto global sin token): teléfono del body, como siempre.
+          if (typeof phone !== "string" || !phone.trim() || phone.length > 64) throw Errors.validation("phone es requerido");
+          lookupPhone = canonicalizeMexicanPhone(phone);
+          if (!lookupPhone) {
+            throw Errors.validation("Número inválido. Pide exactamente 10 dígitos, léelos en grupos 3-3-4 y obtén una confirmación explícita antes de volver a buscar.");
+          }
+        }
+        const outcome = await invokeAgentTool(repo, { ...toolCtx, phone: lookupPhone }, "buscar_cliente", {});
+        return c.json(outcome.result as object);
+      },
+    );
   });
 
   return app;

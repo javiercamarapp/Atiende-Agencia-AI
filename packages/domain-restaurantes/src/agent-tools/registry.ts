@@ -79,8 +79,6 @@ export interface AgentToolContext {
   /** Maquina de estados del pedido (order-flow.ts). Ausente = sin exigir cotizacion/confirmacion
    * (camino legado: voz con secreto global sin token de llamada). */
   readonly flow?: OrderFlowRef;
-  /** Campos extra que solo acepta el canal de voz en crear_pedido (transcripcion, etc.). */
-  readonly extraOrder?: Partial<Pick<CreateOrderInput, "customerEmail" | "callTranscript" | "callRecordingUrl" | "promoCode" | "idempotencyKey">>;
 }
 
 export interface AgentToolOutcome {
@@ -337,9 +335,9 @@ export function orderToWire(order: Order) {
 }
 
 /** Una tool apunta a otra sucursal que la fijada por el contexto -> se rechaza (aislamiento entre sucursales). */
-async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string): Promise<void> {
+async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string, branchName?: string): Promise<void> {
   if (!ctx.lockedPropertyId) return;
-  const branch = await repo.findBranch(ctx.organizationId, { slug: branchSlug });
+  const branch = await repo.findBranch(ctx.organizationId, branchSlug ? { slug: branchSlug } : { name: branchName });
   if (branch && branch.propertyId !== ctx.lockedPropertyId) {
     throw new OrderValidationError("Esta llamada o conversación pertenece a otra sucursal; no se puede operar sobre la sucursal indicada.");
   }
@@ -349,25 +347,54 @@ async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolC
 // Ejecutor unico
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Convierte los argumentos de `crear_pedido` en el input de dominio. El telefono viene SIEMPRE del contexto. */
+/** Renglones de `crear_pedido`. WhatsApp (`lenient`) conserva el redondeo historico a 1; voz conserva el
+ * contrato historico del checkout (`quantity` legado + `requested_quantity` opcional). */
+function toCreateOrderItems(raw: unknown, lenient: boolean): CreateOrderInput["items"] {
+  if (lenient) return toRequestedItems(raw, true);
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => {
+    const item = (entry ?? {}) as RawItemInput & { quantity?: unknown };
+    return {
+      productId: typeof item.product_id === "string" ? item.product_id : undefined,
+      productName: typeof item.product_name === "string" ? item.product_name : undefined,
+      quantity: typeof item.quantity === "number" ? item.quantity : undefined,
+      requestedQuantity: typeof item.requested_quantity === "number" ? item.requested_quantity : undefined,
+      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" ? (item.tortilla as TortillaChoice) : undefined,
+    };
+  });
+}
+
+/** Convierte los argumentos de `crear_pedido` en el input de dominio. El telefono viene del CONTEXTO
+ * siempre que el canal lo conoce (WhatsApp: remitente; voz: token de llamada). */
 export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<string, unknown>, lenient: boolean): CreateOrderInput {
-  return {
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  const base: CreateOrderInput = {
     organizationId: ctx.organizationId,
-    branchSlug: String(input.branch_slug ?? ""),
-    customerName: String(input.customer_name ?? ""),
-    customerPhone: ctx.phone ?? (typeof input.customer_phone === "string" ? input.customer_phone : ""),
-    customerAddress: typeof input.customer_address === "string" ? input.customer_address : undefined,
-    items: toRequestedItems(input.items, lenient),
+    branchSlug: lenient ? String(input.branch_slug ?? "") : str(input.branch_slug),
+    customerName: lenient ? String(input.customer_name ?? "") : (str(input.customer_name) ?? ""),
+    customerPhone: ctx.phone ?? (lenient ? "" : (str(input.customer_phone) ?? "")),
+    customerAddress: str(input.customer_address),
+    items: toCreateOrderItems(input.items, lenient),
     source: ctx.channel === "voz" ? "voice" : "whatsapp",
-    notes: typeof input.notes === "string" ? input.notes : undefined,
+    notes: str(input.notes),
     paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
-    adultConfirmed: input.adult_confirmed === true,
+    adultConfirmed: lenient ? input.adult_confirmed === true : typeof input.adult_confirmed === "boolean" ? input.adult_confirmed : undefined,
     requestedComplements: Array.isArray(input.requested_complements) ? (input.requested_complements as readonly RequestedComplement[]) : undefined,
     omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
     canal: toCanal(input.canal),
-    colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
+    colonia: str(input.colonia_entrega),
     propina: typeof input.propina === "number" ? input.propina : undefined,
-    ...(ctx.extraOrder ?? {}),
+  };
+  if (lenient) return base;
+  // Campos que solo trae el canal de voz/checkout (correo, transcripcion, promo, idempotencia, nombre de sucursal).
+  return {
+    ...base,
+    branchName: str(input.branch_name),
+    customerEmail: str(input.customer_email),
+    idempotencyKey: str(input.idempotency_key),
+    callTranscript: str(input.call_transcript),
+    callRecordingUrl: str(input.call_recording_url),
+    promoCode: str(input.promo_code),
   };
 }
 
@@ -559,9 +586,14 @@ async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext,
       return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor" }, orderId: null, propertyId: null };
     }
     case "crear_pedido": {
-      const branchSlug = String(input.branch_slug ?? "");
-      await assertBranchAllowed(repo, ctx, branchSlug);
-      const order = await createOrder(repo, mapCreateOrderToolInput(ctx, input, lenient));
+      const createInput = mapCreateOrderToolInput(ctx, input, lenient);
+      // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
+      if (createInput.branchSlug || createInput.branchName) {
+        await assertBranchAllowed(repo, ctx, createInput.branchSlug ?? "", createInput.branchName);
+      } else if (ctx.lockedPropertyId) {
+        throw new OrderValidationError("Esta llamada está fijada a una sucursal; indica branch_slug.");
+      }
+      const order = await createOrder(repo, createInput);
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
     case "registrar_contacto":

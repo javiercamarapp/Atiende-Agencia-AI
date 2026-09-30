@@ -8,6 +8,10 @@ export interface ApiEnv {
   /** Secreto compartido para las Server Tools de ElevenLabs (header
    * `x-atiende-tool-secret`) — ver diseño Fase 1 §3. */
   readonly voiceToolSecret: string;
+  /** Endurecimiento de voz (restaurantes): `true` = las herramientas de voz SOLO aceptan el token por
+   * llamada; los secretos (global legado o por sucursal) quedan limitados a emitir ese token. Opcional:
+   * ausente/false conserva el camino legado para no romper integraciones existentes. */
+  readonly voiceRequireCallToken?: boolean;
   readonly whatsappVerifyToken: string;
   readonly whatsappAppSecret: string;
   /** Token de acceso real de la Meta App de plataforma para ENVIAR mensajes de
@@ -134,6 +138,7 @@ export function loadApiEnv(): ApiEnv {
     accessTokenTtlSeconds: Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900),
     refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),
     voiceToolSecret: requireEnv("VOICE_TOOL_SECRET"),
+    voiceRequireCallToken: process.env.VOICE_REQUIRE_CALL_TOKEN === "true",
     whatsappVerifyToken: requireEnv("WHATSAPP_VERIFY_TOKEN"),
     whatsappAppSecret: requireEnv("WHATSAPP_APP_SECRET"),
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN ?? null,

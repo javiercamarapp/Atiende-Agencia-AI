@@ -567,3 +567,25 @@ export interface NewKnownZoneInput {
 export interface BranchTimezoneConfig {
   readonly zonaHoraria: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Voz: secretos por sucursal y bitacora de herramientas (migracion 026).
+// ---------------------------------------------------------------------------
+/** Resultado de comprobar el secreto de voz presentado contra los secretos por sucursal.
+ * `unavailable` = la base todavia no tiene la tabla (migracion 026 sin aplicar): el llamador cae al
+ * secreto global legado. */
+export type VoiceSecretMatch = { readonly status: "match"; readonly propertyId: string } | { readonly status: "no_match" } | { readonly status: "unavailable" };
+
+export type VoiceToolAuditOutcome = "ok" | "denied" | "error" | "rate_limited" | "token_issued";
+
+export interface VoiceToolAuditInput {
+  readonly organizationId: string;
+  readonly propertyId: string | null;
+  readonly callId: string | null;
+  readonly tool: string;
+  readonly outcome: VoiceToolAuditOutcome;
+  /** sha256 del telefono del llamante (nunca el numero). */
+  readonly phoneHash: string | null;
+  /** Motivo corto, sin datos personales (maximo 300 caracteres). */
+  readonly detail: string | null;
+}
