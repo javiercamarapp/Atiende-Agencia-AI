@@ -9,28 +9,36 @@
 import { apiBaseUrlFromRequestUrl, readErrorMessage, readWriteErrorMessage, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { defaultAuthCtx, RestaurantesAdminError } from "./admin-client.ts";
 
-/** Config de voz de UNA sucursal (un registro por `propertyId`). */
+/** Config de voz de UNA sucursal, tal como la edita el panel (mapeada del contrato real de la API). */
 export interface VozConfig {
   /** Nombre de la voz predefinida de Gemini (ver voz-catalogo.ts), o null si no se ha elegido. */
   readonly vozId: string | null;
+  /** `comportamiento` en la API. */
   readonly promptSistema: string;
   readonly mensajeInicial: string;
-  /** Notas de conocimiento libres (horarios, políticas) que el agente recibe como contexto. */
-  readonly conocimiento: string;
-  readonly actualizadoEn: string | null;
+  /** Si el agente está encendido para esta sucursal. */
+  readonly habilitado: boolean;
 }
 
-export type VozConfigInput = Pick<VozConfig, "vozId" | "promptSistema" | "mensajeInicial" | "conocimiento">;
+export type VozConfigInput = VozConfig;
 
-/** Sesión de vista previa: el token es efímero y de un solo uso, nunca una API key. */
+/** Proveedor con el que el panel guarda la configuración (las voces del catálogo son de Gemini). */
+export const PROVEEDOR_VOZ_PANEL = "gemini-3.8-live";
+
+/** Sesión de vista previa emitida por la API: tokens efímeros y de un solo uso, nunca una API key. */
 export interface SesionPreviewVoz {
-  readonly sessionId: string;
-  readonly token: string;
+  readonly sesionId: string;
+  readonly proveedor: string;
+  readonly modelo: string;
+  readonly voiceId: string;
+  readonly websocketUrl: string;
+  readonly tokenProveedor: string;
+  readonly tokenPreview: string;
   readonly expiraEn: string;
-  readonly wsUrl?: string;
 }
 
-export type ResultadoConversacion = "pedido" | "consulta" | "abandonada" | "error";
+/** Valores reales del API (`VOZ_RESULTADOS`). */
+export type ResultadoConversacion = "pedido_creado" | "escalado" | "abandonado";
 
 export interface LineaConversacion {
   readonly rol: "agente" | "usuario";
@@ -42,12 +50,12 @@ export interface ConversacionVoz {
   readonly id: string;
   readonly iniciadaEn: string;
   readonly duracionSegundos: number | null;
-  /** Costo del modelo en USD; null si aún no se calculó. */
+  /** Costo estimado en USD (la API lo entrega en micro-USD); 0 si aún no se calculó. */
   readonly costoUsd: number | null;
   readonly resultado: ResultadoConversacion | null;
-  /** Transcripción completa; puede venir ausente en el listado. */
+  /** Transcripción completa: solo viene en el detalle (`fetchConversacionVoz`), no en el listado. */
   readonly transcripcion?: readonly LineaConversacion[];
-  /** Nombres de las herramientas que el agente ejecutó en esta llamada, si el servicio los reporta. */
+  /** La API de hoy NO lo reporta; si algún día lo hace, la pestaña Herramientas cuenta ejecuciones reales. */
   readonly herramientas?: readonly string[];
 }
 
@@ -85,22 +93,67 @@ async function pedir<T>(fetchImpl: typeof fetch, url: string, token: string, ini
   return (await res.json()) as T;
 }
 
-/** `null` = el servicio existe pero esta sucursal todavía no tiene configuración guardada. */
+interface ConfigWire {
+  readonly disponible: boolean;
+  readonly configurada: boolean;
+  readonly habilitado: boolean;
+  readonly voiceId: string;
+  readonly comportamiento: string;
+  readonly mensajeInicial: string;
+}
+
+function configDesdeWire(w: ConfigWire): VozConfig {
+  return { vozId: w.configurada && w.voiceId ? w.voiceId : null, promptSistema: w.comportamiento, mensajeInicial: w.mensajeInicial, habilitado: w.habilitado };
+}
+
+/** `null` = el servicio existe pero esta sucursal todavía no tiene configuración guardada. Base sin migrar (`disponible: false`) = VozNoDisponibleError. */
 export async function fetchVozConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<VozConfig | null> {
-  const body = await pedir<{ config: VozConfig | null }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/config`, token, { method: "GET" });
-  return body.config ?? null;
+  const w = await pedir<ConfigWire>(fetchImpl, `${base(apiBaseUrl, propertyId)}/config`, token, { method: "GET" });
+  if (w.disponible === false) throw new VozNoDisponibleError(503);
+  return w.configurada ? configDesdeWire(w) : null;
 }
 
+/** El PUT de la API reemplaza la config completa y exige una voz: sin voz elegida no se puede guardar. */
 export async function updateVozConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: VozConfigInput): Promise<VozConfig> {
-  const body = await pedir<{ config: VozConfig }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/config`, token, { method: "PUT", body: input });
-  return body.config;
+  if (input.vozId === null) throw new RestaurantesAdminError("Elige una voz antes de guardar.");
+  const body = { habilitado: input.habilitado, proveedor: PROVEEDOR_VOZ_PANEL, voiceId: input.vozId, comportamiento: input.promptSistema, mensajeInicial: input.mensajeInicial };
+  return configDesdeWire(await pedir<ConfigWire>(fetchImpl, `${base(apiBaseUrl, propertyId)}/config`, token, { method: "PUT", body }));
 }
 
-export async function crearSesionPreviewVoz(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, opts: { readonly vozId?: string } = {}): Promise<SesionPreviewVoz> {
-  return pedir<SesionPreviewVoz>(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesion`, token, { method: "POST", body: opts });
+export async function crearSesionPreviewVoz(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, opts: { readonly voiceId?: string } = {}): Promise<SesionPreviewVoz> {
+  return pedir<SesionPreviewVoz>(fetchImpl, `${base(apiBaseUrl, propertyId)}/preview/sesion`, token, { method: "POST", body: opts });
+}
+
+interface ConversacionWire {
+  readonly id: string;
+  readonly iniciadaEn: string;
+  readonly duracionS: number | null;
+  readonly costoEstimadoMicroUsd: number;
+  readonly resultado: string | null;
+  readonly turnos?: readonly { readonly rol: string; readonly texto: string; readonly creadoEn: string }[];
+}
+
+const RESULTADOS: readonly string[] = ["pedido_creado", "escalado", "abandonado"];
+
+function conversacionDesdeWire(w: ConversacionWire): ConversacionVoz {
+  const base: ConversacionVoz = {
+    id: w.id,
+    iniciadaEn: w.iniciadaEn,
+    duracionSegundos: w.duracionS,
+    costoUsd: Number.isFinite(w.costoEstimadoMicroUsd) ? w.costoEstimadoMicroUsd / 1_000_000 : null,
+    resultado: w.resultado !== null && RESULTADOS.includes(w.resultado) ? (w.resultado as ResultadoConversacion) : null,
+  };
+  if (!w.turnos) return base;
+  return { ...base, transcripcion: w.turnos.map((t) => ({ rol: t.rol === "agente" ? "agente" : "usuario", texto: t.texto, ts: Date.parse(t.creadoEn) })) };
 }
 
 export async function fetchConversacionesVoz(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, limite = 50): Promise<readonly ConversacionVoz[]> {
-  const body = await pedir<{ conversaciones: ConversacionVoz[] }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/conversaciones?limit=${limite}`, token, { method: "GET" });
-  return body.conversaciones;
+  const w = await pedir<{ disponible: boolean; items: ConversacionWire[] }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/conversaciones?limit=${limite}`, token, { method: "GET" });
+  if (w.disponible === false) throw new VozNoDisponibleError(503);
+  return w.items.map(conversacionDesdeWire);
+}
+
+/** Detalle con transcripción (turnos). Su lectura queda en la bitácora del servidor. */
+export async function fetchConversacionVoz(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, conversationId: string): Promise<ConversacionVoz> {
+  return conversacionDesdeWire(await pedir<ConversacionWire>(fetchImpl, `${base(apiBaseUrl, propertyId)}/conversaciones/${encodeURIComponent(conversationId)}`, token, { method: "GET" }));
 }

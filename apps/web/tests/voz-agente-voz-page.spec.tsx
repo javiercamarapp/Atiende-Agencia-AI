@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgenteVozPage } from "../src/verticals/restaurantes/pages/AgenteVoz.tsx";
 import type { MuestraAudio } from "../src/verticals/restaurantes/voz/SelectorVoz.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
-import type { ConversacionVoz, VozConfig } from "../src/verticals/restaurantes/lib/voz-client.ts";
+import { contarEjecuciones } from "../src/verticals/restaurantes/voz/herramientas-agente.ts";
 import { changeValue, click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
@@ -28,28 +28,27 @@ afterEach(() => {
 
 const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "tok", propertyId: "prop-1", orgSlug: "demo", role: "owner", staffFullName: "Gaby", staffEmail: "g@example.com" };
 
-const CONFIG: VozConfig = { vozId: "Kore", promptSistema: "Habla en español de México.", mensajeInicial: "Hola, le atiende el asistente virtual de Los Taquitos.", conocimiento: "Abrimos de 9 a 21.", actualizadoEn: "2026-09-30T12:00:00Z" };
+// Formato REAL de la API (apps/api .../voz-admin.ts): el cliente lo mapea al modelo del panel.
+const CONFIG = { disponible: true, configurada: true, habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Habla en español de México.", mensajeInicial: "Hola, le atiende el asistente virtual de Los Taquitos." };
 
-const CONVERSACIONES: ConversacionVoz[] = [
-  {
-    id: "c1",
-    iniciadaEn: "2026-09-30T18:00:00Z",
-    duracionSegundos: 125,
-    costoUsd: 0.0425,
-    resultado: "pedido",
-    herramientas: ["buscar_producto", "cotizar_pedido", "crear_pedido"],
-    transcripcion: [
-      { rol: "agente", texto: "Hola, asistente virtual de Los Taquitos", ts: 1 },
-      { rol: "usuario", texto: "Quiero dos de pastor", ts: 2 },
-    ],
-  },
-  { id: "c2", iniciadaEn: "2026-09-30T19:00:00Z", duracionSegundos: 30, costoUsd: null, resultado: null, herramientas: ["buscar_producto"] },
+const LISTA = [
+  { id: "c1", iniciadaEn: "2026-09-30T18:00:00Z", duracionS: 125, costoEstimadoMicroUsd: 42500, resultado: "pedido_creado" },
+  { id: "c2", iniciadaEn: "2026-09-30T19:00:00Z", duracionS: 30, costoEstimadoMicroUsd: 0, resultado: null },
 ];
+const CONVERSACIONES = { disponible: true, total: 2, nextOffset: null, items: LISTA };
+const DETALLE_C1 = {
+  ...LISTA[0],
+  turnos: [
+    { seq: 0, rol: "agente", texto: "Hola, asistente virtual de Los Taquitos", creadoEn: "2026-09-30T18:00:01Z" },
+    { seq: 1, rol: "cliente", texto: "Quiero dos de pastor", creadoEn: "2026-09-30T18:00:05Z" },
+  ],
+};
 
 type Respuesta = { status: number; body?: unknown };
 interface Rutas {
   config?: Respuesta;
   conversaciones?: Respuesta;
+  detalle?: Respuesta;
   put?: (body: Record<string, unknown>) => Respuesta;
 }
 
@@ -62,9 +61,10 @@ function stub(rutas: Rutas) {
     const method = init?.method ?? "GET";
     if (url === "https://api.test/v1/restaurantes/prop-1/admin/voz/config") {
       if (method === "PUT") return res(rutas.put ? rutas.put(JSON.parse(init!.body as string)) : { status: 500 });
-      return res(rutas.config ?? { status: 200, body: { config: CONFIG } });
+      return res(rutas.config ?? { status: 200, body: CONFIG });
     }
-    if (url.startsWith("https://api.test/v1/restaurantes/prop-1/admin/voz/conversaciones")) return res(rutas.conversaciones ?? { status: 200, body: { conversaciones: CONVERSACIONES } });
+    if (url.startsWith("https://api.test/v1/restaurantes/prop-1/admin/voz/conversaciones/")) return res(rutas.detalle ?? { status: 200, body: DETALLE_C1 });
+    if (url.startsWith("https://api.test/v1/restaurantes/prop-1/admin/voz/conversaciones")) return res(rutas.conversaciones ?? { status: 200, body: CONVERSACIONES });
     throw new Error(`fetch inesperado: ${method} ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -138,7 +138,7 @@ describe("pestaña Voz (sin clonación)", () => {
   });
 
   it("marca la voz guardada, deja elegir otra y guarda con PUT del cuerpo exacto", async () => {
-    await pintar({ put: (body) => ({ status: 200, body: { config: { ...CONFIG, ...body, actualizadoEn: "2026-09-30T13:00:00Z" } } }) });
+    await pintar({ put: (body) => ({ status: 200, body: { ...CONFIG, ...body } }) });
     await irA("Voz");
     expect(rendered!.container.querySelector('[data-voz="Kore"]')!.getAttribute("aria-selected")).toBe("true");
     const guardar = boton("Guardar cambios") as HTMLButtonElement;
@@ -153,7 +153,7 @@ describe("pestaña Voz (sin clonación)", () => {
     click(boton("Guardar cambios")!);
     await settle();
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
-    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ vozId: "Puck", promptSistema: CONFIG.promptSistema, mensajeInicial: CONFIG.mensajeInicial, conocimiento: CONFIG.conocimiento });
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: true, proveedor: "gemini-3.8-live", voiceId: "Puck", comportamiento: CONFIG.comportamiento, mensajeInicial: CONFIG.mensajeInicial });
     expect(texto()).toContain("Cambios guardados.");
     expect((boton("Guardar cambios") as HTMLButtonElement).disabled).toBe(true);
   });
@@ -201,16 +201,37 @@ describe("pestaña Voz (sin clonación)", () => {
 });
 
 describe("Comportamiento, Conocimiento y Mensaje inicial", () => {
-  it("edita el prompt y el conocimiento y los manda en el PUT", async () => {
-    await pintar({ put: (body) => ({ status: 200, body: { config: { ...CONFIG, ...body } } }) });
+  it("edita el comportamiento y el habilitado y los manda en el PUT con los nombres reales de la API", async () => {
+    await pintar({ put: (body) => ({ status: 200, body: { ...CONFIG, ...body } }) });
     await irA("Comportamiento");
     changeValue(rendered!.container.querySelector<HTMLTextAreaElement>("#voz-prompt")!, "Sé breve.");
-    await irA("Conocimiento");
-    changeValue(rendered!.container.querySelector<HTMLTextAreaElement>("#voz-conocimiento")!, "Cerramos los domingos.");
+    await irA("Voz");
+    click(rendered!.container.querySelector<HTMLInputElement>("#voz-habilitado")!);
     click(boton("Guardar cambios")!);
     await settle();
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
-    expect(JSON.parse((put[1] as RequestInit).body as string)).toMatchObject({ promptSistema: "Sé breve.", conocimiento: "Cerramos los domingos." });
+    expect(JSON.parse((put[1] as RequestInit).body as string)).toEqual({ habilitado: false, proveedor: "gemini-3.8-live", voiceId: "Kore", comportamiento: "Sé breve.", mensajeInicial: CONFIG.mensajeInicial });
+  });
+
+  it("Conocimiento dice honestamente que las notas libres aún no se guardan", async () => {
+    await pintar();
+    await irA("Conocimiento");
+    expect(rendered!.container.querySelector('[data-testid="aviso-conocimiento"]')!.textContent).toContain("todavía no se guardan");
+    expect(rendered!.container.querySelector("#voz-conocimiento")).toBeNull();
+  });
+
+  it("sin configuración guardada no se puede guardar hasta elegir una voz", async () => {
+    await pintar({ config: { status: 200, body: { ...CONFIG, configurada: false, habilitado: false, voiceId: "", comportamiento: "", mensajeInicial: "" } } });
+    await irA("Comportamiento");
+    changeValue(rendered!.container.querySelector<HTMLTextAreaElement>("#voz-prompt")!, "Sé breve.");
+    expect((boton("Guardar cambios") as HTMLButtonElement).disabled).toBe(true);
+    expect(rendered!.container.querySelector('[data-testid="aviso-elegir-voz"]')).not.toBeNull();
+  });
+
+  it("base sin migrar (disponible: false) se trata como servicio no disponible, sin falso éxito", async () => {
+    await pintar({ config: { status: 200, body: { ...CONFIG, disponible: false, configurada: false } }, conversaciones: { status: 200, body: { ...CONVERSACIONES, disponible: false, items: [] } } });
+    expect(rendered!.container.querySelector('[data-testid="aviso-servicio"]')).not.toBeNull();
+    expect(texto()).toContain("Sin historial todavía");
   });
 
   it("Mensaje inicial muestra siempre el aviso de asistente virtual y alerta si el texto no lo dice", async () => {
@@ -229,24 +250,22 @@ describe("Comportamiento, Conocimiento y Mensaje inicial", () => {
   });
 
   it("el Resumen marca pendiente el primer mensaje que no se presenta como asistente virtual", async () => {
-    await pintar({ config: { status: 200, body: { config: { ...CONFIG, mensajeInicial: "Hola, le atiende Arturo." } } } });
+    await pintar({ config: { status: 200, body: { ...CONFIG, mensajeInicial: "Hola, le atiende Arturo." } } });
     const pasos = Array.from(rendered!.container.querySelectorAll("[data-ok]")).map((li) => li.getAttribute("data-ok"));
     expect(pasos).toEqual(["true", "true", "false"]);
   });
 });
 
 describe("Herramientas (contador real o estado honesto)", () => {
-  it("cuenta ejecuciones reales de las conversaciones del servicio", async () => {
-    await pintar();
-    await irA("Herramientas");
-    const ej = (n: string) => rendered!.container.querySelector(`[data-testid="ejecuciones-${n}"]`)!.textContent!;
-    expect(ej("buscar_producto")).toContain("2 ejecuciones");
-    expect(ej("buscar_producto")).toContain("últimas 2 llamadas");
-    expect(ej("cotizar_pedido")).toContain("1 ejecución");
-    expect(ej("crear_pedido")).toContain("1 ejecución");
-    expect(ej("buscar_cliente")).toContain("Sin ejecuciones en las últimas 2 llamadas");
-    expect(rendered!.container.querySelectorAll("[data-herramienta]")).toHaveLength(5);
-    expect(rendered!.container.querySelector('[data-testid="motivo-sin-ejecuciones"]')).toBeNull();
+  it("contarEjecuciones cuenta solo lo que el servicio reporta (hoy la API no lo reporta)", () => {
+    const base = { iniciadaEn: "2026-09-30T18:00:00Z", duracionSegundos: 1, costoUsd: null, resultado: null } as const;
+    const r = contarEjecuciones([
+      { id: "a", ...base, herramientas: ["buscar_producto", "crear_pedido"] },
+      { id: "b", ...base, herramientas: ["buscar_producto"] },
+    ]);
+    expect(r).toEqual({ disponible: true, llamadas: 2, cuentas: { buscar_producto: 2, crear_pedido: 1 } });
+    expect(contarEjecuciones([{ id: "c", ...base }])).toMatchObject({ disponible: false });
+    expect(contarEjecuciones([])).toMatchObject({ disponible: false });
   });
 
   it("sin historial disponible no muestra ningún '0 ejecuciones': dice que no hay datos y por qué", async () => {
@@ -257,9 +276,8 @@ describe("Herramientas (contador real o estado honesto)", () => {
     expect(rendered!.container.querySelector('[data-testid="motivo-sin-ejecuciones"]')!.textContent).toContain("todavía no está disponible");
   });
 
-  it("si el servicio no reporta herramientas por llamada, lo dice en vez de contar cero", async () => {
-    const sinHerr = CONVERSACIONES.map(({ herramientas: _h, ...c }) => c);
-    await pintar({ conversaciones: { status: 200, body: { conversaciones: sinHerr } } });
+  it("con el formato real de la API (sin herramientas por llamada) lo dice en vez de contar cero", async () => {
+    await pintar();
     await irA("Herramientas");
     expect(rendered!.container.querySelector('[data-testid="motivo-sin-ejecuciones"]')!.textContent).toContain("no reporta");
     expect(texto()).not.toMatch(/0 ejecuciones/);
@@ -273,13 +291,14 @@ describe("Conversaciones", () => {
     const fila1 = rendered!.container.querySelector('[data-conversacion="c1"]')!.textContent!;
     expect(fila1).toContain("2:05");
     expect(fila1).toContain("US$0.043");
-    expect(fila1).toContain("Pedido");
+    expect(fila1).toContain("Pedido creado");
     const fila2 = rendered!.container.querySelector('[data-conversacion="c2"]')!.textContent!;
     expect(fila2).toContain("0:30");
-    expect(fila2).toContain("—"); // sin costo: nunca un 0 inventado
     expect(fila2).toContain("Sin clasificar");
 
     click(boton("Ver transcripción")!);
+    await settle();
+    expect(fetchMock.mock.calls.some(([u]) => u === "https://api.test/v1/restaurantes/prop-1/admin/voz/conversaciones/c1")).toBe(true);
     expect(texto()).toContain("Quiero dos de pastor");
     expect(texto()).toContain("Hola, asistente virtual de Los Taquitos".slice(0, 6));
     click(boton("Volver a la lista")!);
@@ -287,15 +306,16 @@ describe("Conversaciones", () => {
   });
 
   it("una conversación sin transcripción lo dice", async () => {
-    await pintar();
+    await pintar({ detalle: { status: 200, body: { ...LISTA[1], turnos: [] } } });
     await irA("Conversaciones");
     const botones = Array.from(rendered!.container.querySelectorAll<HTMLButtonElement>("button")).filter((b) => b.textContent === "Ver transcripción");
     click(botones[1]!);
+    await settle();
     expect(texto()).toContain("Esta conversación no incluye transcripción.");
   });
 
   it("lista vacía: estado vacío honesto", async () => {
-    await pintar({ conversaciones: { status: 200, body: { conversaciones: [] } } });
+    await pintar({ conversaciones: { status: 200, body: { ...CONVERSACIONES, total: 0, items: [] } } });
     await irA("Conversaciones");
     expect(texto()).toContain("Todavía no hay conversaciones de voz registradas");
   });

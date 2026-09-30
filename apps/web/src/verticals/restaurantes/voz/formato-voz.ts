@@ -23,10 +23,9 @@ export function formatoInstante(iso: string): string {
 }
 
 const ETIQUETAS_RESULTADO: Readonly<Record<ResultadoConversacion, string>> = {
-  pedido: "Pedido",
-  consulta: "Consulta",
-  abandonada: "Abandonada",
-  error: "Error",
+  pedido_creado: "Pedido creado",
+  escalado: "Escalada a una persona",
+  abandonado: "Abandonada",
 };
 
 export function etiquetaResultado(resultado: ResultadoConversacion | null): string {

@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Mic, Wrench } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, VistaPreviaLlamada } from "@atiende/ui";
-import { fetchConversacionesVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
+import { fetchConversacionesVoz, fetchConversacionVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import type { ConversacionVoz, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
 import { buscarVoz } from "../lib/voz-catalogo.ts";
 import { crearFabricaDemo } from "../voz/adaptador-demo.ts";
@@ -39,9 +39,9 @@ const PESTANAS: readonly { readonly id: PestanaId; readonly etiqueta: string }[]
   { id: "conversaciones", etiqueta: "Conversaciones" },
 ];
 
-const PESTANAS_EDITABLES: ReadonlySet<PestanaId> = new Set(["voz", "conocimiento", "comportamiento", "mensaje"]);
+const PESTANAS_EDITABLES: ReadonlySet<PestanaId> = new Set(["voz", "comportamiento", "mensaje"]);
 
-const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", conocimiento: "" };
+const BORRADOR_VACIO: VozConfigInput = { vozId: null, promptSistema: "", mensajeInicial: "", habilitado: false };
 
 /** Regla de transparencia: el saludo debe presentarse como asistente virtual. */
 export function mencionaAsistenteVirtual(texto: string): boolean {
@@ -49,11 +49,11 @@ export function mencionaAsistenteVirtual(texto: string): boolean {
 }
 
 function aBorrador(c: VozConfig | null): VozConfigInput {
-  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, conocimiento: c.conocimiento } : BORRADOR_VACIO;
+  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, habilitado: c.habilitado } : BORRADOR_VACIO;
 }
 
 function iguales(a: VozConfigInput, b: VozConfigInput): boolean {
-  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.conocimiento === b.conocimiento;
+  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.habilitado === b.habilitado;
 }
 
 export interface AgenteVozPageProps extends RestaurantesShellContext {
@@ -176,24 +176,21 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
 
           {pestana === "resumen" ? <Resumen config={config} borrador={guardado} conversaciones={conversaciones} onVistaPrevia={() => setVistaPrevia(true)} /> : null}
 
-          {pestana === "voz" && config.estado !== "cargando" ? <SelectorVoz vozId={borrador.vozId} onElegir={(id) => setBorrador({ ...borrador, vozId: id })} baseUrl={import.meta.env.BASE_URL} crearAudio={crearAudio} /> : null}
+          {pestana === "voz" && config.estado !== "cargando" ? (
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-[13px] text-foreground">
+                <input type="checkbox" id="voz-habilitado" checked={borrador.habilitado} onChange={(e) => setBorrador({ ...borrador, habilitado: e.target.checked })} />
+                Agente habilitado para recibir llamadas en esta sucursal
+              </label>
+              <SelectorVoz vozId={borrador.vozId} onElegir={(id) => setBorrador({ ...borrador, vozId: id })} baseUrl={import.meta.env.BASE_URL} crearAudio={crearAudio} />
+            </div>
+          ) : null}
 
           {pestana === "conocimiento" && config.estado !== "cargando" ? (
             <div className="space-y-4">
-              <div>
-                <label htmlFor="voz-conocimiento" className="block text-[13px] font-medium text-foreground mb-1.5">
-                  Notas de conocimiento
-                </label>
-                <textarea
-                  id="voz-conocimiento"
-                  value={borrador.conocimiento}
-                  onChange={(e) => setBorrador({ ...borrador, conocimiento: e.target.value })}
-                  rows={8}
-                  placeholder="Horarios, políticas de entrega, formas de pago, preguntas frecuentes…"
-                  className="w-full rounded-lg border border-border bg-card p-3 text-[13px] text-foreground"
-                />
-                <p className="mt-1 text-[11.5px] text-muted-foreground">El agente recibe estas notas como contexto en cada llamada. Escribe solo información que quieras que diga.</p>
-              </div>
+              <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[12.5px] text-muted-foreground">
+                Las notas de conocimiento libres todavía no se guardan en el servicio de voz. Mientras tanto, escribe horarios, políticas y preguntas frecuentes en la pestaña Comportamiento: el agente las recibe como parte de sus instrucciones.
+              </p>
               <div>
                 <p className="text-[13px] font-medium text-foreground mb-1.5 flex items-center gap-1.5">
                   <BookOpen className="h-4 w-4" strokeWidth={1.75} />
@@ -285,15 +282,16 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, crearAudio }: Age
             </div>
           ) : null}
 
-          {pestana === "conversaciones" ? <PestanaConversaciones conversaciones={conversaciones} onReintentar={reintentar} /> : null}
+          {pestana === "conversaciones" ? <PestanaConversaciones conversaciones={conversaciones} onReintentar={reintentar} cargarDetalle={(id) => fetchConversacionVoz(fetch, apiBaseUrl, token, propertyId, id)} /> : null}
         </div>
 
         {PESTANAS_EDITABLES.has(pestana) && config.estado !== "cargando" ? (
           <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-            <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio || guardando}>
+            <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio || guardando || borrador.vozId === null}>
               {guardando ? "Guardando…" : "Guardar cambios"}
             </Button>
             {sucio ? <span className="text-[12px] text-muted-foreground">Hay cambios sin guardar.</span> : null}
+            {borrador.vozId === null ? <span data-testid="aviso-elegir-voz" className="text-[12px] text-muted-foreground">Elige una voz en la pestaña Voz para poder guardar.</span> : null}
             {avisoGuardado && !sucio ? (
               <span role="status" className="text-[12px] text-primary">
                 Cambios guardados.

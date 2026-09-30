@@ -1,20 +1,40 @@
 // Pestaña NUEVA (el panel original no la tenía): lista de conversaciones de voz con
 // fecha, duración, costo y resultado, y la transcripción de la seleccionada. Estado
 // vacío honesto hasta que exista backend: nunca se muestran llamadas inventadas.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MessageSquareText } from "lucide-react";
 import { Button, EstadoCargando, EstadoError, EstadoVacio, TranscripcionEnVivo } from "@atiende/ui";
 import type { LineaTranscripcion } from "@atiende/ui";
 import type { ConversacionVoz } from "../lib/voz-client.ts";
 import { etiquetaResultado, formatoCostoUsd, formatoDuracion, formatoInstante } from "./formato-voz.ts";
+import { desdeError } from "./carga.ts";
 import type { Carga } from "./carga.ts";
 
 function aLineas(c: ConversacionVoz): readonly LineaTranscripcion[] {
   return (c.transcripcion ?? []).map((l, i) => ({ id: `${c.id}-${i}`, rol: l.rol, texto: l.texto, parcial: false, ts: l.ts }));
 }
 
-export function PestanaConversaciones({ conversaciones, onReintentar }: { readonly conversaciones: Carga<readonly ConversacionVoz[]>; readonly onReintentar: () => void }) {
+export function PestanaConversaciones({ conversaciones, onReintentar, cargarDetalle }: { readonly conversaciones: Carga<readonly ConversacionVoz[]>; readonly onReintentar: () => void; readonly cargarDetalle?: (id: string) => Promise<ConversacionVoz> }) {
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
+  // La transcripción NO viene en el listado: se pide al abrir una conversación.
+  const [detalle, setDetalle] = useState<Carga<ConversacionVoz>>({ estado: "cargando" });
+
+  useEffect(() => {
+    if (abiertaId === null || !cargarDetalle) return;
+    let cancelado = false;
+    setDetalle({ estado: "cargando" });
+    cargarDetalle(abiertaId).then(
+      (d) => {
+        if (!cancelado) setDetalle({ estado: "listo", datos: d });
+      },
+      (err: unknown) => {
+        if (!cancelado) setDetalle(desdeError(err, "No se pudo cargar la transcripción."));
+      },
+    );
+    return () => {
+      cancelado = true;
+    };
+  }, [abiertaId]);
 
   if (conversaciones.estado === "cargando") return <EstadoCargando etiqueta="Cargando conversaciones…" />;
   if (conversaciones.estado === "no_disponible") {
@@ -27,7 +47,7 @@ export function PestanaConversaciones({ conversaciones, onReintentar }: { readon
 
   const abierta = lista.find((c) => c.id === abiertaId) ?? null;
   if (abierta) {
-    const lineas = aLineas(abierta);
+    const lineas = aLineas(detalle.estado === "listo" && detalle.datos.id === abierta.id ? detalle.datos : abierta);
     return (
       <div className="space-y-3">
         <Button type="button" variant="ghost" size="sm" onClick={() => setAbiertaId(null)}>
@@ -40,7 +60,10 @@ export function PestanaConversaciones({ conversaciones, onReintentar }: { readon
           <Dato titulo="Resultado" valor={etiquetaResultado(abierta.resultado)} />
         </dl>
         <div className="rounded-xl border border-border p-4">
-          {lineas.length === 0 ? <p className="text-[12.5px] text-muted-foreground">Esta conversación no incluye transcripción.</p> : <TranscripcionEnVivo lineas={lineas} />}
+          {cargarDetalle && detalle.estado === "cargando" ? <EstadoCargando etiqueta="Cargando transcripción…" /> : null}
+          {cargarDetalle && detalle.estado === "error" ? <EstadoError mensaje={detalle.mensaje} onReintentar={() => setAbiertaId(abierta.id)} /> : null}
+          {cargarDetalle && detalle.estado === "no_disponible" ? <p className="text-[12.5px] text-muted-foreground">La transcripción todavía no está disponible.</p> : null}
+          {!cargarDetalle || detalle.estado === "listo" ? lineas.length === 0 ? <p className="text-[12.5px] text-muted-foreground">Esta conversación no incluye transcripción.</p> : <TranscripcionEnVivo lineas={lineas} /> : null}
         </div>
       </div>
     );
