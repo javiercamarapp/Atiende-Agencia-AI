@@ -15,6 +15,7 @@ import { LicitacionesShell } from "../src/verticals/licitaciones/LicitacionesShe
 import type { BranchOption } from "../src/verticals/licitaciones/lib/admin-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
 
@@ -104,13 +105,11 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(desktopHeader!.className).toContain("md:flex");
   });
 
-  it("botón 'Salir' del MobileHeader dispara logout y regresa a onRequireLogin", async () => {
+  it("cerrar sesión desde el menú de cuenta móvil dispara logout real y regresa a onRequireLogin", async () => {
     const onRequireLogin = vi.fn();
     installMatchMediaStub();
     installMemoryLocalStorage().setItem("atiende.licitaciones.session", JSON.stringify(SESSION));
     fetchBranchesMock.mockResolvedValue([{ propertyId: "prop-1", name: "Empresa Demo" }]);
-    const logoutFetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }) as unknown as Response);
-    vi.stubGlobal("fetch", logoutFetch);
     rendered = renderComponent(
       <MemoryRouter>
         <LicitacionesShell apiBaseUrl="https://api.test" orgSlug="demo" onRequireLogin={onRequireLogin}>
@@ -121,14 +120,10 @@ describe("LicitacionesShell — nav móvil", () => {
     await act(async () => {
       await flushMicrotasks();
     });
-    const salirBtn = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent === "Salir")!;
-    await act(async () => {
-      salirBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await flushMicrotasks();
-    });
+    const fetchMock = await cerrarSesionDesdeMenuMovil(rendered.container);
     // logout() real (apps/web/src/lib/auth-client.ts) -- POST /auth/logout con
     // el refreshToken de la sesión, no solo la navegación de vuelta al login.
-    expect(logoutFetch).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       "https://api.test/auth/logout",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "reftok" }) }),
     );
