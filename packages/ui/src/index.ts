@@ -114,3 +114,4 @@ export {
 } from "./components/voz/medidor-volumen.js";
 export { CampoPixeles } from "./components/voz/CampoPixeles.js";
 export { TextoEscribiendose } from "./components/voz/TextoEscribiendose.js";
+export { ETIQUETA_MODO_ORB, OrbeAgente, volumenObjetivo, type OrbeAgenteProps } from "./components/voz/OrbeAgente.js";
