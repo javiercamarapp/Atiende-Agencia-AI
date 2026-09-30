@@ -225,6 +225,20 @@ describe("WhatsApp por sucursal (whatsapp_branch_channel)", () => {
     await sesionSigueViva(session);
   });
 
+  it("numero SALIENTE: base SIN migrar cae al numero por defecto de la organizacion dentro de la misma transaccion; con sucursal migrada usa su numero", async () => {
+    const sinMigrar = new AbortAwareFakeSession([
+      { match: /from restaurantes\.whatsapp_branch_channel where organization_id = \$1 and property_id/i, respond: () => sinTabla("whatsapp_branch_channel") },
+      { match: /from restaurantes\.whatsapp_channel_config where organization_id/i, respond: () => [{ phone_number_id: "pn-org" }] },
+    ]);
+    expect(await new PostgresRepo(sinMigrar).resolveActiveWhatsAppPhoneNumberId(ORG_ID, PROPERTY_ID)).toBe("pn-org");
+    expect(sinMigrar.calls.some((c) => c.startsWith("rollback to savepoint"))).toBe(true);
+
+    const migrada = new AbortAwareFakeSession([
+      { match: /from restaurantes\.whatsapp_branch_channel where organization_id = \$1 and property_id/i, respond: () => [{ phone_number_id: "pn-suc" }] },
+    ]);
+    expect(await new PostgresRepo(migrada).resolveActiveWhatsAppPhoneNumberId(ORG_ID, PROPERTY_ID)).toBe("pn-suc");
+  });
+
   it("desconectar: sin migrar -> Unavailable", async () => {
     const session = new AbortAwareFakeSession([{ match: /delete from restaurantes\.whatsapp_branch_channel/i, respond: () => sinTabla("whatsapp_branch_channel") }, SIGUIENTE]);
     await expect(new PostgresRepo(session).deleteWhatsappBranchChannel(ORG_ID, PROPERTY_ID)).rejects.toBeInstanceOf(RestaurantesConfigUnavailableError);

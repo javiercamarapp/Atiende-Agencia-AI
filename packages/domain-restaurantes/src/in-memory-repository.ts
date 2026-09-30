@@ -808,7 +808,12 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // `restaurantes.whatsapp_channel_config`, migrations/001), así que basta con
   // recorrer el mismo mapa buscando el organizationId — nunca hace falta un índice
   // separado.
-  async resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null> {
+  async resolveActiveWhatsAppPhoneNumberId(organizationId: string, propertyId?: string | null): Promise<string | null> {
+    if (propertyId) {
+      for (const [phoneNumberId, v] of this.whatsappBranchChannels) {
+        if (v.organizationId === organizationId && v.propertyId === propertyId) return phoneNumberId;
+      }
+    }
     for (const [phoneNumberId, orgId] of this.phoneNumberIdToOrg) {
       if (orgId === organizationId) return phoneNumberId;
     }

@@ -817,7 +817,26 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   // Fase 9 — sentido SALIENTE de `restaurantes.whatsapp_channel_config`
   // (migrations/001, `organization_id` es su PK real: un solo `phone_number_id` por
   // organización) — ver comentario completo en repository.ts.
-  async resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null> {
+  async resolveActiveWhatsAppPhoneNumberId(organizationId: string, propertyId?: string | null): Promise<string | null> {
+    if (propertyId) {
+      // Modelo PM (migracion 023): el numero de la sucursal del pedido va primero. Contra una
+      // base sin migrar la tabla no existe (42P01) -- SAVEPOINT porque esto corre dentro de la
+      // transaccion del cambio de estado del pedido.
+      const branchNumber = await runWithSavepointFallback<string | null>({
+        session: this.db,
+        savepointName: "sp_restaurantes_whatsapp_branch_channel_outbound",
+        primary: async () => {
+          const { rows } = await this.db.query<{ phone_number_id: string }>(
+            `select phone_number_id from restaurantes.whatsapp_branch_channel where organization_id = $1 and property_id = $2;`,
+            [organizationId, propertyId],
+          );
+          return rows[0]?.phone_number_id ?? null;
+        },
+        isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+        fallback: async () => null,
+      });
+      if (branchNumber) return branchNumber;
+    }
     const { rows } = await this.db.query<{ phone_number_id: string }>(`select phone_number_id from restaurantes.whatsapp_channel_config where organization_id = $1;`, [organizationId]);
     return rows[0]?.phone_number_id ?? null;
   }

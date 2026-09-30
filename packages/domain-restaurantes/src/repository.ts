@@ -277,8 +277,9 @@ export interface RestaurantesRepository {
    * SALIENTE: qué número usar para escribirle al CLIENTE fuera de una conversación
    * entrante (ver order-notifications.ts). `null` cuando la organización nunca
    * conectó WhatsApp — el caller debe tratarlo como "sin este canal disponible",
-   * nunca lanzar. */
-  resolveActiveWhatsAppPhoneNumberId(organizationId: string): Promise<string | null>;
+   * nunca lanzar. Modelo PM: con `propertyId`, el numero de ESA sucursal tiene prioridad
+   * sobre el numero por defecto de la organizacion (migracion 023). */
+  resolveActiveWhatsAppPhoneNumberId(organizationId: string, propertyId?: string | null): Promise<string | null>;
 
   // ---- Fase 9 — bandeja de notificaciones internas al staff (ver
   // order-notifications.ts, migrations/009_order_notifications.sql): sin push real

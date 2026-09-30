@@ -145,7 +145,7 @@ export type { NearestBranchResult } from "./nearest-branch.ts";
 export { actorHash, requestActor, consumeRateLimit } from "./rate-limit.ts";
 
 export { verifyMetaSignature } from "./whatsapp/meta-signature.ts";
-export { extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId } from "./whatsapp/channel-config.ts";
+export { extractMetaTextMessages, extractMetaPhoneNumberId, resolveOrganizationByPhoneNumberId, resolveWhatsAppChannel } from "./whatsapp/channel-config.ts";
 export type { MetaTextMessage } from "./whatsapp/channel-config.ts";
 export { redactSensitiveInfo, handleInboundWhatsAppMessage } from "./whatsapp/inbound.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";

@@ -99,7 +99,7 @@ export async function notifyCustomerOnOrderStatusChangeCore(repo: RestaurantesRe
   if (!CUSTOMER_NOTIFIED_STATUSES.has(order.status)) return { enqueued: false, reason: "status_not_notified" };
   if (!order.customerPhone) return { enqueued: false, reason: "no_customer_phone" };
 
-  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(order.organizationId);
+  const phoneNumberId = await repo.resolveActiveWhatsAppPhoneNumberId(order.organizationId, order.propertyId);
   if (!phoneNumberId) return { enqueued: false, reason: "no_whatsapp_channel" };
 
   const message = customerMessageForStatus(order);
