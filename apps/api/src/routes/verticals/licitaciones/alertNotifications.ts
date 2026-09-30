@@ -40,6 +40,7 @@
 import { Hono } from "hono";
 import { dispatchPendingEmailJobs } from "@atiende/domain-licitaciones";
 import type { EmailDispatchSummary as LicitacionesEmailDispatchSummary, LicitacionesRepository } from "@atiende/domain-licitaciones";
+import { runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runAlertNotificationSweep } from "@atiende/worker";
 import { Errors } from "../../../errors.ts";
@@ -108,30 +109,33 @@ export async function runLicitacionesEmailDispatch(deps: AppDeps, batchSize?: nu
  * (la transacción estaba sana al entrar) y el fallo ocurre DESPUÉS se hace
  * el `ROLLBACK TO SAVEPOINT` best-effort sin relanzar -- ese es el único
  * caso que este SAVEPOINT existe para aislar.
+ *
+ * Consolidación (Fase 2, integridad) — mismo refactor que
+ * `citas/email-dispatch.ts::triggerCitasEmailDispatchInline` (leído primero
+ * como plantilla): el SAVEPOINT/ROLLBACK/RELEASE manual de arriba ahora corre
+ * por `runWithSavepointFallback` (`@atiende/db`) con `isRecoverable` fijo en
+ * `true` y un `fallback` que solo loguea -- nunca relanza. Preserva la
+ * distinción `savepointTaken`: `runWithSavepointFallback` relanza tal cual
+ * cuando el SAVEPOINT mismo falla (nunca invoca `fallback` en ese caso) y
+ * solo corre `fallback` tras un `ROLLBACK TO SAVEPOINT` de recuperación
+ * exitoso. `savepointName` fijo para no romper
+ * `licitaciones-email-dispatch-savepoint.spec.ts` (afirma `execCalls` exacto).
  */
 export async function triggerLicitacionesEmailDispatchInline(deps: AppDeps, db: TenantDbSession, licitacionesRepo: LicitacionesRepository, batchSize: number = INLINE_BATCH_SIZE): Promise<void> {
-  let savepointTaken = false;
-  try {
-    await db.exec("SAVEPOINT sp_inline_email_dispatch");
-    savepointTaken = true;
-    const summary = await dispatchPendingEmailJobs(licitacionesRepo, deps.env.resend, { batchSize });
-    await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
-    if (summary.dead > 0) {
-      console.error(`licitaciones email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
-    }
-  } catch (err) {
-    if (!savepointTaken) {
-      console.error("licitaciones email-dispatch inline: la transacción ya venía abortada antes de este trigger, relanzando:", err);
-      throw err;
-    }
-    try {
-      await db.exec("ROLLBACK TO SAVEPOINT sp_inline_email_dispatch");
-      await db.exec("RELEASE SAVEPOINT sp_inline_email_dispatch");
-    } catch (recoveryErr) {
-      console.error("licitaciones email-dispatch inline: fallo recuperando el SAVEPOINT (no debería pasar):", recoveryErr);
-    }
-    console.error("licitaciones email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
-  }
+  await runWithSavepointFallback<void>({
+    session: db,
+    savepointName: "sp_inline_email_dispatch",
+    primary: async () => {
+      const summary = await dispatchPendingEmailJobs(licitacionesRepo, deps.env.resend, { batchSize });
+      if (summary.dead > 0) {
+        console.error(`licitaciones email-dispatch inline: ${summary.dead} correo(s) quedaron 'dead' en el drenado inline.`);
+      }
+    },
+    isRecoverable: () => true,
+    fallback: async (err) => {
+      console.error("licitaciones email-dispatch inline: fallo best-effort, el cron diario lo recogerá:", err);
+    },
+  });
 }
 
 export function licitacionesAlertNotificationsRoutes(deps: AppDeps): Hono {
