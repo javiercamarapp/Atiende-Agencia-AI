@@ -1,0 +1,89 @@
+// Cliente real de apps/api/src/routes/verticals/restaurantes/admin-modelo-pm.ts (modelo PM,
+// migración 023): política por sucursal (horario / pedido mínimo por canal / propina),
+// cobertura de entrega, número de WhatsApp por sucursal y marcas "no se vende a domicilio".
+// Mismo criterio de `fetchImpl` inyectado que el resto de lib/*.ts (ver admin-client.ts).
+import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
+
+export type PropinaPolitica = "nunca" | "siempre" | "solo_tarjeta";
+
+export interface TurnoHorario {
+  /** 0 = domingo .. 6 = sábado. */
+  readonly dias: readonly number[];
+  readonly abre: string;
+  /** Si es menor o igual a `abre`, el turno termina pasada la medianoche. */
+  readonly cierra: string;
+}
+
+export interface PoliticaSucursal {
+  readonly horario: readonly TurnoHorario[] | null;
+  readonly pedidoMinimoDomicilio: number | null;
+  readonly pedidoMinimoRecoger: number | null;
+  readonly propinaPolitica: PropinaPolitica | null;
+}
+
+const branchBase = (apiBaseUrl: string, propertyId: string, branchId: string) => `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/config/sucursales/${branchId}`;
+
+export async function fetchPoliticaSucursal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, branchId: string): Promise<PoliticaSucursal> {
+  return fetchJson<PoliticaSucursal>(fetchImpl, `${branchBase(apiBaseUrl, propertyId, branchId)}/politica`, token);
+}
+
+/** Reemplaza la política COMPLETA (todos los campos, valor o null). */
+export async function updatePoliticaSucursal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, branchId: string, politica: PoliticaSucursal): Promise<PoliticaSucursal> {
+  return sendJson<PoliticaSucursal>(fetchImpl, `${branchBase(apiBaseUrl, propertyId, branchId)}/politica`, token, "PUT", politica);
+}
+
+export async function fetchZonasReparto(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, branchId: string): Promise<readonly string[]> {
+  const body = await fetchJson<{ zoneIds: string[] }>(fetchImpl, `${branchBase(apiBaseUrl, propertyId, branchId)}/zonas-reparto`, token);
+  return body.zoneIds;
+}
+
+export async function updateZonasReparto(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, branchId: string, zoneIds: readonly string[]): Promise<readonly string[]> {
+  const body = await sendJson<{ zoneIds: string[] }>(fetchImpl, `${branchBase(apiBaseUrl, propertyId, branchId)}/zonas-reparto`, token, "PUT", { zoneIds });
+  return body.zoneIds;
+}
+
+export async function fetchWhatsappSucursal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, branchId: string): Promise<string | null> {
+  const body = await fetchJson<{ phoneNumberId: string | null }>(fetchImpl, `${branchBase(apiBaseUrl, propertyId, branchId)}/whatsapp`, token);
+  return body.phoneNumberId;
+}
+
+export async function updateWhatsappSucursal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, branchId: string, phoneNumberId: string): Promise<string | null> {
+  const body = await sendJson<{ phoneNumberId: string | null }>(fetchImpl, `${branchBase(apiBaseUrl, propertyId, branchId)}/whatsapp`, token, "PUT", { phoneNumberId });
+  return body.phoneNumberId;
+}
+
+export async function deleteWhatsappSucursal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, branchId: string): Promise<void> {
+  await deleteJson<{ ok: true }>(fetchImpl, `${branchBase(apiBaseUrl, propertyId, branchId)}/whatsapp`, token);
+}
+
+export interface NoDomicilioMarks {
+  readonly productIds: readonly string[];
+  readonly categoryIds: readonly string[];
+}
+
+export async function fetchNoDomicilio(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<NoDomicilioMarks> {
+  return fetchJson<NoDomicilioMarks>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/config/no-domicilio`, token);
+}
+
+export async function setNoDomicilio(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, kind: "productos" | "categorias", id: string, noDomicilio: boolean): Promise<void> {
+  await sendJson<{ id: string; noDomicilio: boolean }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/config/no-domicilio/${kind}/${id}`, token, "PUT", { noDomicilio });
+}
+
+// ---- helpers de formulario (puros, con test) ----
+
+export const NOMBRES_DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
+
+/** "" -> null (sin mínimo); número >= 0 -> número; cualquier otra cosa -> undefined (inválido). */
+export function parseMontoOpcional(raw: string): number | null | undefined {
+  const t = raw.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+/** Texto legible de un turno: "Lun–Vie 12:00 a 01:00 (+1 día)". */
+export function describirTurno(turno: TurnoHorario): string {
+  const dias = turno.dias.length === 7 ? "Todos los días" : turno.dias.map((d) => NOMBRES_DIAS[d]).join(", ");
+  const cruza = turno.cierra <= turno.abre ? " (cierra al día siguiente)" : "";
+  return `${dias} ${turno.abre} a ${turno.cierra}${cruza}`;
+}

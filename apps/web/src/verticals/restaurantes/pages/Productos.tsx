@@ -42,6 +42,8 @@ import {
   updateProduct,
 } from "../lib/catalog-client.ts";
 import type { Category, Product } from "../lib/catalog-client.ts";
+import { fetchNoDomicilio, setNoDomicilio } from "../lib/modelo-pm-client.ts";
+import type { NoDomicilioMarks } from "../lib/modelo-pm-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const SELECT_CLASES =
@@ -56,6 +58,9 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
   const [products, setProducts] = useState<readonly Product[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  // Marcas "no se vende a domicilio" (modelo PM, migración 023). `null` = no disponibles (base sin
+  // migrar o sin permiso): la UI oculta esos controles en vez de mostrar un estado falso.
+  const [marks, setMarks] = useState<NoDomicilioMarks | null>(null);
 
   const [newCatName, setNewCatName] = useState("");
   const [newCatSlug, setNewCatSlug] = useState("");
@@ -72,6 +77,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
       const [cats, prods] = await Promise.all([fetchCategories(fetch, apiBaseUrl, token, propertyId), fetchProducts(fetch, apiBaseUrl, token, propertyId)]);
       setCategories(cats);
       setProducts(prods);
+      setMarks(await fetchNoDomicilio(fetch, apiBaseUrl, token, propertyId).catch(() => null));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el catálogo.");
     }
@@ -147,6 +153,19 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
     }
   }
 
+  async function handleToggleNoDomicilio(kind: "productos" | "categorias", id: string, current: boolean) {
+    setSavingId(id);
+    setError(null);
+    try {
+      await setNoDomicilio(fetch, apiBaseUrl, token, propertyId, kind, id, !current);
+      setMarks(await fetchNoDomicilio(fetch, apiBaseUrl, token, propertyId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo actualizar la regla de domicilio.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function handleTogglePopular(product: Product) {
     setSavingId(product.id);
     setError(null);
@@ -208,6 +227,26 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
               </Badge>
             ))}
           </div>
+          {marks && categories && categories.length > 0 && (
+            <fieldset className="mt-3 flex flex-col gap-1.5 border-0 p-0">
+              <legend className="mb-1 p-0 text-xs text-muted-foreground">No se vende a domicilio (aplica a todos los productos de la categoría)</legend>
+              <div className="flex flex-wrap gap-3">
+                {categories.map((c) => (
+                  <label key={c.id} className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      aria-label={`${c.name}: no se vende a domicilio`}
+                      checked={marks.categoryIds.includes(c.id)}
+                      onChange={() => void handleToggleNoDomicilio("categorias", c.id, marks.categoryIds.includes(c.id))}
+                      disabled={savingId === c.id}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    {c.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
         </CardContent>
       </Card>
 
@@ -288,6 +327,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                   <TableHead>Precio en esta sucursal</TableHead>
                   <TableHead>Disponible aquí</TableHead>
                   <TableHead>Popular</TableHead>
+                  {marks && <TableHead>No a domicilio</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -334,6 +374,18 @@ export function ProductosPage({ apiBaseUrl, token, propertyId }: RestaurantesShe
                         className="h-4 w-4 accent-primary"
                       />
                     </TableCell>
+                    {marks && (
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          aria-label={`${p.name}: no se vende a domicilio`}
+                          checked={marks.productIds.includes(p.id)}
+                          onChange={() => void handleToggleNoDomicilio("productos", p.id, marks.productIds.includes(p.id))}
+                          disabled={savingId === p.id}
+                          className="h-4 w-4 accent-primary"
+                        />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

@@ -10,3 +10,14 @@ export class OrderConflictError extends OrderValidationError {}
 // traduce a HTTP 400 en public.ts/admin-orders.ts atrapa también un código de
 // promoción inválido/no vigente sin tocar ninguna ruta HTTP existente.
 export class PromotionError extends OrderValidationError {}
+
+/** El `phone_number_id` de WhatsApp que se intenta conectar ya rutea a otra sucursal u otra
+ * organizacion (migracion 023: PRIMARY KEY + guardia de unicidad cruzada). Subclase de
+ * OrderValidationError para que las rutas lo traduzcan como conflicto sin inventar otro
+ * mecanismo. */
+export class WhatsappNumberInUseError extends OrderValidationError {
+  constructor() {
+    super("Ese número de WhatsApp ya está conectado a otra sucursal u organización.");
+    this.name = "WhatsappNumberInUseError";
+  }
+}
