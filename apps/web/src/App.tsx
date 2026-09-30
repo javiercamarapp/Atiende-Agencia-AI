@@ -17,6 +17,7 @@ import { StaffPage } from "./verticals/restaurantes/pages/Staff.tsx";
 import { PromocionesPage } from "./verticals/restaurantes/pages/Promociones.tsx";
 import { AuditoriaPage as RestaurantesAuditoriaPage } from "./verticals/restaurantes/pages/Auditoria.tsx";
 import { ConfiguracionPage as RestaurantesConfiguracionPage } from "./verticals/restaurantes/pages/Configuracion.tsx";
+import { AgenteVozPage as RestaurantesAgenteVozPage } from "./verticals/restaurantes/pages/AgenteVoz.tsx";
 import { AceptarInvitacionPage } from "./shell/AceptarInvitacion.tsx";
 import { SeleccionarVerticalPage } from "./shell/SeleccionarVertical.tsx";
 import { GoogleCallbackPage } from "./shell/GoogleCallback.tsx";
@@ -192,6 +193,8 @@ const RestaurantesAuditoriaRoute = shellRoute(RestaurantesShell, "/restaurantes/
 // FASE 3 (producto) — configuración editable de WhatsApp/zonas conocidas
 // (owner/admin), mismo patrón exacto que RestaurantesAuditoriaRoute de arriba.
 const RestaurantesConfiguracionRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConfiguracionPage {...ctx} />);
+// Agente de voz (Gemini Live, sin ElevenLabs): config, vista previa y conversaciones.
+const RestaurantesAgenteVozRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAgenteVozPage {...ctx} />);
 
 /** Ruta pública genérica (Fase 14) — ver comentario de cabecera de
  * shell/AceptarInvitacion.tsx: fuera de cualquier shell autenticado, mismo patrón
@@ -688,6 +691,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/promociones" element={<RestaurantesPromocionesRoute />} />
         <Route path="/restaurantes/:orgSlug/auditoria" element={<RestaurantesAuditoriaRoute />} />
         <Route path="/restaurantes/:orgSlug/configuracion" element={<RestaurantesConfiguracionRoute />} />
+        <Route path="/restaurantes/:orgSlug/agente-voz" element={<RestaurantesAgenteVozRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
             AceptarInvitacion.tsx): el invitado todavía no tiene sesión. */}
         <Route path="/aceptar-invitacion" element={<AceptarInvitacionRoute />} />

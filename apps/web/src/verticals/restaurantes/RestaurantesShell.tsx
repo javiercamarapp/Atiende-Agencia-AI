@@ -20,6 +20,7 @@ import {
   ClipboardList,
   History,
   LayoutDashboard,
+  Mic,
   Settings,
   Store,
   Tag,
@@ -113,6 +114,9 @@ function buildSections(orgSlug: string, canSeeStaff: boolean): SidebarSection[] 
         // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas, mismo
         // umbral owner/admin (STAFF_NAV_ROLES) que Staff/Auditoría.
         { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
+        // Agente de voz (config, vista previa, conversaciones) -- mismo umbral
+        // owner/admin: la configuración del agente es de gestión, no de operación.
+        { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
       ],
     });
   }
