@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { ApiError, requestId } from "@atiende/core-auth";
 import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
+import { cabecerasSeguridadApi } from "./cabeceras-seguridad.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { authGoogleRoutes } from "./routes/auth-google.ts";
@@ -52,6 +53,10 @@ export function buildApp(deps: AppDeps): Hono {
   // app ahora incluyen este mismo id, y `docs/OBSERVABILIDAD.md` para el detalle
   // completo de qué correlaciona y qué no.
   app.use("*", requestId());
+
+  // Cabeceras de seguridad (HSTS, nosniff, anti-framing, CSP restrictiva de API, etc.)
+  // en TODA respuesta, incluidos 401/404/500 -- ver ./cabeceras-seguridad.ts.
+  app.use("*", cabecerasSeguridadApi());
 
   app.onError((err, c) => {
     if (err instanceof ApiError) {
