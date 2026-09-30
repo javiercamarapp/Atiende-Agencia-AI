@@ -6,10 +6,12 @@
 // fallback dev/CI sin Postgres real — mismo rol que InMemoryStateStore en
 // @atiende/core-conversation.
 import { randomUUID } from "node:crypto";
-import { OrderConflictError } from "./errors.ts";
+import { OrderConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { EMPTY_BRANCH_POLICY } from "./types.ts";
 import { haversineKm, normalizeZoneText } from "./nearest-branch.ts";
 import type {
   Branch,
+  BranchPolicy,
   BranchProductState,
   BranchSummary,
   BranchTimezoneConfig,
@@ -26,6 +28,7 @@ import type {
   NearestBranchMatch,
   NewCategoryInput,
   NewKnownZoneInput,
+  NoDomicilioMarks,
   NewProductInput,
   NewPromotionInput,
   Order,
@@ -42,6 +45,8 @@ import type {
   RestaurantesAuditLogPagina,
   RestaurantesAuditLogPaginacion,
   RestaurantesAuditLogRow,
+  WhatsAppChannelResolution,
+  WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
 import type {
@@ -276,6 +281,13 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // `knownZones`: `Branch` es un tipo público usado en muchos call-sites, esto es
   // config editable aparte que solo un puñado de sitios necesita.
   private readonly branchZonaHoraria = new Map<string, string | null>();
+  // Modelo PM (migracion 023), espejo en memoria de branch_policy / branch_delivery_zone /
+  // whatsapp_branch_channel / no_domicilio.
+  private readonly branchPolicies = new Map<string, BranchPolicy>();
+  private readonly branchDeliveryZones = new Map<string, Set<string>>();
+  private readonly whatsappBranchChannels = new Map<string, { organizationId: string; propertyId: string }>();
+  private readonly noDomicilioProducts = new Set<string>();
+  private readonly noDomicilioCategories = new Set<string>();
 
   // ---- FASE 3 (producto) -- bitácora de auditoría del staff ----
   /** Expuesto también como referencia tipada directa (mismo criterio que
@@ -348,6 +360,24 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
   seedWhatsAppChannel(organizationId: string, phoneNumberId: string): void {
     this.phoneNumberIdToOrg.set(phoneNumberId, organizationId);
+  }
+
+  /** Equivalente en memoria de `insert into restaurantes.whatsapp_branch_channel`. */
+  seedWhatsAppBranchChannel(organizationId: string, propertyId: string, phoneNumberId: string): void {
+    this.whatsappBranchChannels.set(phoneNumberId, { organizationId, propertyId });
+  }
+
+  seedBranchPolicy(propertyId: string, policy: Partial<BranchPolicy>): void {
+    this.branchPolicies.set(propertyId, { ...EMPTY_BRANCH_POLICY, ...policy });
+  }
+
+  seedBranchDeliveryZones(propertyId: string, zoneIds: readonly string[]): void {
+    this.branchDeliveryZones.set(propertyId, new Set(zoneIds));
+  }
+
+  seedNoDomicilio(marks: { readonly productIds?: readonly string[]; readonly categoryIds?: readonly string[] }): void {
+    for (const id of marks.productIds ?? []) this.noDomicilioProducts.add(id);
+    for (const id of marks.categoryIds ?? []) this.noDomicilioCategories.add(id);
   }
 
   /** Equivalente en memoria de `insert into restaurantes.known_zone(...)`
@@ -461,6 +491,7 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
         searchKeywords: product.searchKeywords,
         price: bp.price,
         isAvailable: bp.isAvailable,
+        noDomicilio: this.noDomicilioProducts.has(product.id) || (product.categoryId !== null && this.noDomicilioCategories.has(product.categoryId)),
       });
     }
     return result;
@@ -1411,6 +1442,10 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   }
 
   async upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig> {
+    const branchOwner = this.whatsappBranchChannels.get(phoneNumberId);
+    if (branchOwner && branchOwner.organizationId !== organizationId) throw new WhatsappNumberInUseError();
+    const legacyOwner = this.phoneNumberIdToOrg.get(phoneNumberId);
+    if (legacyOwner && legacyOwner !== organizationId) throw new WhatsappNumberInUseError();
     // Un solo `phone_number_id` por organización (PK real de la tabla) -- limpia
     // cualquier entrada previa de ESTA organización antes de fijar la nueva.
     for (const [existingPhoneNumberId, orgId] of this.phoneNumberIdToOrg) {
@@ -1452,6 +1487,90 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!this.branches.has(propertyId)) throw new Error(`upsertBranchZonaHoraria: la property "${propertyId}" no existe.`);
     this.branchZonaHoraria.set(propertyId, zonaHoraria);
     return { zonaHoraria };
+  }
+
+  // ---- Modelo PM (migracion 023) ----
+  async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
+    return this.branchPolicies.get(propertyId) ?? EMPTY_BRANCH_POLICY;
+  }
+
+  async upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy> {
+    // Mismo contrato que el `with check` de la policy: la property debe ser de la organizacion.
+    if (this.branches.get(propertyId)?.organizationId !== organizationId) throw new Error(`upsertBranchPolicy: la property "${propertyId}" no pertenece a la organizacion.`);
+    this.branchPolicies.set(propertyId, { ...policy });
+    return policy;
+  }
+
+  async listBranchDeliveryZoneIds(propertyId: string): Promise<readonly string[]> {
+    return [...(this.branchDeliveryZones.get(propertyId) ?? [])].sort();
+  }
+
+  async replaceBranchDeliveryZones(organizationId: string, propertyId: string, zoneIds: readonly string[]): Promise<readonly string[]> {
+    if (this.branches.get(propertyId)?.organizationId !== organizationId) throw new Error(`replaceBranchDeliveryZones: la property "${propertyId}" no pertenece a la organizacion.`);
+    for (const id of zoneIds) {
+      if (!this.knownZones.some((z) => z.id === id && z.organizationId === organizationId)) throw new Error(`replaceBranchDeliveryZones: la zona "${id}" no pertenece a la organizacion.`);
+    }
+    const next = new Set(zoneIds);
+    this.branchDeliveryZones.set(propertyId, next);
+    return [...next].sort();
+  }
+
+  async resolveWhatsAppChannel(phoneNumberId: string): Promise<WhatsAppChannelResolution | null> {
+    const branch = this.whatsappBranchChannels.get(phoneNumberId);
+    if (branch) return { organizationId: branch.organizationId, propertyId: branch.propertyId };
+    const organizationId = this.phoneNumberIdToOrg.get(phoneNumberId);
+    return organizationId ? { organizationId, propertyId: null } : null;
+  }
+
+  async listWhatsappBranchChannels(organizationId: string): Promise<readonly WhatsappBranchChannel[]> {
+    return [...this.whatsappBranchChannels.entries()]
+      .filter(([, v]) => v.organizationId === organizationId)
+      .map(([phoneNumberId, v]) => ({ propertyId: v.propertyId, phoneNumberId }));
+  }
+
+  async upsertWhatsappBranchChannel(organizationId: string, propertyId: string, phoneNumberId: string): Promise<WhatsappBranchChannel> {
+    if (this.branches.get(propertyId)?.organizationId !== organizationId) throw new Error(`upsertWhatsappBranchChannel: la property "${propertyId}" no pertenece a la organizacion.`);
+    // PRIMARY KEY + guardia de unicidad cruzada de la migracion 023.
+    const branchOwner = this.whatsappBranchChannels.get(phoneNumberId);
+    if (branchOwner && (branchOwner.organizationId !== organizationId || branchOwner.propertyId !== propertyId)) throw new WhatsappNumberInUseError();
+    const legacyOwner = this.phoneNumberIdToOrg.get(phoneNumberId);
+    if (legacyOwner && legacyOwner !== organizationId) throw new WhatsappNumberInUseError();
+    for (const [existing, v] of this.whatsappBranchChannels) {
+      if (v.propertyId === propertyId) this.whatsappBranchChannels.delete(existing);
+    }
+    this.whatsappBranchChannels.set(phoneNumberId, { organizationId, propertyId });
+    return { propertyId, phoneNumberId };
+  }
+
+  async deleteWhatsappBranchChannel(organizationId: string, propertyId: string): Promise<boolean> {
+    for (const [phoneNumberId, v] of this.whatsappBranchChannels) {
+      if (v.propertyId === propertyId && v.organizationId === organizationId) {
+        this.whatsappBranchChannels.delete(phoneNumberId);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async listNoDomicilioMarks(organizationId: string): Promise<NoDomicilioMarks> {
+    return {
+      productIds: [...this.noDomicilioProducts].filter((id) => this.products.get(id)?.organizationId === organizationId),
+      categoryIds: [...this.noDomicilioCategories].filter((id) => this.categories.get(id)?.organizationId === organizationId),
+    };
+  }
+
+  async setProductNoDomicilio(organizationId: string, productId: string, noDomicilio: boolean): Promise<boolean> {
+    if (this.products.get(productId)?.organizationId !== organizationId) return false;
+    if (noDomicilio) this.noDomicilioProducts.add(productId);
+    else this.noDomicilioProducts.delete(productId);
+    return true;
+  }
+
+  async setCategoryNoDomicilio(organizationId: string, categoryId: string, noDomicilio: boolean): Promise<boolean> {
+    if (this.categories.get(categoryId)?.organizationId !== organizationId) return false;
+    if (noDomicilio) this.noDomicilioCategories.add(categoryId);
+    else this.noDomicilioCategories.delete(categoryId);
+    return true;
   }
 }
 

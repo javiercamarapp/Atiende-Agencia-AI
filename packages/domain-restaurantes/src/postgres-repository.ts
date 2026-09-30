@@ -11,10 +11,11 @@
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runWithSavepointFallback } from "@atiende/db";
-import { OrderConflictError } from "./errors.ts";
+import { OrderConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import type {
   Branch,
   BranchProductState,
+  BranchPolicy,
   BranchSummary,
   BranchTimezoneConfig,
   CallbackRequest,
@@ -30,6 +31,7 @@ import type {
   NearestBranchMatch,
   NewCategoryInput,
   NewKnownZoneInput,
+  NoDomicilioMarks,
   NewProductInput,
   NewPromotionInput,
   Order,
@@ -46,8 +48,12 @@ import type {
   RestaurantesAuditLogPagina,
   RestaurantesAuditLogPaginacion,
   RestaurantesAuditLogRow,
+  WhatsAppChannelResolution,
+  WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
+import { EMPTY_BRANCH_POLICY } from "./types.ts";
+import { leerHorarioPersistido } from "./horarios.ts";
 import type {
   ChannelStatsRow,
   ConversationMessage,
@@ -106,6 +112,7 @@ interface ProductRow {
   readonly search_keywords: readonly string[];
   readonly price: string;
   readonly is_available: boolean;
+  readonly no_domicilio?: boolean;
 }
 
 interface CustomerRow {
@@ -462,15 +469,41 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async listAvailableProductsForBranch(propertyId: string): Promise<readonly SearchableProduct[]> {
-    const { rows } = await this.db.query<ProductRow>(
-      `select pr.id, pr.name, pr.description, c.name as category_name, pr.search_keywords, bp.price, bp.is_available
-       from restaurantes.branch_products bp
-       join restaurantes.products pr on pr.id = bp.product_id
-       left join restaurantes.categories c on c.id = pr.category_id
-       where bp.property_id = $1 and bp.is_available = true
-       limit 400;`,
-      [propertyId],
-    );
+    // Migracion 023 agrega `no_domicilio` a products/categories. Contra una base SIN
+    // migrar el SELECT nuevo falla con 42703 -- este metodo corre dentro de la
+    // transaccion unica de un request (cotizar/crear pedido), asi que el respaldo al
+    // SELECT anterior EXIGE SAVEPOINT (un try/catch simple dejaria la transaccion
+    // abortada, 25P02).
+    const rows = await runWithSavepointFallback<readonly ProductRow[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_catalogo_no_domicilio",
+      primary: async () => {
+        const { rows: result } = await this.db.query<ProductRow>(
+          `select pr.id, pr.name, pr.description, c.name as category_name, pr.search_keywords, bp.price, bp.is_available,
+                  (pr.no_domicilio or coalesce(c.no_domicilio, false)) as no_domicilio
+           from restaurantes.branch_products bp
+           join restaurantes.products pr on pr.id = bp.product_id
+           left join restaurantes.categories c on c.id = pr.category_id
+           where bp.property_id = $1 and bp.is_available = true
+           limit 400;`,
+          [propertyId],
+        );
+        return result;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => {
+        const { rows: result } = await this.db.query<ProductRow>(
+          `select pr.id, pr.name, pr.description, c.name as category_name, pr.search_keywords, bp.price, bp.is_available
+           from restaurantes.branch_products bp
+           join restaurantes.products pr on pr.id = bp.product_id
+           left join restaurantes.categories c on c.id = pr.category_id
+           where bp.property_id = $1 and bp.is_available = true
+           limit 400;`,
+          [propertyId],
+        );
+        return result;
+      },
+    });
     return rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -479,6 +512,7 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       searchKeywords: row.search_keywords,
       price: Number(row.price),
       isAvailable: row.is_available,
+      noDomicilio: row.no_domicilio === true,
     }));
   }
 
@@ -1570,25 +1604,33 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
   }
 
   async upsertWhatsappChannelConfig(organizationId: string, phoneNumberId: string): Promise<WhatsappChannelConfig> {
-    return runWithSavepointFallback<WhatsappChannelConfig>({
-      session: this.db,
-      savepointName: "sp_restaurantes_whatsapp_config_write",
-      primary: async () => {
-        const { rows } = await this.db.query<{ phone_number_id: string }>(
-          `insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id)
-           values ($1, $2)
-           on conflict (organization_id) do update set phone_number_id = excluded.phone_number_id
-           returning phone_number_id;`,
-          [organizationId, phoneNumberId],
-        );
-        return { phoneNumberId: rows[0]!.phone_number_id };
-      },
-      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
-      fallback: (err) => {
-        advertirConfigEscrituraNoDisponible("whatsapp_channel_config", err);
-        throw new RestaurantesConfigUnavailableError();
-      },
-    });
+    try {
+      return await runWithSavepointFallback<WhatsappChannelConfig>({
+        session: this.db,
+        savepointName: "sp_restaurantes_whatsapp_config_write",
+        primary: async () => {
+          const { rows } = await this.db.query<{ phone_number_id: string }>(
+            `insert into restaurantes.whatsapp_channel_config (organization_id, phone_number_id)
+             values ($1, $2)
+             on conflict (organization_id) do update set phone_number_id = excluded.phone_number_id
+             returning phone_number_id;`,
+            [organizationId, phoneNumberId],
+          );
+          return { phoneNumberId: rows[0]!.phone_number_id };
+        },
+        isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+        fallback: (err) => {
+          advertirConfigEscrituraNoDisponible("whatsapp_channel_config", err);
+          throw new RestaurantesConfigUnavailableError();
+        },
+      });
+    } catch (err) {
+      // 23505: el numero ya es de otra organizacion (UNIQUE de la tabla o guardia de
+      // unicidad cruzada con los numeros por sucursal, migracion 023). El SAVEPOINT ya
+      // dejo la sesion utilizable.
+      if ((err as { code?: string } | null)?.code === "23505") throw new WhatsappNumberInUseError();
+      throw err;
+    }
   }
 
   async listKnownZones(organizationId: string): Promise<readonly KnownZone[]> {
@@ -1682,6 +1724,247 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       },
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Modelo PM (migracion 023) -- ver packages/domain-restaurantes/migrations/
+  // 023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql. Las tablas son NUEVAS:
+  // contra una base sin migrar toda lectura falla con 42P01/42703 y degrada a "sin
+  // configurar" (la consulta corre dentro de la transaccion unica de un request, por eso
+  // SAVEPOINT obligatorio); toda escritura lanza RestaurantesConfigUnavailableError.
+  // ---------------------------------------------------------------------------
+
+  async findBranchPolicy(propertyId: string): Promise<BranchPolicy> {
+    return runWithSavepointFallback<BranchPolicy>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_policy_read",
+      primary: async () => {
+        const { rows } = await this.db.query<BranchPolicyRowSql>(
+          `select horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica from restaurantes.branch_policy where property_id = $1;`,
+          [propertyId],
+        );
+        return rows[0] ? mapBranchPolicyRow(rows[0]) : EMPTY_BRANCH_POLICY;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => EMPTY_BRANCH_POLICY,
+    });
+  }
+
+  async upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy> {
+    return runWithSavepointFallback<BranchPolicy>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_policy_write",
+      primary: async () => {
+        const { rows } = await this.db.query<BranchPolicyRowSql>(
+          `insert into restaurantes.branch_policy (property_id, organization_id, horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica, updated_at)
+           values ($1, $2, $3::jsonb, $4, $5, $6, now())
+           on conflict (property_id) do update set
+             horario = excluded.horario,
+             pedido_minimo_domicilio = excluded.pedido_minimo_domicilio,
+             pedido_minimo_recoger = excluded.pedido_minimo_recoger,
+             propina_politica = excluded.propina_politica,
+             updated_at = excluded.updated_at
+           returning horario, pedido_minimo_domicilio, pedido_minimo_recoger, propina_politica;`,
+          [
+            propertyId,
+            organizationId,
+            policy.horario === null ? null : JSON.stringify(policy.horario),
+            policy.pedidoMinimoDomicilio,
+            policy.pedidoMinimoRecoger,
+            policy.propinaPolitica,
+          ],
+        );
+        return mapBranchPolicyRow(rows[0]!);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirModeloPmNoDisponible("branch_policy", err);
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
+  async listBranchDeliveryZoneIds(propertyId: string): Promise<readonly string[]> {
+    return runWithSavepointFallback<readonly string[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_delivery_zone_read",
+      primary: async () => {
+        const { rows } = await this.db.query<{ zone_id: string }>(`select zone_id from restaurantes.branch_delivery_zone where property_id = $1 order by zone_id;`, [propertyId]);
+        return rows.map((r) => r.zone_id);
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => [],
+    });
+  }
+
+  async replaceBranchDeliveryZones(organizationId: string, propertyId: string, zoneIds: readonly string[]): Promise<readonly string[]> {
+    const unique = [...new Set(zoneIds)];
+    return runWithSavepointFallback<readonly string[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_branch_delivery_zone_write",
+      primary: async () => {
+        await this.db.query(`delete from restaurantes.branch_delivery_zone where property_id = $1 and organization_id = $2;`, [propertyId, organizationId]);
+        for (const zoneId of unique) {
+          await this.db.query(`insert into restaurantes.branch_delivery_zone (property_id, zone_id, organization_id) values ($1, $2, $3);`, [propertyId, zoneId, organizationId]);
+        }
+        return unique;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirModeloPmNoDisponible("branch_delivery_zone", err);
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
+  async resolveWhatsAppChannel(phoneNumberId: string): Promise<WhatsAppChannelResolution | null> {
+    const branch = await runWithSavepointFallback<WhatsAppChannelResolution | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_branch_channel_read",
+      primary: async () => {
+        const { rows } = await this.db.query<{ organization_id: string; property_id: string }>(
+          `select organization_id, property_id from restaurantes.whatsapp_branch_channel where phone_number_id = $1;`,
+          [phoneNumberId],
+        );
+        return rows[0] ? { organizationId: rows[0].organization_id, propertyId: rows[0].property_id } : null;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => null,
+    });
+    if (branch) return branch;
+    const organizationId = await this.resolveOrganizationByPhoneNumberId(phoneNumberId);
+    return organizationId ? { organizationId, propertyId: null } : null;
+  }
+
+  async listWhatsappBranchChannels(organizationId: string): Promise<readonly WhatsappBranchChannel[]> {
+    return runWithSavepointFallback<readonly WhatsappBranchChannel[]>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_branch_channel_list",
+      primary: async () => {
+        const { rows } = await this.db.query<{ property_id: string; phone_number_id: string }>(
+          `select property_id, phone_number_id from restaurantes.whatsapp_branch_channel where organization_id = $1 order by created_at, property_id;`,
+          [organizationId],
+        );
+        return rows.map((r) => ({ propertyId: r.property_id, phoneNumberId: r.phone_number_id }));
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => [],
+    });
+  }
+
+  async upsertWhatsappBranchChannel(organizationId: string, propertyId: string, phoneNumberId: string): Promise<WhatsappBranchChannel> {
+    try {
+      return await runWithSavepointFallback<WhatsappBranchChannel>({
+        session: this.db,
+        savepointName: "sp_restaurantes_whatsapp_branch_channel_write",
+        primary: async () => {
+          const { rows } = await this.db.query<{ property_id: string; phone_number_id: string }>(
+            `insert into restaurantes.whatsapp_branch_channel (phone_number_id, organization_id, property_id)
+             values ($1, $2, $3)
+             on conflict (property_id) do update set phone_number_id = excluded.phone_number_id
+             returning property_id, phone_number_id;`,
+            [phoneNumberId, organizationId, propertyId],
+          );
+          return { propertyId: rows[0]!.property_id, phoneNumberId: rows[0]!.phone_number_id };
+        },
+        isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+        fallback: (err) => {
+          advertirModeloPmNoDisponible("whatsapp_branch_channel", err);
+          throw new RestaurantesConfigUnavailableError();
+        },
+      });
+    } catch (err) {
+      // El SAVEPOINT de runWithSavepointFallback ya dejo la sesion utilizable antes de
+      // repropagar; 23505 = el numero ya rutea a otra sucursal u otra organizacion
+      // (PRIMARY KEY o guardia de unicidad cruzada de la migracion 023).
+      if ((err as { code?: string } | null)?.code === "23505") throw new WhatsappNumberInUseError();
+      throw err;
+    }
+  }
+
+  async deleteWhatsappBranchChannel(organizationId: string, propertyId: string): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_restaurantes_whatsapp_branch_channel_delete",
+      primary: async () => {
+        const { rows } = await this.db.query<{ property_id: string }>(
+          `delete from restaurantes.whatsapp_branch_channel where property_id = $1 and organization_id = $2 returning property_id;`,
+          [propertyId, organizationId],
+        );
+        return rows.length > 0;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirModeloPmNoDisponible("whatsapp_branch_channel", err);
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+
+  async listNoDomicilioMarks(organizationId: string): Promise<NoDomicilioMarks> {
+    return runWithSavepointFallback<NoDomicilioMarks>({
+      session: this.db,
+      savepointName: "sp_restaurantes_no_domicilio_marks_read",
+      primary: async () => {
+        const products = await this.db.query<{ id: string }>(`select id from restaurantes.products where organization_id = $1 and no_domicilio;`, [organizationId]);
+        const categories = await this.db.query<{ id: string }>(`select id from restaurantes.categories where organization_id = $1 and no_domicilio;`, [organizationId]);
+        return { productIds: products.rows.map((r) => r.id), categoryIds: categories.rows.map((r) => r.id) };
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: async () => ({ productIds: [], categoryIds: [] }),
+    });
+  }
+
+  async setProductNoDomicilio(organizationId: string, productId: string, noDomicilio: boolean): Promise<boolean> {
+    return this.setNoDomicilio("products", organizationId, productId, noDomicilio);
+  }
+
+  async setCategoryNoDomicilio(organizationId: string, categoryId: string, noDomicilio: boolean): Promise<boolean> {
+    return this.setNoDomicilio("categories", organizationId, categoryId, noDomicilio);
+  }
+
+  private async setNoDomicilio(table: "products" | "categories", organizationId: string, id: string, noDomicilio: boolean): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: `sp_restaurantes_${table}_no_domicilio_write`,
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string }>(`update restaurantes.${table} set no_domicilio = $3 where id = $1 and organization_id = $2 returning id;`, [id, organizationId, noDomicilio]);
+        return rows.length > 0;
+      },
+      isRecoverable: esErrorCompatibilidadConfigBaseSinMigrar,
+      fallback: (err) => {
+        advertirModeloPmNoDisponible(`${table}.no_domicilio`, err);
+        throw new RestaurantesConfigUnavailableError();
+      },
+    });
+  }
+}
+
+interface BranchPolicyRowSql {
+  horario: unknown;
+  pedido_minimo_domicilio: string | number | null;
+  pedido_minimo_recoger: string | number | null;
+  propina_politica: string | null;
+}
+
+function mapBranchPolicyRow(row: BranchPolicyRowSql): BranchPolicy {
+  const propina = row.propina_politica;
+  return {
+    horario: leerHorarioPersistido(row.horario),
+    pedidoMinimoDomicilio: row.pedido_minimo_domicilio === null ? null : Number(row.pedido_minimo_domicilio),
+    pedidoMinimoRecoger: row.pedido_minimo_recoger === null ? null : Number(row.pedido_minimo_recoger),
+    propinaPolitica: propina === "nunca" || propina === "siempre" || propina === "solo_tarjeta" ? propina : null,
+  };
+}
+
+const modeloPmAdvertido = new Set<string>();
+function advertirModeloPmNoDisponible(objeto: string, err: unknown): void {
+  if (modeloPmAdvertido.has(objeto)) return;
+  modeloPmAdvertido.add(objeto);
+  console.warn(
+    `PostgresRestaurantesRepository: restaurantes.${objeto} todavía no existe/está habilitado en esta base (SQLSTATE 42501/42883/42P01/42703) -- aplica ` +
+      "packages/domain-restaurantes/migrations/023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql (o su espejo en supabase/migrations/).",
+    err,
+  );
 }
 
 interface OrderCursorBoundary {

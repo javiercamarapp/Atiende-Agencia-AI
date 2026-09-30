@@ -7,7 +7,7 @@
 // `product.price` (que ya viene de branch_products, resuelto server-side) — nunca de
 // lo que mande el cliente.
 import { OrderValidationError } from "./errors.ts";
-import type { DefaultComplement, OrderQuote, ProductoEncontrado, QuotedOrderLine, RequestedComplement, RequestedOrderItemInput } from "./types.ts";
+import type { CanalPedido, DefaultComplement, OrderQuote, ProductoEncontrado, QuotedOrderLine, RequestedComplement, RequestedOrderItemInput } from "./types.ts";
 
 export const DEFAULT_COMPLEMENTS: readonly DefaultComplement[] = ["salsa_verde", "salsa_roja", "limones", "cebolla"];
 
@@ -50,7 +50,7 @@ export function buildComplementNotes(
 export function buildOrderQuoteFromProducts(
   requestedItems: readonly RequestedOrderItemInput[],
   products: readonly ProductoEncontrado[],
-  options: { readonly adultConfirmed?: boolean } = {},
+  options: { readonly adultConfirmed?: boolean; readonly canal?: CanalPedido } = {},
 ): OrderQuote {
   if (!Array.isArray(requestedItems) || requestedItems.length === 0) {
     throw new OrderValidationError("El pedido no tiene productos");
@@ -76,6 +76,15 @@ export function buildOrderQuoteFromProducts(
     const product = products.find((candidate) => candidate.id === item.productId);
     if (!product) {
       throw new OrderValidationError(`Producto no disponible: ${item.productId}`);
+    }
+
+    // Regla dura: producto/categoria marcados "no se vende a domicilio" (PM: alcohol). Se
+    // evalua ANTES de la confirmacion de mayoria de edad: no tiene caso preguntarla por algo
+    // que de todos modos no se puede enviar. `canal` ausente = domicilio (historico).
+    if (product.noDomicilio === true && (options.canal ?? "domicilio") === "domicilio") {
+      throw new OrderValidationError(
+        `${product.name} no se vende a domicilio. Quítelo del pedido o cambie el pedido a recoger en sucursal.`,
+      );
     }
 
     if (product.requiresAdultConfirmation && options.adultConfirmed !== true) {

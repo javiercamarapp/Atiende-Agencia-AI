@@ -9,6 +9,7 @@
 // en producción.
 import type {
   Branch,
+  BranchPolicy,
   BranchProductState,
   BranchSummary,
   BranchTimezoneConfig,
@@ -25,6 +26,7 @@ import type {
   NearestBranchMatch,
   NewCategoryInput,
   NewKnownZoneInput,
+  NoDomicilioMarks,
   NewProductInput,
   NewPromotionInput,
   Order,
@@ -40,6 +42,8 @@ import type {
   RestaurantesAuditLogFiltro,
   RestaurantesAuditLogPagina,
   RestaurantesAuditLogPaginacion,
+  WhatsAppChannelResolution,
+  WhatsappBranchChannel,
   WhatsappChannelConfig,
 } from "./types.ts";
 
@@ -51,6 +55,8 @@ export interface SearchableProduct {
   readonly searchKeywords: readonly string[];
   readonly price: number;
   readonly isAvailable: boolean;
+  /** Producto o categoria marcados "no se vende a domicilio" (migracion 023). */
+  readonly noDomicilio?: boolean;
 }
 
 export interface NewOrderRecord {
@@ -472,6 +478,34 @@ export interface RestaurantesRepository {
    *  `RestaurantesConfigUnavailableError` (503 honesto vía la ruta HTTP) si la
    *  base todavía no tiene la migración 022 aplicada. */
   upsertBranchZonaHoraria(propertyId: string, zonaHoraria: string | null): Promise<BranchTimezoneConfig>;
+
+  // ---- Modelo PM (migracion 023): politica por sucursal, cobertura de entrega,
+  // WhatsApp por sucursal y marcas no_domicilio. Toda LECTURA degrada a "sin
+  // configurar" con SAVEPOINT cuando la base todavia no tiene la migracion (42P01/
+  // 42703/42883) -- nunca lanza ni deja la transaccion abortada; toda ESCRITURA lanza
+  // `RestaurantesConfigUnavailableError` en ese caso (503 honesto en la ruta). ----
+
+  /** `EMPTY_BRANCH_POLICY` cuando la sucursal no tiene politica o la base no esta migrada. */
+  findBranchPolicy(propertyId: string): Promise<BranchPolicy>;
+  /** Reemplaza la politica completa de la sucursal (upsert por property_id). */
+  upsertBranchPolicy(organizationId: string, propertyId: string, policy: BranchPolicy): Promise<BranchPolicy>;
+  /** Ids de `known_zone` que cubre la sucursal para entregas; [] = sin cobertura
+   * configurada (no restringe) o base sin migrar. */
+  listBranchDeliveryZoneIds(propertyId: string): Promise<readonly string[]>;
+  /** Reemplaza el conjunto de zonas de la sucursal (todo o nada dentro de la misma
+   * sesion). */
+  replaceBranchDeliveryZones(organizationId: string, propertyId: string, zoneIds: readonly string[]): Promise<readonly string[]>;
+  /** Resuelve el numero que recibio un mensaje: primero el numero de una sucursal, luego
+   * el numero por defecto de la organizacion. `null` si ninguno lo reconoce. */
+  resolveWhatsAppChannel(phoneNumberId: string): Promise<WhatsAppChannelResolution | null>;
+  listWhatsappBranchChannels(organizationId: string): Promise<readonly WhatsappBranchChannel[]>;
+  upsertWhatsappBranchChannel(organizationId: string, propertyId: string, phoneNumberId: string): Promise<WhatsappBranchChannel>;
+  /** `true` si borro el numero de ESA sucursal de ESTA organizacion. */
+  deleteWhatsappBranchChannel(organizationId: string, propertyId: string): Promise<boolean>;
+  listNoDomicilioMarks(organizationId: string): Promise<NoDomicilioMarks>;
+  /** `false` si el producto/categoria no existe en la organizacion. */
+  setProductNoDomicilio(organizationId: string, productId: string, noDomicilio: boolean): Promise<boolean>;
+  setCategoryNoDomicilio(organizationId: string, categoryId: string, noDomicilio: boolean): Promise<boolean>;
 }
 
 /** Lanzado por `upsertWhatsappChannelConfig`/`createKnownZone`/`deleteKnownZone`

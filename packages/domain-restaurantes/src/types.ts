@@ -3,6 +3,7 @@
 // restaurant_id -> organizationId y branch_id -> propertyId para integrar con el
 // modelo de tenancy de @atiende/core-tenancy (Organization/Property), en vez del
 // concepto de tenant aislado (`restaurants`) del origen.
+import type { HorarioSucursal } from "./horarios.ts";
 
 export interface Branch {
   readonly propertyId: string;
@@ -58,6 +59,10 @@ export interface ProductoEncontrado {
    */
   readonly packSize: number | null;
   readonly requiresAdultConfirmation: boolean;
+  /** Regla dura "no se vende a domicilio" (producto o su categoria marcados en
+   * `restaurantes.products/categories.no_domicilio`, migracion 023). Ausente/false =
+   * sin restriccion (tambien cuando la base todavia no tiene la columna). */
+  readonly noDomicilio?: boolean;
 }
 
 export interface RequestedOrderItemInput {
@@ -153,6 +158,49 @@ export interface CreateOrderInput {
    * un pedido sin código nunca pasa por el motor de promociones (mismo criterio que
    * el resto de campos opcionales de este input). */
   readonly promoCode?: string;
+  /** Canal del pedido. Default "domicilio" (comportamiento historico). "recoger" no exige
+   * direccion, usa el pedido minimo de recoger y no aplica la regla de zona/no_domicilio. */
+  readonly canal?: CanalPedido;
+  /** Colonia/zona de entrega que dio el cliente (se empareja con `known_zone`). Solo se
+   * exige cuando la sucursal tiene cobertura de entrega configurada. */
+  readonly colonia?: string;
+  /** Propina en pesos capturada en terminal. Solo se acepta si la politica de la sucursal
+   * lo permite (PM: solo con tarjeta); no modifica `total`, se registra en las notas. */
+  readonly propina?: number;
+}
+
+export type CanalPedido = "domicilio" | "recoger";
+export type PropinaPolitica = "nunca" | "siempre" | "solo_tarjeta";
+
+/** Politica por sucursal (`restaurantes.branch_policy`, migracion 023). Todo null = sin
+ * politica configurada (comportamiento anterior: sin limite de horario, sin minimo, sin
+ * propina). */
+export interface BranchPolicy {
+  readonly horario: HorarioSucursal | null;
+  readonly pedidoMinimoDomicilio: number | null;
+  readonly pedidoMinimoRecoger: number | null;
+  readonly propinaPolitica: PropinaPolitica | null;
+}
+
+export const EMPTY_BRANCH_POLICY: BranchPolicy = { horario: null, pedidoMinimoDomicilio: null, pedidoMinimoRecoger: null, propinaPolitica: null };
+
+/** Resolucion del numero de WhatsApp que recibe un mensaje: organizacion y, cuando el
+ * numero pertenece a una sucursal, esa sucursal (`null` = numero por defecto de la
+ * organizacion). */
+export interface WhatsAppChannelResolution {
+  readonly organizationId: string;
+  readonly propertyId: string | null;
+}
+
+export interface WhatsappBranchChannel {
+  readonly propertyId: string;
+  readonly phoneNumberId: string;
+}
+
+/** Marcas "no_domicilio" del catalogo (migracion 023). */
+export interface NoDomicilioMarks {
+  readonly productIds: readonly string[];
+  readonly categoryIds: readonly string[];
 }
 
 export interface Order {
