@@ -19,6 +19,17 @@ import { estaAbiertoAhora } from "../horarios.ts";
 import { findNearestBranch } from "../nearest-branch.ts";
 import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo } from "../orders.ts";
 import type { RestaurantesRepository } from "../repository.ts";
+import {
+  assertCanConfirm,
+  assertCanCreate,
+  FLOW_ROW_TTL_SECONDS,
+  fingerprintOrder,
+  warnOrderFlowUnavailable,
+  type OrderFlowContext,
+  type OrderFlowRef,
+  type OrderFlowSnapshot,
+  type OrderFlowState,
+} from "./order-flow.ts";
 import type {
   CanalPedido,
   CreateOrderInput,
@@ -38,6 +49,7 @@ export type AgentToolName =
   | "buscar_sucursal_cercana"
   | "buscar_producto"
   | "cotizar_pedido"
+  | "confirmar_resumen"
   | "crear_pedido"
   | "registrar_contacto"
   | "escalar_a_humano";
@@ -64,6 +76,9 @@ export interface AgentToolContext {
   readonly phone: string | null;
   /** Sucursal fijada por el contexto (token de llamada / numero de WhatsApp de sucursal). */
   readonly lockedPropertyId?: string | null;
+  /** Maquina de estados del pedido (order-flow.ts). Ausente = sin exigir cotizacion/confirmacion
+   * (camino legado: voz con secreto global sin token de llamada). */
+  readonly flow?: OrderFlowRef;
   /** Campos extra que solo acepta el canal de voz en crear_pedido (transcripcion, etc.). */
   readonly extraOrder?: Partial<Pick<CreateOrderInput, "customerEmail" | "callTranscript" | "callRecordingUrl" | "promoCode" | "idempotencyKey">>;
 }
@@ -76,6 +91,8 @@ export interface AgentToolOutcome {
   readonly raw?: unknown;
   readonly orderId: string | null;
   readonly propertyId: string | null;
+  /** Huella de la cotizacion vigente (solo cotizar_pedido con maquina de estados activa). */
+  readonly quoteHash?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -154,8 +171,18 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     channels: ["whatsapp", "voz"],
   },
   {
+    name: "confirmar_resumen",
+    description:
+      "Registra que el CLIENTE confirmó explícitamente (dijo sí) el resumen completo devuelto por cotizar_pedido. Llámala solo después de repetirle los renglones y el total y de recibir su respuesta en un mensaje posterior; nunca en el mismo turno en que cotizaste. Sin esta confirmación el sistema rechaza crear_pedido.",
+    parameters: {
+      type: "object",
+      properties: { quote_hash: { type: "string", description: "El quote_hash que devolvió cotizar_pedido (opcional; si se manda debe ser el de la última cotización)." } },
+    },
+    channels: ["whatsapp", "voz"],
+  },
+  {
     name: "crear_pedido",
-    description: "Registra el pedido final en el sistema. Solo llamar cuando el cliente ya confirmó todo, incluyendo la sucursal.",
+    description: "Registra el pedido final en el sistema. Solo llamar cuando el cliente ya confirmó todo, incluyendo la sucursal. El sistema rechaza crear_pedido si antes no hubo cotizar_pedido y confirmar_resumen con los mismos productos.",
     parameters: {
       type: "object",
       properties: {
@@ -215,6 +242,7 @@ export const VOICE_TOOL_HTTP_PATHS: Readonly<Record<AgentToolName, string>> = {
   buscar_sucursal_cercana: "/branches/nearest",
   buscar_producto: "/products/search",
   cotizar_pedido: "/orders/quote",
+  confirmar_resumen: "/orders/confirm",
   crear_pedido: "/orders",
   registrar_contacto: "/callbacks",
   escalar_a_humano: "/callbacks",
@@ -352,6 +380,114 @@ export function mapCreateOrderToolInput(ctx: AgentToolContext, input: Record<str
 export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
+  if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido")) {
+    return dispatchTool(repo, ctx, name, input);
+  }
+  return runWithOrderFlow(repo, ctx, ctx.flow, name, input);
+}
+
+function flowNow(flow: OrderFlowRef): number {
+  return (flow.now ?? Date.now)();
+}
+
+async function readFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef): Promise<OrderFlowSnapshot | null> {
+  const snap = await repo.readOrderFlow(ctx.organizationId, flow.key);
+  if (snap === null) warnOrderFlowUnavailable();
+  return snap;
+}
+
+async function writeFlow(
+  repo: RestaurantesRepository,
+  ctx: AgentToolContext,
+  flow: OrderFlowRef,
+  expectedVersion: number,
+  state: OrderFlowState,
+  context: OrderFlowContext,
+): Promise<"written" | "conflict" | "unavailable"> {
+  const res = await repo.writeOrderFlow(ctx.organizationId, flow.key, expectedVersion, { state, context }, FLOW_ROW_TTL_SECONDS);
+  if (res === "unavailable") warnOrderFlowUnavailable();
+  return res;
+}
+
+const CONFLICT_MESSAGE = "La conversación se está procesando en otro lugar; vuelve a intentar en un momento.";
+
+/** Aplica la maquina de estados alrededor de cotizar/confirmar/crear. Base sin migrar => camino anterior. */
+async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolContext, flow: OrderFlowRef, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+  const lenient = ctx.channel === "whatsapp";
+  const canalOf = (raw: unknown) => (raw === "recoger" ? "recoger" : "domicilio");
+
+  if (name === "cotizar_pedido") {
+    const outcome = await dispatchTool(repo, ctx, name, input);
+    const quoteHash = fingerprintOrder({
+      branchSlug: String(input.branch_slug ?? ""),
+      canal: canalOf(input.canal),
+      adultConfirmed: input.adult_confirmed === true,
+      items: toRequestedItems(input.items, lenient),
+    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const snap = await readFlow(repo, ctx, flow);
+      if (snap === null) return outcome; // base sin migrar: camino anterior
+      const res = await writeFlow(repo, ctx, flow, snap.version, "cotizado", { quoteHash, quotedAtMs: flowNow(flow), quotedTurn: flow.turn });
+      if (res === "written") return { ...outcome, result: { ...(outcome.result as object), quote_hash: quoteHash }, quoteHash };
+      if (res === "unavailable") return outcome;
+    }
+    throw new OrderValidationError(CONFLICT_MESSAGE);
+  }
+
+  if (name === "confirmar_resumen") {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const snap = await readFlow(repo, ctx, flow);
+      if (snap === null) return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor todavía" }, orderId: null, propertyId: null };
+      const cited = typeof input.quote_hash === "string" ? input.quote_hash : undefined;
+      const current = assertCanConfirm(snap, { now: flowNow(flow), turn: flow.turn, quoteHashCited: cited });
+      if (snap.state !== "cotizado") {
+        return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
+      }
+      const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", { ...current, confirmedAtMs: flowNow(flow) });
+      if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
+      if (res === "unavailable") return { result: { confirmado: true }, orderId: null, propertyId: null };
+    }
+    throw new OrderValidationError(CONFLICT_MESSAGE);
+  }
+
+  // crear_pedido: reclamo atomico (confirmado -> creando) ANTES de crear, para que dos llamadas
+  // concurrentes no creen dos pedidos.
+  const fingerprint = fingerprintOrder({
+    branchSlug: String(input.branch_slug ?? ""),
+    canal: canalOf(input.canal),
+    adultConfirmed: input.adult_confirmed === true,
+    items: toRequestedItems(input.items, lenient),
+  });
+  let claimed: { version: number; context: OrderFlowContext } | null = null;
+  for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
+    const snap = await readFlow(repo, ctx, flow);
+    if (snap === null) return dispatchTool(repo, ctx, name, input); // base sin migrar: camino anterior
+    const current = assertCanCreate(snap, { now: flowNow(flow), turn: flow.turn, fingerprint });
+    const claimCtx: OrderFlowContext = { ...current, claimedAtMs: flowNow(flow) };
+    const res = await writeFlow(repo, ctx, flow, snap.version, "creando", claimCtx);
+    if (res === "written") claimed = { version: snap.version + 1, context: claimCtx };
+    else if (res === "unavailable") return dispatchTool(repo, ctx, name, input);
+  }
+  if (!claimed) throw new OrderValidationError(CONFLICT_MESSAGE);
+
+  try {
+    const outcome = await dispatchTool(repo, ctx, name, input);
+    await writeFlow(repo, ctx, flow, claimed.version, "creado", { ...claimed.context, orderId: outcome.orderId ?? undefined });
+    return outcome;
+  } catch (err) {
+    // Error de negocio (horario, zona, minimo...): vuelve a "confirmado" para poder corregir/reintentar.
+    // Un error real de Postgres aborta la transaccion del request entera (no se puede escribir mas);
+    // el rollback de la transaccion deshace tambien el reclamo.
+    if (err instanceof OrderValidationError) {
+      await writeFlow(repo, ctx, flow, claimed.version, "confirmado", { ...claimed.context, claimedAtMs: undefined });
+    }
+    throw err;
+  }
+}
+
+async function dispatchTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
+  const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
+  if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   const lenient = ctx.channel === "whatsapp";
   const { organizationId } = ctx;
 
@@ -417,6 +553,10 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
         paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
       });
       return { result: { quote: quoteToWire(quote) }, raw: quote, orderId: null, propertyId: null };
+    }
+    case "confirmar_resumen": {
+      // Sin maquina de estados activa (camino legado): no hay nada que registrar.
+      return { result: { confirmado: true, aviso: "confirmación no registrada por el servidor" }, orderId: null, propertyId: null };
     }
     case "crear_pedido": {
       const branchSlug = String(input.branch_slug ?? "");

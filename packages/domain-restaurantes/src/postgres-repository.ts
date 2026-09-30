@@ -11,6 +11,7 @@
 // de sistema con userId:null + policies RLS explícitas para esa sesión).
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { runWithSavepointFallback } from "@atiende/db";
+import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { OrderConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import type {
   Branch,
@@ -318,6 +319,13 @@ const RESTAURANTES_AUDIT_LOG_WRITE_SAVEPOINT = "sp_restaurantes_audit_log_write"
 const RESTAURANTES_AUDIT_LOG_READ_SAVEPOINT = "sp_restaurantes_audit_log_read";
 
 function esErrorCompatibilidadAuditLogBaseSinMigrar(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42883" || code === "42P01" || code === "42703";
+}
+
+// Compatibilidad con la base SIN migrar para la migracion 026 (estado del pedido / secretos por
+// sucursal / bitacora de voz): funcion o tabla inexistente.
+function esErrorBaseSinMigrar026(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
   return code === "42883" || code === "42P01" || code === "42703";
 }
@@ -772,6 +780,54 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       fallback: (err) => {
         throw err;
       },
+    });
+  }
+
+  // ---- Estado del pedido en el servidor (migracion 026; ver agent-tools/order-flow.ts) ----
+  // SAVEPOINT propio por operacion: en la base sin migrar (42883/42P01/42703) la funcion no
+  // existe, `ROLLBACK TO SAVEPOINT` deja viva la transaccion compartida del request y se
+  // devuelve "no disponible" (camino anterior) en vez de abortarla (25P02).
+  async readOrderFlow(organizationId: string, flowKey: string): Promise<OrderFlowSnapshot | null> {
+    return runWithSavepointFallback<OrderFlowSnapshot | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_order_flow_read",
+      primary: async () => {
+        const { rows } = await this.db.query<{ state: string | null; context: OrderFlowContext | null; version: number | string }>(
+          `select state, context, version from restaurantes.read_order_flow_state($1, $2);`,
+          [organizationId, flowKey],
+        );
+        const row = rows[0];
+        if (!row || !row.state || !row.context) return { state: null, context: null, version: row ? Number(row.version) : 0 };
+        return { state: row.state as OrderFlowState, context: row.context, version: Number(row.version) };
+      },
+      isRecoverable: esErrorBaseSinMigrar026,
+      fallback: async () => null,
+    });
+  }
+
+  async writeOrderFlow(
+    organizationId: string,
+    flowKey: string,
+    expectedVersion: number,
+    next: { readonly state: OrderFlowState; readonly context: OrderFlowContext },
+    ttlSeconds: number,
+  ): Promise<OrderFlowWriteResult> {
+    return runWithSavepointFallback<OrderFlowWriteResult>({
+      session: this.db,
+      savepointName: "sp_restaurantes_order_flow_write",
+      primary: async () => {
+        const { rows } = await this.db.query<{ result: string }>(`select restaurantes.write_order_flow_state($1, $2, $3, $4, $5::jsonb, $6) as result;`, [
+          organizationId,
+          flowKey,
+          expectedVersion,
+          next.state,
+          JSON.stringify(next.context),
+          ttlSeconds,
+        ]);
+        return rows[0]?.result === "written" ? "written" : "conflict";
+      },
+      isRecoverable: esErrorBaseSinMigrar026,
+      fallback: async () => "unavailable",
     });
   }
 

@@ -5,6 +5,7 @@
 // conversación). Sirve como fixture de seed para tests determinísticos y como
 // fallback dev/CI sin Postgres real — mismo rol que InMemoryStateStore en
 // @atiende/core-conversation.
+import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
 import { OrderConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { EMPTY_BRANCH_POLICY } from "./types.ts";
@@ -900,6 +901,33 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
   // `runWithRowSavepoint` en `repository.ts`. `fn` corre directo y su error (si lo
   // hay) se repropaga tal cual, mismo comportamiento observable que tendría un
   // SAVEPOINT+ROLLBACK TO SAVEPOINT real desde el punto de vista del caller.
+  private readonly orderFlows = new Map<string, { state: OrderFlowState; context: OrderFlowContext; version: number; expiresAtMs: number }>();
+  /** Solo pruebas: simula una base sin migrar (`readOrderFlow` -> null, `writeOrderFlow` -> "unavailable"). */
+  orderFlowUnavailable = false;
+
+  async readOrderFlow(organizationId: string, flowKey: string): Promise<OrderFlowSnapshot | null> {
+    if (this.orderFlowUnavailable) return null;
+    const row = this.orderFlows.get(`${organizationId}:${flowKey}`);
+    if (!row || row.expiresAtMs <= Date.now()) return { state: null, context: null, version: row && row.expiresAtMs <= Date.now() ? row.version : 0 };
+    return { state: row.state, context: row.context, version: row.version };
+  }
+
+  async writeOrderFlow(
+    organizationId: string,
+    flowKey: string,
+    expectedVersion: number,
+    next: { readonly state: OrderFlowState; readonly context: OrderFlowContext },
+    ttlSeconds: number,
+  ): Promise<OrderFlowWriteResult> {
+    if (this.orderFlowUnavailable) return "unavailable";
+    const key = `${organizationId}:${flowKey}`;
+    const row = this.orderFlows.get(key);
+    const currentVersion = row?.version ?? 0;
+    if (currentVersion !== expectedVersion) return "conflict";
+    this.orderFlows.set(key, { state: next.state, context: next.context, version: currentVersion + 1, expiresAtMs: Date.now() + ttlSeconds * 1000 });
+    return "written";
+  }
+
   async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
     return fn();
   }

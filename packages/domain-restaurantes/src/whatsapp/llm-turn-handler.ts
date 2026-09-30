@@ -58,7 +58,7 @@ export const ORDER_QUANTITY_RULES = `REGLAS DURAS DE CANTIDADES Y TOTAL:
 - Para CADA renglón de tacos, pregunta por separado si lo quiere con tortilla de maíz o de harina, salvo que el cliente diga explícitamente "todos de maíz" o "todos de harina". Guarda la elección como tortilla: "maiz" o "harina" en cada item. No cotices ni avances al pago mientras falte esta elección para cualquier taco.
 - Si buscar_producto devuelve requires_adult_confirmation: true, pregunta directamente si quien recibirá el pedido es mayor de edad y espera un sí claro. Solo entonces manda adult_confirmed: true tanto a cotizar_pedido como a crear_pedido. Nunca lo infieras por el tono, el nombre, la voz o una respuesta ambigua.
 - Nunca cierres un turno diciendo solo "voy a revisar" o "déjame buscar". Ejecuta la herramienta necesaria en ese mismo turno y después responde con el resultado, o termina con una pregunta concreta que el cliente sí deba contestar.
-- Está prohibido preguntar efectivo/tarjeta antes de que cotizar_pedido responda con éxito. Después de que el cliente elija la forma de pago, llama inmediatamente a crear_pedido: no pidas una confirmación redundante.
+- Está prohibido preguntar efectivo/tarjeta antes de que cotizar_pedido responda con éxito. Flujo obligatorio: (1) cotizar_pedido; (2) repite al cliente los renglones y el total exactos y pregúntale la forma de pago y si confirma; (3) cuando el cliente responda en su SIGUIENTE mensaje con su confirmación (sí) y la forma de pago, llama confirmar_resumen (con el quote_hash de la cotización) y después crear_pedido con los mismos productos cotizados. El sistema rechaza crear_pedido si no hubo cotización vigente y confirmar_resumen antes, o si los productos cambiaron: si el cliente cambia algo, vuelve a cotizar y a pedir confirmación. Nunca llames confirmar_resumen en el mismo turno en que cotizaste.
 - Conserva en requested_quantity la cantidad de piezas/unidades que dijo y confirmó el cliente. Nunca conviertas tú las piezas a órdenes: cotizar_pedido y crear_pedido hacen esa conversión de forma determinista.
 - Antes de decir cualquier total o preguntar la forma de pago, llama siempre a cotizar_pedido. Repite exactamente el total y los renglones devueltos; nunca hagas aritmética mental ni recalcules el resultado.`;
 
@@ -294,6 +294,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch);
 
       const working: LlmMessage[] = toLlmHistory(messages);
+      // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de
+      // usuario identifica en que mensaje del cliente estamos (la maquina de estados del pedido
+      // exige que la confirmacion llegue en un turno posterior a la cotizacion).
+      const userTurn = String(messages.filter((m) => m.role === "user").length);
       let orderId: string | null = null;
       let propertyId: string | null = activeEntryBranch?.propertyId ?? null;
       let huboFalloDeHerramienta = false;
@@ -339,7 +343,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puedes repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone }, call.name, input);
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, flow: { key: `wa:${phone}`, turn: userTurn } }, call.name, input);
             result = executed.result;
             if (executed.orderId) {
               orderId = executed.orderId;

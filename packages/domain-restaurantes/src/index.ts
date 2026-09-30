@@ -181,3 +181,12 @@ export {
   toolDefinitionsForChannel,
 } from "./agent-tools/registry.ts";
 export type { AgentChannel, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
+export {
+  CLAIM_STALE_MS,
+  OrderFlowViolationError,
+  QUOTE_TTL_MS,
+  assertCanConfirm,
+  assertCanCreate,
+  fingerprintOrder,
+} from "./agent-tools/order-flow.ts";
+export type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowStore, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";

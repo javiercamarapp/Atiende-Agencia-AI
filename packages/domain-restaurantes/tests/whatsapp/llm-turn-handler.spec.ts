@@ -13,6 +13,7 @@ import type { LlmCompletionResult, LlmMessage } from "@atiende/agent-core";
 import { createLlmWhatsAppTurnHandler, enforceBistecPackNotice, saludoSegunHora } from "../../src/whatsapp/llm-turn-handler.ts";
 import { InMemoryRestaurantesRepository } from "../../src/in-memory-repository.ts";
 import type { CustomerLookupResult } from "../../src/types.ts";
+import { seedConfirmedOrderFlow } from "../support/order-flow-seed.ts";
 
 const NEW_CUSTOMER: CustomerLookupResult = { isNew: true };
 
@@ -107,6 +108,8 @@ describe("createLlmWhatsAppTurnHandler — el loop de tool-use", () => {
     repo.seedProduct({ id: productId, organizationId, categoryId: catId, name: "Agua", description: null, searchKeywords: [] });
     repo.seedBranchProduct({ propertyId, productId, price: 20, isAvailable: true });
 
+    // El cliente ya vio la cotizacion y confirmo en un turno anterior (maquina de estados del pedido).
+    await seedConfirmedOrderFlow(repo, organizationId, "wa:+5219990000000", { branchSlug: "centro", items: [{ productId, productName: "Agua", requestedQuantity: 1 }] });
     const gateway = makeGateway();
     let step = 0;
     gateway.registerLadder("default", [
