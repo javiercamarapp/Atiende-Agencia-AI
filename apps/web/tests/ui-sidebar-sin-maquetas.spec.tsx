@@ -57,15 +57,13 @@ describe("Sidebar compartido — sin controles maqueta", () => {
     expect(deshabilitados).toHaveLength(0);
   });
 
-  it("sin configuracionTo no hay enlace a una ruta inexistente; con configuracionTo apunta a esa ruta real", () => {
+  it("no dibuja un enlace fijo a /configuracion (ruta inexistente); solo hay los destinos que pasa cada vertical", () => {
     rendered = renderSidebar();
     expect(rendered.container.querySelector('a[href="/configuracion"]')).toBeNull();
-    expect([...rendered.container.querySelectorAll("a")].some((a) => a.textContent === "Configuración")).toBe(false);
-    rendered.unmount();
-
-    rendered = renderSidebar({ configuracionTo: "/citas/demo/configuracion" });
-    const link = [...rendered.container.querySelectorAll("a")].find((a) => a.textContent === "Configuración");
-    expect(link?.getAttribute("href")).toBe("/citas/demo/configuracion");
+    const permitidos = new Set(SECCIONES.flatMap((sec) => sec.items.map((it) => it.to)));
+    const hrefs = [...rendered.container.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
+    expect(hrefs.length).toBeGreaterThan(0);
+    expect(hrefs.filter((h) => !permitidos.has(h))).toEqual([]);
   });
 
   it("el botón de cerrar sesión dispara onLogout", () => {
