@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { ApiError, requestId } from "@atiende/core-auth";
 import type { AppDeps } from "./deps.ts";
 import { logEvent } from "./logger.ts";
+import { healthRoutes } from "./routes/health.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { authGoogleRoutes } from "./routes/auth-google.ts";
 import { authMagicLinkRoutes } from "./routes/auth-magic-link.ts";
@@ -60,7 +61,8 @@ export function buildApp(deps: AppDeps): Hono {
     return c.json({ code: "internal_error", message: "Error interno" }, 500);
   });
 
-  app.get("/health", (c) => c.json({ ok: true }));
+  // /health real (BD + latidos + rate limiter, degrada a 503), ver routes/health.ts.
+  app.route("/", healthRoutes(deps));
 
   app.route("/", authRoutes(deps));
   app.route("/", authGoogleRoutes(deps));
