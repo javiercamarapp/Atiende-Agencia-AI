@@ -50,6 +50,11 @@ interface CreateOrderBody {
   readonly call_transcript?: unknown;
   readonly call_recording_url?: unknown;
   readonly promo_code?: unknown;
+  /** Modelo PM (migración 023): canal del pedido ("domicilio" | "recoger"), colonia de entrega
+   * y propina en pesos — las reglas por sucursal las aplica `createOrder`, nunca esta ruta. */
+  readonly canal?: unknown;
+  readonly colonia_entrega?: unknown;
+  readonly propina?: unknown;
 }
 
 function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, source: "web" | "voice"): CreateOrderInput {
@@ -82,6 +87,9 @@ function mapCreateOrderBody(organizationId: string, body: CreateOrderBody, sourc
     // Fase 11 — código de promoción opcional (ver domain-restaurantes/src/
     // promotions.ts); createOrder lo valida/aplica al total real, nunca aquí.
     promoCode: typeof body.promo_code === "string" ? body.promo_code : undefined,
+    canal: typeof body.canal === "string" ? (body.canal as CreateOrderInput["canal"]) : undefined,
+    colonia: typeof body.colonia_entrega === "string" ? body.colonia_entrega : undefined,
+    propina: typeof body.propina === "number" ? body.propina : undefined,
   };
 }
 
