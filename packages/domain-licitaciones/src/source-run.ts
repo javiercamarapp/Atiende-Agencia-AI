@@ -36,6 +36,13 @@ export interface SourceRunRecord extends SourceRunInput {
   readonly id: string;
   readonly organizationId: string;
   readonly createdAt: string;
+  /**
+   * Presente SOLO cuando la corrida NO se pudo persistir en `licitaciones.source_run`
+   * porque la base aún no tiene la migración 028 (el CHECK de `source` no admite
+   * `yucatan_ocds`/`guadalajara_ocds`). En ese caso `id` es "" y el registro es solo
+   * informativo -- el llamador debe exponer este motivo (nunca tragarlo en silencio).
+   */
+  readonly notPersistedReason?: string;
 }
 
 /**
