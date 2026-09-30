@@ -232,6 +232,21 @@ export class PostgresComandaOutboxStore implements ComandaOutboxStore {
     });
   }
 
+  async obtener(organizationId: string, id: string): Promise<FilaComandaOutbox | null> {
+    return runWithSavepointFallback<FilaComandaOutbox | null>({
+      session: this.db,
+      primary: async () => {
+        const r = await this.db.query<RawFila>(`select ${COLUMNAS_LECTURA} from restaurantes.pos_comanda_outbox where organization_id = $1 and id = $2::uuid`, [organizationId, id]);
+        return r.rows[0] ? mapFilaComanda(r.rows[0]) : null;
+      },
+      isRecoverable: esBaseSinMigrar,
+      fallback: (err) => {
+        advertirBaseSinMigrar(err);
+        return Promise.resolve(null);
+      },
+    });
+  }
+
   async resumen(organizationId: string, propertyIds: readonly string[] | null): Promise<ResumenComandas> {
     const params: unknown[] = [organizationId];
     let filtro = "";

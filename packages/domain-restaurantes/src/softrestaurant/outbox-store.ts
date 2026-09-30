@@ -86,6 +86,8 @@ export interface ComandaOutboxStore {
   completar(id: string, decision: DecisionTransicion): Promise<boolean>;
 
   listar(organizationId: string, filtro: FiltroListarComandas): Promise<ResultadoListar>;
+  /** Una fila por id dentro de la organizacion (null si no existe, es de otra organizacion o no hay migracion). */
+  obtener(organizationId: string, id: string): Promise<FilaComandaOutbox | null>;
   resumen(organizationId: string, propertyIds: readonly string[] | null): Promise<ResumenComandas>;
   /** Staff. Detiene los reintentos automaticos de esa comanda. */
   marcarCapturada(organizationId: string, id: string, actorUserId: string, nota: string | null): Promise<ResultadoCaptura>;

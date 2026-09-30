@@ -164,6 +164,12 @@ export class InMemoryComandaOutboxStore implements ComandaOutboxStore {
     return { disponible: true, filas };
   }
 
+  async obtener(organizationId: string, id: string): Promise<FilaComandaOutbox | null> {
+    if (!this.disponible) return null;
+    const f = this.filas.get(id)?.fila;
+    return f && f.organizationId === organizationId ? f : null;
+  }
+
   async resumen(organizationId: string, propertyIds: readonly string[] | null): Promise<ResumenComandas> {
     const porEstado = resumenVacio();
     if (!this.disponible) return { disponible: false, porEstado };
