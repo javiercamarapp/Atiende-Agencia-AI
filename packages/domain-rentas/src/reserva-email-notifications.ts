@@ -20,6 +20,7 @@
 // de "tu reserva quedó confirmada" no es contenido generado que alguien deba
 // aprobar -- ver el comentario de cabecera de ./emails/reserva-templates.ts.
 import type { TenantDbSession } from "@atiende/core-tenancy";
+import { runWithSavepointFallback } from "@atiende/db";
 import { correoReservaConfirmada, correoReservaRecordatorioCheckIn, type ReservaCorreoDatos } from "./emails/reserva-templates.ts";
 import type { RentasRepository } from "./repository.ts";
 import type { FechaLocal } from "./tipos.ts";
@@ -124,6 +125,25 @@ const RESERVA_EMAIL_SAVEPOINT_NAME = "sp_reserva_email_best_effort";
  * usa `enqueueReservaEmailCore` DIRECTO en su propia transacción por candidata, nunca
  * esta variante) no aplica -- pero se deja el parámetro opcional por si algún caller
  * futuro de sesión de sistema sin transacción compartida la necesita sin SAVEPOINT.
+ *
+ * FASE 2 (integridad, consolidación) -- el SAVEPOINT/ROLLBACK TO SAVEPOINT/
+ * RELEASE manual de arriba se reemplaza por `runWithSavepointFallback`
+ * (@atiende/db, mismo helper que ya usan los best-effort de citas/
+ * restaurantes/despachos/hoteles). A diferencia de
+ * `triggerHotelesEmailDispatchInline`/`triggerRentasEmailDispatchInline` (que
+ * SÍ relanzan cuando el SAVEPOINT mismo falla, para que el caller HTTP reciba
+ * un 5xx honesto), aquí el criterio siempre fue "nunca relanza, ni siquiera si
+ * el SAVEPOINT mismo falla" (ver el párrafo anterior) -- por eso la llamada a
+ * `runWithSavepointFallback` completa queda envuelta en el `try/catch` de
+ * abajo: si el propio `session.exec(SAVEPOINT ...)` del helper lanza (25P02,
+ * transacción ya abortada por una causa AJENA), ese error se repropaga tal
+ * cual desde el helper (no hay nada que un ROLLBACK TO SAVEPOINT pudiera
+ * proteger) y este `catch` lo traga aquí, igual que antes. `isRecoverable`
+ * fijo en `true` + un `fallback` que relanza el mismo error deja que ESE
+ * mismo `catch` exterior maneje el caso "falló DESPUÉS de tomar el SAVEPOINT"
+ * con el mismo log uniforme. `savepointName` fijo preserva el nombre exacto
+ * (`sp_reserva_email_best_effort`) que la suite de regresión ya afirma
+ * (reserva-email-notifications-savepoint.spec.ts, `AbortAwareFakeSession`).
  */
 export async function tryEnqueueReservaEmail(repo: RentasRepository, organizationId: string, event: ReservaEmailEvent, ocupacionId: string, db?: TenantDbSession): Promise<ReservaEmailResult | null> {
   if (!db) {
@@ -135,20 +155,16 @@ export async function tryEnqueueReservaEmail(repo: RentasRepository, organizatio
     }
   }
   try {
-    await db.exec(`SAVEPOINT ${RESERVA_EMAIL_SAVEPOINT_NAME}`);
-    const resultado = await enqueueReservaEmailCore(repo, organizationId, event, ocupacionId);
-    await db.exec(`RELEASE SAVEPOINT ${RESERVA_EMAIL_SAVEPOINT_NAME}`);
-    return resultado;
+    return await runWithSavepointFallback<ReservaEmailResult>({
+      session: db,
+      savepointName: RESERVA_EMAIL_SAVEPOINT_NAME,
+      primary: () => enqueueReservaEmailCore(repo, organizationId, event, ocupacionId),
+      isRecoverable: () => true,
+      fallback: (err) => {
+        throw err;
+      },
+    });
   } catch (err) {
-    try {
-      await db.exec(`ROLLBACK TO SAVEPOINT ${RESERVA_EMAIL_SAVEPOINT_NAME}`);
-      await db.exec(`RELEASE SAVEPOINT ${RESERVA_EMAIL_SAVEPOINT_NAME}`);
-    } catch (recoveryErr) {
-      // Si el propio SAVEPOINT nunca llegó a crearse (transacción ya abortada de
-      // entrada, por una causa AJENA a este best-effort), este ROLLBACK TO también
-      // falla -- se traga aquí a propósito, igual que `runNotifyBestEffort`.
-      console.error("reserva-email-notifications: fallo recuperando el SAVEPOINT del best-effort (no debería pasar):", recoveryErr);
-    }
     console.error("reserva-email-notifications: best-effort enqueue failed:", err);
     return null;
   }
