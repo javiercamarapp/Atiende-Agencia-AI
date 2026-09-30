@@ -87,3 +87,28 @@ export {
   DropdownMenuRadioGroup,
 } from "./components/ui/dropdown-menu.js";
 export { Toaster, toast } from "./components/ui/sonner.js";
+
+// Experiencia de voz (orbe, transcripción, vista previa de llamada) -- contrato
+// neutro de proveedor en components/voz/tipos.ts.
+export {
+  ESTADO_SESION_INICIAL,
+  MODOS_ORB,
+  sesionActiva,
+  type ErrorSesionVoz,
+  type LineaTranscripcion,
+  type ModoOrb,
+  type OpcionesIniciarSesionVoz,
+  type VoiceSessionController,
+  type VoiceSessionState,
+} from "./components/voz/tipos.js";
+export {
+  crearMedidorVolumen,
+  limitar01,
+  medirStream,
+  nivelDesdeMuestras,
+  suavizarConAtaque,
+  suavizarVolumen,
+  type AnalizadorMinimo,
+  type MedidorDeStream,
+  type MedidorVolumen,
+} from "./components/voz/medidor-volumen.js";
