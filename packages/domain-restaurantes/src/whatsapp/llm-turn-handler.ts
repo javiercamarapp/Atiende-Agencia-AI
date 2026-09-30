@@ -24,13 +24,10 @@
 // propio historial de tool_calls.
 import { randomUUID } from "node:crypto";
 import type { LlmGateway, LlmMessage, LlmToolCall, LlmToolDefinition } from "@atiende/agent-core";
-import { registerCallbackRequest } from "../callback-requests.ts";
 import { vipNote } from "../customers.ts";
-import { OrderValidationError } from "../errors.ts";
-import { findNearestBranch } from "../nearest-branch.ts";
-import { createOrder, quoteOrder, searchProducts, type QuotePolicyInfo } from "../orders.ts";
+import { executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
-import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, DefaultComplement, Order, OrderQuote, RequestedComplement, RequestedOrderItemInput, TortillaChoice } from "../types.ts";
+import type { Branch, BranchSummary, CustomerLookupResult } from "../types.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -233,171 +230,15 @@ export function providerFailureReply(orderId: string | null): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// TOOLS — mismas 5 funciones que el origen, formato reducido de
-// `LlmToolDefinition` (el gateway/adaptador arma el envoltorio wire real).
+// TOOLS — ya NO se definen aquí: vienen del registro único compartido con voz
+// (`agent-tools/registry.ts`). Este módulo solo traduce al formato del gateway.
 // ─────────────────────────────────────────────────────────────────────────
 
-export const TOOLS: readonly LlmToolDefinition[] = [
-  {
-    name: "buscar_sucursal_cercana",
-    description:
-      "Dado el nombre de una colonia/zona/referencia que dio el cliente, devuelve la sucursal real MÁS CERCANA calculada por distancia real (no adivines tú cuál está más cerca). Llámala en cuanto tengas la colonia o una referencia clara.",
-    parameters: {
-      type: "object",
-      properties: { colonia: { type: "string", description: "La colonia, zona o referencia que dio el cliente, tal cual." } },
-      required: ["colonia"],
-    },
-  },
-  {
-    name: "buscar_producto",
-    description:
-      "Busca productos del menú real de la sucursal por nombre, sinónimo o palabra clave. Devuelve id, nombre, precio real de esa sucursal, pack_size y requires_adult_confirmation. Lista vacía significa que ese producto no existe en el menú.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "texto a buscar, ej. 'pastor' o 'kilo arrachera'" },
-        branch_slug: { type: "string", description: "El branch_slug de la sucursal ya confirmada. Si todavía no se confirma la sucursal, no llames esta herramienta." },
-      },
-      required: ["query", "branch_slug"],
-    },
-  },
-  {
-    name: "cotizar_pedido",
-    description: "Valida cantidades/presentaciones y calcula el total exacto con precios reales. Debes llamarla antes de decir el total o preguntar la forma de pago.",
-    parameters: {
-      type: "object",
-      properties: {
-        branch_slug: { type: "string", description: "Sucursal ya confirmada con el cliente." },
-        items: {
-          type: "array",
-          description: "Productos confirmados. requested_quantity es la cantidad de piezas/unidades que pidió el cliente, no el número de paquetes.",
-          items: {
-            type: "object",
-            properties: {
-              product_id: { type: "string" },
-              product_name: { type: "string", description: "Nombre exacto devuelto por buscar_producto." },
-              requested_quantity: { type: "integer" },
-              tortilla: { type: "string", enum: ["maiz", "harina"] },
-            },
-            required: ["product_id", "product_name", "requested_quantity"],
-          },
-        },
-        adult_confirmed: { type: "boolean", description: "true únicamente si el pedido incluye alcohol y el cliente confirmó mayoría de edad." },
-        canal: { type: "string", enum: ["domicilio", "recoger"], description: "Si el pedido es a domicilio o para recoger en sucursal. Por defecto 'domicilio'." },
-        colonia_entrega: { type: "string", description: "Colonia/zona de entrega que dio el cliente (solo a domicilio); la herramienta verifica que esté dentro de la zona de reparto de la sucursal." },
-        payment_method: { type: "string", enum: ["efectivo", "tarjeta"], description: "Forma de pago ya elegida, solo para saber si corresponde preguntar propina." },
-      },
-      required: ["branch_slug", "items"],
-    },
-  },
-  {
-    name: "crear_pedido",
-    description: "Registra el pedido final en el sistema. Solo llamar cuando el cliente ya confirmó todo, incluyendo la sucursal.",
-    parameters: {
-      type: "object",
-      properties: {
-        branch_slug: { type: "string" },
-        customer_name: { type: "string" },
-        customer_address: { type: "string", description: "Dirección completa de entrega; obligatoria salvo canal 'recoger'." },
-        items: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              product_id: { type: "string" },
-              product_name: { type: "string" },
-              requested_quantity: { type: "integer" },
-              tortilla: { type: "string", enum: ["maiz", "harina"] },
-            },
-            required: ["product_id", "product_name", "requested_quantity"],
-          },
-        },
-        notes: { type: "string" },
-        requested_complements: { type: "array", items: { type: "string", enum: ["salsa_habanero", "crema_ajo"] } },
-        omit_default_complements: { type: "array", items: { type: "string", enum: ["salsa_verde", "salsa_roja", "limones", "cebolla"] } },
-        payment_method: { type: "string", enum: ["efectivo", "tarjeta"] },
-        adult_confirmed: { type: "boolean" },
-        canal: { type: "string", enum: ["domicilio", "recoger"], description: "Por defecto 'domicilio'. Para 'recoger' no hace falta customer_address." },
-        colonia_entrega: { type: "string", description: "Colonia/zona de entrega (solo a domicilio)." },
-        propina: { type: "number", description: "Propina en pesos, solo si cotizar_pedido indicó preguntar_propina: true y el cliente la dio. No suma al total." },
-      },
-      required: ["branch_slug", "customer_name", "items", "payment_method"],
-    },
-  },
-  {
-    name: "registrar_contacto",
-    description: "Registra nombre/motivo de un mensaje que NO es para hacer un pedido, para que alguien del restaurante le regrese la llamada. Nunca usar para pedidos normales.",
-    parameters: {
-      type: "object",
-      properties: { customer_name: { type: "string" }, reason: { type: "string" }, message: { type: "string" } },
-      required: ["customer_name", "reason"],
-    },
-  },
-];
-
-// ─────────────────────────────────────────────────────────────────────────
-// Mapeo de entrada/salida de tools (camelCase de dominio <-> snake_case wire
-// que el prompt/LLM espera, mismo shape que el origen).
-// ─────────────────────────────────────────────────────────────────────────
-
-interface RawItemInput {
-  readonly product_id?: unknown;
-  readonly product_name?: unknown;
-  readonly requested_quantity?: unknown;
-  readonly tortilla?: unknown;
-}
-
-function toRequestedItems(raw: unknown): RequestedOrderItemInput[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((entry) => {
-    const item = (entry ?? {}) as RawItemInput;
-    return {
-      productId: typeof item.product_id === "string" ? item.product_id : undefined,
-      productName: typeof item.product_name === "string" ? item.product_name : undefined,
-      requestedQuantity: typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity) || 1,
-      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" ? (item.tortilla as TortillaChoice) : undefined,
-    };
-  });
-}
-
-function quoteToWire(quote: OrderQuote & Partial<QuotePolicyInfo>) {
-  return {
-    lines: quote.lines.map((line) => ({
-      product_id: line.productId,
-      name: line.name,
-      price: line.price,
-      requested_quantity: line.requestedQuantity,
-      pack_size: line.packSize,
-      quantity: line.quantity,
-      tortilla: line.tortilla,
-      requires_adult_confirmation: line.requiresAdultConfirmation,
-      line_total: line.lineTotal,
-    })),
-    total: quote.total,
-    contains_alcohol: quote.containsAlcohol,
-    // Modelo PM: politica de la sucursal que aplico la herramienta (minimo ya cumplido,
-    // propina, horario). Solo se incluye lo que la cotizacion reporto.
-    ...(quote.canal ? { canal: quote.canal } : {}),
-    ...(quote.pedidoMinimo !== undefined && quote.pedidoMinimo !== null ? { pedido_minimo: quote.pedidoMinimo } : {}),
-    ...(quote.propinaPolitica ? { propina_politica: quote.propinaPolitica, preguntar_propina: quote.preguntarPropina === true } : {}),
-    ...(quote.abiertoAhora !== undefined && quote.abiertoAhora !== null ? { abierto_ahora: quote.abiertoAhora, cierra_a: quote.cierraA ?? null } : {}),
-  };
-}
-
-function toCanal(raw: unknown): CanalPedido | undefined {
-  return typeof raw === "string" ? (raw as CanalPedido) : undefined;
-}
-
-function orderToWire(order: Order) {
-  return {
-    id: order.id,
-    branch: order.branch,
-    total: order.total,
-    status: order.status,
-    payment_method: order.paymentMethod,
-    items: order.items,
-  };
-}
+export const TOOLS: readonly LlmToolDefinition[] = toolDefinitionsForChannel("whatsapp").map((t) => ({
+  name: t.name,
+  description: t.description,
+  parameters: t.parameters as unknown as LlmToolDefinition["parameters"],
+}));
 
 /** Solo `crear_pedido` fallando cuenta como "fallo de herramienta" que
  * dispara el escalón caro en el siguiente turno (diseño §2.3) —
@@ -405,95 +246,6 @@ function orderToWire(order: Order) {
  * tenemos eso"), no un error del modelo. Preservado literal. */
 function isToolErrorResult(result: unknown): boolean {
   return typeof result === "object" && result !== null && "error" in result;
-}
-
-interface ToolExecutionOutcome {
-  readonly result: unknown;
-  readonly orderId: string | null;
-  readonly propertyId: string | null;
-}
-
-async function executeToolCall(
-  repo: RestaurantesRepository,
-  args: { readonly organizationId: string; readonly phone: string; readonly name: string; readonly input: Record<string, unknown> },
-): Promise<ToolExecutionOutcome> {
-  const { organizationId, phone, name, input } = args;
-  try {
-    // Bloqueante de re-revisión (PR #158, r3) -- SAVEPOINT propio por tool call (ver
-    // el comentario de cabecera de `RestaurantesRepository.runWithRowSavepoint`):
-    // sin esto, un error real de Postgres dentro de CUALQUIER case de abajo (ej.
-    // `PT409` de `createOrderIdempotent` sin SAVEPOINT propio, ver postgres-
-    // repository.ts) dejaría ABORTADA la transacción completa de `withAppSession`
-    // para el resto del loop y para el commit final -- este `catch` de aquí abajo lo
-    // convierte en una respuesta de error normal, pero sin SAVEPOINT eso era una
-    // ilusión a nivel JS: Postgres real seguía viendo la transacción abortada.
-    return await repo.runWithRowSavepoint(async () => {
-      switch (name) {
-        case "buscar_sucursal_cercana": {
-          const match = await findNearestBranch(repo, { organizationId, colonia: String(input.colonia ?? "") });
-          const result = match.found
-            ? { encontrada: true, branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, colonia_reconocida: match.recognizedZoneName }
-            : { encontrada: false, mensaje: match.message };
-          return { result, orderId: null, propertyId: null };
-        }
-        case "buscar_producto": {
-          const branchSlug = String(input.branch_slug ?? "");
-          const branch = await repo.findBranch(organizationId, { slug: branchSlug });
-          if (!branch) return { result: { error: `Sucursal '${branchSlug}' no encontrada` }, orderId: null, propertyId: null };
-          const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: String(input.query ?? "") });
-          const result = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation }));
-          return { result, orderId: null, propertyId: null };
-        }
-        case "cotizar_pedido": {
-          const quote = await quoteOrder(repo, {
-            organizationId,
-            branchSlug: String(input.branch_slug ?? ""),
-            items: toRequestedItems(input.items),
-            adultConfirmed: input.adult_confirmed === true,
-            canal: toCanal(input.canal),
-            colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
-            paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
-          });
-          return { result: { quote: quoteToWire(quote) }, orderId: null, propertyId: null };
-        }
-        case "crear_pedido": {
-          const order = await createOrder(repo, {
-            organizationId,
-            branchSlug: String(input.branch_slug ?? ""),
-            customerName: String(input.customer_name ?? ""),
-            customerPhone: phone,
-            customerAddress: typeof input.customer_address === "string" ? input.customer_address : undefined,
-            items: toRequestedItems(input.items),
-            source: "whatsapp",
-            notes: typeof input.notes === "string" ? input.notes : undefined,
-            paymentMethod: input.payment_method === "efectivo" || input.payment_method === "tarjeta" ? input.payment_method : undefined,
-            adultConfirmed: input.adult_confirmed === true,
-            requestedComplements: Array.isArray(input.requested_complements) ? (input.requested_complements as readonly RequestedComplement[]) : undefined,
-            omitDefaultComplements: Array.isArray(input.omit_default_complements) ? (input.omit_default_complements as readonly DefaultComplement[]) : undefined,
-            canal: toCanal(input.canal),
-            colonia: typeof input.colonia_entrega === "string" ? input.colonia_entrega : undefined,
-            propina: typeof input.propina === "number" ? input.propina : undefined,
-          });
-          return { result: { order: orderToWire(order) }, orderId: order.id, propertyId: order.propertyId };
-        }
-        case "registrar_contacto": {
-          await registerCallbackRequest(repo, {
-            organizationId,
-            customerName: String(input.customer_name ?? ""),
-            customerPhone: phone,
-            reason: typeof input.reason === "string" ? input.reason : undefined,
-            message: typeof input.message === "string" ? input.message : undefined,
-            source: "whatsapp",
-          });
-          return { result: { ok: true }, orderId: null, propertyId: null };
-        }
-        default:
-          return { result: { error: `Herramienta desconocida: ${name}` }, orderId: null, propertyId: null };
-      }
-    });
-  } catch (err) {
-    return { result: { error: err instanceof OrderValidationError ? err.message : "Error interno al ejecutar la herramienta" }, orderId: null, propertyId: null };
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -587,7 +339,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = { error: "No entendí bien los datos, ¿puedes repetir el pedido?" };
           }
           if (result === undefined) {
-            const executed = await executeToolCall(repo, { organizationId, phone, name: call.name, input });
+            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone }, call.name, input);
             result = executed.result;
             if (executed.orderId) {
               orderId = executed.orderId;

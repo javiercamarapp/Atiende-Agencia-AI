@@ -33,8 +33,8 @@
 // de colgar), los 3 vía x-atiende-tool-secret, está probado explícitamente en
 // apps/api/tests/voice-order-closed-loop.spec.ts.
 import { Hono } from "hono";
-import { consumeRateLimit, findNearestBranch, OrderValidationError, quoteOrder, searchProducts } from "@atiende/domain-restaurantes";
-import type { RequestedOrderItemInput, RestaurantesRepository } from "@atiende/domain-restaurantes";
+import { consumeRateLimit, invokeAgentTool, OrderValidationError } from "@atiende/domain-restaurantes";
+import type { AgentToolContext, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped, requestActor, secretMatches } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -49,24 +49,14 @@ function requireVoiceToolSecret(deps: AppDeps, req: Request): void {
   if (!secretMatches(req, "x-atiende-tool-secret", deps.env.voiceToolSecret)) throw Errors.unauthorized();
 }
 
-interface QuoteItemBody {
-  readonly product_id?: unknown;
-  readonly product_name?: unknown;
-  readonly requested_quantity?: unknown;
-  readonly tortilla?: unknown;
-}
-
-function mapQuoteItems(raw: unknown): RequestedOrderItemInput[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((entry) => {
-    const item = (entry ?? {}) as QuoteItemBody;
-    return {
-      productId: typeof item.product_id === "string" ? item.product_id : undefined,
-      productName: typeof item.product_name === "string" ? item.product_name : undefined,
-      requestedQuantity: typeof item.requested_quantity === "number" ? item.requested_quantity : Number(item.requested_quantity),
-      tortilla: item.tortilla === "maiz" || item.tortilla === "harina" ? item.tortilla : undefined,
-    };
-  });
+/** Ejecuta una tool del registro único (mismo ejecutor que WhatsApp); los errores de negocio salen como 400. */
+async function runTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>) {
+  try {
+    return await invokeAgentTool(repo, ctx, name, input);
+  } catch (err) {
+    if (err instanceof OrderValidationError) throw Errors.validation(err.message);
+    throw err;
+  }
 }
 
 export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
@@ -91,9 +81,8 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
       const limited = await consumeRateLimit(repo, "voice-branches-nearest", requestActor(c.req.raw, colonia), 60, 60);
       if (!limited.allowed) throw Errors.tooManyRequests();
 
-      const match = await findNearestBranch(repo, { organizationId: org.id, colonia });
-      if (!match.found) return c.json({ encontrada: false, mensaje: match.message });
-      return c.json({ encontrada: true, branch_slug: match.branchSlug, branch_name: match.branchName, distancia_km: match.distanceKm, colonia_reconocida: match.recognizedZoneName });
+      const outcome = await runTool(repo, { organizationId: org.id, channel: "voz", phone: null }, "buscar_sucursal_cercana", { colonia });
+      return c.json(outcome.result as object);
     });
   });
 
@@ -117,13 +106,8 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
       const limited = await consumeRateLimit(repo, "voice-products-search", requestActor(c.req.raw, branchSlug), 120, 60);
       if (!limited.allowed) throw Errors.tooManyRequests();
 
-      const branch = await repo.findBranch(org.id, { slug: branchSlug });
-      if (!branch) throw Errors.validation(`Sucursal '${branchSlug}' no encontrada`);
-
-      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query });
-      return c.json({
-        productos: productos.map((p) => ({ id: p.id, name: p.name, price: p.price, pack_size: p.packSize, requires_adult_confirmation: p.requiresAdultConfirmation })),
-      });
+      const outcome = await runTool(repo, { organizationId: org.id, channel: "voz", phone: null }, "buscar_producto", { query, branch_slug: branchSlug });
+      return c.json({ productos: outcome.result });
     });
   });
 
@@ -147,23 +131,18 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
       const limited = await consumeRateLimit(repo, "voice-orders-quote", requestActor(c.req.raw, branchSlug), 120, 60);
       if (!limited.allowed) throw Errors.tooManyRequests();
 
-      try {
-        const quote = await quoteOrder(repo, {
-          organizationId: org.id,
-          branchSlug,
-          items: mapQuoteItems(body.items),
-          adultConfirmed: body.adult_confirmed === true,
-          // Modelo PM: canal (default domicilio), colonia de entrega y forma de pago (solo para
-          // saber si corresponde preguntar propina). Las reglas las aplica quoteOrder.
-          canal: typeof body.canal === "string" ? (body.canal as "domicilio" | "recoger") : undefined,
-          colonia: typeof body.colonia_entrega === "string" ? body.colonia_entrega : undefined,
-          paymentMethod: body.payment_method === "efectivo" || body.payment_method === "tarjeta" ? body.payment_method : undefined,
-        });
-        return c.json({ quote });
-      } catch (err) {
-        if (err instanceof OrderValidationError) throw Errors.validation(err.message);
-        throw err;
-      }
+      const outcome = await runTool(repo, { organizationId: org.id, channel: "voz", phone: null }, "cotizar_pedido", {
+        branch_slug: branchSlug,
+        items: body.items,
+        adult_confirmed: body.adult_confirmed,
+        // Modelo PM: canal (default domicilio), colonia de entrega y forma de pago (solo para
+        // saber si corresponde preguntar propina). Las reglas las aplica quoteOrder.
+        canal: body.canal,
+        colonia_entrega: body.colonia_entrega,
+        payment_method: body.payment_method,
+      });
+      // Contrato historico de voz: `quote` es el OrderQuote de dominio sin transformar.
+      return c.json({ quote: outcome.raw });
     });
   });
 

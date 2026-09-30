@@ -170,3 +170,14 @@ export {
   computeCustomerKpis,
 } from "./kpis.ts";
 export type { StatsPeriod, TrendBucket, ComparisonPeriods, SalesSummary, SalesTrendPoint, ChannelKpis, CustomerKpis } from "./kpis.ts";
+
+export {
+  AGENT_TOOL_DEFINITIONS,
+  VOICE_TOOL_HTTP_PATHS,
+  exportVoiceToolManifest,
+  executeAgentToolSafely,
+  invokeAgentTool,
+  mapCreateOrderToolInput,
+  toolDefinitionsForChannel,
+} from "./agent-tools/registry.ts";
+export type { AgentChannel, AgentToolContext, AgentToolDefinition, AgentToolJsonSchema, AgentToolName, AgentToolOutcome } from "./agent-tools/registry.ts";
