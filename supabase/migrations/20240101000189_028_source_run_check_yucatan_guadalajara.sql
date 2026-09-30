@@ -1,0 +1,56 @@
+-- Corrector CRÍTICO de auditoría (a5, dimensión compat-base-sin-migrar --
+-- verificado end-to-end, esto NO es un caso de "tabla/función todavía no
+-- migrada": el CHECK ya existe y está ACTIVO hoy). Requiere:
+-- 001_licitaciones_schema.sql..027_organization_timezone.sql (esta es la 028).
+--
+-- El PR #197 (rama `feat/zona-horaria-por-negocio-licitaciones`, ya mergeada
+-- a main) no tocó esto -- el gap real es del PR #193 (Fase 13, cobertura
+-- Yucatán/Guadalajara): agregó `yucatan_ocds`/`guadalajara_ocds` a
+-- `connector-registry.ts::SOURCE_CONNECTOR_IDS` CON conector real asignado
+-- (`createYucatanOcdsConnector()`/`createGuadalajaraOcdsConnector()`, ver
+-- `connectors/ocds/contratacionesabiertas-connector.ts`, ambos
+-- `liveVerification.verified: true`), pero NINGUNA migración 024-028 extendió
+-- el CHECK de `licitaciones.source_run.source` (última extensión: migración
+-- 023, que agregó 'nl_ocds'/'cdmx_ocds'/'aggregator') para incluir estos 2
+-- valores nuevos.
+--
+-- Camino de fallo verificado leyendo el código real (nunca por adivinanza):
+-- `apps/worker/src/jobs/licitaciones/discover-tenders.ts::
+-- runDiscoverTendersForOrganization` corre, para cada conector con
+-- implementación real (incluidos ahora yucatan_ocds/guadalajara_ocds),
+-- `repo.ingestTendersFromSource()` + `repo.recordSourceRun()` DENTRO de una
+-- sola transacción (`withRepo`, un `withAppSession` por fuente). `recordSourceRun`
+-- llama a la función `security definer` `licitaciones.system_record_source_run`
+-- (migración 024), que hace un INSERT plano contra `licitaciones.source_run`
+-- sujeto a este CHECK -- con `source = 'yucatan_ocds'` o `'guadalajara_ocds'`
+-- viola el CHECK -> SQLSTATE 23514 GARANTIZADO, cada corrida, sin excepción.
+-- Como el INSERT de `licitaciones.tender` que sí se había hecho corre en la
+-- MISMA transacción, el 23514 aborta la transacción completa y ese INSERT se
+-- revierte también (rollback completo, cero tenders persistidos). El `catch`
+-- de `discover-tenders.ts` reintenta `recordSourceRun` en una transacción
+-- NUEVA para dejar registrada la corrida fallida -- ese segundo intento
+-- vuelve a violar el MISMO CHECK, así que tampoco queda ninguna fila en
+-- `source_run` que documente el intento (el código de este mismo PR ya no
+-- depende de esta migración para no perder tenders: ver
+-- `PostgresLicitacionesRepository.recordSourceRun`).
+--
+-- Verificado contra Postgres real en `scripts/verify-licitaciones-source-run-check/`:
+-- CON el CHECK viejo (023, sin esta migración), `system_record_source_run` con
+-- `yucatan_ocds`/`guadalajara_ocds` falla con 23514 y el código nuevo degrada con
+-- SAVEPOINT (tenders conservados, sin source_run); CON esta migración el mismo
+-- registro tiene éxito.
+--
+-- Clasificación de sesión: el cron `discover-tenders` corre en sesión de
+-- SISTEMA (`deps.engine.withAppSession({ userId: null }, ...)`,
+-- `apps/api/src/routes/verticals/licitaciones/discover.ts` -- sin cambios en
+-- este PR, ya era así desde la migración 024). Esta migración solo cambia el
+-- CHECK de una tabla; no agrega ninguna función `security definer` ni GRANT
+-- nuevo, así que no hay decisión de sesión que tomar aquí (la única función
+-- que escribe en `source_run`, `system_record_source_run`, ya exige
+-- `auth.uid() is null` desde la migración 024, sin cambios).
+-- Justificación de seguridad: solo amplía el dominio de valores permitidos de una
+-- columna de texto; no agrega GRANT, policy ni función, y no relaja RLS. La única
+-- escritura sigue siendo `system_record_source_run` (auth.uid() is null, 024).
+alter table licitaciones.source_run drop constraint if exists source_run_source_check;
+alter table licitaciones.source_run add constraint source_run_source_check
+  check (source in ('manual', 'comprasmx', 'dof', 'ocds_shcp', 'pdn_s6', 'state_portal', 'compras_mx_historico', 'nl_ocds', 'cdmx_ocds', 'yucatan_ocds', 'guadalajara_ocds', 'aggregator'));
