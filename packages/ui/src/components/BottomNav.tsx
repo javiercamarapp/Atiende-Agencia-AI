@@ -11,6 +11,8 @@ export interface BottomNavItem {
   to: string;
   label: string;
   icon: IconType;
+  /** Activo solo con coincidencia exacta de ruta (p. ej. el Dashboard en la raíz de la vertical). */
+  end?: boolean;
   /** Conteo real a mostrar como badge; nunca inventar un número — omitir si no hay dato. */
   count?: number;
 }
@@ -47,6 +49,7 @@ export function BottomNav({ items, moreSections }: BottomNavProps) {
           <NavLink
             key={item.to}
             to={item.to}
+            end={item.end}
             className={({ isActive }) =>
               cn(
                 "relative flex flex-col items-center justify-center gap-1 min-w-[64px] min-h-11 px-2 py-2 rounded-lg",
