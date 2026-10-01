@@ -55,16 +55,17 @@ describe("PostgresRentasCalendarSyncRepository -- base sin la migración 024", (
     await sesionSigueUsable(session);
   });
 
-  it("atenderAlerta: 42P01 -> no_disponible; resolverConflicto: 42501 (sin GRANT de UPDATE) -> no_disponible", async () => {
+  it("atenderAlerta: 42P01 -> no_disponible; decidirConflicto: sin la 026 y sin GRANT de UPDATE de 024 (42883 y luego 42501) -> no_disponible", async () => {
     const session = new AbortAwareFakeSession([
       { match: /update rentas\.ical_sync_bitacora/i, respond: () => sinTabla() },
+      { match: /resolver_conflicto_calendario/i, respond: () => sinFuncion("rentas.resolver_conflicto_calendario") },
       { match: /update rentas\.conflicto_calendario/i, respond: () => pgError("42501", "permission denied for table conflicto_calendario") },
       SIGUIENTE,
     ]);
     const repo = new PostgresRentasCalendarSyncRepository(session);
     await expect(repo.atenderAlerta("p", "a", "u")).resolves.toBe("no_disponible");
     await sesionSigueUsable(session);
-    await expect(repo.resolverConflicto("p", "c", "u")).resolves.toBe("no_disponible");
+    await expect(repo.decidirConflicto("p", "c", "u", { accion: "resuelto", motivo: null })).resolves.toBe("no_disponible");
     await sesionSigueUsable(session);
   });
 

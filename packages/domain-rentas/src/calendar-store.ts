@@ -93,6 +93,9 @@ export interface StoredConflicto {
   /** Espejo de `rentas.conflicto_calendario.resuelto_en/resuelto_por` (Rn-01). */
   resueltoEn: string | null;
   resueltoPor: string | null;
+  /** Espejo de `resolucion`/`motivo_resolucion` (Rn-02, migración 026). */
+  resolucion: "resuelto" | "ignorado" | null;
+  motivoResolucion: string | null;
 }
 
 interface StoredGuestMinimo {
@@ -470,6 +473,8 @@ export class InMemoryRentasCalendarStore {
       detectadoEn: new Date().toISOString(),
       resueltoEn: null,
       resueltoPor: null,
+      resolucion: null,
+      motivoResolucion: null,
     });
     return { id };
   }

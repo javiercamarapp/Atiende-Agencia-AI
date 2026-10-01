@@ -13,7 +13,8 @@ import type { UidActivoInterno } from "./reconciliacion.ts";
 import { ESTADO_FEED_INICIAL, type EstadoFeedCanal } from "./cuarentena.ts";
 import type { RentasCalendarSyncRepository } from "./repository.ts";
 import { calcularBackoffFeedSegundos, type EventoBitacora, type OpcionesReclamo, type ResultadoReclamo } from "./lease.ts";
-import type { AlertaSyncRecord, ConflictoMonitorRecord, FeedMonitorRecord, ListadoBitacora, ListadoConflictos, OcupacionConflictoRecord, ResultadoMarcarResuelto } from "./monitor.ts";
+import { calcularSolape, type AccionConflicto } from "./conflictos.ts";
+import type { AlertaSyncRecord, ConflictoMonitorRecord, EntradaHistorialConflicto, EstadoConflicto, FeedMonitorRecord, FiltroEstadoConflictos, HistorialConflicto, ListadoBitacora, ListadoConflictos, OcupacionConflictoRecord, ResultadoDecisionConflicto, ResultadoMarcarResuelto } from "./monitor.ts";
 import type { BloqueoExportadoPrevio, EntradaUpsertBloqueoExportado, EntradaUpsertEventoImportado, FeedExternoRecord, NewFeedExternoInput, OcupacionActivaExportable, VersionPreviaAlmacenada } from "./tipos.ts";
 
 interface StoredFeedExterno {
@@ -383,28 +384,77 @@ export class InMemoryRentasCalendarSyncRepository implements RentasCalendarSyncR
     return { id: o.id, inicio: o.inicio, fin: o.fin, estado: o.estado, capa: o.capa, canalCodigo: this.codigoCanal(o.canalOrigenId) };
   }
 
-  async listarConflictos(propertyId: string, opciones: { soloAbiertos: boolean; limite: number }): Promise<ListadoConflictos> {
+  /** Simula una base SIN la migración 026: no hay `ignorado`, motivo ni bitácora de conflictos. */
+  migracion026Disponible = true;
+  private readonly historialConflictos = new Map<string, EntradaHistorialConflicto[]>();
+
+  private estadoConflicto(k: { resueltoEn: string | null; resolucion: "resuelto" | "ignorado" | null }): EstadoConflicto {
+    if (k.resueltoEn === null) return "abierto";
+    return this.migracion026Disponible && k.resolucion === "ignorado" ? "ignorado" : "resuelto";
+  }
+
+  async listarConflictos(propertyId: string, opciones: { estado: FiltroEstadoConflictos; limite: number }): Promise<ListadoConflictos> {
     const delaProperty = [...this.calendarStore.conflictos.values()].filter((k) => k.propertyId === propertyId);
     const totalAbiertos = delaProperty.filter((k) => k.resueltoEn === null).length;
+    const filtro: Record<FiltroEstadoConflictos, (e: EstadoConflicto) => boolean> = {
+      abiertos: (e) => e === "abierto",
+      resueltos: (e) => e === "resuelto",
+      ignorados: (e) => e === "ignorado",
+      todos: () => true,
+    };
     const conflictos: ConflictoMonitorRecord[] = [];
     for (const k of delaProperty
-      .filter((c) => !opciones.soloAbiertos || c.resueltoEn === null)
+      .filter((c) => filtro[opciones.estado](this.estadoConflicto(c)))
       .sort((a, b) => Number(a.resueltoEn !== null) - Number(b.resueltoEn !== null) || (a.detectadoEn < b.detectadoEn ? 1 : a.detectadoEn > b.detectadoEn ? -1 : a.id < b.id ? -1 : 1))
       .slice(0, opciones.limite)) {
       const a = this.ocupacionConflicto(k.ocupacionAId);
       if (!a) continue;
-      conflictos.push({ id: k.id, unidadId: k.unidadId, unidadNombre: this.nombreUnidad(k.unidadId), tipo: k.tipo, detectadoEn: k.detectadoEn, resueltoEn: k.resueltoEn, resueltoPor: k.resueltoPor, ocupacionA: a, ocupacionB: this.ocupacionConflicto(k.ocupacionBId) });
+      conflictos.push({
+        id: k.id,
+        estado: this.estadoConflicto(k),
+        motivoResolucion: this.migracion026Disponible ? k.motivoResolucion : null,
+        unidadId: k.unidadId,
+        unidadNombre: this.nombreUnidad(k.unidadId),
+        tipo: k.tipo,
+        detectadoEn: k.detectadoEn,
+        resueltoEn: k.resueltoEn,
+        resueltoPor: k.resueltoPor,
+        ocupacionA: a,
+        ocupacionB: this.ocupacionConflicto(k.ocupacionBId),
+      });
     }
     return { conflictos, totalAbiertos };
   }
 
-  async resolverConflicto(propertyId: string, conflictoId: string, actorUserId: string): Promise<ResultadoMarcarResuelto> {
+  async decidirConflicto(propertyId: string, conflictoId: string, actorUserId: string, decision: { accion: AccionConflicto; motivo: string | null }): Promise<ResultadoDecisionConflicto> {
     if (!this.migracion024Disponible) return "no_disponible";
+    if (!this.migracion026Disponible && decision.accion === "ignorado") return "no_disponible";
     const k = this.calendarStore.conflictos.get(conflictoId);
     if (!k || k.propertyId !== propertyId || k.resueltoEn !== null) return "no_encontrado";
-    k.resueltoEn = new Date(this.reloj()).toISOString();
+    if (this.migracion026Disponible && decision.accion === "resuelto") {
+      // Misma regla que rentas.resolver_conflicto_calendario: "resuelto" exige que el solape ya no exista.
+      const a = this.calendarStore.getOcupacion(k.ocupacionAId);
+      const b = k.ocupacionBId ? this.calendarStore.getOcupacion(k.ocupacionBId) : undefined;
+      if (a && b && a.estado !== "cancelado" && b.estado !== "cancelado" && calcularSolape({ inicio: a.inicio, fin: a.fin }, { inicio: b.inicio, fin: b.fin }) !== null) return "solape_vigente";
+    }
+    const ahora = new Date(this.reloj()).toISOString();
+    k.resueltoEn = ahora;
     k.resueltoPor = actorUserId;
-    return "resuelto";
+    if (this.migracion026Disponible) {
+      k.resolucion = decision.accion;
+      k.motivoResolucion = decision.motivo;
+      const previas = this.historialConflictos.get(conflictoId) ?? [];
+      previas.push({ id: randomUUID(), accion: decision.accion, motivo: decision.motivo, actorUserId, creadoEn: ahora });
+      this.historialConflictos.set(conflictoId, previas);
+    }
+    return decision.accion;
+  }
+
+  async listarHistorialConflicto(propertyId: string, conflictoId: string): Promise<HistorialConflicto> {
+    if (!this.migracion026Disponible) return { disponible: false, entradas: [] };
+    const k = this.calendarStore.conflictos.get(conflictoId);
+    if (!k || k.propertyId !== propertyId) return { disponible: true, entradas: [] };
+    return { disponible: true, entradas: [...(this.historialConflictos.get(conflictoId) ?? [])] };
   }
 
   async listarBitacora(propertyId: string, opciones: { soloAlertasAbiertas: boolean; limite: number }): Promise<ListadoBitacora> {
