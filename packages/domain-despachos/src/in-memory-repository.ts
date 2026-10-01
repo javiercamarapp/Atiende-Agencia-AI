@@ -28,6 +28,7 @@ import type {
   ReceivableReminderRow,
 } from "./types.ts";
 import type { NivelEscalamiento } from "./vencimientos/engine.ts";
+import type { NuevoLoteEstadoCuenta, ResultadoGuardadoEstadoCuenta } from "./conciliacion/estado-de-cuenta/types.ts";
 import type { MapeoMigracionCuenta, NewMapeoMigracionInput } from "./migracion-catalogo/types.ts";
 import { construirTareasDesdePlantilla } from "./cierre-mensual/engine.ts";
 import type { NewPeriodoCierreInput } from "./cierre-mensual/repository-types.ts";
@@ -641,6 +642,26 @@ export class InMemoryDespachosRepository implements DespachosRepository {
   // desde el punto de vista del caller, sin transacción real que aislar en memoria.
   async runWithRowSavepoint<T>(fn: () => Promise<T>): Promise<T> {
     return fn();
+  }
+
+  // ---- Libro de estados de cuenta importados (D-03, migración 015) ----
+  private readonly estadoCuentaHashes = new Map<string, Set<string>>();
+
+  async listEstadoCuentaHashesExistentes(propertyId: string, hashes: readonly string[]): Promise<ReadonlySet<string>> {
+    const guardados = this.estadoCuentaHashes.get(propertyId);
+    return new Set(hashes.filter((h) => guardados?.has(h)));
+  }
+
+  async insertEstadoCuentaMovimientos(lote: NuevoLoteEstadoCuenta): Promise<ResultadoGuardadoEstadoCuenta> {
+    const guardados = this.estadoCuentaHashes.get(lote.propertyId) ?? new Set<string>();
+    let insertados = 0;
+    for (const m of lote.movimientos) {
+      if (guardados.has(m.hash)) continue;
+      guardados.add(m.hash);
+      insertados++;
+    }
+    this.estadoCuentaHashes.set(lote.propertyId, guardados);
+    return { loteId: lote.loteId, insertados, yaExistentes: lote.movimientos.length - insertados };
   }
 
   // ---- FASE 3 (producto) -- zona horaria por negocio (migración 012) ----

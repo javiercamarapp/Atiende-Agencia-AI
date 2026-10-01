@@ -35,6 +35,8 @@ import type { CitasRepository, ConversationMessage } from "../repository.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
 
 import { redactSensitiveInfo } from "../redaction.ts";
+import type { MetaInteractiveReply } from "./channel-config.ts";
+import { resolveAppointmentButton } from "./appointment-buttons.ts";
 
 export { redactSensitiveInfo };
 
@@ -108,9 +110,18 @@ export async function handleInboundWhatsAppMessage(
   repo: CitasRepository,
   turnHandler: WhatsAppTurnHandler,
   guard: CitasConversationGuard,
-  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly phoneNumberId: string },
+  args: {
+    readonly organizationId: string;
+    readonly messageId: string;
+    readonly phone: string;
+    /** Texto del mensaje; para una respuesta interactiva es el título que tocó el cliente. */
+    readonly body: string;
+    readonly phoneNumberId: string;
+    /** C-01 -- presente solo cuando el mensaje es un `button_reply`/`list_reply` de Meta. */
+    readonly interactive?: MetaInteractiveReply;
+  },
 ): Promise<InboundMessageOutcome> {
-  const { organizationId, messageId, phone, body, phoneNumberId } = args;
+  const { organizationId, messageId, phone, body, phoneNumberId, interactive } = args;
   const phoneHash = actorHash(phone);
 
   const claimed = await repo.claimWhatsAppMessage(organizationId, messageId, phoneHash);
@@ -140,7 +151,16 @@ export async function handleInboundWhatsAppMessage(
       // que también quede cubierto por el mismo SAVEPOINT.
       () =>
         repo.runWithRowSavepoint(async () => {
-          const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(body) };
+          // C-01 -- un toque a Confirmar/Cancelar/Reagendar del recordatorio 24h se
+          // resuelve ANTES de cualquier otra capa: es determinista (sin LLM), no debe
+          // pasar por el fast-path ARCO (el verbo "Cancelar" lo confundiría) ni por el
+          // guardrail de crisis (el título de un botón no es texto libre). Un id que NO
+          // es de cita (p. ej. `btn_N` de un recordatorio anterior a este cambio, o una
+          // lista) devuelve `null` y sigue como texto normal con el título como cuerpo.
+          const button = interactive ? await resolveAppointmentButton(repo, { organizationId, phone, interactive }) : null;
+          const userText = button?.kind === "to_agent" ? button.text : body;
+
+          const userMessage: ConversationMessage = { role: "user", content: redactSensitiveInfo(userText) };
           const messagesAfterUser = await repo.appendWhatsAppUserMessageOnce(organizationId, phone, userMessage);
 
           // Fase 6 §1 — guardia de crisis: capa DETERMINISTA que corre ANTES de
@@ -149,17 +169,19 @@ export async function handleInboundWhatsAppMessage(
           // (nunca reformulado/resumido por el agente) y la escalación humana ya
           // quedó registrada, sin importar qué haría el turn handler con ese mismo
           // mensaje.
-          const crisisCheck = await runCrisisGuardrail(repo, organizationId, phone, body);
+          const crisisCheck = button?.kind === "reply" ? { triggered: false as const } : await runCrisisGuardrail(repo, organizationId, phone, userText);
           // C-02 -- fast-path ARCO (acceso/rectificación/cancelación/oposición):
           // MISMA posición y filosofía que el guardrail de crisis (determinista, antes
           // del LLM), pero DESPUÉS de él -- una crisis siempre tiene prioridad. Solo
           // actúa sobre el teléfono que escribe (`phone` viene del webhook de Meta,
           // nunca del texto). Sin la migración 024 aplicada devuelve `null` y el
           // mensaje sigue al agente como antes (ver arco-intent.ts).
-          const arco = crisisCheck.triggered ? null : await runArcoFastPath(repo, organizationId, phone, body);
+          const arco = crisisCheck.triggered || button ? null : await runArcoFastPath(repo, organizationId, phone, body);
           const turn = crisisCheck.triggered
             ? { reply: crisisCheck.reply!, appointmentId: null, propertyId: null }
-            : arco
+            : button?.kind === "reply"
+              ? { reply: button.reply, appointmentId: null, propertyId: null }
+              : arco
               ? { reply: arco.reply, appointmentId: null, propertyId: null }
               : await turnHandler.handleInboundMessage({ organizationId, phone, messages: messagesAfterUser, customer: await lookupCitasCustomer(repo, organizationId, phone) });
 

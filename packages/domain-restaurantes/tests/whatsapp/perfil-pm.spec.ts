@@ -31,6 +31,20 @@ function promptPm(over: Partial<Parameters<typeof buildPmSystemPrompt>[0]> = {})
 }
 
 describe("prompt de PM", () => {
+  it("instruye usar la ubicacion compartida (buscar_sucursal_cercana) y mandar la doble salsa en doble_salsas", () => {
+    const p = promptPm();
+    expect(p).toContain("[Ubicación compartida por WhatsApp]");
+    expect(p).toMatch(/buscar_sucursal_cercana sin pedirle la colonia/);
+    expect(p).toMatch(/nunca las repita ni las trate como dirección de entrega/);
+    expect(p).toMatch(/DOBLE porción de una salsa, es un extra cobrado: mándelo en doble_salsas/);
+  });
+
+  it("no contradice las 9 salsas incluidas: habanero y crema de ajo no son 'solo si las pide'", () => {
+    const p = promptPm();
+    expect(p).not.toMatch(/habanero y la crema de ajo solo si/);
+    expect(p).toMatch(/Todas van incluidas por omisión/);
+  });
+
   it("saluda con el nombre de la sucursal y sigue el orden del cuestionario", () => {
     const p = promptPm();
     expect(p).toContain("Buenas tardes, gracias por comunicarse a Los Taquitos de PM, sucursal Francisco de Montejo.");

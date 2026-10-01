@@ -156,6 +156,87 @@ export type {
   ApprovedDraft,
 } from "./technical-proposal-draft-agent.ts";
 
+// ---- L-04: sala de guerra por convocatoria + preguntas de la junta de aclaraciones ----
+export {
+  WAR_ROOM_ITEM_KINDS,
+  WAR_ROOM_ITEM_STATUSES,
+  WAR_ROOM_SEVERITIES,
+  WAR_ROOM_ENTRY_KINDS,
+  SEMAPHORE_RED_HOURS,
+  SEMAPHORE_YELLOW_HOURS,
+  SalaGuerraValidationError,
+  SalaGuerraNotAvailableError,
+  isUuid,
+  parseWarRoomItemCreate,
+  parseWarRoomItemPatch,
+  parseWarRoomEntryCreate,
+  deadlineSemaphore,
+  worstSemaphore,
+  isItemClosed,
+  buildWarRoomBoard,
+} from "./sala-guerra.ts";
+export type {
+  WarRoomItemKind,
+  WarRoomItemStatus,
+  WarRoomSeverity,
+  WarRoomEntryKind,
+  WarRoomItemRecord,
+  WarRoomEntryRecord,
+  WarRoomItemCreateInput,
+  WarRoomItemPatch,
+  SemaphoreColor,
+  SemaphoreState,
+  DeadlineSemaphore,
+  WarRoomBoardItem,
+  WarRoomBoardSummary,
+  WarRoomBoard,
+  BuildWarRoomBoardInput,
+} from "./sala-guerra.ts";
+export {
+  JUNTA_QUESTION_STATUSES,
+  JUNTA_QUESTION_TOPICS,
+  JUNTA_QUESTION_PRIORITIES,
+  JUNTA_QUESTION_TRANSITIONS,
+  SIMILARITY_THRESHOLD,
+  JuntaQuestionDuplicateError,
+  JuntaQuestionRejectedError,
+  questionTokens,
+  questionDedupeKey,
+  questionSimilarity,
+  findSimilarQuestions,
+  suggestQuestionPriority,
+  sortJuntaQuestions,
+  parseQuestionCapture,
+  parseQuestionPatch,
+  parseJuntaConfig,
+  parseTransitionRequest,
+  canTransitionQuestion,
+  assertQuestionTransition,
+  assertQuestionEditable,
+  buildJuntaSummary,
+} from "./junta-aclaraciones.ts";
+export type {
+  JuntaQuestionStatus,
+  JuntaQuestionTopic,
+  JuntaQuestionPriority,
+  JuntaQuestionRecord,
+  JuntaConfigRecord,
+  JuntaQuestionReminderRecord,
+  JuntaQuestionCreateInput,
+  JuntaQuestionRejectionCode,
+  SimilarQuestion,
+  PrioritySuggestion,
+  ParsedQuestionCapture,
+  JuntaQuestionPatch,
+  JuntaConfigInput,
+  JuntaTransitionRequest,
+  JuntaSummary,
+} from "./junta-aclaraciones.ts";
+export { PostgresSalaGuerraRepository, InMemorySalaGuerraRepository } from "./sala-guerra-repository.ts";
+export type { SalaGuerraRepository, ScanJuntaRemindersInput, ScanJuntaRemindersResult, InMemorySalaGuerraOptions } from "./sala-guerra-repository.ts";
+export { JuntaQuestionDraftAgent, DEFAULT_JUNTA_QUESTION_AGENT_ROLE, MAX_DRAFT_QUESTIONS, extractFigures, findFabricatedFigures } from "./junta-question-draft-agent.ts";
+export type { DraftJuntaQuestionsRequest, JuntaQuestionDraftProposal, RejectedJuntaQuestionDraft, JuntaQuestionDraftResult } from "./junta-question-draft-agent.ts";
+
 export {
   TechnicalProposalBuilder,
   NOT_APPLICABLE_TITLE_PREFIX,

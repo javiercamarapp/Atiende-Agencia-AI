@@ -161,6 +161,41 @@ export type {
 export type { ClasificacionDeposito, ResultadoClasificacionDeposito, CasoDepositoSospechoso, BalanceIva } from "./conciliacion/classification.ts";
 export type { ResultadoVerificacionSpei, VerificadorSpeiExternoPort, ConsultaSpeiInput, ConsultaSpeiResultado } from "./conciliacion/spei-matching.ts";
 
+// ---- Importación de estados de cuenta bancarios CSV/OFX (D-03) ----
+export {
+  parsearEstadoDeCuenta,
+  parsearCsvEstadoCuenta,
+  parsearOfxEstadoCuenta,
+  detectarFormato as detectarFormatoEstadoCuenta,
+  parsearMonto as parsearMontoEstadoCuenta,
+  parsearFechaMx,
+  parsearFechaOfx,
+  clabeValida,
+  bancoPorClabe,
+  hashMovimiento as hashMovimientoEstadoCuenta,
+  conceptoCanonico as conceptoCanonicoEstadoCuenta,
+  BANCOS_MX,
+  MAX_RENGLONES_ESTADO,
+  construirVistaPreviaImportacion,
+  MAX_MOVIMIENTOS_CONCILIACION,
+} from "./conciliacion/estado-de-cuenta/index.ts";
+export type {
+  BancoMx,
+  FormatoEstadoCuenta,
+  ResultadoParseoEstado,
+  MovimientoImportado,
+  ErrorRenglonEstado,
+  AdvertenciaEstado,
+  OpcionesParseoEstado,
+  VistaPreviaImportacion,
+  CoincidenciaImportacion,
+  EntradaVistaPrevia,
+  CuentaPorCobrarPendiente,
+  NuevoLoteEstadoCuenta,
+  NuevoMovimientoEstadoCuenta,
+  ResultadoGuardadoEstadoCuenta,
+} from "./conciliacion/estado-de-cuenta/index.ts";
+
 // ---- Conciliación bancaria — nivel 4 asistido por LLM (Fase 11) ----
 export {
   DEFAULT_DESPACHOS_CONCILIACION_LLM_ROLE,

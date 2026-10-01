@@ -391,5 +391,14 @@ como "No disponible", nunca como 0), `/fuentes` (registro + frescura + corridas,
 solo lectura), `/seguimiento` (recordatorios de plazo y cambios de convocatoria,
 con "Reconocer"), `/aprobaciones` (datos de empresa pendientes: aprobar/rechazar)
 y `/firmantes` (redirige a la pestaña Firmantes de Datos de la empresa,
-`?tab=firmantes`). Fuera de alcance, pendientes: sala de guerra y preguntas de
-junta de aclaraciones (L-04), analítica de puntaje (L-11).
+`?tab=firmantes`). Fuera de alcance, pendientes: analítica de puntaje (L-11).
+
+## L-04 — sala de guerra y junta de aclaraciones
+
+`/convocatorias/:tenderId/sala-guerra` (enlace desde el detalle de la convocatoria): pestaña
+"Tablero de preparación" (checklist de requisitos, tareas, riesgos con semáforo, bitácora de
+decisiones y comentarios, última decisión go/no-go en solo lectura) y pestaña "Junta de
+aclaraciones" (fechas, captura con aviso de duplicados, borrador asistido, aprobar / marcar como
+enviada / registrar respuesta del acta / descartar, recordatorios). No envía nada a ningún portal.
+Con la migración 029 pendiente la pantalla lo dice y no ofrece guardar. Pendiente: asignar
+responsables a otras personas (hoy solo "Asignarme"; no hay directorio de staff para no-admins).

@@ -22,6 +22,7 @@ import type {
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
+  AppointmentStatus,
   AvailabilityOverride,
   AvailabilityOverrideInput,
   AvailabilityRule,
@@ -51,6 +52,7 @@ import type {
   CitasRepository,
   CompleteResult,
   ConfirmResult,
+  CustomerConfirmResult,
   ConnectProviderCalComAccountInput,
   ConnectProviderCalDavAccountInput,
   ConnectProviderCalendarAccountInput,
@@ -585,6 +587,7 @@ export class InMemoryCitasRepository implements CitasRepository {
       }
       const created: CustomerRecord = { id: randomUUID(), organizationId, fullName: name, phone, email: email ?? null };
       this.customers.set(created.id, created);
+      this.customerCreatedAt.set(created.id, new Date().toISOString());
       this.customerIdByOrgPhone.set(key, created.id);
       return created;
     });
@@ -606,6 +609,30 @@ export class InMemoryCitasRepository implements CitasRepository {
     this.llamadasFindCustomersByIds += 1;
     const idSet = new Set(customerIds);
     return [...this.customers.values()].filter((c) => c.organizationId === organizationId && idSet.has(c.id));
+  }
+
+  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>> {
+    const result: Record<AppointmentStatus, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
+    const from = Date.parse(fromIso);
+    const to = Date.parse(toIso);
+    for (const a of this.appointments.values()) {
+      const t = Date.parse(a.startsAt);
+      if (a.organizationId === organizationId && t >= from && t < to) result[a.status] += 1;
+    }
+    return result;
+  }
+
+  /** Solo para tests: fecha de alta de un cliente (en Postgres es `created_at`). */
+  readonly customerCreatedAt = new Map<string, string>();
+
+  async countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number> {
+    const since = Date.parse(sinceIso);
+    let n = 0;
+    for (const c of this.customers.values()) {
+      if (c.organizationId !== organizationId) continue;
+      if (Date.parse(this.customerCreatedAt.get(c.id) ?? new Date().toISOString()) >= since) n += 1;
+    }
+    return n;
   }
 
   async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {
@@ -826,6 +853,26 @@ export class InMemoryCitasRepository implements CitasRepository {
       if (appointment.status === "confirmed") return { outcome: "already_confirmed", appointment };
       if (appointment.status !== "pending") return { outcome: "conflict_invalid_status", status: appointment.status };
 
+      const updated: AppointmentRecord = { ...appointment, status: "confirmed" };
+      this.appointments.set(appointmentId, updated);
+      return { outcome: "confirmed", appointment: updated };
+    });
+  }
+
+  /** Simula una base sin la migración 025 (confirmación por botón): el método degrada
+   * a `unavailable` igual que el adaptador real. */
+  customerConfirmMigrationPending = false;
+
+  async confirmAppointmentByCustomerAsSystem(organizationId: string, appointmentId: string, customerPhone: string): Promise<CustomerConfirmResult> {
+    if (this.customerConfirmMigrationPending) return { outcome: "unavailable" };
+    return this.appointmentLock.run(`confirm:${organizationId}:${appointmentId}`, async () => {
+      const appointment = this.appointments.get(appointmentId);
+      if (!appointment || appointment.organizationId !== organizationId) return { outcome: "not_found" };
+      const customer = this.customers.get(appointment.customerId);
+      if (!customer || customer.organizationId !== organizationId || customer.phone !== customerPhone) return { outcome: "not_found" };
+      if (appointment.status === "confirmed") return { outcome: "already_confirmed", appointment };
+      if (appointment.status !== "pending") return { outcome: "conflict_invalid_status", status: appointment.status };
+      if (Date.parse(appointment.startsAt) <= Date.now()) return { outcome: "conflict_invalid_status", status: "pasada" };
       const updated: AppointmentRecord = { ...appointment, status: "confirmed" };
       this.appointments.set(appointmentId, updated);
       return { outcome: "confirmed", appointment: updated };

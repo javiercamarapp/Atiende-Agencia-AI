@@ -67,3 +67,25 @@ completa de estado por fuente, el contrato real descubierto de cada una
   estado/municipio sobre la MISMA plataforma "contratacionesabiertas",
   agregar una instancia nueva en `contratacionesabiertas-connector.ts`
   (host + `fixedState`) es suficiente -- no se reimplementa el conector.
+
+## L-04 — sala de guerra y preguntas de la junta de aclaraciones
+
+Migración `029_sala_de_guerra_y_junta_aclaraciones.sql` (espejo `20240101000224_...`; verify
+`scripts/verify-licitaciones-sala-guerra-junta/`). Código en módulos aparte para no tocar
+`repository.ts`/`postgres-repository.ts`:
+
+- `sala-guerra.ts` — tablero de preparación (requisitos, tareas y riesgos con responsable, fecha
+  límite con semáforo rojo/amarillo/verde/gris, resumen y avance sin inventar porcentajes). Las
+  decisiones go/no-go ya registradas (`go-no-go.ts`) solo se **muestran**; no se decide aquí.
+- `junta-aclaraciones.ts` — huella normalizada y similitud para deduplicar, prioridad sugerida con
+  razones explicables, máquina de estados `borrador → aprobada → enviada → respondida` (o
+  `descartada`) con roles (aprobar exige `DECISION_ROLES`) y el vínculo a la respuesta del acta.
+- `junta-question-draft-agent.ts` — borradores asistidos sobre el `LlmGateway` existente. Sin
+  inventar datos: toda cifra de una pregunta propuesta debe estar en el contexto de las bases o la
+  pregunta se descarta; guardrails anticorrupción/decisión de negocio en entrada y salida. Todo
+  nace `borrador`.
+- `sala-guerra-repository.ts` — `PostgresSalaGuerraRepository` (cada operación en SAVEPOINT; con la
+  migración pendiente lanza `SalaGuerraNotAvailableError`, nunca un 500) e `InMemorySalaGuerraRepository`.
+
+**No envía nada a ningún portal** (ComprasMX u otro): `enviada` y la respuesta del acta las registra
+una persona.

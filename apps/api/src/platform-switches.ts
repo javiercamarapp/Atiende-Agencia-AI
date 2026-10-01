@@ -21,6 +21,7 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "rentas:mensajeria_agent",
   "licitaciones:proposal_draft_agent",
   "despachos:conciliacion_llm_agent",
+  "licitaciones:junta_question_agent",
 ];
 
 /** Crons detenibles (path exacto de vercel.json / withHeartbeat). */

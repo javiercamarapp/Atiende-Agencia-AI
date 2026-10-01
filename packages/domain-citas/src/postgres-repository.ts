@@ -27,6 +27,7 @@ import type {
 import type {
   AppointmentActorChannel,
   AppointmentRecord,
+  AppointmentStatus,
   AvailabilityOverride,
   AvailabilityOverrideInput,
   AvailabilityRule,
@@ -56,6 +57,7 @@ import type {
   CitasRepository,
   CompleteResult,
   ConfirmResult,
+  CustomerConfirmResult,
   ConnectProviderCalComAccountInput,
   ConnectProviderCalDavAccountInput,
   ConnectProviderCalendarAccountInput,
@@ -660,6 +662,21 @@ export class PostgresCitasRepository implements CitasRepository {
     return rows.map((row) => ({ id: row.id, organizationId: row.organization_id, fullName: row.full_name, phone: row.phone, email: row.email }));
   }
 
+  async countAppointmentsByStatus(organizationId: string, fromIso: string, toIso: string): Promise<Readonly<Record<AppointmentStatus, number>>> {
+    const { rows } = await this.db.query<{ status: AppointmentStatus; count: string }>(
+      `select status, count(*)::text as count from citas.appointments where organization_id = $1 and starts_at >= $2 and starts_at < $3 group by status;`,
+      [organizationId, fromIso, toIso],
+    );
+    const result: Record<AppointmentStatus, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
+    for (const row of rows) if (row.status in result) result[row.status] = Number(row.count);
+    return result;
+  }
+
+  async countCustomersCreatedSince(organizationId: string, sinceIso: string): Promise<number> {
+    const { rows } = await this.db.query<{ count: string }>(`select count(*)::text as count from citas.customers where organization_id = $1 and created_at >= $2;`, [organizationId, sinceIso]);
+    return Number(rows[0]?.count ?? "0");
+  }
+
   async listCustomers(organizationId: string, opts: { readonly limit: number; readonly offset: number; readonly search?: string }): Promise<CustomerPage> {
     const search = opts.search?.trim();
     const searchPattern = search ? `%${search}%` : null;
@@ -841,6 +858,39 @@ export class PostgresCitasRepository implements CitasRepository {
       if (code === "AT403") return { outcome: "forbidden_out_of_scope", message: err instanceof Error ? err.message : undefined };
       throw err;
     }
+  }
+
+  /** C-01 -- ver `CitasRepository.confirmAppointmentByCustomerAsSystem` y la migración
+   * `025_citas_confirmacion_por_boton.sql`. Corre en la ÚNICA transacción del request
+   * del webhook: `runWithSavepointFallback` aísla CUALQUIER error esperable de la
+   * función (migración pendiente 42883/42P01/42703 y los de negocio AT404/AT409/
+   * 42501) dentro de un SAVEPOINT, así que la sesión queda utilizable para lo que el
+   * turno haga después (responder, encolar el outbox) en vez de abortada (25P02). */
+  async confirmAppointmentByCustomerAsSystem(organizationId: string, appointmentId: string, customerPhone: string): Promise<CustomerConfirmResult> {
+    return runWithSavepointFallback<CustomerConfirmResult>({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ result: AppointmentRow }>(`select citas.system_confirm_appointment_by_customer($1, $2, $3) as result;`, [organizationId, appointmentId, customerPhone]);
+        const appointment = mapAppointment((rows[0] as unknown as { result: AppointmentRow }).result);
+        return { outcome: appointment.status === "confirmed" ? "confirmed" : "already_confirmed", appointment };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "citas.system_confirm_appointment_by_customer") || ["AT404", "AT409"].includes(sqlState(err) ?? ""),
+      fallback: (err) => {
+        switch (sqlState(err)) {
+          case "AT404":
+            return Promise.resolve({ outcome: "not_found" });
+          case "AT409":
+            return Promise.resolve({ outcome: "conflict_invalid_status", status: "no_confirmable" });
+          default:
+            console.warn(
+              "PostgresCitasRepository.confirmAppointmentByCustomerAsSystem: citas.system_confirm_appointment_by_customer no existe todavía en esta base " +
+                "(SQLSTATE 42883/42P01/42703) -- degradando a 'no disponible'. Aplica packages/domain-citas/migrations/025_citas_confirmacion_por_boton.sql (o su espejo en supabase/migrations/).",
+              err instanceof Error ? err.message : err,
+            );
+            return Promise.resolve({ outcome: "unavailable" });
+        }
+      },
+    });
   }
 
   // NOTA (bloqueante r3): mismo argumento -- `runWithRowSavepoint` alrededor del RPC.

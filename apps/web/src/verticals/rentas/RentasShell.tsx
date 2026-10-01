@@ -83,11 +83,13 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   AlertTriangle,
+  BarChart3,
   CalendarDays,
   ClipboardCheck,
   ClipboardList,
   Home,
   Inbox,
+  KeyRound,
   LayoutDashboard,
   RefreshCcw,
   Tag,
@@ -132,6 +134,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
         { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
         { to: ruta("ical-sync"), label: "Sincronización iCal", icon: RefreshCcw },
         { to: ruta("monitor-sync"), label: "Monitor de conflictos", icon: AlertTriangle },
+        { to: ruta("acceso-huesped"), label: "Acceso al huésped", icon: KeyRound },
       ],
     },
     {
@@ -139,6 +142,7 @@ function buildSections(orgSlug: string): SidebarSection[] {
       items: [
         { to: ruta("precios"), label: "Precios", icon: Tag },
         { to: ruta("finanzas"), label: "Finanzas", icon: Wallet },
+        { to: ruta("reportes"), label: "Reportes", icon: BarChart3 },
         // r5 -- bitácora de auditoría del staff (cierra el hueco detectado al diseñar
         // el panel de superadmin). AuditoriaPage gatea su propio contenido por
         // admin_gestora, igual que Finanzas/Precios.

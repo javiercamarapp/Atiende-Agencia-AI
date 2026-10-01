@@ -8,9 +8,9 @@
 // /conciliacion/verificar-spei (matching por clave de rastreo o RFC), pero ningún
 // cliente web ni página los usaba. Esta página cierra el gap.
 //
-// El parsing de CSV/OFX del banco queda fuera de esta fase (ver cabecera de
-// conciliacion.ts en apps/api): el servidor espera los movimientos YA parseados.
-// Esta UI los captura en una tabla editable (una fila por movimiento -- mismo
+// El parsing de CSV/OFX del banco vive en la pantalla "Importar estado de cuenta"
+// (ImportarEstadoCuenta.tsx, D-03); el servidor de matching espera los movimientos YA
+// parseados. Esta UI los captura en una tabla editable (una fila por movimiento -- mismo
 // patrón exacto que la tabla de empleados de Nomina.tsx) y reusa ese mismo lote
 // para correr matching, ver alertas y verificar SPEI/proveedor -- son 3 vistas
 // distintas sobre el mismo lote, nunca 3 capturas separadas. La clasificación de
@@ -25,6 +25,7 @@
 // así que esconderlas detrás de un switcher rompería el flujo real.
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { AlertTriangle, ListChecks, Plus, Search, ShieldCheck, Trash2 } from "lucide-react";
 import {
   Badge,
@@ -353,7 +354,7 @@ function ResultadoMatching({ resultado }: { resultado: ResultadoConciliacion }) 
   );
 }
 
-export function ConciliacionPage({ apiBaseUrl, token, propertyId, role }: DespachosShellContext) {
+export function ConciliacionPage({ apiBaseUrl, token, propertyId, orgSlug, role }: DespachosShellContext) {
   const puedeGestionar = CONCILIACION_ROLES.has(role);
 
   const [filas, setFilas] = useState<readonly MovimientoFila[]>([nuevaFila()]);
@@ -487,11 +488,16 @@ export function ConciliacionPage({ apiBaseUrl, token, propertyId, role }: Despac
 
   return (
     <div className="flex flex-col gap-5 px-1">
-      <header>
-        <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          Corre el matching determinista contra los CFDI ya ingeridos, revisa alertas de antigüedad/comisión/duplicados, clasifica depósitos (CFF Art. 59 fr. III) y verifica pagos SPEI/proveedor.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-xl font-semibold text-foreground">Conciliación bancaria</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Corre el matching determinista contra los CFDI ya ingeridos, revisa alertas de antigüedad/comisión/duplicados, clasifica depósitos (CFF Art. 59 fr. III) y verifica pagos SPEI/proveedor.
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link to={`/despachos/${orgSlug}/conciliacion/importar`}>Importar estado de cuenta</Link>
+        </Button>
       </header>
 
       <Card>
