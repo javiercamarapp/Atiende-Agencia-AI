@@ -76,8 +76,9 @@ no acepta una política que el vertical no aplicaría.
 
 La purga de restaurantes replica la regla de `restaurantes.system_purge_expired_privacy_data` (vacía mensajes de
 WhatsApp; borra turnos de voz y anula el hash del teléfono) pero **por organización** y con los días de la plataforma.
-Ambas pueden coexistir: la de restaurantes sigue siendo global y usa su propia configuración, y es más conservadora si la
-organización fijó menos días en la plataforma.
+Ambas pueden coexistir: la de restaurantes sigue siendo global y usa su propia configuración (`restaurantes.privacy_config`);
+si una organización fija en la plataforma MÁS días que en esa configuración y la purga de restaurantes se programa, esta
+última purgará antes. Hoy ninguna de las dos está programada en `vercel.json`.
 
 ### Endpoint interno (NO programado)
 
