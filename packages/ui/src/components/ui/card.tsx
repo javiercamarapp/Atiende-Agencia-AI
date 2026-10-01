@@ -4,12 +4,13 @@ import { cn } from "../../lib/utils";
 
 /**
  * Tarjeta de Likida (`.card`, globals.css:234-239): radio 16, borde hairline,
- * sombra fina. NO trae relleno propio: cada uso pone el suyo, como en Likida
+ * sombra fina. `min-w-0` evita que, como hijo de una rejilla o flex, la tarjeta se ensanche hasta el ancho minimo
+ * de una tabla ancha (la tabla debe hacer scroll DENTRO de la tarjeta). NO trae relleno propio: cada uso pone el suyo, como en Likida
  * (`p-4` tarjeta normal, `p-3` seccion, `p-2` KPI). La clase `card` es el
  * gancho de `.card table` (filas punteadas, ui/index.css).
  */
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("card rounded-lg border border-border bg-card text-card-foreground shadow-card", className)} {...props} />
+  <div ref={ref} className={cn("card min-w-0 rounded-lg border border-border bg-card text-card-foreground shadow-card", className)} {...props} />
 ));
 Card.displayName = "Card";
 
