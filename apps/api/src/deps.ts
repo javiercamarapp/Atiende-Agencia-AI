@@ -38,7 +38,7 @@ import type {
   WhatsAppTurnHandler as CitasWhatsAppTurnHandler,
 } from "@atiende/domain-citas";
 import type { Kyc69bRepository, LicitacionesRepository, SalaGuerraRepository, WhatsAppRepository } from "@atiende/domain-licitaciones";
-import type { ColaCobranzaRepository, DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, ColaCobranzaRepository, DespachosRepository, PortalClienteRepository } from "@atiende/domain-despachos";
 import type {
   BreakGlassAuditRepository,
   BreakGlassRentasDataRepository,
@@ -288,6 +288,8 @@ export interface AppDeps {
   readonly despachosRepo: (db: TenantDbSession) => DespachosRepository;
   /** D-08 -- portal del cliente final (migracion 016). OPCIONAL a proposito (mismo criterio que `rentasAccesoRepo`): las rutas caen a `PostgresPortalClienteRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly portalClienteRepo?: (db: TenantDbSession) => PortalClienteRepository;
+  /** D-21 -- cartera de clientes (ficha fiscal por property, migracion 018). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresCarteraRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
+  readonly carteraRepo?: (db: TenantDbSession) => CarteraRepository;
   /** D-11 -- cola de cobranza (migracion 017: gestiones, consentimiento de WhatsApp y outbox). OPCIONAL a proposito (mismo criterio que `portalClienteRepo`): las rutas caen a `PostgresColaCobranzaRepository` sobre la sesion del request y los tests inyectan el doble en memoria. */
   readonly colaCobranzaRepo?: (db: TenantDbSession) => ColaCobranzaRepository;
   /** Auditoría de acciones de escritura de despachos: completar tarea/cerrar un

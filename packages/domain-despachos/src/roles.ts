@@ -184,6 +184,13 @@ export const ADMIN_ROLES: readonly DespachosRole[] = ["admin"];
  * (`auditor`/`readonly` sí pueden ver). */
 export const VER_CONFIGURACION_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
 
+/** D-21: quién puede VER la cartera de clientes (fichas fiscales) -- lectura de datos ya capturados, `auditor`/`readonly` incluidos. */
+export const VER_CARTERA_ROLES: readonly DespachosRole[] = ["admin", "contador", "auditor", "readonly"];
+
+/** D-21: quién puede dar de alta un cliente o editar su ficha fiscal, y capturar el estado SAT de un CFDI. Mismo umbral que
+ * `INGESTA_CFDI_ROLES`; la base lo repite (membresía admin/contador, migración 018) y el alta además exige alcance de toda la organización. */
+export const GESTIONAR_CARTERA_ROLES: readonly DespachosRole[] = ["admin", "contador"];
+
 /** Quién puede EDITAR la zona horaria de una property -- reservado a `admin` (el
  * único "owner" real de despachos, ver `PLATFORM_ROLE_BY_VERTICAL_ROLE` abajo),
  * mismo umbral que `CERRAR_PERIODO_ROLES`/`STAFF_INVITE_ROLES`: configuración de
