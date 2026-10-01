@@ -684,6 +684,17 @@ export class PostgresDespachosRepository implements DespachosRepository {
     await this.db.query(`update despachos.fiscal_deadline set estado = $1 where id = $2;`, [estado, deadlineId]);
   }
 
+  async updateDeadlineFechaLimite(deadlineId: string, fechaLimite: string, prioridad: PrioridadVencimiento): Promise<FiscalDeadlineRecord | null> {
+    const { rows } = await this.db.query<FiscalDeadlineRawRow>(
+      `update despachos.fiscal_deadline
+          set fecha_limite = $1, prioridad = $2
+        where id = $3 and estado <> 'completado'
+       returning ${FISCAL_DEADLINE_COLUMNS};`,
+      [fechaLimite, prioridad, deadlineId],
+    );
+    return rows[0] ? mapDeadline(rows[0]) : null;
+  }
+
   async insertEscalation(deadlineId: string, level: NivelEscalamiento, sentAt: string, notes: string): Promise<DeadlineEscalationRecord> {
     const { rows } = await this.db.query<EscalationRawRow>(
       `insert into despachos.deadline_escalation (deadline_id, level, sent_at, notes) values ($1, $2, $3, $4) returning *;`,

@@ -293,6 +293,26 @@ export function calcularCalendarioFiscal(year: number, month: number, opciones: 
   return out;
 }
 
+const FUNDAMENTO_POR_TIPO: Record<TipoVencimientoFiscal, string> = {
+  ISR: "LISR art. 14 (PM) / art. 106 (PF); art. 12 CFF",
+  IVA: "LIVA art. 5-D; art. 12 CFF",
+  DIOT: "RMF regla 4.5.1 (último día del mes siguiente); art. 12 CFF",
+  Nómina: "LISR art. 96 y 106; art. 12 CFF",
+  Balanza: "RMF regla 2.8.1.6 (día 3 PM / día 5 PF del segundo mes siguiente); art. 12 CFF",
+  Anual: "LISR art. 76 fracción IX (PM, 31 de marzo) / art. 150 (PF, 30 de abril); art. 12 CFF",
+};
+
+/** Fundamento y bandera de validación de un vencimiento YA persistido, derivados solo de su tipo y fecha límite
+ * (la tabla no guarda el régimen). `validarConFiscalista` es true para DIOT y balanza (plazo por validar), para
+ * fechas en ventana vacacional del SAT y para años fuera de la cobertura verificada. */
+export function metadatosVencimiento(tipo: TipoVencimientoFiscal, fechaLimite: string): { readonly fundamento: string; readonly validarConFiscalista: boolean } {
+  const anio = parseIso(fechaLimite).y;
+  return {
+    fundamento: FUNDAMENTO_POR_TIPO[tipo],
+    validarConFiscalista: tipo === "DIOT" || tipo === "Balanza" || enVentanaVacacionalSat(fechaLimite) || !ANIOS_CALENDARIO_VERIFICADOS.includes(anio),
+  };
+}
+
 export class RegimenNoSoportadoError extends Error {
   constructor(readonly regimen: string) {
     super(`Régimen fiscal '${regimen}' sin calendario modelado (catálogo c_RegimenFiscal): confirma el régimen del contribuyente.`);

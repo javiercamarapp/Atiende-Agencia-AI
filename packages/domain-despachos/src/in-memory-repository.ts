@@ -325,6 +325,14 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     this.deadlines.set(deadlineId, { ...deadline, estado });
   }
 
+  async updateDeadlineFechaLimite(deadlineId: string, fechaLimite: string, prioridad: FiscalDeadlineRecord["prioridad"]): Promise<FiscalDeadlineRecord | null> {
+    const deadline = this.deadlines.get(deadlineId);
+    if (!deadline || deadline.estado === "completado") return null;
+    const updated: FiscalDeadlineRecord = { ...deadline, fechaLimite, prioridad };
+    this.deadlines.set(deadlineId, updated);
+    return updated;
+  }
+
   async insertEscalation(deadlineId: string, level: NivelEscalamiento, sentAt: string, notes: string): Promise<DeadlineEscalationRecord> {
     const record: DeadlineEscalationRecord = { id: randomUUID(), deadlineId, level, sentAt, notes };
     const list = this.escalations.get(deadlineId) ?? [];

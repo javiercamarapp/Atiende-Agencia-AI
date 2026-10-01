@@ -97,11 +97,14 @@ export {
   diaDeLaSemana,
   feriadosDelAnio,
   infoDiaInhabil,
+  metadatosVencimiento,
   regimenSoportado,
   siguienteDiaHabil,
   sumarDias,
   tipoPersonaDeRegimen,
 } from "./vencimientos/calendario-fiscal.ts";
+export { barrerEscalamientosVencimientos, crearVencimientosDelPeriodo, esCheckViolation, registrarEscalamiento } from "./vencimientos/procesos.ts";
+export type { ResultadoBarridoVencimientos, ResultadoCrearVencimientos } from "./vencimientos/procesos.ts";
 export type { FeriadoFiscal, FechaLimiteHabil, ObligacionFiscalPeriodo, TipoPersona } from "./vencimientos/calendario-fiscal.ts";
 
 export {
