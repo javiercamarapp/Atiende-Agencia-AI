@@ -72,7 +72,7 @@ describe("ConfirmDialog", () => {
 
   it("tono danger usa el boton destructivo; el foco inicial cae dentro del dialogo", () => {
     rendered = renderComponent(<ConfirmDialog open onOpenChange={() => {}} titulo="Borrar" tono="danger" onConfirm={() => {}} />);
-    expect(boton("Confirmar").className).toContain("bg-destructive");
+    expect(boton("Confirmar").className).toContain("bg-destructive-tint");
     // sin campo, Radix enfoca Cancelar (la opcion segura), no el boton destructivo
     expect(document.activeElement).toBe(boton("Cancelar"));
   });
