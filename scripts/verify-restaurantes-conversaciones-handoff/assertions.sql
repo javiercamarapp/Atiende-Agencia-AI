@@ -968,6 +968,123 @@ do $$ begin
 exception when sqlstate '42501' then null; end $$;
 rollback;
 
+\echo '=== I1. LECTURA: turnos_sucursal devuelve el turno de A1 con su miembro y nombre ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+insert into restaurantes.branch_shift_member (shift_id, property_id, organization_id, user_id, orden) values ('00000000-0000-0000-0000-0000000e00f1', '00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e0013', 1);
+select count(*)::int as filas_con_nombre_deberia_ser_1 from restaurantes.turnos_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1') where user_nombre = 'Staff A1';
+rollback;
+
+\echo '=== I2. ALCANCE: staff A2 no lee los turnos de A1 por la funcion ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+do $$ begin
+  perform * from restaurantes.turnos_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== I3. ANON: sin EXECUTE sobre turnos_sucursal ==='
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+do $$ begin
+  perform * from restaurantes.turnos_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== I4. LECTURA: handoff_detalle devuelve la toma con el nombre de quien la tiene ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+select count(*)::int as detalle_con_nombre_deberia_ser_1 from restaurantes.handoff_detalle('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1') where tomada_por_nombre = 'Staff A1' and estado = 'tomada';
+rollback;
+
+\echo '=== I5. CROSS-TENANT: owner de B no lee el detalle de handoff de A ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0017', true);
+do $$ begin
+  perform * from restaurantes.handoff_detalle('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== I6. LECTURA: handoff_notas devuelve las notas con el nombre del autor ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+select restaurantes.handoff_agregar_nota('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid, 'Nota de prueba');
+select count(*)::int as notas_con_autor_deberia_ser_1 from restaurantes.handoff_notas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid) where autor_nombre = 'Staff A1';
+rollback;
+
+\echo '=== I7. ALCANCE: staff A2 no lee las notas de A1 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select set_config('t.h', (restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1'))::text, true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+do $$ begin
+  perform * from restaurantes.handoff_notas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', current_setting('t.h')::uuid);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== I8. LECTURA: callbacks_sucursal para staff acotado a A1 muestra el de A1 y NO el de sucursal nula ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as callbacks_visibles_deberia_ser_1 from restaurantes.callbacks_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', false, 50);
+rollback;
+
+\echo '=== I9. LECTURA: el owner (sin acotar) ve el callback de A1 y el de sucursal nula ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0011', true);
+select count(*)::int as callbacks_owner_deberia_ser_2 from restaurantes.callbacks_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', false, 50);
+rollback;
+
+\echo '=== I10. LECTURA: los intentos aparecen en el callback ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.callback_registrar_intento('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00e1', 'buzon', 'Buzon de voz', null);
+select count(*)::int as intentos_deberia_ser_1 from restaurantes.callbacks_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', false, 50) c where jsonb_array_length(c.intentos) = 1 and c.intentos -> 0 ->> 'autor' = 'Staff A1';
+rollback;
+
+\echo '=== I11. FILTRO: solo_abiertos oculta el callback resuelto ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.callback_registrar_intento('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00e1', 'contactado', null, null);
+select count(*)::int as abiertos_deberia_ser_0 from restaurantes.callbacks_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', true, 50);
+rollback;
+
+\echo '=== I12. ALCANCE: staff A2 no lee los callbacks de A1 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+do $$ begin
+  perform * from restaurantes.callbacks_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', false, 50);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
+\echo '=== I13. ANON: sin EXECUTE sobre callbacks_sucursal ==='
+begin;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+do $$ begin
+  perform * from restaurantes.callbacks_sucursal('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', false, 50);
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
 \echo '=== H1. BASE SIN MIGRAR: sin conversation_handoff el repositorio falla con 42P01 y el SAVEPOINT recupera la transaccion ==='
 begin;
 drop table restaurantes.conversation_note; drop table restaurantes.conversation_handoff cascade;

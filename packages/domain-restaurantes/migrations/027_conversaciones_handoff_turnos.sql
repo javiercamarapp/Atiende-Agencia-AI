@@ -63,7 +63,7 @@
 --
 --  * Funciones de staff (`handoff_tomar`, `handoff_devolver`, `handoff_cerrar`,
 --    `handoff_responder_whatsapp`, `handoff_agregar_nota`, `callback_registrar_intento`,
---    `bandeja_conversaciones`) -- `security definer` con `set search_path` fijo, `revoke from
+--    `bandeja_conversaciones`, `handoff_detalle`, `handoff_notas`, `turnos_sucursal`, `callbacks_sucursal`) -- `security definer` con `set search_path` fijo, `revoke from
 --    public, anon`, GRANT EXECUTE a `authenticated`. Exigen `auth.uid()` no nulo y
 --    `handoff_actor_en_sucursal`; validan que la conversacion / handoff / callback pertenezca a la
 --    organizacion y sucursal declaradas (cross-tenant -> 42501). Son definer porque las tablas de
@@ -622,6 +622,119 @@ begin
 end;
 $$;
 
+-- Lecturas con nombres de personas (core.staff_user solo deja ver la fila propia). Devuelven solo el
+-- nombre completo del personal de la MISMA sucursal que el llamador ya puede ver en la bandeja; nunca
+-- correo ni telefono del personal.
+create or replace function restaurantes.handoff_detalle(
+  p_organization_id uuid,
+  p_property_id uuid,
+  p_canal text,
+  p_conversation_id uuid
+) returns table (
+  handoff_id uuid, estado text, solicitado_por text, motivo text, solicitada_at timestamptz,
+  ultimo_cliente_at timestamptz, tomada_por uuid, tomada_por_nombre text, tomada_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+begin
+  if auth.uid() is null or not restaurantes.handoff_actor_en_sucursal(p_organization_id, p_property_id, false) then
+    raise exception 'handoff_detalle: sin acceso a la sucursal' using errcode = '42501';
+  end if;
+  return query
+  select h.id, h.estado, h.solicitado_por, h.motivo, h.solicitada_at, h.ultimo_cliente_at, h.tomada_por,
+         (select su.full_name from core.staff_user su where su.id = h.tomada_por), h.tomada_at
+    from restaurantes.conversation_handoff h
+    where h.organization_id = p_organization_id and h.property_id = p_property_id
+      and h.canal = p_canal and h.conversation_id = p_conversation_id
+    order by h.created_at desc limit 1;
+end;
+$$;
+
+create or replace function restaurantes.handoff_notas(
+  p_organization_id uuid,
+  p_property_id uuid,
+  p_handoff_id uuid
+) returns table (id uuid, autor_id uuid, autor_nombre text, texto text, created_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+begin
+  if auth.uid() is null or not restaurantes.handoff_actor_en_sucursal(p_organization_id, p_property_id, false) then
+    raise exception 'handoff_notas: sin acceso a la sucursal' using errcode = '42501';
+  end if;
+  return query
+  select n.id, n.autor_id, (select su.full_name from core.staff_user su where su.id = n.autor_id), n.texto, n.created_at
+    from restaurantes.conversation_note n
+    where n.handoff_id = p_handoff_id and n.organization_id = p_organization_id and n.property_id = p_property_id
+    order by n.created_at, n.id;
+end;
+$$;
+
+create or replace function restaurantes.turnos_sucursal(p_organization_id uuid, p_property_id uuid)
+returns table (
+  shift_id uuid, nombre text, dias smallint[], inicia time, termina time,
+  user_id uuid, user_nombre text, orden smallint
+)
+language plpgsql
+stable
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+begin
+  if auth.uid() is null or not restaurantes.handoff_actor_en_sucursal(p_organization_id, p_property_id, false) then
+    raise exception 'turnos_sucursal: sin acceso a la sucursal' using errcode = '42501';
+  end if;
+  return query
+  select s.id, s.nombre, s.dias, s.inicia, s.termina, m.user_id,
+         (select su.full_name from core.staff_user su where su.id = m.user_id), m.orden
+    from restaurantes.branch_shift s
+    left join restaurantes.branch_shift_member m on m.shift_id = s.id
+    where s.organization_id = p_organization_id and s.property_id = p_property_id
+    order by s.inicia, s.nombre, m.orden, m.user_id;
+end;
+$$;
+
+create or replace function restaurantes.callbacks_sucursal(
+  p_organization_id uuid,
+  p_property_id uuid,
+  p_solo_abiertos boolean,
+  p_limit integer
+) returns table (
+  id uuid, property_id uuid, customer_name text, customer_phone text, reason text, message text,
+  source text, resolved boolean, created_at timestamptz, intentos jsonb
+)
+language plpgsql
+stable
+security definer
+set search_path = restaurantes, core, pg_temp
+as $$
+begin
+  if auth.uid() is null or not restaurantes.handoff_actor_en_sucursal(p_organization_id, p_property_id, false) then
+    raise exception 'callbacks_sucursal: sin acceso a la sucursal' using errcode = '42501';
+  end if;
+  return query
+  select cb.id, cb.property_id, cb.customer_name, cb.customer_phone, cb.reason, cb.message, cb.source, cb.resolved, cb.created_at,
+         coalesce((
+           select jsonb_agg(jsonb_build_object(
+                    'id', a.id, 'resultado', a.resultado, 'nota', a.nota, 'proximoIntentoAt', a.proximo_intento_at,
+                    'autor', (select su.full_name from core.staff_user su where su.id = a.autor_id), 'creadoAt', a.created_at
+                  ) order by a.created_at desc)
+             from restaurantes.callback_attempt a where a.callback_request_id = cb.id
+         ), '[]'::jsonb)
+    from restaurantes.callback_requests cb
+    where cb.organization_id = p_organization_id
+      and (cb.property_id = p_property_id or (cb.property_id is null and restaurantes.handoff_actor_en_sucursal(p_organization_id, null, false)))
+      and (not coalesce(p_solo_abiertos, false) or cb.resolved = false)
+    order by cb.resolved, cb.created_at desc, cb.id
+    limit least(greatest(coalesce(p_limit, 50), 1), 200);
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 7) Funciones de solo-sistema
 -- ---------------------------------------------------------------------------
@@ -742,3 +855,11 @@ grant execute on function restaurantes.bandeja_conversaciones(uuid, uuid, text, 
 grant execute on function restaurantes.handoff_solicitar(uuid, uuid, text, uuid, text) to authenticated, service_role;
 grant execute on function restaurantes.handoff_whatsapp_estado(uuid, text) to authenticated, service_role;
 grant execute on function restaurantes.handoff_solicitar_whatsapp(uuid, uuid, text, text) to authenticated, service_role;
+revoke all on function restaurantes.handoff_detalle(uuid, uuid, text, uuid) from public, anon;
+revoke all on function restaurantes.handoff_notas(uuid, uuid, uuid) from public, anon;
+revoke all on function restaurantes.turnos_sucursal(uuid, uuid) from public, anon;
+revoke all on function restaurantes.callbacks_sucursal(uuid, uuid, boolean, integer) from public, anon;
+grant execute on function restaurantes.handoff_detalle(uuid, uuid, text, uuid) to authenticated, service_role;
+grant execute on function restaurantes.handoff_notas(uuid, uuid, uuid) to authenticated, service_role;
+grant execute on function restaurantes.turnos_sucursal(uuid, uuid) to authenticated, service_role;
+grant execute on function restaurantes.callbacks_sucursal(uuid, uuid, boolean, integer) to authenticated, service_role;
