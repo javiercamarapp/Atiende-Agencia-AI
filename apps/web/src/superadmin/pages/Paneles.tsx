@@ -13,7 +13,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BedDouble, Calculator, CalendarCheck, Gavel, Home, UtensilsCrossed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, PageContainer } from "@atiende/ui";
 import type { LoginSession } from "../../lib/auth-client.ts";
 import { persistSession } from "../../lib/auth-client.ts";
 import { persistHotelesSession } from "../../verticals/hoteles/lib/auth-client.ts";
@@ -105,7 +105,7 @@ export function SuperAdminPanelesPage({ apiBaseUrl, token }: { readonly apiBaseU
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Entrar a los otros paneles</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -114,7 +114,7 @@ export function SuperAdminPanelesPage({ apiBaseUrl, token }: { readonly apiBaseU
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -137,6 +137,6 @@ export function SuperAdminPanelesPage({ apiBaseUrl, token }: { readonly apiBaseU
           </Card>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }

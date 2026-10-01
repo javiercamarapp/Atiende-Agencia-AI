@@ -6,31 +6,7 @@
 // patrón de sesión/manejo de errores que GastoApi.tsx/Prospectos.tsx.
 import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { AlertOctagon, Clock, DoorOpen, History, Lock, Unlock } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  StatCard,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from "@atiende/ui";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 interface Sesion {
@@ -260,9 +236,9 @@ function duracionRestante(remainingMs: number): string {
 }
 
 function EstadoSesion({ sesion }: { readonly sesion: Sesion }) {
-  if (sesion.activa) return <Badge>Activa · {duracionRestante(sesion.remainingMs)} restantes</Badge>;
-  if (sesion.closedAtMs) return <Badge variant="outline">Cerrada manualmente</Badge>;
-  return <Badge variant="outline">Vencida</Badge>;
+  if (sesion.activa) return <StatusBadge tone="warning">Activa · {duracionRestante(sesion.remainingMs)} restantes</StatusBadge>;
+  if (sesion.closedAtMs) return <StatusBadge tone="neutral">Cerrada manualmente</StatusBadge>;
+  return <StatusBadge tone="neutral">Vencida</StatusBadge>;
 }
 
 async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, init?: RequestInit): Promise<T> {
@@ -490,7 +466,7 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
   const activas = sesiones.filter((s) => s.activa);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
@@ -508,7 +484,7 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -610,7 +586,7 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
                                           "el tenant no tiene datos de este tipo" -- un operador investigando
                                           una emergencia necesita saber cuál de los dos está viendo. */}
                                       {!err && cargandoRecurso !== r.key && datos && datos.length === 0 && disponible === false && (
-                                        <p role="status" className="text-xs text-amber-600 dark:text-amber-500 p-2">
+                                        <p role="status" className="text-xs text-warning p-2">
                                           Este lector todavía no está disponible en esta base (falta aplicar la migración correspondiente) -- no se sabe si el tenant tiene datos de este tipo.
                                         </p>
                                       )}
@@ -627,12 +603,12 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
                                               a `PAGINA_TAMANO` no tenía forma de saber si eso era TODO el
                                               tenant o solo la primera página. */}
                                           <div className="flex items-center gap-2 pt-1">
-                                            <span className="text-[11px] text-muted-foreground">
+                                            <span className="text-xs text-muted-foreground">
                                               Mostrando {datos.length}
                                               {hasMore ? ", hay más" : ""}
                                             </span>
                                             {hasMore && (
-                                              <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" onClick={() => cargarMasRecurso(s, r)} disabled={cargandoMasRecurso === r.key}>
+                                              <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => cargarMasRecurso(s, r)} disabled={cargandoMasRecurso === r.key}>
                                                 {cargandoMasRecurso === r.key ? "Cargando…" : "Cargar más"}
                                               </Button>
                                             )}
@@ -696,7 +672,7 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
         </CardContent>
       </Card>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={abriendo}
         onOpenChange={(open) => setAbriendo(open)}
         titulo="Abrir acceso de emergencia"
@@ -720,40 +696,38 @@ export function SuperAdminBreakGlassPage({ apiBaseUrl, token }: { readonly apiBa
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="break-glass-motivo">Motivo (obligatorio, mínimo 20 caracteres)</Label>
-            <textarea
+            <Textarea
               id="break-glass-motivo"
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
               rows={4}
               placeholder="Ej. Ticket SOP-4821: el tenant reporta un cobro duplicado, necesito revisar sus reservas para diagnosticar."
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               required
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="break-glass-duracion">Duración</Label>
-            <select
+            <NativeSelect
               id="break-glass-duracion"
               value={duracionMinutos}
               onChange={(e) => setDuracionMinutos(Number(e.target.value))}
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {DURACIONES.map((d) => (
                 <option key={d.minutos} value={d.minutos}>
                   {d.etiqueta}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           {formError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
       {cargando && <p className="text-xs text-muted-foreground">Actualizando…</p>}
-    </div>
+    </PageContainer>
   );
 }

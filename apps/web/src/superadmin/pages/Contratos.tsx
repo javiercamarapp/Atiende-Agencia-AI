@@ -324,7 +324,7 @@ export function SuperAdminContratosPage({ apiBaseUrl, token }: { readonly apiBas
                     {est.razonTotal}
                   </Callout>
                 )}
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Sucursales activas: {estimacion?.insumos?.sucursalesActivas ?? "—"}. Bolsa del mes: {est.bolsaMinutos ?? "—"} min. Minutos usados:{" "}
                   {est.minutosUsados === null ? "no medidos" : est.minutosUsados}
                   {est.minutosExcedentes ? `, ${est.minutosExcedentes} min de excedente a ${centavosAPesos(est.tarifaExcedenteCentavosMinuto)} por minuto` : ""}.
@@ -494,7 +494,7 @@ export function SuperAdminContratosPage({ apiBaseUrl, token }: { readonly apiBas
           <Textarea value={motivo} rows={3} maxLength={500} onChange={(e) => setMotivo(e.target.value)} />
         </FormField>
         {formError && (
-          <p role="alert" className="mt-3 text-[13px] text-destructive">
+          <p role="alert" className="mt-3 text-sm text-destructive">
             {formError}
           </p>
         )}

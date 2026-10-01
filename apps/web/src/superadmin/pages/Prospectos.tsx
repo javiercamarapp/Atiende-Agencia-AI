@@ -12,27 +12,8 @@
 // mismo criterio que useNotifications.ts).
 import { useEffect, useState, type FormEvent } from "react";
 import { Building2, Plus, TrendingUp } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  StatCard,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, statusTone } from "@atiende/ui";
+import { PROSPECTO_ESTADO_TONES } from "../lib/status-tones.ts";
 
 interface Prospecto {
   readonly id: string;
@@ -74,14 +55,8 @@ const NOMBRE_ESTADO: Record<string, string> = {
 };
 
 function badgeDeEstado(estado: string) {
-  if (estado === "ganado") return <Badge>Ganado</Badge>;
-  if (estado === "perdido" || estado === "descartado") return <Badge variant="destructive">{NOMBRE_ESTADO[estado]}</Badge>;
-  if (estado === "nuevo") return <Badge variant="secondary">Nuevo</Badge>;
-  return <Badge variant="outline">{NOMBRE_ESTADO[estado] ?? estado}</Badge>;
+  return <StatusBadge tone={statusTone(PROSPECTO_ESTADO_TONES, estado)}>{NOMBRE_ESTADO[estado] ?? estado}</StatusBadge>;
 }
-
-const SELECT_CLASES =
-  "h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const FORM_VACIO = { empresa: "", vertical: "hoteles", ciudad: "", contactoNombre: "", telefono: "", correo: "", fuente: "", notas: "" };
 
@@ -180,7 +155,7 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
   const ganados = prospectos.filter((p) => p.estado === "ganado").length;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Prospectos</h1>
@@ -199,28 +174,28 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
 
       <div className="flex items-center gap-2 flex-wrap">
-        <select value={filtroVertical} onChange={(e) => setFiltroVertical(e.target.value)} className={SELECT_CLASES} aria-label="Filtrar por vertical">
+        <NativeSelect size="sm" wrapperClassName="w-auto" value={filtroVertical} onChange={(e) => setFiltroVertical(e.target.value)} aria-label="Filtrar por vertical">
           <option value="todos">Todas las verticales</option>
           {Object.entries(NOMBRE_VERTICAL).map(([v, label]) => (
             <option key={v} value={v}>
               {label}
             </option>
           ))}
-        </select>
-        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className={SELECT_CLASES} aria-label="Filtrar por etapa">
+        </NativeSelect>
+        <NativeSelect size="sm" wrapperClassName="w-auto" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} aria-label="Filtrar por etapa">
           <option value="todos">Todas las etapas</option>
           {ESTADOS.map((estado) => (
             <option key={estado} value={estado}>
               {NOMBRE_ESTADO[estado]}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       <Card>
@@ -260,11 +235,12 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {badgeDeEstado(p.estado)}
-                        <select
+                        <NativeSelect
+                          size="sm"
+                          wrapperClassName="w-auto"
                           value={p.estado}
                           onChange={(e) => void handleCambiarEstado(p, e.target.value)}
                           disabled={cambiandoId === p.id}
-                          className={SELECT_CLASES}
                           aria-label={`Cambiar etapa de ${p.empresa}`}
                         >
                           {ESTADOS.map((estado) => (
@@ -272,7 +248,7 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
                               {NOMBRE_ESTADO[estado]}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{p.fuente || "—"}</TableCell>
@@ -285,7 +261,7 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
         </CardContent>
       </Card>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={showForm}
         onOpenChange={(open) => {
           setShowForm(open);
@@ -312,13 +288,13 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="prospecto-vertical">Solución de interés *</Label>
-            <select id="prospecto-vertical" value={form.vertical} onChange={(e) => setForm({ ...form, vertical: e.target.value })} className={SELECT_CLASES + " w-full"}>
+            <NativeSelect id="prospecto-vertical" value={form.vertical} onChange={(e) => setForm({ ...form, vertical: e.target.value })}>
               {Object.entries(NOMBRE_VERTICAL).map(([v, label]) => (
                 <option key={v} value={v}>
                   {label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
@@ -346,21 +322,20 @@ export function SuperAdminProspectosPage({ apiBaseUrl, token }: { readonly apiBa
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="prospecto-notas">Notas</Label>
-            <textarea
+            <Textarea
               id="prospecto-notas"
               value={form.notas}
               onChange={(e) => setForm({ ...form, notas: e.target.value })}
               rows={3}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
           </div>
           {formError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
-    </div>
+      </FormDialog>
+    </PageContainer>
   );
 }

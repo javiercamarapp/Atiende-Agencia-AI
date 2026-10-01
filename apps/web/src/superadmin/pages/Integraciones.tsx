@@ -17,7 +17,7 @@
 // prosa cuándo algo bloquea el arranque) se muestra tal cual, íntegro.
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, PlugZap, RefreshCw } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, StatCard } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatCard, StatusBadge } from "@atiende/ui";
 
 interface Integracion {
   readonly id: string;
@@ -42,11 +42,11 @@ function TarjetaIntegracion({ integracion }: { readonly integracion: Integracion
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <CardTitle className="text-base">{integracion.nombre}</CardTitle>
         {integracion.configurada ? (
-          <Badge className="shrink-0">Configurada</Badge>
+          <StatusBadge tone="success" className="shrink-0">Configurada</StatusBadge>
         ) : (
-          <Badge variant="secondary" className="shrink-0">
+          <StatusBadge tone="warning" className="shrink-0">
             Falta configurar
-          </Badge>
+          </StatusBadge>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -56,7 +56,7 @@ function TarjetaIntegracion({ integracion }: { readonly integracion: Integracion
             <p className="text-xs font-medium text-foreground">Variables de entorno faltantes</p>
             <div className="flex flex-wrap gap-1.5">
               {integracion.faltantes.map((nombre) => (
-                <code key={nombre} className="rounded bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground border border-border">
+                <code key={nombre} className="rounded bg-background px-1.5 py-0.5 font-mono text-xs text-foreground border border-border">
                   {nombre}
                 </code>
               ))}
@@ -100,7 +100,7 @@ export function SuperAdminIntegracionesPage({ apiBaseUrl, token }: { readonly ap
   const faltantes = integraciones.filter((i) => !i.configurada);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Integraciones</h1>
@@ -113,7 +113,7 @@ export function SuperAdminIntegracionesPage({ apiBaseUrl, token }: { readonly ap
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -162,6 +162,6 @@ export function SuperAdminIntegracionesPage({ apiBaseUrl, token }: { readonly ap
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

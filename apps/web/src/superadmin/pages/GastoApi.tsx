@@ -12,28 +12,8 @@
 // (nunca datos inventados, ver los estados vacíos de abajo).
 import { useEffect, useState, type FormEvent } from "react";
 import { AlertTriangle, DollarSign, Gauge, Hash, Pencil } from "lucide-react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EstadoCargando,
-  EstadoError,
-  EstadoVacio,
-  Input,
-  Label,
-  StatCard,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  formatMoney,
-} from "@atiende/ui";
-import { ModalFormularioLateral } from "../../components/ModalFormularioLateral.tsx";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, formatMoney } from "@atiende/ui";
+import { BarraProgreso } from "../components/BarraProgreso.tsx";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 interface RangoFechas {
@@ -96,13 +76,10 @@ function hace30DiasIso(): string {
 }
 
 function BarraTope({ pct, alerta }: { readonly pct: number; readonly alerta: boolean }) {
-  const anchoPct = Math.min(100, Math.max(0, pct));
-  const color = pct >= 100 ? "bg-destructive" : alerta ? "bg-amber-500" : "bg-primary";
+  const tono = pct >= 100 ? "danger" : alerta ? "warning" : "primary";
   return (
     <div className="flex flex-col gap-1 min-w-[120px]">
-      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${anchoPct}%` }} />
-      </div>
+      <BarraProgreso valor={pct} tono={tono} aria-label="Uso del tope" />
       <span className="text-xs text-muted-foreground">{pct.toFixed(1)}% del tope</span>
     </div>
   );
@@ -232,7 +209,7 @@ export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBase
   const alertaPlataformaActiva = pctPlataforma >= resumen.platformBudget.alertThresholdPct;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Gasto de API de LLM</h1>
@@ -255,7 +232,7 @@ export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBase
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -274,9 +251,9 @@ export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBase
             <p className="text-sm text-muted-foreground mt-1">
               {usd(resumen.platformBudget.spendThisMonthMicroUsd)} de {usd(resumen.platformBudget.monthlyCapMicroUsd)}
               {alertaPlataformaActiva && (
-                <Badge variant="destructive" className="ml-2">
+                <StatusBadge tone="danger" className="ml-2">
                   Umbral de alerta superado
-                </Badge>
+                </StatusBadge>
               )}
             </p>
           </div>
@@ -387,7 +364,7 @@ export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBase
         </CardContent>
       </Card>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={editando !== null}
         onOpenChange={(open) => {
           if (!open) setEditando(null);
@@ -416,14 +393,14 @@ export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBase
             <Input id="tope-organizacion-alerta" type="number" min="1" max="100" value={editandoAlerta} onChange={(e) => setEditandoAlerta(e.target.value)} />
           </div>
           {formError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
-      <ModalFormularioLateral
+      <FormDialog
         open={editandoPlataforma}
         onOpenChange={(open) => setEditandoPlataforma(open)}
         titulo="Editar tope global de plataforma"
@@ -450,14 +427,14 @@ export function SuperAdminGastoApiPage({ apiBaseUrl, token }: { readonly apiBase
             <Input id="tope-plataforma-alerta" type="number" min="1" max="100" value={alertaPlataforma} onChange={(e) => setAlertaPlataforma(e.target.value)} />
           </div>
           {formError && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
           )}
         </form>
-      </ModalFormularioLateral>
+      </FormDialog>
 
       {cargando && <p className="text-xs text-muted-foreground">Actualizando…</p>}
-    </div>
+    </PageContainer>
   );
 }

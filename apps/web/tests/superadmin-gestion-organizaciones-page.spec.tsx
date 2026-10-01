@@ -20,6 +20,9 @@ async function esperar(): Promise<void> {
 }
 const json = (body: unknown, ok = true) => ({ ok, json: async () => body }) as unknown as Response;
 
+const dialogo = () => document.body.querySelector('[role="alertdialog"]');
+const botonDialogo = (texto: string) => [...dialogo()!.querySelectorAll("button")].find((b) => b.textContent?.includes(texto)) as HTMLButtonElement;
+
 afterEach(() => {
   rendered?.unmount();
   rendered = undefined;
@@ -109,9 +112,31 @@ describe("SuperAdminGestionOrganizacionesPage", () => {
     expect(rendered.container.textContent).toContain("Pendientes de confirmar");
     click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Confirmar")!);
     await esperar();
+    // Confirmar ejecuta la suspension: primero pide confirmacion y no llama al servidor.
+    expect(dialogo()).not.toBeNull();
+    expect(posts).toHaveLength(0);
+    click(botonDialogo("Ejecutar acción"));
+    await esperar();
     expect(posts).toContain("https://api.test/superadmin/organizaciones/acciones/a1/confirmar");
     click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Cancelar")!);
     await esperar();
     expect(posts).toContain("https://api.test/superadmin/organizaciones/acciones/a1/cancelar");
+  });
+
+  it("Cancelar el dialogo de confirmar (o cerrarlo) NUNCA ejecuta la accion", async () => {
+    const posts: string[] = [];
+    stub({
+      acciones: [{ id: "a1", tipo: "suspender", organizationId: "o1", payload: {}, motivo: "Cliente en mora de 90 dias, se suspende previa confirmacion.", estado: "pending", venceEnMs: Date.now() + 5 * 60_000, resultado: null }],
+      post: (url) => posts.push(url),
+    });
+    rendered = render();
+    await esperar();
+    click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Confirmar")!);
+    await esperar();
+    expect(dialogo()).not.toBeNull();
+    click(botonDialogo("Cancelar"));
+    await esperar();
+    expect(dialogo()).toBeNull();
+    expect(posts).toHaveLength(0);
   });
 });

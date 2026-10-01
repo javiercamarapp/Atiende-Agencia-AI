@@ -6,7 +6,7 @@
 // GET /superadmin/authz-auditoria en apps/api/src/routes/superadmin.ts.
 import { useEffect, useState } from "react";
 import { ShieldOff } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatCard, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@atiende/ui";
 
 export interface AuthzAuditLogEntry {
   readonly id: string;
@@ -93,7 +93,7 @@ export function SuperAdminAuthzAuditoriaPage({ apiBaseUrl, token }: { readonly a
   if (!entradas) return <EstadoCargando etiqueta="Cargando bitácora de denegaciones…" />;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <PageContainer padding="none" className="[&>*]:min-w-0">
       <div>
         <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
           <ShieldOff className="w-5 h-5 text-destructive" strokeWidth={1.75} />
@@ -105,13 +105,13 @@ export function SuperAdminAuthzAuditoriaPage({ apiBaseUrl, token }: { readonly a
       </div>
 
       {!available && (
-        <p role="alert" className="text-[13px] text-muted-foreground">
+        <p role="alert" className="text-sm text-muted-foreground">
           La bitácora persistente todavía no está disponible en esta base (migración pendiente de aplicar) — los intentos denegados se siguen auditando en memoria, por proceso.
         </p>
       )}
 
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -150,7 +150,7 @@ export function SuperAdminAuthzAuditoriaPage({ apiBaseUrl, token }: { readonly a
                         {e.method} {e.route}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{(e.reason && REASON_LABELS[e.reason]) ?? e.reason ?? "—"}</Badge>
+                        <StatusBadge tone="neutral" dot={false}>{(e.reason && REASON_LABELS[e.reason]) ?? e.reason ?? "—"}</StatusBadge>
                       </TableCell>
                       <TableCell className="font-mono text-xs">{e.organizationId ?? "—"}</TableCell>
                     </TableRow>
@@ -174,6 +174,6 @@ export function SuperAdminAuthzAuditoriaPage({ apiBaseUrl, token }: { readonly a
       </Card>
 
       {cargando && <p className="text-xs text-muted-foreground">Actualizando…</p>}
-    </div>
+    </PageContainer>
   );
 }
