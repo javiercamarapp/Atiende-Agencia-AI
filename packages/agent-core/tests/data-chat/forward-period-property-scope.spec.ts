@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORWARD_PERIOD_PARAMS, FORWARD_PERIOD_TOKENS, parseArgs, propertyParam, resolveForwardPeriod, resolvePropertySelection, toJsonSchema, type VisibleProperty } from "../../src/data-chat/index.ts";
+import { FORWARD_PERIOD_PARAMS, FORWARD_PERIOD_TOKENS, MIXED_PERIOD_PARAMS, MIXED_PERIOD_TOKENS, parseArgs, resolveMixedPeriod, propertyParam, resolveForwardPeriod, resolvePropertySelection, toJsonSchema, type VisibleProperty } from "../../src/data-chat/index.ts";
 
 /** Martes 29-sep-2026 23:30 en Mérida = miércoles 30-sep 05:30 UTC. */
 const NOW = new Date("2026-09-30T05:30:00.000Z");
@@ -93,11 +93,53 @@ describe("resolvePropertySelection — nombre de propiedad, solo entre las visib
     expect(resolvePropertySelection([...VISIBLE, { propertyId: "p3", name: "Hotel Centro Histórico", slug: "x" }], null, "Hotel Centro", NOUNS)).toMatchObject({ ok: true, propertyIds: ["p1"] });
   });
 
+  it("concuerda en género con sustantivos femeninos (propiedades)", () => {
+    const f = { singular: "propiedad", plural: "propiedades", feminine: true } as const;
+    const props: VisibleProperty[] = [{ propertyId: "a", name: "Casas de Playa", slug: "playa" }, { propertyId: "b", name: "Casas del Centro", slug: "centro" }];
+    expect(resolvePropertySelection(props, null, undefined, f)).toMatchObject({ label: "todas tus propiedades" });
+    expect(resolvePropertySelection(props, ["a", "b"], undefined, f)).toMatchObject({ label: "tus 2 propiedades asignadas" });
+    expect(resolvePropertySelection([props[0]!], ["a"], "Centro", f)).toEqual({ ok: false, message: "No encontré esa propiedad entre las que puedes consultar: Casas de Playa." });
+    expect((resolvePropertySelection(props, null, "casas", f) as { message: string }).message).toContain("Hay varias propiedades");
+  });
+
   it("propertyParam declara un texto corto (nunca un id) bajo el nombre pedido", () => {
     const spec = propertyParam("hotel", NOUNS);
     expect(Object.keys(spec)).toEqual(["hotel"]);
     expect(spec["hotel"]).toMatchObject({ type: "string", maxLength: 60, optional: true });
     expect(parseArgs(spec, { hotel: "x".repeat(61) })).toMatchObject({ ok: false });
     expect(parseArgs(spec, { hotel: " Centro " })).toEqual({ ok: true, value: { hotel: "Centro" } });
+  });
+});
+
+describe("resolveMixedPeriod — pasado y futuro con semanas y meses completos", () => {
+  const okMixed = (args: Record<string, string>) => {
+    const r = resolveMixedPeriod(args, NOW, TZ);
+    if (!r.ok) throw new Error(r.message);
+    return r.period;
+  };
+
+  it("los tokens del pasado se resuelven como en resolvePeriod", () => {
+    expect(okMixed({ periodo: "ayer" })).toMatchObject({ fromDate: "2026-09-28", toDate: "2026-09-28" });
+    expect(okMixed({ periodo: "ultimos_7_dias" })).toMatchObject({ fromDate: "2026-09-23", toDate: "2026-09-29" });
+    expect(okMixed({ periodo: "semana_pasada" })).toMatchObject({ fromDate: "2026-09-21", toDate: "2026-09-27" });
+    expect(okMixed({ periodo: "mes_pasado" })).toMatchObject({ fromDate: "2026-08-01", toDate: "2026-08-31" });
+  });
+
+  it("'esta semana' y 'este mes' son COMPLETOS (incluyen lo ya reservado a futuro)", () => {
+    expect(okMixed({ periodo: "esta_semana" })).toMatchObject({ fromDate: "2026-09-28", toDate: "2026-10-04" });
+    expect(okMixed({ periodo: "este_mes" })).toMatchObject({ fromDate: "2026-09-01", toDate: "2026-09-30" });
+    expect(okMixed({ periodo: "proximos_30_dias" })).toMatchObject({ fromDate: "2026-09-29", toDate: "2026-10-28" });
+  });
+
+  it("fechas exactas pasadas o futuras; sin periodo pide aclaración; token desconocido es inválido", () => {
+    expect(okMixed({ desde: "2026-01-01", hasta: "2026-01-31" })).toMatchObject({ fromDate: "2026-01-01" });
+    expect(okMixed({ desde: "2026-11-01", hasta: "2026-11-30" })).toMatchObject({ toDate: "2026-11-30" });
+    expect(resolveMixedPeriod({}, NOW, TZ)).toMatchObject({ ok: false, kind: "needs_clarification" });
+    expect(resolveMixedPeriod({ periodo: "ultimo_siglo" }, NOW, TZ)).toMatchObject({ ok: false, kind: "invalid" });
+  });
+
+  it("el esquema declara los mismos tokens", () => {
+    const schema = toJsonSchema(MIXED_PERIOD_PARAMS) as { properties: { periodo: { enum: string[] } } };
+    expect(schema.properties.periodo.enum).toEqual([...MIXED_PERIOD_TOKENS]);
   });
 });

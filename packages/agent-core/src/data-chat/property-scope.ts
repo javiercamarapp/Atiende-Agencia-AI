@@ -21,7 +21,11 @@ export interface PropertyNouns {
   readonly singular: string;
   /** "hoteles" / "propiedades" */
   readonly plural: string;
+  /** Genero gramatical del sustantivo (todas / asignadas / esa). Por defecto masculino. */
+  readonly feminine?: boolean;
 }
+
+const gender = (n: PropertyNouns, masculine: string, feminine: string): string => (n.feminine ? feminine : masculine);
 
 /** Parametro de nombre de propiedad (`key` = "hotel", "propiedad"...): SIEMPRE texto, nunca un id. */
 export function propertyParam(key: string, nouns: PropertyNouns): ParamsSpec {
@@ -44,15 +48,15 @@ export function resolvePropertySelection(
   nouns: PropertyNouns,
 ): PropertyResolution {
   if (requested === undefined || requested === "") {
-    if (allowed === null) return { ok: true, propertyIds: null, label: `todos tus ${nouns.plural}` };
+    if (allowed === null) return { ok: true, propertyIds: null, label: `${gender(nouns, "todos", "todas")} tus ${nouns.plural}` };
     const n = visible.length;
-    return { ok: true, propertyIds: allowed, label: n === 1 ? `${nouns.singular} ${visible[0]!.name}` : `tus ${n} ${nouns.plural} asignados` };
+    return { ok: true, propertyIds: allowed, label: n === 1 ? `${nouns.singular} ${visible[0]!.name}` : `tus ${n} ${nouns.plural} ${gender(nouns, "asignados", "asignadas")}` };
   }
   const needle = foldText(requested);
   const exact = visible.filter((b) => foldText(b.name) === needle || foldText(b.slug) === needle);
   const matches = exact.length > 0 ? exact : visible.filter((b) => foldText(b.name).includes(needle) || foldText(b.slug).includes(needle));
   if (matches.length === 1) return { ok: true, propertyIds: [matches[0]!.propertyId], label: `${nouns.singular} ${matches[0]!.name}` };
   const names = visible.map((b) => b.name).join(", ");
-  if (matches.length > 1) return { ok: false, message: `Hay varios ${nouns.plural} que coinciden con "${requested}": ${matches.map((b) => b.name).join(", ")}. ¿Cuál quieres?` };
-  return { ok: false, message: `No encontré ese ${nouns.singular} entre los que puedes consultar${names ? `: ${names}` : ""}.` };
+  if (matches.length > 1) return { ok: false, message: `Hay ${gender(nouns, "varios", "varias")} ${nouns.plural} que coinciden con "${requested}": ${matches.map((b) => b.name).join(", ")}. ¿Cuál quieres?` };
+  return { ok: false, message: `No encontré ${gender(nouns, "ese", "esa")} ${nouns.singular} entre ${gender(nouns, "los", "las")} que puedes consultar${names ? `: ${names}` : ""}.` };
 }
