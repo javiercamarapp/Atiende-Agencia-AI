@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 import { Receipt } from "lucide-react";
 import {
   Button,
+  Checkbox,
   ConfirmDialog,
   EstadoCargando,
   EstadoError,
@@ -290,10 +291,7 @@ export function FolioPage({ apiBaseUrl, token, propertyId, orgSlug, folioId }: F
           <p className="text-xs text-muted-foreground">Elige los cargos que pasan a un folio nuevo de esta misma reserva (por ejemplo, para facturar aparte).</p>
           <div className="flex flex-col gap-1">
             {folio.cargos.filter(cargoTransferible).map((ch) => (
-              <label key={ch.id} className="flex items-center gap-2 text-sm text-foreground">
-                <input type="checkbox" checked={splitCargos.has(ch.id)} onChange={() => toggleSplit(ch.id)} />
-                {CHARGE_CONCEPT_LABELS[ch.concepto]} · {ch.descripcion} · {dineroMx(ch.monto + ch.impuesto)}
-              </label>
+              <Checkbox key={ch.id} label={`${CHARGE_CONCEPT_LABELS[ch.concepto]} · ${ch.descripcion} · ${dineroMx(ch.monto + ch.impuesto)}`} checked={splitCargos.has(ch.id)} onChange={() => toggleSplit(ch.id)} />
             ))}
           </div>
           <div className="flex gap-2 flex-wrap">

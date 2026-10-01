@@ -3,7 +3,7 @@
 // violaciones responde 422 con la cita legal y no guarda nada; aqui se muestran tal cual (nunca se "arreglan" en silencio).
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Card, CardContent, EstadoCargando, EstadoVacio, Input, Label, NativeSelect, StatusBadge } from "@atiende/ui";
+import { Button, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, Input, Label, NativeSelect, StatusBadge } from "@atiende/ui";
 import { DIAS_SEMANA, TURNOS_PUBLISH_ROLES, fetchTurnos, publicarTurnos, turnosDelRango, validarPlantilla } from "../lib/turnos-client.ts";
 import type { TurnosConsulta, ViolacionLft } from "../lib/turnos-client.ts";
 import type { Camarista } from "../lib/limpieza-client.ts";
@@ -191,10 +191,7 @@ export function TurnosPanel({ apiBaseUrl, token, propertyId, role, hoy, camarist
               </div>
               <div className="flex gap-3 flex-wrap">
                 {DIAS_SEMANA.map((d) => (
-                  <label key={d.valor} className="flex items-center gap-1.5 text-sm text-foreground">
-                    <input type="checkbox" checked={dias.has(d.valor)} onChange={() => toggleDia(d.valor)} />
-                    {d.etiqueta}
-                  </label>
+                  <Checkbox key={d.valor} label={d.etiqueta} checked={dias.has(d.valor)} onChange={() => toggleDia(d.valor)} />
                 ))}
               </div>
               <div>
