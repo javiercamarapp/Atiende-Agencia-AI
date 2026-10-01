@@ -12,6 +12,8 @@ function pgError(code: string, message: string): Error & { code: string } {
   return Object.assign(new Error(message), { code });
 }
 
+const SET_TIMEOUT = { match: /^\s*set local statement_timeout = 8000/i, respond: () => [] };
+
 const WINDOW: DataChatWindow = {
   organizationId: ORG_A,
   propertyIds: null,
@@ -24,6 +26,7 @@ const WINDOW: DataChatWindow = {
 describe("PostgresRestaurantesDataChatReader — base sin migrar", () => {
   it("tabla inexistente (42P01) -> DataChatUnavailableError y la transaccion queda UTILIZABLE (sin 25P02)", async () => {
     const session = new AbortAwareFakeSession([
+      SET_TIMEOUT,
       { match: /from restaurantes\.orders/i, respond: () => pgError("42P01", 'relation "restaurantes.orders" does not exist') },
       { match: /select 1 as siguiente_query_del_request/i, respond: () => [{ ok: true }] },
     ]);
@@ -38,13 +41,14 @@ describe("PostgresRestaurantesDataChatReader — base sin migrar", () => {
 
   it("columna inexistente (42703) y funcion inexistente (42883) tambien degradan a 'no disponible'", async () => {
     for (const err of [pgError("42703", 'column pr.times_used does not exist'), pgError("42883", "function restaurantes.algo() does not exist")]) {
-      const session = new AbortAwareFakeSession([{ match: /from restaurantes\.promotions/i, respond: () => err }]);
+      const session = new AbortAwareFakeSession([SET_TIMEOUT, { match: /from restaurantes\.promotions/i, respond: () => err }]);
       await expect(new PostgresRestaurantesDataChatReader(session).promotions(ORG_A, 51)).rejects.toBeInstanceOf(DataChatUnavailableError);
     }
   });
 
   it("un error real (statement timeout 57014) NO se enmascara como 'no disponible', pero la sesion igual se recupera", async () => {
     const session = new AbortAwareFakeSession([
+      SET_TIMEOUT,
       { match: /from restaurantes\.orders/i, respond: () => pgError("57014", "canceling statement due to statement timeout") },
       { match: /select 1 as siguiente_query_del_request/i, respond: () => [{ ok: true }] },
     ]);
@@ -55,6 +59,7 @@ describe("PostgresRestaurantesDataChatReader — base sin migrar", () => {
 
   it("de punta a punta: la herramienta responde 'unavailable' y la transaccion sigue sirviendo a la bitacora", async () => {
     const session = new AbortAwareFakeSession([
+      SET_TIMEOUT,
       { match: /from core\.property p\s+join restaurantes\.branch_detail/i, respond: () => [{ property_id: "p1", name: "Centro", slug: "centro" }] },
       { match: /from restaurantes\.orders/i, respond: () => pgError("42P01", "relation does not exist") },
       { match: /insert into core\.data_chat_query_log|select 1 as siguiente_query_del_request/i, respond: () => [{ ok: true }] },
@@ -68,6 +73,7 @@ describe("PostgresRestaurantesDataChatReader — base sin migrar", () => {
   it("camino feliz: convierte numeric/bigint (texto de pg) a numeros y manda los parametros en el orden del SQL", async () => {
     const seen: unknown[][] = [];
     const base = new AbortAwareFakeSession([
+      SET_TIMEOUT,
       { match: /to_char\(date_trunc/i, respond: () => [{ bucket: "2026-09-29", revenue: "1500.50", orders: "12" }] },
       { match: /extract\(hour from/i, respond: () => [{ hour: 14, orders: "9", revenue: "1100.00" }] },
       { match: /with in_period/i, respond: () => [{ customers: "40", recurring: "18", new_customers: "22" }] },
@@ -90,7 +96,7 @@ describe("PostgresRestaurantesDataChatReader — base sin migrar", () => {
 
   it("sucursales permitidas viajan como arreglo (nunca null) cuando la membresia esta acotada", async () => {
     const seen: unknown[][] = [];
-    const session = new AbortAwareFakeSession([{ match: /from restaurantes\.orders/i, respond: () => [{ orders: "0", revenue: "0", cancelled: "0" }] }]);
+    const session = new AbortAwareFakeSession([SET_TIMEOUT, { match: /from restaurantes\.orders/i, respond: () => [{ orders: "0", revenue: "0", cancelled: "0" }] }]);
     const original = session.query.bind(session);
     session.query = (async (sql: string, params?: unknown[]) => {
       seen.push(params ?? []);

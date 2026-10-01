@@ -40,10 +40,21 @@ function isMissingSchemaObject(err: unknown): boolean {
 
 const num = (v: unknown): number => Number(v ?? 0);
 
+/** Tope de tiempo de cada consulta del chat (aplica al resto de la transaccion de la request). */
+export const DATA_CHAT_STATEMENT_TIMEOUT_MS = 8_000;
+
 export class PostgresRestaurantesDataChatReader implements RestaurantesDataChatReader {
+  private timeoutApplied = false;
+
   constructor(private readonly db: TenantDbSession) {}
 
   private async query<R>(what: string, sql: string, params: unknown[]): Promise<R[]> {
+    if (!this.timeoutApplied) {
+      this.timeoutApplied = true;
+      // `set local`: solo vive en la transaccion de esta request; un tope de tiempo real en la base,
+      // ademas del timeout del motor (que cancela la espera pero no la consulta).
+      await this.db.exec(`set local statement_timeout = ${DATA_CHAT_STATEMENT_TIMEOUT_MS}`);
+    }
     return runWithSavepointFallback<R[]>({
       session: this.db,
       primary: async () => (await this.db.query<R>(sql, params)).rows,

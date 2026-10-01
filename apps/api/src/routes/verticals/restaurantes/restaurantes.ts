@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import type { AppDeps } from "../../../deps.ts";
 import { restaurantesAdminKpisRoutes } from "./admin-kpis.ts";
+import { restaurantesAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { restaurantesAdminCatalogRoutes } from "./admin-catalog.ts";
 import { restaurantesAdminPromotionsRoutes } from "./admin-promotions.ts";
 import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
@@ -26,6 +27,8 @@ import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-disp
 export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
   app.route("/", restaurantesAdminKpisRoutes(deps));
+  // "Chatea con tus datos" (motor compartido @atiende/agent-core/data-chat + catalogo cerrado de restaurantes).
+  app.route("/", restaurantesAdminDataChatRoutes(deps));
   // Fase 5 — back-office CORE (catálogo/sucursales/pedidos/clientes, ver diseño §1).
   app.route("/", restaurantesAdminCatalogRoutes(deps));
   // Fase 11 — promociones/marketing: CRUD admin real de código de descuento (ver

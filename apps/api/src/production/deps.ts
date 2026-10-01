@@ -107,6 +107,7 @@ import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { notProductionReady } from "./not-ready.ts";
+import { buildProductionDataChat } from "../data-chat/deps.ts";
 import {
   buildProductionLlmGateway,
   buildResumenDiarioLlmGateway,
@@ -284,6 +285,7 @@ export function buildProductionDeps(): AppDeps {
     // GEMINI_API_KEY; sin ella `salud()` no está ok y las rutas responden 503 "voz no configurada".
     vozRepo: (db) => new PostgresVozRepository(db),
     voiceProvider: new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }),
+    dataChat: buildProductionDataChat(llmGateway),
     turnHandler: llmGateway ? buildRealRestaurantesTurnHandler(engine, llmGateway) : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar ANTHROPIC_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: env.stripe.secretKey
