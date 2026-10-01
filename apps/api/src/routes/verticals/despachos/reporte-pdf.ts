@@ -24,6 +24,10 @@ const COLOR_MUTED = rgb(0.4, 0.42, 0.46);
 const COLOR_HEADER_BG = rgb(0.9, 0.93, 0.97);
 const COLOR_RULE = rgb(0.78, 0.8, 0.84);
 
+/** Lo que el render necesita: un `ReporteCliente` (D-01) o cualquier reporte tabular con la misma forma (p. ej. la
+ * cartera D-11, que usa una fecha de corte: `etiquetaPeriodo` reemplaza al texto "Período AAAA-MM"). */
+export type ReportePdf = Omit<ReporteCliente, "tipo"> & { readonly tipo: string; readonly etiquetaPeriodo?: string };
+
 const MONEDA = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
 const ENTERO = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 const PCT = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -175,10 +179,10 @@ class Escritor {
   }
 
   /** Pie de página con numeración; se llama al final, cuando ya se conoce el total. */
-  pie(reporte: ReporteCliente): void {
+  pie(reporte: ReportePdf): void {
     const total = this.paginas.length;
     this.paginas.forEach((p, i) => {
-      const izq = this.limpiar(`${reporte.titulo} · ${reporte.contribuyente.nombre} · Período ${reporte.periodo}`);
+      const izq = this.limpiar(`${reporte.titulo} · ${reporte.contribuyente.nombre} · ${reporte.etiquetaPeriodo ?? `Período ${reporte.periodo}`}`);
       p.drawText(izq, { x: MARGIN, y: 20, size: 7.5, font: this.regular, color: COLOR_MUTED });
       const der = `Página ${i + 1} de ${total}`;
       p.drawText(der, { x: PAGE_W - MARGIN - this.ancho(der, this.regular, 7.5), y: 20, size: 7.5, font: this.regular, color: COLOR_MUTED });
@@ -187,14 +191,14 @@ class Escritor {
 }
 
 /** Genera el PDF del reporte (bytes). */
-export async function reporteAPdf(reporte: ReporteCliente): Promise<Uint8Array> {
+export async function reporteAPdf(reporte: ReportePdf): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const [regular, negrita, cursiva] = await Promise.all([doc.embedFont(StandardFonts.Helvetica), doc.embedFont(StandardFonts.HelveticaBold), doc.embedFont(StandardFonts.HelveticaOblique)]);
   const e = new Escritor(doc, regular, negrita, cursiva);
 
   const fechaDoc = new Date(`${reporte.generadoEn}T12:00:00Z`);
   doc.setTitle(e.limpiar(`${reporte.titulo} ${reporte.periodo} - ${reporte.contribuyente.nombre}`));
-  doc.setSubject(e.limpiar(`Reporte de cliente ${reporte.tipo}, período ${reporte.periodo}`));
+  doc.setSubject(e.limpiar(`Reporte de cliente ${reporte.tipo}, ${reporte.etiquetaPeriodo?.toLowerCase() ?? `período ${reporte.periodo}`}`));
   doc.setProducer("Atiende - Despachos");
   doc.setCreator("Atiende - Despachos");
   doc.setCreationDate(fechaDoc);
@@ -204,7 +208,7 @@ export async function reporteAPdf(reporte: ReporteCliente): Promise<Uint8Array> 
   e.espacio(2);
   e.texto(`Contribuyente: ${reporte.contribuyente.nombre}`, { size: 10 });
   e.texto(`RFC: ${reporte.contribuyente.rfc ?? "sin datos (sin CFDI ingeridos)"}`, { size: 10 });
-  e.texto(`Período: ${reporte.periodo}    Generado el: ${reporte.generadoEn}`, { size: 10, color: COLOR_MUTED });
+  e.texto(`${reporte.etiquetaPeriodo ?? `Período: ${reporte.periodo}`}    Generado el: ${reporte.generadoEn}`, { size: 10, color: COLOR_MUTED });
   if (reporte.sinDatos) {
     e.espacio(4);
     e.texto("Sin datos para el período indicado.", { size: 11, font: negrita });

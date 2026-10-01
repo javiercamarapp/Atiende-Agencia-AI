@@ -24,6 +24,7 @@ import {
   Briefcase,
   CalendarCheck,
   CalendarClock,
+  ClipboardList,
   FileBarChart,
   FileDigit,
   FileSpreadsheet,
@@ -97,6 +98,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
   { to: "cierre-mensual", label: "Cierre mensual" },
   { to: "cfdi", label: "CFDI" },
   { to: "cobranza", label: "Cobranza" },
+  { to: "cola-cobranza", label: "Cola de cobranza" },
   { to: "vencimientos", label: "Vencimientos" },
   { to: "declaraciones", label: "Declaraciones" },
   { to: "nomina", label: "Nómina" },
@@ -131,6 +133,7 @@ function buildSidebarSections(orgSlug: string): SidebarSection[] {
       items: [
         { ...item("cfdi"), icon: FileText },
         { ...item("cobranza"), icon: HandCoins },
+        { ...item("cola-cobranza"), icon: ClipboardList },
         { ...item("vencimientos"), icon: CalendarClock },
       ],
     },

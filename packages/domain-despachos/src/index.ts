@@ -553,3 +553,5 @@ export * from "./data-chat/index.ts";
 
 // D-08: portal del cliente final del despacho (enlace con token, subida estricta, estatus, mensajes).
 export * from "./portal-cliente/index.ts";
+// D-11: cola de cobranza (gestiones por factura/cliente, reporte de cartera, outbox de WhatsApp con opt-in/opt-out).
+export * from "./cola-cobranza/index.ts";
