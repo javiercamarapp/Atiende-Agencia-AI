@@ -204,6 +204,8 @@ describe("step-up de acciones sensibles", () => {
     expect(isSensitiveRoute("PUT", "/superadmin/gasto-api/plataforma/tope")).toBe(true);
     expect(isSensitiveRoute("POST", "/superadmin/organizaciones/acciones")).toBe(false);
     expect(isSensitiveRoute("POST", "/superadmin/organizaciones/acciones/x/confirmar")).toBe(true);
+    expect(isSensitiveRoute("POST", "/superadmin/organizaciones/acciones/x/aprobar")).toBe(true);
+    expect(isSensitiveRoute("POST", "/superadmin/organizaciones/acciones/x/cancelar")).toBe(false);
     expect(SENSITIVE_ROUTES.length).toBeGreaterThanOrEqual(9);
   });
 

@@ -35,6 +35,7 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/mfa\/reset$/, label: "resetear MFA de otro superadmin" },
   { method: "PUT", pattern: /^\/superadmin\/interruptores$/, label: "cambiar un interruptor de plataforma" },
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/confirmar$/, label: "confirmar gestion de organizacion" },
+  { method: "POST", pattern: /^\/superadmin\/organizaciones\/acciones\/[^/]+\/aprobar$/, label: "aprobar (doble control) la gestion de una organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/costos\/tipo-cambio$/, label: "cambiar el tipo de cambio del reporte de costos" },
   { method: "PUT", pattern: /^\/superadmin\/pyl\/infra$/, label: "capturar la infraestructura compartida del P&L" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+$/, label: "editar un plan del catalogo" },

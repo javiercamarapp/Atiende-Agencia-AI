@@ -193,6 +193,10 @@ aplica RLS ni GRANT. Este job:
      inmutables, vigencias traslapadas rechazadas en la base, enmiendas, rol
      `finanzas` de solo lectura y sin acceso directo; ver
      `docs/SUPERADMIN_CONTRATOS.md`).
+   - `scripts/verify-superadmin-gestion-organizaciones/` (doble control para
+     suspender con contrato vigente, cambio de plan atado al contrato, un solo
+     uso y vencimiento, bitácora append-only; ver
+     `docs/SUPERADMIN_ORGANIZACIONES.md`).
 
 Ver `scripts/verify-real-postgres-ci/README.md` para el detalle de cómo el
 runner deriva el resultado esperado de cada escenario, y el `README.md` de cada
