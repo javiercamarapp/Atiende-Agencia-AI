@@ -2,6 +2,8 @@
 // vencimientos (por vencer / vencido) y REP con documentos sin ligar o saldo incoherente. Cada emision
 // llega con el evento, el enlace a la pantalla origen y los roles del catalogo; una emision que falla
 // (base sin 0039) no cambia la respuesta de negocio.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
@@ -135,5 +137,51 @@ describe("despachos.rep.incoherente", () => {
     const res = await buildApp(deps).request(`/despachos/${ctx.propertyId}/cfdi/rep/analizar`, authedJson(ctx.staff.contador.token, { xml: repXml("580.00"), rfcContribuyente: EMISOR }));
     expect(res.status).toBe(200);
     expect(emisiones.map((e) => e.evento)).toEqual(["despachos.rep.incoherente"]);
+  });
+});
+
+describe("despachos.efos.alerta", () => {
+  const CSV = readFileSync(fileURLToPath(new URL("../../../packages/domain-despachos/tests/fixtures/efos-69b-muestra.csv", import.meta.url)));
+  const cfdi = (rfcEmisor: string, folio: string) => ({
+    folioFiscal: folio, tipo: "I", subtotal: 1000, total: 1160, descuento: 0, iva: 160,
+    conceptos: [{ cantidad: 1, valorUnitario: 1000, importe: 1000 }], usoCfdi: "G03", formaPago: "03", metodoPago: "PUE",
+    regimenFiscalEmisor: "601", rfcEmisor, rfcReceptor: "RRR010101RR1", emisorNombre: "PROVEEDOR SECRETO", tieneSello: true,
+    noCertificado: "00001000000504465028", fecha: "2026-07-01T10:00:00", fechaTimbrado: "2026-07-01T10:05:00",
+  });
+  async function conLista(opciones: { alEmitir?: () => number } = {}) {
+    const c = await contexto(opciones);
+    await buildApp(c.ctx.deps).request("/internal/despachos/efos-69b/ingestar?periodo=2026-07", { method: "POST", headers: { "x-atiende-internal-secret": c.ctx.deps.env.internalSecret, "content-length": String(CSV.byteLength) }, body: CSV });
+    return { ...c, postCfdi: (rfc: string, folio: string) => buildApp(c.deps).request(`/despachos/${c.ctx.propertyId}/cfdi`, authedJson(c.ctx.staff.contador.token, cfdi(rfc, folio))) };
+  }
+
+  it("un CFDI de emisor DEFINITIVO o PRESUNTO emite UN aviso por CFDI, a contadores y auditores, sin RFC ni nombre", async () => {
+    const { ctx, emisiones, postCfdi } = await conLista();
+    const definitivo = await postCfdi("AAA010101AA1", "11111111-2222-3333-4444-000000000001");
+    expect(definitivo.status).toBe(201);
+    const presunto = await postCfdi("BBB020202BB2", "11111111-2222-3333-4444-000000000002");
+    expect(presunto.status).toBe(201);
+    expect(emisiones).toHaveLength(2);
+    expect(emisiones[0]).toMatchObject({ evento: "despachos.efos.alerta", organizationId: ctx.organizationId, propertyId: ctx.propertyId, severidad: "critica", categoria: "fiscal", enlace: "/despachos/{orgSlug}/cfdi", roles: ["contador", "auditor"] });
+    expect(emisiones[0]!.dedupeKey).toMatch(/^despachos\.efos\.alerta:[0-9a-f-]{36}$/);
+    expect(emisiones[0]!.dedupeKey).not.toBe(emisiones[1]!.dedupeKey);
+    expect(JSON.stringify(emisiones)).not.toMatch(/AAA010101AA1|BBB020202BB2|SECRETO/);
+  });
+
+  it("un emisor que no esta en la lista no emite; sin lista cargada tampoco", async () => {
+    const { emisiones, postCfdi } = await conLista();
+    expect((await postCfdi("ZZZ990909ZZ9", "11111111-2222-3333-4444-000000000003")).status).toBe(201);
+    expect(emisiones).toHaveLength(0);
+    const sinLista = await contexto();
+    expect((await buildApp(sinLista.deps).request(`/despachos/${sinLista.ctx.propertyId}/cfdi`, authedJson(sinLista.ctx.staff.contador.token, cfdi("AAA010101AA1", "11111111-2222-3333-4444-000000000004")))).status).toBe(201);
+    expect(sinLista.emisiones).toHaveLength(0);
+  });
+
+  it("una emision que falla (base sin migrar) no cambia el 201 de la ingesta", async () => {
+    const { postCfdi } = await conLista({
+      alEmitir: () => {
+        throw Object.assign(new Error("function core.emit_notification does not exist"), { code: "42883" });
+      },
+    });
+    expect((await postCfdi("AAA010101AA1", "11111111-2222-3333-4444-000000000005")).status).toBe(201);
   });
 });
