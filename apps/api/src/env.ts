@@ -155,6 +155,10 @@ export interface ApiEnv {
       readonly modelsJson: string | null;
       readonly zdr: boolean;
       readonly sharedBreaker: { readonly url: string; readonly token: string } | null;
+      /** Entorno de despliegue (`production`, `preview`, `development`...) que prefija las claves del
+       * breaker compartido (`cb:<entorno>:<proveedor>`) para que preview/desarrollo no abran el breaker
+       * de produccion cuando comparten el mismo Redis. Opcional: sin el, claves `cb:<proveedor>`. */
+      readonly breakerEnv?: string;
     } | null;
     /** LEGADO: integracion directa con OpenAI (`providers/openai.ts`). Solo se usa si NO hay llave de
      * OpenRouter. El proveedor directo de Anthropic se retiro: los modelos Anthropic pasan por
@@ -167,6 +171,12 @@ function requireEnv(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
   if (value === undefined) throw new Error(`Falta la variable de entorno ${name}`);
   return value;
+}
+
+/** Nombre de entorno apto para una clave de Redis (minusculas, [a-z0-9_-]); `development` si falta. */
+export function breakerEnvName(raw: string | undefined): string {
+  const clean = (raw ?? "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return clean.length > 0 ? clean.slice(0, 32) : "development";
 }
 
 export function loadApiEnv(): ApiEnv {
@@ -215,6 +225,7 @@ export function loadApiEnv(): ApiEnv {
               process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
                 ? { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN }
                 : null,
+            breakerEnv: breakerEnvName(process.env.VERCEL_ENV || process.env.NODE_ENV),
           }
         : null,
       openai:

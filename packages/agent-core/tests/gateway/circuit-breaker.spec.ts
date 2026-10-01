@@ -134,3 +134,27 @@ describe('UpstashRestClient + RedisCircuitBreakerStore (breaker compartido entre
     await expect(breaker.reportFailure('p', 'x')).resolves.toBeUndefined();
   });
 });
+
+describe('CircuitBreaker: prefijo de entorno en las claves compartidas', () => {
+  it('con keyPrefix las claves son cb:<entorno>:<proveedor>; preview no abre el breaker de produccion en un Redis compartido', async () => {
+    const store = new InMemoryCircuitBreakerStore();
+    const prod = new CircuitBreaker(store, { failureThreshold: 2, keyPrefix: 'production' });
+    const preview = new CircuitBreaker(store, { failureThreshold: 2, keyPrefix: 'preview' });
+
+    await preview.reportFailure('openrouter:m', 'x');
+    await preview.reportFailure('openrouter:m', 'x');
+
+    expect(await preview.getBreakerState('openrouter:m')).toBe('open');
+    expect(await prod.getBreakerState('openrouter:m')).toBe('closed');
+    await expect(prod.checkCircuit('openrouter:m')).resolves.toBeUndefined();
+    expect(await store.get('cb:preview:openrouter:m')).toBe('open');
+    expect(await store.get('cb:production:openrouter:m')).toBeNull();
+  });
+
+  it('sin keyPrefix conserva las claves anteriores cb:<proveedor>', async () => {
+    const store = new InMemoryCircuitBreakerStore();
+    const breaker = new CircuitBreaker(store, { failureThreshold: 1 });
+    await breaker.reportFailure('p', 'x');
+    expect(await store.get('cb:p')).toBe('open');
+  });
+});

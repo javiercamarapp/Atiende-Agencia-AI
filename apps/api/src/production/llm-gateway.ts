@@ -198,6 +198,11 @@ export function buildRoleLadder(env: ApiEnv, role: string, models: LlmModelsConf
   return undefined;
 }
 
+/** Circuit breaker del gateway: el store compartido (o en memoria) con las claves prefijadas por entorno. */
+export function buildCircuitBreaker(env: ApiEnv): CircuitBreaker {
+  return new CircuitBreaker(buildBreakerStore(env), { ...(env.llmProviders.openrouter?.breakerEnv ? { keyPrefix: env.llmProviders.openrouter.breakerEnv } : {}) });
+}
+
 function hasAnyProvider(env: ApiEnv): boolean {
   return Boolean(env.llmProviders.openrouter || env.llmProviders.openai);
 }
@@ -224,7 +229,7 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
   const models = loadLlmModelsConfig(env);
 
   const gateway = new LlmGateway({
-    breaker: new CircuitBreaker(buildBreakerStore(env)),
+    breaker: buildCircuitBreaker(env),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: DEFAULT_LLM_GATEWAY_BUDGET_LIMITS,
     usageRecorder: new ProductionLlmUsageRecorder(engine),
@@ -282,7 +287,7 @@ export function buildResumenDiarioLlmGateway(env: ApiEnv, killSwitch?: GatewayKi
   if (!hasAnyProvider(env)) return undefined;
 
   const gateway = new LlmGateway({
-    breaker: new CircuitBreaker(buildBreakerStore(env)),
+    breaker: buildCircuitBreaker(env),
     budgetStore: new InMemoryBudgetLedgerStore(),
     budgetLimits: RESUMEN_DIARIO_LLM_BUDGET_LIMITS,
     killSwitch,
