@@ -21,19 +21,23 @@ Medido el 1-oct-2026 sobre `apps/web/src` (todo, fuera de `packages/ui`), antes 
 | `ModalFormularioLateral` | 8 | 0 (componente retirado) |
 | `className="...p-6"` de pagina | 4 | 0 |
 | `function formatMoney(` dentro de `pages/` | 0 | 0 |
+| Heuristica `gap-4 p-4` (NO es regla del guard, ver 2) | 5 | 5 |
+| `function formatMoney(` en `lib/` (NO es regla del guard, ver 2) | 3 | 3 |
 
-Antes, por zona (suma de ocurrencias de las reglas anteriores salvo `<table>`: 240):
+Antes, por zona (suma de todas las filas de arriba salvo `<table>`, incluidas las dos heuristicas: 240; con las reglas del guard solo: 232):
 
 | Zona | Antes | Despues |
 |---|---:|---:|
-| `verticals/citas` (shell + 12 paginas) | 128 | 0 |
+| `verticals/citas` (shell + 12 paginas; 1 heuristica queda) | 128 | 1 (heuristica) |
 | `shell/*` (aceptar invitacion, elegir organizacion, sin organizacion, selector de vertical) | 51 | 0 |
 | `components/` (`VerticalLogin`, `ModalFormularioLateral`, `BotonChatDatos`) | 23 | 0 |
 | `pages/` (404, Terminos, Privacidad) | 9 | 0 |
-| `verticals/restaurantes` (`<Badge>`) | 15 | 0 |
+| `verticals/restaurantes` (13 `<Badge>` + 2 heuristicas) | 15 | 2 (heuristicas) |
 | `verticals/hoteles` (`<Badge>`) | 9 | 0 |
-| `verticals/despachos`, `verticals/licitaciones` (heuristica `gap-4 p-4` + `formatMoney`, ver 2) | 5 | 0 (ver 2) |
+| `verticals/despachos`, `verticals/licitaciones` (solo heuristicas, ver 2) | 5 | 5 |
 | `verticals/rentas`, `superadmin/` | 0 | 0 |
+
+Total despues contra las reglas del guard: 0. Las 8 coincidencias que quedan en la columna "despues" (1 en citas, 2 en restaurantes, 5 en despachos/licitaciones) son solo de las dos heuristicas que no son reglas (5 `gap-4 p-4` + 3 `formatMoney` de `lib/`); ver 2.
 
 Las verticales de restaurantes, hoteles, rentas, despachos y licitaciones y el superadmin ya estaban limpios de todo salvo lo de la tabla; `verticals/citas` no habia pasado por ninguna de PR-5..PR-10 (solo su shell, en PR-4).
 
@@ -41,6 +45,7 @@ Las verticales de restaurantes, hoteles, rentas, despachos y licitaciones y el s
 
 | Hallazgo (medido con `grep`) | Donde | Motivo |
 |---|---|---|
+| Heuristica `gap-4 p-4` (5 sitios) | `restaurantes/pages/AgenteWhatsappSeccion.tsx`, `despachos/pages/CfdiDetalle.tsx`, `despachos/pages/Dashboard.tsx`, `citas/pages/WhatsappMensajes.tsx` (todos `CardContent`) y `despachos/portal/PortalClientePage.tsx` (`<main>` del portal publico del cliente, fuera del shell) | Son relleno de tarjeta o una pagina publica sin shell, no la raiz de una pagina de panel; no se cambian. Ninguna raiz de pagina de panel (`return (<div className="...p-4|p-6">`) queda en `verticals/`, `superadmin/`, `shell/` ni `pages/` salvo estos. |
 | 3 funciones `formatMoney` locales | `verticals/despachos/lib/format.ts`, `verticals/licitaciones/lib/format.ts`, `verticals/restaurantes/dashboard-client.ts` | No duplican el formateo: envuelven `formatMoney` de `@atiende/ui` (numerico, sin moneda) para anteponer `$`, manejar `null` ("—") o la moneda ISO de la convocatoria. Viven en `lib/`, no en paginas; el guard solo las prohibe en `pages/`. Unificarlas exige un `formatMoney` con moneda en `@atiende/ui` (decision de producto/API). |
 | 3 `<input type="radio">` crudos | `despachos/pages/Conciliacion.tsx` (2), `licitaciones/pages/PropuestaTecnica.tsx` (1) | `@atiende/ui` no tiene primitivo de radio; crearlo es un cambio de `packages/ui`, fuera del alcance de PR-11. |
 | 4 `<button>` crudos | `rentas/components/calendario-vistas.tsx`, `restaurantes/voz/SelectorVoz.tsx`, `restaurantes/pages/Conversaciones.tsx`, `components/VerticalLogin.tsx` | Son tarjetas/filas clicables o el boton de pildora del login (`login-btn`, CSS propio de `login.css`), no botones de accion; `Button` es una pildora con alto fijo y no sirve como contenedor de tarjeta. |
