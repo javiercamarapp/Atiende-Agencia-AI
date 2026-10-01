@@ -7,5 +7,6 @@ export * from './usage.js';
 export * from './kill-switch.js';
 export * from './residency.js';
 export * from './retryable.js';
+export * from './prices.js';
 export * from './gateway.js';
 export * from './providers/index.js';
