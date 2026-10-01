@@ -497,3 +497,16 @@ export { leerKpisCliente, leerFuenteOpcional, MAX_PERIODOS_CIERRE_ABIERTOS } fro
 export type { ClienteDashboardRef } from "./dashboard/lectura.ts";
 export { construirDiotLayout, generarDiotTxt, generarDiotXml, redondearPesos, esRfcValidoDiot, DiotLayoutError, COLUMNAS_DIOT, LAYOUT_DIOT_VERSION } from "./declaraciones/diot-layout.ts";
 export type { DiotLayout, RenglonDiotLayout, DiotOmitido, DiotTipoTercero } from "./declaraciones/diot-layout.ts";
+export {
+  parsearListado69B,
+  decodificarListado69B,
+  hallazgoEfosParaCfdi,
+  aplicarEfosAlResultado,
+  esPeriodoEfosValido,
+  Efos69bFormatoError,
+  EFOS_NO_DISPONIBLE,
+  EFOS_RFC_RE,
+  CODIGO_EFOS_DEFINITIVO,
+  CODIGO_EFOS_PRESUNTO,
+} from "./cfdi/efos.ts";
+export type { EfosSituacion, EfosContribuyente, EfosConsulta, EfosListadoParseado, EfosFilaDescartada, HallazgoEfos } from "./cfdi/efos.ts";
