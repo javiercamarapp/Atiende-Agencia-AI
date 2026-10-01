@@ -622,3 +622,39 @@ Fuera de alcance de este cambio (ver el PR): la supresión/anonimización real d
 los datos del cliente al resolver una cancelación se ejecuta a mano por el staff;
 no hay aviso proactivo al dueño cuando entra una solicitud nueva ni recordatorios
 automáticos de vencimiento; el canal de voz no tiene este fast-path.
+
+## C-04 -- mensajes de WhatsApp editables (migración 026)
+
+Qué hay:
+
+- `migrations/026_citas_whatsapp_mensajes_config.sql` (espejo `supabase/migrations/20240101000232_026_citas_whatsapp_mensajes_config.sql`):
+  `citas.whatsapp_message_config` (una fila por organización, con `version`) y
+  `citas.whatsapp_message_config_history` (append-only, triggers que bloquean
+  UPDATE/DELETE). Lectura solo owner/admin (RLS + SELECT por columna); sin GRANT
+  de escritura: guardar y restablecer pasan por `citas.save_whatsapp_message_config`
+  (`security definer`, `search_path` fijo, `auth.uid()` no nulo, owner/admin, versión
+  optimista -> `AT409`). `citas.whatsapp_message_config_envio` lee la configuración
+  para enviar desde la sesión de sistema o desde un miembro de la organización.
+- `src/whatsapp/message-config.ts` (puro): variables permitidas por mensaje
+  (`{{nombre}}`, `{{negocio}}`, `{{servicio}}`, `{{profesional}}`, `{{fecha}}`, `{{hora}}`,
+  `{{fecha_hora}}`, y `{{fecha_anterior}}` solo al reagendar), validación, vista previa,
+  diferencias y horario de envío. `src/whatsapp/message-send.ts` arma y encola los
+  avisos sobre el outbox existente.
+- El recordatorio (`runConfirmacionCitaCore`) usa la anticipación (1-72 h), el horario de
+  envío y el texto configurados; sin configuración es **idéntico al de antes** (24 h
+  +- 30 min, a cualquier hora, mismo texto). Fuera del horario la cita se deja
+  pendiente y se envía al abrir el horario. Los avisos de confirmación, cancelación y
+  reagendado nacen **apagados** y se encolan, si se encienden, al confirmar/cancelar
+  desde el panel, al cancelar y reagendar desde el agente de voz.
+- API: `GET/PUT .../admin/whatsapp-mensajes`, `GET .../opciones`, `POST .../vista-previa`
+  (solo lectura), `GET .../historial`, `POST .../restablecer` (solo owner/admin).
+  Pantalla: "Mensajes de WhatsApp" en `apps/web`.
+- Verificación contra Postgres real: `scripts/verify-citas-whatsapp-mensajes/`.
+
+Base sin migrar: todos los métodos del repositorio usan `runWithSavepointFallback`;
+sin la 026 el recordatorio sale como siempre, los avisos nuevos no salen, las lecturas
+del panel responden `disponible:false` y los guardados un 503.
+
+Límite conocido: WhatsApp exige una plantilla aprobada por Meta para escribir primero
+fuera de la ventana de 24 h (ver el comentario de `runConfirmacionCitaCore`); esa
+aprobación y el envío `type: "template"` siguen pendientes y no cambian con este PR.
