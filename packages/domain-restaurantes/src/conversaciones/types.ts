@@ -145,7 +145,7 @@ export const RESPUESTA_MAX = 1000;
 export const TURNOS_MAX = 4;
 export const MIEMBROS_POR_TURNO_MAX = 10;
 
-// ---- Errores (las rutas los traducen a 503 / 403 / 409 / 422) ----
+// ---- Errores (las rutas los traducen a 503 / 403 / 409 / 400) ----
 export class ConversacionesNoDisponibleError extends Error {
   constructor() {
     super("Las conversaciones con handoff a humano todavía no están disponibles en esta base de datos.");
