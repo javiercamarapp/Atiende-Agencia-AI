@@ -27,7 +27,8 @@ export function loadSeedInputs(dataDir = path.join(HERE, "data")): { data: PmSee
   return { data, agent };
 }
 
-const USO = `Uso: node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts [--apply] [--confirm-host=<host>] [--owner-email=<correo>]
+const USO = `Uso: node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts [--demo] [--apply] [--confirm-host=<host>] [--owner-email=<correo>]
+  --demo: carga la cuenta como DEMO (slug los-taquitos-de-pm-demo, marca is_demo; requiere la migracion 036)
   (sin --apply: dry-run, no abre ninguna conexion)
   SEED_DATABASE_URL=postgresql://usuario@host:puerto/base   (obligatoria con --apply)`;
 
@@ -38,7 +39,7 @@ async function main(): Promise<number> {
     return 0;
   }
   const { data, agent } = loadSeedInputs();
-  const plan = buildPmSeedPlan(data, agent);
+  const plan = buildPmSeedPlan(data, agent, { demo: args.demo });
   const s = plan.summary;
   console.log(`Plan del seed "${plan.organization.name}" (slug ${plan.organization.slug}, datos ${data.version})`);
   console.log(`  sucursales: ${s.branches} (${s.activeBranches} activas; T4 registrada e inactiva, sin menu)`);
@@ -47,6 +48,10 @@ async function main(): Promise<number> {
   console.log(`  promociones: ${s.promotions} cargada(s)`);
   for (const skipped of s.skippedPromotions) console.log(`  promocion NO cargada -> ${skipped}`);
   console.log("  voz: se carga DESHABILITADA en las 5 sucursales activas (sin gasto de proveedores)");
+  console.log(`  agente de WhatsApp: perfil ${plan.whatsappAgent.perfil}, tono ${plan.whatsappAgent.toneStyle}, tiempo de entrega "${plan.whatsappAgent.deliveryTimeText}" (re-ejecutar no pisa lo que el dueño cambie)`);
+  console.log(`  modo: ${plan.demo ? "DEMO (marca restaurantes.demo_organization)" : "cuenta normal (sin marca demo)"}`);
+  console.log(`  pendientes del dueño (no se inventan): ${plan.pendientes.length}`);
+  for (const p of plan.pendientes) console.log(`    - ${p.titulo}`);
 
   if (!args.apply) {
     console.log("\nDRY-RUN: no se toco ninguna base. Para escribir: SEED_DATABASE_URL=... con --apply (ver --help).");
@@ -62,7 +67,7 @@ async function main(): Promise<number> {
   const client = new pg.Client({ connectionString: process.env.SEED_DATABASE_URL });
   await client.connect();
   try {
-    const faltantes = await client.query<{ faltante: string; migracion: string }>(renderSchemaPreflightSql());
+    const faltantes = await client.query<{ faltante: string; migracion: string }>(renderSchemaPreflightSql({ demo: args.demo }));
     if (faltantes.rows.length > 0) {
       console.error("La base no tiene el esquema que el seed necesita. Aplique primero estas migraciones:");
       for (const row of faltantes.rows) console.error(`  - falta ${row.faltante} (migracion ${row.migracion})`);

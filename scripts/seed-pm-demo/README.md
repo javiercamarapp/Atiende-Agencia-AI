@@ -12,6 +12,11 @@ SEED_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/atiende_demo \
   node --experimental-strip-types scripts/seed-pm-demo/seed-pm-demo.ts --apply [--owner-email=correo@ya-existente]
 ```
 
+Con `--demo` la cuenta se carga como **demo**: slug `los-taquitos-de-pm-demo`, nombre "Los Taquitos de PM (demo)" y marca en
+`restaurantes.demo_organization` (migracion 036: la exige el preflight). Es la cuenta que atiende el widget publico `/demo/:orgSlug`
+y la que borra `limpiar-demo.ts`. Sin `--demo` el seed se comporta como siempre (la cuenta real de PM, sin marca). El runbook
+completo de carga y limpieza esta en `docs/DEMO-PM-CARGA.md`.
+
 Salvaguardas (`packages/domain-restaurantes/src/seed/target-safety.ts`, con tests):
 - Sin `--apply` nunca escribe. Solo lee `SEED_DATABASE_URL` (a proposito **no** `DATABASE_URL`).
 - Imprime la base objetivo (host:puerto/base, sin usuario ni contraseña) y la marca `(local)` o `(REMOTA)`.
@@ -31,6 +36,8 @@ Salvaguardas (`packages/domain-restaurantes/src/seed/target-safety.ts`, con test
 | Politica | Una franja 12:00-01:00 todos los dias, pedido minimo a domicilio $200, propina solo con tarjeta. |
 | Promocion | `LUNES2X1PM`: 2x1 en tacos al pastor, lunes, **solo recoger**. El combo del martes (nachos + 2 aguas de cortesia) no se carga: necesita otro tipo de promocion. |
 | Zonas conocidas | Un punto por sucursal con coordenadas (el mapa de colonias del dueño sigue pendiente; no se inventan). Sin cobertura de entrega configurada. |
+| Agente de WhatsApp | Perfil `taqueria_pm` en `whatsapp_agent_config` (organizacion): tono formal (usted), tiempo de entrega "de 40 a 50 minutos", salsas incluidas y promocion anunciada (solo el lunes 2x1 cargado; el combo del martes NO se promete). El nombre del asistente queda vacio (el dueño no lo definio). Re-ejecutar no pisa lo que el dueño edite. Las reglas duras (alcohol sin domicilio, minimo $200, propina solo con tarjeta, bistec en ordenes de 3) viven en el prompt y en las herramientas. |
+| Pendientes del dueño | `pendientes_dueno` en los datos (cambio de turno, WhatsApp por sucursal, coordenadas de T3, mapa de colonias, catalogo de SoftRestaurant, nombre del asistente, combo del martes, identidad de T4): se muestran en el checklist de onboarding del panel y NO se inventan. |
 | Agente | Voz **deshabilitada** (`habilitado = false`, sin gasto de proveedores) con `comportamiento` (voz y trato, reglas duras, seguridad y datos del negocio, <= 8000 caracteres) y saludo por sucursal. `data/agente/` guarda el prompt, las herramientas y las 68 evals del experto; el seed los valida (herramientas mencionadas en el prompt, ids unicos). |
 
 Los datos salen de `pm-datos.json` del paquete PM (cuestionario del dueño + repo `lostaquitosdepm`), **recortado**: sin

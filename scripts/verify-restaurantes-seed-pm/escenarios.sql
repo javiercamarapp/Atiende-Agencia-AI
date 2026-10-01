@@ -11,6 +11,8 @@
 --      promocion; reparar un precio alterado.
 --   D. Aislamiento: otra organizacion con nombres iguales queda intacta; un slug de otra vertical
 --      aborta; staff de otra organizacion y anon no leen lo sembrado.
+--   E. Agente de WhatsApp (perfil taqueria_pm con los datos del dueño), carga como DEMO (marca
+--      restaurantes.demo_organization) y que re-ejecutar no pise decisiones del dueño ni reactive el widget apagado.
 \set ON_ERROR_STOP off
 \pset pager off
 
@@ -201,4 +203,74 @@ begin;
 select public.seed_pm_demo();
 set local role anon;
 select count(*)::int as should_fail from restaurantes.branch_policy;
+rollback;
+
+\echo '=== E1. El agente de WhatsApp queda configurado: perfil taqueria_pm, tono formal, sin nombre inventado, sin promesa del combo del martes ==='
+begin;
+select public.seed_pm_demo();
+select (
+  select count(*) from restaurantes.whatsapp_agent_config c join core.organization o on o.id = c.organization_id
+  where o.slug = 'los-taquitos-de-pm' and c.property_id is null and c.perfil = 'taqueria_pm' and c.tone_style = 'formal_directo'
+    and c.business_name = 'Los Taquitos de PM' and c.agent_name is null and c.enabled
+    and c.escalation_reasons_off = '{}' and c.delivery_time_text like 'de 40 a 50 minutos%'
+    and c.promos_text not ilike '%martes%' and c.promos_text ilike '%lunes 2x1%' and c.salsas_text ilike '%guacamolera%'
+)::int as config_agente_deberia_ser_1;
+rollback;
+
+\echo '=== E2. Re-ejecutar el seed NO pisa lo que el dueño cambio en el editor del agente ==='
+begin;
+select public.seed_pm_demo();
+update restaurantes.whatsapp_agent_config set tone_style = 'calido_cercano', agent_name = 'Lupita' where perfil = 'taqueria_pm';
+select public.seed_pm_demo();
+select count(*)::int as decision_del_dueno_intacta_deberia_ser_1 from restaurantes.whatsapp_agent_config where tone_style = 'calido_cercano' and agent_name = 'Lupita';
+rollback;
+
+\echo '=== E3. Cargar como DEMO crea la organizacion -demo con su marca y su propia configuracion de agente ==='
+begin;
+select public.seed_pm_demo_marcado();
+select (
+  select count(*) from restaurantes.demo_organization d join core.organization o on o.id = d.organization_id
+  where o.slug = 'los-taquitos-de-pm-demo' and o.name = 'Los Taquitos de PM (demo)' and d.activo and d.seed_version = '2026-10-01'
+)::int as organizacion_demo_marcada_deberia_ser_1;
+rollback;
+
+\echo '=== E4. La carga normal (sin --demo) NUNCA marca la organizacion como demo ==='
+begin;
+select public.seed_pm_demo();
+select count(*)::int as marcas_de_la_cuenta_real_deberia_ser_0 from restaurantes.demo_organization d join core.organization o on o.id = d.organization_id where o.slug = 'los-taquitos-de-pm';
+rollback;
+
+\echo '=== E5. Re-ejecutar la carga demo NO reactiva un widget que el operador apago ==='
+begin;
+select public.seed_pm_demo_marcado();
+update restaurantes.demo_organization set activo = false;
+select public.seed_pm_demo_marcado();
+select count(*)::int as widget_sigue_apagado_deberia_ser_1 from restaurantes.demo_organization where not activo;
+rollback;
+
+\echo '=== E6. Cuenta real y cuenta demo conviven sin mezclarse: 251 productos en cada una y una sola marca ==='
+begin;
+select public.seed_pm_demo();
+select public.seed_pm_demo_marcado();
+select (
+  (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm') = 251
+  and (select count(*) from restaurantes.products pr join core.organization o on o.id = pr.organization_id where o.slug = 'los-taquitos-de-pm-demo') = 251
+  and (select count(*) from restaurantes.demo_organization) = 1
+)::int as conviven_sin_mezclarse_deberia_ser_1;
+rollback;
+
+\echo '=== E7. CROSS-TENANT: el staff de la otra organizacion no lee la configuracion del agente sembrada (RLS: 0 filas) ==='
+begin;
+select public.seed_pm_demo();
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+select count(*)::int as configs_visibles_para_otro_staff_deberia_ser_0 from restaurantes.whatsapp_agent_config c where c.organization_id <> '00000000-0000-0000-0000-0000000e0002';
+rollback;
+
+\echo '=== E8. RECHAZADO (debe fallar): anon no lee la marca demo ==='
+begin;
+-- as should_fail (la consulta usa el alias en la columna)
+select public.seed_pm_demo_marcado();
+set local role anon;
+select count(*)::int as should_fail from restaurantes.demo_organization;
 rollback;

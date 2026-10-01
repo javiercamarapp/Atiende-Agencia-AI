@@ -66,6 +66,28 @@ export interface PmSeedData {
   readonly promociones: readonly PmSeedPromotion[];
   readonly promociones_no_modeladas: readonly { readonly id: string; readonly nombre: string; readonly motivo: string }[];
   readonly agente: { readonly voice_id: string; readonly saludo: string; readonly secciones_comportamiento: readonly string[] };
+  /** Configuracion del agente de WhatsApp (migraciones 029/033): perfil `taqueria_pm` con los textos editables del dueño. */
+  readonly agente_whatsapp: {
+    readonly perfil: "taqueria_pm";
+    /** `null` = el dueño aun no lo define: no se inventa. */
+    readonly nombre_agente: string | null;
+    readonly tono: "calido_cercano" | "formal_directo" | "profesional_neutro" | "divertido_desenfadado";
+    readonly tiempo_entrega: string;
+    readonly salsas: string;
+    readonly promociones: string;
+    readonly motivos_escalacion_apagados: readonly string[];
+    readonly reglas_duras: readonly string[];
+  };
+  /** Datos que el dueño (o un tercero) aun no entrego y que NO se inventan: alimentan el checklist de onboarding (R-33). */
+  readonly pendientes_dueno: readonly PmSeedPendiente[];
+}
+
+export interface PmSeedPendiente {
+  readonly id: string;
+  readonly titulo: string;
+  readonly detalle: string;
+  readonly quien: "dueno" | "distribuidor_pos" | "plataforma";
+  readonly pantalla: string;
 }
 
 export interface PmAgentFiles {
@@ -181,6 +203,21 @@ export interface PmSeedPlan {
     readonly productNames: readonly string[];
   }[];
   readonly voice: { readonly voiceId: string; readonly comportamiento: string; readonly greetings: readonly { readonly branchSlug: string; readonly mensajeInicial: string }[] };
+  /** Fila de `restaurantes.whatsapp_agent_config` de la organizacion (la voz sigue DESHABILITADA). */
+  readonly whatsappAgent: {
+    readonly perfil: "taqueria_pm";
+    readonly agentName: string | null;
+    readonly businessName: string;
+    readonly toneStyle: string;
+    readonly deliveryTimeText: string;
+    readonly salsasText: string;
+    readonly promosText: string;
+    readonly escalationReasonsOff: readonly string[];
+  };
+  /** Pendientes del dueño que NO se inventan (checklist R-33). */
+  readonly pendientes: readonly PmSeedPendiente[];
+  /** Presente solo con `{ demo: true }`: la organizacion queda marcada en `restaurantes.demo_organization` (migracion 036). */
+  readonly demo: { readonly seedVersion: string } | null;
   /** Resumen legible para el modo dry-run. */
   readonly summary: {
     readonly branches: number;
@@ -196,7 +233,20 @@ export interface PmSeedPlan {
 
 /** Construye el plan y verifica TODAS las invariantes del modelo PM; lanza `PmSeedError` si los datos
  * las rompen (nunca emite un seed a medias). */
-export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles): PmSeedPlan {
+export interface PmSeedOptions {
+  /** `true` = carga la cuenta como DEMO: slug `<slug>-demo`, nombre con sufijo "(demo)" y marca en `demo_organization`.
+   * Sin la bandera el comportamiento es el de siempre (la cuenta real de PM). */
+  readonly demo?: boolean;
+}
+
+/** Limites de `restaurantes.whatsapp_agent_config` (migraciones 029/033). */
+export const WHATSAPP_AGENT_LIMITES = { agentName: 60, businessName: 120, deliveryTimeText: 200, salsasText: 300, promosText: 300 } as const;
+const MOTIVOS_APAGABLES = ["pedido_grande", "zona_ambigua", "producto_agotado", "no_entiende"];
+const TONOS = ["calido_cercano", "formal_directo", "profesional_neutro", "divertido_desenfadado"];
+
+export const PM_DEMO_SLUG_SUFFIX = "-demo";
+
+export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles, options: PmSeedOptions = {}): PmSeedPlan {
   validarArchivosAgente(agent);
 
   if (!data.organizacion?.nombre || !/^[a-z0-9]([a-z0-9-]{0,98}[a-z0-9])?$/.test(data.organizacion.slug)) fail("Organizacion invalida (nombre o slug).");
@@ -290,6 +340,27 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles): PmSeedPl
     return { code: p.codigo, name: p.nombre, description: p.descripcion, type: p.tipo, daysOfWeek: [...p.dias], channels: [...p.canales], productNames: [...p.productos] };
   });
 
+  // --- agente de WhatsApp (config editable del perfil PM) --------------------------------------------------
+  const aw = data.agente_whatsapp;
+  if (!aw || aw.perfil !== "taqueria_pm") fail("agente_whatsapp debe declarar el perfil taqueria_pm.");
+  if (!TONOS.includes(aw.tono)) fail(`agente_whatsapp.tono invalido: ${aw.tono}`);
+  const largo = (valor: string, campo: keyof typeof WHATSAPP_AGENT_LIMITES) => {
+    if (typeof valor !== "string" || valor.trim().length === 0 || valor.length > WHATSAPP_AGENT_LIMITES[campo]) fail(`agente_whatsapp: ${campo} debe tener entre 1 y ${WHATSAPP_AGENT_LIMITES[campo]} caracteres.`);
+  };
+  largo(aw.tiempo_entrega, "deliveryTimeText");
+  largo(aw.salsas, "salsasText");
+  largo(aw.promociones, "promosText");
+  if (aw.nombre_agente !== null) largo(aw.nombre_agente, "agentName");
+  for (const m of aw.motivos_escalacion_apagados) if (!MOTIVOS_APAGABLES.includes(m)) fail(`agente_whatsapp: el motivo de escalacion "${m}" no se puede apagar.`);
+  // Las promociones que el agente anuncia no pueden prometer algo que la base no cargo (nunca promete un descuento que la cotizacion no muestra).
+  if (/martes|nachos/i.test(aw.promociones)) fail("agente_whatsapp.promociones menciona el combo del martes, que NO esta cargado como promocion.");
+  const pendientes = data.pendientes_dueno ?? [];
+  const idsPendientes = new Set<string>();
+  for (const pend of pendientes) {
+    if (!pend.id || idsPendientes.has(pend.id) || !pend.titulo || !pend.detalle) fail(`Pendiente del dueño invalido o duplicado: ${pend.id}`);
+    idsPendientes.add(pend.id);
+  }
+
   // --- agente -----------------------------------------------------------------------------------------
   const comportamiento = extraerComportamiento(agent.systemPrompt, data.agente.secciones_comportamiento);
   const greetings = data.sucursales
@@ -300,8 +371,13 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles): PmSeedPl
       return { branchSlug: b.slug, mensajeInicial };
     });
 
+  const demo = options.demo === true;
   return {
-    organization: { name: data.organizacion.nombre, slug: data.organizacion.slug, timezone: data.organizacion.zona_horaria },
+    organization: {
+      name: demo ? `${data.organizacion.nombre} (demo)` : data.organizacion.nombre,
+      slug: demo ? `${data.organizacion.slug}${PM_DEMO_SLUG_SUFFIX}` : data.organizacion.slug,
+      timezone: data.organizacion.zona_horaria,
+    },
     branches: data.sucursales.map((b, index) => ({
       name: b.nombre,
       slug: b.slug,
@@ -319,6 +395,18 @@ export function buildPmSeedPlan(data: PmSeedData, agent: PmAgentFiles): PmSeedPl
     policy: { horario, pedidoMinimoDomicilio: minDom, pedidoMinimoRecoger: minRec, propinaPolitica: propina },
     promotions,
     voice: { voiceId: data.agente.voice_id, comportamiento, greetings },
+    whatsappAgent: {
+      perfil: aw.perfil,
+      agentName: aw.nombre_agente,
+      businessName: data.organizacion.nombre,
+      toneStyle: aw.tono,
+      deliveryTimeText: aw.tiempo_entrega,
+      salsasText: aw.salsas,
+      promosText: aw.promociones,
+      escalationReasonsOff: [...aw.motivos_escalacion_apagados],
+    },
+    pendientes: pendientes.map((p) => ({ ...p })),
+    demo: demo ? { seedVersion: data.version } : null,
     summary: {
       branches: data.sucursales.length,
       activeBranches: data.sucursales.filter((b) => b.activa).length,
@@ -340,11 +428,18 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   { table: "restaurantes.branch_policy", columns: ["horario", "pedido_minimo_domicilio", "pedido_minimo_recoger", "propina_politica"], migration: "023_modelo_pm_horarios_minimos_zonas_whatsapp_sucursal.sql" },
   { table: "restaurantes.branch_voice_config", columns: ["habilitado", "comportamiento", "mensaje_inicial", "voice_id"], migration: "025_voz_config_conversaciones.sql" },
   { table: "restaurantes.promotions", columns: ["channels", "product_ids"], migration: "027_promociones_2x1_y_canal.sql" },
+  { table: "restaurantes.whatsapp_agent_config", columns: ["perfil", "agent_name", "business_name", "tone_style", "delivery_time_text", "greeting_text", "salsas_text", "promos_text", "escalation_reasons_off", "version"], migration: "033_agente_config_historial_y_callbacks_estado.sql" },
+];
+
+/** Esquema extra que solo exige la carga como demo (`--demo`): la marca de organizacion demo (migracion 036). */
+export const PM_SEED_REQUIRED_SCHEMA_DEMO: typeof PM_SEED_REQUIRED_SCHEMA = [
+  { table: "restaurantes.demo_organization", columns: ["organization_id", "seed_version", "activo"], migration: "036_demo_organization.sql" },
 ];
 
 /** SQL de solo lectura que devuelve una fila por columna FALTANTE (vacio = esquema completo). */
-export function renderSchemaPreflightSql(): string {
-  const checks = PM_SEED_REQUIRED_SCHEMA.flatMap((r) =>
+export function renderSchemaPreflightSql(options: { readonly demo?: boolean } = {}): string {
+  const requeridos = options.demo ? [...PM_SEED_REQUIRED_SCHEMA, ...PM_SEED_REQUIRED_SCHEMA_DEMO] : PM_SEED_REQUIRED_SCHEMA;
+  const checks = requeridos.flatMap((r) =>
     r.columns.map((c) => {
       const [schema, table] = r.table.split(".");
       return `select '${r.table}.${c}' as faltante, '${r.migration}' as migracion
@@ -378,6 +473,8 @@ export function renderPmSeedPlpgsql(plan: PmSeedPlan, options: { readonly ownerE
     policy: plan.policy,
     promotions: plan.promotions,
     voice: plan.voice,
+    whatsappAgent: plan.whatsappAgent,
+    demo: plan.demo,
   };
   const json = JSON.stringify(doc);
   assertSinDelimitador(json);
@@ -489,6 +586,23 @@ begin
     from jsonb_to_recordset(v->'promotions') as x(code text, name text, description text, type text, "daysOfWeek" jsonb, channels jsonb, "productNames" jsonb)
     on conflict (organization_id, code) do update set name = excluded.name, description = excluded.description, type = excluded.type,
       days_of_week = excluded.days_of_week, channels = excluded.channels, product_ids = excluded.product_ids, updated_at = now();
+
+  -- 10) agente de WhatsApp: perfil taqueria_pm de la organizacion con los datos del dueño. DO NOTHING si ya hay fila:
+  -- re-ejecutar el seed NUNCA pisa lo que el dueño cambio en el editor del agente (tono, tiempos, salsas...), mismo criterio
+  -- que la voz. El nombre del asistente queda en null (el dueño no lo definio): el agente se presenta como "el asistente virtual".
+  insert into restaurantes.whatsapp_agent_config (organization_id, property_id, perfil, agent_name, business_name, tone_style, delivery_time_text, salsas_text, promos_text, escalation_reasons_off, enabled)
+    select v_org, null, w.perfil, w."agentName", w."businessName", w."toneStyle", w."deliveryTimeText", w."salsasText", w."promosText",
+           coalesce((select array_agg(m) from jsonb_array_elements_text(w."escalationReasonsOff") m), '{}'::text[]), true
+    from jsonb_to_recordset(jsonb_build_array(v->'whatsappAgent')) as w(perfil text, "agentName" text, "businessName" text, "toneStyle" text,
+      "deliveryTimeText" text, "salsasText" text, "promosText" text, "escalationReasonsOff" jsonb)
+    on conflict (organization_id) where property_id is null do nothing;
+
+  -- 11) solo con --demo: la organizacion queda marcada como demo (widget publico, seed de volumen y limpieza). Re-ejecutar no
+  -- reactiva un widget que el operador apago (columna activo).
+  if v->'demo' is not null and v->'demo' <> 'null'::jsonb then
+    insert into restaurantes.demo_organization (organization_id, seed_version) values (v_org, v->'demo'->>'seedVersion')
+      on conflict (organization_id) do update set seed_version = excluded.seed_version;
+  end if;
 ${owner}
 end`;
 }

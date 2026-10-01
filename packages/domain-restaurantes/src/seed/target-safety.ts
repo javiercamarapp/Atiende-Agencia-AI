@@ -52,17 +52,25 @@ export function assertPuedeAplicar(target: SeedTarget, flags: SeedFlags): void {
   }
 }
 
-export function parseSeedArgs(argv: readonly string[]): { readonly apply: boolean; readonly confirmHost: string | null; readonly ownerEmail: string | null; readonly help: boolean } {
+export function parseSeedArgs(argv: readonly string[]): {
+  readonly apply: boolean;
+  readonly confirmHost: string | null;
+  readonly ownerEmail: string | null;
+  readonly help: boolean;
+  readonly demo: boolean;
+} {
   let apply = false;
+  let demo = false;
   let confirmHost: string | null = null;
   let ownerEmail: string | null = null;
   let help = false;
   for (const arg of argv) {
     if (arg === "--apply") apply = true;
+    else if (arg === "--demo") demo = true;
     else if (arg === "--help" || arg === "-h") help = true;
     else if (arg.startsWith("--confirm-host=")) confirmHost = arg.slice("--confirm-host=".length);
     else if (arg.startsWith("--owner-email=")) ownerEmail = arg.slice("--owner-email=".length);
     else throw new SeedTargetError(`Argumento desconocido: ${arg}`);
   }
-  return { apply, confirmHost, ownerEmail, help };
+  return { apply, confirmHost, ownerEmail, help, demo };
 }
