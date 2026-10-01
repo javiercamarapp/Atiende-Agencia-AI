@@ -9,7 +9,7 @@
 //  - Corren con la sesion RLS DEL USUARIO (rol authenticated + auth.uid()): las policies de
 //    despachos.* usan `core.has_property_access`, asi que un cliente fuera de la membership no aparece
 //    aunque el filtro `$2` se omitiera -- defensa en profundidad ademas del filtro que fija el servidor.
-//  - Todas filtran por organizacion ($1) Y exigen que la organizacion sea de la vertical despachos.
+//  - Todas filtran por organizacion ($1) y exigen que la property sea de la vertical despachos (`p.vertical`).
 //  - Solo agregados o campos de negocio (nombre del cliente = nombre de la property): nunca correos,
 //    telefonos ni contenido de CFDI mas alla del RFC/nombre publico del emisor de la lista 69-B.
 //  - Las cifras de cartera usan `despachos.invoice.total` (el modelo no guarda saldos parciales: un
@@ -17,14 +17,13 @@
 //  - tests/data-chat/sql-drift.spec.ts exige que estos textos aparezcan identicos en
 //    scripts/verify-data-chat-despachos-licitaciones/assertions.sql (el verify los corre contra Postgres real).
 
-const SCOPE_PROPERTY = (alias: string): string => `${alias}.organization_id = $1
+const SCOPE_PROPERTY = (alias: string): string => `${alias}.organization_id = $1 and p.vertical = 'despachos'
     and ($2::uuid[] is null or ${alias}.property_id = any($2::uuid[]))`;
 
 // Clientes visibles (para resolver el nombre que pide el usuario y para el contexto del prompt).
 export const SQL_VISIBLE_CLIENTS = `select p.id as property_id, p.name
    from core.property p
-   join core.organization o on o.id = p.organization_id and o.vertical = 'despachos'
-   where p.organization_id = $1 and p.status = 'active' and ($2::uuid[] is null or p.id = any($2::uuid[]))
+   where p.organization_id = $1 and p.vertical = 'despachos' and p.status = 'active' and ($2::uuid[] is null or p.id = any($2::uuid[]))
    order by p.name asc
    limit 200`;
 
@@ -37,7 +36,6 @@ export const SQL_CARTERA_POR_CLIENTE = `select p.name as cliente,
   from despachos.receivable r
   join despachos.invoice i on i.id = r.invoice_id
   join core.property p on p.id = r.property_id
-  join core.organization o on o.id = p.organization_id and o.vertical = 'despachos'
   where ${SCOPE_PROPERTY("r")} and r.pagado_en is null
   group by p.id, p.name
   order by monto_pendiente desc, p.name
@@ -64,7 +62,6 @@ export const SQL_COBRANZA_ANTIGUEDAD = `select b.bucket, count(*) as cuentas, co
     from despachos.receivable r
     join despachos.invoice i on i.id = r.invoice_id
     join core.property p on p.id = r.property_id
-    join core.organization o on o.id = p.organization_id and o.vertical = 'despachos'
     where ${SCOPE_PROPERTY("r")} and r.pagado_en is null
   ) b
   group by b.bucket, b.orden
@@ -76,7 +73,6 @@ export const SQL_CFDI_POR_PERIODO = `select i.tipo, count(*) as cfdi, coalesce(s
     count(*) filter (where i.requires_human_review) as en_revision
   from despachos.invoice i
   join core.property p on p.id = i.property_id
-  join core.organization o on o.id = p.organization_id and o.vertical = 'despachos'
   where ${SCOPE_PROPERTY("i")} and i.fecha >= $3::date and i.fecha <= $4::date
   group by i.tipo
   order by i.tipo
@@ -88,7 +84,6 @@ export const SQL_IVA_ACREDITABLE = `select p.name as cliente, count(*) as cfdi,
     coalesce(sum(i.subtotal), 0) as base, coalesce(sum(i.iva), 0) as iva_acreditable
   from despachos.invoice i
   join core.property p on p.id = i.property_id
-  join core.organization o on o.id = p.organization_id and o.vertical = 'despachos'
   where ${SCOPE_PROPERTY("i")} and i.fecha >= $3::date and i.fecha <= $4::date
     and i.tipo = 'I' and i.valido
   group by p.id, p.name
@@ -105,7 +100,6 @@ export const SQL_OBLIGACIONES_FISCALES = `select p.name as cliente, d.tipo, d.pe
     d.prioridad
   from despachos.fiscal_deadline d
   join core.property p on p.id = d.property_id
-  join core.organization o on o.id = p.organization_id and o.vertical = 'despachos'
   where ${SCOPE_PROPERTY("d")} and d.fecha_limite >= $3::date and d.fecha_limite <= $4::date
   order by d.fecha_limite asc, p.name, d.tipo
   limit $6`;
@@ -117,7 +111,6 @@ export const SQL_CIERRES_PENDIENTES = `select p.name as cliente, c.anio, c.mes, 
     count(t.id) filter (where t.status in ('pending', 'in_progress', 'blocked') and t.due_date < $3::date) as tareas_vencidas
   from despachos.periodo_cierre c
   join core.property p on p.id = c.property_id
-  join core.organization o on o.id = p.organization_id and o.vertical = 'despachos'
   left join despachos.periodo_cierre_tarea t on t.periodo_cierre_id = c.id
   where ${SCOPE_PROPERTY("c")} and c.status <> 'closed'
   group by c.id, p.name, c.anio, c.mes, c.status
@@ -133,8 +126,7 @@ export const SQL_CARGA_DE_TRABAJO = `select p.name as cliente,
     (select count(*) from despachos.periodo_cierre_tarea t join despachos.periodo_cierre c on c.id = t.periodo_cierre_id
        where c.property_id = p.id and c.status <> 'closed' and t.status in ('pending', 'in_progress', 'blocked')) as tareas_cierre_pendientes
   from core.property p
-  join core.organization o on o.id = p.organization_id and o.vertical = 'despachos'
-  where p.organization_id = $1 and p.status = 'active' and ($2::uuid[] is null or p.id = any($2::uuid[]))
+  where p.organization_id = $1 and p.vertical = 'despachos' and p.status = 'active' and ($2::uuid[] is null or p.id = any($2::uuid[]))
   order by vencimientos_vencidos desc, revisiones_pendientes desc, p.name
   limit $4`;
 

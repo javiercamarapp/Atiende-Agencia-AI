@@ -35,7 +35,7 @@ describe("PostgresDespachosDataChatReader — base sin migrar", () => {
       ["obligaciones", (r) => r.obligacionesFiscales(WINDOW), /from despachos\.fiscal_deadline d\s+join core\.property/i],
       ["cierres", (r) => r.cierresPendientes(WINDOW), /from despachos\.periodo_cierre c/i],
       ["carga", (r) => r.cargaDeTrabajo(WINDOW), /revisiones_pendientes/i],
-      ["clientes", (r) => r.listVisibleClients(ORG_A, null), /from core\.property p\s+join core\.organization o/i],
+      ["clientes", (r) => r.listVisibleClients(ORG_A, null), /from core\.property p\s+where/i],
     ];
     for (const err of [pgError("42703", "column does not exist"), pgError("42883", "function despachos.algo(uuid) does not exist")]) {
       for (const [name, run, match] of calls) {
@@ -55,7 +55,7 @@ describe("PostgresDespachosDataChatReader — base sin migrar", () => {
   it("de punta a punta: la herramienta responde 'unavailable' y la transaccion sigue sirviendo a la bitacora", async () => {
     const session = new AbortAwareFakeSession([
       SET_TIMEOUT,
-      { match: /from core\.property p\s+join core\.organization o/i, respond: () => [{ property_id: "p1", name: "Abarrotes" }] },
+      { match: /from core\.property p\s+where/i, respond: () => [{ property_id: "p1", name: "Abarrotes" }] },
       { match: /from despachos\.receivable/i, respond: () => pgError("42P01", "relation does not exist") },
       { match: /insert into core\.data_chat_query_log|select 1 as siguiente_query_del_request/i, respond: () => [{ ok: true }] },
     ]);
