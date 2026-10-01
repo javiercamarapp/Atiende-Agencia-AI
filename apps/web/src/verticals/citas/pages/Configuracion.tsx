@@ -17,7 +17,7 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { CalendarSync, UserRound } from "lucide-react";
 import {
-  Badge,
+  StatusBadge,
   Button,
   Card,
   CardContent,
@@ -30,6 +30,7 @@ import {
   Input,
   Label,
 } from "@atiende/ui";
+import { syncTone } from "../lib/status-tones.ts";
 import { fetchProviderDetail, fetchProviders, requestGoogleCalendarConnectUrl } from "../lib/providers-client.ts";
 import type { GoogleCalendarStatus, ProviderSummary } from "../lib/providers-client.ts";
 import { fetchTenantConfig, RUBRO_OPTIONS, updateTenantConfig } from "../lib/tenant-config-client.ts";
@@ -175,9 +176,9 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
                   {savingTenantConfig ? "Guardando…" : "Guardar cambios"}
                 </Button>
                 {tenantConfigSaved && !savingTenantConfig && (
-                  <Badge variant="secondary" role="status">
+                  <StatusBadge tone="success" role="status">
                     Guardado.
-                  </Badge>
+                  </StatusBadge>
                 )}
               </div>
             </form>
@@ -206,9 +207,9 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
                   <p className="mt-0.5 text-[12px] text-muted-foreground">{provider.roleLabel}</p>
                 </div>
                 {googleCalendar?.connected ? (
-                  <Badge variant={googleCalendar.syncStatus === "error" ? "destructive" : "secondary"}>
+                  <StatusBadge tone={syncTone(googleCalendar.syncStatus)}>
                     {googleCalendar.syncStatus === "error" ? "Conectado (con error)" : "Conectado"}
-                  </Badge>
+                  </StatusBadge>
                 ) : (
                   <Button size="sm" onClick={() => void handleConnect(provider.id)} disabled={connectingId === provider.id}>
                     <CalendarSync aria-hidden />
