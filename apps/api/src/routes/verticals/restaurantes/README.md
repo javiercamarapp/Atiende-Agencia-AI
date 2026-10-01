@@ -187,7 +187,7 @@ documentados aquí mismo:
 ## Pedidos programados (R-11, migración 034)
 
 - Alta: `POST /v1/restaurantes/:orgSlug/orders` acepta `programado_para` (ISO 8601 CON zona). El pedido nace en
-  estado `programado` (fuera de cocina, de KPIs y sin comanda al POS). Se rechaza (400) una hora sin zona, a
+  estado `programado` (fuera de cocina y sin comanda al POS; los KPIs de la 006 no filtran por estado, así que el pedido cuenta en ingresos y conteo desde su creación, como cualquier pedido, incluidos los cancelados). Se rechaza (400) una hora sin zona, a
   menos de 30 minutos, a más de 7 días o fuera del horario de la sucursal evaluado en SU zona horaria
   (incluye cruces de medianoche y puentes). Contra la base sin migrar responde 503 y no crea nada.
 - Panel (owner/admin): `GET .../admin/scheduled-orders` (pestaña Programados) y `GET .../admin/orders`
