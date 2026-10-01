@@ -16,6 +16,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { DEFAULT_DATA_CHAT_TIMEZONE, runDataChatTurn } from "@atiende/agent-core/data-chat";
 import { LICITACIONES_ROLES, buildLicitacionesDataChatCatalog } from "@atiende/domain-licitaciones";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
+import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
@@ -38,7 +39,7 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
 
   app.post(base, async (c) => {
     assertVerticalRole(c, LICITACIONES_ROLES);
-    const { question, history, tool } = await parseDataChatRequest(c);
+    const { question, history, tool, conversationId } = await parseDataChatRequest(c);
 
     const dataChat = deps.dataChat;
     const completion = dataChat?.completion;
@@ -55,8 +56,10 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
 
     const userId = c.get("userId");
     const verticalRole = c.get("verticalRole") ?? "";
-    return respondDataChat(c, deps, (turnDb, onEvento, signal) =>
-      runDataChatTurn({
+    // Con `conversationId` el historial sale de la base y el turno se guarda (data-chat/conversaciones.ts); sin el, todo igual.
+    const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: "licitaciones" }, propertyId: c.req.param("propertyId") ?? null });
+    return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
+      persist.finish(turnDb, question, tool, await runDataChatTurn({
         catalog: buildLicitacionesDataChatCatalog(readerFor(turnDb)),
         scope: {
           organizationId,
@@ -67,18 +70,19 @@ export function licitacionesChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
           timezone,
         },
         question,
-        history,
+        history: persist.history,
         ...(tool ? { directTool: tool } : {}),
         complete: completion(organizationId, LICITACIONES_DATA_CHAT_ROLE),
         completeRetry: completion(organizationId, `licitaciones:${DATA_CHAT_RETRY_SUFFIX}`),
         rateLimiter: dataChat.rateLimiter,
-        audit: dataChat.audit(turnDb),
+        audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "licitaciones", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
-      }),
+      })),
     );
   });
 
+  mountConversacionesRoutes(app, deps, { base, vertical: "licitaciones", roles: LICITACIONES_ROLES });
   return app;
 }

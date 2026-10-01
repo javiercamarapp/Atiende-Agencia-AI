@@ -20,6 +20,7 @@ import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
 import { resolveMembershipPropertyScope } from "../../../data-chat/property-scope.ts";
+import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
 import { DESPACHOS_DATA_CHAT_ROLE } from "../../../production/llm-gateway.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -39,7 +40,7 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
   app.post(base, async (c) => {
     assertVerticalRole(c, VER_DASHBOARD_ROLES);
-    const { question, history, tool } = await parseDataChatRequest(c);
+    const { question, history, tool, conversationId } = await parseDataChatRequest(c);
 
     const dataChat = deps.dataChat;
     const completion = dataChat?.completion;
@@ -55,8 +56,10 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
 
     const userId = c.get("userId");
     const verticalRole = c.get("verticalRole") ?? "";
-    return respondDataChat(c, deps, (turnDb, onEvento, signal) =>
-      runDataChatTurn({
+    // Con `conversationId` el historial sale de la base y el turno se guarda (data-chat/conversaciones.ts); sin el, todo igual.
+    const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: "despachos" }, propertyId: c.req.param("propertyId") ?? null });
+    return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
+      persist.finish(turnDb, question, tool, await runDataChatTurn({
         catalog: buildDespachosDataChatCatalog(dataChat.despachosReader!(turnDb)),
         scope: {
           organizationId,
@@ -67,18 +70,19 @@ export function despachosChatDatosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           timezone: config?.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE,
         },
         question,
-        history,
+        history: persist.history,
         ...(tool ? { directTool: tool } : {}),
         complete: completion(organizationId, DESPACHOS_DATA_CHAT_ROLE),
         completeRetry: completion(organizationId, `despachos:${DATA_CHAT_RETRY_SUFFIX}`),
         rateLimiter: dataChat.rateLimiter,
-        audit: dataChat.audit(turnDb),
+        audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: "despachos", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
-      }),
+      })),
     );
   });
 
+  mountConversacionesRoutes(app, deps, { base, vertical: "despachos", roles: VER_DASHBOARD_ROLES });
   return app;
 }

@@ -17,6 +17,7 @@ import { parseDataChatRequest } from "./body.ts";
 import { buildDataChatEstado } from "./estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "./ndjson.ts";
 import { resolveMembershipPropertyScope } from "./property-scope.ts";
+import { beginTurnPersistence, mountConversacionesRoutes } from "./conversaciones.ts";
 
 export interface VerticalDataChatConfig {
   /** "hoteles" | "rentas" | "citas": prefijo de ruta (`/hoteles/:propertyId/chat-datos`) y etiqueta del alcance. */
@@ -49,7 +50,7 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
 
   app.post(base, async (c) => {
     assertVerticalRole(c, cfg.roles);
-    const { question, history, tool } = await parseDataChatRequest(c);
+    const { question, history, tool, conversationId } = await parseDataChatRequest(c);
 
     const dataChat = deps.dataChat;
     const organizationId = c.get("organizationId");
@@ -68,8 +69,10 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
 
     const verticalRole = c.get("verticalRole") ?? "";
     const userId = c.get("userId");
-    return respondDataChat(c, deps, (turnDb, onEvento, signal) =>
-      runDataChatTurn({
+    // Con `conversationId` el historial sale de la base y el turno se guarda (conversaciones.ts); sin el, todo igual.
+    const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: cfg.vertical }, propertyId });
+    return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
+      persist.finish(turnDb, question, tool, await runDataChatTurn({
         catalog: cfg.catalog(deps, turnDb) ?? catalog,
         scope: {
           organizationId,
@@ -80,18 +83,19 @@ export function verticalDataChatRoutes(deps: AppDeps, cfg: VerticalDataChatConfi
           timezone,
         },
         question,
-        history,
+        history: persist.history,
         ...(tool ? { directTool: tool } : {}),
         complete: completion(organizationId, cfg.role),
         completeRetry: completion(organizationId, `${cfg.vertical}:${DATA_CHAT_RETRY_SUFFIX}`),
         rateLimiter: dataChat.rateLimiter,
-        audit: dataChat.audit(turnDb),
+        audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", vertical: cfg.vertical, where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
-      }),
+      })),
     );
   });
 
+  mountConversacionesRoutes(app, deps, { base, vertical: cfg.vertical, roles: cfg.roles });
   return app;
 }

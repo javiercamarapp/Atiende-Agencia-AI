@@ -15,6 +15,7 @@ import { MANAGER_ROLES, buildRestaurantesDataChatCatalog } from "@atiende/domain
 import type { AppDeps } from "../../../deps.ts";
 import { resolveEffectivePropertyIds } from "./admin-scope.ts";
 import { parseDataChatRequest } from "../../../data-chat/body.ts";
+import { beginTurnPersistence, mountConversacionesRoutes } from "../../../data-chat/conversaciones.ts";
 import { buildDataChatEstado } from "../../../data-chat/estado.ts";
 import { DATA_CHAT_NOT_ACTIVATED, respondDataChat, respondDataChatStatic } from "../../../data-chat/ndjson.ts";
 import { DATA_CHAT_RETRY_SUFFIX } from "../../../production/llm-models.ts";
@@ -35,7 +36,7 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
 
   app.post(base, async (c) => {
     assertVerticalRole(c, MANAGER_ROLES);
-    const { question, history, tool } = await parseDataChatRequest(c);
+    const { question, history, tool, conversationId } = await parseDataChatRequest(c);
 
     const dataChat = deps.dataChat;
     const organizationId = c.get("organizationId");
@@ -50,8 +51,10 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
 
     const userId = c.get("userId");
     const verticalRole = c.get("verticalRole") ?? "";
-    return respondDataChat(c, deps, (turnDb, onEvento, signal) =>
-      runDataChatTurn({
+    // Con `conversationId` el historial sale de la base y el turno se guarda (data-chat/conversaciones.ts); sin el, todo igual.
+    const persist = await beginTurnPersistence(deps, db, { conversationId, history, scope: { organizationId, userId, vertical: "restaurantes" }, propertyId: c.req.param("propertyId") ?? null });
+    return respondDataChat(c, deps, async (turnDb, onEvento, signal) =>
+      persist.finish(turnDb, question, tool, await runDataChatTurn({
         catalog: buildRestaurantesDataChatCatalog(dataChat.restaurantesReader(turnDb)),
         scope: {
           organizationId,
@@ -62,18 +65,19 @@ export function restaurantesAdminDataChatRoutes(deps: AppDeps): Hono<CoreAuthHon
           timezone: zona.zonaHoraria ?? DEFAULT_DATA_CHAT_TIMEZONE,
         },
         question,
-        history,
+        history: persist.history,
         ...(tool ? { directTool: tool } : {}),
         complete: completion(organizationId),
         completeRetry: completion(organizationId, `restaurantes:${DATA_CHAT_RETRY_SUFFIX}`),
         rateLimiter: dataChat.rateLimiter,
-        audit: dataChat.audit(turnDb),
+        audit: persist.audit(dataChat.audit(turnDb)),
         onEvento,
         signal,
         onError: (where, err) => console.error(JSON.stringify({ level: "error", event: "data_chat_error", where, message: err instanceof Error ? err.message.slice(0, 200) : "error" })),
-      }),
+      })),
     );
   });
 
+  mountConversacionesRoutes(app, deps, { base, vertical: "restaurantes", roles: MANAGER_ROLES });
   return app;
 }
